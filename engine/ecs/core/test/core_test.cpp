@@ -1,4 +1,5 @@
 #include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/WorldTaskResources.hpp>
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
 #include <cassert>
@@ -20,7 +21,19 @@ namespace
 
 int main()
 {
-    lux::ecs::World world;
+    lux::ecs::World world{
+        lux::ecs::WorldConfig{{256U * 1024U, 32U * 1024U * 1024U}}
+    };
+
+    struct AddPosition final
+    {
+        lux::ecs::Entity entity{lux::ecs::NullEntity};
+
+        void apply(lux::ecs::WorldMutation& mutation) noexcept
+        {
+            mutation.emplace<Position>(entity, 41);
+        }
+    };
 
     auto edit_result = world.mutate();
     assert(edit_result);
@@ -132,7 +145,7 @@ int main()
 
     lux::ecs::World small_world{
         lux::ecs::WorldConfig{
-            lux::ecs::WorldChangeLogConfig{4096U, 4096U}}};
+            lux::ecs::WorldChangeHistoryBudget{4096U, 4096U}}};
     auto small_edit_result = small_world.mutate();
     assert(small_edit_result);
     auto small_edit = std::move(*small_edit_result);
@@ -207,7 +220,9 @@ int main()
     assert(recovered.status() == lux::ecs::EChangeReadStatus::CURRENT);
     assert(recovered.size() == 1U);
 
-    lux::ecs::World failure_world;
+    lux::ecs::World failure_world{
+        lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
+    };
     auto& failure_journal =
         lux::ecs::detail::WorldChangeAccess::log(failure_world);
     lux::ecs::ChangeCursor<FirstStream> first_stream_cursor;
@@ -255,4 +270,51 @@ int main()
         failure_journal.read(failed_entity_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
+
+    lux::ecs::World task_world{
+        lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
+    };
+    auto task_mutation_result = task_world.mutate();
+    assert(task_mutation_result);
+    auto task_mutation = std::move(*task_mutation_result);
+    const auto task_entity = task_mutation.create();
+    task_mutation = {};
+
+    lux::ecs::WorldCommandBatch command_batch;
+    assert(command_batch.prepare(1U, 1U));
+    auto execution_result = task_world.beginTaskExecution();
+    assert(execution_result);
+    auto execution = std::move(*execution_result);
+    {
+        auto scope_result = command_batch.begin(0U);
+        assert(scope_result);
+        auto scope = std::move(*scope_result);
+        assert(
+            scope.commands().push(AddPosition{task_entity}) ==
+            lux::ecs::ECommandResult::ACCEPTED
+        );
+    }
+    lux::ecs::applyWorldCommands(task_world, command_batch);
+    assert(task_world.get<Position>(task_entity).value == 41);
+    execution = {};
+
+    lux::ecs::WorldChangeBatch change_batch;
+    const std::uint64_t position_storage = entt::type_hash<Position>::value();
+    assert(change_batch.prepare(std::span{&position_storage, 1U}, 1U));
+    auto batch_stream = change_batch.binder()(position_storage);
+    assert(batch_stream);
+    assert(batch_stream(task_entity, lux::ecs::EComponentChangeKind::MODIFIED));
+    lux::ecs::ChangeCursor<Position> task_cursor;
+    auto& task_log = lux::ecs::detail::WorldChangeAccess::log(task_world);
+    assert(
+        task_log.read(task_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+    assert(change_batch.publish(task_world));
+    const auto task_changes = task_log.read(task_cursor);
+    assert(task_changes.size() == 1U);
+    const auto batch_stats = change_batch.stats();
+    assert(batch_stats.lane_binds == 1U);
+    assert(batch_stats.journal_stream_binds == 1U);
+    assert(batch_stats.per_record_lookups == 0U);
 }

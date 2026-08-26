@@ -175,7 +175,7 @@ namespace lux::ecs
         {
             auto impl = std::make_unique<Impl>();
             impl->components = components;
-            impl->shadow = std::make_unique<World>();
+            impl->shadow = std::make_unique<World>(world.config_);
             if (auto cloned = cloneWorld(
                     world,
                     *impl->shadow,

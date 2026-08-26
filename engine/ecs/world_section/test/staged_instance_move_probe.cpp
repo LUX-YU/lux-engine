@@ -20,7 +20,9 @@ int main()
     );
     if (!image)
         return 1;
-    lux::ecs::World world;
+    lux::ecs::World world{
+        lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
+    };
     auto batch = lux::ecs::WorldSectionLoader::begin(
         world,
         lux::ecs::WorldSectionLoadScratchBudget{1024U},

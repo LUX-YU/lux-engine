@@ -84,6 +84,68 @@ namespace lux::ecs
         return WorldMutation(*this, true);
     }
 
+    lux::cxx::expected<
+        WorldTaskExecutionLease,
+        WorldTaskExecutionError>
+    World::beginTaskExecution() noexcept
+    {
+        if (std::this_thread::get_id() != owner_thread_)
+        {
+            return lux::cxx::unexpected(WorldTaskExecutionError{
+                EWorldTaskExecutionError::WRONG_THREAD
+            });
+        }
+        if (state_ != detail::EWorldState::IDLE || execution_lease_)
+        {
+            return lux::cxx::unexpected(WorldTaskExecutionError{
+                EWorldTaskExecutionError::WORLD_BUSY
+            });
+        }
+        execution_lease_ = true;
+        state_ = detail::EWorldState::EXECUTING;
+        return WorldTaskExecutionLease(*this);
+    }
+
+    WorldTaskExecutionLease::WorldTaskExecutionLease(World& world) noexcept
+        : world_(&world)
+    {
+    }
+
+    WorldTaskExecutionLease::~WorldTaskExecutionLease() noexcept
+    {
+        release();
+    }
+
+    WorldTaskExecutionLease::WorldTaskExecutionLease(
+        WorldTaskExecutionLease&& other
+    ) noexcept
+        : world_(std::exchange(other.world_, nullptr))
+    {
+    }
+
+    WorldTaskExecutionLease& WorldTaskExecutionLease::operator=(
+        WorldTaskExecutionLease&& other
+    ) noexcept
+    {
+        if (this != std::addressof(other))
+        {
+            release();
+            world_ = std::exchange(other.world_, nullptr);
+        }
+        return *this;
+    }
+
+    void WorldTaskExecutionLease::release() noexcept
+    {
+        if (world_ == nullptr)
+            return;
+        detail::require(world_->execution_lease_);
+        detail::require(world_->state_ == detail::EWorldState::EXECUTING);
+        world_->state_ = detail::EWorldState::IDLE;
+        world_->execution_lease_ = false;
+        world_ = nullptr;
+    }
+
     WorldMutation::WorldMutation(
         World& world,
         bool release_to_idle,
@@ -128,7 +190,7 @@ namespace lux::ecs
         const Entity entity = world_->registry_.create();
         if (change_emission_ == EChangeEmission::RECORD)
         {
-            detail::recordWorldEntityChange(
+            (void)detail::recordWorldEntityChange(
                 *world_, entity, EEntityChangeKind::ADDED
             );
         }
@@ -141,7 +203,7 @@ namespace lux::ecs
         const Entity created = world_->registry_.create(entity);
         if (change_emission_ == EChangeEmission::RECORD)
         {
-            detail::recordWorldEntityChange(
+            (void)detail::recordWorldEntityChange(
                 *world_, created, EEntityChangeKind::ADDED
             );
         }
@@ -151,6 +213,7 @@ namespace lux::ecs
     void WorldMutation::destroy(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
+        bool history_lost = false;
         if (world_->section_memberships_->tracked(entity))
         {
             world_->section_memberships_->forEachStorage(
@@ -161,10 +224,11 @@ namespace lux::ecs
                     detail::require(storage != nullptr);
                     if (change_emission_ == EChangeEmission::RECORD)
                     {
-                        detail::recordWorldComponentChange(
+                        if (!history_lost && !detail::recordWorldComponentChange(
                             *world_, storage_id, entity,
                             EComponentChangeKind::REMOVED
-                        );
+                        ))
+                            history_lost = true;
                     }
                     storage->remove(entity);
                 }
@@ -173,9 +237,10 @@ namespace lux::ecs
             world_->registry_.template storage<Entity>().erase(entity);
             if (change_emission_ == EChangeEmission::RECORD)
             {
-                detail::recordWorldEntityChange(
+                if (!history_lost && !detail::recordWorldEntityChange(
                     *world_, entity, EEntityChangeKind::DESTROYED
-                );
+                ))
+                    history_lost = true;
             }
             return;
         }
@@ -186,19 +251,21 @@ namespace lux::ecs
             {
                 if (storage_id != entity_storage && storage.contains(entity))
                 {
-                    detail::recordWorldComponentChange(
+                    if (!history_lost && !detail::recordWorldComponentChange(
                         *world_, storage_id, entity,
                         EComponentChangeKind::REMOVED
-                    );
+                    ))
+                        history_lost = true;
                 }
             }
         }
         world_->registry_.destroy(entity);
         if (change_emission_ == EChangeEmission::RECORD)
         {
-            detail::recordWorldEntityChange(
+            if (!history_lost && !detail::recordWorldEntityChange(
                 *world_, entity, EEntityChangeKind::DESTROYED
-            );
+            ))
+                history_lost = true;
         }
     }
 
@@ -272,23 +339,27 @@ namespace lux::ecs
         };
     }
 
-    void detail::recordWorldComponentChange(
+    bool detail::recordWorldComponentChange(
         World& world,
         std::uint64_t storage,
         Entity entity,
         EComponentChangeKind kind
     ) noexcept
     {
-        WorldChangeAccess::log(world).recordComponent(storage, entity, kind);
+        return WorldChangeAccess::log(world).recordComponent(
+            storage,
+            entity,
+            kind
+        );
     }
 
-    void detail::recordWorldEntityChange(
+    bool detail::recordWorldEntityChange(
         World& world,
         Entity entity,
         EEntityChangeKind kind
     ) noexcept
     {
-        WorldChangeAccess::log(world).recordEntity(entity, kind);
+        return WorldChangeAccess::log(world).recordEntity(entity, kind);
     }
 
     void detail::establishWorldChangeBaseline(World& world) noexcept

@@ -79,12 +79,15 @@ namespace lux::ecs::detail
             std::uint64_t storage
         ) noexcept;
 
-        void recordComponent(
+        [[nodiscard]] bool recordComponent(
             std::uint64_t storage,
             Entity entity,
             EComponentChangeKind kind
         ) noexcept;
-        void recordEntity(Entity entity, EEntityChangeKind kind) noexcept;
+        [[nodiscard]] bool recordEntity(
+            Entity entity,
+            EEntityChangeKind kind
+        ) noexcept;
 
         template <class Component>
         [[nodiscard]] ComponentChanges<Component> read(
@@ -158,7 +161,11 @@ namespace lux::ecs::detail
 
       private:
         [[nodiscard]] JournalStream* ensureStream(std::uint64_t storage) noexcept;
-        void append(JournalStream& stream, Entity entity, std::uint8_t kind) noexcept;
+        [[nodiscard]] bool append(
+            JournalStream& stream,
+            Entity entity,
+            std::uint8_t kind
+        ) noexcept;
         [[nodiscard]] JournalBlock* acquireBlock() noexcept;
         void attachBlock(JournalStream& stream, JournalBlock& block) noexcept;
         [[nodiscard]] JournalBlock* detachFrontBlock(

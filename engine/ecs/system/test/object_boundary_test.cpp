@@ -36,7 +36,7 @@ int main()
 
     lux::object::ObjectMessageQueue queue;
     DemandObserver observer{queue.dispatcherRef()};
-    World world;
+    World world{WorldConfig{{4096U, 16U * 4096U}}};
     auto mutation_result = world.mutate();
     assert(mutation_result);
     auto mutation = std::move(*mutation_result);

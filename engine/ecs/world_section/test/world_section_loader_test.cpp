@@ -440,7 +440,7 @@ int main()
     auto context = fixtureContext();
 
     {
-        World batch_world;
+        World batch_world{WorldConfig{{4096U, 16U * 4096U}}};
         auto resident_image = validImage(sectionId(1U));
         auto resident = loadSection(
             batch_world,
@@ -486,7 +486,7 @@ int main()
         assert(fixedCount(batch_world) == 0U);
     }
 
-    World world;
+    World world{WorldConfig{{4096U, 16U * 4096U}}};
 
     detail::ComponentLoadTestStats::reset();
     auto first_image = validImage(sectionId(1U));
@@ -519,7 +519,7 @@ int main()
     assert(fixedCount(world) == 6U);
 
     {
-        World wrong_world;
+        World wrong_world{WorldConfig{{4096U, 16U * 4096U}}};
         auto wrong = unloadSection(wrong_world, *second);
         assert(!wrong);
         assert(wrong.error().code == EWorldSectionError::WRONG_WORLD);
@@ -639,7 +639,7 @@ int main()
     assert(fixedCount(world) == before_failure);
 
     {
-        World history_world;
+        World history_world{WorldConfig{{4096U, 16U * 4096U}}};
         Entity history_entity{NullEntity};
         {
             auto edit = history_world.mutate();
@@ -695,7 +695,7 @@ int main()
     }
 
     {
-        World executing_world;
+        World executing_world{WorldConfig{{4096U, 16U * 4096U}}};
         auto executing_image = validImage(sectionId(1U));
         detail::SystemTestRig schedule(executing_world);
         const auto handle = schedule.add<ExecutingLoadSystem>(

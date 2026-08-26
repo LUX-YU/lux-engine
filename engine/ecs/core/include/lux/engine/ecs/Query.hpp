@@ -87,20 +87,20 @@ namespace lux::ecs
         {
             void* owner{};
             void* stream{};
-            void (*append)(
+            bool (*append)(
                 void*,
                 void*,
                 Entity,
                 EComponentChangeKind
             ) noexcept{};
-
-            void operator()(
+            [[nodiscard]] bool operator()(
                 Entity entity,
                 EComponentChangeKind kind
             ) const noexcept
             {
-                if (append != nullptr)
-                    append(owner, stream, entity, kind);
+                if (append == nullptr)
+                    return false;
+                return append(owner, stream, entity, kind);
             }
 
             [[nodiscard]] explicit operator bool() const noexcept
@@ -118,9 +118,9 @@ namespace lux::ecs
                 std::uint64_t storage
             ) const noexcept
             {
-                return bind == nullptr
-                    ? BoundWorldChangeStream{}
-                    : bind(context, storage);
+                if (bind == nullptr)
+                    return {};
+                return bind(context, storage);
             }
         };
 
@@ -213,11 +213,13 @@ namespace lux::ecs
                         BoundWorldChangeStream,
                         sizeof...(Access)
                     >& streams,
-                    ChangeRecorder recorder
+                    ChangeRecorder recorder,
+                    bool* history_lost
                 ) noexcept
                     : iterator_(iterator),
                       streams_(streams),
-                      recorder_(recorder)
+                      recorder_(recorder),
+                      history_lost_(history_lost)
                 {
                 }
 
@@ -226,9 +228,17 @@ namespace lux::ecs
                 {
                     if constexpr (AccessTraits<Value>::kWrite)
                     {
+                        if (history_lost_ != nullptr && *history_lost_)
+                            return;
                         const auto& stream = streams_[Index];
                         if (stream)
-                            stream(entity, EComponentChangeKind::MODIFIED);
+                        {
+                            if (!stream(entity, EComponentChangeKind::MODIFIED) &&
+                                history_lost_ != nullptr)
+                            {
+                                *history_lost_ = true;
+                            }
+                        }
                         else
                         {
                             recorder_(
@@ -252,6 +262,7 @@ namespace lux::ecs
                 BaseIterator iterator_{};
                 std::array<BoundWorldChangeStream, sizeof...(Access)> streams_{};
                 ChangeRecorder recorder_{};
+                bool* history_lost_{};
                 mutable bool recorded_current_{};
 
                 friend class BasicQuery;
@@ -270,16 +281,29 @@ namespace lux::ecs
                 static_assert(uniqueComponents<Access...>());
                 if constexpr (std::is_const_v<Registry>)
                     static_assert((!AccessTraits<Access>::kWrite && ...));
+                history_lost_ = anyWriteStreamMissing(
+                    std::index_sequence_for<Access...>{}
+                );
             }
 
             [[nodiscard]] Iterator begin()
             {
-                return Iterator(view_.each().begin(), streams_, recorder_);
+                return Iterator(
+                    view_.each().begin(),
+                    streams_,
+                    recorder_,
+                    &history_lost_
+                );
             }
 
             [[nodiscard]] Iterator end()
             {
-                return Iterator(view_.each().end(), streams_, recorder_);
+                return Iterator(
+                    view_.each().end(),
+                    streams_,
+                    recorder_,
+                    &history_lost_
+                );
             }
 
           private:
@@ -298,9 +322,18 @@ namespace lux::ecs
                     return {};
             }
 
+            template <std::size_t... Index>
+            [[nodiscard]] bool anyWriteStreamMissing(
+                std::index_sequence<Index...>
+            ) const noexcept
+            {
+                return ((AccessTraits<Access>::kWrite && !streams_[Index]) || ...);
+            }
+
             View view_;
             std::array<BoundWorldChangeStream, sizeof...(Access)> streams_{};
             ChangeRecorder recorder_{};
+            bool history_lost_{};
         };
     } // namespace detail
 } // namespace lux::ecs

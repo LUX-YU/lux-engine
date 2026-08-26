@@ -12,6 +12,11 @@
 
 namespace
 {
+    [[nodiscard]] constexpr lux::ecs::WorldConfig worldConfig() noexcept
+    {
+        return {{256U * 1024U, 32U * 1024U * 1024U}};
+    }
+
     struct Position final
     {
         int value{};
@@ -56,7 +61,7 @@ int main()
     );
     assert(snapshot_components);
 
-    lux::ecs::World source;
+    lux::ecs::World source{worldConfig()};
     auto edit_result = source.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
@@ -89,7 +94,7 @@ int main()
     assert(
         lux::ecs::detail::ComponentSnapshotTestStats::storage_lookups == 1U
     );
-    auto instance = snapshot->instantiate();
+    auto instance = snapshot->instantiate(worldConfig());
     assert(instance);
     auto& instance_journal = lux::ecs::detail::WorldChangeAccess::log(
         **instance
@@ -109,7 +114,7 @@ int main()
     }
 
     const lux::ecs::WorldConfig bounded_config{
-        lux::ecs::WorldChangeLogConfig{4096U, 4096U}};
+        lux::ecs::WorldChangeHistoryBudget{4096U, 4096U}};
     auto bounded_instance = snapshot->instantiate(bounded_config);
     assert(bounded_instance);
     lux::ecs::ChangeCursor<Position> bounded_cursor;
@@ -176,7 +181,7 @@ int main()
     assert(restored.get<Position>(third).target == first);
     assert(restored.find<DerivedCache>(first) == nullptr);
 
-    lux::ecs::World busy;
+    lux::ecs::World busy{worldConfig()};
     {
         assert(lux::ecs::detail::WorldExecutionAccess::acquire(busy));
         const auto busy_restore = snapshot->restore(busy);
@@ -204,7 +209,7 @@ int main()
     wrong_thread.join();
     assert(wrong_thread_rejected.load(std::memory_order_relaxed));
 
-    lux::ecs::World invalid;
+    lux::ecs::World invalid{worldConfig()};
     auto invalid_edit_result = invalid.mutate();
     auto invalid_edit = std::move(*invalid_edit_result);
     const auto unknown = invalid_edit.create();

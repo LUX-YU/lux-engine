@@ -157,6 +157,11 @@ namespace lux::meta
 
 namespace
 {
+    [[nodiscard]] constexpr lux::ecs::WorldConfig benchmarkWorldConfig() noexcept
+    {
+        return {{256U * 1024U, 32U * 1024U * 1024U}};
+    }
+
     using Clock = std::chrono::steady_clock;
     std::atomic_size_t allocation_count{};
     std::atomic_bool count_allocations{};
@@ -411,7 +416,9 @@ namespace
 
     std::unique_ptr<lux::ecs::World> positionWorld(std::size_t count)
     {
-        auto world = std::make_unique<lux::ecs::World>();
+        auto world = std::make_unique<lux::ecs::World>(
+            benchmarkWorldConfig()
+        );
         auto result = world->mutate();
         auto edit = std::move(*result);
         edit.reserve<BenchmarkPosition>(count);
@@ -735,7 +742,7 @@ namespace
             lux::ecs::SystemExecutionScratch scratch;
             if (!scratch.prepare(*compilation))
                 std::abort();
-            lux::ecs::World world;
+            lux::ecs::World world{benchmarkWorldConfig()};
             std::uint64_t tick{};
             evidence.measure(
                 "system_execute_" + std::string{value.name},
@@ -767,7 +774,7 @@ namespace
         }
 
         {
-            lux::ecs::World world;
+            lux::ecs::World world{benchmarkWorldConfig()};
             lux::ecs::detail::SystemTestRig execution(world);
             std::uint64_t updates{};
             for (std::size_t index{}; index < count; ++index)
@@ -1063,7 +1070,7 @@ namespace
 
         for (const std::size_t count : {1U, 16U, 64U, 256U, 1024U})
         {
-            lux::ecs::World world;
+            lux::ecs::World world{benchmarkWorldConfig()};
             lux::ecs::detail::SystemTestRig schedule(world);
             std::uint64_t updates{};
             for (std::size_t index{}; index < count; ++index)
@@ -1086,7 +1093,7 @@ namespace
     hierarchyWorld(
         std::size_t count,
         EHierarchyShape shape,
-        lux::ecs::WorldConfig config = {}
+        lux::ecs::WorldConfig config = benchmarkWorldConfig()
     )
     {
         auto world = std::make_unique<lux::ecs::World>(config);
@@ -1217,7 +1224,7 @@ namespace
         });
 
         const lux::ecs::WorldConfig tiny_history{
-            lux::ecs::WorldChangeLogConfig{4096U, 4096U}};
+            lux::ecs::WorldChangeHistoryBudget{4096U, 4096U}};
         auto [resync_world, resync_entities] = hierarchyWorld(
             stress,
             EHierarchyShape::STAR,
@@ -1317,7 +1324,9 @@ namespace
             1U,
             requested_size / 10U
         );
-        auto sparse_world = std::make_unique<lux::ecs::World>();
+        auto sparse_world = std::make_unique<lux::ecs::World>(
+            benchmarkWorldConfig()
+        );
         std::vector<lux::ecs::Entity> sparse_entities;
         sparse_entities.reserve(requested_size);
         auto setup_result = sparse_world->mutate();
@@ -1425,10 +1434,12 @@ namespace
             );
             evidence.measure("snapshot_instantiate", size, [&]
             {
-                if (!snapshot->instantiate()) std::abort();
+                if (!snapshot->instantiate(benchmarkWorldConfig())) std::abort();
                 return Observation{};
             });
-            auto target = std::make_unique<lux::ecs::World>();
+            auto target = std::make_unique<lux::ecs::World>(
+                benchmarkWorldConfig()
+            );
             evidence.measure("snapshot_restore", size, [&]
             {
                 if (!snapshot->restore(*target)) std::abort();
@@ -1695,7 +1706,7 @@ namespace
             });
             evidence.measure(prefix + "_entity_create", size, [&]
             {
-                lux::ecs::World world;
+                lux::ecs::World world{benchmarkWorldConfig()};
                 std::vector<lux::ecs::Entity> entities(size);
                 auto edit = lux::ecs::detail::WorldColdAccess::sectionMutation(
                     world
@@ -1750,7 +1761,7 @@ namespace
             });
             evidence.measure(prefix + "_predecoded_fixed_insert", size, [&]
             {
-                lux::ecs::World world;
+                lux::ecs::World world{benchmarkWorldConfig()};
                 auto local_entities = entities;
                 auto local_values = values;
                 auto edit = lux::ecs::detail::WorldColdAccess::sectionMutation(
@@ -1770,7 +1781,7 @@ namespace
             });
             evidence.measure(prefix + "_world_edit_insert", size, [&]
             {
-                lux::ecs::World world;
+                lux::ecs::World world{benchmarkWorldConfig()};
                 auto edit_result = world.mutate();
                 if (!edit_result) std::abort();
                 auto edit = std::move(*edit_result);
@@ -1786,7 +1797,7 @@ namespace
 
         evidence.measure(prefix + "_full_load", size, [&]
         {
-            lux::ecs::World world;
+            lux::ecs::World world{benchmarkWorldConfig()};
             lux::ecs::detail::ComponentLoadTestStats::reset();
             auto instance = loadBenchmarkSection(
                 world,
@@ -1815,7 +1826,7 @@ namespace
         {
             evidence.measure(prefix + "_unload", size, [&]
             {
-                lux::ecs::World world;
+                lux::ecs::World world{benchmarkWorldConfig()};
                 auto instance = loadBenchmarkSection(
                     world,
                     plan.loads,
@@ -1944,7 +1955,7 @@ namespace
             10'000U
         );
         auto plan = makeLiveStreamingPlan(section_count);
-        lux::ecs::World world;
+        lux::ecs::World world{benchmarkWorldConfig()};
         std::vector<lux::ecs::Entity> residents(
             resident_count,
             lux::ecs::NullEntity

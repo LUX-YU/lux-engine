@@ -106,20 +106,22 @@ namespace lux::ecs
                             void* stream,
                             Entity entity,
                             EComponentChangeKind
-                        ) noexcept
+                        ) noexcept -> bool
                         {
                             auto& change_set = *static_cast<ChangeSet*>(owner);
                             auto& target = *static_cast<Lane*>(stream);
                             if (change_set.overflow_)
-                                return;
+                                return false;
                             try
                             {
                                 target.records.push_back(entity);
                                 ++change_set.record_append_count_;
+                                return true;
                             }
                             catch (...)
                             {
                                 change_set.overflow_ = true;
+                                return false;
                             }
                         }
                     };
@@ -157,7 +159,13 @@ namespace lux::ecs
             const auto stream = publish_streams_[index];
             const auto& lane = lanes_[index];
             for (const Entity entity : lane.records)
-                stream(entity, EComponentChangeKind::MODIFIED);
+            {
+                if (!stream(entity, EComponentChangeKind::MODIFIED))
+                {
+                    reset();
+                    return false;
+                }
+            }
         }
         reset();
         return true;

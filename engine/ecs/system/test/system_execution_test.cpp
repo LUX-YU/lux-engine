@@ -122,7 +122,9 @@ namespace
 
 int main()
 {
-    lux::ecs::World world;
+    lux::ecs::World world{
+        lux::ecs::WorldConfig{{256U * 1024U, 32U * 1024U * 1024U}}
+    };
     auto mutation_result = world.mutate();
     assert(mutation_result);
     auto mutation = std::move(*mutation_result);

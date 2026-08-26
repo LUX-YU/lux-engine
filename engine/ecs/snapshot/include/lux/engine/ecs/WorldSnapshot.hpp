@@ -29,7 +29,7 @@ namespace lux::ecs
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<std::unique_ptr<World>, SnapshotError>
-        instantiate(WorldConfig config = {}) const noexcept;
+        instantiate(WorldConfig config) const noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
         restore(World& world) const noexcept;

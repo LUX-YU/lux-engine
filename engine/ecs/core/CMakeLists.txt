@@ -16,6 +16,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldChangeLog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/World.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldCommands.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldTaskResources.cpp
 )
 
 component_include_directories(

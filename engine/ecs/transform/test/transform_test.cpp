@@ -18,6 +18,11 @@
 
 namespace
 {
+    [[nodiscard]] constexpr lux::ecs::WorldConfig worldConfig() noexcept
+    {
+        return {{256U * 1024U, 32U * 1024U * 1024U}};
+    }
+
     [[nodiscard]] uuids::uuid uuid(const char* text)
     {
         return uuids::uuid::from_string(text).value();
@@ -94,7 +99,7 @@ int main()
     assert(load_contribution.bindings.size() == 2U);
 
     const auto schema_set = schemas();
-    lux::ecs::World world;
+    lux::ecs::World world{worldConfig()};
     lux::ecs::HierarchyIndex hierarchy{world};
     auto edit_result = world.mutate();
     assert(edit_result);
@@ -309,7 +314,7 @@ int main()
             *snapshot_components
         );
         assert(snapshot);
-        auto fork = snapshot->instantiate();
+        auto fork = snapshot->instantiate(worldConfig());
         assert(fork);
         assert((*fork)->find<lux::ecs::WorldTransform3D>(child) == nullptr);
         lux::ecs::HierarchyIndex fork_hierarchy{**fork};

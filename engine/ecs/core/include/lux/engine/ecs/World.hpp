@@ -26,15 +26,15 @@ namespace lux::ecs
     template <class Component>
     [[nodiscard]] ComponentOperations componentOperations() noexcept;
 
-    struct WorldChangeLogConfig final
+    struct WorldChangeHistoryBudget final
     {
-        std::size_t initial_bytes{256U * 1024U};
-        std::size_t max_bytes{32U * 1024U * 1024U};
+        std::size_t initial_bytes;
+        std::size_t max_bytes;
     };
 
     struct WorldConfig final
     {
-        WorldChangeLogConfig changes{};
+        WorldChangeHistoryBudget changes;
     };
 
     enum class EWorldMutationError : std::uint8_t
@@ -82,6 +82,45 @@ namespace lux::ecs
     } // namespace detail
 
     class World;
+
+    enum class EWorldTaskExecutionError : std::uint8_t
+    {
+        WORLD_BUSY,
+        WRONG_THREAD,
+    };
+
+    struct WorldTaskExecutionError final
+    {
+        EWorldTaskExecutionError code{EWorldTaskExecutionError::WORLD_BUSY};
+    };
+
+    /** Pure lexical World-state lease. It never owns or runs a TaskGraph. */
+    class LUX_ENGINE_ECS_CORE_PUBLIC WorldTaskExecutionLease final
+    {
+      public:
+        WorldTaskExecutionLease() noexcept = default;
+        ~WorldTaskExecutionLease() noexcept;
+        WorldTaskExecutionLease(WorldTaskExecutionLease&& other) noexcept;
+        WorldTaskExecutionLease& operator=(
+            WorldTaskExecutionLease&& other
+        ) noexcept;
+        WorldTaskExecutionLease(const WorldTaskExecutionLease&) = delete;
+        WorldTaskExecutionLease& operator=(
+            const WorldTaskExecutionLease&
+        ) = delete;
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return world_ != nullptr;
+        }
+
+      private:
+        explicit WorldTaskExecutionLease(World& world) noexcept;
+        void release() noexcept;
+        World* world_{};
+
+        friend class World;
+    };
 
     class LUX_ENGINE_ECS_CORE_PUBLIC WorldMutation final
     {
@@ -153,7 +192,7 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_CORE_PUBLIC World final
     {
       public:
-        explicit World(WorldConfig config = {});
+        explicit World(WorldConfig config);
         ~World() noexcept;
 
         World(const World&) = delete;
@@ -195,6 +234,11 @@ namespace lux::ecs
         [[nodiscard]] lux::cxx::expected<WorldMutation, WorldMutationError>
         mutate() noexcept;
 
+        [[nodiscard]] lux::cxx::expected<
+            WorldTaskExecutionLease,
+            WorldTaskExecutionError>
+        beginTaskExecution() noexcept;
+
       private:
         using Registry = entt::basic_registry<Entity>;
 
@@ -210,6 +254,7 @@ namespace lux::ecs
         std::size_t active_section_count_{};
 
         friend class WorldMutation;
+        friend class WorldTaskExecutionLease;
         friend class SystemContext;
         friend class WorldSnapshot;
         friend struct detail::WorldSnapshotAccess;
@@ -277,14 +322,14 @@ namespace lux::ecs
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeStreamBinder
         worldChangeStreamBinder(World& world) noexcept;
 
-        LUX_ENGINE_ECS_CORE_PUBLIC void recordWorldComponentChange(
+        [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordWorldComponentChange(
             World& world,
             std::uint64_t storage,
             Entity entity,
             EComponentChangeKind kind
         ) noexcept;
 
-        LUX_ENGINE_ECS_CORE_PUBLIC void recordWorldEntityChange(
+        [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordWorldEntityChange(
             World& world,
             Entity entity,
             EEntityChangeKind kind
@@ -340,7 +385,7 @@ namespace lux::ecs
             );
             if (change_emission_ == EChangeEmission::RECORD)
             {
-                detail::recordWorldComponentChange(
+                (void)detail::recordWorldComponentChange(
                     *world_, storage, entity,
                     EComponentChangeKind::ADDED
                 );
@@ -368,7 +413,7 @@ namespace lux::ecs
             );
             if (change_emission_ == EChangeEmission::RECORD)
             {
-                detail::recordWorldComponentChange(
+                (void)detail::recordWorldComponentChange(
                     *world_, storage, entity,
                     EComponentChangeKind::REMOVED
                 );
@@ -390,7 +435,7 @@ namespace lux::ecs
         );
         if (change_emission_ == EChangeEmission::RECORD)
         {
-            detail::recordWorldComponentChange(
+            (void)detail::recordWorldComponentChange(
                 *world_, entt::type_hash<Component>::value(), entity,
                 EComponentChangeKind::MODIFIED
             );
@@ -405,7 +450,8 @@ namespace lux::ecs
             world_->registry_,
             change_emission_ == EChangeEmission::RECORD
                 ? detail::worldChangeStreamBinder(*world_)
-                : detail::ChangeStreamBinder{}
+                : detail::ChangeStreamBinder{},
+            {}
         );
     }
 

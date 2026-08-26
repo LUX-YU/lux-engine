@@ -30,7 +30,9 @@ namespace
 
 int main()
 {
-    lux::ecs::World world;
+    lux::ecs::World world{
+        lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
+    };
     lux::ecs::SystemRegistry registry;
     lux::ecs::SystemId system;
     const auto result = registry.emplace<MutatingSystem>(registry, system);

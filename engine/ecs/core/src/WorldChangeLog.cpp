@@ -64,7 +64,7 @@ namespace lux::ecs::detail
             [](void* context, std::uint64_t storage, Entity entity,
                EComponentChangeKind kind) noexcept
             {
-                static_cast<WorldChangeLog*>(context)->recordComponent(
+                (void)static_cast<WorldChangeLog*>(context)->recordComponent(
                     storage, entity, kind
                 );
             }};
@@ -88,7 +88,7 @@ namespace lux::ecs::detail
                 EComponentChangeKind kind
             ) noexcept
             {
-                static_cast<WorldChangeLog*>(owner)->append(
+                return static_cast<WorldChangeLog*>(owner)->append(
                     *static_cast<JournalStream*>(target_stream),
                     entity,
                     static_cast<std::uint8_t>(kind)
@@ -288,7 +288,7 @@ namespace lux::ecs::detail
         return victim == nullptr ? nullptr : detachFrontBlock(*victim);
     }
 
-    void WorldChangeLog::append(
+    bool WorldChangeLog::append(
         JournalStream& stream,
         Entity entity,
         std::uint8_t kind
@@ -302,14 +302,14 @@ namespace lux::ecs::detail
             if (block == nullptr)
             {
                 markHistoryLoss();
-                return;
+                return false;
             }
             if (fail_next_block_attach_for_test_)
             {
                 fail_next_block_attach_for_test_ = false;
                 releaseBlock(*block);
                 markHistoryLoss();
-                return;
+                return false;
             }
             attachBlock(stream, *block);
         }
@@ -326,9 +326,10 @@ namespace lux::ecs::detail
             stream.minimum_available,
             stream.oldest_sequence
         );
+        return true;
     }
 
-    void WorldChangeLog::recordComponent(
+    bool WorldChangeLog::recordComponent(
         std::uint64_t storage,
         Entity entity,
         EComponentChangeKind kind
@@ -336,15 +337,16 @@ namespace lux::ecs::detail
     {
         ++per_record_lookup_count_;
         if (JournalStream* stream = ensureStream(storage))
-            append(*stream, entity, static_cast<std::uint8_t>(kind));
+            return append(*stream, entity, static_cast<std::uint8_t>(kind));
+        return false;
     }
 
-    void WorldChangeLog::recordEntity(
+    bool WorldChangeLog::recordEntity(
         Entity entity,
         EEntityChangeKind kind
     ) noexcept
     {
-        append(entity_stream_, entity, static_cast<std::uint8_t>(kind));
+        return append(entity_stream_, entity, static_cast<std::uint8_t>(kind));
     }
 
     ChangeRangeData WorldChangeLog::readComponentRaw(

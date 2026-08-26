@@ -224,6 +224,7 @@ endforeach()
 foreach(installed_consumer IN ITEMS
     core_system
     object_affinity
+    world
     world_section
 )
     if(NOT EXISTS

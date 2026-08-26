@@ -1,4 +1,5 @@
 #include <lux/engine/world/WorldPartition.hpp>
+#include <lux/engine/world/WorldPartitioner.hpp>
 
 #include <algorithm>
 #include <new>
@@ -7,6 +8,11 @@
 
 namespace lux::world
 {
+    WorldPartitionWorkspace::WorldPartitionWorkspace() noexcept = default;
+    WorldPartitionWorkspace::~WorldPartitionWorkspace() = default;
+    WorldPartitioner::WorldPartitioner() noexcept = default;
+    WorldPartitioner::~WorldPartitioner() = default;
+
     WorldPartitionView::WorldPartitionView(
         const WorldPartitionLayout& layout,
         std::size_t partition_index

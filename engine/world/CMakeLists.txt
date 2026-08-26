@@ -42,6 +42,21 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
+add_executable(world_contract_test test/world_contract_test.cpp)
+target_link_libraries(world_contract_test PRIVATE lux::engine::world)
+if(MSVC)
+    target_compile_options(world_contract_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(world_contract_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  world_contract_test
+    LAYER   WORLD
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(NAME world_contract_test COMMAND world_contract_test)
+
 install_components(
     PROJECT_NAME lux-engine-world
     VERSION      ${PROJECT_VERSION}

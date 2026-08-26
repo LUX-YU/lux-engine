@@ -43,7 +43,8 @@ namespace lux::world
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionWorkspace
     {
       public:
-        virtual ~WorldPartitionWorkspace() = default;
+        WorldPartitionWorkspace() noexcept;
+        virtual ~WorldPartitionWorkspace();
 
         [[nodiscard]] virtual const WorldPartitionerDescriptor&
         descriptor() const noexcept = 0;
@@ -70,7 +71,8 @@ namespace lux::world
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitioner
     {
       public:
-        virtual ~WorldPartitioner() = default;
+        WorldPartitioner() noexcept;
+        virtual ~WorldPartitioner();
 
         [[nodiscard]] virtual WorldPartitionerDescriptor
         descriptor() const noexcept = 0;

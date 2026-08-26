@@ -1,3 +1,4 @@
+#include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/SystemTaskResources.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
@@ -9,6 +10,15 @@
 
 namespace
 {
+    struct Position final
+    {
+        int value{};
+    };
+
+    struct ExternalState final
+    {
+    };
+
     struct ProbeSystem final : lux::ecs::StaticSystemAccess<>
     {
         explicit ProbeSystem(std::shared_ptr<std::atomic_int> destroyed)
@@ -27,6 +37,16 @@ namespace
         }
 
         std::shared_ptr<std::atomic_int> destroyed_;
+    };
+
+    struct ComponentWriterSystem final :
+        lux::ecs::StaticSystemAccess<lux::ecs::Write<Position>>
+    {
+    };
+
+    struct ExternalWriterSystem final :
+        lux::ecs::StaticSystemAccess<lux::ecs::ExternalWrite<ExternalState>>
+    {
     };
 }
 
@@ -70,5 +90,39 @@ int main()
 
     graph = task::TaskGraph{};
     assert(destroyed->load() == 1);
+
+    // System metadata and typed ECS task access must share the same canonical
+    // resource identity, otherwise the generic TaskGraph misses the hazard.
+    {
+        task::TaskGraphBuilder builder;
+        auto writer = builder.add(
+            ecs::systemTaskResources<ComponentWriterSystem>(),
+            []() noexcept {}
+        );
+        auto reader = builder.add(
+            task::resources(ecs::access<ecs::Read<Position>>),
+            []() noexcept {}
+        );
+        assert(writer && reader);
+        auto result = std::move(builder).build();
+        assert(result);
+        assert(result->dependencyCount() == 1U);
+    }
+
+    {
+        task::TaskGraphBuilder builder;
+        auto writer = builder.add(
+            ecs::systemTaskResources<ExternalWriterSystem>(),
+            []() noexcept {}
+        );
+        auto reader = builder.add(
+            task::resources(ecs::access<ecs::ExternalRead<ExternalState>>),
+            []() noexcept {}
+        );
+        assert(writer && reader);
+        auto result = std::move(builder).build();
+        assert(result);
+        assert(result->dependencyCount() == 1U);
+    }
     return 0;
 }

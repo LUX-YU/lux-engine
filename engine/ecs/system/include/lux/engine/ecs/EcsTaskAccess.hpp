@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/ecs/EcsTaskResource.hpp>
 #include <lux/engine/ecs/Query.hpp>
 #include <lux/engine/ecs/SystemAccessSpec.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
@@ -17,12 +18,6 @@ namespace lux::ecs
 {
     namespace detail
     {
-        inline constexpr std::uint64_t kComponentResourceDomain = 1U;
-        inline constexpr std::uint64_t kExternalResourceDomain = 2U;
-        inline constexpr std::uint64_t kWorldStructureResourceDomain = 3U;
-        inline constexpr std::uint64_t kWorldChangesResourceDomain = 4U;
-        inline constexpr std::uint64_t kWorldCommandsResourceDomain = 5U;
-
         template <class Access>
         struct EcsTaskAccessTraits;
 
@@ -33,8 +28,9 @@ namespace lux::ecs
             static constexpr bool kWrite = false;
             [[nodiscard]] static constexpr task::TaskResourceKey key() noexcept
             {
-                return {kComponentResourceDomain,
-                        entt::type_hash<Component>::value()};
+                return componentTaskResource(
+                    entt::type_hash<Component>::value()
+                );
             }
         };
 
@@ -45,8 +41,9 @@ namespace lux::ecs
             static constexpr bool kWrite = true;
             [[nodiscard]] static constexpr task::TaskResourceKey key() noexcept
             {
-                return {kComponentResourceDomain,
-                        entt::type_hash<Component>::value()};
+                return componentTaskResource(
+                    entt::type_hash<Component>::value()
+                );
             }
         };
 
@@ -58,8 +55,7 @@ namespace lux::ecs
             static constexpr bool kWrite = false;
             [[nodiscard]] static constexpr task::TaskResourceKey key() noexcept
             {
-                return {kExternalResourceDomain,
-                        entt::type_hash<Resource>::value()};
+                return externalTaskResource<Resource>();
             }
         };
 
@@ -71,8 +67,7 @@ namespace lux::ecs
             static constexpr bool kWrite = true;
             [[nodiscard]] static constexpr task::TaskResourceKey key() noexcept
             {
-                return {kExternalResourceDomain,
-                        entt::type_hash<Resource>::value()};
+                return externalTaskResource<Resource>();
             }
         };
 
@@ -223,18 +218,18 @@ namespace lux::ecs
     [[nodiscard]] constexpr task::TaskResourceAccess worldStructureWrite()
         noexcept
     {
-        return task::write({detail::kWorldStructureResourceDomain, 1U});
+        return task::write(worldStructureTaskResource());
     }
 
     [[nodiscard]] constexpr task::TaskResourceAccess worldChangesWrite()
         noexcept
     {
-        return task::write({detail::kWorldChangesResourceDomain, 1U});
+        return task::write(worldChangesTaskResource());
     }
 
     [[nodiscard]] constexpr task::TaskResourceAccess worldCommandsWrite()
         noexcept
     {
-        return task::write({detail::kWorldCommandsResourceDomain, 1U});
+        return task::write(worldCommandsTaskResource());
     }
 }

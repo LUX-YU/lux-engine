@@ -3,7 +3,9 @@
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/WorldSectionTransaction.hpp>
+#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 #include <lux/engine/ecs/system/support/EcsTaskTestRig.hpp>
+#include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 
 #include <uuid.h>
@@ -539,6 +541,26 @@ int main()
     }
 
     {
+        World failure_world{WorldConfig{{4096U, 16U * 4096U}}};
+        WorldSectionInstance instance;
+        auto image = validImage(sectionId(1U));
+        auto transaction = beginWorldSectionTransaction(
+            failure_world,
+            fixtureLoadScratchBudget(),
+            lux::serialization::SerializationLimits{}
+        );
+        assert(transaction);
+        assert(transaction->load(context.loads, image, instance));
+        auto& history = detail::WorldChangeAccess::log(failure_world);
+        history.failNextStreamDescriptorForTest();
+        const std::uint64_t epoch_before = history.epoch();
+        assert(transaction->commit());
+        assert(history.epoch() == epoch_before + 1U);
+        assert(instance.active());
+        assert(unloadSection(failure_world, instance));
+    }
+
+    {
         World batch_world{WorldConfig{{4096U, 16U * 4096U}}};
         auto resident_image = validImage(sectionId(1U));
         auto resident = loadSection(
@@ -588,9 +610,32 @@ int main()
     World world{WorldConfig{{4096U, 16U * 4096U}}};
 
     detail::ComponentLoadTestStats::reset();
+    const auto membership_before =
+        detail::WorldSectionTransactionAccess::membershipStats(world);
+    const std::uint64_t stream_binds_before =
+        detail::WorldChangeAccess::log(world).streamBindCountForTest();
+    const std::uint64_t per_record_lookups_before =
+        detail::WorldChangeAccess::log(world).perRecordLookupCountForTest();
     auto first_image = validImage(sectionId(1U));
     auto first = loadSection(world, context.loads, first_image);
     assert(first);
+    const auto membership_after =
+        detail::WorldSectionTransactionAccess::membershipStats(world);
+    assert(
+        detail::WorldChangeAccess::log(world).streamBindCountForTest() -
+            stream_binds_before ==
+        4U
+    );
+    assert(
+        detail::WorldChangeAccess::log(world).perRecordLookupCountForTest() ==
+        per_record_lookups_before
+    );
+    assert(
+        membership_after.duplicate_comparisons ==
+        membership_before.duplicate_comparisons
+    );
+    assert(membership_after.active_tracked_entities == 3U);
+    assert(membership_after.active_memberships == 9U);
     assert(first->id() == sectionId(1U));
     assert(first->entities().size() == 3U);
     assert(detail::ComponentLoadTestStats::load_calls == 4U);
@@ -812,14 +857,28 @@ int main()
 
     const auto stale_entity = second->entities().front();
     const auto gameplay_entity = second->entities()[1U];
+    const auto gameplay_membership_before =
+        detail::WorldSectionTransactionAccess::membershipStats(world);
     {
         auto edit = world.mutate();
         assert(edit);
         edit->emplace<test::GameplayAdded>(gameplay_entity, 42U);
         edit->destroy(stale_entity);
     }
+    const auto gameplay_membership_after =
+        detail::WorldSectionTransactionAccess::membershipStats(world);
+    assert(
+        gameplay_membership_after.duplicate_comparisons >
+        gameplay_membership_before.duplicate_comparisons
+    );
     assert(world.find<test::GameplayAdded>(gameplay_entity) != nullptr);
     assert(unloadSection(world, *second));
     assert(!second->active());
     assert(fixedCount(world) == 0U);
+    const auto final_membership =
+        detail::WorldSectionTransactionAccess::membershipStats(world);
+    assert(final_membership.active_tracked_entities == 0U);
+    assert(final_membership.active_memberships == 0U);
+    assert(final_membership.entry_capacity_bytes != 0U);
+    assert(final_membership.node_capacity_bytes != 0U);
 }

@@ -17,6 +17,15 @@ namespace lux::ecs::detail
     class SectionMembershipDirectory final
     {
       public:
+        struct Stats final
+        {
+            std::uint64_t duplicate_comparisons{};
+            std::size_t entry_capacity_bytes{};
+            std::size_t node_capacity_bytes{};
+            std::size_t active_tracked_entities{};
+            std::size_t active_memberships{};
+        };
+
         using NodeIndex = std::uint32_t;
         static constexpr NodeIndex InvalidNode =
             std::numeric_limits<NodeIndex>::max();
@@ -59,6 +68,7 @@ namespace lux::ecs::detail
                 require(entry.lease == 0U && entry.first == InvalidNode);
                 entry.lease = lease;
                 entry.generation = generation(entity);
+                ++active_tracked_entities_;
             }
         }
 
@@ -93,6 +103,7 @@ namespace lux::ecs::detail
                  node = nodes_[node].next)
             {
                 require(nodes_[node].storage != storage);
+                ++duplicate_comparisons_;
             }
 
             NodeIndex result{};
@@ -120,6 +131,7 @@ namespace lux::ecs::detail
             Entry& entry = entries_[slot(entity)];
             nodes_[node].next = entry.first;
             entry.first = node;
+            ++active_memberships_;
         }
 
         void cancelAdd(NodeIndex node) noexcept
@@ -130,18 +142,27 @@ namespace lux::ecs::detail
             releaseNode(node);
         }
 
-        void addReserved(Entity entity, std::uint64_t storage) noexcept
+        void appendKnownUnique(
+            Entity entity,
+            std::uint64_t storage
+        ) noexcept
         {
-            try
+            require(tracked(entity));
+            NodeIndex node{};
+            if (free_ != InvalidNode)
             {
-                const NodeIndex node = prepareAdd(entity, storage);
-                require(node != InvalidNode);
-                commitAdd(entity, node);
+                node = free_;
+                free_ = nodes_[node].next;
             }
-            catch (...)
+            else
             {
-                contractFailure();
+                require(nodes_.size() < InvalidNode);
+                require(nodes_.size() < nodes_.capacity());
+                node = static_cast<NodeIndex>(nodes_.size());
+                nodes_.push_back(Node{});
             }
+            nodes_[node] = Node{storage, InvalidNode};
+            commitAdd(entity, node);
         }
 
         void remove(Entity entity, std::uint64_t storage) noexcept
@@ -157,6 +178,8 @@ namespace lux::ecs::detail
                 {
                     *link = nodes_[node].next;
                     releaseNode(node);
+                    require(active_memberships_ != 0U);
+                    --active_memberships_;
                     return;
                 }
                 link = &nodes_[node].next;
@@ -185,9 +208,24 @@ namespace lux::ecs::detail
             {
                 const NodeIndex next = nodes_[node].next;
                 releaseNode(node);
+                require(active_memberships_ != 0U);
+                --active_memberships_;
                 node = next;
             }
             entry = {};
+            require(active_tracked_entities_ != 0U);
+            --active_tracked_entities_;
+        }
+
+        [[nodiscard]] Stats stats() const noexcept
+        {
+            return Stats{
+                .duplicate_comparisons = duplicate_comparisons_,
+                .entry_capacity_bytes = entries_.capacity() * sizeof(Entry),
+                .node_capacity_bytes = nodes_.capacity() * sizeof(Node),
+                .active_tracked_entities = active_tracked_entities_,
+                .active_memberships = active_memberships_,
+            };
         }
 
       private:
@@ -229,5 +267,8 @@ namespace lux::ecs::detail
         std::vector<Node> nodes_;
         NodeIndex free_{InvalidNode};
         std::uint64_t next_lease_{1U};
+        std::uint64_t duplicate_comparisons_{};
+        std::size_t active_tracked_entities_{};
+        std::size_t active_memberships_{};
     };
 } // namespace lux::ecs::detail

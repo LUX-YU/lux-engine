@@ -67,7 +67,7 @@ namespace lux::ecs::detail
             require(mutation.world_ != nullptr);
             for (const Entity entity : entities)
             {
-                mutation.world_->section_memberships_->addReserved(
+                mutation.world_->section_memberships_->appendKnownUnique(
                     entity,
                     storage
                 );
@@ -227,6 +227,13 @@ namespace lux::ecs::detail
                 static_cast<Traits::entity_type>(checkpoint.packed_size),
                 {}
             ));
+        }
+
+        [[nodiscard]] static SectionMembershipDirectory::Stats membershipStats(
+            const World& world
+        ) noexcept
+        {
+            return world.section_memberships_->stats();
         }
     };
 } // namespace lux::ecs::detail

@@ -149,11 +149,11 @@ namespace lux::ecs
             return false;
         }
 
-        const auto bind = detail::worldChangeStreamBinder(world);
+        detail::WorldChangePublisher publisher(world);
         for (const auto& lane : impl_->lanes)
         {
             ++impl_->journal_stream_binds;
-            auto stream = bind(lane.storage);
+            auto stream = publisher.bindComponent(lane.storage);
             if (!stream)
             {
                 ++impl_->history_losses;
@@ -162,7 +162,11 @@ namespace lux::ecs
             }
             for (const Entity entity : lane.records)
             {
-                if (!stream(entity, EComponentChangeKind::MODIFIED))
+                if (!publisher.append(
+                        stream,
+                        entity,
+                        EComponentChangeKind::MODIFIED
+                    ))
                 {
                     ++impl_->history_losses;
                     reset();

@@ -8,7 +8,6 @@
 #include <limits>
 #include <memory>
 #include <new>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -592,33 +591,7 @@ namespace lux::ecs
             );
         }
 
-        const std::uint64_t publication_epoch =
-            detail::worldChangeEpoch(*impl_->world);
-        bool publish_exact = true;
-        const auto component_change = [&](std::uint64_t storage,
-                                          Entity entity,
-                                          EComponentChangeKind kind) noexcept
-        {
-            if (!publish_exact)
-                return;
-            publish_exact = detail::recordWorldComponentChange(
-                *impl_->world,
-                storage,
-                entity,
-                kind
-            );
-        };
-        const auto entity_change = [&](Entity entity,
-                                       EEntityChangeKind kind) noexcept
-        {
-            if (!publish_exact)
-                return;
-            publish_exact = detail::recordWorldEntityChange(
-                *impl_->world,
-                entity,
-                kind
-            );
-        };
+        detail::WorldChangePublisher publisher(*impl_->world);
 
         // Canonical unload is deferred until commit. All load materialization
         // has already completed while load() held its input borrows.
@@ -660,55 +633,74 @@ namespace lux::ecs
         {
             for (const auto& lane : operation.removals)
             {
+                auto stream = publisher.bindComponent(lane.storage);
+                if (!stream)
+                    break;
                 for (const Entity entity : lane.entities)
                 {
-                    component_change(
-                        lane.storage,
+                    if (!publisher.append(
+                        stream,
                         entity,
                         EComponentChangeKind::REMOVED
-                    );
+                    ))
+                        break;
                 }
             }
         }
         for (const auto& operation : impl_->unloads)
         {
             for (const Entity entity : operation.instance->entities_)
-                entity_change(entity, EEntityChangeKind::DESTROYED);
+            {
+                if (!publisher.appendEntity(
+                        entity,
+                        EEntityChangeKind::DESTROYED
+                    ))
+                {
+                    break;
+                }
+            }
         }
         for (const auto& operation : impl_->loads)
         {
             for (const Entity entity : operation.output->entities_)
-                entity_change(entity, EEntityChangeKind::ADDED);
+            {
+                if (!publisher.appendEntity(entity, EEntityChangeKind::ADDED))
+                    break;
+            }
         }
         for (const auto& operation : impl_->loads)
         {
             for (const auto& lane : operation.additions)
             {
+                auto stream = publisher.bindComponent(lane.storage);
+                if (!stream)
+                    break;
                 if (lane.dense)
                 {
                     for (const Entity entity : operation.output->entities_)
                     {
-                        component_change(
-                            lane.storage,
+                        if (!publisher.append(
+                            stream,
                             entity,
                             EComponentChangeKind::ADDED
-                        );
+                        ))
+                            break;
                     }
                 }
                 else
                 {
                     for (const std::uint32_t ordinal : lane.ordinals)
                     {
-                        component_change(
-                            lane.storage,
+                        if (!publisher.append(
+                            stream,
                             operation.output->entities_[ordinal],
                             EComponentChangeKind::ADDED
-                        );
+                        ))
+                            break;
                     }
                 }
             }
         }
-        (void)publication_epoch;
 
         for (auto& operation : impl_->loads)
         {

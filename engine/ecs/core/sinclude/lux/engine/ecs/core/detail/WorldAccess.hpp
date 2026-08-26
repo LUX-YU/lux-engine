@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
 #include <limits>
 #include <thread>
@@ -86,6 +87,59 @@ namespace lux::ecs::detail
             require(world.active_section_count_ != 0U);
             --world.active_section_count_;
         }
+    };
+
+    class WorldChangePublisher final
+    {
+      public:
+        explicit WorldChangePublisher(World& world) noexcept
+            : log_(&WorldChangeAccess::log(world))
+        {
+        }
+
+        [[nodiscard]] BoundWorldChangeStream bindComponent(
+            std::uint64_t storage
+        ) noexcept
+        {
+            if (!exact_)
+                return {};
+            BoundWorldChangeStream result = log_->bindComponent(storage);
+            if (!result)
+                exact_ = false;
+            return result;
+        }
+
+        [[nodiscard]] bool append(
+            BoundWorldChangeStream stream,
+            Entity entity,
+            EComponentChangeKind kind
+        ) noexcept
+        {
+            if (!exact_)
+                return false;
+            exact_ = stream(entity, kind);
+            return exact_;
+        }
+
+        [[nodiscard]] bool appendEntity(
+            Entity entity,
+            EEntityChangeKind kind
+        ) noexcept
+        {
+            if (!exact_)
+                return false;
+            exact_ = log_->recordEntity(entity, kind);
+            return exact_;
+        }
+
+        [[nodiscard]] bool exact() const noexcept
+        {
+            return exact_;
+        }
+
+      private:
+        WorldChangeLog* log_{};
+        bool exact_{true};
     };
 
     struct WorldExecutionAccess final

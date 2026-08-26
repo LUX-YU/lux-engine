@@ -14,7 +14,7 @@ namespace lux::world
             const uuids::uuid& right
         ) noexcept
         {
-            const auto left_bytes = left.as_bytes();
+            const auto left_bytes  = left.as_bytes();
             const auto right_bytes = right.as_bytes();
             for (std::size_t index{}; index < left_bytes.size(); ++index)
             {
@@ -28,9 +28,7 @@ namespace lux::world
             return false;
         }
 
-        [[nodiscard]] inline std::size_t uuidHash(
-            const uuids::uuid& value
-        ) noexcept
+        [[nodiscard]] inline std::size_t uuidHash(const uuids::uuid& value) noexcept
         {
             std::size_t result = sizeof(std::size_t) >= 8U
                 ? static_cast<std::size_t>(14695981039346656037ULL)
@@ -77,9 +75,7 @@ namespace lux::world
 
     struct WorldObjectIdHash final
     {
-        [[nodiscard]] std::size_t operator()(
-            const WorldObjectId& value
-        ) const noexcept
+        [[nodiscard]] std::size_t operator()(const WorldObjectId& value) const noexcept
         {
             return detail::uuidHash(value.value);
         }

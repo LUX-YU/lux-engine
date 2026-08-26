@@ -64,7 +64,7 @@ namespace lux::world
             std::uint32_t version,
             std::span<const std::byte> payload
         ) noexcept;
-        
+
         [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
         eraseData(
             WorldObjectId object,

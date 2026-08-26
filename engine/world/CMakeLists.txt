@@ -16,6 +16,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldIdentity.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescription.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescriptionBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldPartition.cpp
 )
 
 component_include_directories(

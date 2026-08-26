@@ -1,6 +1,6 @@
 #include "WorldSectionFixtureBuilder.hpp"
 
-#include <lux/engine/ecs/WorldSectionLoader.hpp>
+#include <lux/engine/ecs/WorldSectionTransaction.hpp>
 
 #include <uuid.h>
 
@@ -23,7 +23,7 @@ int main()
     lux::ecs::World world{
         lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
     };
-    auto batch = lux::ecs::WorldSectionLoader::begin(
+    auto batch = lux::ecs::beginWorldSectionTransaction(
         world,
         lux::ecs::WorldSectionLoadScratchBudget{1024U},
         lux::serialization::SerializationLimits{}

@@ -45,6 +45,7 @@ namespace lux::ecs
         ALLOCATION_FAILURE,
         WRONG_WORLD,
         INVALID_INSTANCE_STATE,
+        TRANSACTION_FAILED,
     };
 
     struct WorldSectionFailure final

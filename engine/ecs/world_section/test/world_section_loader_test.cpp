@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
-#include <lux/engine/ecs/WorldSectionLoader.hpp>
+#include <lux/engine/ecs/WorldSectionTransaction.hpp>
 #include <lux/engine/ecs/system/support/EcsTaskTestRig.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 
@@ -290,7 +290,7 @@ namespace
         const WorldSectionImage& image
     ) noexcept
     {
-        auto begun = WorldSectionLoader::begin(
+        auto begun = beginWorldSectionTransaction(
             world,
             fixtureLoadScratchBudget(),
             lux::serialization::SerializationLimits{}
@@ -313,7 +313,7 @@ namespace
         WorldSectionInstance& instance
     ) noexcept
     {
-        auto begun = WorldSectionLoader::begin(
+        auto begun = beginWorldSectionTransaction(
             world,
             fixtureLoadScratchBudget(),
             lux::serialization::SerializationLimits{}
@@ -455,6 +455,90 @@ int main()
     auto context = fixtureContext();
 
     {
+        World eager_world{WorldConfig{{4096U, 16U * 4096U}}};
+        WorldSectionInstance eager_instance;
+        auto transaction = beginWorldSectionTransaction(
+            eager_world,
+            fixtureLoadScratchBudget(),
+            lux::serialization::SerializationLimits{}
+        );
+        assert(transaction);
+        {
+            auto ephemeral_image = validImage(sectionId(1U));
+            ComponentLoadSet ephemeral_loads = context.loads;
+            assert(transaction->load(
+                ephemeral_loads,
+                ephemeral_image,
+                eager_instance
+            ));
+        }
+        assert(transaction->commit());
+        assert(eager_instance.active());
+        assert(fixedCount(eager_world) == 3U);
+        assert(unloadSection(eager_world, eager_instance));
+    }
+
+    {
+        World poisoned_world{WorldConfig{{4096U, 16U * 4096U}}};
+        WorldSectionInstance staged;
+        WorldSectionInstance rejected;
+        auto good_image = validImage(sectionId(1U));
+        FixtureColumn missing_column = fixedColumn();
+        missing_column.schema_name = "test.Missing";
+        auto missing_image = WorldSectionImage::open(buildFixture(
+            sectionId(2U),
+            3U,
+            {missing_column}
+        ), fixtureValidationBudget());
+        assert(missing_image);
+        {
+            auto transaction = beginWorldSectionTransaction(
+                poisoned_world,
+                fixtureLoadScratchBudget(),
+                lux::serialization::SerializationLimits{}
+            );
+            assert(transaction);
+            assert(transaction->load(context.loads, good_image, staged));
+            auto failed = transaction->load(
+                context.loads,
+                *missing_image,
+                rejected
+            );
+            assert(!failed);
+            assert(failed.error().code == EWorldSectionError::MISSING_BINDING);
+            auto committed = transaction->commit();
+            assert(!committed);
+            assert(
+                committed.error().code ==
+                EWorldSectionError::TRANSACTION_FAILED
+            );
+        }
+        assert(!staged.active());
+        assert(!rejected.active());
+        assert(fixedCount(poisoned_world) == 0U);
+    }
+
+    {
+        World rollback_world{WorldConfig{{4096U, 16U * 4096U}}};
+        World control_world{WorldConfig{{4096U, 16U * 4096U}}};
+        WorldSectionInstance staged;
+        {
+            auto transaction = beginWorldSectionTransaction(
+                rollback_world,
+                fixtureLoadScratchBudget(),
+                lux::serialization::SerializationLimits{}
+            );
+            assert(transaction);
+            auto image = validImage(sectionId(1U));
+            assert(transaction->load(context.loads, image, staged));
+        }
+        auto rollback_mutation = rollback_world.mutate();
+        auto control_mutation = control_world.mutate();
+        assert(rollback_mutation && control_mutation);
+        assert(rollback_mutation->create() == control_mutation->create());
+    }
+
+    {
         World batch_world{WorldConfig{{4096U, 16U * 4096U}}};
         auto resident_image = validImage(sectionId(1U));
         auto resident = loadSection(
@@ -466,7 +550,7 @@ int main()
 
         WorldSectionInstance replacement;
         auto replacement_image = validImage(sectionId(2U));
-        auto begun = WorldSectionLoader::begin(
+        auto begun = beginWorldSectionTransaction(
             batch_world,
             fixtureLoadScratchBudget(),
             lux::serialization::SerializationLimits{}
@@ -484,7 +568,7 @@ int main()
 
         WorldSectionInstance rolled_back;
         {
-            auto rollback = WorldSectionLoader::begin(
+            auto rollback = beginWorldSectionTransaction(
                 batch_world,
                 fixtureLoadScratchBudget(),
                 lux::serialization::SerializationLimits{}

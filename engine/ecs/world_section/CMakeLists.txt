@@ -15,7 +15,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentLoadSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSectionImage.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSectionLoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSectionTransaction.cpp
 )
 
 component_include_directories(

@@ -11,6 +11,22 @@ namespace lux::ecs::detail
 {
     struct WorldSectionTransactionAccess final
     {
+        struct EntityAllocatorCheckpoint final
+        {
+            std::size_t packed_size{};
+            std::size_t free_list{};
+        };
+
+        [[nodiscard]] static EntityAllocatorCheckpoint checkpointAllocator(
+            WorldMutation& mutation
+        ) noexcept
+        {
+            require(mutation.world_ != nullptr);
+            const auto& storage =
+                mutation.world_->registry_.template storage<Entity>();
+            return {storage.size(), storage.free_list()};
+        }
+
         [[nodiscard]] static std::uint64_t allocateLease(
             WorldMutation& edit
         ) noexcept
@@ -43,15 +59,15 @@ namespace lux::ecs::detail
         }
 
         static void addComponentMembership(
-            WorldMutation& edit,
+            WorldMutation& mutation,
             std::uint64_t storage,
             std::span<const Entity> entities
         ) noexcept
         {
-            require(edit.world_ != nullptr);
+            require(mutation.world_ != nullptr);
             for (const Entity entity : entities)
             {
-                edit.world_->section_memberships_->addReserved(
+                mutation.world_->section_memberships_->addReserved(
                     entity,
                     storage
                 );
@@ -173,26 +189,44 @@ namespace lux::ecs::detail
         }
 
         static void rollbackEntities(
-            WorldMutation& edit,
+            WorldMutation& mutation,
             std::uint64_t lease,
-            std::span<const Entity> entities
+            std::span<const Entity> entities,
+            EntityAllocatorCheckpoint checkpoint,
+            bool membership_active
         ) noexcept
         {
-            require(edit.world_ != nullptr);
-            for (const Entity entity : entities)
+            require(mutation.world_ != nullptr);
+            auto& entity_storage =
+                mutation.world_->registry_.template storage<Entity>();
+            for (auto iterator = entities.rbegin();
+                 iterator != entities.rend();
+                 ++iterator)
             {
-                if (!matches(edit, entity, lease))
+                const Entity entity = *iterator;
+                if (!mutation.world_->registry_.valid(entity))
                     continue;
-                forEachStorage(
-                    edit,
-                    entity,
-                    [&](std::uint64_t storage) noexcept
-                    {
-                        removeComponent(edit, entity, storage);
-                    }
-                );
-                destroyTrackedEntity(edit, entity);
+                if (membership_active && matches(mutation, entity, lease))
+                {
+                    forEachStorage(
+                        mutation,
+                        entity,
+                        [&](std::uint64_t storage) noexcept
+                        {
+                            removeComponent(mutation, entity, storage);
+                        }
+                    );
+                    mutation.world_->section_memberships_->deactivate(entity);
+                }
+                entity_storage.erase(entity);
+                entity_storage.bump(entity);
             }
+            entity_storage.free_list(checkpoint.free_list);
+            using Traits = entt::entt_traits<Entity>;
+            entity_storage.start_from(Traits::construct(
+                static_cast<Traits::entity_type>(checkpoint.packed_size),
+                {}
+            ));
         }
     };
 } // namespace lux::ecs::detail

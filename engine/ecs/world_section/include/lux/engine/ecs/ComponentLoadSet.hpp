@@ -48,6 +48,6 @@ namespace lux::ecs
 
         std::shared_ptr<const Impl> impl_;
 
-        friend class WorldSectionLoadBatch;
+        friend class WorldSectionTransaction;
     };
 } // namespace lux::ecs

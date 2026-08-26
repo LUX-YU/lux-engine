@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/WorldSectionImage.hpp>
-#include <lux/engine/ecs/WorldSectionLoader.hpp>
+#include <lux/engine/ecs/WorldSectionTransaction.hpp>
 
 #include <vector>
 

@@ -8,12 +8,15 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 
+#include <memory>
 #include <span>
 #include <utility>
 #include <vector>
 
 namespace lux::ecs
 {
+    class WorldSectionTransaction;
+
     class LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC WorldSectionInstance final
     {
       public:
@@ -55,31 +58,27 @@ namespace lux::ecs
         std::uint64_t lease_{};
         EState state_{EState::INACTIVE};
 
-        friend class WorldSectionLoadBatch;
+        friend class WorldSectionTransaction;
     };
 
-    class LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC WorldSectionLoadBatch final
+    class LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC WorldSectionTransaction final
     {
       public:
-        WorldSectionLoadBatch(const WorldSectionLoadBatch&) = delete;
-        WorldSectionLoadBatch& operator=(const WorldSectionLoadBatch&) = delete;
-        WorldSectionLoadBatch(WorldSectionLoadBatch&&) noexcept;
-        WorldSectionLoadBatch& operator=(WorldSectionLoadBatch&&) noexcept;
-        ~WorldSectionLoadBatch() noexcept;
+        WorldSectionTransaction(const WorldSectionTransaction&) = delete;
+        WorldSectionTransaction& operator=(const WorldSectionTransaction&) =
+            delete;
+        WorldSectionTransaction(WorldSectionTransaction&&) noexcept;
+        WorldSectionTransaction& operator=(WorldSectionTransaction&&) noexcept =
+            delete;
+        ~WorldSectionTransaction() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            WorldSectionFailure>
-        load(
+        [[nodiscard]] lux::cxx::expected<void, WorldSectionFailure> load(
             const ComponentLoadSet& loads,
             const WorldSectionImage& image,
             WorldSectionInstance& inactive_output
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            WorldSectionFailure>
-        unload(
+        [[nodiscard]] lux::cxx::expected<void, WorldSectionFailure> unload(
             WorldSectionInstance& instance
         ) noexcept;
 
@@ -88,23 +87,26 @@ namespace lux::ecs
 
       private:
         struct Impl;
-        explicit WorldSectionLoadBatch(std::unique_ptr<Impl> impl) noexcept;
+        explicit WorldSectionTransaction(std::unique_ptr<Impl> impl) noexcept;
 
         std::unique_ptr<Impl> impl_;
 
-        friend class WorldSectionLoader;
-    };
-
-    class LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC WorldSectionLoader final
-    {
-      public:
-        [[nodiscard]] static lux::cxx::expected<
-            WorldSectionLoadBatch,
+        friend LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC lux::cxx::expected<
+            WorldSectionTransaction,
             WorldSectionFailure>
-        begin(
-            World& world,
-            WorldSectionLoadScratchBudget scratch,
-            lux::serialization::SerializationLimits limits
+        beginWorldSectionTransaction(
+            World&,
+            WorldSectionLoadScratchBudget,
+            lux::serialization::SerializationLimits
         ) noexcept;
     };
-} // namespace lux::ecs
+
+    [[nodiscard]] LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC lux::cxx::expected<
+        WorldSectionTransaction,
+        WorldSectionFailure>
+    beginWorldSectionTransaction(
+        World& world,
+        WorldSectionLoadScratchBudget scratch,
+        lux::serialization::SerializationLimits limits
+    ) noexcept;
+}

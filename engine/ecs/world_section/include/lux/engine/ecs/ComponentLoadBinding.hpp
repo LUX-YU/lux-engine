@@ -22,8 +22,7 @@ namespace lux::ecs
 {
     class ComponentLoadSet;
     class ComponentLoadBinding;
-    class WorldSectionLoadBatch;
-    class WorldSectionLoader;
+    class WorldSectionTransaction;
 
     namespace detail
     {
@@ -82,6 +81,11 @@ namespace lux::ecs
         [[nodiscard]] constexpr std::uint32_t fixedStride() const noexcept
         {
             return fixed_stride_;
+        }
+
+        [[nodiscard]] constexpr std::size_t minimumDecodeScratch() const noexcept
+        {
+            return minimum_decode_scratch_;
         }
 
       private:
@@ -226,12 +230,14 @@ namespace lux::ecs
             std::uint64_t storage,
             EWorldSectionValueEncoding value_encoding,
             std::uint32_t fixed_stride,
+            std::size_t minimum_decode_scratch,
             detail::LoadComponentColumnFn load
         ) noexcept
             : schema_(&schema),
               storage_(storage),
               value_encoding_(value_encoding),
               fixed_stride_(fixed_stride),
+              minimum_decode_scratch_(minimum_decode_scratch),
               load_(load)
         {
         }
@@ -247,13 +253,13 @@ namespace lux::ecs
             const ComponentSchema&
         ) noexcept;
         friend class ComponentLoadSet;
-        friend class WorldSectionLoadBatch;
-        friend class WorldSectionLoader;
+        friend class WorldSectionTransaction;
 
         const ComponentSchema* schema_{};
         std::uint64_t storage_{};
         EWorldSectionValueEncoding value_encoding_{};
         std::uint32_t fixed_stride_{};
+        std::size_t minimum_decode_scratch_{};
         detail::LoadComponentColumnFn load_{};
     };
 
@@ -309,6 +315,9 @@ namespace lux::ecs
             entt::type_hash<Component>::value(),
             encoding,
             stride,
+            encoding == EWorldSectionValueEncoding::TAG
+                ? 0U
+                : sizeof(Component),
             &ComponentLoadBinding::loadColumn<Component>
         };
     }

@@ -85,7 +85,7 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|WORLD_BUSY|worldStructureWrite|HierarchyChangeCursor|HierarchyChanges|kHierarchyChangeCapacity|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' restores retired vocabulary."
             )
@@ -156,6 +156,52 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 endforeach()
+
+foreach(capacity_header IN ITEMS
+    "${source_root}/modules/core/serialization/include/lux/engine/serialization/SerializationError.hpp"
+    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetCodecSet.hpp"
+    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/CookedAssetImage.hpp"
+    "${source_root}/modules/core/task/include/lux/engine/task/TaskExecutor.hpp"
+    "${source_root}/engine/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsChangeJournal.hpp"
+    "${source_root}/engine/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsTaskResources.hpp"
+)
+    file(READ "${capacity_header}" capacity_contract)
+    if(capacity_contract MATCHES
+       "(max_string_bytes|max_container_elements|max_nesting|max_input_bytes|max_decoded_bytes|max_encoded_bytes|max_image_bytes|initial_bytes|max_bytes|worker_count|initial_task_capacity|max_commands|max_payload_bytes)[ \t\r\n]*\\{")
+        message(FATAL_ERROR
+            "Architecture: public capacity policy '${capacity_header}' contains a foundation default."
+        )
+    endif()
+    if(capacity_contract MATCHES
+       "(records_per_lane_capacity|task_capacity|capacities)[^;\n\r\)]*=")
+        message(FATAL_ERROR
+            "Architecture: public capacity API '${capacity_header}' contains a default argument."
+        )
+    endif()
+endforeach()
+
+foreach(binary_header IN ITEMS
+    "${source_root}/modules/core/serialization/include/lux/engine/serialization/BinaryReader.hpp"
+    "${source_root}/modules/core/serialization/include/lux/engine/serialization/BinaryWriter.hpp"
+)
+    file(READ "${binary_header}" binary_contract)
+    if(binary_contract MATCHES "Serialization(Budget|Limits)|limits[ \t\r\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: exact wire primitive '${binary_header}' owns semantic capacity policy."
+        )
+    endif()
+endforeach()
+
+set(hierarchy_index_header
+    "${source_root}/engine/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/HierarchyIndex.hpp"
+)
+file(READ "${hierarchy_index_header}" hierarchy_index_contract)
+if(hierarchy_index_contract MATCHES
+   "EcsChangeJournal|EcsCommands|ComponentChanges|EntityChanges|ChangeCursor|HierarchyChanges")
+    message(FATAL_ERROR
+        "Architecture: neutral HierarchyIndex owns observation or command semantics."
+    )
+endif()
 
 foreach(source IN LISTS production_sources)
     file(READ "${source}" content)

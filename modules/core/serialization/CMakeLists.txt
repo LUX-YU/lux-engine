@@ -86,3 +86,32 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    FOUNDATION
 )
+
+add_executable(
+    serialization_missing_budget_negative
+    EXCLUDE_FROM_ALL
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/missing_budget_negative.cpp
+)
+target_link_libraries(
+    serialization_missing_budget_negative
+    PRIVATE lux::engine::core::serialization
+)
+lux_classify_target(
+    TARGET  serialization_missing_budget_negative
+    LAYER   CORE
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME serialization_missing_budget_negative
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=serialization_missing_budget_negative
+        "-DEXPECTED_PATTERN=missing_budget_negative"
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)
+set_tests_properties(
+    serialization_missing_budget_negative
+    PROPERTIES LABELS "core;negative"
+)

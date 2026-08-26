@@ -99,7 +99,7 @@ int main()
             ECommandResult::ACCEPTED
         );
     }
-    applyEcsCommands(state, journal, commands);
+    assert(applyEcsCommands(state, journal, commands));
     assert(state.get<Position>(entity).value == 41);
     auto command_change = journal.read(cursor);
     assert(command_change.size() == 1U);
@@ -143,6 +143,61 @@ int main()
         assert(stats.lane_binds == lane_count);
         assert(stats.per_record_lookups == 0U);
     }
+
+    EcsChangeJournal overflow_journal(EcsChangeHistoryBudget{
+        4096U,
+        16U * 4096U
+    });
+    EcsChangeBatch overflow_batch;
+    assert(overflow_batch.prepare(
+        std::span{&position_storage, 1U},
+        1U
+    ));
+    auto overflow_stream = overflow_batch.binder()(position_storage);
+    assert(overflow_stream);
+    assert(overflow_stream(entity, EComponentChangeKind::MODIFIED));
+    assert(!overflow_stream(entity, EComponentChangeKind::MODIFIED));
+    assert(!overflow_stream(entity, EComponentChangeKind::MODIFIED));
+    const std::uint64_t overflow_epoch = overflow_journal.epoch();
+    assert(!overflow_batch.publish(overflow_journal));
+    assert(overflow_journal.epoch() == overflow_epoch + 1U);
+    assert(overflow_batch.stats().history_losses == 1U);
+
+    EcsCommandBatch bounded_commands;
+    constexpr std::array bounded_capacity{
+        EcsCommandProducerCapacity{
+            1U,
+            sizeof(AddPosition) + alignof(AddPosition) - 1U
+        }
+    };
+    assert(bounded_commands.prepare(bounded_capacity));
+    const std::size_t prepared_allocations =
+        bounded_commands.allocationEvents();
+    {
+        auto recording = bounded_commands.begin(0U);
+        assert(recording);
+        assert(
+            recording->commands().push(AddPosition{entity}) ==
+            ECommandResult::ACCEPTED
+        );
+        assert(
+            recording->commands().push(AddPosition{entity}) ==
+            ECommandResult::CAPACITY_EXCEEDED
+        );
+    }
+    assert(bounded_commands.failed());
+    assert(bounded_commands.allocationEvents() == prepared_allocations);
+    const auto bounded_apply = applyEcsCommands(
+        state,
+        journal,
+        bounded_commands
+    );
+    assert(!bounded_apply);
+    assert(
+        bounded_apply.error().code ==
+        EEcsCommandApplyError::RECORDING_FAILED
+    );
+    assert(!bounded_commands.failed());
 
     EcsChangeJournal failure_journal(EcsChangeHistoryBudget{
         4096U,

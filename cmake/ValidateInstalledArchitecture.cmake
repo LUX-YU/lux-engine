@@ -9,6 +9,12 @@ if(NOT IS_DIRECTORY "${prefix}")
     message(FATAL_ERROR "Install prefix does not exist: ${prefix}")
 endif()
 
+if(EXISTS "${prefix}/share/lux-engine-simulation-core")
+    message(FATAL_ERROR
+        "Install surface exposes retired simulation-core package"
+    )
+endif()
+
 file(GLOB_RECURSE installed_entries LIST_DIRECTORIES true "${prefix}/*")
 foreach(entry IN LISTS installed_entries)
     file(TO_CMAKE_PATH "${entry}" normalized)
@@ -22,7 +28,11 @@ foreach(entry IN LISTS installed_entries)
     get_filename_component(name "${entry}" NAME)
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]ecs[/]" AND
        name MATCHES
-       "^(Registry|ISystem|System|SystemFrame|SystemHandle|SystemPhase|SystemSetId|Schedule|ScheduleEdit|ScheduleError|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|World|WorldMutation|WorldSnapshot|WorldSection.*|PersistentEntity|SceneServices|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
+       "^(EcsState|EcsMutation|SimulationEcsMutation|EcsCommands|EcsTaskResources|EcsChangeJournal|Query|ChangeCursor|ComponentChanges|EntityChanges|HierarchySystem|FrameInfo|ISystem|System|SystemFrame|SystemHandle|SystemPhase|SystemSetId|Schedule|ScheduleEdit|ScheduleError|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|World|WorldMutation|WorldSnapshot|WorldSection.*|PersistentEntity|SceneServices|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
+        message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
+    endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]" AND
+       name MATCHES "^(FrameInfo|SimulationExecution)\\.(h|hpp)$")
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
     endif()
 endforeach()
@@ -101,7 +111,6 @@ foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-simulation/simulation_description/lux-engine-simulation-simulation_description-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-asset/simulation_asset/lux-engine-simulation-asset-simulation_asset-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-ecs/core/lux-engine-simulation-ecs-core-config-targets.cmake"
-    "${prefix}/share/lux-engine-simulation-core/simulation_core/lux-engine-simulation-core-simulation_core-config-targets.cmake"
 )
     if(NOT EXISTS "${contract_file}")
         message(FATAL_ERROR "Installed foundation target is missing: ${contract_file}")

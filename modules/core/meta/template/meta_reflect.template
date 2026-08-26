@@ -386,6 +386,15 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         m.is_static     = {{ method.is_static }};
         m.is_virtual    = {{ method.is_virtual }};
         m.is_const      = {{ method.is_const }};
+        m.is_noexcept   = noexcept(
+            std::declval<{{ rec.fq_name }}&>().{{ method.spelling }}(
+                {%- for param_id in method.params -%}
+                {%- set param = decl_from_id(param_id) -%}
+                {%- set p_type = type_from_id(param.type_id) -%}
+                std::declval<{{ p_type.id }}>(){% if not loop.is_last %}, {% endif %}
+                {%- endfor -%}
+            )
+        );
         {%- for attr in method.attributes -%}{%- if annotation_has(attr, "luxref::property::method") %}
         { static constexpr char kMethodAnnot_{{ rec.hash }}_{{ method_index }}[] = R"__LUX_ANNOT({{ attr }})__LUX_ANNOT"; m.annotation_str = kMethodAnnot_{{ rec.hash }}_{{ method_index }}; }
         {%- endif -%}{%- endfor %}

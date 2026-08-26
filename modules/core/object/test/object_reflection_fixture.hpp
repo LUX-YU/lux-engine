@@ -45,24 +45,29 @@ namespace lux::object::test
         }
 
         LUX_METHOD(connectable = true)
-        void onChanged(const int &value)
+        void onChanged(const int &value) noexcept
         {
             last_value = value;
         }
 
         LUX_METHOD(connectable = true)
-        void onWrongPayload(const float &)
+        void onWrongPayload(const float &) noexcept
         {
         }
 
         LUX_METHOD(connectable = true)
-        void onSaved()
+        void onSaved() noexcept
         {
             ++save_count;
         }
 
         LUX_METHOD(connectable = true)
-        void onMoveOnly(const ReflectedMoveOnly &)
+        void onMoveOnly(const ReflectedMoveOnly &) noexcept
+        {
+        }
+
+        LUX_METHOD(connectable = true)
+        void onThrowing(const int &)
         {
         }
 

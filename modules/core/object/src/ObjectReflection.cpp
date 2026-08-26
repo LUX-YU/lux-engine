@@ -84,6 +84,10 @@ namespace lux::object::reflection
         {
             return lux::cxx::unexpected(EDynamicObserveError::METHOD_MUST_BE_INSTANCE);
         }
+        if (!method.is_noexcept)
+        {
+            return lux::cxx::unexpected(EDynamicObserveError::METHOD_MUST_BE_NOEXCEPT);
+        }
 
         const bool has_owner_class = method.owner_class != nullptr;
         const bool has_matching_receiver_type =
@@ -128,21 +132,14 @@ namespace lux::object::reflection
             sender, SignalViewAccess::descriptor(signal), receiver,
             [](LuxObject *object, const void *payload, void *raw_context) noexcept {
                 auto &invoke = *static_cast<DynamicInvoke *>(raw_context);
-                try
+                if (invoke.has_payload)
                 {
-                    if (invoke.has_payload)
-                    {
-                        std::array<void *, 1> arguments{const_cast<void *>(payload)};
-                        invoke.invoker(object, arguments.data(), nullptr);
-                    }
-                    else
-                    {
-                        invoke.invoker(object, nullptr, nullptr);
-                    }
+                    std::array<void *, 1> arguments{const_cast<void *>(payload)};
+                    invoke.invoker(object, arguments.data(), nullptr);
                 }
-                catch (...)
+                else
                 {
-                    std::terminate();
+                    invoke.invoker(object, nullptr, nullptr);
                 }
             },
             std::move(context), delivery);

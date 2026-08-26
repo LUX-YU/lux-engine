@@ -79,13 +79,7 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "#[ \t]*include[ \t]*[<\"]lux/engine/object/")
-            message(FATAL_ERROR
-                "Architecture: L1 Simulation source '${normalized}' depends on Object instead of the generic affinity protocol."
-            )
-        endif()
-        if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|WORLD_BUSY|worldStructureWrite|HierarchyChangeCursor|HierarchyChanges|kHierarchyChangeCapacity|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|WORLD_BUSY|worldStructureWrite|HierarchyChangeCursor|HierarchyChanges|kHierarchyChangeCapacity|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(|EcsState|EcsMutation|SimulationEcsMutation|EcsChangeJournal|ChangeCursor|ComponentChanges|EntityChanges|EcsTaskAccess|EcsTaskResources|HierarchySystem|executeSimulationStep|FrameInfo")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' restores retired vocabulary."
             )
@@ -97,9 +91,16 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "connectConstruct|connectUpdate|connectDestroy|observer_relations_|on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<")
+           "connectConstruct|connectUpdate|connectDestroy|observer_relations_")
             message(FATAL_ERROR
-                "Architecture: L1 Simulation source '${normalized}' restores retired EnTT observer ownership."
+                "Architecture: L1 Simulation source '${normalized}' restores a retired observer wrapper."
+            )
+        endif()
+        if(content MATCHES
+           "on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<" AND
+           NOT normalized MATCHES "/engine/simulation/ecs/(hierarchy|transform)/")
+            message(FATAL_ERROR
+                "Architecture: EnTT signal ownership '${normalized}' is outside a concrete reactive Simulation subsystem."
             )
         endif()
         if(content MATCHES
@@ -120,6 +121,15 @@ foreach(source IN LISTS production_sources)
         if(content MATCHES "lux/engine/core/async_port/")
             message(FATAL_ERROR
                 "Architecture: L0 asset mechanism '${normalized}' depends on async orchestration."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/simulation/(description|asset)/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/object/|(^|[^A-Za-z0-9_])(Object|Signal|RefMethod|RefObject)([^A-Za-z0-9_]|$)")
+            message(FATAL_ERROR
+                "Architecture: descriptive Simulation source '${normalized}' owns runtime Object/Signal state."
             )
         endif()
     endif()
@@ -162,8 +172,7 @@ foreach(capacity_header IN ITEMS
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetCodecSet.hpp"
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/CookedAssetImage.hpp"
     "${source_root}/modules/core/task/include/lux/engine/task/TaskExecutor.hpp"
-    "${source_root}/engine/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsChangeJournal.hpp"
-    "${source_root}/engine/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsTaskResources.hpp"
+    "${source_root}/engine/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsCommandBuffer.hpp"
 )
     file(READ "${capacity_header}" capacity_contract)
     if(capacity_contract MATCHES

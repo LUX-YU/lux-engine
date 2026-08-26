@@ -42,6 +42,7 @@ int main()
     const lux::meta::RefMethod *save = nullptr;
     const lux::meta::RefMethod *on_saved = nullptr;
     const lux::meta::RefMethod *on_move_only = nullptr;
+    const lux::meta::RefMethod *on_throwing = nullptr;
     for (const auto &method : reflected->methods)
     {
         if (method.invokable.name == "save")
@@ -54,6 +55,8 @@ int main()
             on_saved = &method;
         if (method.invokable.name == "onMoveOnly")
             on_move_only = &method;
+        if (method.invokable.name == "onThrowing")
+            on_throwing = &method;
     }
     assert(save);
     assert(save->annotations().has("command"));
@@ -61,6 +64,9 @@ int main()
     assert(wrong_payload);
     assert(on_saved);
     assert(on_move_only);
+    assert(on_throwing);
+    assert(on_changed->is_noexcept);
+    assert(!on_throwing->is_noexcept);
 
     lux::object::ObjectMessageQueue sender_queue;
     lux::object::test::ReflectedObject sender{sender_queue.dispatcherRef()};
@@ -70,6 +76,12 @@ int main()
     assert(dynamic_connection);
     sender.publish(73);
     assert(receiver.last_value == 73);
+
+    auto throwing_connection = lux::object::reflection::observe(
+        sender, signal, receiver, *on_throwing, lux::object::EDelivery::DIRECT);
+    assert(!throwing_connection);
+    assert(throwing_connection.error() ==
+           lux::object::reflection::EDynamicObserveError::METHOD_MUST_BE_NOEXCEPT);
 
     auto saved_connection = lux::object::reflection::observe(
         sender, saved_signal, receiver, *on_saved, lux::object::EDelivery::DIRECT);

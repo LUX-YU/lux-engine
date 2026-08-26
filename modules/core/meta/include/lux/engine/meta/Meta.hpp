@@ -277,6 +277,7 @@ namespace lux::meta
         bool          is_static{ false };
         bool          is_virtual{ false };
         bool          is_const{ false };
+        bool          is_noexcept{ false };
         const char*   annotation_str{ nullptr };
 
         [[nodiscard]] AnnotationView annotations() const noexcept

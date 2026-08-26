@@ -1,4 +1,5 @@
 #include <lux/engine/ecs/WorldSectionContract.hpp>
+#include <lux/engine/ecs/WorldSectionTransaction.hpp>
 #include <lux/engine/ecs/WorldSectionTypes.hpp>
 
 #include <cassert>
@@ -6,6 +7,14 @@
 
 int main()
 {
+    static_assert(
+        std::is_move_constructible_v<lux::ecs::WorldSectionTransaction>
+    );
+    static_assert(
+        !std::is_move_assignable_v<lux::ecs::WorldSectionTransaction>
+    );
+    static_assert(!std::is_copy_constructible_v<
+        lux::ecs::WorldSectionTransaction>);
     static_assert(
         std::is_same_v<
             std::underlying_type_t<lux::ecs::EWorldSectionValueEncoding>,

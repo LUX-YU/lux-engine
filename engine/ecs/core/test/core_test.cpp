@@ -1,11 +1,13 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
 #include <array>
 #include <cassert>
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -272,6 +274,50 @@ int main()
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
 
+    {
+        const std::uint64_t epoch = failure_journal.epoch();
+        failure_journal.failNextStreamDescriptorForTest();
+        lux::ecs::detail::WorldChangePublisher publisher(failure_world);
+        assert(!publisher.bindComponent(901U));
+        assert(!publisher.bindComponent(902U));
+        assert(failure_journal.epoch() == epoch + 1U);
+    }
+    {
+        const std::uint64_t epoch = failure_journal.epoch();
+        failure_journal.failNextBlockAcquisitionForTest();
+        lux::ecs::detail::WorldChangePublisher publisher(failure_world);
+        auto stream = publisher.bindComponent(903U);
+        assert(stream);
+        assert(!publisher.append(
+            stream,
+            failure_entity,
+            lux::ecs::EComponentChangeKind::MODIFIED
+        ));
+        assert(!publisher.append(
+            stream,
+            failure_entity,
+            lux::ecs::EComponentChangeKind::MODIFIED
+        ));
+        assert(failure_journal.epoch() == epoch + 1U);
+    }
+    {
+        const std::uint64_t epoch = failure_journal.epoch();
+        failure_journal.failNextBlockAttachForTest();
+        lux::ecs::detail::WorldChangePublisher publisher(failure_world);
+        auto stream = publisher.bindComponent(904U);
+        assert(stream);
+        assert(!publisher.append(
+            stream,
+            failure_entity,
+            lux::ecs::EComponentChangeKind::MODIFIED
+        ));
+        assert(!publisher.appendEntity(
+            failure_entity,
+            lux::ecs::EEntityChangeKind::ADDED
+        ));
+        assert(failure_journal.epoch() == epoch + 1U);
+    }
+
     lux::ecs::World task_world{
         lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
     };
@@ -339,4 +385,32 @@ int main()
     assert(four_lane_stats.peak_records == 8U);
     assert(four_lane_stats.record_appends == 8U);
     assert(four_lane_stats.lane_binds == four_storages.size());
+
+    for (const std::size_t lane_count : {16U, 32U})
+    {
+        std::vector<std::uint64_t> storages(lane_count);
+        for (std::size_t index{}; index < lane_count; ++index)
+            storages[index] = 100U + index;
+        lux::ecs::WorldChangeBatch batch;
+        assert(batch.prepare(storages, 2U));
+        for (const std::uint64_t storage : storages)
+        {
+            auto stream = batch.binder()(storage);
+            assert(stream);
+            assert(stream(
+                task_entity,
+                lux::ecs::EComponentChangeKind::MODIFIED
+            ));
+            assert(stream(
+                task_entity,
+                lux::ecs::EComponentChangeKind::MODIFIED
+            ));
+        }
+        const auto stats = batch.stats();
+        assert(stats.current_records == lane_count * 2U);
+        assert(stats.peak_records == lane_count * 2U);
+        assert(stats.record_appends == lane_count * 2U);
+        assert(stats.lane_binds == lane_count);
+        assert(stats.per_record_lookups == 0U);
+    }
 }

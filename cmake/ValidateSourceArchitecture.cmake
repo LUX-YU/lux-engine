@@ -148,7 +148,7 @@ if(DEFINED LUX_BINARY_DIR AND
         )
     endif()
     if(compile_commands MATCHES
-       "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|connectConstruct|connectUpdate|connectDestroy|observer_relations_|[/\\\\]persistence_contract[/\\\\]|[.]ecs_persistence[.]hpp|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|[/\\\\]engine[/\\\\]process[/\\\\]")
+       "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|WorldSectionLoadBatch|WorldSectionLoader[.]hpp|connectConstruct|connectUpdate|connectDestroy|observer_relations_|[/\\\\]persistence_contract[/\\\\]|[.]ecs_persistence[.]hpp|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|[/\\\\]engine[/\\\\]process[/\\\\]")
         message(FATAL_ERROR
             "Architecture: compile_commands.json contains a retired L0/L1 API."
         )

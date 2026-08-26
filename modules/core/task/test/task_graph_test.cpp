@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <thread>
+#include <vector>
 
 int main()
 {
@@ -181,6 +182,91 @@ int main()
         for (std::size_t run{}; run < kRuns; ++run)
             assert(executor.execute(*graph));
         assert(calls.load(std::memory_order_relaxed) == kTasks * kRuns);
+    }
+
+    // High fan-out and fan-in exercise completion release from many workers.
+    {
+        constexpr std::size_t kWidth = 128U;
+        std::atomic_size_t fan_out_calls{};
+        TaskGraphBuilder builder;
+        auto root = builder.add([]() noexcept {});
+        assert(root);
+        std::vector<TaskHandle> leaves;
+        leaves.reserve(kWidth);
+        for (std::size_t index{}; index < kWidth; ++index)
+        {
+            auto leaf = builder.add(
+                dependsOn(*root),
+                [&fan_out_calls]() noexcept
+                {
+                    fan_out_calls.fetch_add(1U, std::memory_order_relaxed);
+                }
+            );
+            assert(leaf);
+            leaves.push_back(*leaf);
+        }
+        assert(leaves.size() >= 8U);
+        auto terminal = builder.add(
+            dependsOn(leaves[0]),
+            dependsOn(leaves[1]),
+            dependsOn(leaves[2]),
+            dependsOn(leaves[3]),
+            dependsOn(leaves[4]),
+            dependsOn(leaves[5]),
+            dependsOn(leaves[6]),
+            dependsOn(leaves[7]),
+            [&fan_out_calls]() noexcept
+            {
+                assert(fan_out_calls.load(std::memory_order_acquire) >= 8U);
+            }
+        );
+        assert(terminal);
+        auto graph = std::move(builder).build();
+        assert(graph);
+        TaskExecutor executor(TaskExecutorConfig{
+            .worker_count = 8U,
+            .initial_task_capacity = kWidth + 2U
+        });
+        for (std::size_t run{}; run < 100U; ++run)
+        {
+            fan_out_calls.store(0U, std::memory_order_relaxed);
+            assert(executor.execute(*graph));
+        }
+    }
+
+    // Lost-wake stress across the supported diagnostic worker-count matrix.
+    for (const std::uint32_t workers : {1U, 2U, 4U, 8U})
+    {
+        constexpr std::size_t kChain = 256U;
+        std::atomic_size_t calls{};
+        TaskGraphBuilder builder;
+        auto previous = builder.add(
+            [&calls]() noexcept
+            {
+                calls.fetch_add(1U, std::memory_order_relaxed);
+            }
+        );
+        assert(previous);
+        for (std::size_t index = 1U; index < kChain; ++index)
+        {
+            previous = builder.add(
+                dependsOn(*previous),
+                [&calls]() noexcept
+                {
+                    calls.fetch_add(1U, std::memory_order_relaxed);
+                }
+            );
+            assert(previous);
+        }
+        auto graph = std::move(builder).build();
+        assert(graph);
+        TaskExecutor executor(TaskExecutorConfig{
+            .worker_count = workers,
+            .initial_task_capacity = kChain
+        });
+        for (std::size_t run{}; run < 100U; ++run)
+            assert(executor.execute(*graph));
+        assert(calls.load(std::memory_order_relaxed) == kChain * 100U);
     }
 
     return 0;

@@ -561,6 +561,62 @@ int main()
     }
 
     {
+        auto tag_image = WorldSectionImage::open(buildFixture(
+            sectionId(1U),
+            3U,
+            {tagColumn()}
+        ), fixtureValidationBudget());
+        assert(tag_image);
+        World tag_world{WorldConfig{{4096U, 16U * 4096U}}};
+        WorldSectionInstance tag_instance;
+        auto transaction = beginWorldSectionTransaction(
+            tag_world,
+            WorldSectionLoadScratchBudget{0U},
+            lux::serialization::SerializationLimits{}
+        );
+        assert(transaction);
+        assert(transaction->load(context.loads, *tag_image, tag_instance));
+        assert(transaction->commit());
+        assert(unloadSection(tag_world, tag_instance));
+    }
+
+    {
+        auto fixed_image = WorldSectionImage::open(buildFixture(
+            sectionId(1U),
+            3U,
+            {fixedColumn()}
+        ), fixtureValidationBudget());
+        assert(fixed_image);
+        World limited_world{WorldConfig{{4096U, 16U * 4096U}}};
+        WorldSectionInstance rejected;
+        {
+            auto transaction = beginWorldSectionTransaction(
+                limited_world,
+                WorldSectionLoadScratchBudget{sizeof(test::Fixed) - 1U},
+                lux::serialization::SerializationLimits{}
+            );
+            assert(transaction);
+            auto loaded = transaction->load(
+                context.loads,
+                *fixed_image,
+                rejected
+            );
+            assert(!loaded);
+            assert(loaded.error().code == EWorldSectionError::LIMIT_EXCEEDED);
+        }
+        WorldSectionInstance exact;
+        auto transaction = beginWorldSectionTransaction(
+            limited_world,
+            WorldSectionLoadScratchBudget{sizeof(test::Fixed)},
+            lux::serialization::SerializationLimits{}
+        );
+        assert(transaction);
+        assert(transaction->load(context.loads, *fixed_image, exact));
+        assert(transaction->commit());
+        assert(unloadSection(limited_world, exact));
+    }
+
+    {
         World batch_world{WorldConfig{{4096U, 16U * 4096U}}};
         auto resident_image = validImage(sectionId(1U));
         auto resident = loadSection(

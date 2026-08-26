@@ -48,6 +48,27 @@ namespace
         lux::ecs::StaticSystemAccess<lux::ecs::ExternalWrite<ExternalState>>
     {
     };
+
+    struct CodeLifetimeProbe final
+    {
+        CodeLifetimeProbe(
+            std::shared_ptr<std::atomic_int> destroyed,
+            std::shared_ptr<std::atomic_int> released
+        )
+            : system_destroyed(std::move(destroyed)),
+              code_released(std::move(released))
+        {
+        }
+
+        std::shared_ptr<std::atomic_int> system_destroyed;
+        std::shared_ptr<std::atomic_int> code_released;
+
+        ~CodeLifetimeProbe()
+        {
+            assert(system_destroyed->load() == 1);
+            code_released->fetch_add(1);
+        }
+    };
 }
 
 int main()
@@ -58,6 +79,12 @@ int main()
     ecs::SystemRegistry systems;
     auto id = systems.emplace<ProbeSystem>(destroyed);
     assert(id);
+
+    ecs::SystemRegistry foreign_systems;
+    assert(!foreign_systems.contains(*id));
+    assert(!foreign_systems.erase(*id));
+    auto wrong_type = systems.retain<ComponentWriterSystem>(*id);
+    assert(!wrong_type);
 
     auto lease_result = systems.retain<ProbeSystem>(*id);
     assert(lease_result);
@@ -82,6 +109,7 @@ int main()
     lease = {};
     assert(systems.erase(*id));
     assert(!systems.contains(*id));
+    assert(!systems.retain<ProbeSystem>(*id));
     assert(destroyed->load() == 0);
 
     task::TaskExecutor executor(task::TaskExecutorConfig{.worker_count = 1U});
@@ -90,6 +118,45 @@ int main()
 
     graph = task::TaskGraph{};
     assert(destroyed->load() == 1);
+
+    // The graph lease destroys the System object before releasing the module
+    // code-lifetime pin captured by the Registry control block.
+    {
+        auto system_destroyed = std::make_shared<std::atomic_int>(0);
+        auto code_released = std::make_shared<std::atomic_int>(0);
+        auto code_lifetime = std::make_shared<CodeLifetimeProbe>(
+            system_destroyed,
+            code_released
+        );
+        auto retained_id = systems.emplaceWithLifetime<ProbeSystem>(
+            code_lifetime,
+            system_destroyed
+        );
+        assert(retained_id);
+        auto retained = systems.retain<ProbeSystem>(*retained_id);
+        assert(retained);
+        task::TaskGraphBuilder retained_builder;
+        auto retained_task = retained_builder.add(
+            [system = *retained]() noexcept
+            {
+                std::atomic_int value{};
+                system->tick(value);
+            }
+        );
+        assert(retained_task);
+        auto retained_graph_result = std::move(retained_builder).build();
+        assert(retained_graph_result);
+        task::TaskGraph retained_graph = std::move(*retained_graph_result);
+        retained = {};
+        code_lifetime.reset();
+        assert(systems.erase(*retained_id));
+        assert(system_destroyed->load() == 0);
+        assert(code_released->load() == 0);
+        assert(executor.execute(retained_graph));
+        retained_graph = {};
+        assert(system_destroyed->load() == 1);
+        assert(code_released->load() == 1);
+    }
 
     // System metadata and typed ECS task access must share the same canonical
     // resource identity, otherwise the generic TaskGraph misses the hazard.

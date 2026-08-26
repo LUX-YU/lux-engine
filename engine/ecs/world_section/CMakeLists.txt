@@ -259,6 +259,35 @@ set_tests_properties(
 )
 
 add_executable(
+    ecs_retired_world_section_loader_negative
+    EXCLUDE_FROM_ALL
+    test/retired_world_section_loader_negative.cpp
+)
+target_link_libraries(
+    ecs_retired_world_section_loader_negative
+    PRIVATE lux::engine::ecs::world_section
+)
+lux_classify_target(
+    TARGET  ecs_retired_world_section_loader_negative
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME vnext_ecs_retired_world_section_loader_negative
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=ecs_retired_world_section_loader_negative
+        "-DEXPECTED_PATTERN=WorldSectionLoader.hpp"
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)
+set_tests_properties(
+    vnext_ecs_retired_world_section_loader_negative
+    PROPERTIES LABELS "vnext;l1;world-section;negative"
+)
+
+add_executable(
     ecs_entity_generic_archive_negative
     EXCLUDE_FROM_ALL
     test/entity_generic_archive_negative.cpp

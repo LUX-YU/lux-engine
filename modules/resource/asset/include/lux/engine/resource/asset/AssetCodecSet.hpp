@@ -34,13 +34,31 @@ namespace lux::asset
         std::size_t decoded_byte_count{};
     };
 
+    struct AssetCodecLimits final
+    {
+        std::size_t max_input_bytes{};
+        std::size_t max_decoded_bytes{};
+        std::size_t max_encoded_bytes{};
+    };
+
+    struct AssetDecodeContext final
+    {
+        AssetCodecLimits limits;
+    };
+
+    struct AssetEncodeContext final
+    {
+        AssetCodecLimits limits;
+    };
+
     using AssetDecodeFn = lux::cxx::expected<DecodedAsset, EAssetCodecError> (*)(
-        std::span<const std::byte>
+        std::span<const std::byte>,
+        const AssetDecodeContext&
     ) noexcept;
 
     using AssetEncodeFn = lux::cxx::expected<
         std::vector<std::byte>,
-        EAssetCodecError> (*)(const void*) noexcept;
+        EAssetCodecError> (*)(const void*, const AssetEncodeContext&) noexcept;
 
     struct AssetCodecDescriptor final
     {

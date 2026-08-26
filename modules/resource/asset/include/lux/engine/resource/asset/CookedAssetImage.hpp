@@ -43,8 +43,16 @@ namespace lux::asset
         std::span<const std::byte> auxiliary_payloads;
     };
 
+    struct CookedAssetImageLimits final
+    {
+        std::size_t max_image_bytes{};
+    };
+
     [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<
         CookedAssetImageView,
         ECookedAssetImageError>
-    inspectCookedAssetImage(std::span<const std::byte> image) noexcept;
+    inspectCookedAssetImage(
+        std::span<const std::byte> image,
+        const CookedAssetImageLimits& limits
+    ) noexcept;
 } // namespace lux::asset

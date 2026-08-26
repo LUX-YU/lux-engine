@@ -9,8 +9,6 @@ namespace lux::asset
 {
     namespace
     {
-        inline constexpr std::size_t kMaximumCookedAssetBytes = 1ull << 30u;
-
         struct WireAssetInfoV1 final
         {
             std::array<std::uint8_t, 16> id{};
@@ -134,9 +132,12 @@ namespace lux::asset
     } // namespace
 
     lux::cxx::expected<CookedAssetImageView, ECookedAssetImageError>
-    inspectCookedAssetImage(std::span<const std::byte> image) noexcept
+    inspectCookedAssetImage(
+        std::span<const std::byte> image,
+        const CookedAssetImageLimits& limits
+    ) noexcept
     {
-        if (image.size() > kMaximumCookedAssetBytes)
+        if (image.size() > limits.max_image_bytes)
             return lux::cxx::unexpected(ECookedAssetImageError::LIMIT_EXCEEDED);
         if (image.size() < sizeof(std::uint32_t) * 2u)
             return lux::cxx::unexpected(ECookedAssetImageError::TRUNCATED);

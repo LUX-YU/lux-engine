@@ -35,6 +35,7 @@ namespace
 int main()
 {
     using namespace lux::asset;
+    constexpr CookedAssetImageLimits generous_limits{1024u * 1024u};
     constexpr std::array info{std::byte{0x11}, std::byte{0x22}};
     constexpr std::array data{
         std::byte{0x31}, std::byte{0x32}, std::byte{0x33}, std::byte{0x34}};
@@ -59,7 +60,7 @@ int main()
         data.size()
     );
 
-    const auto decoded = inspectCookedAssetImage(old_fixture);
+    const auto decoded = inspectCookedAssetImage(old_fixture, generous_limits);
     assert(decoded);
     assert(decoded->magic == header.magic);
     assert(decoded->version == kCookedAssetVersionV1);
@@ -71,7 +72,7 @@ int main()
 
     auto truncated = old_fixture;
     truncated.pop_back();
-    assert(!inspectCookedAssetImage(truncated));
+    assert(!inspectCookedAssetImage(truncated, generous_limits));
 
     auto corrupt = old_fixture;
     std::uint64_t impossible = corrupt.size() + 1u;
@@ -80,5 +81,12 @@ int main()
         &impossible,
         sizeof(impossible)
     );
-    assert(!inspectCookedAssetImage(corrupt));
+    assert(!inspectCookedAssetImage(corrupt, generous_limits));
+
+    const auto limited = inspectCookedAssetImage(
+        old_fixture,
+        CookedAssetImageLimits{old_fixture.size() - 1u}
+    );
+    assert(!limited);
+    assert(limited.error() == ECookedAssetImageError::LIMIT_EXCEEDED);
 }

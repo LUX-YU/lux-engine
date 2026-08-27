@@ -28,7 +28,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -105,6 +104,8 @@ namespace
             std::string_view{"global-event"},
             std::string_view{"entity-targeted-event-sparse"},
             std::string_view{"owned-worker-event-buffer"},
+            std::string_view{"script-detach"},
+            std::string_view{"script-dirty"},
             std::string_view{"ecs-snapshot"}};
         if (std::find(groups.begin(), groups.end(), result.group) ==
             groups.end())
@@ -120,6 +121,7 @@ namespace
         std::size_t handlers_visited{}, target_ranges_built{};
         std::size_t dispatch_handlers_built{}, instance_creates{};
         std::size_t method_prepares{}, frame_builds{};
+        std::size_t bindings_removed{}, dirty_marks{};
     };
 
     struct Sample final
@@ -183,11 +185,11 @@ namespace
                   "target_resolution_delta,entities_examined,"
                   "target_range_lookups,handlers_visited,target_ranges_built,"
                   "dispatch_handlers_built,instance_creates,method_prepares,"
-                  "frame_builds\n";
+                  "frame_builds,bindings_removed,dirty_marks\n";
         for (const auto& sample : samples)
         {
             const auto& value = sample.observation;
-            output << "9," << LUX_BENCHMARK_GIT_COMMIT << ','
+            output << "10," << LUX_BENCHMARK_GIT_COMMIT << ','
                    << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group << ','
                    << metric << ',' << options.size << ',' << sample.index
                    << ',' << sample.nanoseconds << ',' << sample.allocations
@@ -201,7 +203,9 @@ namespace
                    << value.target_ranges_built << ','
                    << value.dispatch_handlers_built << ','
                    << value.instance_creates << ',' << value.method_prepares
-                   << ',' << value.frame_builds << '\n';
+                   << ',' << value.frame_builds << ','
+                   << value.bindings_removed << ',' << value.dirty_marks
+                   << '\n';
         }
         output.close();
         std::error_code error;
@@ -254,22 +258,28 @@ namespace
 
     struct HookState final
     {
+        static void increment(void* value) noexcept
+        {
+            ++*static_cast<std::size_t*>(value);
+        }
+
         explicit HookState(std::size_t count)
         {
             counters.resize(count);
+            tokens.reserve(count);
             if (hook.prepare(count) != EEndpointMutationError::NONE)
                 throw std::runtime_error("hook prepare failed");
             for (auto& counter : counters)
             {
-                if (!hook.connect(&counter, [](void* value) noexcept
-                    {
-                        ++*static_cast<std::size_t*>(value);
-                    }))
+                const auto connected = hook.connect(&counter, &increment);
+                if (!connected)
                     throw std::runtime_error("hook connect failed");
+                tokens.push_back(connected.token);
             }
         }
         HookPoint<void()> hook;
         std::vector<std::size_t> counters;
+        std::vector<EndpointConnectionToken> tokens;
     };
 
     struct BroadcastState final
@@ -296,24 +306,104 @@ namespace
 
     struct SparseState final
     {
-        explicit SparseState(std::size_t scene_size)
+        static void increment(
+            void* opaque,
+            const Entity&,
+            const std::size_t&
+        ) noexcept
         {
-            const auto scripted = std::min<std::size_t>(scene_size, 10000U);
-            const auto stride = std::max<std::size_t>(1U, scene_size / scripted);
-            for (std::size_t index{}; index < scene_size; ++index)
+            ++*static_cast<std::size_t*>(opaque);
+        }
+
+        explicit SparseState(std::size_t subscriber_count)
+            : occurrence_count((std::min)(
+                  subscriber_count,
+                  std::size_t{100000U}
+              ))
+        {
+            entities.reserve(subscriber_count);
+            if (event.prepare(
+                    1U,
+                    occurrence_count,
+                    subscriber_count + 1U
+                ) != EEndpointMutationError::NONE)
+            {
+                throw std::runtime_error("targeted event prepare failed");
+            }
+            if (!event.connectAll(&callbacks, &increment))
+                throw std::runtime_error("connect-all failed");
+            for (std::size_t index{}; index < subscriber_count; ++index)
             {
                 const auto entity = registry.create();
-                if (index % stride == 0U && handlers.size() < scripted)
+                entities.push_back(entity);
+                if (!event.connect(entity, &callbacks, &increment))
+                    throw std::runtime_error("target connect failed");
+            }
+            auto writer = event.begin(0U);
+            for (std::size_t index{}; index < occurrence_count; ++index)
+            {
+                if (!writer.record(
+                        entities[index % entities.size()],
+                        index
+                    ))
                 {
-                    ranges.emplace(entityBits(entity), handlers.size());
-                    handlers.push_back(0U);
-                    entities.push_back(entity);
+                    throw std::runtime_error("target record failed");
                 }
             }
         }
         Registry registry;
-        std::unordered_map<std::uint64_t, std::size_t> ranges;
-        std::vector<std::size_t> handlers;
+        std::vector<Entity> entities;
+        EventPoint<EntityTargetedRoute<Entity>, std::size_t> event;
+        std::size_t occurrence_count{};
+        std::size_t callbacks{};
+    };
+
+    struct DetachState final
+    {
+        static void ignore(void*) noexcept
+        {
+        }
+
+        explicit DetachState(std::size_t binding_count)
+        {
+            if (binding_count < target_tokens.size() ||
+                hook.prepare(binding_count) != EEndpointMutationError::NONE)
+            {
+                throw std::runtime_error("detach prepare failed");
+            }
+            const auto target_begin = binding_count - target_tokens.size();
+            for (std::size_t index{}; index < binding_count; ++index)
+            {
+                const auto connected = hook.connect(nullptr, &ignore);
+                if (!connected)
+                    throw std::runtime_error("detach connect failed");
+                if (index >= target_begin)
+                    target_tokens[index - target_begin] = connected.token;
+            }
+        }
+
+        HookPoint<void()> hook;
+        std::array<EndpointConnectionToken, 4U> target_tokens;
+    };
+
+    struct ScriptDirtyMarker final
+    {
+    };
+
+    struct ScriptDirtyState final
+    {
+        explicit ScriptDirtyState(std::size_t count)
+        {
+            entities.reserve(count);
+            registry.storage<ScriptDirtyMarker>().reserve(count);
+            for (std::size_t index{}; index < count; ++index)
+                entities.push_back(registry.create());
+            for (const auto entity : entities)
+                registry.emplace<ScriptDirtyMarker>(entity);
+            registry.clear<ScriptDirtyMarker>();
+        }
+
+        Registry registry;
         std::vector<Entity> entities;
     };
 
@@ -485,13 +575,39 @@ int main(int argc, char** argv)
     else if (options->group == "hook-global-multi" ||
             options->group == "hook-entity-multi")
     {
-        metric = "hook_mixed_scope";
+        metric = "hook_dense_dispatch";
         samples = measure(*options,
             [&] { return std::make_unique<HookState>(options->size); },
             [](HookState& state)
             {
+                const auto mutation_count = (std::min)(
+                    state.tokens.size(),
+                    std::size_t{1024U}
+                );
+                std::uint64_t random{0x9E3779B97F4A7C15ULL};
+                for (std::size_t mutation{}; mutation < mutation_count;
+                     ++mutation)
+                {
+                    random = random * 6364136223846793005ULL + 1U;
+                    const auto index = static_cast<std::size_t>(
+                        random % state.tokens.size()
+                    );
+                    if (state.hook.disconnect(state.tokens[index]) !=
+                        EEndpointMutationError::NONE)
+                    {
+                        throw std::runtime_error("hook disconnect failed");
+                    }
+                    const auto connected = state.hook.connect(
+                        std::addressof(state.counters[index]),
+                        &HookState::increment
+                    );
+                    if (!connected)
+                        throw std::runtime_error("hook reconnect failed");
+                    state.tokens[index] = connected.token;
+                }
                 const auto calls = state.hook.dispatch();
                 return Observation{
+                    .updates = mutation_count * 2U,
                     .callbacks = calls,
                     .handlers_visited = calls,
                     .dispatch_handlers_built = state.counters.size(),
@@ -520,28 +636,16 @@ int main(int argc, char** argv)
             [&] { return std::make_unique<SparseState>(options->size); },
             [](SparseState& state)
             {
-                constexpr std::size_t occurrences{100000U};
-                std::size_t callbacks{};
-                for (std::size_t index{}; index < occurrences; ++index)
-                {
-                    const auto entity =
-                        state.entities[index % state.entities.size()];
-                    const auto found = state.ranges.find(entityBits(entity));
-                    if (found != state.ranges.end())
-                    {
-                        ++state.handlers[found->second];
-                        ++callbacks;
-                    }
-                }
+                const auto calls = state.event.drain();
                 return Observation{
-                    .notifications = occurrences,
-                    .callbacks = callbacks,
-                    .entities_examined = occurrences,
-                    .target_range_lookups = occurrences,
-                    .handlers_visited = callbacks,
-                    .target_ranges_built = state.ranges.size(),
-                    .dispatch_handlers_built = state.handlers.size(),
-                    .frame_builds = occurrences};
+                    .notifications = state.occurrence_count,
+                    .callbacks = state.callbacks,
+                    .entities_examined = state.occurrence_count,
+                    .target_range_lookups = state.occurrence_count,
+                    .handlers_visited = calls,
+                    .target_ranges_built = state.event.targetBucketCount(),
+                    .dispatch_handlers_built = state.event.handlerCount(),
+                    .frame_builds = state.occurrence_count};
             });
     }
     else if (options->group == "owned-worker-event-buffer")
@@ -571,6 +675,45 @@ int main(int argc, char** argv)
                 if (!state.executor->execute(state.graph))
                     throw std::runtime_error("task execution failed");
                 return Observation{.callbacks = state.calls.load()};
+            });
+    }
+    else if (options->group == "script-detach")
+    {
+        metric = "script_mount_detach";
+        samples = measure(*options,
+            [&] { return std::make_unique<DetachState>(options->size); },
+            [](DetachState& state)
+            {
+                const auto before = state.hook.handlerCount();
+                for (const auto token : state.target_tokens)
+                {
+                    if (state.hook.disconnect(token) !=
+                        EEndpointMutationError::NONE)
+                    {
+                        throw std::runtime_error("detach failed");
+                    }
+                }
+                const auto removed = before - state.hook.handlerCount();
+                return Observation{
+                    .updates = removed,
+                    .bindings_removed = removed};
+            });
+    }
+    else if (options->group == "script-dirty")
+    {
+        metric = "script_dirty_distinct";
+        samples = measure(*options,
+            [&] { return std::make_unique<ScriptDirtyState>(options->size); },
+            [](ScriptDirtyState& state)
+            {
+                for (const auto entity : state.entities)
+                    state.registry.emplace<ScriptDirtyMarker>(entity);
+                const auto count =
+                    state.registry.storage<ScriptDirtyMarker>().size();
+                return Observation{
+                    .updates = state.entities.size(),
+                    .notifications = count,
+                    .dirty_marks = count};
             });
     }
     else

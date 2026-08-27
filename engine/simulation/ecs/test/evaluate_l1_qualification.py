@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate exact-SHA L1 benchmark-v9 samples against an external policy."""
+"""Evaluate exact-SHA L1 benchmark-v10 samples against an external policy."""
 
 from __future__ import annotations
 
@@ -45,8 +45,8 @@ def summaries(
     for path in paths:
         with path.open(newline="", encoding="utf-8") as stream:
             for row in csv.DictReader(stream):
-                if row.get("benchmark_schema_version") != "9":
-                    raise RuntimeError(f"{path}: benchmark schema is not v9")
+                if row.get("benchmark_schema_version") != "10":
+                    raise RuntimeError(f"{path}: benchmark schema is not v10")
                 if row.get("git_commit") != expected_commit:
                     raise RuntimeError(
                         f"{path}: commit {row.get('git_commit')} does not match "
@@ -79,8 +79,9 @@ def main() -> int:
     args = parse_args()
     with args.policy.open("rb") as stream:
         policy = tomllib.load(stream)
-    if policy.get("version") != 9 or policy.get("benchmark_schema_version") != 9:
-        raise RuntimeError("qualification policy must require benchmark v9")
+    if (policy.get("version") != 10 or
+            policy.get("benchmark_schema_version") != 10):
+        raise RuntimeError("qualification policy must require benchmark v10")
     values = summaries(resolve_inputs(args.input), args.expected_commit)
     failures: list[str] = []
     for rule in policy.get("scaling", []):

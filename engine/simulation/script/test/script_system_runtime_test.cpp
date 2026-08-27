@@ -20,9 +20,11 @@ namespace
     inline constexpr HookPointId kHook{42U};
     inline constexpr EventPointId kBroadcast{43U};
     inline constexpr EventPointId kTargeted{44U};
+    inline constexpr HookPointId kSecondaryHook{45U};
     inline constexpr lux::script::ScriptSymbolId kHookSymbol{101U};
     inline constexpr lux::script::ScriptSymbolId kBroadcastSymbol{102U};
     inline constexpr lux::script::ScriptSymbolId kTargetedSymbol{103U};
+    inline constexpr lux::script::ScriptSymbolId kSecondaryHookSymbol{104U};
 
     [[nodiscard]] lux::asset::AssetId assetId(std::uint8_t seed)
     {
@@ -44,6 +46,10 @@ namespace
             makeHookPointSpec<void(const SimulationStepInfo&)>(
                 kHook,
                 "tick"
+            ),
+            makeHookPointSpec<void(const SimulationStepInfo&)>(
+                kSecondaryHook,
+                "secondary"
             )};
         constexpr std::array events{
             makeEventPointSpec<SimulationStepInfo>(
@@ -83,7 +89,8 @@ namespace
         asset.description.exports = {
             {"on_tick", kHookSymbol, {argument}, {}},
             {"on_broadcast", kBroadcastSymbol, {argument}, {}},
-            {"on_targeted", kTargetedSymbol, {argument}, {}}};
+            {"on_targeted", kTargetedSymbol, {argument}, {}},
+            {"on_secondary", kSecondaryHookSymbol, {argument}, {}}};
         asset.description.body = lux::rdesc::CppStaticScript{"fixture"};
         assert(lux::rdesc::validScriptDescription(asset.description));
         return asset;
@@ -112,6 +119,7 @@ namespace
         std::size_t prepares{};
         std::size_t releases{};
         std::size_t hook_calls{};
+        std::size_t secondary_hook_calls{};
         std::size_t broadcast_calls{};
         std::size_t targeted_calls{};
         std::size_t entity_calls{};
@@ -131,6 +139,8 @@ namespace
             ++call.owner->entity_calls;
         if (call.symbol == kHookSymbol)
             ++call.owner->hook_calls;
+        else if (call.symbol == kSecondaryHookSymbol)
+            ++call.owner->secondary_hook_calls;
         else if (call.symbol == kBroadcastSymbol)
             ++call.owner->broadcast_calls;
         else if (call.symbol == kTargetedSymbol)
@@ -278,14 +288,18 @@ int main()
         true,
         {{kHookSymbol, HookScriptTarget{kSystem, kHook}},
          {kBroadcastSymbol, EventScriptTarget{kSystem, kBroadcast}},
-         {kTargetedSymbol, EventScriptTarget{kSystem, kTargeted}}}}));
+         {kTargetedSymbol, EventScriptTarget{kSystem, kTargeted}},
+         {kSecondaryHookSymbol,
+          HookScriptTarget{kSystem, kSecondaryHook}}}}));
     auto description = std::move(authored).build(simulation);
     assert(description);
 
     HookPoint<void(const SimulationStepInfo&)> hook;
+    HookPoint<void(const SimulationStepInfo&)> secondary_hook;
     EventPoint<SimulationBroadcastRoute, SimulationStepInfo> broadcast;
     EventPoint<EntityTargetedRoute<ecs::Entity>, SimulationStepInfo> targeted;
-    assert(hook.prepare(2U) == EEndpointMutationError::NONE);
+    assert(hook.prepare(1U) == EEndpointMutationError::NONE);
+    assert(secondary_hook.prepare(1U) == EEndpointMutationError::NONE);
     assert(broadcast.prepare(1U, 4U, 2U) == EEndpointMutationError::NONE);
     assert(targeted.prepare(1U, 4U, 2U) == EEndpointMutationError::NONE);
 
@@ -293,12 +307,18 @@ int main()
         kSystem,
         kHook,
         hook};
+    ScriptHookEndpoint<void(const SimulationStepInfo&)> secondary_hook_bridge{
+        kSystem,
+        kSecondaryHook,
+        secondary_hook};
     ScriptEventEndpoint<SimulationBroadcastRoute, SimulationStepInfo>
         broadcast_bridge{kSystem, kBroadcast, broadcast};
     ScriptEventEndpoint<
         EntityTargetedRoute<ecs::Entity>,
         SimulationStepInfo> targeted_bridge{kSystem, kTargeted, targeted};
-    const std::array hook_endpoints{hook_bridge.descriptor()};
+    const std::array hook_endpoints{
+        hook_bridge.descriptor(),
+        secondary_hook_bridge.descriptor()};
     const std::array event_endpoints{
         broadcast_bridge.descriptor(),
         targeted_bridge.descriptor()};
@@ -331,12 +351,14 @@ int main()
     assert(broadcast.handlerCount() == 1U);
     assert(targeted.handlerCount() == 1U);
     assert(backend_state.creates == 2U);
-    assert(backend_state.prepares == 5U);
+    assert(backend_state.prepares == 6U);
 
     const SimulationStepInfo step{1.0F / 60.0F, 12U};
     assert(hook.dispatch(step) == 1U);
     assert(backend_state.hook_calls == 2U);
     assert(backend_state.entity_calls == 1U);
+    assert(secondary_hook.dispatch(step) == 1U);
+    assert(backend_state.secondary_hook_calls == 1U);
 
     {
         auto writer = broadcast.begin(0U);
@@ -365,7 +387,7 @@ int main()
     assert(system.flushMutations());
     assert(system.activeInstanceCount() == 2U);
     assert(backend_state.creates == 3U);
-    assert(backend_state.prepares == 8U);
+    assert(backend_state.prepares == 10U);
 
     {
         auto writer = targeted.begin(0U);
@@ -375,6 +397,7 @@ int main()
     assert(targeted.drain() == 2U);
     assert(backend_state.targeted_calls == 2U);
 
+    const auto releases_before_fault = backend_state.releases;
     backend_state.fail_mount = ScriptMountId{2U};
     backend_state.fail_symbol = kHookSymbol;
     assert(hook.dispatch(step) == 1U);
@@ -383,7 +406,8 @@ int main()
     assert(system.failures().front().status == 9);
     assert(system.flushMutations());
     assert(backend_state.destroys == 2U);
-    assert(backend_state.releases == 6U);
+    assert(backend_state.releases == 8U);
+    assert(backend_state.releases - releases_before_fault == 4U);
     assert(targeted.targetBucketCount() == 0U);
 
     backend_state.request_shutdown = true;
@@ -393,7 +417,7 @@ int main()
 
     assert(system.shutdown());
     assert(backend_state.destroys == 3U);
-    assert(backend_state.releases == 8U);
+    assert(backend_state.releases == 10U);
     assert(fixture.leases == 3U && fixture.releases == 3U);
     return 0;
 }

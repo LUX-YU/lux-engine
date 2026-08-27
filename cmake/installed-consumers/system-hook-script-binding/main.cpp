@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string_view>
 
 namespace
 {
@@ -30,12 +31,12 @@ namespace
         makeHookPointSpec<void(float)>(ValueHook, "value"),
         makeHookPointSpec<void()>(EventHook, "after-event")};
     inline constexpr std::array Events{
-        makeEventPointSpec<std::int32_t>(
+        makeEventPointSpec<installed_consumer::CollisionEvent>(
             PulseEvent,
             "pulse",
             EventHook,
             EEventRoute::ENTITY_TARGETED,
-            "lux.i32",
+            "consumer.CollisionEvent",
             1U)};
     inline constexpr SystemDescription System{
         .canonical_name = "consumer.system",
@@ -99,6 +100,30 @@ namespace
         result = fixture.entity;
         return true;
     }
+
+    bool resolveRecord(
+        void*,
+        const lux::meta::RefType& type,
+        lux::script::ScriptSemanticLayout& result
+    ) noexcept
+    {
+        const auto* reflected = static_cast<const lux::meta::RefClass*>(
+            type.ptr
+        );
+        if (!reflected || reflected->full_name !=
+            "installed_consumer::CollisionEvent")
+        {
+            return false;
+        }
+        constexpr std::string_view name{"consumer.CollisionEvent"};
+        result = {
+            lux::script::scriptSemanticTypeId(name),
+            name,
+            LUX_SCRIPT_VK_STRUCT_REF,
+            sizeof(installed_consumer::CollisionEvent),
+            alignof(installed_consumer::CollisionEvent)};
+        return true;
+    }
 }
 
 int main()
@@ -129,7 +154,7 @@ int main()
         *reflected,
         methods,
         symbols,
-        {});
+        {nullptr, &resolveRecord});
     assert(projected);
 
     Fixture fixture;
@@ -187,14 +212,18 @@ int main()
     ecs::Registry registry;
     fixture.entity = registry.create();
     HookPoint<void(float)> value_hook;
-    EventPoint<EntityTargetedRoute<ecs::Entity>, std::int32_t> pulse;
+    EventPoint<
+        EntityTargetedRoute<ecs::Entity>,
+        installed_consumer::CollisionEvent> pulse;
     assert(value_hook.prepare(1U) == EEndpointMutationError::NONE);
     assert(pulse.prepare(1U, 2U, 1U) == EEndpointMutationError::NONE);
     ScriptHookEndpoint<void(float)> hook_bridge{
         SystemId,
         ValueHook,
         value_hook};
-    ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, std::int32_t>
+    ScriptEventEndpoint<
+        EntityTargetedRoute<ecs::Entity>,
+        installed_consumer::CollisionEvent>
         event_bridge{SystemId, PulseEvent, pulse};
     const std::array hook_endpoints{hook_bridge.descriptor()};
     const std::array event_endpoints{event_bridge.descriptor()};
@@ -222,10 +251,14 @@ int main()
     assert(installed_consumer::observed_value == 2.5F);
     {
         auto writer = pulse.begin(0U);
-        assert(writer.record(fixture.entity, 17));
+        assert(writer.record(
+            fixture.entity,
+            installed_consumer::CollisionEvent{17, 4.5F}
+        ));
     }
     assert(pulse.drain() == 1U);
-    assert(installed_consumer::observed_event == 17);
+    assert(installed_consumer::observed_event.body == 17);
+    assert(installed_consumer::observed_event.impulse == 4.5F);
     assert(script_system.shutdown());
     lux::meta::ReflectionRegistry::destroyRegistry();
     return 0;

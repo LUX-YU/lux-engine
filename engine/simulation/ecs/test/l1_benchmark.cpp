@@ -2,6 +2,8 @@
 #include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/simulation/ScriptBindingSession.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -94,7 +96,10 @@ namespace
         if (result.group != "task-graph" && result.group != "world" &&
             result.group != "command-buffer" &&
             result.group != "reactive-dirty" &&
-            result.group != "typed-event" &&
+            result.group != "bound-call-native" &&
+            result.group != "hook-multi" &&
+            result.group != "global-event" &&
+            result.group != "entity-targeted-event" &&
             result.group != "ecs-snapshot")
         {
             return std::nullopt;
@@ -109,6 +114,8 @@ namespace
         std::size_t callbacks{};
         std::size_t reflection_lookups{};
         std::size_t string_lookups{};
+        std::size_t asset_lookups{};
+        std::size_t scene_scans{};
     };
 
     struct Sample final
@@ -175,10 +182,11 @@ namespace
                 throw std::runtime_error("cannot open benchmark output");
             output << "benchmark_schema_version,git_commit,build_type,group,"
                       "metric,size,sample,nanoseconds,allocations,updates,"
-                      "notifications,callbacks,reflection_lookups,string_lookups\n";
+                      "notifications,callbacks,reflection_lookups,string_lookups,"
+                      "asset_lookups,scene_scans\n";
             for (const auto& sample : samples)
             {
-                output << "5," << LUX_BENCHMARK_GIT_COMMIT << ','
+                output << "6," << LUX_BENCHMARK_GIT_COMMIT << ','
                        << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group
                        << ',' << metric << ',' << options.size << ','
                        << sample.index << ',' << sample.nanoseconds << ','
@@ -187,7 +195,9 @@ namespace
                        << sample.observation.notifications << ','
                        << sample.observation.callbacks << ','
                        << sample.observation.reflection_lookups << ','
-                       << sample.observation.string_lookups << '\n';
+                       << sample.observation.string_lookups << ','
+                       << sample.observation.asset_lookups << ','
+                       << sample.observation.scene_scans << '\n';
             }
         }
         std::error_code error;
@@ -271,22 +281,190 @@ namespace
         EcsCommandBuffer commands;
     };
 
-    struct TypedEvent final
-    {
-        std::uint32_t producer{};
-        std::uint32_t local{};
-    };
+    inline constexpr std::array kBindingHooks{
+        lux::simulation::makeSystemHookPoint<void()>("update")};
+    inline constexpr std::array kBindingEvents{
+        lux::simulation::makeSystemEvent<void>(
+            "global-event",
+            kBindingHooks[0],
+            lux::simulation::ESystemEventTarget::GLOBAL,
+            {},
+            0U
+        ),
+        lux::simulation::makeSystemEvent<void>(
+            "entity-event",
+            kBindingHooks[0],
+            lux::simulation::ESystemEventTarget::ENTITY_TARGETED,
+            {},
+            0U
+        )};
+    inline constexpr lux::simulation::SystemDescription kBindingSystem{
+        .canonical_name = "lux.benchmark.binding",
+        .version = 1U,
+        .hooks = kBindingHooks,
+        .events = kBindingEvents};
 
-    struct TypedEventState final
+    struct BindingBenchmarkState final
     {
-        explicit TypedEventState(std::size_t count)
+        BindingBenchmarkState(std::size_t count, std::string_view kind)
+            : kind(kind)
         {
-            const std::size_t per_producer = (count + 3U) / 4U;
-            for (auto& values : producers)
-                values.reserve(per_producer);
+            std::array<std::uint8_t, 16U> id_bytes{};
+            id_bytes[0] = 0xB6U;
+            asset_id = lux::asset::AssetId{id_bytes};
+            asset.description.schema_version = lux::rdesc::Script::kSchemaVersion;
+            asset.description.module_name = "l1.benchmark.binding";
+            asset.description.body = lux::rdesc::CppBehaviorScript{"benchmark"};
+            for (std::uint64_t symbol = 1U; symbol <= 4U; ++symbol)
+            {
+                asset.description.exports.push_back(lux::rdesc::ScriptFunction{
+                    "hook-" + std::to_string(symbol), symbol, {}, {}});
+            }
+            asset.description.exports.push_back(
+                lux::rdesc::ScriptFunction{"global", 5U, {}, {}}
+            );
+            asset.description.exports.push_back(
+                lux::rdesc::ScriptFunction{"entity", 6U, {}, {}}
+            );
+
+            lux::simulation::SimulationDescriptionBuilder builder;
+            if (!builder.addSystem("benchmark", kBindingSystem))
+                throw std::runtime_error("binding system build failed");
+            std::vector<lux::rdesc::ScriptBindingDescription> global_bindings;
+            if (kind == "bound-call-native" || kind == "hook-multi")
+            {
+                const auto handler_count = kind == "hook-multi" ? 4U : 1U;
+                for (std::uint64_t symbol = 1U; symbol <= handler_count; ++symbol)
+                {
+                    global_bindings.push_back({
+                        symbol,
+                        lux::rdesc::EScriptBindingKind::HOOK,
+                        "lux.benchmark.binding",
+                        "benchmark",
+                        "update"});
+                }
+            }
+            else if (kind == "global-event")
+            {
+                global_bindings.push_back({
+                    5U,
+                    lux::rdesc::EScriptBindingKind::EVENT,
+                    "lux.benchmark.binding",
+                    "benchmark",
+                    "global-event"});
+            }
+            if (!global_bindings.empty() &&
+                !builder.addGlobalScriptMount(
+                    lux::simulation::ScriptMountDescription{
+                        asset_id,
+                        lux::simulation::EScriptBindingSetMode::EXPLICIT,
+                        std::move(global_bindings)}
+                ))
+            {
+                throw std::runtime_error("binding mount build failed");
+            }
+            auto description = std::move(builder).build();
+            if (!description)
+                throw std::runtime_error("binding description build failed");
+
+            if (kind == "entity-targeted-event")
+            {
+                entities.reserve(count);
+                registry.storage<lux::simulation::ScriptMountFacts>().reserve(count);
+                for (std::size_t index{}; index < count; ++index)
+                {
+                    const auto entity = registry.create();
+                    registry.emplace<lux::simulation::ScriptMountFacts>(
+                        entity,
+                        lux::simulation::ScriptMountFacts{{
+                            lux::simulation::ScriptMountDescription{
+                                asset_id,
+                                lux::simulation::EScriptBindingSetMode::EXPLICIT,
+                                {{
+                                    6U,
+                                    lux::rdesc::EScriptBindingKind::EVENT,
+                                    "lux.benchmark.binding",
+                                    "benchmark",
+                                    "entity-event"}}}}}
+                    );
+                    entities.push_back(entity);
+                }
+            }
+
+            const lux::simulation::ScriptBackendDescriptor backend{
+                lux::rdesc::Script::Kind::CPP_BEHAVIOR,
+                this,
+                &BindingBenchmarkState::prepareCall,
+                nullptr};
+            auto created = lux::simulation::ScriptBindingSession::create(
+                std::move(*description),
+                registry,
+                lux::simulation::ScriptBindingCapacities{
+                    std::max<std::size_t>(count + 4U, 8U),
+                    std::max<std::size_t>(count + 1U, 2U),
+                    4U,
+                    std::max<std::size_t>((count + 3U) / 4U, 1U),
+                    8U},
+                lux::simulation::ScriptAssetResolver{
+                    this,
+                    &BindingBenchmarkState::resolveAsset},
+                std::span{&backend, 1U}
+            );
+            if (!created)
+                throw std::runtime_error("binding session create failed");
+            session = std::make_unique<lux::simulation::ScriptBindingSession>(
+                std::move(*created)
+            );
+            if (!session->prepare())
+                throw std::runtime_error("binding session prepare failed");
+            hook = session->hookSlot("benchmark", "update");
+            global_event = session->eventSlot("benchmark", "global-event");
+            entity_event = session->eventSlot("benchmark", "entity-event");
         }
 
-        std::array<std::vector<TypedEvent>, 4U> producers;
+        static bool resolveAsset(
+            void* opaque,
+            const lux::asset::AssetId& id,
+            lux::simulation::ResolvedScriptAsset& result
+        ) noexcept
+        {
+            auto& self = *static_cast<BindingBenchmarkState*>(opaque);
+            if (id != self.asset_id)
+                return false;
+            result.asset = std::addressof(self.asset);
+            return true;
+        }
+
+        static bool prepareCall(
+            void* opaque,
+            const lux::simulation::ScriptPrepareContext&,
+            const lux::asset::ScriptAssetContent&,
+            const lux::rdesc::ScriptFunction&,
+            lux::script::BoundScriptCall& result
+        ) noexcept
+        {
+            result = lux::script::BoundScriptCall{
+                &BindingBenchmarkState::invoke,
+                opaque};
+            return true;
+        }
+
+        static int invoke(lux_script_call_frame* frame) noexcept
+        {
+            ++static_cast<BindingBenchmarkState*>(frame->user_context)->callbacks;
+            return 0;
+        }
+
+        std::string kind;
+        Registry registry;
+        std::vector<Entity> entities;
+        lux::asset::AssetId asset_id;
+        lux::asset::ScriptAssetContent asset;
+        std::unique_ptr<lux::simulation::ScriptBindingSession> session;
+        lux::simulation::ScriptHookSlot hook;
+        lux::simulation::ScriptEventSlot global_event;
+        lux::simulation::ScriptEventSlot entity_event;
+        std::size_t callbacks{};
     };
 
     struct TaskGraphState final
@@ -433,46 +611,96 @@ int main(int argc, char** argv)
             }
         );
     }
-    else if (options->group == "typed-event")
+    else if (options->group == "bound-call-native" ||
+             options->group == "hook-multi" ||
+             options->group == "global-event" ||
+             options->group == "entity-targeted-event")
     {
-        metric = "typed_event_dispatch";
+        metric = options->group == "bound-call-native"
+            ? "bound_call_native"
+            : options->group == "hook-multi"
+                ? "hook_multi"
+                : options->group == "global-event"
+                    ? "global_event"
+                    : "entity_targeted_event";
         samples = measure(
             *options,
-            [&] { return std::make_unique<TypedEventState>(options->size); },
-            [&](TypedEventState& state)
+            [&]
             {
-                for (auto& values : state.producers)
-                    values.clear();
-                for (std::size_t index{}; index < options->size; ++index)
+                return std::make_unique<BindingBenchmarkState>(
+                    options->size,
+                    options->group
+                );
+            },
+            [&](BindingBenchmarkState& state)
+            {
+                state.callbacks = 0U;
+                state.session->beginUpdate();
+                lux_script_call_frame frame{};
+                if (options->group == "global-event")
                 {
-                    const auto producer = static_cast<std::uint32_t>(index % 4U);
-                    auto& values = state.producers[producer];
-                    values.push_back(TypedEvent{
-                        producer,
-                        static_cast<std::uint32_t>(values.size())});
-                }
-                std::size_t callbacks{};
-                for (std::uint32_t producer{};
-                     producer < state.producers.size(); ++producer)
-                {
-                    std::uint32_t expected{};
-                    for (const auto event : state.producers[producer])
+                    for (std::size_t index{}; index < options->size; ++index)
                     {
-                        if (event.producer != producer ||
-                            event.local != expected++)
+                        if (!state.session->writer(index % 4U).emit(
+                                state.global_event,
+                                frame
+                            ))
                         {
-                            throw std::runtime_error("event order mismatch");
+                            throw std::runtime_error("global event emit failed");
                         }
-                        ++callbacks;
                     }
                 }
-                if (callbacks != options->size)
-                    throw std::runtime_error("event callback mismatch");
+                else if (options->group == "entity-targeted-event")
+                {
+                    for (std::size_t index{}; index < options->size; ++index)
+                    {
+                        if (!state.session->writer(index % 4U).emit(
+                                state.entity_event,
+                                state.entities[index],
+                                frame
+                            ))
+                        {
+                            throw std::runtime_error("entity event emit failed");
+                        }
+                    }
+                }
+                const auto iterations =
+                    options->group == "global-event" ||
+                    options->group == "entity-targeted-event"
+                    ? 1U
+                    : options->size;
+                std::size_t dispatch_calls{};
+                for (std::size_t index{}; index < iterations; ++index)
+                    dispatch_calls += state.session->dispatchHook(
+                        state.hook,
+                        frame
+                    ).calls;
+                const auto expected_callbacks = options->group == "hook-multi"
+                    ? options->size * 4U
+                    : options->size;
+                if (state.callbacks != expected_callbacks ||
+                    dispatch_calls != expected_callbacks)
+                {
+                    throw std::runtime_error("binding callback mismatch");
+                }
                 return Observation{
-                    .notifications = options->size,
-                    .callbacks = callbacks};
+                    .updates = options->size,
+                    .notifications =
+                        options->group == "global-event" ||
+                        options->group == "entity-targeted-event"
+                        ? options->size
+                        : 0U,
+                    .callbacks = state.callbacks,
+                    .reflection_lookups =
+                        state.session->hotPathNameLookupCount(),
+                    .string_lookups =
+                        state.session->hotPathNameLookupCount(),
+                    .asset_lookups =
+                        state.session->hotPathAssetLookupCount(),
+                    .scene_scans =
+                        state.session->hotPathSceneScanCount()};
             },
-            [](TypedEventState&) noexcept {}
+            [](BindingBenchmarkState&) noexcept {}
         );
     }
     else if (options->group == "task-graph")

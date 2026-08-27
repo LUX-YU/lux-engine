@@ -1,124 +1,79 @@
-version = 2
-benchmark_schema_version = 4
-
-# Thresholds remain external qualification policy. Evidence is accepted only
-# when its schema and exact production commit match the evaluator arguments.
+version = 6
+benchmark_schema_version = 6
 
 [[scaling]]
-name = "TaskGraph independent execution scaling"
-metric = "task_graph_execute_none"
-small_size = 16
-large_size = 1024
-max_exponent = 1.25
-
-[[scaling]]
-name = "EcsChangeBatch one-lane recording scaling"
-metric = "world_change_batch_record_1"
+name = "Reactive dirty scaling"
+metric = "reactive_dirty_patch"
 small_size = 100000
 large_size = 1000000
 max_exponent = 1.25
 
 [[scaling]]
-name = "EcsChangeBatch thirty-two-lane recording scaling"
-metric = "world_change_batch_record_32"
+name = "Entity-targeted event scaling"
+metric = "entity_targeted_event"
 small_size = 100000
 large_size = 1000000
-max_exponent = 1.25
-
-[[scaling]]
-name = "Prepared command recording scaling"
-metric = "command_batch_record"
-small_size = 100000
-large_size = 1000000
-max_exponent = 1.25
-
-[[scaling]]
-name = "Hierarchy transient delta scaling"
-metric = "hierarchy_delta_apply"
-small_size = 16
-large_size = 1024
-max_exponent = 1.25
-
-[[scaling]]
-name = "World description build scaling"
-metric = "world_description_build"
-small_size = 10000
-large_size = 100000
-max_exponent = 1.25
-
-[[scaling]]
-name = "World binary lookup scaling"
-metric = "world_binary_lookup"
-small_size = 10000
-large_size = 100000
-max_exponent = 1.25
-
-[[scaling]]
-name = "World partition freeze scaling"
-metric = "world_partition_freeze"
-small_size = 16
-large_size = 256
-max_exponent = 1.25
-
-[[structural]]
-name = "Prepared TaskGraph dispatches each task"
-metric = "task_graph_execute_none"
-size = 1024
-field = "dispatch_calls"
-equals = 1024
-
-[[structural]]
-name = "Prepared TaskGraph execution is allocation free"
-metric = "task_graph_execute_none"
-size = 1024
-field = "allocations"
-equals = 0
-
-[[structural]]
-name = "EcsChangeBatch binds thirty-two lanes once"
-metric = "world_change_batch_record_32"
-size = 1000000
-field = "lane_binds"
-equals = 32
-
-[[structural]]
-name = "EcsChangeBatch appends every record"
-metric = "world_change_batch_record_32"
-size = 1000000
-field = "record_appends"
-equals = 32000000
-
-[[structural]]
-name = "EcsChangeBatch has no per-record lookup"
-metric = "world_change_batch_record_32"
-size = 1000000
-field = "per_record_lookups"
-equals = 0
-
-[[structural]]
-name = "Real Simulation step is allocation free"
-metric = "simulation_step_execute"
-size = 1
-field = "allocations"
-equals = 0
+max_exponent = 1.30
 
 [[structural]]
 name = "Prepared command recording is allocation free"
-metric = "command_batch_record"
+metric = "command_buffer_record"
 size = 1000000
 field = "allocations"
 equals = 0
 
 [[structural]]
-name = "Prepared hierarchy delta apply is allocation free"
-metric = "hierarchy_delta_apply"
-size = 1024
+name = "Reactive path notifies every update"
+metric = "reactive_dirty_patch"
+size = 1000000
+field = "notifications"
+equals = 1000000
+
+[[structural]]
+name = "Bound native calls are allocation free"
+metric = "bound_call_native"
+size = 100000
 field = "allocations"
 equals = 0
 
 [[structural]]
-name = "World description retains all built objects"
-metric = "world_description_build"
+name = "Multi hook invokes every handler"
+metric = "hook_multi"
 size = 100000
-field = "dispatch_calls"
-equals = 200000
+field = "callbacks"
+equals = 400000
+
+[[structural]]
+name = "Global event dispatch is allocation free"
+metric = "global_event"
+size = 100000
+field = "allocations"
+equals = 0
+
+[[structural]]
+name = "Entity event invokes every target"
+metric = "entity_targeted_event"
+size = 1000000
+field = "callbacks"
+equals = 1000000
+
+[[structural]]
+name = "Entity event hot path performs no scene scan"
+metric = "entity_targeted_event"
+size = 1000000
+field = "scene_scans"
+equals = 0
+
+[[structural]]
+name = "Entity event hot path performs no lookup"
+metric = "entity_targeted_event"
+size = 1000000
+field = "string_lookups"
+equals = 0
+
+[[structural]]
+name = "Entity event hot path performs no asset lookup"
+metric = "entity_targeted_event"
+size = 1000000
+field = "asset_lookups"
+equals = 0

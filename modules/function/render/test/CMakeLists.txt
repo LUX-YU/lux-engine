@@ -431,18 +431,6 @@ target_link_libraries(platformer2d_visual_demo PRIVATE render_features runtime_r
 target_include_directories(platformer2d_visual_demo PRIVATE ${RENDER_PINCLUDE_DIR} ${SHADER_CONFIG_OUT_PATH})
 lux_render_link_2d_pack_sidecars(platformer2d_visual_demo physics2d_meta)
 
-# VISUAL demo — the Box2D-backed Physics2DSystem on screen: solid-tint rigid
-# boxes fall, tip and STACK on a static floor (box-vs-box + rotation the swept
-# solver cannot do). Assembled from presentation2d + physics2d contributions.
-add_executable(rigidbody2d_visual_demo rigidbody2d_visual_demo.cpp)
-target_link_libraries(rigidbody2d_visual_demo PRIVATE render_features runtime_render_scene_test_support lux::engine::runtime::runtime_execution lux::engine::ecs::presentation_2d lux::engine::ecs::transform lux::engine::ecs::physics2d lux::engine::ecs::scripting lux::engine::ecs::scripting_lua lux::engine::resource::asset lux::engine::platform::window lux::engine::function::input) # scripting: Lua collision probe
-target_include_directories(rigidbody2d_visual_demo PRIVATE ${RENDER_PINCLUDE_DIR} ${SHADER_CONFIG_OUT_PATH})
-lux_render_link_2d_pack_sidecars(
-    rigidbody2d_visual_demo
-    physics2d_meta
-    script_meta
-)
-
 # VISUAL stress — the GPU-driven Canvas2D v2 ON SCREEN (2D counterpart of
 # deferred_stress_test): 50k GPU-resident images + orbiting camera (one op/frame)
 # + a 1k dynamic swirl (one bulk/frame) + priority-wave order rebuilds.

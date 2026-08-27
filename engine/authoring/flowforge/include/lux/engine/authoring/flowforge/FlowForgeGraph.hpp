@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/authoring/flowforge/visibility.h>
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/description/Script.hpp>
 #include <lux/engine/simulation/ScriptMountDescription.hpp>
 
 #include <cstdint>
@@ -30,8 +30,8 @@ namespace lux::flowforge
     {
         FlowForgeExportNodeId id;
         std::string name;
-        std::vector<lux::script::ScriptSemanticType> parameters;
-        std::vector<lux::script::ScriptSemanticType> returns;
+        std::vector<lux::rdesc::ScriptValueType> parameters;
+        std::vector<lux::rdesc::ScriptValueType> returns;
     };
 
     struct BindingEdge final

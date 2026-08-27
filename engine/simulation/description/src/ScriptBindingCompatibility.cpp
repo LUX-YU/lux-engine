@@ -104,6 +104,45 @@ namespace lux::simulation
         }
     }
 
+    EScriptBindingCompatibility evaluateScriptBindingSignatureCompatibility(
+        lux::rdesc::EScriptModel source_model,
+        const lux::rdesc::ScriptFunction& function,
+        lux::rdesc::EScriptModel target_model,
+        ESystemHookCardinality cardinality,
+        std::span<const lux::rdesc::ScriptValueType> parameters,
+        std::span<const lux::rdesc::ScriptValueType> returns
+    ) noexcept
+    {
+        if (function.name.empty() ||
+            function.symbol_id == lux::script::InvalidScriptSymbolId)
+        {
+            return EScriptBindingCompatibility::INVALID_FUNCTION;
+        }
+        if (source_model != target_model)
+            return EScriptBindingCompatibility::SCOPE_MISMATCH;
+        if (source_model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR &&
+            cardinality == ESystemHookCardinality::SINGLE)
+        {
+            return EScriptBindingCompatibility::CARDINALITY_MISMATCH;
+        }
+        if (function.args.size() != parameters.size() ||
+            function.returns.size() != returns.size())
+        {
+            return EScriptBindingCompatibility::SIGNATURE_MISMATCH;
+        }
+        for (std::size_t index{}; index < parameters.size(); ++index)
+        {
+            if (function.args[index] != parameters[index])
+                return EScriptBindingCompatibility::SIGNATURE_MISMATCH;
+        }
+        for (std::size_t index{}; index < returns.size(); ++index)
+        {
+            if (function.returns[index] != returns[index])
+                return EScriptBindingCompatibility::SIGNATURE_MISMATCH;
+        }
+        return EScriptBindingCompatibility::COMPATIBLE;
+    }
+
     EScriptBindingCompatibility evaluateScriptBindingCompatibility(
         const SimulationDescription& simulation,
         lux::rdesc::EScriptModel model,

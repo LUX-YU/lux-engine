@@ -40,6 +40,29 @@ namespace lux::authoring
         ) noexcept = default;
     };
 
+    [[nodiscard]] LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
+    lux::cxx::expected<
+        ScriptAuthoringSemanticEntry,
+        EScriptAuthoringSemanticCatalogError>
+    makeScriptAuthoringRecordEntry(
+        std::string_view canonical_name,
+        std::uint32_t size,
+        std::uint32_t alignment
+    ) noexcept;
+
+    template <class Type>
+    [[nodiscard]] lux::cxx::expected<
+        ScriptAuthoringSemanticEntry,
+        EScriptAuthoringSemanticCatalogError>
+    makeScriptAuthoringRecordEntry() noexcept
+    {
+        return makeScriptAuthoringRecordEntry(
+            lux::script::ScriptSemanticTypeTraits<Type>::CanonicalName,
+            static_cast<std::uint32_t>(sizeof(Type)),
+            static_cast<std::uint32_t>(alignof(Type))
+        );
+    }
+
     class LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
         ScriptAuthoringSemanticCatalog final
     {

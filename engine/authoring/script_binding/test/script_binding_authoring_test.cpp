@@ -8,6 +8,22 @@
 #include <fstream>
 #include <iterator>
 
+struct CollisionEvent final
+{
+    std::int32_t entity{};
+    float impulse{};
+};
+
+namespace lux::script
+{
+    template <>
+    struct ScriptSemanticTypeTraits<CollisionEvent> final
+    {
+        inline static constexpr std::string_view CanonicalName =
+            "lux.test.CollisionEvent";
+    };
+}
+
 namespace
 {
     using namespace lux::simulation;
@@ -19,10 +35,19 @@ namespace
             "single",
             ESystemHookCardinality::SINGLE
         )};
+    inline constexpr std::array kEvents{
+        makeSystemEvent<CollisionEvent>(
+            "collision",
+            kHooks[0],
+            ESystemEventTarget::ENTITY_TARGETED,
+            "lux.test.CollisionEvent",
+            1U
+        )};
     inline constexpr SystemDescription kSystem{
         .canonical_name = "lux.test.authoring",
         .version = 1U,
-        .hooks = kHooks};
+        .hooks = kHooks,
+        .events = kEvents};
 }
 
 int main()
@@ -54,12 +79,25 @@ int main()
 
     const auto catalog = makeScriptBindingTargetCatalog(*simulation);
     const auto compatible = compatibleScriptBindingTargets(
-        *simulation,
         script,
         1U,
         catalog
     );
     assert(compatible.size() == 2U);
+    const auto detached_catalog = []
+    {
+        SimulationDescriptionBuilder detached_builder;
+        assert(detached_builder.addSystem("fixture", kSystem));
+        auto detached_simulation = std::move(detached_builder).build();
+        assert(detached_simulation);
+        return makeScriptBindingTargetCatalog(*detached_simulation);
+    }();
+    const auto detached_compatible = compatibleScriptBindingTargets(
+        script,
+        1U,
+        detached_catalog
+    );
+    assert(detached_compatible.size() == 2U);
 
     std::array<std::uint8_t, 16U> asset_bytes{};
     asset_bytes[0] = 1U;
@@ -147,6 +185,33 @@ int main()
     assert(semantic_catalog->find("lux.f32"));
     assert(semantic_catalog->find(
         "lux.simulation.SimulationStepInfo"));
+    const auto base_catalog_json = semantic_catalog->canonicalJson();
+    auto collision_entry = makeScriptAuthoringRecordEntry<CollisionEvent>();
+    assert(collision_entry);
+    assert(collision_entry->abi_kind == LUX_SCRIPT_VK_STRUCT_REF);
+    assert(collision_entry->default_parameter_pass ==
+        lux::script::EScriptPassMode::CONST_REF);
+    assert(semantic_catalog->add(std::move(*collision_entry)));
+    const auto* collision = semantic_catalog->find(
+        "lux.test.CollisionEvent");
+    assert(collision);
+    lux::rdesc::ScriptFunction collision_function{
+        "on_collision",
+        100U,
+        {{
+            collision->canonical_name,
+            collision->type_id,
+            lux::script::EScriptPassMode::CONST_REF}},
+        {}};
+    assert(evaluateScriptBindingCompatibility(
+        *simulation,
+        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR,
+        collision_function,
+        SystemEventBindingTarget{
+            systemTypeId(kSystem.canonical_name),
+            "fixture",
+            "collision"}
+    ) == EScriptBindingCompatibility::COMPATIBLE);
     std::ifstream catalog_file(
         LUX_SCRIPT_SEMANTIC_CATALOG,
         std::ios::binary
@@ -155,5 +220,5 @@ int main()
     const std::string installed_catalog{
         std::istreambuf_iterator<char>{catalog_file},
         std::istreambuf_iterator<char>{}};
-    assert(semantic_catalog->canonicalJson() + "\n" == installed_catalog);
+    assert(base_catalog_json + "\n" == installed_catalog);
 }

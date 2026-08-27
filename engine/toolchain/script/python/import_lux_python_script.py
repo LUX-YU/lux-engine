@@ -143,7 +143,11 @@ def import_aliases(tree: ast.Module) -> dict[str, str]:
     for node in tree.body:
         if isinstance(node, ast.Import):
             for alias in node.names:
-                result[alias.asname or alias.name.split(".")[0]] = alias.name
+                if alias.asname:
+                    result[alias.asname] = alias.name
+                else:
+                    root = alias.name.split(".")[0]
+                    result.setdefault(root, root)
         elif isinstance(node, ast.ImportFrom) and node.module:
             for alias in node.names:
                 if alias.name != "*":
@@ -161,10 +165,14 @@ def resolve_annotation(
         return semantics[name]
     if not name:
         return None
-    root, separator, suffix = name.partition(".")
-    if root in aliases:
-        canonical = aliases[root] + (f".{suffix}" if separator else "")
-        return semantics.get(canonical)
+    matches = [
+        alias for alias in aliases
+        if name == alias or name.startswith(f"{alias}.")
+    ]
+    if matches:
+        alias = max(matches, key=len)
+        suffix = name[len(alias):]
+        return semantics.get(f"{aliases[alias]}{suffix}")
     return None
 
 

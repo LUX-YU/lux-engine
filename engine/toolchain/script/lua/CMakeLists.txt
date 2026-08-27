@@ -2,7 +2,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(_lua_importer ${CMAKE_CURRENT_SOURCE_DIR}/import_lux_lua_script.py)
 set(_script_semantic_catalog
-    ${CMAKE_SOURCE_DIR}/engine/authoring/script_binding/assets/lux-script-semantics-v1.json
+    ${CMAKE_SOURCE_DIR}/engine/authoring/script_binding/assets/lux-script-semantics-project-fixture-v1.json
 )
 add_custom_target(toolchain_lua_script_importer SOURCES ${_lua_importer})
 lux_classify_target(

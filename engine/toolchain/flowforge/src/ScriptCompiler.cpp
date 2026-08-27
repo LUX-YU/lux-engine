@@ -7,19 +7,6 @@
 
 namespace lux::flowforge
 {
-    namespace
-    {
-        [[nodiscard]] lux::rdesc::ScriptValueType copyType(
-            const lux::script::ScriptSemanticType& type
-        )
-        {
-            return lux::rdesc::ScriptValueType{
-                std::string(type.canonical_name),
-                type.type_id,
-                type.pass};
-        }
-    }
-
     lux::cxx::expected<FlowForgeScriptArtifact, EFlowForgeCompileError>
     compileFlowForgeScript(
         std::string module_name,
@@ -60,12 +47,37 @@ namespace lux::flowforge
         result.abi.abi_version = LUX_SCRIPT_ABI_VERSION;
         result.abi.state = std::move(state);
 
+        struct GeneratedExport final
+        {
+            FlowForgeExportNodeId node;
+            std::size_t index{};
+        };
+        std::vector<GeneratedExport> generated_exports;
+        generated_exports.reserve(graph_exports.size());
         for (const auto& node : graph_exports)
         {
+            std::vector<lux::script::ScriptSemanticType> parameter_views;
+            std::vector<lux::script::ScriptSemanticType> return_views;
+            parameter_views.reserve(node.parameters.size());
+            return_views.reserve(node.returns.size());
+            for (const auto& parameter : node.parameters)
+            {
+                parameter_views.push_back({
+                    parameter.type_id,
+                    parameter.canonical_name,
+                    parameter.pass});
+            }
+            for (const auto& return_type : node.returns)
+            {
+                return_views.push_back({
+                    return_type.type_id,
+                    return_type.canonical_name,
+                    return_type.pass});
+            }
             const auto symbol = lux::script::scriptSymbolId(
                 result.description.module_name,
                 node.name,
-                {node.parameters, node.returns}
+                {parameter_views, return_views}
             );
             if (symbol == lux::script::InvalidScriptSymbolId ||
                 std::find(
@@ -79,38 +91,31 @@ namespace lux::flowforge
             lux::rdesc::ScriptFunction function;
             function.name = node.name;
             function.symbol_id = symbol;
-            function.args.reserve(node.parameters.size());
-            function.returns.reserve(node.returns.size());
-            for (const auto& parameter : node.parameters)
-                function.args.push_back(copyType(parameter));
-            for (const auto& return_type : node.returns)
-                function.returns.push_back(copyType(return_type));
+            function.args = node.parameters;
+            function.returns = node.returns;
+            generated_exports.push_back({
+                node.id,
+                result.description.exports.size()});
             result.description.exports.push_back(std::move(function));
             result.abi.symbols.push_back(symbol);
         }
 
         for (const auto& edge : graph_bindings)
         {
-            const auto node = std::find_if(
-                graph_exports.begin(),
-                graph_exports.end(),
-                [&](const ExportMethodNode& value) noexcept
+            const auto generated = std::find_if(
+                generated_exports.begin(),
+                generated_exports.end(),
+                [&](const GeneratedExport& value) noexcept
                 {
-                    return value.id == edge.export_node;
+                    return value.node == edge.export_node;
                 }
             );
-            const auto function = std::find_if(
-                result.description.exports.begin(),
-                result.description.exports.end(),
-                [&](const lux::rdesc::ScriptFunction& value) noexcept
-                {
-                    return value.name == node->name;
-                }
-            );
+            const auto& function =
+                result.description.exports[generated->index];
             if (lux::simulation::evaluateScriptBindingCompatibility(
                     simulation,
                     model,
-                    *function,
+                    function,
                     edge.target) !=
                 lux::simulation::EScriptBindingCompatibility::COMPATIBLE)
             {
@@ -118,7 +123,7 @@ namespace lux::flowforge
                     EFlowForgeCompileError::INCOMPATIBLE_BINDING);
             }
             result.binding_template.push_back({
-                function->symbol_id,
+                function.symbol_id,
                 edge.target});
         }
 

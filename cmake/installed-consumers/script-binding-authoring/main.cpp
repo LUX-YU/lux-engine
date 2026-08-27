@@ -64,7 +64,6 @@ int main()
         *targets
     );
     const auto compatible = lux::authoring::compatibleScriptBindingTargets(
-        *targets,
         script,
         symbol,
         catalog

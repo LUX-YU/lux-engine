@@ -5,6 +5,7 @@
 #include <lux/engine/simulation/SimulationDescription.hpp>
 
 #include <cstdint>
+#include <span>
 
 namespace lux::simulation
 {
@@ -19,6 +20,16 @@ namespace lux::simulation
         CARDINALITY_MISMATCH,
         SIGNATURE_MISMATCH,
     };
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
+    EScriptBindingCompatibility evaluateScriptBindingSignatureCompatibility(
+        lux::rdesc::EScriptModel source_model,
+        const lux::rdesc::ScriptFunction& function,
+        lux::rdesc::EScriptModel target_model,
+        ESystemHookCardinality cardinality,
+        std::span<const lux::rdesc::ScriptValueType> parameters,
+        std::span<const lux::rdesc::ScriptValueType> returns
+    ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
     EScriptBindingCompatibility evaluateScriptBindingCompatibility(

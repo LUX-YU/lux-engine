@@ -4,7 +4,7 @@ set(_python_importer
     ${CMAKE_CURRENT_SOURCE_DIR}/import_lux_python_script.py
 )
 set(_script_semantic_catalog
-    ${CMAKE_SOURCE_DIR}/engine/authoring/script_binding/assets/lux-script-semantics-v1.json
+    ${CMAKE_SOURCE_DIR}/engine/authoring/script_binding/assets/lux-script-semantics-project-fixture-v1.json
 )
 add_custom_target(
     toolchain_python_script_importer

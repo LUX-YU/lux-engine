@@ -62,9 +62,21 @@ namespace lux::authoring
             entry.parameters.reserve(hook.parameterCount());
             entry.returns.reserve(hook.returnCount());
             for (std::size_t index{}; index < hook.parameterCount(); ++index)
-                entry.parameters.push_back(hook.parameterAt(index));
+            {
+                const auto type = hook.parameterAt(index);
+                entry.parameters.push_back({
+                    std::string{type.canonical_name},
+                    type.type_id,
+                    type.pass});
+            }
             for (std::size_t index{}; index < hook.returnCount(); ++index)
-                entry.returns.push_back(hook.returnAt(index));
+            {
+                const auto type = hook.returnAt(index);
+                entry.returns.push_back({
+                    std::string{type.canonical_name},
+                    type.type_id,
+                    type.pass});
+            }
         }
 
         [[nodiscard]] lux::simulation::SimulationHookPointView resolveHook(
@@ -144,8 +156,8 @@ namespace lux::authoring
                 if (!event.payloadSchemaName().empty())
                 {
                     entry.parameters.push_back({
+                        std::string{event.payloadSchemaName()},
                         event.payloadSchemaHash(),
-                        event.payloadSchemaName(),
                         lux::script::EScriptPassMode::CONST_REF});
                 }
                 result.push_back(std::move(entry));
@@ -163,9 +175,9 @@ namespace lux::authoring
             if (point == EBehaviorLifecyclePoint::STOP)
             {
                 entry.parameters.push_back({
+                    std::string{BehaviorStopReasonCanonicalName},
                     lux::script::scriptSemanticTypeId(
                         BehaviorStopReasonCanonicalName),
-                    BehaviorStopReasonCanonicalName,
                     lux::script::EScriptPassMode::VALUE});
             }
             result.push_back(std::move(entry));
@@ -174,7 +186,6 @@ namespace lux::authoring
     }
 
     std::vector<std::size_t> compatibleScriptBindingTargets(
-        const lux::simulation::SimulationDescription& simulation,
         const lux::rdesc::Script& script,
         lux::script::ScriptSymbolId symbol,
         const std::vector<ScriptBindingTargetCatalogEntry>& catalog
@@ -187,11 +198,13 @@ namespace lux::authoring
         for (std::size_t index{}; index < catalog.size(); ++index)
         {
             if (catalog[index].model == script.model &&
-                lux::simulation::evaluateScriptBindingCompatibility(
-                    simulation,
+                lux::simulation::evaluateScriptBindingSignatureCompatibility(
                     script.model,
                     *function,
-                    catalog[index].target
+                    catalog[index].model,
+                    catalog[index].cardinality,
+                    catalog[index].parameters,
+                    catalog[index].returns
                 ) == lux::simulation::EScriptBindingCompatibility::COMPATIBLE)
             {
                 result.push_back(index);

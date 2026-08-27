@@ -17,8 +17,8 @@ namespace lux::authoring
         lux::simulation::ScriptBindingTarget target;
         lux::simulation::ESystemHookCardinality cardinality{
             lux::simulation::ESystemHookCardinality::MULTI};
-        std::vector<lux::script::ScriptSemanticType> parameters;
-        std::vector<lux::script::ScriptSemanticType> returns;
+        std::vector<lux::rdesc::ScriptValueType> parameters;
+        std::vector<lux::rdesc::ScriptValueType> returns;
     };
 
     enum class EScriptBindingAuthoringError : std::uint8_t
@@ -59,7 +59,6 @@ namespace lux::authoring
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
     std::vector<std::size_t> compatibleScriptBindingTargets(
-        const lux::simulation::SimulationDescription& simulation,
         const lux::rdesc::Script& script,
         lux::script::ScriptSymbolId symbol,
         const std::vector<ScriptBindingTargetCatalogEntry>& catalog

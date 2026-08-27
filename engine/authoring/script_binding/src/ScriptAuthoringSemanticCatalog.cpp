@@ -63,6 +63,40 @@ namespace lux::authoring
         }
     }
 
+    lux::cxx::expected<
+        ScriptAuthoringSemanticEntry,
+        EScriptAuthoringSemanticCatalogError>
+    makeScriptAuthoringRecordEntry(
+        std::string_view canonical_name,
+        std::uint32_t size,
+        std::uint32_t alignment
+    ) noexcept
+    {
+        if (canonical_name.empty() || size == 0U || alignment == 0U ||
+            (alignment & (alignment - 1U)) != 0U)
+        {
+            return lux::cxx::unexpected(
+                EScriptAuthoringSemanticCatalogError::INVALID_ENTRY);
+        }
+        try
+        {
+            return entry(
+                canonical_name,
+                LUX_SCRIPT_VK_STRUCT_REF,
+                size,
+                alignment,
+                {lux::script::EScriptPassMode::CONST_REF},
+                lux::script::EScriptPassMode::CONST_REF,
+                false
+            );
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(
+                EScriptAuthoringSemanticCatalogError::ALLOCATION_FAILURE);
+        }
+    }
+
     lux::cxx::expected<void, EScriptAuthoringSemanticCatalogError>
     ScriptAuthoringSemanticCatalog::add(
         ScriptAuthoringSemanticEntry value

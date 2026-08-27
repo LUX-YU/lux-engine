@@ -66,7 +66,7 @@ foreach(source IN LISTS production_sources)
     file(READ "${source}" content)
 
     if(content MATCHES
-       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|GlobalScriptBindingManager|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|TypedEntryCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)")
+       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|GlobalScriptBindingManager|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|TypedEntryCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' restores a retired SystemHook/ScriptBinding API."
         )

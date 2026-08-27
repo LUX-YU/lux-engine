@@ -38,12 +38,16 @@ int main()
         lux::rdesc::EScriptModel::ENTITY_BEHAVIOR);
     assert(asset->description.exports.size() == 1U);
     assert(asset->description.exports[0].name == "tick");
-    assert(asset->description.exports[0].args.size() == 2U);
+    assert(asset->description.exports[0].args.size() == 3U);
     assert(asset->description.exports[0].args[0].canonical_name ==
         "lux.simulation.SimulationStepInfo");
     assert(asset->description.exports[0].args[0].pass ==
         lux::script::EScriptPassMode::CONST_REF);
-    assert(asset->description.exports[0].args[1].canonical_name == "lux.f32");
+    assert(asset->description.exports[0].args[1].canonical_name ==
+        "lux.test.CollisionEvent");
+    assert(asset->description.exports[0].args[1].pass ==
+        lux::script::EScriptPassMode::CONST_REF);
+    assert(asset->description.exports[0].args[2].canonical_name == "lux.f32");
     assert(asset->description.exports[0].returns[0].canonical_name == "lux.i32");
     const auto encoded = codec.encode(
         asset.get(),

@@ -29,6 +29,10 @@ set(_LUX_MODULE_LAYOUT_ALLOWED_DIRS
     data
 )
 
+set(_LUX_MODULE_LAYOUT_NESTED_COMPONENTS
+    "resource/asset/script"
+)
+
 function(lux_validate_module_layout modules_root)
     file(GLOB_RECURSE _module_cmake_files
         RELATIVE "${modules_root}"
@@ -55,9 +59,11 @@ function(lux_validate_module_layout modules_root)
         foreach(_child IN LISTS _children)
             if(IS_DIRECTORY "${_child}")
                 get_filename_component(_child_name "${_child}" NAME)
-                if(NOT _child_name IN_LIST _LUX_MODULE_LAYOUT_ALLOWED_DIRS)
+                set(_child_relative "${_module_dir}/${_child_name}")
+                if(NOT _child_name IN_LIST _LUX_MODULE_LAYOUT_ALLOWED_DIRS AND
+                   NOT _child_relative IN_LIST _LUX_MODULE_LAYOUT_NESTED_COMPONENTS)
                     list(APPEND _violations
-                        "${_module_dir}/${_child_name}"
+                        "${_child_relative}"
                     )
                 endif()
             endif()

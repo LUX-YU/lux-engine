@@ -18,7 +18,7 @@ namespace lux::script
         CONST_REF,
     };
 
-    [[nodiscard]] consteval std::uint64_t scriptSemanticTypeId(
+    [[nodiscard]] constexpr std::uint64_t scriptSemanticTypeId(
         std::string_view canonical_name
     ) noexcept
     {

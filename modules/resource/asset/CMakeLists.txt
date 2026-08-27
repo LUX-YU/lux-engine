@@ -103,3 +103,5 @@ foreach(test_name IN ITEMS pak_archive_public_test asset_storage_contract_test)
     )
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+add_subdirectory(script)

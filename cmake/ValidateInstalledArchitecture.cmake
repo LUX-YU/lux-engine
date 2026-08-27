@@ -37,6 +37,21 @@ foreach(entry IN LISTS installed_entries)
     endif()
 endforeach()
 
+foreach(endpoint_header IN ITEMS
+    "${prefix}/include/lux/engine/simulation/HookPoint.hpp"
+    "${prefix}/include/lux/engine/simulation/EventPoint.hpp"
+)
+    if(EXISTS "${endpoint_header}")
+        file(READ "${endpoint_header}" endpoint_contract)
+        if(endpoint_contract MATCHES
+           "flushMutations|mutation_capacity|struct[ \t\r\n]+Mutation|mutations_")
+            message(FATAL_ERROR
+                "Installed endpoint restores deferred topology mutation: ${endpoint_header}"
+            )
+        endif()
+    endif()
+endforeach()
+
 file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
     "${prefix}/*.hpp"
     "${prefix}/*.h"

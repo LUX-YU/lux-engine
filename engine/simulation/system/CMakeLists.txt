@@ -29,6 +29,7 @@ target_link_libraries(
     system
     PUBLIC
         lux::engine::simulation::description
+        lux::engine::simulation::ecs::core
         EnTT::EnTT
         lux::cxx::compile_time
         lux::cxx::container
@@ -38,6 +39,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
 )
 
 lux_classify_target(

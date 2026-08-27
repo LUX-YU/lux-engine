@@ -257,7 +257,7 @@ namespace
         explicit HookState(std::size_t count)
         {
             counters.resize(count);
-            if (hook.prepare(count, count) != EEndpointMutationError::NONE)
+            if (hook.prepare(count) != EEndpointMutationError::NONE)
                 throw std::runtime_error("hook prepare failed");
             for (auto& counter : counters)
             {
@@ -267,8 +267,6 @@ namespace
                     }))
                     throw std::runtime_error("hook connect failed");
             }
-            if (hook.flushMutations() != EEndpointMutationError::NONE)
-                throw std::runtime_error("hook flush failed");
         }
         HookPoint<void()> hook;
         std::vector<std::size_t> counters;
@@ -278,12 +276,12 @@ namespace
     {
         explicit BroadcastState(std::size_t count)
         {
-            if (event.prepare(1U, count, 1U, 1U) !=
+            if (event.prepare(1U, count, 1U) !=
                 EEndpointMutationError::NONE ||
                 !event.connect(&callbacks, [](void* value, const auto&) noexcept
                 {
                     ++*static_cast<std::size_t*>(value);
-                }) || event.flushMutations() != EEndpointMutationError::NONE)
+                }))
                 throw std::runtime_error("event prepare failed");
             auto writer = event.begin(0U);
             for (std::size_t index{}; index < count; ++index)
@@ -323,12 +321,12 @@ namespace
     {
         explicit WorkerEventState(std::size_t count)
         {
-            if (event.prepare(4U, (count + 3U) / 4U, 1U, 1U) !=
+            if (event.prepare(4U, (count + 3U) / 4U, 1U) !=
                 EEndpointMutationError::NONE ||
                 !event.connect(&callbacks, [](void* value, const auto&) noexcept
                 {
                     ++*static_cast<std::size_t*>(value);
-                }) || event.flushMutations() != EEndpointMutationError::NONE)
+                }))
                 throw std::runtime_error("worker event prepare failed");
             lux::task::TaskGraphBuilder builder;
             for (std::size_t producer{}; producer < 4U; ++producer)

@@ -24,7 +24,6 @@ namespace lux::simulation::script
         void *context{};
         EndpointConnectResult (*connect)(void *, void *, ScriptHookLane) noexcept {};
         EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
-        EEndpointMutationError (*flush)(void *) noexcept {};
     };
 
     struct ScriptEventEndpointDescriptor final
@@ -36,7 +35,6 @@ namespace lux::simulation::script
         void *context{};
         EndpointConnectResult (*connect)(void *, void *, ScriptEventLane) noexcept {};
         EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
-        EEndpointMutationError (*flush)(void *) noexcept {};
     };
 
     namespace detail
@@ -90,8 +88,7 @@ namespace lux::simulation::script
                 lux::simulation::detail::EndpointSignatureStorage<void(Parameters...)>::view(),
                 this,
                 &connect,
-                &disconnect,
-                &flush
+                &disconnect
             };
         }
 
@@ -113,12 +110,6 @@ namespace lux::simulation::script
         {
             return static_cast<ScriptHookEndpoint *>(context)
                 ->endpoint_->disconnect(token);
-        }
-
-        static EEndpointMutationError flush(void *context) noexcept
-        {
-            return static_cast<ScriptHookEndpoint *>(context)
-                ->endpoint_->flushMutations();
         }
 
         static void dispatch(
@@ -186,8 +177,7 @@ namespace lux::simulation::script
                     lux::semantic::EValuePass::CONST_REF),
                 this,
                 &connect,
-                &disconnect,
-                &flush};
+                &disconnect};
         }
 
     private:
@@ -208,12 +198,6 @@ namespace lux::simulation::script
         {
             return static_cast<ScriptEventEndpoint *>(context)
                 ->endpoint_->disconnect(token);
-        }
-
-        static EEndpointMutationError flush(void *context) noexcept
-        {
-            return static_cast<ScriptEventEndpoint *>(context)
-                ->endpoint_->flushMutations();
         }
 
         static void dispatch(void *context, const Payload &payload) noexcept
@@ -266,8 +250,7 @@ namespace lux::simulation::script
                     lux::semantic::EValuePass::CONST_REF),
                 this,
                 &connect,
-                &disconnect,
-                &flush};
+                &disconnect};
         }
 
     private:
@@ -288,12 +271,6 @@ namespace lux::simulation::script
         {
             return static_cast<ScriptEventEndpoint *>(context)
                 ->endpoint_->disconnect(token);
-        }
-
-        static EEndpointMutationError flush(void *context) noexcept
-        {
-            return static_cast<ScriptEventEndpoint *>(context)
-                ->endpoint_->flushMutations();
         }
 
         static void dispatch(

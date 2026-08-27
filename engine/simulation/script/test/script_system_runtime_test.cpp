@@ -288,11 +288,9 @@ int main()
     HookPoint<void(const SimulationStepInfo&)> hook;
     EventPoint<SimulationBroadcastRoute, SimulationStepInfo> broadcast;
     EventPoint<EntityTargetedRoute<ecs::Entity>, SimulationStepInfo> targeted;
-    assert(hook.prepare(2U, 4U) == EEndpointMutationError::NONE);
-    assert(broadcast.prepare(1U, 4U, 2U, 4U) ==
-        EEndpointMutationError::NONE);
-    assert(targeted.prepare(1U, 4U, 2U, 4U) ==
-        EEndpointMutationError::NONE);
+    assert(hook.prepare(2U) == EEndpointMutationError::NONE);
+    assert(broadcast.prepare(1U, 4U, 2U) == EEndpointMutationError::NONE);
+    assert(targeted.prepare(1U, 4U, 2U) == EEndpointMutationError::NONE);
 
     ScriptHookEndpoint<void(const SimulationStepInfo&)> hook_bridge{
         kSystem,

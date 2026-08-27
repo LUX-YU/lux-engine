@@ -215,7 +215,7 @@ file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
     if(content MATCHES
-       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene")
+       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush")
         message(FATAL_ERROR
             "Architecture: replacement ScriptSystem source '${source}' restores a retired boundary."
         )
@@ -232,6 +232,12 @@ foreach(source IN LISTS generic_system_sources)
        "function/script|ScriptSemantic|ScriptCallFrame|BoundScriptCall|ScriptAsset")
         message(FATAL_ERROR
             "Architecture: generic System endpoint '${source}' depends on Script ABI."
+        )
+    endif()
+    if(content MATCHES
+       "flushMutations|mutation_capacity|struct[ \t\r\n]+Mutation|mutations_")
+        message(FATAL_ERROR
+            "Architecture: generic System endpoint '${source}' restores deferred topology mutation."
         )
     endif()
 endforeach()

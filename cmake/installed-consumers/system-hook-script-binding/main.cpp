@@ -188,8 +188,8 @@ int main()
     fixture.entity = registry.create();
     HookPoint<void(float)> value_hook;
     EventPoint<EntityTargetedRoute<ecs::Entity>, std::int32_t> pulse;
-    assert(value_hook.prepare(1U, 2U) == EEndpointMutationError::NONE);
-    assert(pulse.prepare(1U, 2U, 1U, 2U) == EEndpointMutationError::NONE);
+    assert(value_hook.prepare(1U) == EEndpointMutationError::NONE);
+    assert(pulse.prepare(1U, 2U, 1U) == EEndpointMutationError::NONE);
     ScriptHookEndpoint<void(float)> hook_bridge{
         SystemId,
         ValueHook,

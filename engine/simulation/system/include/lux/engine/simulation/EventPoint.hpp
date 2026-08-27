@@ -1,8 +1,10 @@
 #pragma once
 
 #include <lux/engine/simulation/HookPoint.hpp>
+#include <lux/engine/simulation/ecs/Entity.hpp>
 
-#include <algorithm>
+#include <entt/entity/sparse_set.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <new>
@@ -28,32 +30,33 @@ namespace lux::simulation
 
     namespace detail
     {
-        template <class Target, class Payload, class Callback>
-        class EventPointStorage final
+        template <class Target, class Payload>
+        class EventOccurrenceBuffer final
         {
-          public:
+        public:
             struct Occurrence final
             {
                 Target target;
                 Payload payload;
             };
 
-            struct Writer final
+            class Writer final
             {
+            public:
                 Writer() noexcept = default;
-                Writer(const Writer&) = delete;
-                Writer& operator=(const Writer&) = delete;
+                Writer(const Writer &) = delete;
+                Writer &operator=(const Writer &) = delete;
 
-                Writer(Writer&& other) noexcept
-                    : storage_(std::exchange(other.storage_, nullptr)),
-                      producer_(other.producer_)
+                Writer(Writer &&other) noexcept
+                    : storage_(std::exchange(other.storage_, nullptr)), producer_(other.producer_)
                 {
                 }
 
-                Writer& operator=(Writer&& other) noexcept
+                Writer &operator=(Writer &&other) noexcept
                 {
                     if (this == &other)
                         return *this;
+
                     release();
                     storage_ = std::exchange(other.storage_, nullptr);
                     producer_ = other.producer_;
@@ -67,77 +70,58 @@ namespace lux::simulation
 
                 [[nodiscard]] bool record(Target target, Payload payload) noexcept
                 {
-                    if (storage_ == nullptr)
-                        return false;
-                    auto& values = storage_->producers_[producer_];
-                    if (values.size() >= storage_->producer_capacity_)
-                        return false;
-                    try
-                    {
-                        values.push_back({
-                            std::move(target),
-                            std::move(payload)});
-                        return true;
-                    }
-                    catch (...)
-                    {
-                        return false;
-                    }
+                    return storage_ != nullptr && storage_->record(producer_, std::move(target), std::move(payload));
                 }
 
-              private:
-                Writer(EventPointStorage& storage, std::size_t producer) noexcept
+            private:
+                Writer(EventOccurrenceBuffer &storage, std::size_t producer) noexcept
                     : storage_(&storage), producer_(producer)
                 {
-                    ++storage_->active_writers_;
+                    storage_->writer_active_[producer_] = 1U;
                 }
 
                 void release() noexcept
                 {
                     if (storage_ == nullptr)
                         return;
-                    --storage_->active_writers_;
+
+                    storage_->writer_active_[producer_] = 0U;
                     storage_ = nullptr;
                 }
 
-                EventPointStorage* storage_{};
+                EventOccurrenceBuffer *storage_{};
                 std::size_t producer_{};
-                friend class EventPointStorage;
+                friend class EventOccurrenceBuffer;
             };
 
-            EventPointStorage() = default;
-            EventPointStorage(const EventPointStorage&) = delete;
-            EventPointStorage& operator=(const EventPointStorage&) = delete;
-            EventPointStorage(EventPointStorage&&) = delete;
-            EventPointStorage& operator=(EventPointStorage&&) = delete;
+            EventOccurrenceBuffer() = default;
+            EventOccurrenceBuffer(const EventOccurrenceBuffer &) = delete;
+            EventOccurrenceBuffer &operator=(const EventOccurrenceBuffer &) = delete;
+            EventOccurrenceBuffer(EventOccurrenceBuffer &&) = delete;
+            EventOccurrenceBuffer &operator=(EventOccurrenceBuffer &&) = delete;
 
             [[nodiscard]] EEndpointMutationError prepare(
                 std::size_t producer_count,
-                std::size_t producer_capacity,
-                std::size_t handler_capacity,
-                std::size_t mutation_capacity
-            ) noexcept
+                std::size_t producer_capacity) noexcept
             {
-                if (active_writers_ != 0U)
+                if (draining_)
+                    return EEndpointMutationError::DISPATCH_ACTIVE;
+                if (hasActiveWriter())
                     return EEndpointMutationError::WRITER_ACTIVE;
+
                 try
                 {
                     producers_.clear();
                     producers_.resize(producer_count);
-                    for (auto& producer : producers_)
+                    for (auto &producer : producers_)
                         producer.reserve(producer_capacity);
-                    handlers_.clear();
-                    handlers_.reserve(handler_capacity);
-                    mutations_.clear();
-                    mutations_.reserve(mutation_capacity);
+
+                    writer_active_.assign(producer_count, 0U);
                     producer_capacity_ = producer_capacity;
-                    handler_capacity_ = handler_capacity;
-                    mutation_capacity_ = mutation_capacity;
-                    next_token_ = 1U;
                     prepared_ = true;
                     return EEndpointMutationError::NONE;
                 }
-                catch (const std::bad_alloc&)
+                catch (const std::bad_alloc &)
                 {
                     prepared_ = false;
                     return EEndpointMutationError::ALLOCATION_FAILURE;
@@ -146,145 +130,35 @@ namespace lux::simulation
 
             [[nodiscard]] Writer begin(std::size_t producer) noexcept
             {
-                if (!prepared_ || draining_ || producer >= producers_.size())
+                const bool is_invalid_producer = producer >= producers_.size();
+                if (!prepared_ || draining_ || is_invalid_producer || writer_active_[producer] != 0U)
                     return {};
                 return Writer(*this, producer);
             }
 
-            [[nodiscard]] EndpointConnectResult connect(
-                Target target,
-                void* context,
-                Callback callback,
-                bool match_all = false
-            ) noexcept
-            {
-                if (!prepared_)
-                    return {{}, EEndpointMutationError::NOT_PREPARED};
-                if (callback == nullptr)
-                    return {{}, EEndpointMutationError::INVALID_CALLBACK};
-                const auto pending_connects =
-                    static_cast<std::size_t>(std::count_if(
-                        mutations_.begin(),
-                        mutations_.end(),
-                        [](const Mutation& value) noexcept
-                        {
-                            return value.connect;
-                        }
-                    ));
-                if (handlers_.size() + pending_connects >= handler_capacity_ ||
-                    mutations_.size() >= mutation_capacity_)
-                {
-                    return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
-                }
-                auto token = EndpointConnectionToken{next_token_++};
-                if (!token.valid())
-                    token = EndpointConnectionToken{next_token_++};
-                mutations_.push_back({
-                    true,
-                    token,
-                    std::move(target),
-                    context,
-                    callback,
-                    match_all});
-                return {token, EEndpointMutationError::NONE};
-            }
-
-            [[nodiscard]] EEndpointMutationError disconnect(
-                EndpointConnectionToken token
-            ) noexcept
+            [[nodiscard]] EEndpointMutationError mutationError() const noexcept
             {
                 if (!prepared_)
                     return EEndpointMutationError::NOT_PREPARED;
-                if (!token.valid())
-                    return EEndpointMutationError::INVALID_TOKEN;
-                if (mutations_.size() >= mutation_capacity_)
-                    return EEndpointMutationError::CAPACITY_EXCEEDED;
-                mutations_.push_back({
-                    false,
-                    token,
-                    {},
-                    nullptr,
-                    nullptr,
-                    false});
-                return EEndpointMutationError::NONE;
-            }
-
-            [[nodiscard]] EEndpointMutationError flushMutations() noexcept
-            {
-                if (!prepared_)
-                    return EEndpointMutationError::NOT_PREPARED;
-                if (active_writers_ != 0U)
-                    return EEndpointMutationError::WRITER_ACTIVE;
                 if (draining_)
                     return EEndpointMutationError::DISPATCH_ACTIVE;
-                for (auto& mutation : mutations_)
-                {
-                    if (mutation.connect)
-                    {
-                        handlers_.push_back({
-                            mutation.token,
-                            std::move(mutation.target),
-                            mutation.context,
-                            mutation.callback,
-                            mutation.match_all,
-                            true});
-                        continue;
-                    }
-                    const auto found = std::find_if(
-                        handlers_.begin(),
-                        handlers_.end(),
-                        [&](const Handler& handler) noexcept
-                        {
-                            return handler.token == mutation.token;
-                        }
-                    );
-                    if (found != handlers_.end())
-                        found->active = false;
-                }
-                mutations_.clear();
-                handlers_.erase(
-                    std::remove_if(
-                        handlers_.begin(),
-                        handlers_.end(),
-                        [](const Handler& handler) noexcept
-                        {
-                            return !handler.active;
-                        }
-                    ),
-                    handlers_.end()
-                );
+                if (hasActiveWriter())
+                    return EEndpointMutationError::WRITER_ACTIVE;
                 return EEndpointMutationError::NONE;
             }
 
             template <class Invoke>
-            [[nodiscard]] std::size_t drain(Invoke&& invoke) noexcept
+            [[nodiscard]] std::size_t drain(Invoke &&invoke) noexcept
             {
-                if (!prepared_ || active_writers_ != 0U || draining_)
+                if (mutationError() != EEndpointMutationError::NONE)
                     return 0U;
+
                 draining_ = true;
                 std::size_t calls{};
-                for (auto& producer : producers_)
+                for (auto &producer : producers_)
                 {
-                    for (auto& occurrence : producer)
-                    {
-                        for (const auto& handler : handlers_)
-                        {
-                            if (!handler.active ||
-                                (!handler.match_all &&
-                                !invoke.matches(handler.target, occurrence.target))
-                                )
-                            {
-                                continue;
-                            }
-                            invoke.call(
-                                handler.callback,
-                                handler.context,
-                                occurrence.target,
-                                occurrence.payload
-                            );
-                            ++calls;
-                        }
-                    }
+                    for (auto &occurrence : producer)
+                        calls += invoke(occurrence);
                     producer.clear();
                 }
                 draining_ = false;
@@ -294,40 +168,42 @@ namespace lux::simulation
             [[nodiscard]] std::size_t pendingOccurrenceCount() const noexcept
             {
                 std::size_t result{};
-                for (const auto& producer : producers_)
+                for (const auto &producer : producers_)
                     result += producer.size();
                 return result;
             }
 
-          private:
-            struct Handler final
+        private:
+            [[nodiscard]] bool record(std::size_t producer, Target target, Payload payload) noexcept
             {
-                EndpointConnectionToken token;
-                Target target;
-                void* context{};
-                Callback callback{};
-                bool match_all{};
-                bool active{};
-            };
+                auto &values = producers_[producer];
+                if (values.size() >= producer_capacity_)
+                    return false;
 
-            struct Mutation final
+                try
+                {
+                    values.push_back({std::move(target), std::move(payload)});
+                    return true;
+                }
+                catch (...)
+                {
+                    return false;
+                }
+            }
+
+            [[nodiscard]] bool hasActiveWriter() const noexcept
             {
-                bool connect{};
-                EndpointConnectionToken token;
-                Target target;
-                void* context{};
-                Callback callback{};
-                bool match_all{};
-            };
+                for (const auto active : writer_active_)
+                {
+                    if (active != 0U)
+                        return true;
+                }
+                return false;
+            }
 
             std::vector<std::vector<Occurrence>> producers_;
-            std::vector<Handler> handlers_;
-            std::vector<Mutation> mutations_;
+            std::vector<std::uint8_t> writer_active_;
             std::size_t producer_capacity_{};
-            std::size_t handler_capacity_{};
-            std::size_t mutation_capacity_{};
-            std::size_t active_writers_{};
-            std::uint64_t next_token_{1U};
             bool prepared_{};
             bool draining_{};
         };
@@ -336,225 +212,458 @@ namespace lux::simulation
     template <class Payload>
     class EventPoint<SimulationBroadcastRoute, Payload> final
     {
-      public:
-        using Callback = void (*)(void*, const Payload&) noexcept;
+    public:
+        using Callback = void (*)(void *, const Payload &) noexcept;
 
-      private:
-        using Storage = detail::EventPointStorage<
-            std::monostate,
-            Payload,
-            Callback>;
+    private:
+        using Buffer = detail::EventOccurrenceBuffer<std::monostate, Payload>;
+        using BufferWriter = typename Buffer::Writer;
 
-        struct Invoke final
+        struct HandlerTag;
+
+        struct Handler final
         {
-            [[nodiscard]] bool matches(
-                std::monostate,
-                std::monostate
-            ) const noexcept
-            {
-                return true;
-            }
-
-            void call(
-                Callback callback,
-                void* context,
-                std::monostate,
-                const Payload& payload
-            ) const noexcept
-            {
-                callback(context, payload);
-            }
+            void *context{};
+            Callback callback{};
         };
 
-      public:
-        using WriterStorage = typename Storage::Writer;
+        using HandlerStorage = lux::cxx::SlotMap<Handler, HandlerTag>;
+        using HandlerKey = typename HandlerStorage::key_type;
 
+    public:
         class Writer final
         {
-          public:
+        public:
             Writer() noexcept = default;
-            Writer(const Writer&) = delete;
-            Writer& operator=(const Writer&) = delete;
-            Writer(Writer&&) noexcept = default;
-            Writer& operator=(Writer&&) noexcept = default;
+            Writer(const Writer &) = delete;
+            Writer &operator=(const Writer &) = delete;
+            Writer(Writer &&) noexcept = default;
+            Writer &operator=(Writer &&) noexcept = default;
 
             [[nodiscard]] bool record(Payload payload) noexcept
             {
                 return writer_.record({}, std::move(payload));
             }
 
-          private:
-            explicit Writer(WriterStorage writer) noexcept
-                : writer_(std::move(writer))
+        private:
+            explicit Writer(BufferWriter writer) noexcept : writer_(std::move(writer))
             {
             }
-            WriterStorage writer_;
+
+            BufferWriter writer_;
             friend class EventPoint;
         };
 
         EventPoint() = default;
-        EventPoint(const EventPoint&) = delete;
-        EventPoint& operator=(const EventPoint&) = delete;
-        EventPoint(EventPoint&&) = delete;
-        EventPoint& operator=(EventPoint&&) = delete;
+        EventPoint(const EventPoint &) = delete;
+        EventPoint &operator=(const EventPoint &) = delete;
+        EventPoint(EventPoint &&) = delete;
+        EventPoint &operator=(EventPoint &&) = delete;
 
         [[nodiscard]] EEndpointMutationError prepare(
             std::size_t producer_count,
             std::size_t producer_capacity,
-            std::size_t handler_capacity,
-            std::size_t mutation_capacity
-        ) noexcept
+            std::size_t handler_capacity) noexcept
         {
-            return storage_.prepare(
-                producer_count,
-                producer_capacity,
-                handler_capacity,
-                mutation_capacity
-            );
+            const auto busy = buffer_.mutationError();
+            if (prepared_ && busy != EEndpointMutationError::NONE)
+                return busy;
+
+            const auto prepared = buffer_.prepare(producer_count, producer_capacity);
+            if (prepared != EEndpointMutationError::NONE)
+                return prepared;
+
+            try
+            {
+                handlers_.clear();
+                handlers_.reserve(handler_capacity);
+                handler_capacity_ = handler_capacity;
+                prepared_ = true;
+                return EEndpointMutationError::NONE;
+            }
+            catch (const std::bad_alloc &)
+            {
+                prepared_ = false;
+                return EEndpointMutationError::ALLOCATION_FAILURE;
+            }
         }
 
         [[nodiscard]] Writer begin(std::size_t producer) noexcept
         {
-            return Writer(storage_.begin(producer));
+            return prepared_ ? Writer(buffer_.begin(producer)) : Writer{};
         }
 
-        [[nodiscard]] EndpointConnectResult connect(
-            void* context,
-            Callback callback
-        ) noexcept
+        [[nodiscard]] EndpointConnectResult connect(void *context, Callback callback) noexcept
         {
-            return storage_.connect({}, context, callback);
+            const auto error = topologyMutationError(callback);
+            if (error != EEndpointMutationError::NONE)
+                return {{}, error};
+            if (handlers_.size() >= handler_capacity_)
+                return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
+
+            const auto inserted = handlers_.tryEmplace(Handler{context, callback});
+            if (!inserted)
+                return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
+            return {toToken(*inserted), EEndpointMutationError::NONE};
         }
 
-        [[nodiscard]] EEndpointMutationError disconnect(
-            EndpointConnectionToken token
-        ) noexcept
+        [[nodiscard]] EEndpointMutationError disconnect(EndpointConnectionToken token) noexcept
         {
-            return storage_.disconnect(token);
-        }
-
-        [[nodiscard]] EEndpointMutationError flushMutations() noexcept
-        {
-            return storage_.flushMutations();
+            const auto error = topologyMutationError();
+            if (error != EEndpointMutationError::NONE)
+                return error;
+            if (!token.valid() || !handlers_.erase(toKey(token)))
+                return EEndpointMutationError::INVALID_TOKEN;
+            return EEndpointMutationError::NONE;
         }
 
         [[nodiscard]] std::size_t drain() noexcept
         {
-            return storage_.drain(Invoke{});
+            return buffer_.drain(
+                [&](const typename Buffer::Occurrence &occurrence) noexcept
+                {
+                    std::size_t calls{};
+                    for (const auto &handler : handlers_.values())
+                    {
+                        handler.callback(handler.context, occurrence.payload);
+                        ++calls;
+                    }
+                    return calls;
+                }
+            );
         }
 
         [[nodiscard]] std::size_t pendingOccurrenceCount() const noexcept
         {
-            return storage_.pendingOccurrenceCount();
+            return buffer_.pendingOccurrenceCount();
         }
 
-      private:
-        Storage storage_;
+        [[nodiscard]] std::size_t handlerCount() const noexcept
+        {
+            return handlers_.size();
+        }
+
+    private:
+        [[nodiscard]] EEndpointMutationError topologyMutationError(Callback callback) const noexcept
+        {
+            if (!prepared_)
+                return EEndpointMutationError::NOT_PREPARED;
+
+            const auto busy = buffer_.mutationError();
+            if (busy != EEndpointMutationError::NONE)
+                return busy;
+            if (callback == nullptr)
+                return EEndpointMutationError::INVALID_CALLBACK;
+            return EEndpointMutationError::NONE;
+        }
+
+        [[nodiscard]] EEndpointMutationError topologyMutationError() const noexcept
+        {
+            if (!prepared_)
+                return EEndpointMutationError::NOT_PREPARED;
+            return buffer_.mutationError();
+        }
+
+        [[nodiscard]] static constexpr EndpointConnectionToken toToken(HandlerKey key) noexcept
+        {
+            return {key.index, key.gen};
+        }
+
+        [[nodiscard]] static constexpr HandlerKey toKey(EndpointConnectionToken token) noexcept
+        {
+            return {token.slot, token.generation};
+        }
+
+        Buffer buffer_;
+        HandlerStorage handlers_;
+        std::size_t handler_capacity_{};
+        bool prepared_{};
     };
 
-    template <class Target, class Payload>
-    class EventPoint<EntityTargetedRoute<Target>, Payload> final
+    template <class Payload>
+    class EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> final
     {
-      public:
-        using Callback = void (*)(
-            void*,
-            const Target&,
-            const Payload&
-        ) noexcept;
+    public:
+        using Callback = void (*)(void *, const ecs::Entity &, const Payload &) noexcept;
 
-      private:
-        using Storage = detail::EventPointStorage<Target, Payload, Callback>;
+    private:
+        using Buffer = detail::EventOccurrenceBuffer<ecs::Entity, Payload>;
 
-        struct Invoke final
+        struct HandlerTag;
+
+        struct Handler;
+        using HandlerStorage = lux::cxx::SlotMap<Handler, HandlerTag>;
+        using HandlerKey = typename HandlerStorage::key_type;
+
+        struct Handler final
         {
-            [[nodiscard]] bool matches(
-                const Target& subscribed,
-                const Target& occurrence
-            ) const noexcept
-            {
-                return subscribed == occurrence;
-            }
-
-            void call(
-                Callback callback,
-                void* context,
-                const Target& target,
-                const Payload& payload
-            ) const noexcept
-            {
-                callback(context, target, payload);
-            }
+            ecs::Entity target{ecs::NullEntity};
+            void *context{};
+            Callback callback{};
+            bool match_all{};
+            HandlerKey previous{HandlerKey::invalid()};
+            HandlerKey next{HandlerKey::invalid()};
         };
 
-      public:
-        using Writer = typename Storage::Writer;
+        struct TargetBucket final
+        {
+            HandlerKey head{HandlerKey::invalid()};
+            std::size_t size{};
+        };
+
+    public:
+        using Writer = typename Buffer::Writer;
 
         EventPoint() = default;
-        EventPoint(const EventPoint&) = delete;
-        EventPoint& operator=(const EventPoint&) = delete;
-        EventPoint(EventPoint&&) = delete;
-        EventPoint& operator=(EventPoint&&) = delete;
+        EventPoint(const EventPoint &) = delete;
+        EventPoint &operator=(const EventPoint &) = delete;
+        EventPoint(EventPoint &&) = delete;
+        EventPoint &operator=(EventPoint &&) = delete;
 
         [[nodiscard]] EEndpointMutationError prepare(
             std::size_t producer_count,
             std::size_t producer_capacity,
-            std::size_t handler_capacity,
-            std::size_t mutation_capacity
-        ) noexcept
+            std::size_t handler_capacity) noexcept
         {
-            return storage_.prepare(
-                producer_count,
-                producer_capacity,
-                handler_capacity,
-                mutation_capacity
-            );
+            const auto busy = buffer_.mutationError();
+            if (prepared_ && busy != EEndpointMutationError::NONE)
+                return busy;
+
+            const auto prepared = buffer_.prepare(producer_count, producer_capacity);
+            if (prepared != EEndpointMutationError::NONE)
+                return prepared;
+
+            try
+            {
+                handlers_.clear();
+                handlers_.reserve(handler_capacity);
+                target_index_.clear();
+                target_index_.reserve(handler_capacity);
+                target_buckets_.clear();
+                target_buckets_.reserve(handler_capacity);
+                all_bucket_ = {};
+                handler_capacity_ = handler_capacity;
+                prepared_ = true;
+                return EEndpointMutationError::NONE;
+            }
+            catch (const std::bad_alloc &)
+            {
+                prepared_ = false;
+                return EEndpointMutationError::ALLOCATION_FAILURE;
+            }
         }
 
         [[nodiscard]] Writer begin(std::size_t producer) noexcept
         {
-            return storage_.begin(producer);
+            return prepared_ ? buffer_.begin(producer) : Writer{};
         }
 
         [[nodiscard]] EndpointConnectResult connect(
-            Target target,
-            void* context,
-            Callback callback
-        ) noexcept
+            ecs::Entity target,
+            void *context,
+            Callback callback) noexcept
         {
-            return storage_.connect(std::move(target), context, callback);
+            if (target == ecs::NullEntity)
+                return {{}, EEndpointMutationError::INVALID_TARGET};
+            return connectImpl(target, context, callback, false);
         }
 
-        [[nodiscard]] EndpointConnectResult connectAll(
-            void* context,
-            Callback callback
-        ) noexcept
+        [[nodiscard]] EndpointConnectResult connectAll(void *context, Callback callback) noexcept
         {
-            return storage_.connect({}, context, callback, true);
+            return connectImpl(ecs::NullEntity, context, callback, true);
         }
 
-        [[nodiscard]] EEndpointMutationError disconnect(
-            EndpointConnectionToken token
-        ) noexcept
+        [[nodiscard]] EEndpointMutationError disconnect(EndpointConnectionToken token) noexcept
         {
-            return storage_.disconnect(token);
-        }
+            const auto error = topologyMutationError();
+            if (error != EEndpointMutationError::NONE)
+                return error;
+            if (!token.valid())
+                return EEndpointMutationError::INVALID_TOKEN;
 
-        [[nodiscard]] EEndpointMutationError flushMutations() noexcept
-        {
-            return storage_.flushMutations();
+            const auto key = toKey(token);
+            const auto *stored = handlers_.find(key);
+            if (stored == nullptr)
+                return EEndpointMutationError::INVALID_TOKEN;
+
+            const Handler handler = *stored;
+            auto &bucket = handler.match_all ? all_bucket_ : targetBucket(handler.target);
+            if (handler.previous.isValid())
+                handlers_[handler.previous].next = handler.next;
+            else
+                bucket.head = handler.next;
+            if (handler.next.isValid())
+                handlers_[handler.next].previous = handler.previous;
+
+            --bucket.size;
+            const bool remove_target = !handler.match_all && bucket.size == 0U;
+            handlers_.erase(key);
+            if (remove_target)
+                eraseTarget(handler.target);
+            return EEndpointMutationError::NONE;
         }
 
         [[nodiscard]] std::size_t drain() noexcept
         {
-            return storage_.drain(Invoke{});
+            return buffer_.drain(
+                [&](const typename Buffer::Occurrence &occurrence) noexcept
+                {
+                    std::size_t calls = invokeBucket(all_bucket_, occurrence);
+                    if (target_index_.contains(occurrence.target))
+                        calls += invokeBucket(targetBucket(occurrence.target), occurrence);
+                    return calls;
+                }
+            );
         }
 
         [[nodiscard]] std::size_t pendingOccurrenceCount() const noexcept
         {
-            return storage_.pendingOccurrenceCount();
+            return buffer_.pendingOccurrenceCount();
         }
 
-      private:
-        Storage storage_;
+        [[nodiscard]] std::size_t handlerCount() const noexcept
+        {
+            return handlers_.size();
+        }
+
+        [[nodiscard]] std::size_t targetBucketCount() const noexcept
+        {
+            return target_buckets_.size();
+        }
+
+    private:
+        [[nodiscard]] EndpointConnectResult connectImpl(
+            ecs::Entity target,
+            void *context,
+            Callback callback,
+            bool match_all) noexcept
+        {
+            const auto error = topologyMutationError(callback);
+            if (error != EEndpointMutationError::NONE)
+                return {{}, error};
+            if (handlers_.size() >= handler_capacity_)
+                return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
+
+            bool inserted_target{};
+            TargetBucket *bucket = &all_bucket_;
+            if (!match_all)
+            {
+                if (!target_index_.contains(target))
+                {
+                    try
+                    {
+                        target_index_.push(target);
+                        target_buckets_.push_back({});
+                        inserted_target = true;
+                    }
+                    catch (const std::bad_alloc &)
+                    {
+                        return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
+                    }
+                }
+                bucket = &targetBucket(target);
+            }
+
+            const auto old_head = bucket->head;
+            const auto inserted = handlers_.tryEmplace(
+                Handler{
+                    target,
+                    context,
+                    callback,
+                    match_all,
+                    HandlerKey::invalid(),
+                    old_head
+                }
+            );
+            if (!inserted)
+            {
+                if (inserted_target)
+                    eraseTarget(target);
+                return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
+            }
+
+            if (old_head.isValid())
+                handlers_[old_head].previous = *inserted;
+            bucket->head = *inserted;
+            ++bucket->size;
+            return {toToken(*inserted), EEndpointMutationError::NONE};
+        }
+
+        [[nodiscard]] std::size_t invokeBucket(
+            const TargetBucket &bucket,
+            const typename Buffer::Occurrence &occurrence) noexcept
+        {
+            std::size_t calls{};
+            auto key = bucket.head;
+            while (key.isValid())
+            {
+                const auto *handler = handlers_.find(key);
+                if (handler == nullptr)
+                    break;
+
+                const auto next = handler->next;
+                handler->callback(handler->context, occurrence.target, occurrence.payload);
+                ++calls;
+                key = next;
+            }
+            return calls;
+        }
+
+        [[nodiscard]] TargetBucket &targetBucket(ecs::Entity target) noexcept
+        {
+            return target_buckets_[target_index_.index(target)];
+        }
+
+        [[nodiscard]] const TargetBucket &targetBucket(ecs::Entity target) const noexcept
+        {
+            return target_buckets_[target_index_.index(target)];
+        }
+
+        void eraseTarget(ecs::Entity target) noexcept
+        {
+            const auto index = target_index_.index(target);
+            target_index_.erase(target);
+            if (index + 1U != target_buckets_.size())
+                target_buckets_[index] = std::move(target_buckets_.back());
+            target_buckets_.pop_back();
+        }
+
+        [[nodiscard]] EEndpointMutationError topologyMutationError(Callback callback) const noexcept
+        {
+            if (!prepared_)
+                return EEndpointMutationError::NOT_PREPARED;
+
+            const auto busy = buffer_.mutationError();
+            if (busy != EEndpointMutationError::NONE)
+                return busy;
+            if (callback == nullptr)
+                return EEndpointMutationError::INVALID_CALLBACK;
+            return EEndpointMutationError::NONE;
+        }
+
+        [[nodiscard]] EEndpointMutationError topologyMutationError() const noexcept
+        {
+            if (!prepared_)
+                return EEndpointMutationError::NOT_PREPARED;
+            return buffer_.mutationError();
+        }
+
+        [[nodiscard]] static constexpr EndpointConnectionToken toToken(HandlerKey key) noexcept
+        {
+            return {key.index, key.gen};
+        }
+
+        [[nodiscard]] static constexpr HandlerKey toKey(EndpointConnectionToken token) noexcept
+        {
+            return {token.slot, token.generation};
+        }
+
+        Buffer buffer_;
+        HandlerStorage handlers_;
+        entt::basic_sparse_set<ecs::Entity> target_index_;
+        std::vector<TargetBucket> target_buckets_;
+        TargetBucket all_bucket_;
+        std::size_t handler_capacity_{};
+        bool prepared_{};
     };
 }

@@ -816,7 +816,6 @@ namespace lux::simulation::script
                         bucket.endpoint->context,
                         bucket.token
                     );
-                    bucket.endpoint->flush(bucket.endpoint->context);
                     bucket.token = {};
                 }
             }
@@ -828,7 +827,6 @@ namespace lux::simulation::script
                         bucket.endpoint->context,
                         bucket.token
                     );
-                    bucket.endpoint->flush(bucket.endpoint->context);
                     bucket.token = {};
                 }
             }
@@ -878,8 +876,7 @@ namespace lux::simulation::script
             );
             if (!hooks[index].system.valid() || !hooks[index].hook.valid() ||
                 !hooks[index].connect || !hooks[index].disconnect ||
-                !hooks[index].flush || !described ||
-                described.parameterCount() !=
+                !described || described.parameterCount() !=
                     hooks[index].signature.parameters.size() ||
                 !hooks[index].signature.returns.empty())
             {
@@ -913,8 +910,7 @@ namespace lux::simulation::script
             );
             if (!events[index].system.valid() || !events[index].event.valid() ||
                 !events[index].connect || !events[index].disconnect ||
-                !events[index].flush || !described ||
-                described.route() != events[index].route ||
+                !described || described.route() != events[index].route ||
                 described.payloadType() != events[index].payload_type.type_id ||
                 described.payloadSchemaName() !=
                     events[index].payload_type.canonical_name ||
@@ -1022,13 +1018,6 @@ namespace lux::simulation::script
                         EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
                 }
                 bucket.token = connected.token;
-                if (bucket.endpoint->flush(bucket.endpoint->context) !=
-                    EEndpointMutationError::NONE)
-                {
-                    static_cast<void>(shutdown());
-                    return lux::cxx::unexpected(
-                        EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
-                }
             }
             for (auto& bucket : state_->events)
             {
@@ -1044,13 +1033,6 @@ namespace lux::simulation::script
                         EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
                 }
                 bucket.token = connected.token;
-                if (bucket.endpoint->flush(bucket.endpoint->context) !=
-                    EEndpointMutationError::NONE)
-                {
-                    static_cast<void>(shutdown());
-                    return lux::cxx::unexpected(
-                        EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
-                }
             }
             state_->dirty_current.clear();
             state_->dirty_processing.clear();

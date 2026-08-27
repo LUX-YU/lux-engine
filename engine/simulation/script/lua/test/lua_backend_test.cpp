@@ -1,6 +1,8 @@
 #include <lux/engine/simulation/script/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 
+#include <lua.hpp>
+
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -13,6 +15,28 @@
 
 namespace
 {
+    struct CollisionEvent final
+    {
+        std::int32_t body{};
+        float impulse{};
+    };
+
+    bool pushCollisionEvent(
+        void*,
+        void* opaque_state,
+        const void* opaque_value
+    ) noexcept
+    {
+        auto* state = static_cast<lua_State*>(opaque_state);
+        const auto& value = *static_cast<const CollisionEvent*>(opaque_value);
+        lua_createtable(state, 0, 2);
+        lua_pushinteger(state, value.body);
+        lua_setfield(state, -2, "body");
+        lua_pushnumber(state, value.impulse);
+        lua_setfield(state, -2, "impulse");
+        return true;
+    }
+
     lux_script_call_frame makeFrame(
         std::int32_t delta,
         std::int32_t expected,
@@ -99,7 +123,18 @@ int main()
     health_binding.name.clear();
     health_binding.canonical_name.clear();
 
-    auto created_backend = LuaScriptBackend::create(4U);
+    const LuaRecordMarshaller collision_marshaller{
+        lux::script::scriptSemanticTypeId("lux.physics.CollisionEvent"),
+        "lux.physics.CollisionEvent",
+        sizeof(CollisionEvent),
+        alignof(CollisionEvent),
+        nullptr,
+        &pushCollisionEvent};
+    auto created_backend = LuaScriptBackend::create(
+        4U,
+        {},
+        std::span{&collision_marshaller, 1U}
+    );
     assert(created_backend);
     auto backend = std::move(*created_backend);
     assert(backend);
@@ -130,10 +165,30 @@ int main()
         16U,
         {},
         {boolean}};
+    const lux::rdesc::ScriptFunction on_collision{
+        "on_collision",
+        17U,
+        {{
+            "lux.physics.CollisionEvent",
+            lux::script::scriptSemanticTypeId(
+                "lux.physics.CollisionEvent"
+            ),
+            lux::script::EScriptPassMode::CONST_REF,
+            LUX_SCRIPT_VK_STRUCT_REF,
+            sizeof(CollisionEvent),
+            alignof(CollisionEvent)}},
+        {}};
+    const lux::rdesc::ScriptFunction collision_count{
+        "collision_count",
+        18U,
+        {},
+        {i32}};
     asset.description.exports.push_back(function);
     asset.description.exports.push_back(bad_return);
     asset.description.exports.push_back(escape_host);
     asset.description.exports.push_back(probe_escaped_host);
+    asset.description.exports.push_back(on_collision);
+    asset.description.exports.push_back(collision_count);
     constexpr std::string_view source = R"lua(
         local escaped_get = nil
         return {
@@ -153,6 +208,15 @@ int main()
             end,
             probe_escaped_host = function(self)
                 return escaped_get(nil, "health") == nil
+            end,
+            on_collision = function(self, event)
+                if event.body ~= 42 or event.impulse ~= 3.5 then
+                    error("structured event mismatch")
+                end
+                self.collisions = (self.collisions or 0) + 1
+            end,
+            collision_count = function(self)
+                return self.collisions or 0
             end
         }
     )lua";
@@ -219,6 +283,56 @@ int main()
     assert(backend.loadedInstanceCount() == 2U);
     assert(backend.chunkLoadCount() == 1U);
     assert(backend.preparedReferenceCount() == 2U);
+
+    lux::script::BoundScriptCall collision_call;
+    lux::script::BoundScriptCall collision_count_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        second_instance,
+        on_collision,
+        collision_call
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        second_instance,
+        collision_count,
+        collision_count_call
+    ) == EScriptBackendResult::SUCCESS);
+    const CollisionEvent collision{42, 3.5F};
+    lux_script_value_slot collision_slot{
+        LUX_SCRIPT_VK_STRUCT_REF,
+        {},
+        sizeof(collision),
+        lux::script::scriptSemanticTypeId("lux.physics.CollisionEvent"),
+        const_cast<CollisionEvent*>(std::addressof(collision))};
+    lux_script_call_frame collision_frame{
+        &collision_slot,
+        1U,
+        0U,
+        nullptr,
+        0U,
+        0U,
+        nullptr,
+        collision_call.context};
+    assert(collision_call.invoke(&collision_frame) == 0);
+    std::int32_t collision_count_value{};
+    lux_script_value_slot collision_count_slot{
+        LUX_SCRIPT_VK_INT32,
+        {},
+        sizeof(collision_count_value),
+        lux::script::scriptSemanticTypeId("lux.i32"),
+        &collision_count_value};
+    lux_script_call_frame collision_count_frame{
+        nullptr,
+        0U,
+        0U,
+        &collision_count_slot,
+        1U,
+        0U,
+        nullptr,
+        collision_count_call.context};
+    assert(collision_count_call.invoke(&collision_count_frame) == 0);
+    assert(collision_count_value == 1);
 
     lux::script::BoundScriptCall bad_return_call;
     assert(descriptor.prepareMethod(
@@ -365,8 +479,32 @@ int main()
 
     descriptor.releaseMethod(descriptor.context, second_instance, second);
     descriptor.releaseMethod(descriptor.context, second_instance, probe_call);
+    descriptor.releaseMethod(
+        descriptor.context,
+        second_instance,
+        collision_call
+    );
+    descriptor.releaseMethod(
+        descriptor.context,
+        second_instance,
+        collision_count_call
+    );
     assert(backend.preparedReferenceCount() == 0U);
     descriptor.destroyInstance(descriptor.context, second_instance);
     assert(backend.loadedInstanceCount() == 0U);
     assert(backend.cachedTracebackCount() == 1U);
+    ScriptBackendInstance recycled_instance;
+    assert(descriptor.createInstance(
+        descriptor.context,
+        ScriptInstanceCreateContext{
+            id,
+            ScriptMountId{3U},
+            EntityScriptScope{second_entity},
+            &second_behavior},
+        asset,
+        recycled_instance
+    ) == EScriptBackendResult::SUCCESS);
+    assert(recycled_instance.value == second_instance.value);
+    assert(backend.chunkLoadCount() == 1U);
+    descriptor.destroyInstance(descriptor.context, recycled_instance);
 }

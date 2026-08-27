@@ -23,10 +23,26 @@ namespace lux::simulation::script
         std::size_t alignment{};
     };
 
+    struct LuaRecordMarshaller final
+    {
+        std::uint64_t semantic_type{};
+        std::string canonical_name;
+        std::size_t size{};
+        std::size_t alignment{};
+        void* context{};
+        bool (*push)(
+            void* context,
+            void* lua_state,
+            const void* value
+        ) noexcept{};
+    };
+
     enum class ELuaScriptBindingBackendError : std::uint8_t
     {
         INVALID_COMPONENT_CONTRACT,
         DUPLICATE_COMPONENT_NAME,
+        INVALID_RECORD_MARSHALLER,
+        DUPLICATE_RECORD_MARSHALLER,
         ALLOCATION_FAILURE,
     };
 
@@ -37,7 +53,8 @@ namespace lux::simulation::script
             LuaScriptBackend,
             ELuaScriptBindingBackendError> create(
                 std::size_t instance_capacity,
-                std::span<const LuaComponentBinding> components = {}
+                std::span<const LuaComponentBinding> components = {},
+                std::span<const LuaRecordMarshaller> record_marshallers = {}
             ) noexcept;
         ~LuaScriptBackend();
 

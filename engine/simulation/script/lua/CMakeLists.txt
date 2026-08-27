@@ -51,7 +51,9 @@ add_executable(
 )
 target_link_libraries(
     simulation_script_lua_test
-    PRIVATE lux::engine::simulation::simulation_script_lua
+    PRIVATE
+        lux::engine::simulation::simulation_script_lua
+        LuaJIT::LuaJIT
 )
 if(MSVC)
     target_compile_options(simulation_script_lua_test PRIVATE /UNDEBUG)
@@ -68,3 +70,47 @@ add_test(
     NAME simulation_script_lua_test
     COMMAND simulation_script_lua_test
 )
+
+if(TARGET script_native_collision_fixture)
+    add_executable(
+        simulation_script_collision_event_test
+        test/collision_event_chain_test.cpp
+    )
+    target_link_libraries(
+        simulation_script_collision_event_test
+        PRIVATE
+            lux::engine::simulation::simulation_script_lua
+            lux::engine::simulation::simulation_script_native
+            LuaJIT::LuaJIT
+    )
+    target_compile_definitions(
+        simulation_script_collision_event_test
+        PRIVATE
+            LUX_SCRIPT_NATIVE_COLLISION_FIXTURE="$<TARGET_FILE:script_native_collision_fixture>"
+    )
+    add_dependencies(
+        simulation_script_collision_event_test
+        script_native_collision_fixture
+    )
+    if(MSVC)
+        target_compile_options(
+            simulation_script_collision_event_test
+            PRIVATE /UNDEBUG
+        )
+    else()
+        target_compile_options(
+            simulation_script_collision_event_test
+            PRIVATE -UNDEBUG
+        )
+    endif()
+    lux_classify_target(
+        TARGET  simulation_script_collision_event_test
+        LAYER   SIMULATION
+        PRODUCT TEST
+        ROLE    DOMAIN
+    )
+    add_test(
+        NAME simulation_script_collision_event_test
+        COMMAND simulation_script_collision_event_test
+    )
+endif()

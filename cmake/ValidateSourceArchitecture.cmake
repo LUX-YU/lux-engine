@@ -205,6 +205,24 @@ foreach(source IN LISTS production_sources)
     endif()
 endforeach()
 
+set(script_backend_runtime_sources
+    "${source_root}/engine/simulation/script/cpp_static/src/CppStaticScriptBridge.cpp"
+    "${source_root}/engine/simulation/script/native/src/NativeScriptBackend.cpp"
+    "${source_root}/engine/simulation/script/lua/src/LuaScriptBackend.cpp"
+)
+foreach(source IN LISTS script_backend_runtime_sources)
+    if(NOT EXISTS "${source}")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES
+       "new[ \t\r\n]+[(]std::nothrow[)][ \t\r\n]+Instance|delete[ \t\r\n]+instance|prototypes[.]push_back")
+        message(FATAL_ERROR
+            "Architecture: Script backend '${source}' restores per-instance heap wrappers or linear prototypes."
+        )
+    endif()
+endforeach()
+
 # The replacement roots are held to the final contract while the old roots are
 # still being removed in staged commits. This prevents new code from rebuilding
 # the retired session/name-routing model under a different target name.

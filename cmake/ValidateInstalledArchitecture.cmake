@@ -32,7 +32,7 @@ foreach(entry IN LISTS installed_entries)
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
     endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]" AND
-       name MATCHES "^(FrameInfo|SimulationExecution|SystemExecutionPoint)\\.(h|hpp)$")
+       name MATCHES "^(FrameInfo|SimulationExecution|SystemExecutionPoint|ScriptMountFacts|ScriptEventWriter|ScriptMetaAdapter)\\.(h|hpp)$")
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
     endif()
 endforeach()
@@ -46,7 +46,7 @@ foreach(entry IN LISTS installed_text)
     file(TO_CMAKE_PATH "${entry}" normalized)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|WorldSection|PersistentEntity|PersistentId|ComponentLoadBinding|ComponentLoadSet|ecs_load|section[ \\t]*=[ \\t]*(LOAD|OMIT)|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(|SystemExecutionPoint|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry" OR
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|WorldSection|PersistentEntity|PersistentId|ComponentLoadBinding|ComponentLoadSet|ecs_load|section[ \\t]*=[ \\t]*(LOAD|OMIT)|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(|SystemExecutionPoint|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()
@@ -125,18 +125,5 @@ foreach(contract_file IN ITEMS
         )
     endif()
 endforeach()
-
-# The meta adapter is the explicit setup-only seam from reflection metadata to
-# persistent Script semantics, so runtime reflection is part of its declared
-# contract.  Keep it in the install-surface existence gate without applying the
-# reflection-free data/runtime closure rule above.
-set(script_meta_adapter_targets
-    "${prefix}/share/lux-engine-core/script_meta_adapter/lux-engine-core-script_meta_adapter-config-targets.cmake"
-)
-if(NOT EXISTS "${script_meta_adapter_targets}")
-    message(FATAL_ERROR
-        "Installed Script meta adapter is missing: ${script_meta_adapter_targets}"
-    )
-endif()
 
 message(STATUS "Installed architecture surface is clean: ${prefix}")

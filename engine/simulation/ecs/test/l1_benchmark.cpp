@@ -3,6 +3,7 @@
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/simulation/ScriptBindingSession.hpp>
+#include <lux/engine/simulation/SystemEventBuffer.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
@@ -96,10 +97,12 @@ namespace
         if (result.group != "task-graph" && result.group != "world" &&
             result.group != "command-buffer" &&
             result.group != "reactive-dirty" &&
-            result.group != "bound-call-native" &&
-            result.group != "hook-multi" &&
+            result.group != "cpp-method-prepared" &&
+            result.group != "hook-global-multi" &&
+            result.group != "hook-entity-multi" &&
             result.group != "global-event" &&
-            result.group != "entity-targeted-event" &&
+            result.group != "entity-targeted-event-sparse" &&
+            result.group != "owned-worker-event-buffer" &&
             result.group != "ecs-snapshot")
         {
             return std::nullopt;
@@ -116,6 +119,11 @@ namespace
         std::size_t string_lookups{};
         std::size_t asset_lookups{};
         std::size_t scene_scans{};
+        std::size_t signature_adaptations{};
+        std::size_t entities_examined{};
+        std::size_t instance_creates{};
+        std::size_t method_prepares{};
+        std::size_t frame_builds{};
     };
 
     struct Sample final
@@ -183,10 +191,12 @@ namespace
             output << "benchmark_schema_version,git_commit,build_type,group,"
                       "metric,size,sample,nanoseconds,allocations,updates,"
                       "notifications,callbacks,reflection_lookups,string_lookups,"
-                      "asset_lookups,scene_scans\n";
+                      "asset_lookups,scene_scans,signature_adaptations,"
+                      "entities_examined,instance_creates,method_prepares,"
+                      "frame_builds\n";
             for (const auto& sample : samples)
             {
-                output << "6," << LUX_BENCHMARK_GIT_COMMIT << ','
+                output << "7," << LUX_BENCHMARK_GIT_COMMIT << ','
                        << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group
                        << ',' << metric << ',' << options.size << ','
                        << sample.index << ',' << sample.nanoseconds << ','
@@ -197,7 +207,12 @@ namespace
                        << sample.observation.reflection_lookups << ','
                        << sample.observation.string_lookups << ','
                        << sample.observation.asset_lookups << ','
-                       << sample.observation.scene_scans << '\n';
+                       << sample.observation.scene_scans << ','
+                       << sample.observation.signature_adaptations << ','
+                       << sample.observation.entities_examined << ','
+                       << sample.observation.instance_creates << ','
+                       << sample.observation.method_prepares << ','
+                       << sample.observation.frame_builds << '\n';
             }
         }
         std::error_code error;
@@ -282,7 +297,10 @@ namespace
     };
 
     inline constexpr std::array kBindingHooks{
-        lux::simulation::makeSystemHookPoint<void()>("update")};
+        lux::simulation::makeSystemHookPoint<void()>(
+            "update",
+            lux::simulation::ESystemHookCardinality::MULTI
+        )};
     inline constexpr std::array kBindingEvents{
         lux::simulation::makeSystemEvent<void>(
             "global-event",
@@ -312,10 +330,15 @@ namespace
             std::array<std::uint8_t, 16U> id_bytes{};
             id_bytes[0] = 0xB6U;
             asset_id = lux::asset::AssetId{id_bytes};
-            asset.description.schema_version = lux::rdesc::Script::kSchemaVersion;
             asset.description.module_name = "l1.benchmark.binding";
-            asset.description.body = lux::rdesc::CppBehaviorScript{"benchmark"};
-            for (std::uint64_t symbol = 1U; symbol <= 4U; ++symbol)
+            const bool entity_model = kind == "hook-entity-multi" ||
+                kind == "entity-targeted-event-sparse";
+            asset.description.model = entity_model
+                ? lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
+                : lux::rdesc::EScriptModel::GLOBAL_MODULE;
+            asset.description.body = lux::rdesc::CppStaticScript{"benchmark"};
+            const auto hook_count = kind == "hook-global-multi" ? 4U : 1U;
+            for (std::uint64_t symbol = 1U; symbol <= hook_count; ++symbol)
             {
                 asset.description.exports.push_back(lux::rdesc::ScriptFunction{
                     "hook-" + std::to_string(symbol), symbol, {}, {}});
@@ -330,34 +353,42 @@ namespace
             lux::simulation::SimulationDescriptionBuilder builder;
             if (!builder.addSystem("benchmark", kBindingSystem))
                 throw std::runtime_error("binding system build failed");
-            std::vector<lux::rdesc::ScriptBindingDescription> global_bindings;
-            if (kind == "bound-call-native" || kind == "hook-multi")
+            std::vector<lux::simulation::ScriptBindingDescription>
+                global_bindings;
+            if (kind == "cpp-method-prepared" ||
+                kind == "hook-global-multi")
             {
-                const auto handler_count = kind == "hook-multi" ? 4U : 1U;
+                const auto handler_count = kind == "hook-global-multi"
+                    ? 4U
+                    : 1U;
                 for (std::uint64_t symbol = 1U; symbol <= handler_count; ++symbol)
                 {
                     global_bindings.push_back({
                         symbol,
-                        lux::rdesc::EScriptBindingKind::HOOK,
-                        "lux.benchmark.binding",
-                        "benchmark",
-                        "update"});
+                        lux::simulation::SystemHookBindingTarget{
+                            lux::simulation::systemTypeId(
+                                kBindingSystem.canonical_name
+                            ),
+                            "benchmark",
+                            "update"}});
                 }
             }
             else if (kind == "global-event")
             {
                 global_bindings.push_back({
                     5U,
-                    lux::rdesc::EScriptBindingKind::EVENT,
-                    "lux.benchmark.binding",
-                    "benchmark",
-                    "global-event"});
+                    lux::simulation::SystemEventBindingTarget{
+                        lux::simulation::systemTypeId(
+                            kBindingSystem.canonical_name
+                        ),
+                        "benchmark",
+                        "global-event"}});
             }
             if (!global_bindings.empty() &&
                 !builder.addGlobalScriptMount(
                     lux::simulation::ScriptMountDescription{
+                        lux::simulation::ScriptMountId{1U},
                         asset_id,
-                        lux::simulation::EScriptBindingSetMode::EXPLICIT,
                         std::move(global_bindings)}
                 ))
             {
@@ -367,44 +398,72 @@ namespace
             if (!description)
                 throw std::runtime_error("binding description build failed");
 
-            if (kind == "entity-targeted-event")
+            if (entity_model)
             {
-                entities.reserve(count);
-                registry.storage<lux::simulation::ScriptMountFacts>().reserve(count);
+                const auto scripted_count = kind ==
+                        "entity-targeted-event-sparse"
+                    ? std::min<std::size_t>(count, 10000U)
+                    : 1U;
+                entities.reserve(scripted_count);
+                registry.storage<lux::simulation::ScriptComponent>().reserve(
+                    scripted_count
+                );
                 for (std::size_t index{}; index < count; ++index)
                 {
                     const auto entity = registry.create();
-                    registry.emplace<lux::simulation::ScriptMountFacts>(
-                        entity,
-                        lux::simulation::ScriptMountFacts{{
-                            lux::simulation::ScriptMountDescription{
-                                asset_id,
-                                lux::simulation::EScriptBindingSetMode::EXPLICIT,
-                                {{
-                                    6U,
-                                    lux::rdesc::EScriptBindingKind::EVENT,
-                                    "lux.benchmark.binding",
+                    if (index < scripted_count)
+                    {
+                        const auto symbol = kind == "hook-entity-multi"
+                            ? 1U
+                            : 6U;
+                        lux::simulation::ScriptBindingTarget target =
+                            kind == "hook-entity-multi"
+                            ? lux::simulation::ScriptBindingTarget{
+                                lux::simulation::SystemHookBindingTarget{
+                                    lux::simulation::systemTypeId(
+                                        kBindingSystem.canonical_name
+                                    ),
                                     "benchmark",
-                                    "entity-event"}}}}}
-                    );
-                    entities.push_back(entity);
+                                    "update"}}
+                            : lux::simulation::ScriptBindingTarget{
+                                lux::simulation::SystemEventBindingTarget{
+                                    lux::simulation::systemTypeId(
+                                        kBindingSystem.canonical_name
+                                    ),
+                                    "benchmark",
+                                    "entity-event"}};
+                        registry.emplace<lux::simulation::ScriptComponent>(
+                            entity,
+                            lux::simulation::ScriptComponent{{{
+                                lux::simulation::ScriptMountId{1U},
+                                asset_id,
+                                {{symbol, std::move(target)}}}}}
+                        );
+                        entities.push_back(entity);
+                    }
                 }
             }
 
             const lux::simulation::ScriptBackendDescriptor backend{
-                lux::rdesc::Script::Kind::CPP_BEHAVIOR,
+                lux::rdesc::Script::Kind::CPP_STATIC,
                 this,
-                &BindingBenchmarkState::prepareCall,
-                nullptr};
+                &BindingBenchmarkState::createInstance,
+                &BindingBenchmarkState::prepareMethod,
+                &BindingBenchmarkState::releaseMethod,
+                &BindingBenchmarkState::destroyInstance};
+            const auto mount_count = std::max<std::size_t>(
+                entities.size() + (!global_bindings.empty() ? 1U : 0U),
+                1U
+            );
             auto created = lux::simulation::ScriptBindingSession::create(
                 std::move(*description),
                 registry,
                 lux::simulation::ScriptBindingCapacities{
-                    std::max<std::size_t>(count + 4U, 8U),
-                    std::max<std::size_t>(count + 1U, 2U),
-                    4U,
-                    std::max<std::size_t>((count + 3U) / 4U, 1U),
-                    8U},
+                    mount_count + 4U,
+                    mount_count * 4U + 4U,
+                    entities.size() + 4U,
+                    entities.size() + 4U,
+                    16U},
                 lux::simulation::ScriptAssetResolver{
                     this,
                     &BindingBenchmarkState::resolveAsset},
@@ -435,10 +494,20 @@ namespace
             return true;
         }
 
-        static lux::simulation::EScriptBackendPrepareResult prepareCall(
+        static lux::simulation::EScriptBackendResult createInstance(
             void* opaque,
-            const lux::simulation::ScriptPrepareContext&,
+            const lux::simulation::ScriptInstanceCreateContext&,
             const lux::asset::ScriptAssetContent&,
+            lux::simulation::ScriptBackendInstance& result
+        ) noexcept
+        {
+            result.value = opaque;
+            return lux::simulation::EScriptBackendResult::SUCCESS;
+        }
+
+        static lux::simulation::EScriptBackendResult prepareMethod(
+            void* opaque,
+            lux::simulation::ScriptBackendInstance,
             const lux::rdesc::ScriptFunction&,
             lux::script::BoundScriptCall& result
         ) noexcept
@@ -446,7 +515,22 @@ namespace
             result = lux::script::BoundScriptCall{
                 &BindingBenchmarkState::invoke,
                 opaque};
-            return lux::simulation::EScriptBackendPrepareResult::SUCCESS;
+            return lux::simulation::EScriptBackendResult::SUCCESS;
+        }
+
+        static void releaseMethod(
+            void*,
+            lux::simulation::ScriptBackendInstance,
+            lux::script::BoundScriptCall
+        ) noexcept
+        {
+        }
+
+        static void destroyInstance(
+            void*,
+            lux::simulation::ScriptBackendInstance
+        ) noexcept
+        {
         }
 
         static int invoke(lux_script_call_frame* frame) noexcept
@@ -464,6 +548,18 @@ namespace
         lux::simulation::ScriptHookSlot hook;
         lux::simulation::ScriptEventSlot global_event;
         lux::simulation::ScriptEventSlot entity_event;
+        std::size_t callbacks{};
+    };
+
+    struct OwnedEventBufferBenchmarkState final
+    {
+        explicit OwnedEventBufferBenchmarkState(std::size_t count)
+        {
+            if (!buffer.prepare(4U, (count + 3U) / 4U))
+                throw std::runtime_error("event buffer prepare failed");
+        }
+
+        lux::simulation::SystemEventBuffer<std::uint64_t> buffer;
         std::size_t callbacks{};
     };
 
@@ -611,18 +707,21 @@ int main(int argc, char** argv)
             }
         );
     }
-    else if (options->group == "bound-call-native" ||
-             options->group == "hook-multi" ||
+    else if (options->group == "cpp-method-prepared" ||
+             options->group == "hook-global-multi" ||
+             options->group == "hook-entity-multi" ||
              options->group == "global-event" ||
-             options->group == "entity-targeted-event")
+             options->group == "entity-targeted-event-sparse")
     {
-        metric = options->group == "bound-call-native"
-            ? "bound_call_native"
-            : options->group == "hook-multi"
-                ? "hook_multi"
+        metric = options->group == "cpp-method-prepared"
+            ? "cpp_method_prepared"
+            : options->group == "hook-global-multi"
+                ? "hook_global_multi"
+                : options->group == "hook-entity-multi"
+                    ? "hook_entity_multi"
                 : options->group == "global-event"
                     ? "global_event"
-                    : "entity_targeted_event";
+                    : "entity_targeted_event_sparse";
         samples = measure(
             *options,
             [&]
@@ -635,72 +734,139 @@ int main(int argc, char** argv)
             [&](BindingBenchmarkState& state)
             {
                 state.callbacks = 0U;
-                state.session->beginUpdate();
                 lux_script_call_frame frame{};
-                if (options->group == "global-event")
-                {
-                    for (std::size_t index{}; index < options->size; ++index)
-                    {
-                        if (!state.session->writer(index % 4U).emit(
-                                state.global_event,
-                                frame
-                            ))
-                        {
-                            throw std::runtime_error("global event emit failed");
-                        }
-                    }
-                }
-                else if (options->group == "entity-targeted-event")
-                {
-                    for (std::size_t index{}; index < options->size; ++index)
-                    {
-                        if (!state.session->writer(index % 4U).emit(
-                                state.entity_event,
-                                state.entities[index],
-                                frame
-                            ))
-                        {
-                            throw std::runtime_error("entity event emit failed");
-                        }
-                    }
-                }
                 const auto iterations =
-                    options->group == "global-event" ||
-                    options->group == "entity-targeted-event"
-                    ? 1U
+                    options->group == "entity-targeted-event-sparse"
+                    ? std::min<std::size_t>(options->size, 100000U)
                     : options->size;
                 std::size_t dispatch_calls{};
-                for (std::size_t index{}; index < iterations; ++index)
-                    dispatch_calls += state.session->dispatchHook(
-                        state.hook,
-                        frame
-                    ).calls;
-                const auto expected_callbacks = options->group == "hook-multi"
-                    ? options->size * 4U
-                    : options->size;
+                if (options->group == "global-event")
+                {
+                    for (std::size_t index{}; index < iterations; ++index)
+                    {
+                        dispatch_calls += state.session->dispatchEvent(
+                            state.global_event,
+                            NullEntity,
+                            frame
+                        ).calls;
+                    }
+                }
+                else if (options->group == "entity-targeted-event-sparse")
+                {
+                    for (std::size_t index{}; index < iterations; ++index)
+                    {
+                        dispatch_calls += state.session->dispatchEvent(
+                            state.entity_event,
+                            state.entities[index % state.entities.size()],
+                            frame
+                        ).calls;
+                    }
+                }
+                else if (options->group == "hook-entity-multi")
+                {
+                    for (std::size_t index{}; index < iterations; ++index)
+                    {
+                        dispatch_calls += state.session->dispatchHook(
+                            state.hook,
+                            state.entities[0],
+                            frame
+                        ).calls;
+                    }
+                }
+                else
+                {
+                    for (std::size_t index{}; index < iterations; ++index)
+                    {
+                        dispatch_calls += state.session->dispatchHook(
+                            state.hook,
+                            frame
+                        ).calls;
+                    }
+                }
+                const auto expected_callbacks =
+                    options->group == "hook-global-multi"
+                    ? iterations * 4U
+                    : iterations;
                 if (state.callbacks != expected_callbacks ||
                     dispatch_calls != expected_callbacks)
                 {
                     throw std::runtime_error("binding callback mismatch");
                 }
+                const auto& instrumentation =
+                    state.session->instrumentation();
                 return Observation{
-                    .updates = options->size,
+                    .updates = iterations,
                     .notifications =
                         options->group == "global-event" ||
-                        options->group == "entity-targeted-event"
-                        ? options->size
+                        options->group == "entity-targeted-event-sparse"
+                        ? iterations
                         : 0U,
                     .callbacks = state.callbacks,
-                    .reflection_lookups =
-                        state.session->hotPathNameLookupCount(),
-                    .string_lookups =
-                        state.session->hotPathNameLookupCount(),
-                    .asset_lookups =
-                        state.session->hotPathAssetLookupCount(),
-                    .scene_scans =
-                        state.session->hotPathSceneScanCount()};
+                    .reflection_lookups = instrumentation.reflection_accesses,
+                    .string_lookups = instrumentation.hot_path_name_lookups,
+                    .asset_lookups = instrumentation.hot_path_asset_lookups,
+                    .scene_scans = instrumentation.hot_path_scene_scans,
+                    .signature_adaptations =
+                        instrumentation.hot_path_signature_adaptations,
+                    .entities_examined = instrumentation.entities_examined,
+                    .instance_creates = instrumentation.instance_creates,
+                    .method_prepares = instrumentation.method_prepares,
+                    .frame_builds = instrumentation.frame_builds};
             },
             [](BindingBenchmarkState&) noexcept {}
+        );
+    }
+    else if (options->group == "owned-worker-event-buffer")
+    {
+        metric = "owned_worker_event_buffer";
+        samples = measure(
+            *options,
+            [&]
+            {
+                return std::make_unique<OwnedEventBufferBenchmarkState>(
+                    options->size
+                );
+            },
+            [&](OwnedEventBufferBenchmarkState& state)
+            {
+                state.callbacks = 0U;
+                for (std::size_t producer{}; producer < 4U; ++producer)
+                {
+                    auto begun = state.buffer.writer(producer);
+                    if (!begun)
+                        throw std::runtime_error("event writer begin failed");
+                    auto writer = std::move(*begun);
+                    for (std::size_t index = producer;
+                         index < options->size;
+                         index += 4U)
+                    {
+                        if (!writer.emit(
+                                NullEntity,
+                                static_cast<std::uint64_t>(index)
+                            ))
+                        {
+                            throw std::runtime_error("event emit failed");
+                        }
+                    }
+                }
+                if (!state.buffer.drain(
+                        [&state](Entity, const std::uint64_t&) noexcept
+                        {
+                            ++state.callbacks;
+                        }
+                    ))
+                {
+                    throw std::runtime_error("event buffer drain failed");
+                }
+                if (state.callbacks != options->size)
+                    throw std::runtime_error("event buffer callback mismatch");
+                return Observation{
+                    .updates = options->size,
+                    .notifications = options->size,
+                    .callbacks = state.callbacks,
+                    .frame_builds = options->size};
+            },
+            [](OwnedEventBufferBenchmarkState&) noexcept {}
         );
     }
     else if (options->group == "task-graph")

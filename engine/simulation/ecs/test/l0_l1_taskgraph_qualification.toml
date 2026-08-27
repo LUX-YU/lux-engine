@@ -1,5 +1,5 @@
-version = 6
-benchmark_schema_version = 6
+version = 7
+benchmark_schema_version = 7
 
 [[scaling]]
 name = "Reactive dirty scaling"
@@ -10,10 +10,18 @@ max_exponent = 1.25
 
 [[scaling]]
 name = "Entity-targeted event scaling"
-metric = "entity_targeted_event"
+metric = "entity_targeted_event_sparse"
 small_size = 100000
 large_size = 1000000
 max_exponent = 1.30
+
+[[ratio]]
+name = "Sparse targeted dispatch is independent of total entity count"
+metric = "entity_targeted_event_sparse"
+small_size = 1000000
+large_size = 2000000
+field = "nanoseconds"
+max_ratio = 1.20
 
 [[structural]]
 name = "Prepared command recording is allocation free"
@@ -30,18 +38,25 @@ field = "notifications"
 equals = 1000000
 
 [[structural]]
-name = "Bound native calls are allocation free"
-metric = "bound_call_native"
+name = "Prepared C++ method calls are allocation free"
+metric = "cpp_method_prepared"
 size = 100000
 field = "allocations"
 equals = 0
 
 [[structural]]
-name = "Multi hook invokes every handler"
-metric = "hook_multi"
+name = "Global multi hook invokes every handler"
+metric = "hook_global_multi"
 size = 100000
 field = "callbacks"
 equals = 400000
+
+[[structural]]
+name = "Entity multi hook invokes its exact target"
+metric = "hook_entity_multi"
+size = 100000
+field = "callbacks"
+equals = 100000
 
 [[structural]]
 name = "Global event dispatch is allocation free"
@@ -52,28 +67,56 @@ equals = 0
 
 [[structural]]
 name = "Entity event invokes every target"
-metric = "entity_targeted_event"
+metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "callbacks"
-equals = 1000000
+equals = 100000
+
+[[structural]]
+name = "Entity event examines only occurrences"
+metric = "entity_targeted_event_sparse"
+size = 1000000
+field = "entities_examined"
+equals = 100000
 
 [[structural]]
 name = "Entity event hot path performs no scene scan"
-metric = "entity_targeted_event"
+metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "scene_scans"
 equals = 0
 
 [[structural]]
 name = "Entity event hot path performs no lookup"
-metric = "entity_targeted_event"
+metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "string_lookups"
 equals = 0
 
 [[structural]]
 name = "Entity event hot path performs no asset lookup"
-metric = "entity_targeted_event"
+metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "asset_lookups"
 equals = 0
+
+[[structural]]
+name = "Entity event hot path performs no signature adaptation"
+metric = "entity_targeted_event_sparse"
+size = 1000000
+field = "signature_adaptations"
+equals = 0
+
+[[structural]]
+name = "Owned worker event buffer is allocation free after prepare"
+metric = "owned_worker_event_buffer"
+size = 1000000
+field = "allocations"
+equals = 0
+
+[[structural]]
+name = "Owned worker event buffer drains every payload"
+metric = "owned_worker_event_buffer"
+size = 1000000
+field = "callbacks"
+equals = 1000000

@@ -19,6 +19,11 @@ if(EXISTS "${source_root}/engine/ecs")
         "Architecture: retired top-level engine/ecs domain must not be restored."
     )
 endif()
+if(EXISTS "${source_root}/engine/editor")
+    message(FATAL_ERROR
+        "Architecture: Rev2 has no canonical Editor product; do not create a temporary editor tree."
+    )
+endif()
 if(NOT EXISTS "${source_root}/legacy/ecs" OR
    NOT EXISTS "${source_root}/legacy/engine" OR
    NOT EXISTS "${source_root}/legacy/modules/resource/asset-runtime")
@@ -61,7 +66,7 @@ foreach(source IN LISTS production_sources)
     file(READ "${source}" content)
 
     if(content MATCHES
-       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|GlobalScriptBindingManager")
+       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|GlobalScriptBindingManager|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' restores a retired SystemHook/ScriptBinding API."
         )
@@ -388,6 +393,27 @@ foreach(source IN LISTS meta_sources)
     if(content MATCHES "lux/engine/object/")
         message(FATAL_ERROR
             "Architecture: core/meta '${source}' depends on core/object."
+        )
+    endif()
+    if(content MATCHES "lux/engine/function/script/")
+        message(FATAL_ERROR
+            "Architecture: generic core/meta '${source}' depends on Script semantics."
+        )
+    endif()
+endforeach()
+
+file(GLOB_RECURSE script_foundation_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/script/*/include/*.hpp"
+    "${source_root}/modules/function/script/*/sinclude/*.hpp"
+    "${source_root}/modules/function/script/*/pinclude/*.hpp"
+    "${source_root}/modules/function/script/*/src/*.cpp"
+)
+foreach(source IN LISTS script_foundation_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "lux/engine/meta/|lux/cxx/reflection/|lux/engine/core/meta/")
+        message(FATAL_ERROR
+            "Architecture: L0 Script foundation '${source}' depends on generic Meta."
         )
     endif()
 endforeach()

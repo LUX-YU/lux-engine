@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <limits>
-#include <memory>
 
 namespace lux::simulation
 {
@@ -77,6 +76,11 @@ namespace lux::simulation
     SimulationSystemView::operator bool() const noexcept
     {
         return description_ != nullptr && system_index_ < description_->systems_.size();
+    }
+
+    SystemInstanceId SimulationSystemView::instanceId() const noexcept
+    {
+        return description_->systems_[system_index_].id;
     }
 
     std::string_view SimulationSystemView::instanceName() const noexcept
@@ -161,6 +165,22 @@ namespace lux::simulation
     }
 
     SimulationHookPointView SimulationSystemView::findHookPoint(
+        HookPointId id
+    ) const noexcept
+    {
+        const auto type = description_->systems_[system_index_].type_ordinal;
+        const auto& hooks = description_->system_types_[type].hooks;
+        const auto found = std::find_if(
+            hooks.begin(), hooks.end(),
+            [id](const auto& hook) noexcept { return hook.id == id; });
+        return found != hooks.end()
+            ? SimulationHookPointView(
+                *description_, system_index_,
+                static_cast<std::size_t>(std::distance(hooks.begin(), found)))
+            : SimulationHookPointView{};
+    }
+
+    SimulationHookPointView SimulationSystemView::findHookPoint(
         std::string_view name
     ) const noexcept
     {
@@ -209,6 +229,20 @@ namespace lux::simulation
             : SimulationEventView{};
     }
 
+    SimulationEventView SimulationSystemView::findEvent(EventPointId id) const noexcept
+    {
+        const auto type = description_->systems_[system_index_].type_ordinal;
+        const auto& events = description_->system_types_[type].events;
+        const auto found = std::find_if(
+            events.begin(), events.end(),
+            [id](const auto& event) noexcept { return event.id == id; });
+        return found != events.end()
+            ? SimulationEventView(
+                *description_, system_index_,
+                static_cast<std::size_t>(std::distance(events.begin(), found)))
+            : SimulationEventView{};
+    }
+
     SimulationHookPointView::SimulationHookPointView(
         const SimulationDescription& description,
         std::size_t system_index,
@@ -234,16 +268,16 @@ namespace lux::simulation
                      : SimulationSystemView{};
     }
 
+    HookPointId SimulationHookPointView::id() const noexcept
+    {
+        const auto type = description_->systems_[system_index_].type_ordinal;
+        return description_->system_types_[type].hooks[hook_index_].id;
+    }
+
     std::string_view SimulationHookPointView::name() const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
         return description_->system_types_[type].hooks[hook_index_].name;
-    }
-
-    ESystemHookCardinality SimulationHookPointView::cardinality() const noexcept
-    {
-        const auto type = description_->systems_[system_index_].type_ordinal;
-        return description_->system_types_[type].hooks[hook_index_].cardinality;
     }
 
     std::size_t SimulationHookPointView::parameterCount() const noexcept
@@ -252,7 +286,7 @@ namespace lux::simulation
         return description_->system_types_[type].hooks[hook_index_].parameters.size();
     }
 
-    lux::script::ScriptSemanticType SimulationHookPointView::parameterAt(
+    lux::semantic::Type SimulationHookPointView::parameterAt(
         std::size_t index
     ) const noexcept
     {
@@ -263,25 +297,6 @@ namespace lux::simulation
             return {};
         const auto& parameter = parameters[index];
         return {parameter.type_id, parameter.canonical_name, parameter.pass};
-    }
-
-    std::size_t SimulationHookPointView::returnCount() const noexcept
-    {
-        const auto type = description_->systems_[system_index_].type_ordinal;
-        return description_->system_types_[type].hooks[hook_index_].returns.size();
-    }
-
-    lux::script::ScriptSemanticType SimulationHookPointView::returnAt(
-        std::size_t index
-    ) const noexcept
-    {
-        const auto type = description_->systems_[system_index_].type_ordinal;
-        const auto& returns =
-            description_->system_types_[type].hooks[hook_index_].returns;
-        if (index >= returns.size())
-            return {};
-        const auto& result = returns[index];
-        return {result.type_id, result.canonical_name, result.pass};
     }
 
     SimulationEventView::SimulationEventView(
@@ -309,6 +324,12 @@ namespace lux::simulation
                      : SimulationSystemView{};
     }
 
+    EventPointId SimulationEventView::id() const noexcept
+    {
+        const auto type = description_->systems_[system_index_].type_ordinal;
+        return description_->system_types_[type].events[event_index_].id;
+    }
+
     std::string_view SimulationEventView::name() const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
@@ -323,10 +344,16 @@ namespace lux::simulation
         return SimulationHookPointView(*description_, system_index_, hook);
     }
 
-    ESystemEventTarget SimulationEventView::target() const noexcept
+    EEventRoute SimulationEventView::route() const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
-        return description_->system_types_[type].events[event_index_].target;
+        return description_->system_types_[type].events[event_index_].route;
+    }
+
+    lux::semantic::TypeId SimulationEventView::payloadType() const noexcept
+    {
+        const auto type = description_->systems_[system_index_].type_ordinal;
+        return description_->system_types_[type].events[event_index_].payload_type;
     }
 
     std::string_view SimulationEventView::payloadSchemaName() const noexcept
@@ -373,44 +400,6 @@ namespace lux::simulation
         return SimulationSystemView(*description_, dependency.after_system);
     }
 
-    SimulationGlobalScriptMountView::SimulationGlobalScriptMountView(
-        const SimulationDescription& description,
-        std::size_t mount_index
-    ) noexcept
-        : description_(&description), mount_index_(mount_index)
-    {
-    }
-
-    SimulationGlobalScriptMountView::operator bool() const noexcept
-    {
-        return description_ != nullptr &&
-            mount_index_ < description_->global_script_mounts_.size();
-    }
-
-    ScriptMountId SimulationGlobalScriptMountView::id() const noexcept
-    {
-        return description_->global_script_mounts_[mount_index_].id;
-    }
-
-    const lux::asset::AssetId& SimulationGlobalScriptMountView::script(
-    ) const noexcept
-    {
-        return description_->global_script_mounts_[mount_index_].script;
-    }
-
-    std::size_t SimulationGlobalScriptMountView::bindingCount() const noexcept
-    {
-        return description_->global_script_mounts_[mount_index_].bindings.size();
-    }
-
-    const ScriptBindingDescription*
-    SimulationGlobalScriptMountView::bindingAt(std::size_t index) const noexcept
-    {
-        const auto& bindings =
-            description_->global_script_mounts_[mount_index_].bindings;
-        return index < bindings.size() ? std::addressof(bindings[index]) : nullptr;
-    }
-
     bool SimulationDescription::empty() const noexcept
     {
         return data_.empty() && systems_.empty();
@@ -437,11 +426,6 @@ namespace lux::simulation
             sizeof(std::byte)
         );
         addRetainedArray(result, dependencies_.capacity(), sizeof(DependencyRecord));
-        addRetainedArray(
-            result,
-            global_script_mounts_.capacity(),
-            sizeof(ScriptMountDescription)
-        );
         for (const auto& schema : schemas_)
             addRetainedArray(result, schema.name.capacity(), sizeof(char));
         for (const auto& system : systems_)
@@ -467,24 +451,11 @@ namespace lux::simulation
                     hook.parameters.capacity(),
                     sizeof(SemanticTypeRecord)
                 );
-                addRetainedArray(
-                    result,
-                    hook.returns.capacity(),
-                    sizeof(SemanticTypeRecord)
-                );
                 for (const auto& parameter : hook.parameters)
                 {
                     addRetainedArray(
                         result,
                         parameter.canonical_name.capacity(),
-                        sizeof(char)
-                    );
-                }
-                for (const auto& return_type : hook.returns)
-                {
-                    addRetainedArray(
-                        result,
-                        return_type.canonical_name.capacity(),
                         sizeof(char)
                     );
                 }
@@ -496,62 +467,6 @@ namespace lux::simulation
                     result,
                     event.payload_schema_name.capacity(),
                     sizeof(char)
-                );
-            }
-        }
-        for (const auto& mount : global_script_mounts_)
-        {
-            addRetainedArray(
-                result,
-                mount.bindings.capacity(),
-                sizeof(ScriptBindingDescription)
-            );
-            for (const auto& binding : mount.bindings)
-            {
-                std::visit(
-                    [&](const auto& target) noexcept
-                    {
-                        using Target = std::remove_cvref_t<decltype(target)>;
-                        if constexpr (
-                            std::is_same_v<Target, SystemHookBindingTarget>)
-                        {
-                            addRetainedArray(
-                                result,
-                                target.system_type.name.capacity(),
-                                sizeof(char)
-                            );
-                            addRetainedArray(
-                                result,
-                                target.system_instance.capacity(),
-                                sizeof(char)
-                            );
-                            addRetainedArray(
-                                result,
-                                target.hook.capacity(),
-                                sizeof(char)
-                            );
-                        }
-                        else if constexpr (
-                            std::is_same_v<Target, SystemEventBindingTarget>)
-                        {
-                            addRetainedArray(
-                                result,
-                                target.system_type.name.capacity(),
-                                sizeof(char)
-                            );
-                            addRetainedArray(
-                                result,
-                                target.system_instance.capacity(),
-                                sizeof(char)
-                            );
-                            addRetainedArray(
-                                result,
-                                target.event.capacity(),
-                                sizeof(char)
-                            );
-                        }
-                    },
-                    binding.target
                 );
             }
         }
@@ -598,19 +513,38 @@ namespace lux::simulation
     }
 
     SimulationSystemView SimulationDescription::findSystem(
-        std::string_view instance_name
+        SystemInstanceId id
     ) const noexcept
     {
         const auto found = std::lower_bound(
             systems_.begin(),
             systems_.end(),
-            instance_name,
-            [](const SystemRecord& system, std::string_view name) noexcept
+            id,
+            [](const SystemRecord& system, SystemInstanceId value) noexcept
             {
-                return system.instance_name < name;
+                return system.id < value;
             }
         );
-        return found != systems_.end() && found->instance_name == instance_name
+        return found != systems_.end() && found->id == id
+            ? SimulationSystemView(
+                *this,
+                static_cast<std::size_t>(std::distance(systems_.begin(), found)))
+            : SimulationSystemView{};
+    }
+
+    SimulationSystemView SimulationDescription::findSystem(
+        std::string_view instance_name
+    ) const noexcept
+    {
+        const auto found = std::find_if(
+            systems_.begin(),
+            systems_.end(),
+            [instance_name](const SystemRecord& system) noexcept
+            {
+                return system.instance_name == instance_name;
+            }
+        );
+        return found != systems_.end()
             ? SimulationSystemView(
                 *this,
                 static_cast<std::size_t>(std::distance(systems_.begin(), found)))
@@ -628,6 +562,16 @@ namespace lux::simulation
     }
 
     SimulationHookPointView SimulationDescription::findHookPoint(
+        SystemInstanceId system_id,
+        HookPointId hook_id
+    ) const noexcept
+    {
+        const auto system = findSystem(system_id);
+        return system ? system.findHookPoint(hook_id)
+                      : SimulationHookPointView{};
+    }
+
+    SimulationHookPointView SimulationDescription::findHookPoint(
         std::string_view system_instance,
         std::string_view hook_name
     ) const noexcept
@@ -635,6 +579,15 @@ namespace lux::simulation
         const auto system = findSystem(system_instance);
         return system ? system.findHookPoint(hook_name)
                       : SimulationHookPointView{};
+    }
+
+    SimulationEventView SimulationDescription::findEvent(
+        SystemInstanceId system_id,
+        EventPointId event_id
+    ) const noexcept
+    {
+        const auto system = findSystem(system_id);
+        return system ? system.findEvent(event_id) : SimulationEventView{};
     }
 
     SimulationEventView SimulationDescription::findEvent(
@@ -660,17 +613,4 @@ namespace lux::simulation
             : SimulationDependencyView{};
     }
 
-    std::size_t SimulationDescription::globalScriptMountCount() const noexcept
-    {
-        return global_script_mounts_.size();
-    }
-
-    SimulationGlobalScriptMountView SimulationDescription::globalScriptMountAt(
-        std::size_t index
-    ) const noexcept
-    {
-        return index < global_script_mounts_.size()
-            ? SimulationGlobalScriptMountView(*this, index)
-            : SimulationGlobalScriptMountView{};
-    }
 }

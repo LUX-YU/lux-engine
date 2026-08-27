@@ -41,52 +41,56 @@ class Semantic:
     alignment: int
 
 
-def load_semantics(path: pathlib.Path) -> dict[str, Semantic]:
-    document = json.loads(path.read_text(encoding="utf-8"))
-    if document.get("schema") != "lux-script-semantics" or document.get("version") != 1:
-        raise ValueError("unsupported semantic catalog")
-    values = document.get("types")
-    if not isinstance(values, list) or not values:
-        raise ValueError("semantic catalog contains no types")
-    result: dict[str, Semantic] = {}
-    names: list[str] = []
-    for value in values:
-        canonical = value.get("canonical_name")
-        type_id = int(value.get("type_id"), 0)
-        default_name = value.get("default_parameter_pass")
-        default_pass = VALUE_PASS if default_name == "VALUE" else CONST_REF_PASS
-        allowed = value.get("allowed_parameter_passes", [])
+def make_semantics(record_specs: list[str]) -> dict[str, Semantic]:
+    layouts = (
+        ("lux.bool", 1, 1, 1),
+        ("lux.i32", 2, 4, 4),
+        ("lux.u32", 3, 4, 4),
+        ("lux.i64", 4, 8, 8),
+        ("lux.u64", 5, 8, 8),
+        ("lux.f32", 6, 4, 4),
+        ("lux.f64", 7, 8, 8),
+    )
+    result = {
+        canonical: Semantic(
+            canonical,
+            fnv1a(canonical),
+            VALUE_PASS,
+            True,
+            abi_kind,
+            size,
+            alignment,
+        )
+        for canonical, abi_kind, size, alignment in layouts
+    }
+    for specification in record_specs:
+        parts = specification.split(",")
+        if len(parts) != 3:
+            raise ValueError(
+                "--record-type must be canonical-name,size,alignment"
+            )
+        canonical, size_text, alignment_text = parts
+        size = int(size_text, 0)
+        alignment = int(alignment_text, 0)
         if (
-            not isinstance(canonical, str)
-            or fnv1a(canonical) != type_id
-            or default_name not in ("VALUE", "CONST_REF")
-            or default_name not in allowed
+            not canonical
             or canonical in result
+            or size <= 0
+            or size > 0xFFFFFFFF
+            or alignment <= 0
+            or alignment > 0xFFFFFFFF
+            or alignment & (alignment - 1)
         ):
-            raise ValueError("invalid semantic catalog entry")
+            raise ValueError("invalid --record-type")
         result[canonical] = Semantic(
             canonical,
-            type_id,
-            default_pass,
-            bool(value.get("return_allowed")),
-            int(value.get("abi_kind", 0)),
-            int(value.get("size", 0)),
-            int(value.get("alignment", 0)),
+            fnv1a(canonical),
+            CONST_REF_PASS,
+            False,
+            10,
+            size,
+            alignment,
         )
-        semantic = result[canonical]
-        if (
-            semantic.abi_kind <= 0
-            or semantic.abi_kind > 255
-            or semantic.size <= 0
-            or semantic.size > 0xFFFFFFFF
-            or semantic.alignment <= 0
-            or semantic.alignment > 0xFFFFFFFF
-            or semantic.alignment & (semantic.alignment - 1)
-        ):
-            raise ValueError("invalid semantic layout")
-        names.append(canonical)
-    if names != sorted(names):
-        raise ValueError("semantic catalog is not canonical")
     return result
 
 
@@ -176,7 +180,7 @@ def collect_exports(
         if scope == ENTITY_SCOPE:
             if owner != entry or separator != ":" or not member:
                 raise ValueError(
-                    f"line {line_number}: EntityBehavior export requires '{entry}:method' colon syntax"
+                    f"line {line_number}: entity script export requires '{entry}:method' colon syntax"
                 )
             name = member
             source_identity = f"{entry}:{name}"
@@ -292,7 +296,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
-    parser.add_argument("--semantic-catalog", required=True, type=pathlib.Path)
+    parser.add_argument("--record-type", action="append", default=[])
     parser.add_argument("--symbol-ledger", required=True, type=pathlib.Path)
     parser.add_argument("--module", required=True)
     parser.add_argument("--entry", required=True)
@@ -303,7 +307,7 @@ def main() -> int:
     try:
         payload = arguments.source.read_bytes()
         source = payload.decode("utf-8")
-        semantics = load_semantics(arguments.semantic_catalog)
+        semantics = make_semantics(arguments.record_type)
         symbols_by_source = load_symbol_ledger(arguments.symbol_ledger)
         exports = collect_exports(
             source,

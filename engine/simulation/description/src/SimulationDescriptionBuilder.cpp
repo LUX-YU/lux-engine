@@ -25,8 +25,8 @@ namespace lux::simulation
         {
             std::uint64_t type_id{};
             std::string canonical_name;
-            lux::script::EScriptPassMode pass{
-                lux::script::EScriptPassMode::VALUE};
+            lux::semantic::EValuePass pass{
+                lux::semantic::EValuePass::VALUE};
 
             friend bool operator==(
                 const PendingSemanticType&,
@@ -36,10 +36,9 @@ namespace lux::simulation
 
         struct PendingHook final
         {
+            HookPointId id;
             std::string name;
-            ESystemHookCardinality cardinality{ESystemHookCardinality::MULTI};
             std::vector<PendingSemanticType> parameters;
-            std::vector<PendingSemanticType> returns;
 
             friend bool operator==(const PendingHook&, const PendingHook&) noexcept =
                 default;
@@ -47,9 +46,11 @@ namespace lux::simulation
 
         struct PendingEvent final
         {
+            EventPointId id;
             std::string name;
             std::size_t dispatch_hook_ordinal{};
-            ESystemEventTarget target{ESystemEventTarget::GLOBAL};
+            EEventRoute route{EEventRoute::SIMULATION_BROADCAST};
+            lux::semantic::TypeId payload_type{};
             std::string payload_schema_name;
             std::uint64_t payload_schema_hash{};
             std::uint32_t payload_schema_version{};
@@ -57,6 +58,7 @@ namespace lux::simulation
 
         struct PendingSystem final
         {
+            SystemInstanceId instance_id;
             std::string instance_name;
             SystemTypeId type;
             std::uint32_t version{};
@@ -71,8 +73,8 @@ namespace lux::simulation
 
         struct PendingDependency final
         {
-            std::string before_system;
-            std::string after_system;
+            SystemInstanceId before_system;
+            SystemInstanceId after_system;
 
             friend bool operator==(const PendingDependency&, const PendingDependency&)
                 noexcept = default;
@@ -81,7 +83,6 @@ namespace lux::simulation
         std::vector<PendingData> data;
         std::vector<PendingSystem> systems;
         std::vector<PendingDependency> dependencies;
-        std::vector<ScriptMountDescription> global_script_mounts;
     };
 
     namespace
@@ -112,14 +113,17 @@ namespace lux::simulation
         }
 
         template <class Range>
-        [[nodiscard]] auto findSystem(Range& range, std::string_view name) noexcept
+        [[nodiscard]] auto findSystem(
+            Range& range,
+            SystemInstanceId id
+        ) noexcept
         {
             return std::find_if(
                 range.begin(),
                 range.end(),
-                [name](const auto& system) noexcept
+                [id](const auto& system) noexcept
                 {
-                    return system.instance_name == name;
+                    return system.instance_id == id;
                 }
             );
         }
@@ -167,9 +171,9 @@ namespace lux::simulation
             {
                 const auto& a = left.events[index];
                 const auto& b = right.events[index];
-                if (a.name != b.name ||
+                if (a.id != b.id || a.name != b.name ||
                     a.dispatch_hook_ordinal != b.dispatch_hook_ordinal ||
-                    a.target != b.target ||
+                    a.route != b.route || a.payload_type != b.payload_type ||
                     a.payload_schema_name != b.payload_schema_name ||
                     a.payload_schema_hash != b.payload_schema_hash ||
                     a.payload_schema_version != b.payload_schema_version)
@@ -206,10 +210,10 @@ namespace lux::simulation
                     removed[index] = true;
                     ++removed_count;
                     progress = true;
-                    const auto& before_name = impl.systems[index].instance_name;
+                    const auto before_id = impl.systems[index].instance_id;
                     for (const auto& dependency : impl.dependencies)
                     {
-                        if (dependency.before_system != before_name)
+                        if (dependency.before_system != before_id)
                             continue;
                         const auto after = findSystem(
                             impl.systems,
@@ -360,12 +364,13 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::addSystem(
+        SystemInstanceId instance_id,
         std::string_view instance_name,
         const SystemDescription& system,
         std::span<const std::byte> configuration
     ) noexcept
     {
-        if (instance_name.empty())
+        if (!instance_id.valid() || instance_name.empty())
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::INVALID_SYSTEM_INSTANCE_NAME
             ));
@@ -377,7 +382,7 @@ namespace lux::simulation
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::INVALID_SYSTEM_VERSION
             ));
-        if (findSystem(impl_->systems, instance_name) != impl_->systems.end())
+        if (findSystem(impl_->systems, instance_id) != impl_->systems.end())
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::DUPLICATE_SYSTEM_INSTANCE
             ));
@@ -402,46 +407,14 @@ namespace lux::simulation
             ));
 
         for (const auto& hook : system.hooks)
-        {
-            if (hook.name.empty() || hook.signature.returns.size() > 1U ||
-                (hook.cardinality == ESystemHookCardinality::MULTI &&
-                 !hook.signature.returns.empty()))
-            {
+            if (!validHookPointSpec(hook))
                 return lux::cxx::unexpected(failure(
-                    ESimulationDescriptionError::INVALID_HOOK_POINT
-                ));
-            }
-            for (const auto& parameter : hook.signature.parameters)
-            {
-                if (parameter.type_id == 0U || parameter.canonical_name.empty() ||
-                    parameter.type_id != lux::script::scriptSemanticTypeId(
-                        parameter.canonical_name
-                    ))
-                {
-                    return lux::cxx::unexpected(failure(
-                        ESimulationDescriptionError::INVALID_HOOK_POINT
-                    ));
-                }
-            }
-            for (const auto& result : hook.signature.returns)
-            {
-                if (result.type_id == 0U || result.canonical_name.empty() ||
-                    result.pass != lux::script::EScriptPassMode::VALUE ||
-                    result.type_id != lux::script::scriptSemanticTypeId(
-                        result.canonical_name
-                    ))
-                {
-                    return lux::cxx::unexpected(failure(
-                        ESimulationDescriptionError::INVALID_HOOK_POINT
-                    ));
-                }
-            }
-        }
+                    ESimulationDescriptionError::INVALID_HOOK_POINT));
         for (std::size_t index{}; index < system.hooks.size(); ++index)
         {
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (system.hooks[index].name == system.hooks[previous].name)
+                if (system.hooks[index].id == system.hooks[previous].id)
                 {
                     return lux::cxx::unexpected(failure(
                         ESimulationDescriptionError::DUPLICATE_HOOK_POINT
@@ -453,13 +426,13 @@ namespace lux::simulation
         for (std::size_t index{}; index < system.events.size(); ++index)
         {
             const auto& event = system.events[index];
-            if (event.name.empty())
+            if (!validEventPointSpec(event))
                 return lux::cxx::unexpected(failure(
                     ESimulationDescriptionError::INVALID_EVENT
                 ));
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (event.name == system.events[previous].name)
+                if (event.id == system.events[previous].id)
                     return lux::cxx::unexpected(failure(
                         ESimulationDescriptionError::DUPLICATE_EVENT
                     ));
@@ -469,24 +442,13 @@ namespace lux::simulation
                 system.hooks.end(),
                 [&](const auto& candidate) noexcept
                 {
-                    return candidate.name == event.dispatch_hook;
+                    return candidate.id == event.dispatch_hook;
                 }
             );
             if (hook == system.hooks.end())
                 return lux::cxx::unexpected(failure(
                     ESimulationDescriptionError::INVALID_EVENT_DISPATCH_HOOK
                 ));
-            const bool void_payload =
-                event.payload_cpp_type == lux::cxx::typeToken<void>();
-            if (event.payload_schema_name.empty() !=
-                    (event.payload_schema_version == 0U) ||
-                (event.payload_cpp_type.isValid() &&
-                 void_payload != event.payload_schema_name.empty()))
-            {
-                return lux::cxx::unexpected(failure(
-                    ESimulationDescriptionError::INVALID_EVENT_PAYLOAD_SCHEMA
-                ));
-            }
         }
         if (failMutationForTest())
             return lux::cxx::unexpected(failure(
@@ -496,6 +458,7 @@ namespace lux::simulation
         try
         {
             Impl::PendingSystem candidate;
+            candidate.instance_id = instance_id;
             candidate.instance_name = instance_name;
             candidate.type = systemTypeId(system.canonical_name);
             candidate.version = system.version;
@@ -515,8 +478,8 @@ namespace lux::simulation
             for (const auto& value : system.hooks)
             {
                 Impl::PendingHook hook;
-                hook.name = value.name;
-                hook.cardinality = value.cardinality;
+                hook.id = value.id;
+                hook.name = value.diagnostic_name;
                 hook.parameters.reserve(value.signature.parameters.size());
                 for (const auto& parameter : value.signature.parameters)
                 {
@@ -524,15 +487,6 @@ namespace lux::simulation
                         parameter.type_id,
                         std::string(parameter.canonical_name),
                         parameter.pass
-                    });
-                }
-                hook.returns.reserve(value.signature.returns.size());
-                for (const auto& result : value.signature.returns)
-                {
-                    hook.returns.push_back({
-                        result.type_id,
-                        std::string(result.canonical_name),
-                        result.pass
                     });
                 }
                 candidate.hooks.push_back(std::move(hook));
@@ -545,18 +499,18 @@ namespace lux::simulation
                     candidate.hooks.end(),
                     [&](const auto& value) noexcept
                     {
-                        return value.name == event.dispatch_hook;
+                        return value.id == event.dispatch_hook;
                     }
                 );
                 candidate.events.push_back({
-                    std::string(event.name),
+                    event.id,
+                    std::string(event.diagnostic_name),
                     static_cast<std::size_t>(
                         std::distance(candidate.hooks.begin(), hook)),
-                    event.target,
+                    event.route,
+                    event.payload_type,
                     std::string(event.payload_schema_name),
-                    event.payload_schema_name.empty()
-                        ? 0U
-                        : lux::cxx::Fnv1a64::hash(event.payload_schema_name),
+                    lux::semantic::typeId(event.payload_schema_name),
                     event.payload_schema_version
                 });
             }
@@ -601,10 +555,10 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::eraseSystem(
-        std::string_view instance_name
+        SystemInstanceId instance_id
     ) noexcept
     {
-        const auto system = findSystem(impl_->systems, instance_name);
+        const auto system = findSystem(impl_->systems, instance_id);
         if (system == impl_->systems.end())
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::SYSTEM_NOT_FOUND
@@ -613,10 +567,10 @@ namespace lux::simulation
             std::remove_if(
                 impl_->dependencies.begin(),
                 impl_->dependencies.end(),
-                [instance_name](const auto& dependency) noexcept
+                [instance_id](const auto& dependency) noexcept
                 {
-                    return dependency.before_system == instance_name ||
-                        dependency.after_system == instance_name;
+                    return dependency.before_system == instance_id ||
+                        dependency.after_system == instance_id;
                 }
             ),
             impl_->dependencies.end()
@@ -627,11 +581,11 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::setSystemConfiguration(
-        std::string_view instance_name,
+        SystemInstanceId instance_id,
         std::span<const std::byte> configuration
     ) noexcept
     {
-        const auto system = findSystem(impl_->systems, instance_name);
+        const auto system = findSystem(impl_->systems, instance_id);
         if (system == impl_->systems.end())
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::SYSTEM_NOT_FOUND
@@ -665,8 +619,8 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::addDependency(
-        std::string_view before_system,
-        std::string_view after_system
+        SystemInstanceId before_system,
+        SystemInstanceId after_system
     ) noexcept
     {
         const auto before = findSystem(impl_->systems, before_system);
@@ -681,9 +635,7 @@ namespace lux::simulation
             ));
         try
         {
-            Impl::PendingDependency candidate{
-                std::string(before_system),
-                std::string(after_system)};
+            Impl::PendingDependency candidate{before_system, after_system};
             if (std::find(
                     impl_->dependencies.begin(),
                     impl_->dependencies.end(),
@@ -720,8 +672,8 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::eraseDependency(
-        std::string_view before_system,
-        std::string_view after_system
+        SystemInstanceId before_system,
+        SystemInstanceId after_system
     ) noexcept
     {
         const auto dependency = std::find_if(
@@ -741,257 +693,11 @@ namespace lux::simulation
         return {};
     }
 
-    lux::cxx::expected<void, SimulationDescriptionFailure>
-    SimulationDescriptionBuilder::addGlobalScriptMount(
-        const ScriptMountDescription& mount
-    ) noexcept
-    {
-        if (!validScriptMountDescription(mount))
-            return lux::cxx::unexpected(failure(
-                ESimulationDescriptionError::INVALID_SCRIPT_MOUNT
-            ));
-        if (failMutationForTest())
-            return lux::cxx::unexpected(failure(
-                ESimulationDescriptionError::ALLOCATION_FAILURE
-            ));
-        try
-        {
-            const auto resolve_hook_system =
-                [&](const SystemHookBindingTarget& target) noexcept
-                    -> const Impl::PendingSystem*
-                {
-                    if (!target.system_instance.empty())
-                    {
-                        const auto found = findSystem(
-                            impl_->systems,
-                            target.system_instance
-                        );
-                        return found != impl_->systems.end() &&
-                                found->type == target.system_type
-                            ? std::addressof(*found)
-                            : nullptr;
-                    }
-                    const Impl::PendingSystem* result{};
-                    for (const auto& system : impl_->systems)
-                    {
-                        if (system.type != target.system_type)
-                            continue;
-                        if (result)
-                            return nullptr;
-                        result = std::addressof(system);
-                    }
-                    return result;
-                };
-            for (const auto& binding : mount.bindings)
-            {
-                const auto validation = std::visit(
-                    [&](const auto& target) noexcept
-                        -> std::optional<ESimulationDescriptionError>
-                    {
-                        using Target =
-                            std::remove_cvref_t<decltype(target)>;
-                        if constexpr (
-                            std::is_same_v<Target,
-                                BehaviorLifecycleBindingTarget>)
-                        {
-                            return ESimulationDescriptionError::
-                                SCRIPT_TARGET_SCOPE_MISMATCH;
-                        }
-                        else
-                        {
-                            const Impl::PendingSystem* resolved{};
-                            if (!target.system_instance.empty())
-                            {
-                                const auto system = findSystem(
-                                    impl_->systems,
-                                    target.system_instance
-                                );
-                                if (system == impl_->systems.end())
-                                {
-                                    return ESimulationDescriptionError::
-                                        SCRIPT_TARGET_SYSTEM_NOT_FOUND;
-                                }
-                                if (system->type != target.system_type)
-                                {
-                                    return ESimulationDescriptionError::
-                                        SCRIPT_TARGET_TYPE_MISMATCH;
-                                }
-                                resolved = std::addressof(*system);
-                            }
-                            else
-                            {
-                                for (const auto& system : impl_->systems)
-                                {
-                                    if (system.type != target.system_type)
-                                        continue;
-                                    if (resolved)
-                                    {
-                                        return ESimulationDescriptionError::
-                                            SCRIPT_TARGET_SYSTEM_AMBIGUOUS;
-                                    }
-                                    resolved = std::addressof(system);
-                                }
-                                if (!resolved)
-                                {
-                                    return ESimulationDescriptionError::
-                                        SCRIPT_TARGET_SYSTEM_NOT_FOUND;
-                                }
-                            }
-                            if constexpr (
-                                std::is_same_v<Target,
-                                    SystemHookBindingTarget>)
-                            {
-                                const auto hook = std::find_if(
-                                    resolved->hooks.begin(),
-                                    resolved->hooks.end(),
-                                    [&](const auto& candidate) noexcept
-                                    {
-                                        return candidate.name == target.hook;
-                                    }
-                                );
-                                if (hook == resolved->hooks.end())
-                                {
-                                    return ESimulationDescriptionError::
-                                        SCRIPT_TARGET_MEMBER_NOT_FOUND;
-                                }
-                                if (hook->cardinality ==
-                                    ESystemHookCardinality::SINGLE)
-                                {
-                                    std::size_t handlers{};
-                                    const auto count_handlers =
-                                        [&](const ScriptMountDescription& value)
-                                            noexcept
-                                        {
-                                            for (const auto& candidate_binding :
-                                                 value.bindings)
-                                            {
-                                                const auto* candidate =
-                                                    std::get_if<
-                                                        SystemHookBindingTarget>(
-                                                        std::addressof(
-                                                            candidate_binding.target));
-                                                if (!candidate ||
-                                                    candidate->hook != target.hook)
-                                                {
-                                                    continue;
-                                                }
-                                                if (resolve_hook_system(*candidate) ==
-                                                    resolved)
-                                                {
-                                                    ++handlers;
-                                                }
-                                            }
-                                        };
-                                    count_handlers(mount);
-                                    for (const auto& existing :
-                                         impl_->global_script_mounts)
-                                    {
-                                        count_handlers(existing);
-                                    }
-                                    if (handlers > 1U)
-                                    {
-                                        return ESimulationDescriptionError::
-                                            SINGLE_HOOK_MULTIPLE_HANDLERS;
-                                    }
-                                }
-                                return std::optional<
-                                    ESimulationDescriptionError>{};
-                            }
-                            else
-                            {
-                                const auto event = std::find_if(
-                                    resolved->events.begin(),
-                                    resolved->events.end(),
-                                    [&](const auto& candidate) noexcept
-                                    {
-                                        return candidate.name == target.event;
-                                    }
-                                );
-                                if (event == resolved->events.end())
-                                {
-                                    return ESimulationDescriptionError::
-                                        SCRIPT_TARGET_MEMBER_NOT_FOUND;
-                                }
-                                return event->target ==
-                                    ESystemEventTarget::GLOBAL
-                                    ? std::optional<
-                                        ESimulationDescriptionError>{}
-                                    : std::optional{
-                                        ESimulationDescriptionError::
-                                            SCRIPT_TARGET_SCOPE_MISMATCH};
-                            }
-                        }
-                    },
-                    binding.target
-                );
-                if (validation)
-                {
-                    return lux::cxx::unexpected(failure(
-                        *validation,
-                        {},
-                        binding.function
-                    ));
-                }
-            }
-            if (std::any_of(
-                    impl_->global_script_mounts.begin(),
-                    impl_->global_script_mounts.end(),
-                    [&](const auto& existing) noexcept
-                    {
-                        return existing.id == mount.id;
-                    }
-                ))
-            {
-                return lux::cxx::unexpected(failure(
-                    ESimulationDescriptionError::INVALID_SCRIPT_MOUNT,
-                    {},
-                    mount.id.value
-                ));
-            }
-            impl_->global_script_mounts.push_back(mount);
-            return {};
-        }
-        catch (const std::length_error&)
-        {
-            return lux::cxx::unexpected(failure(
-                ESimulationDescriptionError::SIZE_OVERFLOW
-            ));
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(
-                ESimulationDescriptionError::ALLOCATION_FAILURE
-            ));
-        }
-    }
-
-    lux::cxx::expected<void, SimulationDescriptionFailure>
-    SimulationDescriptionBuilder::eraseGlobalScriptMount(
-        ScriptMountId id
-    ) noexcept
-    {
-        const auto mount = std::find_if(
-            impl_->global_script_mounts.begin(),
-            impl_->global_script_mounts.end(),
-            [id](const auto& candidate) noexcept
-            {
-                return candidate.id == id;
-            }
-        );
-        if (mount == impl_->global_script_mounts.end())
-            return lux::cxx::unexpected(failure(
-                ESimulationDescriptionError::SCRIPT_MOUNT_NOT_FOUND
-            ));
-        impl_->global_script_mounts.erase(mount);
-        return {};
-    }
-
     void SimulationDescriptionBuilder::clear() noexcept
     {
         impl_->data.clear();
         impl_->systems.clear();
         impl_->dependencies.clear();
-        impl_->global_script_mounts.clear();
     }
 
     lux::cxx::expected<SimulationDescription, SimulationDescriptionFailure>
@@ -1026,7 +732,7 @@ namespace lux::simulation
                 impl_->systems.end(),
                 [](const auto& left, const auto& right) noexcept
                 {
-                    return left.instance_name < right.instance_name;
+                    return left.instance_id < right.instance_id;
                 }
             );
             std::sort(
@@ -1129,8 +835,8 @@ namespace lux::simulation
                 for (const auto& hook : source.hooks)
                 {
                     SimulationDescription::HookRecord hook_record;
+                    hook_record.id = hook.id;
                     hook_record.name = hook.name;
-                    hook_record.cardinality = hook.cardinality;
                     hook_record.parameters.reserve(hook.parameters.size());
                     for (const auto& parameter : hook.parameters)
                     {
@@ -1140,24 +846,17 @@ namespace lux::simulation
                             parameter.pass
                         });
                     }
-                    hook_record.returns.reserve(hook.returns.size());
-                    for (const auto& return_type : hook.returns)
-                    {
-                        hook_record.returns.push_back({
-                            return_type.type_id,
-                            return_type.canonical_name,
-                            return_type.pass
-                        });
-                    }
                     record.hooks.push_back(std::move(hook_record));
                 }
                 record.events.reserve(source.events.size());
                 for (const auto& event : source.events)
                 {
                     record.events.push_back({
+                        event.id,
                         event.name,
                         event.dispatch_hook_ordinal,
-                        event.target,
+                        event.route,
+                        event.payload_type,
                         event.payload_schema_name,
                         event.payload_schema_hash,
                         event.payload_schema_version
@@ -1192,6 +891,7 @@ namespace lux::simulation
                     }
                 );
                 result.systems_.push_back({
+                    source.instance_id,
                     std::move(source.instance_name),
                     static_cast<std::size_t>(
                         std::distance(result.system_types_.begin(), type)),
@@ -1212,18 +912,18 @@ namespace lux::simulation
                     result.systems_.begin(),
                     result.systems_.end(),
                     dependency.before_system,
-                    [](const auto& system, std::string_view name) noexcept
+                    [](const auto& system, SystemInstanceId id) noexcept
                     {
-                        return system.instance_name < name;
+                        return system.id < id;
                     }
                 );
                 const auto after_system = std::lower_bound(
                     result.systems_.begin(),
                     result.systems_.end(),
                     dependency.after_system,
-                    [](const auto& system, std::string_view name) noexcept
+                    [](const auto& system, SystemInstanceId id) noexcept
                     {
-                        return system.instance_name < name;
+                        return system.id < id;
                     }
                 );
                 const auto before_index = static_cast<std::size_t>(
@@ -1235,12 +935,9 @@ namespace lux::simulation
                     after_index
                 });
             }
-            result.global_script_mounts_ =
-                std::move(impl_->global_script_mounts);
             impl_->data.clear();
             impl_->systems.clear();
             impl_->dependencies.clear();
-            impl_->global_script_mounts.clear();
             return result;
         }
         catch (const std::length_error&)

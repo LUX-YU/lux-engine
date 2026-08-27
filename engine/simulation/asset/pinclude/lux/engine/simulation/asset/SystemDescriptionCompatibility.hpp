@@ -34,10 +34,9 @@ namespace lux::simulation::asset
         {
             const auto actual = asset_system.hookPointAt(index);
             const auto& expected = current.hooks[index];
-            if (actual.name() != expected.name ||
-                actual.cardinality() != expected.cardinality ||
-                actual.parameterCount() != expected.signature.parameters.size() ||
-                actual.returnCount() != expected.signature.returns.size())
+            if (actual.id() != expected.id ||
+                actual.name() != expected.diagnostic_name ||
+                actual.parameterCount() != expected.signature.parameters.size())
             {
                 return false;
             }
@@ -48,19 +47,16 @@ namespace lux::simulation::asset
                     expected.signature.parameters[parameter])
                     return false;
             }
-            for (std::size_t result{}; result < actual.returnCount(); ++result)
-            {
-                if (actual.returnAt(result) != expected.signature.returns[result])
-                    return false;
-            }
         }
         for (std::size_t index{}; index < current.events.size(); ++index)
         {
             const auto actual = asset_system.eventAt(index);
             const auto& expected = current.events[index];
-            if (actual.name() != expected.name ||
-                actual.dispatchHook().name() != expected.dispatch_hook ||
-                actual.target() != expected.target ||
+            if (actual.id() != expected.id ||
+                actual.name() != expected.diagnostic_name ||
+                actual.dispatchHook().id() != expected.dispatch_hook ||
+                actual.route() != expected.route ||
+                actual.payloadType() != expected.payload_type ||
                 actual.payloadSchemaName() != expected.payload_schema_name ||
                 actual.payloadSchemaVersion() != expected.payload_schema_version)
             {

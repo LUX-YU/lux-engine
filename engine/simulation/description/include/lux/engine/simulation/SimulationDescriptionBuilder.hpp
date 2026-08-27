@@ -38,14 +38,6 @@ namespace lux::simulation
         INVALID_DEPENDENCY,
         DUPLICATE_DEPENDENCY,
         DEPENDENCY_CYCLE,
-        INVALID_SCRIPT_MOUNT,
-        SCRIPT_MOUNT_NOT_FOUND,
-        SCRIPT_TARGET_SYSTEM_NOT_FOUND,
-        SCRIPT_TARGET_SYSTEM_AMBIGUOUS,
-        SCRIPT_TARGET_TYPE_MISMATCH,
-        SCRIPT_TARGET_MEMBER_NOT_FOUND,
-        SCRIPT_TARGET_SCOPE_MISMATCH,
-        SINGLE_HOOK_MULTIPLE_HANDLERS,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
     };
@@ -93,37 +85,32 @@ namespace lux::simulation
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         addSystem(
+            SystemInstanceId instance_id,
             std::string_view instance_name,
             const SystemDescription& system,
             std::span<const std::byte> configuration = {}
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseSystem(std::string_view instance_name) noexcept;
+        eraseSystem(SystemInstanceId instance_id) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         setSystemConfiguration(
-            std::string_view instance_name,
+            SystemInstanceId instance_id,
             std::span<const std::byte> configuration
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         addDependency(
-            std::string_view before_system,
-            std::string_view after_system
+            SystemInstanceId before_system,
+            SystemInstanceId after_system
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         eraseDependency(
-            std::string_view before_system,
-            std::string_view after_system
+            SystemInstanceId before_system,
+            SystemInstanceId after_system
         ) noexcept;
-
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addGlobalScriptMount(const ScriptMountDescription& mount) noexcept;
-
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseGlobalScriptMount(ScriptMountId id) noexcept;
 
         void clear() noexcept;
 

@@ -1,6 +1,7 @@
-#include <lux/engine/authoring/ScriptBindingAuthoring.hpp>
+#include <lux/engine/authoring/script/ScriptAuthoring.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/script/ScriptSystemDescriptionCodec.hpp>
 
 #include <array>
 #include <cassert>
@@ -13,19 +14,16 @@ namespace
 {
     using namespace lux::simulation;
 
-    inline constexpr std::array kHooks{
-        makeSystemHookPoint<void(float)>(
-            "first",
-            ESystemHookCardinality::MULTI
-        ),
-        makeSystemHookPoint<void(float)>(
-            "second",
-            ESystemHookCardinality::MULTI
-        )};
-    inline constexpr SystemDescription kSystem{
+    inline constexpr SystemInstanceId SystemId{301U};
+    inline constexpr HookPointId FirstHook{302U};
+    inline constexpr HookPointId SecondHook{303U};
+    inline constexpr std::array Hooks{
+        makeHookPointSpec<void(float)>(FirstHook, "first"),
+        makeHookPointSpec<void(float)>(SecondHook, "second")};
+    inline constexpr SystemDescription System{
         .canonical_name = "installed.authoring.system",
         .version = 1U,
-        .hooks = kHooks};
+        .hooks = Hooks};
 
     lux::asset::AssetCodecLimits unlimited()
     {
@@ -38,88 +36,85 @@ namespace
 
 int main()
 {
+    using namespace lux::authoring::script;
     using namespace lux::simulation;
+    using namespace lux::simulation::script;
 
     SimulationDescriptionBuilder target_builder;
-    assert(target_builder.addSystem("installed", kSystem));
+    assert(target_builder.addSystem(SystemId, "installed", System));
     auto targets = std::move(target_builder).build();
     assert(targets);
 
-    lux::rdesc::Script script;
-    script.module_name = "installed.authoring.script";
-    script.body = lux::rdesc::CppStaticScript{"installed-authoring-v1"};
-    constexpr lux::script::ScriptSymbolId symbol{77U};
-    script.exports.push_back(lux::rdesc::ScriptFunction{
+    constexpr lux::script::ScriptSymbolId Symbol{77U};
+    lux::rdesc::Script asset;
+    asset.module_name = "installed.authoring.script";
+    asset.body = lux::rdesc::CppStaticScript{"installed-authoring-v1"};
+    asset.exports.push_back({
         "apply",
-        symbol,
-        {{
-            "lux.f32",
-            lux::script::scriptSemanticTypeId("lux.f32"),
-            lux::script::EScriptPassMode::VALUE,
-            static_cast<std::uint8_t>(lux::semantic::EAbiKind::F32),
-            sizeof(float),
-            alignof(float)}},
+        Symbol,
+        {lux::rdesc::makeScriptValueType<float>()},
         {}});
-    assert(lux::rdesc::validScriptDescription(script));
+    assert(lux::rdesc::validScriptDescription(asset));
 
-    const auto catalog = lux::authoring::makeScriptBindingTargetCatalog(
-        *targets
-    );
-    const auto compatible = lux::authoring::compatibleScriptBindingTargets(
-        script,
-        symbol,
-        EScriptAttachmentScope::SIMULATION,
-        catalog
-    );
-    assert(catalog.size() == 7U);
+    const auto compatible = compatibleHookTargets(
+        *targets,
+        asset.exports[0]);
     assert(compatible.size() == 2U);
-
     std::array<std::uint8_t, 16U> id_bytes{};
     id_bytes[0] = 0xA8U;
     ScriptMountDescription mount{
         ScriptMountId{1U},
         lux::asset::AssetId{id_bytes},
+        SimulationScriptMount{},
+        true,
         {}};
-    for (const auto index : compatible)
+    for (const auto target : compatible)
     {
-        assert(lux::authoring::addScriptBinding(
+        assert(addBinding(
             *targets,
-            script,
+            asset,
             mount,
-            ScriptBindingDescription{symbol, catalog[index].target}
-        ) == lux::authoring::EScriptBindingAuthoringError::SUCCESS);
+            {Symbol, target}) == EScriptAuthoringError::SUCCESS);
     }
     assert(mount.bindings.size() == 2U);
-    assert(lux::authoring::diagnoseScriptBindings(
+    assert(diagnoseBindings(*targets, asset, mount).empty());
+
+    ScriptSystemDescriptionBuilder script_builder;
+    assert(script_builder.addMount(std::move(mount)));
+    auto authored = std::move(script_builder).build(*targets);
+    assert(authored);
+    const ScriptSystemCodecLimits limits{
+        std::numeric_limits<std::size_t>::max(),
+        std::numeric_limits<std::size_t>::max(),
+        std::numeric_limits<std::size_t>::max()};
+    const auto encoded_authored = encodeScriptSystemDescription(
+        *authored,
+        limits);
+    assert(encoded_authored);
+    const auto decoded_authored = decodeScriptSystemDescription(
+        *encoded_authored,
         *targets,
-        script,
-        mount
-    ).empty());
-    const std::array composition{
-        lux::authoring::ScriptBindingCompositionEntry{&script, &mount}};
-    assert(lux::authoring::diagnoseScriptBindingComposition(
-        *targets,
-        composition
-    ).empty());
+        limits);
+    assert(decoded_authored && decoded_authored->mounts().size() == 1U);
+    assert(decoded_authored->mounts()[0].bindings.size() == 2U);
 
     SimulationDescriptionBuilder final_builder;
-    assert(final_builder.addSystem("installed", kSystem));
-    assert(final_builder.addGlobalScriptMount(mount));
+    assert(final_builder.addSystem(SystemId, "installed", System));
+    assert(addScriptSystemData(final_builder, *authored, limits));
     auto description = std::move(final_builder).build();
     assert(description);
     const auto codec = simulationAssetCodecDescriptor({});
     const auto encoded = codec.encode(
         std::addressof(*description),
-        lux::asset::AssetEncodeContext{unlimited()}
-    );
-    assert(encoded && (*encoded)[4] == std::byte{4U});
+        lux::asset::AssetEncodeContext{unlimited()});
+    assert(encoded && (*encoded)[4] == std::byte{5U});
     const auto decoded = codec.decode(
         *encoded,
-        lux::asset::AssetDecodeContext{unlimited()}
-    );
+        lux::asset::AssetDecodeContext{unlimited()});
     assert(decoded);
     const auto restored = std::static_pointer_cast<
         const SimulationDescription>(decoded->payload);
-    assert(restored->globalScriptMountCount() == 1U);
-    assert(restored->globalScriptMountAt(0U).bindingCount() == 2U);
+    const auto data = restored->findData(scriptSystemDataSchemaId());
+    assert(data && data.version() == ScriptSystemDescription::kSchemaVersion);
+    return 0;
 }

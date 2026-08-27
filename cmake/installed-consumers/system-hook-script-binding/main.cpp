@@ -1,295 +1,232 @@
 #include "ConsumerBehavior.hpp"
 
 #include <lux/engine/resource/asset/script/ScriptAsset.hpp>
-#include <lux/engine/simulation/CppStaticScriptBridge.hpp>
-#include <lux/engine/simulation/ScriptBindingCompatibility.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/script/ScriptSystem.hpp>
+#include <lux/engine/simulation/script/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/simulation/script/cpp_static/CppStaticScriptBridge.hpp>
 
-#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
-#include <span>
-#include <string_view>
 
 namespace
 {
     using namespace lux::simulation;
+    using namespace lux::simulation::script;
 
-    inline constexpr std::array kHooks{
-        makeSystemHookPoint<void(float)>(
-            "value-a",
-            ESystemHookCardinality::MULTI
-        ),
-        makeSystemHookPoint<void(float)>(
-            "value-b",
-            ESystemHookCardinality::MULTI
-        )};
-    inline constexpr std::array kEvents{
-        makeSystemEvent<std::int32_t>(
+    inline constexpr SystemInstanceId SystemId{101U};
+    inline constexpr HookPointId ValueHook{102U};
+    inline constexpr HookPointId EventHook{103U};
+    inline constexpr EventPointId PulseEvent{104U};
+    inline constexpr lux::script::ScriptSymbolId ValueSymbol{201U};
+    inline constexpr lux::script::ScriptSymbolId EventSymbol{202U};
+
+    inline constexpr std::array Hooks{
+        makeHookPointSpec<void(float)>(ValueHook, "value"),
+        makeHookPointSpec<void()>(EventHook, "after-event")};
+    inline constexpr std::array Events{
+        makeEventPointSpec<std::int32_t>(
+            PulseEvent,
             "pulse",
-            kHooks[0],
-            ESystemEventTarget::ENTITY_TARGETED,
+            EventHook,
+            EEventRoute::ENTITY_TARGETED,
             "lux.i32",
-            1U
-        )};
-    inline constexpr SystemDescription kSystem{
+            1U)};
+    inline constexpr SystemDescription System{
         .canonical_name = "consumer.system",
         .version = 1U,
-        .hooks = kHooks,
-        .events = kEvents};
+        .hooks = Hooks,
+        .events = Events};
 
-    struct Asset final
+    [[nodiscard]] lux::asset::AssetId assetId()
     {
-        lux::asset::AssetId id;
-        lux::asset::ScriptAssetContent content;
-    };
-
-    bool resolveAsset(
-        void* opaque,
-        const lux::asset::AssetId& id,
-        ResolvedScriptAsset& result
-    ) noexcept
-    {
-        auto& asset = *static_cast<Asset*>(opaque);
-        if (asset.id != id)
-            return false;
-        result.asset = std::addressof(asset.content);
-        return true;
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes[0] = 0xC4U;
+        return lux::asset::AssetId{bytes};
     }
 
-    bool resolveRecord(
-        void*,
-        const lux::meta::RefType& type,
-        lux::script::ScriptSemanticLayout& result
-    ) noexcept
+    [[nodiscard]] lux::world::WorldObjectId objectId()
     {
-        if (type.hash != lux::cxx::type_hash<EBehaviorStopReason>())
-            return false;
-        result = {
-            lux::script::scriptSemanticTypeId(
-                BehaviorStopReasonCanonicalName
-            ),
-            BehaviorStopReasonCanonicalName,
-            LUX_SCRIPT_VK_UINT32,
-            sizeof(EBehaviorStopReason),
-            alignof(EBehaviorStopReason)};
-        return true;
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes[0] = 0xD5U;
+        return lux::world::WorldObjectId{uuids::uuid{bytes}};
     }
 
-    ScriptBindingDescription lifecycle(
-        lux::script::ScriptSymbolId symbol,
-        EBehaviorLifecyclePoint point
-    )
-    {
-        return {symbol, BehaviorLifecycleBindingTarget{point}};
-    }
-
-    lux::asset::AssetCodecLimits unlimited()
+    [[nodiscard]] lux::asset::AssetCodecLimits unlimited()
     {
         return {
             std::numeric_limits<std::size_t>::max(),
             std::numeric_limits<std::size_t>::max(),
             std::numeric_limits<std::size_t>::max()};
     }
+
+    struct Fixture final
+    {
+        lux::asset::AssetId asset_id{assetId()};
+        lux::world::WorldObjectId object{objectId()};
+        lux::asset::ScriptAssetContent asset;
+        lux::simulation::ecs::Entity entity{
+            lux::simulation::ecs::NullEntity};
+    };
+
+    bool resolveAsset(
+        void* context,
+        const lux::asset::AssetId& id,
+        ResolvedScriptAsset& result
+    ) noexcept
+    {
+        auto& fixture = *static_cast<Fixture*>(context);
+        if (id != fixture.asset_id)
+            return false;
+        result.asset = std::addressof(fixture.asset);
+        return true;
+    }
+
+    bool resolveWorld(
+        void* context,
+        const lux::world::WorldObjectId& object,
+        lux::simulation::ecs::Entity& result
+    ) noexcept
+    {
+        auto& fixture = *static_cast<Fixture*>(context);
+        if (object != fixture.object)
+            return false;
+        result = fixture.entity;
+        return true;
+    }
 }
 
 int main()
 {
     using namespace lux::simulation;
-    using installed_consumer::ConsumerBehavior;
+    using namespace lux::simulation::script;
 
     lux::meta::ReflectionRegistry::initRegistry();
+    auto& reflection = lux::meta::ReflectionRegistry::instance();
+    const auto* reflected = reflection.findClass(
+        "installed_consumer::ConsumerBehavior");
+    assert(reflected && reflected->methods.size() == 2U);
+    const lux::meta::RefMethod* value_method{};
+    const lux::meta::RefMethod* event_method{};
+    for (const auto& method : reflected->methods)
     {
-        auto& reflection = lux::meta::ReflectionRegistry::instance();
-        const auto* reflected = reflection.findClass(
-            "installed_consumer::ConsumerBehavior"
-        );
-        assert(reflected && reflected->methods.size() == 5U);
-        std::array<const lux::meta::RefMethod*, 5U> methods{};
-        for (std::size_t index{}; index < methods.size(); ++index)
-            methods[index] = std::addressof(reflected->methods[index]);
-        constexpr std::array<lux::script::ScriptSymbolId, 5U> symbols{
-            101U, 102U, 103U, 104U, 105U};
-        auto projected = projectCppStaticEntityScript<ConsumerBehavior>(
-            "consumer.behavior",
-            "consumer-behavior-v1",
-            *reflected,
-            methods,
-            symbols,
-            CppStaticRecordSemanticResolver{nullptr, &resolveRecord}
-        );
-        assert(projected);
-
-        auto find_symbol = [&](std::string_view name)
-        {
-            for (const auto& function : projected->description().exports)
-            {
-                if (function.name == name)
-                    return function.symbol_id;
-            }
-            return lux::script::InvalidScriptSymbolId;
-        };
-        const auto value_symbol = find_symbol("onValue");
-        const auto event_symbol = find_symbol("onEvent");
-        assert(value_symbol && event_symbol);
-
-        std::array<std::uint8_t, 16U> id_bytes{};
-        id_bytes[0] = 0xC4U;
-        Asset asset{lux::asset::AssetId{id_bytes}, {}};
-        asset.content.description = projected->description();
-
-        const auto script_codec = lux::asset::scriptAssetCodecDescriptor({});
-        const auto encoded_script = script_codec.encode(
-            std::addressof(asset.content),
-            lux::asset::AssetEncodeContext{unlimited()}
-        );
-        assert(encoded_script && (*encoded_script)[4] == std::byte{3U});
-        const auto decoded_script = script_codec.decode(
-            *encoded_script,
-            lux::asset::AssetDecodeContext{unlimited()}
-        );
-        assert(decoded_script);
-        asset.content = *std::static_pointer_cast<
-            const lux::asset::ScriptAssetContent>(decoded_script->payload);
-        assert(asset.content.description.module_name ==
-            projected->description().module_name);
-        assert(asset.content.description.body ==
-            projected->description().body);
-        assert(asset.content.description.exports ==
-            projected->description().exports);
-
-        ScriptMountDescription mount{
-            ScriptMountId{9U},
-            asset.id,
-            {
-                lifecycle(
-                    find_symbol("construct"),
-                    EBehaviorLifecyclePoint::CONSTRUCT
-                ),
-                lifecycle(
-                    find_symbol("start"),
-                    EBehaviorLifecyclePoint::START
-                ),
-                lifecycle(
-                    find_symbol("stop"),
-                    EBehaviorLifecyclePoint::STOP
-                ),
-                {value_symbol, SystemHookBindingTarget{
-                    systemTypeId(kSystem.canonical_name),
-                    "consumer",
-                    "value-a"}},
-                {value_symbol, SystemHookBindingTarget{
-                    systemTypeId(kSystem.canonical_name),
-                    "consumer",
-                    "value-b"}},
-                {event_symbol, SystemEventBindingTarget{
-                    systemTypeId(kSystem.canonical_name),
-                    "consumer",
-                    "pulse"}},
-            },
-            EScriptAttachmentScope::ENTITY};
-
-        SimulationDescriptionBuilder builder;
-        assert(builder.addSystem("consumer", kSystem));
-        auto description = std::move(builder).build();
-        assert(description);
-        for (std::size_t binding_index{};
-             binding_index < mount.bindings.size(); ++binding_index)
-        {
-            const auto& binding = mount.bindings[binding_index];
-            const auto found = std::find_if(
-                asset.content.description.exports.begin(),
-                asset.content.description.exports.end(),
-                [&](const auto& function) noexcept
-                {
-                    return function.symbol_id == binding.function;
-                }
-            );
-            assert(found != asset.content.description.exports.end());
-            assert(evaluateScriptBindingCompatibility(
-                    *description,
-                    EScriptAttachmentScope::ENTITY,
-                    *found,
-                    binding.target
-                ) == EScriptBindingCompatibility::COMPATIBLE);
-        }
-        const auto simulation_codec = simulationAssetCodecDescriptor({});
-        const auto encoded_simulation = simulation_codec.encode(
-            std::addressof(*description),
-            lux::asset::AssetEncodeContext{unlimited()}
-        );
-        assert(encoded_simulation &&
-            (*encoded_simulation)[4] == std::byte{4U});
-        assert(simulation_codec.decode(
-            *encoded_simulation,
-            lux::asset::AssetDecodeContext{unlimited()}
-        ));
-
-        ecs::Registry registry;
-        const auto entity = registry.create();
-        registry.emplace<ScriptComponent>(
-            entity,
-            ScriptComponent{{mount}}
-        );
-        const std::array descriptors{std::addressof(*projected)};
-        CppStaticScriptBindingBackend backend{descriptors, 1U};
-        assert(backend);
-        const auto backend_descriptor = backend.descriptor();
-        auto created = ScriptBindingSession::create(
-            std::move(*description),
-            registry,
-            ScriptBindingCapacities{1U, 5U, 4U, 8U, 8U, 4U, 4U},
-            ScriptAssetResolver{&asset, &resolveAsset},
-            std::span{&backend_descriptor, 1U}
-        );
-        assert(created);
-        auto session = std::move(*created);
-        assert(session.prepare());
-        assert(installed_consumer::constructs == 1U);
-        assert(installed_consumer::starts == 1U);
-        assert(installed_consumer::observed_self == entity);
-        assert(session.preparedMethodCount() == 5U);
-
-        float value{2.5F};
-        lux_script_value_slot value_slot{
-            LUX_SCRIPT_VK_FLOAT,
-            {},
-            sizeof(value),
-            lux::script::scriptSemanticTypeId("lux.f32"),
-            &value};
-        lux_script_call_frame value_frame{
-            &value_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
-        assert(session.dispatchHook(
-            session.hookSlot("consumer", "value-a"),
-            value_frame
-        ).calls == 1U);
-        assert(session.dispatchHook(
-            session.hookSlot("consumer", "value-b"),
-            value_frame
-        ).calls == 1U);
-        assert(installed_consumer::observed_value == 5.0F);
-
-        std::int32_t pulse{17};
-        lux_script_value_slot event_slot{
-            LUX_SCRIPT_VK_INT32,
-            {},
-            sizeof(pulse),
-            lux::script::scriptSemanticTypeId("lux.i32"),
-            &pulse};
-        lux_script_call_frame event_frame{
-            &event_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
-        assert(session.dispatchEvent(
-            session.eventSlot("consumer", "pulse"),
-            entity,
-            event_frame
-        ).calls == 1U);
-        assert(installed_consumer::observed_event == pulse);
-        assert(session.shutdown());
-        assert(installed_consumer::stops == 1U);
+        if (method.invokable.name == "onValue")
+            value_method = &method;
+        else if (method.invokable.name == "onEvent")
+            event_method = &method;
     }
+    assert(value_method && event_method);
+    const std::array methods{value_method, event_method};
+    const std::array symbols{ValueSymbol, EventSymbol};
+    auto projected = projectCppStaticEntityScript(
+        "consumer.behavior",
+        "consumer-behavior-v1",
+        *reflected,
+        methods,
+        symbols,
+        {});
+    assert(projected);
+
+    Fixture fixture;
+    fixture.asset.description = projected->description();
+    const auto asset_codec = lux::asset::scriptAssetCodecDescriptor({});
+    const auto encoded_asset = asset_codec.encode(
+        std::addressof(fixture.asset),
+        lux::asset::AssetEncodeContext{unlimited()});
+    assert(encoded_asset && (*encoded_asset)[4] == std::byte{3U});
+    const auto decoded_asset = asset_codec.decode(
+        *encoded_asset,
+        lux::asset::AssetDecodeContext{unlimited()});
+    assert(decoded_asset);
+    fixture.asset = *std::static_pointer_cast<
+        const lux::asset::ScriptAssetContent>(decoded_asset->payload);
+
+    SimulationDescriptionBuilder simulation_builder;
+    assert(simulation_builder.addSystem(SystemId, "consumer", System));
+    auto simulation = std::move(simulation_builder).build();
+    assert(simulation);
+
+    ScriptSystemDescriptionBuilder script_builder;
+    assert(script_builder.addMount({
+        ScriptMountId{1U},
+        fixture.asset_id,
+        EntityScriptMount{fixture.object},
+        true,
+        {{ValueSymbol, HookScriptTarget{SystemId, ValueHook}},
+         {EventSymbol, EventScriptTarget{SystemId, PulseEvent}}}}));
+    auto script_description = std::move(script_builder).build(*simulation);
+    assert(script_description);
+    const ScriptSystemCodecLimits wire_limits{
+        std::numeric_limits<std::size_t>::max(),
+        std::numeric_limits<std::size_t>::max(),
+        std::numeric_limits<std::size_t>::max()};
+    const auto encoded_script = encodeScriptSystemDescription(
+        *script_description,
+        wire_limits);
+    assert(encoded_script);
+    const auto decoded_script = decodeScriptSystemDescription(
+        *encoded_script,
+        *simulation,
+        wire_limits);
+    assert(decoded_script);
+
+    const auto simulation_codec = simulationAssetCodecDescriptor({});
+    const auto encoded_simulation = simulation_codec.encode(
+        std::addressof(*simulation),
+        lux::asset::AssetEncodeContext{unlimited()});
+    assert(encoded_simulation && (*encoded_simulation)[4] == std::byte{5U});
+    assert(simulation_codec.decode(
+        *encoded_simulation,
+        lux::asset::AssetDecodeContext{unlimited()}));
+
+    ecs::Registry registry;
+    fixture.entity = registry.create();
+    HookPoint<void(float)> value_hook;
+    EventPoint<EntityTargetedRoute<ecs::Entity>, std::int32_t> pulse;
+    assert(value_hook.prepare(1U, 2U) == EEndpointMutationError::NONE);
+    assert(pulse.prepare(1U, 2U, 1U, 2U) == EEndpointMutationError::NONE);
+    ScriptHookEndpoint<void(float)> hook_bridge{
+        SystemId,
+        ValueHook,
+        value_hook};
+    ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, std::int32_t>
+        event_bridge{SystemId, PulseEvent, pulse};
+    const std::array hook_endpoints{hook_bridge.descriptor()};
+    const std::array event_endpoints{event_bridge.descriptor()};
+
+    const std::array descriptors{std::addressof(*projected)};
+    CppStaticScriptBackend backend{descriptors, 1U};
+    assert(backend);
+    const std::array backends{backend.descriptor()};
+    auto created = ScriptSystem::create(
+        *simulation,
+        *decoded_script,
+        registry,
+        ScriptSystemCapacities{1U, 2U, 1U, 1U, 2U, 2U, 2U},
+        {&fixture, &resolveAsset},
+        {&fixture, &resolveWorld},
+        backends,
+        hook_endpoints,
+        event_endpoints);
+    assert(created);
+    auto script_system = std::move(*created);
+    assert(script_system.prepare());
+    assert(script_system.activeInstanceCount() == 1U);
+
+    assert(value_hook.dispatch(2.5F) == 1U);
+    assert(installed_consumer::observed_value == 2.5F);
+    {
+        auto writer = pulse.begin(0U);
+        assert(writer.record(fixture.entity, 17));
+    }
+    assert(pulse.drain() == 1U);
+    assert(installed_consumer::observed_event == 17);
+    assert(script_system.shutdown());
     lux::meta::ReflectionRegistry::destroyRegistry();
+    return 0;
 }

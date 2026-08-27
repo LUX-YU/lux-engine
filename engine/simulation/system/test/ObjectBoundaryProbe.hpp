@@ -42,15 +42,8 @@ namespace lux::simulation::test
         inline static constexpr std::array Capabilities{
             std::string_view{"material.texture-residency"}};
         inline static constexpr std::array Hooks{
-            makeSystemHookPoint<void()>("update")};
-        inline static constexpr std::array Events{
-            makeSystemEvent<MaterialTextureDemand>(
-                "texture-demand",
-                Hooks[0],
-                ESystemEventTarget::GLOBAL,
-                "lux.material.TextureDemand",
-                1U
-            )};
+            makeHookPointSpec<void()>(HookPointId{1U}, "update")};
+        inline static constexpr std::array<EventPointSpec, 0U> Events{};
         inline static constexpr auto Access = makeSystemAccessSpec<
             ComponentWrite<MaterialTextureResident>>();
         inline static constexpr SystemDescription Description{

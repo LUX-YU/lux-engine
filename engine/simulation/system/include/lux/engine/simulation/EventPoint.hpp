@@ -154,7 +154,8 @@ namespace lux::simulation
             [[nodiscard]] EndpointConnectResult connect(
                 Target target,
                 void* context,
-                Callback callback
+                Callback callback,
+                bool match_all = false
             ) noexcept
             {
                 if (!prepared_)
@@ -183,7 +184,8 @@ namespace lux::simulation
                     token,
                     std::move(target),
                     context,
-                    callback});
+                    callback,
+                    match_all});
                 return {token, EEndpointMutationError::NONE};
             }
 
@@ -197,7 +199,13 @@ namespace lux::simulation
                     return EEndpointMutationError::INVALID_TOKEN;
                 if (mutations_.size() >= mutation_capacity_)
                     return EEndpointMutationError::CAPACITY_EXCEEDED;
-                mutations_.push_back({false, token, {}, nullptr, nullptr});
+                mutations_.push_back({
+                    false,
+                    token,
+                    {},
+                    nullptr,
+                    nullptr,
+                    false});
                 return EEndpointMutationError::NONE;
             }
 
@@ -218,6 +226,7 @@ namespace lux::simulation
                             std::move(mutation.target),
                             mutation.context,
                             mutation.callback,
+                            mutation.match_all,
                             true});
                         continue;
                     }
@@ -261,7 +270,9 @@ namespace lux::simulation
                         for (const auto& handler : handlers_)
                         {
                             if (!handler.active ||
+                                (!handler.match_all &&
                                 !invoke.matches(handler.target, occurrence.target))
+                                )
                             {
                                 continue;
                             }
@@ -295,6 +306,7 @@ namespace lux::simulation
                 Target target;
                 void* context{};
                 Callback callback{};
+                bool match_all{};
                 bool active{};
             };
 
@@ -305,6 +317,7 @@ namespace lux::simulation
                 Target target;
                 void* context{};
                 Callback callback{};
+                bool match_all{};
             };
 
             std::vector<std::vector<Occurrence>> producers_;
@@ -509,6 +522,14 @@ namespace lux::simulation
         ) noexcept
         {
             return storage_.connect(std::move(target), context, callback);
+        }
+
+        [[nodiscard]] EndpointConnectResult connectAll(
+            void* context,
+            Callback callback
+        ) noexcept
+        {
+            return storage_.connect({}, context, callback, true);
         }
 
         [[nodiscard]] EEndpointMutationError disconnect(

@@ -1,5 +1,5 @@
-version = 8
-benchmark_schema_version = 8
+version = 9
+benchmark_schema_version = 9
 
 [[scaling]]
 name = "Reactive dirty scaling"
@@ -45,115 +45,80 @@ field = "allocations"
 equals = 0
 
 [[structural]]
-name = "Global multi hook invokes every handler"
-metric = "hook_global_multi"
-size = 100000
+name = "Hook one subscriber"
+metric = "hook_mixed_scope"
+size = 1
 field = "callbacks"
-equals = 400000
+equals = 1
 
 [[structural]]
-name = "Entity multi hook invokes every subscriber"
-metric = "hook_entity_multi"
-size = 10000
+name = "Hook eight subscribers"
+metric = "hook_mixed_scope"
+size = 8
 field = "callbacks"
-equals = 10000
+equals = 8
 
 [[structural]]
-name = "Entity multi hook visits every subscriber"
-metric = "hook_entity_multi"
-size = 10000
-field = "handlers_visited"
-equals = 10000
+name = "Hook sixty-four subscribers"
+metric = "hook_mixed_scope"
+size = 64
+field = "callbacks"
+equals = 64
 
 [[structural]]
-name = "Entity multi hook performs no Entity lookup"
-metric = "hook_entity_multi"
-size = 10000
-field = "entities_examined"
-equals = 0
+name = "Hook 1024 mixed-scope subscribers"
+metric = "hook_mixed_scope"
+size = 1024
+field = "callbacks"
+equals = 1024
 
 [[structural]]
-name = "Entity multi hook performs no sparse range lookup"
-metric = "hook_entity_multi"
-size = 10000
-field = "target_range_lookups"
-equals = 0
-
-[[structural]]
-name = "Entity multi hook builds one live frame"
-metric = "hook_entity_multi"
-size = 10000
+name = "Hook builds one frame"
+metric = "hook_mixed_scope"
+size = 1024
 field = "frame_builds"
 equals = 1
 
 [[structural]]
-name = "Entity multi hook is allocation free"
-metric = "hook_entity_multi"
-size = 10000
+name = "Hook dispatch is allocation free"
+metric = "hook_mixed_scope"
+size = 1024
 field = "allocations"
 equals = 0
 
 [[structural]]
-name = "Global event dispatch is allocation free"
+name = "Broadcast event dispatch is allocation free"
 metric = "global_event"
 size = 100000
 field = "allocations"
 equals = 0
 
 [[structural]]
-name = "Entity event invokes every target"
+name = "Entity event invokes every occurrence"
 metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "callbacks"
 equals = 100000
 
 [[structural]]
-name = "Entity event examines only occurrences"
-metric = "entity_targeted_event_sparse"
-size = 1000000
-field = "entities_examined"
-equals = 100000
-
-[[structural]]
-name = "Entity event performs one exact sparse lookup per occurrence"
+name = "Entity event performs one exact lookup per occurrence"
 metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "target_range_lookups"
 equals = 100000
 
 [[structural]]
-name = "Entity event visits each bound handler exactly once"
+name = "Entity event visits one handler per occurrence"
 metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "handlers_visited"
 equals = 100000
 
 [[structural]]
-name = "Entity event performs no asset resolution after prepare"
-metric = "entity_targeted_event_sparse"
-size = 1000000
-field = "asset_resolution_delta"
-equals = 0
-
-[[structural]]
-name = "Entity event performs no target resolution after prepare"
-metric = "entity_targeted_event_sparse"
-size = 1000000
-field = "target_resolution_delta"
-equals = 0
-
-[[structural]]
-name = "Sparse target ranges do not exceed non-empty subscriptions"
+name = "Sparse target ranges match scripted entities"
 metric = "entity_targeted_event_sparse"
 size = 1000000
 field = "target_ranges_built"
-max = 10000
-
-[[structural]]
-name = "Sparse handler storage matches non-empty subscriptions"
-metric = "entity_targeted_event_sparse"
-size = 1000000
-field = "dispatch_handlers_built"
 equals = 10000
 
 [[structural]]

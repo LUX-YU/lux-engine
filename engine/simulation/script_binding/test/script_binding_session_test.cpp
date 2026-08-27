@@ -164,6 +164,11 @@ int main()
             {{3U, lux::rdesc::EScriptBindingKind::EVENT,
               "lux.test.binding", "fixture", "entity-pulse"}}}
     }});
+    const auto second_entity = registry.create();
+    registry.emplace<ScriptMountFacts>(
+        second_entity,
+        registry.get<ScriptMountFacts>(entity)
+    );
 
     std::vector<std::int32_t> log;
     Backend backend{{
@@ -187,8 +192,8 @@ int main()
     auto session = std::move(*created);
     const auto prepared = session.prepare();
     assert(prepared);
-    assert(session.preparedCallCount() == 3U);
-    assert(assets.resolves == 2U);
+    assert(session.preparedCallCount() == 4U);
+    assert(assets.resolves == 3U);
 
     const auto after = session.hookSlot("fixture", "after");
     const auto global_event = session.eventSlot("fixture", "global-pulse");
@@ -209,16 +214,27 @@ int main()
     session.beginUpdate();
     Pulse first{10};
     Pulse second{11};
+    Pulse second_entity_pulse{12};
     Pulse third{20};
     lux_script_value_slot first_slot{};
     lux_script_value_slot second_slot{};
+    lux_script_value_slot second_entity_slot{};
     lux_script_value_slot third_slot{};
     auto first_frame = make_frame(first, first_slot);
     auto second_frame = make_frame(second, second_slot);
+    auto second_entity_frame = make_frame(
+        second_entity_pulse,
+        second_entity_slot
+    );
     auto third_frame = make_frame(third, third_slot);
     assert(session.writer(1U).emit(global_event, third_frame));
     assert(session.writer(0U).emit(global_event, first_frame));
     assert(session.writer(0U).emit(entity_event, entity, second_frame));
+    assert(session.writer(0U).emit(
+        entity_event,
+        second_entity,
+        second_entity_frame
+    ));
 
     SimulationStepInfo step{1.0F / 60.0F, 7U};
     lux_script_value_slot step_slot{
@@ -233,8 +249,8 @@ int main()
         &step_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
     const auto dispatched = session.dispatchHook(after, hook_frame);
     assert(dispatched.status == 0);
-    assert(dispatched.calls == 4U);
-    assert((log == std::vector<std::int32_t>{210, 311, 220, 100}));
+    assert(dispatched.calls == 5U);
+    assert((log == std::vector<std::int32_t>{210, 311, 312, 220, 100}));
     assert(session.hotPathNameLookupCount() == 0U);
     assert(session.hotPathAssetLookupCount() == 0U);
     assert(session.hotPathSceneScanCount() == 0U);
@@ -259,6 +275,8 @@ int main()
     assert(restored);
     assert((*restored)->get<ScriptMountFacts>(entity) ==
         registry.get<ScriptMountFacts>(entity));
+    assert((*restored)->get<ScriptMountFacts>(second_entity) ==
+        registry.get<ScriptMountFacts>(second_entity));
 
     // A mount mutation is observed but cannot change live calls until the
     // explicitly quiescent apply point.
@@ -266,8 +284,8 @@ int main()
     {
         value.mounts.clear();
     });
-    assert(session.preparedCallCount() == 3U);
+    assert(session.preparedCallCount() == 4U);
     assert(session.applyQuiescentMutations());
-    assert(session.preparedCallCount() == 2U);
-    assert(backend.releases == 3U);
+    assert(session.preparedCallCount() == 3U);
+    assert(backend.releases == 4U);
 }

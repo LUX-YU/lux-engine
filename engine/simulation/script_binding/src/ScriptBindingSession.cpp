@@ -101,16 +101,37 @@ namespace lux::simulation
 
         struct EntitySidecar final
         {
-            ecs::Entity entity{ecs::NullEntity};
             std::vector<std::vector<std::uint32_t>> event_handlers;
+        };
+
+        struct HandlerRange final
+        {
+            std::uint32_t offset{};
+            std::uint32_t count{};
         };
 
         struct Occurrence final
         {
             ScriptEventSlot event;
             ecs::Entity target{ecs::NullEntity};
-            lux_script_call_frame frame{};
+            const lux_script_value_slot* args{};
+            lux_script_value_slot* returns{};
+            std::uint32_t arg_count{};
+            std::uint32_t return_count{};
             bool dispatched{};
+
+            [[nodiscard]] lux_script_call_frame makeFrame() const noexcept
+            {
+                return lux_script_call_frame{
+                    args,
+                    arg_count,
+                    0U,
+                    returns,
+                    return_count,
+                    0U,
+                    nullptr,
+                    nullptr};
+            }
         };
 
         struct BuildState final
@@ -120,6 +141,8 @@ namespace lux::simulation
             std::vector<std::vector<std::uint32_t>> global_event_handlers;
             std::vector<EntitySidecar> sidecars;
             std::vector<std::uint32_t> entity_to_sidecar;
+            std::vector<HandlerRange> entity_event_ranges;
+            std::vector<std::uint32_t> entity_event_handlers;
         };
 
         State(
@@ -586,7 +609,6 @@ namespace lux::simulation
                 {
                     const auto sidecar_index = build.sidecars.size();
                     build.sidecars.push_back(EntitySidecar{
-                        entity,
                         std::vector<std::vector<std::uint32_t>>(events.size())});
                     build.entity_to_sidecar[entityIndex(entity)] =
                         static_cast<std::uint32_t>(sidecar_index);
@@ -607,6 +629,53 @@ namespace lux::simulation
                             releasePrepared(build.prepared);
                             return lux::cxx::unexpected(result.error());
                         }
+                    }
+                }
+
+                if (!events.empty() &&
+                    build.sidecars.size() >
+                        std::numeric_limits<std::size_t>::max() / events.size())
+                {
+                    releasePrepared(build.prepared);
+                    return lux::cxx::unexpected(
+                        EScriptBindingError::CAPACITY_EXCEEDED
+                    );
+                }
+                build.entity_event_ranges.reserve(
+                    build.sidecars.size() * events.size()
+                );
+                build.entity_event_handlers.reserve(build.prepared.size());
+                for (std::size_t event_index{};
+                     event_index < events.size();
+                     ++event_index)
+                {
+                    for (const auto& sidecar : build.sidecars)
+                    {
+                        const auto& handlers =
+                            sidecar.event_handlers[event_index];
+                        if (build.entity_event_handlers.size() >
+                                std::numeric_limits<std::uint32_t>::max() ||
+                            handlers.size() >
+                                std::numeric_limits<std::uint32_t>::max() ||
+                            handlers.size() >
+                                std::numeric_limits<std::uint32_t>::max() -
+                                    build.entity_event_handlers.size())
+                        {
+                            releasePrepared(build.prepared);
+                            return lux::cxx::unexpected(
+                                EScriptBindingError::CAPACITY_EXCEEDED
+                            );
+                        }
+                        build.entity_event_ranges.push_back(HandlerRange{
+                            static_cast<std::uint32_t>(
+                                build.entity_event_handlers.size()
+                            ),
+                            static_cast<std::uint32_t>(handlers.size())});
+                        build.entity_event_handlers.insert(
+                            build.entity_event_handlers.end(),
+                            handlers.begin(),
+                            handlers.end()
+                        );
                     }
                 }
                 return build;
@@ -631,8 +700,10 @@ namespace lux::simulation
                 events[index].global_handlers =
                     std::move(build.global_event_handlers[index]);
             }
-            sidecars = std::move(build.sidecars);
             entity_to_sidecar = std::move(build.entity_to_sidecar);
+            entity_sidecar_count = build.sidecars.size();
+            entity_event_ranges = std::move(build.entity_event_ranges);
+            entity_event_handlers = std::move(build.entity_event_handlers);
             mounts_dirty = false;
             prepared_once = true;
         }
@@ -646,8 +717,10 @@ namespace lux::simulation
         std::vector<Hook> hooks;
         std::vector<Event> events;
         std::vector<Prepared> prepared;
-        std::vector<EntitySidecar> sidecars;
         std::vector<std::uint32_t> entity_to_sidecar;
+        std::size_t entity_sidecar_count{};
+        std::vector<HandlerRange> entity_event_ranges;
+        std::vector<std::uint32_t> entity_event_handlers;
         std::vector<std::vector<Occurrence>> occurrences;
         std::vector<ScriptBindingFailure> failures;
         entt::scoped_connection constructed;
@@ -844,7 +917,14 @@ namespace lux::simulation
                 EScriptBindingError::OCCURRENCE_CAPACITY_EXCEEDED
             );
         }
-        buffer.push_back(State::Occurrence{event, target, frame, false});
+        buffer.push_back(State::Occurrence{
+            event,
+            target,
+            frame.args,
+            frame.returns,
+            frame.arg_count,
+            frame.return_count,
+            false});
         return {};
     }
 
@@ -906,20 +986,43 @@ namespace lux::simulation
                 }
                 occurrence.dispatched = true;
                 const auto& event = state_->events[occurrence.event.value];
+                auto event_frame = occurrence.makeFrame();
                 if (occurrence.target == ecs::NullEntity)
                 {
                     for (const auto handler : event.global_handlers)
-                        (void)invoke(handler, occurrence.frame, ecs::NullEntity, false);
+                    {
+                        (void)invoke(
+                            handler,
+                            event_frame,
+                            ecs::NullEntity,
+                            false
+                        );
+                    }
                 }
                 else
                 {
                     const auto sidecar = state_->entity_to_sidecar[
                         entityIndex(occurrence.target)
                     ];
-                    const auto& handlers = state_->sidecars[sidecar]
-                        .event_handlers[occurrence.event.value];
-                    for (const auto handler : handlers)
-                        (void)invoke(handler, occurrence.frame, occurrence.target, false);
+                    const auto range_index =
+                        static_cast<std::size_t>(occurrence.event.value) *
+                            state_->entity_sidecar_count +
+                        sidecar;
+                    if (range_index >= state_->entity_event_ranges.size())
+                        continue;
+                    const auto range = state_->entity_event_ranges[range_index];
+                    for (std::size_t index{}; index < range.count; ++index)
+                    {
+                        const auto handler = state_->entity_event_handlers[
+                            static_cast<std::size_t>(range.offset) + index
+                        ];
+                        (void)invoke(
+                            handler,
+                            event_frame,
+                            occurrence.target,
+                            false
+                        );
+                    }
                 }
             }
         }

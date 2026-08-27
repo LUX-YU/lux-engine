@@ -7,25 +7,39 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace lux::simulation
 {
     struct LuaComponentBinding final
     {
-        std::string_view name;
+        std::string name;
         std::uint64_t component_type{};
+        std::uint64_t semantic_type{};
+        std::string canonical_name;
         std::uint8_t abi_kind{LUX_SCRIPT_VK_VOID};
+        std::size_t size{};
+        std::size_t alignment{};
+    };
+
+    enum class ELuaScriptBindingBackendError : std::uint8_t
+    {
+        INVALID_COMPONENT_CONTRACT,
+        DUPLICATE_COMPONENT_NAME,
+        ALLOCATION_FAILURE,
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_LUA_PUBLIC
         LuaScriptBindingBackend final
     {
       public:
-        explicit LuaScriptBindingBackend(
-            std::size_t instance_capacity,
-            std::span<const LuaComponentBinding> components = {}
-        ) noexcept;
+        [[nodiscard]] static lux::cxx::expected<
+            LuaScriptBindingBackend,
+            ELuaScriptBindingBackendError> create(
+                std::size_t instance_capacity,
+                std::span<const LuaComponentBinding> components = {}
+            ) noexcept;
         ~LuaScriptBindingBackend();
 
         LuaScriptBindingBackend(LuaScriptBindingBackend&&) noexcept;
@@ -42,6 +56,9 @@ namespace lux::simulation
 
       private:
         struct State;
+        explicit LuaScriptBindingBackend(
+            std::unique_ptr<State> state
+        ) noexcept;
         std::unique_ptr<State> state_;
     };
 }

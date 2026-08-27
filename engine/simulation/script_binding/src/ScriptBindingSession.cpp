@@ -36,6 +36,8 @@ namespace lux::simulation
                 return EScriptBindingError::ALLOCATION_FAILURE;
             case EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH:
                 return EScriptBindingError::EXECUTABLE_CONTRACT_MISMATCH;
+            case EScriptBackendResult::HOST_COMPONENT_CONTRACT_MISMATCH:
+                return EScriptBindingError::HOST_COMPONENT_CONTRACT_MISMATCH;
             case EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE:
                 return EScriptBindingError::UNSUPPORTED_MARSHAL_TYPE;
             case EScriptBackendResult::UNSUPPORTED_MODEL:
@@ -93,12 +95,24 @@ namespace lux::simulation
             );
     }
 
-    void ScriptInstanceHostContext::attach(
-        const ScriptHostApi& api,
-        ecs::Entity entity
+    bool ScriptInstanceHostContext::componentContract(
+        std::uint64_t component_type,
+        ScriptHostComponentContract& result
+    ) const noexcept
+    {
+        return api_ && api_->component_contract &&
+            api_->component_contract(api_->context, component_type, result);
+    }
+
+    void ScriptInstanceHostContext::configure(
+        const ScriptHostApi& api
     ) noexcept
     {
         api_ = std::addressof(api);
+    }
+
+    void ScriptInstanceHostContext::attach(ecs::Entity entity) noexcept
+    {
         self_ = entity;
     }
 
@@ -720,6 +734,7 @@ namespace lux::simulation
                 resolved.release = nullptr;
                 runtime->backend = backend_index;
                 runtime->methods.reserve(requested_methods);
+                runtime->host.configure(host_api);
                 ScriptInstanceCreateContext create_context{
                     authored.script,
                     authored.id,
@@ -737,7 +752,7 @@ namespace lux::simulation
                     releaseMount(*runtime, false);
                     return lux::cxx::unexpected(mapBackendResult(create_result));
                 }
-                runtime->host.attach(host_api, self);
+                runtime->host.attach(self);
                 for (const auto& binding : authored.bindings)
                 {
                     if (findMethod(*runtime, binding.function))

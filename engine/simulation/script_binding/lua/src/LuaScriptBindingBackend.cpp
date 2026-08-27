@@ -24,13 +24,20 @@ namespace lux::simulation
             int table_ref{LUA_NOREF};
         };
 
+        struct HostHandle final
+        {
+            State* owner{};
+            ScriptInstanceHostContext* host{};
+            bool alive{};
+        };
+
         struct Instance final
         {
             State* owner{};
             int table_ref{LUA_NOREF};
             lux::rdesc::EScriptModel model{
                 lux::rdesc::EScriptModel::GLOBAL_MODULE};
-            ScriptInstanceHostContext* host{};
+            HostHandle* host_handle{};
         };
 
         struct Call final
@@ -167,9 +174,9 @@ namespace lux::simulation
             return found == components.end() ? nullptr : std::addressof(*found);
         }
 
-        [[nodiscard]] static Instance* hostInstance(lua_State* state) noexcept
+        [[nodiscard]] static HostHandle* hostHandle(lua_State* state) noexcept
         {
-            return static_cast<Instance*>(lua_touserdata(
+            return static_cast<HostHandle*>(lua_touserdata(
                 state,
                 lua_upvalueindex(1)
             ));
@@ -177,15 +184,16 @@ namespace lux::simulation
 
         static int hasComponent(lua_State* state) noexcept
         {
-            auto* instance = hostInstance(state);
+            auto* handle = hostHandle(state);
             const char* name = lua_tostring(state, 2);
-            const auto* binding = instance && name
-                ? instance->owner->component(name)
+            const auto* binding = handle && handle->alive && handle->owner &&
+                name
+                ? handle->owner->component(name)
                 : nullptr;
             lua_pushboolean(
                 state,
-                binding && instance->host &&
-                    instance->host->read(binding->component_type));
+                binding && handle->host &&
+                    handle->host->read(binding->component_type));
             return 1;
         }
 
@@ -224,13 +232,14 @@ namespace lux::simulation
 
         static int getComponent(lua_State* state) noexcept
         {
-            auto* instance = hostInstance(state);
+            auto* handle = hostHandle(state);
             const char* name = lua_tostring(state, 2);
-            const auto* binding = instance && name
-                ? instance->owner->component(name)
+            const auto* binding = handle && handle->alive && handle->owner &&
+                name
+                ? handle->owner->component(name)
                 : nullptr;
-            const auto* value = binding && instance->host
-                ? instance->host->read(binding->component_type)
+            const auto* value = binding && handle->host
+                ? handle->host->read(binding->component_type)
                 : nullptr;
             if (!binding || !pushComponentValue(state, binding->abi_kind, value))
                 lua_pushnil(state);
@@ -272,12 +281,13 @@ namespace lux::simulation
 
         static int patchComponent(lua_State* state) noexcept
         {
-            auto* instance = hostInstance(state);
+            auto* handle = hostHandle(state);
             const char* name = lua_tostring(state, 2);
-            const auto* binding = instance && name
-                ? instance->owner->component(name)
+            const auto* binding = handle && handle->alive && handle->owner &&
+                name
+                ? handle->owner->component(name)
                 : nullptr;
-            if (!binding || !instance->host)
+            if (!binding || !handle->host)
             {
                 lua_pushboolean(state, false);
                 return 1;
@@ -329,7 +339,7 @@ namespace lux::simulation
             }
             lua_pushboolean(
                 state,
-                valid && instance->host->patch(
+                valid && handle->host->patch(
                     binding->component_type,
                     storage
                 ));
@@ -348,6 +358,23 @@ namespace lux::simulation
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
             if (self.live_instances >= self.instance_capacity)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
+            for (const auto& binding : self.components)
+            {
+                ScriptHostComponentContract contract;
+                if (!context.host || !context.host->componentContract(
+                        binding.component_type,
+                        contract) ||
+                    contract.component_type != binding.component_type ||
+                    contract.semantic_type != binding.semantic_type ||
+                    contract.canonical_name != binding.canonical_name ||
+                    contract.abi_kind != binding.abi_kind ||
+                    contract.size != binding.size ||
+                    contract.alignment != binding.alignment)
+                {
+                    return EScriptBackendResult::
+                        HOST_COMPONENT_CONTRACT_MISMATCH;
+                }
+            }
             const auto prototype = self.prototypeFor(context, asset);
             if (prototype == LUA_NOREF)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
@@ -356,7 +383,7 @@ namespace lux::simulation
                 std::addressof(self),
                 LUA_NOREF,
                 asset.description.model,
-                context.host};
+                nullptr};
             if (!instance)
                 return EScriptBackendResult::ALLOCATION_FAILURE;
 
@@ -376,15 +403,24 @@ namespace lux::simulation
             if (asset.description.model ==
                 lux::rdesc::EScriptModel::ENTITY_BEHAVIOR)
             {
-                lua_pushlightuserdata(self.state, instance);
+                auto* handle = static_cast<HostHandle*>(
+                    lua_newuserdata(self.state, sizeof(HostHandle)));
+                *handle = HostHandle{
+                    std::addressof(self),
+                    context.host,
+                    true};
+                instance->host_handle = handle;
+                const auto handle_index = lua_gettop(self.state);
+                lua_pushvalue(self.state, handle_index);
                 lua_pushcclosure(self.state, &State::hasComponent, 1);
                 lua_setfield(self.state, instance_index, "has_component");
-                lua_pushlightuserdata(self.state, instance);
+                lua_pushvalue(self.state, handle_index);
                 lua_pushcclosure(self.state, &State::getComponent, 1);
                 lua_setfield(self.state, instance_index, "get_component");
-                lua_pushlightuserdata(self.state, instance);
+                lua_pushvalue(self.state, handle_index);
                 lua_pushcclosure(self.state, &State::patchComponent, 1);
                 lua_setfield(self.state, instance_index, "patch_component");
+                lua_pop(self.state, 1);
             }
             const auto table_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);
             instance->table_ref = table_ref;
@@ -629,6 +665,13 @@ namespace lux::simulation
             auto* instance = static_cast<Instance*>(instance_value.value);
             if (!instance)
                 return;
+            if (instance->host_handle)
+            {
+                instance->host_handle->alive = false;
+                instance->host_handle->host = nullptr;
+                instance->host_handle->owner = nullptr;
+                instance->host_handle = nullptr;
+            }
             if (instance->table_ref != LUA_NOREF)
                 luaL_unref(self.state, LUA_REGISTRYINDEX, instance->table_ref);
             delete instance;
@@ -648,18 +691,75 @@ namespace lux::simulation
         std::size_t prepared_references{};
     };
 
-    LuaScriptBindingBackend::LuaScriptBindingBackend(
-        std::size_t instance_capacity,
-        std::span<const LuaComponentBinding> components
-    ) noexcept
+    lux::cxx::expected<
+        LuaScriptBindingBackend,
+        ELuaScriptBindingBackendError> LuaScriptBindingBackend::create(
+            std::size_t instance_capacity,
+            std::span<const LuaComponentBinding> components
+        ) noexcept
     {
+        for (std::size_t index{}; index < components.size(); ++index)
+        {
+            const auto& component = components[index];
+            const auto* layout = lux::script::scriptBuiltinLayout(
+                component.semantic_type);
+            const bool supported_kind = component.abi_kind ==
+                    LUX_SCRIPT_VK_BOOL ||
+                component.abi_kind == LUX_SCRIPT_VK_INT32 ||
+                component.abi_kind == LUX_SCRIPT_VK_UINT32 ||
+                component.abi_kind == LUX_SCRIPT_VK_INT64 ||
+                component.abi_kind == LUX_SCRIPT_VK_FLOAT ||
+                component.abi_kind == LUX_SCRIPT_VK_DOUBLE;
+            if (component.name.empty() || component.component_type == 0U ||
+                component.canonical_name.empty() ||
+                component.semantic_type !=
+                    lux::script::scriptSemanticTypeId(
+                        component.canonical_name) ||
+                !layout ||
+                layout->canonical_name != component.canonical_name ||
+                layout->abi_kind != component.abi_kind ||
+                layout->size != component.size ||
+                layout->alignment != component.alignment ||
+                !supported_kind)
+            {
+                return lux::cxx::unexpected(
+                    ELuaScriptBindingBackendError::
+                        INVALID_COMPONENT_CONTRACT);
+            }
+            for (std::size_t previous{}; previous < index; ++previous)
+            {
+                if (components[previous].name == component.name)
+                {
+                    return lux::cxx::unexpected(
+                        ELuaScriptBindingBackendError::
+                            DUPLICATE_COMPONENT_NAME);
+                }
+                if (components[previous].component_type ==
+                    component.component_type)
+                {
+                    return lux::cxx::unexpected(
+                        ELuaScriptBindingBackendError::
+                            INVALID_COMPONENT_CONTRACT);
+                }
+            }
+        }
         try
         {
-            state_ = std::make_unique<State>(instance_capacity, components);
+            return LuaScriptBindingBackend{
+                std::make_unique<State>(instance_capacity, components)};
         }
         catch (const std::bad_alloc&)
         {
+            return lux::cxx::unexpected(
+                ELuaScriptBindingBackendError::ALLOCATION_FAILURE);
         }
+    }
+
+    LuaScriptBindingBackend::LuaScriptBindingBackend(
+        std::unique_ptr<State> state
+    ) noexcept
+        : state_(std::move(state))
+    {
     }
 
     LuaScriptBindingBackend::~LuaScriptBindingBackend() = default;

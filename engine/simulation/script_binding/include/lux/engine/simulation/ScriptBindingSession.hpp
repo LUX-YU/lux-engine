@@ -39,6 +39,7 @@ namespace lux::simulation
         DUPLICATE_BACKEND_KIND,
         BACKEND_CONSTRUCTION_FAILURE,
         EXECUTABLE_CONTRACT_MISMATCH,
+        HOST_COMPONENT_CONTRACT_MISMATCH,
         UNSUPPORTED_MARSHAL_TYPE,
         INVOCATION_FAILURE,
         INVALID_SLOT,
@@ -102,6 +103,16 @@ namespace lux::simulation
         REMOVE_COMPONENT,
     };
 
+    struct ScriptHostComponentContract final
+    {
+        std::uint64_t component_type{};
+        std::uint64_t semantic_type{};
+        std::string_view canonical_name;
+        std::uint8_t abi_kind{LUX_SCRIPT_VK_VOID};
+        std::size_t size{};
+        std::size_t alignment{};
+    };
+
     struct ScriptHostApi final
     {
         void* context{};
@@ -123,6 +134,11 @@ namespace lux::simulation
             std::uint64_t component_type,
             const void* value
         ) noexcept{};
+        bool (*component_contract)(
+            void* context,
+            std::uint64_t component_type,
+            ScriptHostComponentContract& result
+        ) noexcept{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC
@@ -143,9 +159,14 @@ namespace lux::simulation
             std::uint64_t component_type = 0U,
             const void* value = nullptr
         ) const noexcept;
+        [[nodiscard]] bool componentContract(
+            std::uint64_t component_type,
+            ScriptHostComponentContract& result
+        ) const noexcept;
 
       private:
-        void attach(const ScriptHostApi& api, ecs::Entity entity) noexcept;
+        void configure(const ScriptHostApi& api) noexcept;
+        void attach(ecs::Entity entity) noexcept;
         const ScriptHostApi* api_{};
         ecs::Entity self_{ecs::NullEntity};
         friend class ScriptBindingSession;
@@ -178,6 +199,7 @@ namespace lux::simulation
         ALLOCATION_FAILURE,
         CONSTRUCTION_FAILURE,
         EXECUTABLE_CONTRACT_MISMATCH,
+        HOST_COMPONENT_CONTRACT_MISMATCH,
     };
 
     struct ScriptBackendDescriptor final

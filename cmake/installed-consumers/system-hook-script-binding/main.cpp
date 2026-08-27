@@ -263,12 +263,10 @@ int main()
             &value_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
         assert(session.dispatchHook(
             session.hookSlot("consumer", "value-a"),
-            entity,
             value_frame
         ).calls == 1U);
         assert(session.dispatchHook(
             session.hookSlot("consumer", "value-b"),
-            entity,
             value_frame
         ).calls == 1U);
         assert(installed_consumer::observed_value == 5.0F);

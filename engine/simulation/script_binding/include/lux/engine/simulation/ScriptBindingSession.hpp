@@ -280,11 +280,6 @@ namespace lux::simulation
             ScriptHookSlot hook,
             const lux_script_call_frame& frame
         ) noexcept;
-        [[nodiscard]] ScriptDispatchResult dispatchHook(
-            ScriptHookSlot hook,
-            ecs::Entity target,
-            const lux_script_call_frame& frame
-        ) noexcept;
         [[nodiscard]] ScriptDispatchResult dispatchEvent(
             ScriptEventSlot event,
             ecs::Entity target,

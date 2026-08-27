@@ -239,7 +239,7 @@ int main()
         &slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
     const auto hook = session.hookSlot("bridge", "value");
     assert(hook);
-    const auto dispatched = session.dispatchHook(hook, entity, frame);
+    const auto dispatched = session.dispatchHook(hook, frame);
     assert(dispatched.calls == 1U);
     assert(test::observed_self == entity);
     assert(test::observed_value == value);
@@ -247,7 +247,7 @@ int main()
         session.instrumentation().asset_resolutions;
     const auto cold_target_resolutions =
         session.instrumentation().target_resolutions;
-    assert(session.dispatchHook(hook, entity, frame).calls == 1U);
+    assert(session.dispatchHook(hook, frame).calls == 1U);
     assert(
         session.instrumentation().asset_resolutions == cold_asset_resolutions
     );

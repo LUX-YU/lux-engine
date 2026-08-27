@@ -448,7 +448,7 @@ namespace
                 const auto scripted_count = kind ==
                         "entity-targeted-event-sparse"
                     ? std::min<std::size_t>(count, 10000U)
-                    : 1U;
+                    : count;
                 entities.reserve(scripted_count);
                 registry.storage<lux::simulation::ScriptComponent>().reserve(
                     scripted_count
@@ -855,7 +855,9 @@ int main(int argc, char** argv)
                 const auto iterations =
                     options->group == "entity-targeted-event-sparse"
                     ? std::min<std::size_t>(options->size, 100000U)
-                    : options->size;
+                    : options->group == "hook-entity-multi"
+                        ? 1U
+                        : options->size;
                 std::size_t dispatch_calls{};
                 if (options->group == "global-event")
                 {
@@ -883,14 +885,10 @@ int main(int argc, char** argv)
                 }
                 else if (options->group == "hook-entity-multi")
                 {
-                    for (std::size_t index{}; index < iterations; ++index)
-                    {
-                        dispatch_calls += state.session->dispatchHook(
-                            state.hook,
-                            state.entities[0],
-                            frame
-                        ).calls;
-                    }
+                    dispatch_calls += state.session->dispatchHook(
+                        state.hook,
+                        frame
+                    ).calls;
                 }
                 else
                 {
@@ -905,6 +903,8 @@ int main(int argc, char** argv)
                 const auto expected_callbacks =
                     options->group == "hook-global-multi"
                     ? iterations * 4U
+                    : options->group == "hook-entity-multi"
+                        ? state.entities.size()
                     : iterations;
                 if (state.callbacks != expected_callbacks ||
                     dispatch_calls != expected_callbacks)

@@ -52,11 +52,46 @@ field = "callbacks"
 equals = 400000
 
 [[structural]]
-name = "Entity multi hook invokes its exact target"
+name = "Entity multi hook invokes every subscriber"
 metric = "hook_entity_multi"
-size = 100000
+size = 10000
 field = "callbacks"
-equals = 100000
+equals = 10000
+
+[[structural]]
+name = "Entity multi hook visits every subscriber"
+metric = "hook_entity_multi"
+size = 10000
+field = "handlers_visited"
+equals = 10000
+
+[[structural]]
+name = "Entity multi hook performs no Entity lookup"
+metric = "hook_entity_multi"
+size = 10000
+field = "entities_examined"
+equals = 0
+
+[[structural]]
+name = "Entity multi hook performs no sparse range lookup"
+metric = "hook_entity_multi"
+size = 10000
+field = "target_range_lookups"
+equals = 0
+
+[[structural]]
+name = "Entity multi hook builds one live frame"
+metric = "hook_entity_multi"
+size = 10000
+field = "frame_builds"
+equals = 1
+
+[[structural]]
+name = "Entity multi hook is allocation free"
+metric = "hook_entity_multi"
+size = 10000
+field = "allocations"
+equals = 0
 
 [[structural]]
 name = "Global event dispatch is allocation free"

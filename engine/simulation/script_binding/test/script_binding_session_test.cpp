@@ -521,8 +521,7 @@ int main()
         &step};
     lux_script_call_frame hook_frame{
         &step_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
-    assert(session.dispatchHook(after, hook_frame).calls == 1U);
-    assert(session.dispatchHook(after, entity, hook_frame).calls == 1U);
+    assert(session.dispatchHook(after, hook_frame).calls == 3U);
 
     SystemEventBuffer<Pulse> worker_events;
     assert(worker_events.prepare(2U, 1U));
@@ -569,7 +568,7 @@ int main()
                     ).calls == 1U);
                 }
             ));
-            assert(session.dispatchHook(after, entity, hook_frame).calls == 1U);
+            assert(session.dispatchHook(after, hook_frame).calls == 3U);
         }
     );
     assert(safe_task);
@@ -578,15 +577,17 @@ int main()
     lux::task::TaskExecutor worker_executor({2U, worker_graph->taskCount()});
     assert(backend.log.size() == log_before_workers);
     assert(worker_executor.execute(*worker_graph));
-    assert(backend.log.size() == log_before_workers + 3U);
+    assert(backend.log.size() == log_before_workers + 5U);
     assert(backend.log[log_before_workers] == 2002230LL);
     assert(backend.log[log_before_workers + 1U] == 2002240LL);
-    assert(backend.log[log_before_workers + 2U] == 2002100LL);
+    assert(backend.log[log_before_workers + 2U] == 1001100LL);
+    assert(backend.log[log_before_workers + 3U] == 2002100LL);
+    assert(backend.log[log_before_workers + 4U] == 2102100LL);
     const auto cold_asset_resolutions =
         session.instrumentation().asset_resolutions;
     const auto cold_target_resolutions =
         session.instrumentation().target_resolutions;
-    assert(session.dispatchHook(after, entity, hook_frame).calls == 1U);
+    assert(session.dispatchHook(after, hook_frame).calls == 3U);
     assert(
         session.instrumentation().asset_resolutions == cold_asset_resolutions
     );
@@ -631,7 +632,7 @@ int main()
     {
         component.mounts.clear();
     });
-    assert(session.dispatchHook(after, entity, hook_frame).calls == 0U);
+    assert(session.dispatchHook(after, hook_frame).calls == 2U);
     assert(session.applyQuiescentMutations());
     assert(session.instanceCount() == 2U);
     assert(backend.log.back() == 2002500LL);
@@ -639,16 +640,29 @@ int main()
     registry.destroy(second_entity);
     const auto reused = registry.create();
     assert(ecs::entityBits(reused) != ecs::entityBits(second_entity));
-    assert(session.dispatchHook(after, reused, hook_frame).calls == 0U);
+    assert(session.dispatchEvent(
+        entity_event,
+        reused,
+        entity_frame
+    ).calls == 0U);
     auto reused_mount = entity_mount;
     reused_mount.id = ScriptMountId{22U};
     registry.emplace<ScriptComponent>(
         reused,
         ScriptComponent{{reused_mount}}
     );
-    assert(session.dispatchHook(after, reused, hook_frame).calls == 0U);
+    assert(session.dispatchEvent(
+        entity_event,
+        reused,
+        entity_frame
+    ).calls == 0U);
     assert(session.applyQuiescentMutations());
-    assert(session.dispatchHook(after, reused, hook_frame).calls == 1U);
+    assert(session.dispatchHook(after, hook_frame).calls == 2U);
+    assert(session.dispatchEvent(
+        entity_event,
+        reused,
+        entity_frame
+    ).calls == 1U);
 
     const auto invalid_entity = registry.create();
     auto invalid_mount = entity_mount;

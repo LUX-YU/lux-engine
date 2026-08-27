@@ -166,24 +166,27 @@ namespace lux::simulation
             std::uint32_t count{};
         };
 
+        struct HandlerRange final
+        {
+            std::uint32_t begin{};
+            std::uint32_t count{};
+        };
+
         struct EntitySidecar final
         {
             ecs::Entity owner{ecs::NullEntity};
-            std::uint32_t hook_range_begin{};
-            std::uint32_t hook_range_count{};
             std::uint32_t event_range_begin{};
             std::uint32_t event_range_count{};
         };
 
         struct DispatchIndex final
         {
-            std::vector<std::vector<Handler>> global_hook_handlers;
+            std::vector<HandlerRange> hook_ranges;
+            std::vector<Handler> hook_handlers;
             std::vector<std::vector<Handler>> global_event_handlers;
             entt::basic_sparse_set<ecs::Entity> entities;
             std::vector<EntitySidecar> sidecars;
-            std::vector<TargetRange> hook_ranges;
             std::vector<TargetRange> event_ranges;
-            std::vector<Handler> hook_handlers;
             std::vector<Handler> event_handlers;
         };
 
@@ -1022,7 +1025,14 @@ namespace lux::simulation
         {
             try
             {
-                struct PendingHandler final
+                struct PendingHook final
+                {
+                    std::uint32_t slot{};
+                    Handler handler;
+                    std::size_t sequence{};
+                };
+
+                struct PendingEvent final
                 {
                     ecs::Entity owner{ecs::NullEntity};
                     std::uint32_t slot{};
@@ -1031,17 +1041,16 @@ namespace lux::simulation
                 };
 
                 DispatchIndex shadow;
-                shadow.global_hook_handlers.resize(hooks.size());
+                shadow.hook_ranges.resize(hooks.size());
                 shadow.global_event_handlers.resize(events.size());
                 shadow.entities.reserve(capacities.scripted_entities);
                 shadow.sidecars.reserve(capacities.scripted_entities);
-                shadow.hook_ranges.reserve(capacities.dispatch_target_ranges);
                 shadow.event_ranges.reserve(capacities.dispatch_target_ranges);
                 shadow.hook_handlers.reserve(capacities.dispatch_handlers);
                 shadow.event_handlers.reserve(capacities.dispatch_handlers);
 
-                std::vector<PendingHandler> pending_hooks;
-                std::vector<PendingHandler> pending_events;
+                std::vector<PendingHook> pending_hooks;
+                std::vector<PendingEvent> pending_events;
                 pending_hooks.reserve(capacities.dispatch_handlers);
                 pending_events.reserve(capacities.dispatch_handlers);
 
@@ -1114,26 +1123,10 @@ namespace lux::simulation
                                     }
                                     if (!resolved_slot)
                                         return false;
-                                    if (mount->self != ecs::NullEntity)
-                                    {
-                                        pending_hooks.push_back(PendingHandler{
-                                            mount->self,
-                                            resolved_slot.value,
-                                            handler,
-                                            sequence++});
-                                    }
-                                    else
-                                    {
-                                        auto& handlers = shadow
-                                            .global_hook_handlers[resolved_slot.value];
-                                        if (hooks[resolved_slot.value].cardinality ==
-                                                ESystemHookCardinality::SINGLE &&
-                                            !handlers.empty())
-                                        {
-                                            return false;
-                                        }
-                                        handlers.push_back(handler);
-                                    }
+                                    pending_hooks.push_back(PendingHook{
+                                        resolved_slot.value,
+                                        handler,
+                                        sequence++});
                                 }
                                 else if constexpr (
                                     std::is_same_v<Target,
@@ -1163,7 +1156,7 @@ namespace lux::simulation
                                         return false;
                                     if (mount->self != ecs::NullEntity)
                                     {
-                                        pending_events.push_back(PendingHandler{
+                                        pending_events.push_back(PendingEvent{
                                             mount->self,
                                             resolved_slot.value,
                                             handler,
@@ -1239,8 +1232,48 @@ namespace lux::simulation
                     }
                 }
 
-                const auto pending_less = [](const PendingHandler& left,
-                                             const PendingHandler& right) noexcept
+                std::stable_sort(
+                    pending_hooks.begin(),
+                    pending_hooks.end(),
+                    [](const PendingHook& left,
+                       const PendingHook& right) noexcept
+                    {
+                        return left.slot < right.slot;
+                    }
+                );
+                std::size_t hook_cursor{};
+                while (hook_cursor < pending_hooks.size())
+                {
+                    const auto slot = pending_hooks[hook_cursor].slot;
+                    if (slot >= shadow.hook_ranges.size())
+                    {
+                        return lux::cxx::unexpected(
+                            EScriptBindingError::MEMBER_NOT_FOUND);
+                    }
+                    const auto begin = shadow.hook_handlers.size();
+                    while (hook_cursor < pending_hooks.size() &&
+                           pending_hooks[hook_cursor].slot == slot)
+                    {
+                        shadow.hook_handlers.push_back(
+                            pending_hooks[hook_cursor].handler);
+                        ++hook_cursor;
+                    }
+                    const auto count = shadow.hook_handlers.size() - begin;
+                    if (hooks[slot].cardinality ==
+                            ESystemHookCardinality::SINGLE &&
+                        count > 1U)
+                    {
+                        return lux::cxx::unexpected(
+                            EScriptBindingError::
+                                SINGLE_HOOK_MULTIPLE_HANDLERS);
+                    }
+                    shadow.hook_ranges[slot] = HandlerRange{
+                        static_cast<std::uint32_t>(begin),
+                        static_cast<std::uint32_t>(count)};
+                }
+
+                const auto pending_less = [](const PendingEvent& left,
+                                             const PendingEvent& right) noexcept
                 {
                     const auto left_bits = ecs::entityBits(left.owner);
                     const auto right_bits = ecs::entityBits(right.owner);
@@ -1250,15 +1283,13 @@ namespace lux::simulation
                         return left.slot < right.slot;
                     return left.sequence < right.sequence;
                 };
-                std::sort(pending_hooks.begin(), pending_hooks.end(), pending_less);
                 std::sort(pending_events.begin(), pending_events.end(), pending_less);
 
                 std::vector<ecs::Entity> owners;
                 owners.reserve(capacities.scripted_entities);
-                for (const auto* mount : ordered)
+                for (const auto& pending : pending_events)
                 {
-                    if (mount->self == ecs::NullEntity ||
-                        (!owners.empty() && owners.back() == mount->self))
+                    if (!owners.empty() && owners.back() == pending.owner)
                     {
                         continue;
                     }
@@ -1267,21 +1298,16 @@ namespace lux::simulation
                         return lux::cxx::unexpected(
                             EScriptBindingError::CAPACITY_EXCEEDED);
                     }
-                    owners.push_back(mount->self);
-                    shadow.entities.push(mount->self);
-                    shadow.sidecars.push_back(EntitySidecar{mount->self});
+                    owners.push_back(pending.owner);
+                    shadow.entities.push(pending.owner);
+                    shadow.sidecars.push_back(EntitySidecar{pending.owner});
                 }
 
-                const auto flatten = [&](const std::vector<PendingHandler>& pending,
-                                         bool hook_values)
+                const auto flatten = [&](const std::vector<PendingEvent>& pending)
                     -> lux::cxx::expected<void, EScriptBindingError>
                 {
-                    auto& ranges = hook_values
-                        ? shadow.hook_ranges
-                        : shadow.event_ranges;
-                    auto& handlers = hook_values
-                        ? shadow.hook_handlers
-                        : shadow.event_handlers;
+                    auto& ranges = shadow.event_ranges;
+                    auto& handlers = shadow.event_handlers;
                     std::size_t cursor{};
                     while (cursor < pending.size())
                     {
@@ -1298,18 +1324,13 @@ namespace lux::simulation
                                 EScriptBindingError::INVALID_ENTITY);
                         }
                         auto& sidecar = shadow.sidecars[sidecar_index];
-                        auto& range_begin = hook_values
-                            ? sidecar.hook_range_begin
-                            : sidecar.event_range_begin;
-                        auto& range_count = hook_values
-                            ? sidecar.hook_range_count
-                            : sidecar.event_range_count;
+                        auto& range_begin = sidecar.event_range_begin;
+                        auto& range_count = sidecar.event_range_count;
                         range_begin = static_cast<std::uint32_t>(ranges.size());
                         while (cursor < pending.size() &&
                                pending[cursor].owner == owner)
                         {
-                            if (shadow.hook_ranges.size() +
-                                    shadow.event_ranges.size() >=
+                            if (shadow.event_ranges.size() >=
                                 capacities.dispatch_target_ranges)
                             {
                                 return lux::cxx::unexpected(
@@ -1334,9 +1355,7 @@ namespace lux::simulation
                     }
                     return {};
                 };
-                if (auto flattened = flatten(pending_hooks, true); !flattened)
-                    return lux::cxx::unexpected(flattened.error());
-                if (auto flattened = flatten(pending_events, false); !flattened)
+                if (auto flattened = flatten(pending_events); !flattened)
                     return lux::cxx::unexpected(flattened.error());
 
                 return shadow;
@@ -1817,7 +1836,14 @@ namespace lux::simulation
         void publish(DispatchIndex&& shadow) noexcept
         {
             instrumentation.target_ranges_built =
-                shadow.hook_ranges.size() + shadow.event_ranges.size();
+                static_cast<std::size_t>(std::count_if(
+                    shadow.hook_ranges.begin(),
+                    shadow.hook_ranges.end(),
+                    [](const HandlerRange& range) noexcept
+                    {
+                        return range.count != 0U;
+                    })) +
+                shadow.event_ranges.size();
             instrumentation.dispatch_handlers_built =
                 shadow.hook_handlers.size() + shadow.event_handlers.size();
             dispatch = std::move(shadow);
@@ -1860,27 +1886,18 @@ namespace lux::simulation
             return {};
         }
 
-        [[nodiscard]] std::span<const Handler> handlersFor(
+        [[nodiscard]] std::span<const Handler> eventHandlersFor(
             ecs::Entity entity,
-            std::uint32_t slot,
-            bool hook_values
+            std::uint32_t slot
         ) noexcept
         {
             const auto* sidecar = sidecarFor(entity);
             if (!sidecar)
                 return {};
-            const auto& ranges = hook_values
-                ? dispatch.hook_ranges
-                : dispatch.event_ranges;
-            const auto& handlers = hook_values
-                ? dispatch.hook_handlers
-                : dispatch.event_handlers;
-            const auto begin = hook_values
-                ? sidecar->hook_range_begin
-                : sidecar->event_range_begin;
-            const auto count = hook_values
-                ? sidecar->hook_range_count
-                : sidecar->event_range_count;
+            const auto& ranges = dispatch.event_ranges;
+            const auto& handlers = dispatch.event_handlers;
+            const auto begin = sidecar->event_range_begin;
+            const auto count = sidecar->event_range_count;
             if (begin > ranges.size() || count > ranges.size() - begin)
                 return {};
             const auto first = ranges.begin() + begin;
@@ -2058,15 +2075,6 @@ namespace lux::simulation
 
     ScriptDispatchResult ScriptBindingSession::dispatchHook(
         ScriptHookSlot hook,
-        const lux_script_call_frame& frame
-    ) noexcept
-    {
-        return dispatchHook(hook, ecs::NullEntity, frame);
-    }
-
-    ScriptDispatchResult ScriptBindingSession::dispatchHook(
-        ScriptHookSlot hook,
-        ecs::Entity target,
         const lux_script_call_frame& source_frame
     ) noexcept
     {
@@ -2081,16 +2089,9 @@ namespace lux::simulation
         ++state_->instrumentation.frame_builds;
         auto frame = source_frame;
         const auto& metadata = state_->hooks[hook.value];
-        std::span<const State::Handler> handlers;
-        if (target == ecs::NullEntity)
-        {
-            handlers = state_->dispatch.global_hook_handlers[hook.value];
-        }
-        else
-        {
-            ++state_->instrumentation.entities_examined;
-            handlers = state_->handlersFor(target, hook.value, true);
-        }
+        const auto range = state_->dispatch.hook_ranges[hook.value];
+        const auto handlers = std::span<const State::Handler>{
+            state_->dispatch.hook_handlers}.subspan(range.begin, range.count);
         for (const auto handler : handlers)
         {
             ++state_->instrumentation.handlers_visited;
@@ -2142,7 +2143,7 @@ namespace lux::simulation
         else
         {
             ++state_->instrumentation.entities_examined;
-            handlers = state_->handlersFor(target, event.value, false);
+            handlers = state_->eventHandlersFor(target, event.value);
         }
         for (const auto handler : handlers)
         {

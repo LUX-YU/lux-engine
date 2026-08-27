@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <stdexcept>
 
 namespace
@@ -141,6 +142,10 @@ namespace
 
 int main()
 {
+    using lux::simulation::ecs::Entity;
+    static_assert(sizeof(Entity) == sizeof(std::uint64_t));
+    static_assert(entt::entt_traits<Entity>::entity_mask >= 2'000'000U);
+
     testDeterministicDeferredEntities();
     testRecordingFailureIsAtomic();
     testActiveWriterAndTokenLifetime();

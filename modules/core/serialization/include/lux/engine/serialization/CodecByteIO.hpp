@@ -72,8 +72,8 @@ namespace lux::serialization
             u32(static_cast<std::uint32_t>(value.size()));
             bytes(value.data(), value.size());
         }
-        [[nodiscard]] lux::cxx::expected<
-            std::vector<std::byte>, SerializationFailure>
+
+        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, SerializationFailure>
         take() && noexcept
         {
             if (failure_)

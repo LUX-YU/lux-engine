@@ -60,9 +60,8 @@ namespace lux::task
          *       [&]() noexcept { ...; });
          */
         template <class... Args>
-        [[nodiscard]] lux::cxx::expected<TaskHandle, TaskGraphFailure> add(
-            Args&&... args
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<TaskHandle, TaskGraphFailure>
+        add(Args&&... args) noexcept
         {
             static_assert(sizeof...(Args) != 0U);
             auto arguments = std::forward_as_tuple(std::forward<Args>(args)...);

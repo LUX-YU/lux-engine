@@ -15,14 +15,14 @@ namespace lux::world
 {
     namespace
     {
-        constexpr std::uint32_t kWireVersion = 1U;
-        constexpr std::size_t kHeaderBytes = 48U;
-        constexpr std::size_t kSchemaFixedBytes = 16U;
-        constexpr std::size_t kObjectFixedBytes = 24U;
-        constexpr std::size_t kDataFixedBytes = 20U;
+        constexpr std::uint32_t kWireVersion      = 1U;
+        constexpr std::size_t kHeaderBytes        = 48U;
+        constexpr std::size_t kSchemaFixedBytes   = 16U;
+        constexpr std::size_t kObjectFixedBytes   = 24U;
+        constexpr std::size_t kDataFixedBytes     = 20U;
         constexpr std::size_t kDecodedSchemaBytes = 64U;
         constexpr std::size_t kDecodedObjectBytes = 64U;
-        constexpr std::size_t kDecodedDataBytes = 64U;
+        constexpr std::size_t kDecodedDataBytes   = 64U;
 
         [[nodiscard]] auto codecFailure() noexcept
         {
@@ -96,11 +96,8 @@ namespace lux::world
             bool ok_{true};
         };
 
-        template <class T>
-        [[nodiscard]] bool readUnsigned(
-            lux::serialization::BinaryReader& reader,
-            T& value
-        ) noexcept
+        template <class T>[[nodiscard]] bool
+        readUnsigned(lux::serialization::BinaryReader& reader,T& value) noexcept
         {
             auto result = reader.readUnsigned<T>();
             if (!result)
@@ -109,13 +106,8 @@ namespace lux::world
             return true;
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            lux::asset::DecodedAsset,
-            lux::asset::EAssetCodecError>
-        decodeWorld(
-            std::span<const std::byte> input,
-            const lux::asset::AssetDecodeContext& context
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<lux::asset::DecodedAsset,lux::asset::EAssetCodecError>
+        decodeWorld(std::span<const std::byte> input, const lux::asset::AssetDecodeContext& context) noexcept
         {
             if (input.size() > context.limits.max_input_bytes ||
                 input.size() < kHeaderBytes)
@@ -320,13 +312,8 @@ namespace lux::world
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            std::vector<std::byte>,
-            lux::asset::EAssetCodecError>
-        encodeWorld(
-            const void* payload,
-            const lux::asset::AssetEncodeContext& context
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, lux::asset::EAssetCodecError>
+        encodeWorld(const void* payload, const lux::asset::AssetEncodeContext& context) noexcept
         {
             if (payload == nullptr)
                 return codecFailure();

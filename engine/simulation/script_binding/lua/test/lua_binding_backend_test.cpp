@@ -66,7 +66,13 @@ int main()
         11U,
         {i32, i32},
         {i32}};
+    const lux::rdesc::ScriptFunction bad_return{
+        "bad_return",
+        13U,
+        {},
+        {i32}};
     asset.description.exports.push_back(function);
+    asset.description.exports.push_back(bad_return);
     constexpr std::string_view source = R"lua(
         return {
             count = 0,
@@ -76,6 +82,9 @@ int main()
                     error("instance state mismatch")
                 end
                 return self.count
+            end,
+            bad_return = function(self)
+                return "not-an-integer"
             end
         }
     )lua";
@@ -120,6 +129,25 @@ int main()
     assert(backend.loadedInstanceCount() == 2U);
     assert(backend.chunkLoadCount() == 1U);
     assert(backend.preparedReferenceCount() == 2U);
+
+    lux::script::BoundScriptCall bad_return_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        bad_return,
+        bad_return_call
+    ) == EScriptBackendResult::SUCCESS);
+    std::int32_t bad_result{};
+    lux_script_value_slot bad_result_slot{
+        LUX_SCRIPT_VK_INT32,
+        {},
+        sizeof(bad_result),
+        lux::script::scriptSemanticTypeId("lux.i32"),
+        &bad_result};
+    lux_script_call_frame bad_return_frame{
+        nullptr, 0U, 0U, &bad_result_slot, 1U, 0U,
+        nullptr, bad_return_call.context};
+    assert(bad_return_call.invoke(&bad_return_frame) != 0);
 
     std::array<lux_script_value_slot, 2U> arguments{};
     std::array<std::int32_t, 2U> values{};
@@ -185,6 +213,25 @@ int main()
         rejected
     ) == EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE);
 
+    auto u64 = function;
+    u64.symbol_id = 14U;
+    u64.args = {{
+        "lux.u64",
+        lux::script::scriptSemanticTypeId("lux.u64"),
+        lux::script::EScriptPassMode::VALUE}};
+    u64.returns.clear();
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        u64,
+        rejected
+    ) == EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE);
+
+    descriptor.releaseMethod(
+        descriptor.context,
+        first_instance,
+        bad_return_call
+    );
     descriptor.releaseMethod(descriptor.context, first_instance, first);
     descriptor.releaseMethod(descriptor.context, second_instance, second);
     assert(backend.preparedReferenceCount() == 0U);

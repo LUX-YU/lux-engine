@@ -4,8 +4,11 @@
 
 #include <lua.hpp>
 
+#include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <new>
 #include <thread>
@@ -27,6 +30,7 @@ namespace lux::simulation
             int table_ref{LUA_NOREF};
             lux::rdesc::EScriptModel model{
                 lux::rdesc::EScriptModel::GLOBAL_MODULE};
+            ScriptInstanceHostContext* host{};
         };
 
         struct Call final
@@ -36,12 +40,19 @@ namespace lux::simulation
             int function_ref{LUA_NOREF};
         };
 
-        explicit State(std::size_t capacity)
+        State(
+            std::size_t capacity,
+            std::span<const LuaComponentBinding> source_components
+        )
             : state(engine.state()),
               affinity(std::this_thread::get_id()),
               instance_capacity(capacity)
         {
             prototypes.reserve(capacity);
+            components.assign(
+                source_components.begin(),
+                source_components.end()
+            );
             lua_pushcfunction(state, &State::traceback);
             traceback_ref = luaL_ref(state, LUA_REGISTRYINDEX);
         }
@@ -133,13 +144,196 @@ namespace lux::simulation
             case LUX_SCRIPT_VK_INT32:
             case LUX_SCRIPT_VK_UINT32:
             case LUX_SCRIPT_VK_INT64:
-            case LUX_SCRIPT_VK_UINT64:
             case LUX_SCRIPT_VK_FLOAT:
             case LUX_SCRIPT_VK_DOUBLE:
                 return true;
             default:
                 return false;
             }
+        }
+
+        [[nodiscard]] const LuaComponentBinding* component(
+            std::string_view name
+        ) const noexcept
+        {
+            const auto found = std::find_if(
+                components.begin(),
+                components.end(),
+                [name](const LuaComponentBinding& value) noexcept
+                {
+                    return value.name == name;
+                }
+            );
+            return found == components.end() ? nullptr : std::addressof(*found);
+        }
+
+        [[nodiscard]] static Instance* hostInstance(lua_State* state) noexcept
+        {
+            return static_cast<Instance*>(lua_touserdata(
+                state,
+                lua_upvalueindex(1)
+            ));
+        }
+
+        static int hasComponent(lua_State* state) noexcept
+        {
+            auto* instance = hostInstance(state);
+            const char* name = lua_tostring(state, 2);
+            const auto* binding = instance && name
+                ? instance->owner->component(name)
+                : nullptr;
+            lua_pushboolean(
+                state,
+                binding && instance->host &&
+                    instance->host->read(binding->component_type));
+            return 1;
+        }
+
+        static bool pushComponentValue(
+            lua_State* state,
+            std::uint8_t kind,
+            const void* value
+        ) noexcept
+        {
+            if (!value)
+                return false;
+            switch (kind)
+            {
+            case LUX_SCRIPT_VK_BOOL:
+                lua_pushboolean(state, *static_cast<const bool*>(value));
+                return true;
+            case LUX_SCRIPT_VK_INT32:
+                lua_pushinteger(state, *static_cast<const std::int32_t*>(value));
+                return true;
+            case LUX_SCRIPT_VK_UINT32:
+                lua_pushinteger(state, *static_cast<const std::uint32_t*>(value));
+                return true;
+            case LUX_SCRIPT_VK_INT64:
+                lua_pushinteger(state, *static_cast<const std::int64_t*>(value));
+                return true;
+            case LUX_SCRIPT_VK_FLOAT:
+                lua_pushnumber(state, *static_cast<const float*>(value));
+                return true;
+            case LUX_SCRIPT_VK_DOUBLE:
+                lua_pushnumber(state, *static_cast<const double*>(value));
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        static int getComponent(lua_State* state) noexcept
+        {
+            auto* instance = hostInstance(state);
+            const char* name = lua_tostring(state, 2);
+            const auto* binding = instance && name
+                ? instance->owner->component(name)
+                : nullptr;
+            const auto* value = binding && instance->host
+                ? instance->host->read(binding->component_type)
+                : nullptr;
+            if (!binding || !pushComponentValue(state, binding->abi_kind, value))
+                lua_pushnil(state);
+            return 1;
+        }
+
+        template <class Type>
+        [[nodiscard]] static bool readStrictNumber(
+            lua_State* state,
+            int index,
+            Type& result
+        ) noexcept
+        {
+            if (lua_type(state, index) != LUA_TNUMBER)
+                return false;
+            const auto value = lua_tonumber(state, index);
+            if constexpr (std::is_integral_v<Type>)
+            {
+                if (!std::isfinite(value) || std::trunc(value) != value ||
+                    value < static_cast<lua_Number>(
+                        std::numeric_limits<Type>::lowest()) ||
+                    value > static_cast<lua_Number>(
+                        std::numeric_limits<Type>::max()))
+                {
+                    return false;
+                }
+            }
+            else if (!std::isfinite(value) ||
+                     value < -static_cast<lua_Number>(
+                         std::numeric_limits<Type>::max()) ||
+                     value > static_cast<lua_Number>(
+                         std::numeric_limits<Type>::max()))
+            {
+                return false;
+            }
+            result = static_cast<Type>(value);
+            return true;
+        }
+
+        static int patchComponent(lua_State* state) noexcept
+        {
+            auto* instance = hostInstance(state);
+            const char* name = lua_tostring(state, 2);
+            const auto* binding = instance && name
+                ? instance->owner->component(name)
+                : nullptr;
+            if (!binding || !instance->host)
+            {
+                lua_pushboolean(state, false);
+                return 1;
+            }
+            alignas(std::uint64_t) std::byte storage[sizeof(std::uint64_t)]{};
+            bool valid{};
+            switch (binding->abi_kind)
+            {
+            case LUX_SCRIPT_VK_BOOL:
+                if (lua_type(state, 3) == LUA_TBOOLEAN)
+                {
+                    *reinterpret_cast<bool*>(storage) =
+                        lua_toboolean(state, 3) != 0;
+                    valid = true;
+                }
+                break;
+            case LUX_SCRIPT_VK_INT32:
+                valid = readStrictNumber(
+                    state,
+                    3,
+                    *reinterpret_cast<std::int32_t*>(storage));
+                break;
+            case LUX_SCRIPT_VK_UINT32:
+                valid = readStrictNumber(
+                    state,
+                    3,
+                    *reinterpret_cast<std::uint32_t*>(storage));
+                break;
+            case LUX_SCRIPT_VK_INT64:
+                valid = readStrictNumber(
+                    state,
+                    3,
+                    *reinterpret_cast<std::int64_t*>(storage));
+                break;
+            case LUX_SCRIPT_VK_FLOAT:
+                valid = readStrictNumber(
+                    state,
+                    3,
+                    *reinterpret_cast<float*>(storage));
+                break;
+            case LUX_SCRIPT_VK_DOUBLE:
+                valid = readStrictNumber(
+                    state,
+                    3,
+                    *reinterpret_cast<double*>(storage));
+                break;
+            default:
+                break;
+            }
+            lua_pushboolean(
+                state,
+                valid && instance->host->patch(
+                    binding->component_type,
+                    storage
+                ));
+            return 1;
         }
 
         static EScriptBackendResult createInstance(
@@ -158,6 +352,14 @@ namespace lux::simulation
             if (prototype == LUA_NOREF)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
 
+            auto* instance = new (std::nothrow) Instance{
+                std::addressof(self),
+                LUA_NOREF,
+                asset.description.model,
+                context.host};
+            if (!instance)
+                return EScriptBackendResult::ALLOCATION_FAILURE;
+
             lua_newtable(self.state);
             const auto instance_index = lua_gettop(self.state);
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, prototype);
@@ -171,16 +373,21 @@ namespace lux::simulation
                 lua_pop(self.state, 1);
             }
             lua_pop(self.state, 1);
-            const auto table_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);
-            auto* instance = new (std::nothrow) Instance{
-                std::addressof(self),
-                table_ref,
-                asset.description.model};
-            if (!instance)
+            if (asset.description.model ==
+                lux::rdesc::EScriptModel::ENTITY_BEHAVIOR)
             {
-                luaL_unref(self.state, LUA_REGISTRYINDEX, table_ref);
-                return EScriptBackendResult::ALLOCATION_FAILURE;
+                lua_pushlightuserdata(self.state, instance);
+                lua_pushcclosure(self.state, &State::hasComponent, 1);
+                lua_setfield(self.state, instance_index, "has_component");
+                lua_pushlightuserdata(self.state, instance);
+                lua_pushcclosure(self.state, &State::getComponent, 1);
+                lua_setfield(self.state, instance_index, "get_component");
+                lua_pushlightuserdata(self.state, instance);
+                lua_pushcclosure(self.state, &State::patchComponent, 1);
+                lua_setfield(self.state, instance_index, "patch_component");
             }
+            const auto table_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);
+            instance->table_ref = table_ref;
             ++self.live_instances;
             result.value = instance;
             return EScriptBackendResult::SUCCESS;
@@ -263,12 +470,6 @@ namespace lux::simulation
                     static_cast<lua_Integer>(
                         *static_cast<const std::int64_t*>(value.data)));
                 return true;
-            case LUX_SCRIPT_VK_UINT64:
-                lua_pushinteger(
-                    state,
-                    static_cast<lua_Integer>(
-                        *static_cast<const std::uint64_t*>(value.data)));
-                return true;
             case LUX_SCRIPT_VK_FLOAT:
                 lua_pushnumber(state, *static_cast<const float*>(value.data));
                 return true;
@@ -301,31 +502,41 @@ namespace lux::simulation
             switch (slot.kind)
             {
             case LUX_SCRIPT_VK_BOOL:
+                if (lua_type(state, index) != LUA_TBOOLEAN)
+                    return false;
                 return writeNumber<bool>(
                     slot,
                     lua_toboolean(state, index) != 0);
             case LUX_SCRIPT_VK_INT32:
-                return writeNumber<std::int32_t>(
-                    slot,
-                    static_cast<std::int32_t>(lua_tointeger(state, index)));
+            {
+                std::int32_t value{};
+                return readStrictNumber(state, index, value) &&
+                    writeNumber(slot, value);
+            }
             case LUX_SCRIPT_VK_UINT32:
-                return writeNumber<std::uint32_t>(
-                    slot,
-                    static_cast<std::uint32_t>(lua_tointeger(state, index)));
+            {
+                std::uint32_t value{};
+                return readStrictNumber(state, index, value) &&
+                    writeNumber(slot, value);
+            }
             case LUX_SCRIPT_VK_INT64:
-                return writeNumber<std::int64_t>(
-                    slot,
-                    static_cast<std::int64_t>(lua_tointeger(state, index)));
-            case LUX_SCRIPT_VK_UINT64:
-                return writeNumber<std::uint64_t>(
-                    slot,
-                    static_cast<std::uint64_t>(lua_tointeger(state, index)));
+            {
+                std::int64_t value{};
+                return readStrictNumber(state, index, value) &&
+                    writeNumber(slot, value);
+            }
             case LUX_SCRIPT_VK_FLOAT:
-                return writeNumber<float>(
-                    slot,
-                    static_cast<float>(lua_tonumber(state, index)));
+            {
+                float value{};
+                return readStrictNumber(state, index, value) &&
+                    writeNumber(slot, value);
+            }
             case LUX_SCRIPT_VK_DOUBLE:
-                return writeNumber<double>(slot, lua_tonumber(state, index));
+            {
+                double value{};
+                return readStrictNumber(state, index, value) &&
+                    writeNumber(slot, value);
+            }
             default:
                 return false;
             }
@@ -432,17 +643,19 @@ namespace lux::simulation
         std::size_t instance_capacity{};
         std::size_t live_instances{};
         std::vector<Prototype> prototypes;
+        std::vector<LuaComponentBinding> components;
         std::size_t chunk_loads{};
         std::size_t prepared_references{};
     };
 
     LuaScriptBindingBackend::LuaScriptBindingBackend(
-        std::size_t instance_capacity
+        std::size_t instance_capacity,
+        std::span<const LuaComponentBinding> components
     ) noexcept
     {
         try
         {
-            state_ = std::make_unique<State>(instance_capacity);
+            state_ = std::make_unique<State>(instance_capacity, components);
         }
         catch (const std::bad_alloc&)
         {

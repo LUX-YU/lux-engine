@@ -40,6 +40,11 @@ namespace lux::simulation
         DEPENDENCY_CYCLE,
         INVALID_SCRIPT_MOUNT,
         SCRIPT_MOUNT_NOT_FOUND,
+        SCRIPT_TARGET_SYSTEM_NOT_FOUND,
+        SCRIPT_TARGET_SYSTEM_AMBIGUOUS,
+        SCRIPT_TARGET_TYPE_MISMATCH,
+        SCRIPT_TARGET_MEMBER_NOT_FOUND,
+        SCRIPT_TARGET_SCOPE_MISMATCH,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
     };
@@ -117,7 +122,7 @@ namespace lux::simulation
         addGlobalScriptMount(const ScriptMountDescription& mount) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseGlobalScriptMount(std::size_t ordinal) noexcept;
+        eraseGlobalScriptMount(ScriptMountId id) noexcept;
 
         void clear() noexcept;
 

@@ -36,8 +36,8 @@ namespace
     }
 
     const lux_script_type_desc kFloatType{
-        "f32",
-        lux::script::scriptSemanticTypeId("f32"),
+        "lux.f32",
+        lux::script::scriptSemanticTypeId("lux.f32"),
         sizeof(float),
         alignof(float),
         LUX_SCRIPT_VK_FLOAT,
@@ -45,8 +45,8 @@ namespace
     };
 
     const lux_script_type_desc kUint32Type{
-        "u32",
-        lux::script::scriptSemanticTypeId("u32"),
+        "lux.u32",
+        lux::script::scriptSemanticTypeId("lux.u32"),
         sizeof(std::uint32_t),
         alignof(std::uint32_t),
         LUX_SCRIPT_VK_UINT32,
@@ -80,7 +80,7 @@ namespace
             &onUpdate
         },
         {
-            "OnPair",
+            "OnUpdate",
             3,
             kPairArgs,
             2,

@@ -22,7 +22,7 @@ namespace lux::simulation
 
     namespace
     {
-        constexpr std::uint32_t kWireVersion = 3U;
+        constexpr std::uint32_t kWireVersion = 4U;
         constexpr std::uint32_t kSectionCount = 12U;
         constexpr std::uint32_t kDirectoryEntryBytes = 24U;
         constexpr std::uint64_t kHeaderBytes = 32U;
@@ -48,6 +48,13 @@ namespace lux::simulation
             PAYLOAD,
         };
 
+        enum class EBindingTargetWire : std::uint32_t
+        {
+            HOOK,
+            EVENT,
+            LIFECYCLE,
+        };
+
         constexpr std::array<std::uint32_t, kSectionCount> kRecordBytes{
             0U,
             32U,
@@ -58,8 +65,8 @@ namespace lux::simulation
             16U,
             32U,
             8U,
-            28U,
-            24U,
+            32U,
+            40U,
             0U,
         };
 
@@ -260,9 +267,27 @@ namespace lux::simulation
                      binding < value.bindingCount(); ++binding)
                 {
                     const auto* item = value.bindingAt(binding);
-                    strings.add(item->system_type);
-                    strings.add(item->system_instance);
-                    strings.add(item->member);
+                    std::visit(
+                        [&](const auto& target)
+                        {
+                            using Target = std::remove_cvref_t<decltype(target)>;
+                            if constexpr (
+                                std::is_same_v<Target, SystemHookBindingTarget>)
+                            {
+                                strings.add(target.system_type.name);
+                                strings.add(target.system_instance);
+                                strings.add(target.hook);
+                            }
+                            else if constexpr (
+                                std::is_same_v<Target, SystemEventBindingTarget>)
+                            {
+                                strings.add(target.system_type.name);
+                                strings.add(target.system_instance);
+                                strings.add(target.event);
+                            }
+                        },
+                        item->target
+                    );
                 }
             }
             strings.finish();
@@ -432,9 +457,9 @@ namespace lux::simulation
                      mount < description.globalScriptMountCount(); ++mount)
                 {
                     const auto value = description.globalScriptMountAt(mount);
+                    mounts.u64(value.id().value);
                     for (const auto byte : value.script().bytes())
                         mounts.u8(static_cast<std::uint8_t>(byte));
-                    mounts.u32(static_cast<std::uint32_t>(value.bindingMode()));
                     mounts.u32(static_cast<std::uint32_t>(
                         bindings.values.size() / kRecordBytes[10]));
                     mounts.u32(static_cast<std::uint32_t>(value.bindingCount()));
@@ -443,10 +468,53 @@ namespace lux::simulation
                     {
                         const auto& item = *value.bindingAt(binding);
                         bindings.u64(item.function);
-                        bindings.u32(static_cast<std::uint32_t>(item.kind));
-                        bindings.u32(strings.ordinal(item.system_type));
-                        bindings.u32(strings.ordinal(item.system_instance));
-                        bindings.u32(strings.ordinal(item.member));
+                        std::visit(
+                            [&](const auto& target)
+                            {
+                                using Target = std::remove_cvref_t<decltype(target)>;
+                                if constexpr (
+                                    std::is_same_v<Target, SystemHookBindingTarget>)
+                                {
+                                    bindings.u32(static_cast<std::uint32_t>(
+                                        EBindingTargetWire::HOOK));
+                                    bindings.u64(target.system_type.hash);
+                                    bindings.u32(strings.ordinal(
+                                        target.system_type.name));
+                                    bindings.u32(strings.ordinal(
+                                        target.system_instance));
+                                    bindings.u32(strings.ordinal(target.hook));
+                                    bindings.u32(0U);
+                                    bindings.u32(0U);
+                                }
+                                else if constexpr (
+                                    std::is_same_v<Target, SystemEventBindingTarget>)
+                                {
+                                    bindings.u32(static_cast<std::uint32_t>(
+                                        EBindingTargetWire::EVENT));
+                                    bindings.u64(target.system_type.hash);
+                                    bindings.u32(strings.ordinal(
+                                        target.system_type.name));
+                                    bindings.u32(strings.ordinal(
+                                        target.system_instance));
+                                    bindings.u32(strings.ordinal(target.event));
+                                    bindings.u32(0U);
+                                    bindings.u32(0U);
+                                }
+                                else
+                                {
+                                    bindings.u32(static_cast<std::uint32_t>(
+                                        EBindingTargetWire::LIFECYCLE));
+                                    bindings.u64(0U);
+                                    bindings.u32(kNoString);
+                                    bindings.u32(kNoString);
+                                    bindings.u32(kNoString);
+                                    bindings.u32(static_cast<std::uint32_t>(
+                                        target.point));
+                                    bindings.u32(0U);
+                                }
+                            },
+                            item.target
+                        );
                     }
                 }
 
@@ -935,48 +1003,96 @@ namespace lux::simulation
                 cursor = 0U;
                 for (std::size_t index{}; index < countOf(9); ++index)
                 {
+                    std::uint64_t mount_id{};
+                    if (!readU64(sections[9].bytes, cursor, mount_id) ||
+                        mount_id == 0U)
+                    {
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    }
                     std::array<std::uint8_t, 16U> id{};
                     for (auto& byte : id)
                     {
                         if (!readU8(sections[9].bytes, cursor, byte))
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
-                    std::uint32_t mode{}, binding_first{}, mount_binding_count{};
-                    if (!readU32(sections[9].bytes, cursor, mode) ||
-                        !readU32(sections[9].bytes, cursor, binding_first) ||
+                    std::uint32_t binding_first{}, mount_binding_count{};
+                    if (!readU32(sections[9].bytes, cursor, binding_first) ||
                         !readU32(sections[9].bytes, cursor, mount_binding_count) ||
-                        mode > static_cast<std::uint32_t>(
-                            EScriptBindingSetMode::EXPLICIT) ||
                         !rangeValid(binding_first, mount_binding_count,
                             binding_count))
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
                     ScriptMountDescription mount;
+                    mount.id = ScriptMountId{mount_id};
                     mount.script = lux::asset::AssetId{id};
-                    mount.binding_mode = static_cast<EScriptBindingSetMode>(mode);
                     mount.bindings.reserve(mount_binding_count);
                     for (std::uint32_t item{}; item < mount_binding_count; ++item)
                     {
                         std::size_t offset = static_cast<std::size_t>(
                             binding_first + item) * kRecordBytes[10];
-                        lux::rdesc::ScriptBindingDescription binding;
-                        std::uint32_t kind{}, system_type{}, system_instance{}, member{};
+                        ScriptBindingDescription binding;
+                        std::uint32_t kind{}, system_type{}, system_instance{}, member{},
+                            lifecycle{}, reserved{};
+                        std::uint64_t system_type_hash{};
                         if (!readU64(sections[10].bytes, offset, binding.function) ||
                             !readU32(sections[10].bytes, offset, kind) ||
+                            !readU64(sections[10].bytes, offset, system_type_hash) ||
                             !readU32(sections[10].bytes, offset, system_type) ||
                             !readU32(sections[10].bytes, offset, system_instance) ||
                             !readU32(sections[10].bytes, offset, member) ||
+                            !readU32(sections[10].bytes, offset, lifecycle) ||
+                            !readU32(sections[10].bytes, offset, reserved) ||
                             kind > static_cast<std::uint32_t>(
-                                lux::rdesc::EScriptBindingKind::EVENT))
+                                EBindingTargetWire::LIFECYCLE) ||
+                            reserved != 0U)
                         {
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         }
-                        binding.kind = static_cast<
-                            lux::rdesc::EScriptBindingKind>(kind);
-                        binding.system_type = stringAt(system_type);
-                        binding.system_instance = stringAt(system_instance);
-                        binding.member = stringAt(member);
+                        const auto target_kind = static_cast<EBindingTargetWire>(kind);
+                        if (target_kind == EBindingTargetWire::HOOK ||
+                            target_kind == EBindingTargetWire::EVENT)
+                        {
+                            const auto type_name = stringAt(system_type);
+                            const auto instance_name = stringAt(system_instance);
+                            const auto member_name = stringAt(member);
+                            if (system_type_hash == 0U || type_name.empty() ||
+                                member_name.empty() || lifecycle != 0U ||
+                                systemTypeId(type_name).hash != system_type_hash)
+                            {
+                                return lux::cxx::unexpected(
+                                    EAssetCodecError::CODEC_FAILURE);
+                            }
+                            if (target_kind == EBindingTargetWire::HOOK)
+                            {
+                                binding.target = SystemHookBindingTarget{
+                                    SystemTypeId{system_type_hash,
+                                        std::string(type_name)},
+                                    std::string(instance_name),
+                                    std::string(member_name)};
+                            }
+                            else
+                            {
+                                binding.target = SystemEventBindingTarget{
+                                    SystemTypeId{system_type_hash,
+                                        std::string(type_name)},
+                                    std::string(instance_name),
+                                    std::string(member_name)};
+                            }
+                        }
+                        else
+                        {
+                            if (system_type_hash != 0U || system_type != kNoString ||
+                                system_instance != kNoString || member != kNoString ||
+                                lifecycle > static_cast<std::uint32_t>(
+                                    EBehaviorLifecyclePoint::STOP))
+                            {
+                                return lux::cxx::unexpected(
+                                    EAssetCodecError::CODEC_FAILURE);
+                            }
+                            binding.target = BehaviorLifecycleBindingTarget{
+                                static_cast<EBehaviorLifecyclePoint>(lifecycle)};
+                        }
                         mount.bindings.push_back(std::move(binding));
                     }
                     if (!builder.addGlobalScriptMount(mount))

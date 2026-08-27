@@ -46,6 +46,9 @@ int main()
     const auto* function = loaded.value().findFunction("Increment");
     assert(function && function->invoke);
     assert(loaded.value().findFunction(1U) == function);
+    assert(loaded.value().findFunction("OnUpdate") == nullptr);
+    assert(loaded.value().findFunction(2U) != nullptr);
+    assert(loaded.value().findFunction(3U) != nullptr);
     assert(loaded.value().findFunction(0U) == nullptr);
     assert(loaded.value().abiVersion() == LUX_SCRIPT_ABI_VERSION);
 

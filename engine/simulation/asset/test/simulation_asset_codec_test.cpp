@@ -124,14 +124,14 @@ int main()
     std::array<std::uint8_t, 16U> script_id{};
     script_id[0] = 9U;
     assert(builder.addGlobalScriptMount(ScriptMountDescription{
+        ScriptMountId{41U},
         AssetId{script_id},
-        EScriptBindingSetMode::EXPLICIT,
         {{
             77U,
-            lux::rdesc::EScriptBindingKind::HOOK,
-            "lux.physics",
-            "physics",
-            "after"
+            SystemHookBindingTarget{
+                systemTypeId("lux.physics"),
+                "physics",
+                "after"}
         }}}));
     auto description = std::move(builder).build();
     assert(description);
@@ -144,7 +144,7 @@ int main()
             std::numeric_limits<std::size_t>::max()}}
     );
     assert(encoded);
-    assert((*encoded)[4] == std::byte{3U});
+    assert((*encoded)[4] == std::byte{4U});
     assert(!descriptor.encode(
         std::addressof(*description),
         AssetEncodeContext{AssetCodecLimits{0U, 0U, encoded->size() - 1U}}
@@ -163,6 +163,10 @@ int main()
     assert(decoded_description->systemCount() == 2U);
     assert(decoded_description->dependencyCount() == 1U);
     assert(decoded_description->globalScriptMountCount() == 1U);
+    assert(
+        decoded_description->globalScriptMountAt(0U).id() ==
+        ScriptMountId{41U}
+    );
     assert(decoded_description->findData(schema_a));
     assert(decoded_description->findData(schema_b));
     const auto decoded_physics = decoded_description->findSystem("physics");
@@ -226,9 +230,12 @@ int main()
     truncated.pop_back();
     assert(!descriptor.decode(truncated, generous_decode));
 
-    auto wire_v2 = *encoded;
-    wire_v2[4] = std::byte{2U};
-    assert(!descriptor.decode(wire_v2, generous_decode));
+    for (const auto old_version : {1U, 2U, 3U})
+    {
+        auto old_wire = *encoded;
+        old_wire[4] = static_cast<std::byte>(old_version);
+        assert(!descriptor.decode(old_wire, generous_decode));
+    }
 
     auto overlapping_section = *encoded;
     overlapping_section[40] ^= std::byte{0x01U};

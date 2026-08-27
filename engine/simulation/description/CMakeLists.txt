@@ -14,6 +14,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDataSchemaId.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemTypeId.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptBindingCompatibility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescription.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescriptionBuilder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescriptionFailureInjection.cpp

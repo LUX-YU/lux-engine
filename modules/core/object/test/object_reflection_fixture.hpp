@@ -10,6 +10,20 @@ namespace lux::object::test
     inline int constructions = 0;
     inline int destructions = 0;
 
+    inline std::int32_t LUX_FUNC() reflectedFreeNoexcept(
+        std::int32_t value
+    ) noexcept
+    {
+        return value + 1;
+    }
+
+    inline std::int32_t LUX_FUNC() reflectedFreeThrowing(
+        std::int32_t value
+    )
+    {
+        return value + 2;
+    }
+
     struct ReflectedMoveOnly final
     {
         ReflectedMoveOnly() = default;
@@ -78,6 +92,10 @@ namespace lux::object::test
         void publishSaved()
         {
             notify<saved>();
+        }
+
+        void unmarkedPublicHelper() noexcept
+        {
         }
 
         int last_value{0};

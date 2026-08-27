@@ -387,16 +387,15 @@ namespace lux::simulation
             mount_index_ < description_->global_script_mounts_.size();
     }
 
+    ScriptMountId SimulationGlobalScriptMountView::id() const noexcept
+    {
+        return description_->global_script_mounts_[mount_index_].id;
+    }
+
     const lux::asset::AssetId& SimulationGlobalScriptMountView::script(
     ) const noexcept
     {
         return description_->global_script_mounts_[mount_index_].script;
-    }
-
-    EScriptBindingSetMode SimulationGlobalScriptMountView::bindingMode(
-    ) const noexcept
-    {
-        return description_->global_script_mounts_[mount_index_].binding_mode;
     }
 
     std::size_t SimulationGlobalScriptMountView::bindingCount() const noexcept
@@ -404,7 +403,7 @@ namespace lux::simulation
         return description_->global_script_mounts_[mount_index_].bindings.size();
     }
 
-    const lux::rdesc::ScriptBindingDescription*
+    const ScriptBindingDescription*
     SimulationGlobalScriptMountView::bindingAt(std::size_t index) const noexcept
     {
         const auto& bindings =
@@ -505,17 +504,55 @@ namespace lux::simulation
             addRetainedArray(
                 result,
                 mount.bindings.capacity(),
-                sizeof(lux::rdesc::ScriptBindingDescription)
+                sizeof(ScriptBindingDescription)
             );
             for (const auto& binding : mount.bindings)
             {
-                addRetainedArray(result, binding.system_type.capacity(), sizeof(char));
-                addRetainedArray(
-                    result,
-                    binding.system_instance.capacity(),
-                    sizeof(char)
+                std::visit(
+                    [&](const auto& target) noexcept
+                    {
+                        using Target = std::remove_cvref_t<decltype(target)>;
+                        if constexpr (
+                            std::is_same_v<Target, SystemHookBindingTarget>)
+                        {
+                            addRetainedArray(
+                                result,
+                                target.system_type.name.capacity(),
+                                sizeof(char)
+                            );
+                            addRetainedArray(
+                                result,
+                                target.system_instance.capacity(),
+                                sizeof(char)
+                            );
+                            addRetainedArray(
+                                result,
+                                target.hook.capacity(),
+                                sizeof(char)
+                            );
+                        }
+                        else if constexpr (
+                            std::is_same_v<Target, SystemEventBindingTarget>)
+                        {
+                            addRetainedArray(
+                                result,
+                                target.system_type.name.capacity(),
+                                sizeof(char)
+                            );
+                            addRetainedArray(
+                                result,
+                                target.system_instance.capacity(),
+                                sizeof(char)
+                            );
+                            addRetainedArray(
+                                result,
+                                target.event.capacity(),
+                                sizeof(char)
+                            );
+                        }
+                    },
+                    binding.target
                 );
-                addRetainedArray(result, binding.member.capacity(), sizeof(char));
             }
         }
         return result;

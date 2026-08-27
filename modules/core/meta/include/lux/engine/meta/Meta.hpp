@@ -72,6 +72,7 @@ namespace lux::meta
 		std::string_view  name;         //!< Human‑readable (qualified) name. for class equals RefClass::full_name.
         uint64_t          hash{0};      //!< Hash of the type name.
         std::uint32_t     size{0};      //!< sizeof(type).
+        std::uint32_t     alignment{0}; //!< alignof(type).
         const void*       ptr{nullptr}; //!< Pointer to the type info (class, enum, etc.).
 
         bool operator==(const RefType& other) const {
@@ -87,7 +88,8 @@ namespace lux::meta
             .traits = type_trait_bits_v<T>,
             .name   = lux::cxx::type_name<T>(),
             .hash   = lux::cxx::type_hash<T>(),
-            .size   = sizeof(T)
+            .size   = sizeof(T),
+            .alignment = alignof(T)
         };
     };
 
@@ -97,7 +99,8 @@ namespace lux::meta
         static constexpr RefType value{
             .qtype = __builtin_qual_type<void>,
             .name = lux::cxx::type_name<void>(),
-            .size = 0
+            .size = 0,
+            .alignment = 0
         };
     };
     template<typename T> constexpr inline auto ref_type_of_v = ref_type_of<T>::value;
@@ -266,6 +269,7 @@ namespace lux::meta
     {
         RefInvokable  invokable;
         std::size_t   container_index{ 0 };
+        bool          is_noexcept{ false };
     };
 
     struct RefMethod

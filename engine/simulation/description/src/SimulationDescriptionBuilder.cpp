@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <limits>
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -755,6 +756,130 @@ namespace lux::simulation
             ));
         try
         {
+            for (const auto& binding : mount.bindings)
+            {
+                const auto validation = std::visit(
+                    [&](const auto& target) noexcept
+                        -> std::optional<ESimulationDescriptionError>
+                    {
+                        using Target =
+                            std::remove_cvref_t<decltype(target)>;
+                        if constexpr (
+                            std::is_same_v<Target,
+                                BehaviorLifecycleBindingTarget>)
+                        {
+                            return ESimulationDescriptionError::
+                                SCRIPT_TARGET_SCOPE_MISMATCH;
+                        }
+                        else
+                        {
+                            const Impl::PendingSystem* resolved{};
+                            if (!target.system_instance.empty())
+                            {
+                                const auto system = findSystem(
+                                    impl_->systems,
+                                    target.system_instance
+                                );
+                                if (system == impl_->systems.end())
+                                {
+                                    return ESimulationDescriptionError::
+                                        SCRIPT_TARGET_SYSTEM_NOT_FOUND;
+                                }
+                                if (system->type != target.system_type)
+                                {
+                                    return ESimulationDescriptionError::
+                                        SCRIPT_TARGET_TYPE_MISMATCH;
+                                }
+                                resolved = std::addressof(*system);
+                            }
+                            else
+                            {
+                                for (const auto& system : impl_->systems)
+                                {
+                                    if (system.type != target.system_type)
+                                        continue;
+                                    if (resolved)
+                                    {
+                                        return ESimulationDescriptionError::
+                                            SCRIPT_TARGET_SYSTEM_AMBIGUOUS;
+                                    }
+                                    resolved = std::addressof(system);
+                                }
+                                if (!resolved)
+                                {
+                                    return ESimulationDescriptionError::
+                                        SCRIPT_TARGET_SYSTEM_NOT_FOUND;
+                                }
+                            }
+                            if constexpr (
+                                std::is_same_v<Target,
+                                    SystemHookBindingTarget>)
+                            {
+                                const auto hook = std::find_if(
+                                    resolved->hooks.begin(),
+                                    resolved->hooks.end(),
+                                    [&](const auto& candidate) noexcept
+                                    {
+                                        return candidate.name == target.hook;
+                                    }
+                                );
+                                return hook == resolved->hooks.end()
+                                    ? ESimulationDescriptionError::
+                                        SCRIPT_TARGET_MEMBER_NOT_FOUND
+                                    : std::optional<
+                                        ESimulationDescriptionError>{};
+                            }
+                            else
+                            {
+                                const auto event = std::find_if(
+                                    resolved->events.begin(),
+                                    resolved->events.end(),
+                                    [&](const auto& candidate) noexcept
+                                    {
+                                        return candidate.name == target.event;
+                                    }
+                                );
+                                if (event == resolved->events.end())
+                                {
+                                    return ESimulationDescriptionError::
+                                        SCRIPT_TARGET_MEMBER_NOT_FOUND;
+                                }
+                                return event->target ==
+                                    ESystemEventTarget::GLOBAL
+                                    ? std::optional<
+                                        ESimulationDescriptionError>{}
+                                    : std::optional{
+                                        ESimulationDescriptionError::
+                                            SCRIPT_TARGET_SCOPE_MISMATCH};
+                            }
+                        }
+                    },
+                    binding.target
+                );
+                if (validation)
+                {
+                    return lux::cxx::unexpected(failure(
+                        *validation,
+                        {},
+                        binding.function
+                    ));
+                }
+            }
+            if (std::any_of(
+                    impl_->global_script_mounts.begin(),
+                    impl_->global_script_mounts.end(),
+                    [&](const auto& existing) noexcept
+                    {
+                        return existing.id == mount.id;
+                    }
+                ))
+            {
+                return lux::cxx::unexpected(failure(
+                    ESimulationDescriptionError::INVALID_SCRIPT_MOUNT,
+                    {},
+                    mount.id.value
+                ));
+            }
             impl_->global_script_mounts.push_back(mount);
             return {};
         }
@@ -774,17 +899,22 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::eraseGlobalScriptMount(
-        std::size_t ordinal
+        ScriptMountId id
     ) noexcept
     {
-        if (ordinal >= impl_->global_script_mounts.size())
+        const auto mount = std::find_if(
+            impl_->global_script_mounts.begin(),
+            impl_->global_script_mounts.end(),
+            [id](const auto& candidate) noexcept
+            {
+                return candidate.id == id;
+            }
+        );
+        if (mount == impl_->global_script_mounts.end())
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::SCRIPT_MOUNT_NOT_FOUND
             ));
-        impl_->global_script_mounts.erase(
-            impl_->global_script_mounts.begin() +
-            static_cast<std::ptrdiff_t>(ordinal)
-        );
+        impl_->global_script_mounts.erase(mount);
         return {};
     }
 

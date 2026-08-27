@@ -16,15 +16,10 @@ int main()
         7U,
         {{std::string(i32.canonical_name), i32.type_id, i32.pass}},
         {}});
-    description.default_bindings.push_back({
-        7U,
-        rdesc::EScriptBindingKind::HOOK,
-        "lux.test.system",
-        {},
-        "before_step"});
     description.body = rdesc::NativeModuleScript{
         LUX_SCRIPT_ABI_VERSION,
         91U,
+        4U,
         4U,
         {std::byte{1U}, std::byte{2U}}};
     assert(rdesc::validScriptDescription(description));
@@ -33,12 +28,23 @@ int main()
     duplicate.exports.push_back(duplicate.exports.front());
     assert(!rdesc::validScriptDescription(duplicate));
 
-    auto missing_symbol = description;
-    missing_symbol.default_bindings.front().function = 999U;
-    assert(!rdesc::validScriptDescription(missing_symbol));
+    auto overloaded = description;
+    overloaded.exports.push_back(description.exports.front());
+    overloaded.exports.back().symbol_id = 8U;
+    assert(rdesc::validScriptDescription(overloaded));
 
     auto invalid_type = description;
     invalid_type.exports.front().args.front().type_id ^= 1U;
     assert(!rdesc::validScriptDescription(invalid_type));
+
+    auto invalid_align = description;
+    std::get<rdesc::NativeModuleScript>(invalid_align.body).state_align = 3U;
+    assert(!rdesc::validScriptDescription(invalid_align));
+
+    auto python = description;
+    python.model = rdesc::EScriptModel::ENTITY_BEHAVIOR;
+    python.body = rdesc::PythonSourceScript{"EnemyBehavior"};
+    assert(python.kind() == rdesc::Script::Kind::PYTHON_SOURCE);
+    assert(rdesc::validScriptDescription(python));
     return 0;
 }

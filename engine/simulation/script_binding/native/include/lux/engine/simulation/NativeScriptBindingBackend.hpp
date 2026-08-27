@@ -8,13 +8,25 @@
 
 namespace lux::simulation
 {
+    struct NativeScriptRecordLayoutResolver final
+    {
+        void* context{};
+        bool (*resolve)(
+            void* context,
+            std::uint64_t type_id,
+            std::string_view canonical_name,
+            lux_script_type_desc& result
+        ) noexcept{};
+    };
+
     class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_NATIVE_PUBLIC
         NativeScriptBindingBackend final
     {
       public:
         explicit NativeScriptBindingBackend(
             std::shared_ptr<lux::script::NativeModule> module,
-            std::size_t instance_capacity
+            std::size_t instance_capacity,
+            NativeScriptRecordLayoutResolver record_layouts = {}
         ) noexcept;
         ~NativeScriptBindingBackend();
 

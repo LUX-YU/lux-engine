@@ -55,6 +55,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::simulation::simulation_script_binding
         lux::engine::simulation::ecs::snapshot
+        lux::engine::core::task
 )
 if(MSVC)
     target_compile_options(simulation_script_binding_contract_test PRIVATE /UNDEBUG)
@@ -71,6 +72,34 @@ add_test(
     NAME simulation_script_binding_contract_test
     COMMAND simulation_script_binding_contract_test
 )
+
+add_executable(
+    simulation_system_event_buffer_test
+    test/system_event_buffer_test.cpp
+)
+target_link_libraries(
+    simulation_system_event_buffer_test
+    PRIVATE
+        lux::engine::simulation::simulation_script_binding
+        lux::engine::core::task
+)
+if(MSVC)
+    target_compile_options(simulation_system_event_buffer_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_system_event_buffer_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_system_event_buffer_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME simulation_system_event_buffer_test
+    COMMAND simulation_system_event_buffer_test
+)
+
+add_subdirectory(cpp_static)
 
 if(TARGET script_native)
     add_subdirectory(native)

@@ -11,26 +11,34 @@ namespace
     lux_script_call_frame makeFrame(
         std::int32_t delta,
         std::int32_t expected,
-        std::array<lux_script_value_slot, 2U>& slots,
-        std::array<std::int32_t, 2U>& values
+        std::array<lux_script_value_slot, 2U>& arguments,
+        std::array<std::int32_t, 2U>& values,
+        lux_script_value_slot& return_slot,
+        std::int32_t& result
     )
     {
         values = {delta, expected};
-        for (std::size_t index{}; index < slots.size(); ++index)
+        for (std::size_t index{}; index < arguments.size(); ++index)
         {
-            slots[index] = lux_script_value_slot{
+            arguments[index] = lux_script_value_slot{
                 LUX_SCRIPT_VK_INT32,
                 {},
                 sizeof(std::int32_t),
-                lux::script::scriptSemanticTypeId("i32"),
+                lux::script::scriptSemanticTypeId("lux.i32"),
                 &values[index]};
         }
-        return lux_script_call_frame{
-            slots.data(),
-            static_cast<std::uint32_t>(slots.size()),
+        return_slot = lux_script_value_slot{
+            LUX_SCRIPT_VK_INT32,
+            {},
+            sizeof(result),
+            lux::script::scriptSemanticTypeId("lux.i32"),
+            &result};
+        return {
+            arguments.data(),
+            static_cast<std::uint32_t>(arguments.size()),
             0U,
-            nullptr,
-            0U,
+            &return_slot,
+            1U,
             0U,
             nullptr,
             nullptr};
@@ -39,98 +47,149 @@ namespace
 
 int main()
 {
-    lux::simulation::LuaScriptBindingBackend backend{4U};
+    using namespace lux::simulation;
+
+    LuaScriptBindingBackend backend{4U};
     assert(backend);
     assert(backend.cachedTracebackCount() == 1U);
 
     lux::asset::ScriptAssetContent asset;
-    asset.description.schema_version = lux::rdesc::Script::kSchemaVersion;
     asset.description.module_name = "lua.binding.fixture";
+    asset.description.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
     asset.description.body = lux::rdesc::LuaSourceScript{"fixture"};
     const lux::rdesc::ScriptValueType i32{
-        "i32",
-        lux::script::scriptSemanticTypeId("i32"),
+        "lux.i32",
+        lux::script::scriptSemanticTypeId("lux.i32"),
         lux::script::EScriptPassMode::VALUE};
     const lux::rdesc::ScriptFunction function{
         "tick",
         11U,
         {i32, i32},
-        {}};
+        {i32}};
     asset.description.exports.push_back(function);
     constexpr std::string_view source = R"lua(
-        local count = 0
         return {
-            tick = function(delta, expected)
-                count = count + delta
-                if count ~= expected then error("instance state mismatch") end
-                return 0
+            count = 0,
+            tick = function(self, delta, expected)
+                self.count = self.count + delta
+                if self.count ~= expected then
+                    error("instance state mismatch")
+                end
+                return self.count
             end
         }
     )lua";
     asset.payload.reserve(source.size());
     for (const auto value : source)
         asset.payload.push_back(static_cast<std::byte>(value));
+    assert(lux::rdesc::validScriptDescription(asset.description));
 
     std::array<std::uint8_t, 16U> id_bytes{};
     id_bytes[0] = 7U;
     const auto id = lux::asset::AssetId{id_bytes};
-    const lux::simulation::ScriptPrepareContext first_key{
-        id,
-        lux::simulation::ecs::NullEntity,
-        0U,
-        0U};
-    const lux::simulation::ScriptPrepareContext first_second_binding{
-        id,
-        lux::simulation::ecs::NullEntity,
-        0U,
-        1U};
-    const lux::simulation::ScriptPrepareContext second_key{
-        id,
-        lux::simulation::ecs::NullEntity,
-        1U,
-        0U};
-
     auto descriptor = backend.descriptor();
-    lux::script::BoundScriptCall first;
-    lux::script::BoundScriptCall first_again;
-    lux::script::BoundScriptCall second;
-    assert(descriptor.prepare(
-        descriptor.context, first_key, asset, function, first
-    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
-    assert(descriptor.prepare(
+    ScriptBackendInstance first_instance;
+    ScriptBackendInstance second_instance;
+    assert(descriptor.createInstance(
         descriptor.context,
-        first_second_binding,
+        ScriptInstanceCreateContext{id, ScriptMountId{1U}},
         asset,
-        function,
-        first_again
-    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
-    assert(descriptor.prepare(
-        descriptor.context, second_key, asset, function, second
-    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
-    assert(backend.loadedInstanceCount() == 2U);
-    assert(backend.chunkLoadCount() == 2U);
-    assert(backend.preparedReferenceCount() == 3U);
+        first_instance
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.createInstance(
+        descriptor.context,
+        ScriptInstanceCreateContext{id, ScriptMountId{2U}},
+        asset,
+        second_instance
+    ) == EScriptBackendResult::SUCCESS);
 
-    std::array<lux_script_value_slot, 2U> slots{};
+    lux::script::BoundScriptCall first;
+    lux::script::BoundScriptCall second;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        function,
+        first
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        second_instance,
+        function,
+        second
+    ) == EScriptBackendResult::SUCCESS);
+    assert(backend.loadedInstanceCount() == 2U);
+    assert(backend.chunkLoadCount() == 1U);
+    assert(backend.preparedReferenceCount() == 2U);
+
+    std::array<lux_script_value_slot, 2U> arguments{};
     std::array<std::int32_t, 2U> values{};
-    auto frame = makeFrame(1, 1, slots, values);
+    lux_script_value_slot return_slot{};
+    std::int32_t result{};
+    auto frame = makeFrame(
+        1,
+        1,
+        arguments,
+        values,
+        return_slot,
+        result
+    );
     frame.user_context = first.context;
     assert(first.invoke(&frame) == 0);
-    frame = makeFrame(1, 2, slots, values);
-    frame.user_context = first_again.context;
-    assert(first_again.invoke(&frame) == 0);
-    frame = makeFrame(1, 1, slots, values);
+    assert(result == 1);
+    frame = makeFrame(
+        1,
+        2,
+        arguments,
+        values,
+        return_slot,
+        result
+    );
+    frame.user_context = first.context;
+    assert(first.invoke(&frame) == 0);
+    assert(result == 2);
+    frame = makeFrame(
+        1,
+        1,
+        arguments,
+        values,
+        return_slot,
+        result
+    );
     frame.user_context = second.context;
     assert(second.invoke(&frame) == 0);
+    assert(result == 1);
 
-    frame = makeFrame(1, 99, slots, values);
+    frame = makeFrame(
+        1,
+        99,
+        arguments,
+        values,
+        return_slot,
+        result
+    );
     frame.user_context = second.context;
     assert(second.invoke(&frame) != 0);
-    assert(backend.cachedTracebackCount() == 1U);
 
-    descriptor.release(descriptor.context, first);
-    descriptor.release(descriptor.context, first_again);
-    descriptor.release(descriptor.context, second);
+    auto unsupported = function;
+    unsupported.symbol_id = 12U;
+    unsupported.args = {{
+        "lux.test.Record",
+        lux::script::scriptSemanticTypeId("lux.test.Record"),
+        lux::script::EScriptPassMode::CONST_REF}};
+    unsupported.returns.clear();
+    lux::script::BoundScriptCall rejected;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        unsupported,
+        rejected
+    ) == EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE);
+
+    descriptor.releaseMethod(descriptor.context, first_instance, first);
+    descriptor.releaseMethod(descriptor.context, second_instance, second);
     assert(backend.preparedReferenceCount() == 0U);
-    return 0;
+    descriptor.destroyInstance(descriptor.context, first_instance);
+    descriptor.destroyInstance(descriptor.context, second_instance);
+    assert(backend.loadedInstanceCount() == 0U);
+    assert(backend.cachedTracebackCount() == 1U);
 }

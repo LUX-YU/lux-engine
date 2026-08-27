@@ -169,10 +169,10 @@ namespace lux::simulation
       public:
         SimulationGlobalScriptMountView() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
+        [[nodiscard]] ScriptMountId id() const noexcept;
         [[nodiscard]] const lux::asset::AssetId& script() const noexcept;
-        [[nodiscard]] EScriptBindingSetMode bindingMode() const noexcept;
         [[nodiscard]] std::size_t bindingCount() const noexcept;
-        [[nodiscard]] const lux::rdesc::ScriptBindingDescription* bindingAt(
+        [[nodiscard]] const ScriptBindingDescription* bindingAt(
             std::size_t index
         ) const noexcept;
 

@@ -6,6 +6,7 @@
 #include "object_reflection_fixture.hpp"
 #include <ObjectDiagnostics.hpp>
 #include <condition_variable>
+#include <array>
 #include <lux/engine/object/ObjectReflection.hpp>
 #include <memory>
 #include <mutex>
@@ -22,7 +23,10 @@ int main()
     assert(reflected->construct);
     assert(reflected->destruct);
     assert(reflected->static_fields.size() == 3);
-    assert(reflected->methods.size() >= 5);
+    assert(reflected->methods.size() == 6);
+    assert(reflected->type.alignment == alignof(
+        lux::object::test::ReflectedObject
+    ));
 
     const auto signal = lux::object::reflection::findSignal(registry, *reflected, "changed");
     assert(signal);
@@ -43,6 +47,7 @@ int main()
     const lux::meta::RefMethod *on_saved = nullptr;
     const lux::meta::RefMethod *on_move_only = nullptr;
     const lux::meta::RefMethod *on_throwing = nullptr;
+    const lux::meta::RefMethod *unmarked_helper = nullptr;
     for (const auto &method : reflected->methods)
     {
         if (method.invokable.name == "save")
@@ -57,6 +62,8 @@ int main()
             on_move_only = &method;
         if (method.invokable.name == "onThrowing")
             on_throwing = &method;
+        if (method.invokable.name == "unmarkedPublicHelper")
+            unmarked_helper = &method;
     }
     assert(save);
     assert(save->annotations().has("command"));
@@ -67,6 +74,22 @@ int main()
     assert(on_throwing);
     assert(on_changed->is_noexcept);
     assert(!on_throwing->is_noexcept);
+    assert(!unmarked_helper);
+
+    const auto parameter_id = lux::cxx::type_hash<std::int32_t>();
+    const std::array parameter_ids{parameter_id};
+    const auto* free_noexcept = registry.findFunction(
+        "lux::object::test::reflectedFreeNoexcept",
+        parameter_ids
+    );
+    const auto* free_throwing = registry.findFunction(
+        "lux::object::test::reflectedFreeThrowing",
+        parameter_ids
+    );
+    assert(free_noexcept);
+    assert(free_noexcept->is_noexcept);
+    assert(free_throwing);
+    assert(!free_throwing->is_noexcept);
 
     lux::object::ObjectMessageQueue sender_queue;
     lux::object::test::ReflectedObject sender{sender_queue.dispatcherRef()};

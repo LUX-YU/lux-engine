@@ -100,6 +100,15 @@ static void reflect_func_{{ fn.hash }}(lux::meta::ReflectionRegistry& registry, 
     inv.full_name   = "{{ fn.fq_name }}";
     inv.is_variadic = {{ fn.is_variadic }};
     inv.type_signature = "{{ fn.type_id }}";
+    f.is_noexcept = noexcept(
+        {{ fn.invoke_name }}(
+            {%- for param_id in fn.params -%}
+            {%- set param = decl_from_id(param_id) -%}
+            {%- set p_type = type_from_id(param.type_id) -%}
+            std::declval<{{ p_type.id }}>(){% if not loop.is_last %}, {% endif %}
+            {%- endfor -%}
+        )
+    );
 
     /* return type ---------------------------------------------------------- */
     using ret_type  = {{ fn.result_type_id }};
@@ -377,7 +386,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     {% for method_id in rec.method_decls -%}{%- set method_index = loop.index -%}{%- set method = decl_from_id(method_id) -%}
     {%- set is_object = annotation_has(rec, "object") -%}
     {%- set is_reflected_method = annotation_has(method, "luxref::property::method") -%}
-    {%- if method.visibility == 1 and (not is_object or is_reflected_method) %}
+    {%- if method.visibility == 1 and is_reflected_method %}
     {
         cls.methods.push_back({});
         lux::meta::RefMethod& m = cls.methods.back();

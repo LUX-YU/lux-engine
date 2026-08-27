@@ -11,6 +11,12 @@
 
 namespace lux::rdesc
 {
+    enum class EScriptModel : std::uint8_t
+    {
+        GLOBAL_MODULE,
+        ENTITY_BEHAVIOR,
+    };
+
     struct ScriptValueType final
     {
         std::string canonical_name;
@@ -32,27 +38,6 @@ namespace lux::rdesc
 
         friend bool operator==(const ScriptFunction&, const ScriptFunction&)
             noexcept = default;
-    };
-
-    enum class EScriptBindingKind : std::uint8_t
-    {
-        HOOK,
-        EVENT,
-    };
-
-    struct ScriptBindingDescription final
-    {
-        lux::script::ScriptSymbolId function{
-            lux::script::InvalidScriptSymbolId};
-        EScriptBindingKind kind{EScriptBindingKind::HOOK};
-        std::string system_type;
-        std::string system_instance;
-        std::string member;
-
-        friend bool operator==(
-            const ScriptBindingDescription&,
-            const ScriptBindingDescription&
-        ) noexcept = default;
     };
 
     struct ScriptDependency final
@@ -89,6 +74,7 @@ namespace lux::rdesc
         std::uint32_t abi_version{};
         std::uint64_t state_layout_hash{};
         std::uint32_t state_size{};
+        std::uint32_t state_align{1U};
         std::vector<std::byte> state_defaults;
 
         friend bool operator==(
@@ -97,39 +83,51 @@ namespace lux::rdesc
         ) noexcept = default;
     };
 
-    struct CppBehaviorScript final
+    struct CppStaticScript final
     {
-        std::string behavior;
+        std::string descriptor;
 
         friend bool operator==(
-            const CppBehaviorScript&,
-            const CppBehaviorScript&
+            const CppStaticScript&,
+            const CppStaticScript&
+        ) noexcept = default;
+    };
+
+    struct PythonSourceScript final
+    {
+        std::string entry;
+
+        friend bool operator==(
+            const PythonSourceScript&,
+            const PythonSourceScript&
         ) noexcept = default;
     };
 
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 3U;
+        static constexpr std::uint32_t kSchemaVersion = 4U;
 
         enum class Kind : std::uint8_t
         {
             UNKNOWN = 0,
             LUA_SOURCE = 1,
+            PYTHON_SOURCE = 2,
             NATIVE_MODULE = 3,
-            CPP_BEHAVIOR = 6,
+            CPP_STATIC = 6,
         };
 
         using Body = std::variant<
             std::monostate,
             LuaSourceScript,
+            PythonSourceScript,
             NativeModuleScript,
-            CppBehaviorScript>;
+            CppStaticScript>;
 
         std::uint32_t schema_version{kSchemaVersion};
         std::string module_name;
+        EScriptModel model{EScriptModel::GLOBAL_MODULE};
         std::vector<ScriptFunction> exports;
-        std::vector<ScriptBindingDescription> default_bindings;
         std::vector<ScriptDependency> dependencies;
         ScriptProvenance provenance;
         Body body;
@@ -138,10 +136,12 @@ namespace lux::rdesc
         {
             if (std::holds_alternative<LuaSourceScript>(body))
                 return Kind::LUA_SOURCE;
+            if (std::holds_alternative<PythonSourceScript>(body))
+                return Kind::PYTHON_SOURCE;
             if (std::holds_alternative<NativeModuleScript>(body))
                 return Kind::NATIVE_MODULE;
-            if (std::holds_alternative<CppBehaviorScript>(body))
-                return Kind::CPP_BEHAVIOR;
+            if (std::holds_alternative<CppStaticScript>(body))
+                return Kind::CPP_STATIC;
             return Kind::UNKNOWN;
         }
     };
@@ -152,6 +152,8 @@ namespace lux::rdesc
     {
         if (description.schema_version != Script::kSchemaVersion ||
             description.module_name.empty() ||
+            (description.model != EScriptModel::GLOBAL_MODULE &&
+             description.model != EScriptModel::ENTITY_BEHAVIOR) ||
             description.kind() == Script::Kind::UNKNOWN)
         {
             return false;
@@ -174,8 +176,7 @@ namespace lux::rdesc
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (description.exports[previous].symbol_id == function.symbol_id ||
-                    description.exports[previous].name == function.name)
+                if (description.exports[previous].symbol_id == function.symbol_id)
                 {
                     return false;
                 }
@@ -195,44 +196,32 @@ namespace lux::rdesc
             }
         }
 
-        for (std::size_t index{};
-             index < description.default_bindings.size();
-             ++index)
-        {
-            const auto& binding = description.default_bindings[index];
-            if (binding.function == lux::script::InvalidScriptSymbolId ||
-                binding.system_type.empty() || binding.member.empty() ||
-                std::none_of(
-                    description.exports.begin(),
-                    description.exports.end(),
-                    [&](const auto& function) noexcept
-                    {
-                        return function.symbol_id == binding.function;
-                    }
-                ))
-            {
-                return false;
-            }
-            for (std::size_t previous{}; previous < index; ++previous)
-            {
-                if (description.default_bindings[previous] == binding)
-                    return false;
-            }
-        }
-
         if (const auto* native = std::get_if<NativeModuleScript>(
                 &description.body
             ))
         {
             if (native->abi_version == 0U ||
+                native->state_align == 0U ||
+                (native->state_align & (native->state_align - 1U)) != 0U ||
                 native->state_defaults.size() > native->state_size)
             {
                 return false;
             }
         }
-        if (const auto* behavior = std::get_if<CppBehaviorScript>(
+        if (const auto* cpp_static = std::get_if<CppStaticScript>(
                 &description.body
-            ); behavior != nullptr && behavior->behavior.empty())
+            ); cpp_static != nullptr && cpp_static->descriptor.empty())
+        {
+            return false;
+        }
+        if (const auto* lua = std::get_if<LuaSourceScript>(&description.body);
+            lua != nullptr && lua->entry.empty())
+        {
+            return false;
+        }
+        if (const auto* python = std::get_if<PythonSourceScript>(
+                &description.body
+            ); python != nullptr && python->entry.empty())
         {
             return false;
         }

@@ -13,6 +13,7 @@ add_subdirectory(ecs)
 set(LUX_SIMULATION_COMPONENTS
     simulation_description
     simulation_script_binding
+    simulation_script_binding_cpp_static
 )
 if(TARGET simulation_script_binding_native)
     list(APPEND

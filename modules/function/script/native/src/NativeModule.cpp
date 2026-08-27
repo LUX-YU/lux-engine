@@ -109,15 +109,16 @@ namespace lux::script
                         "native script function signature table is incomplete"
                     ));
                 }
-                if (!state->functions_by_name.emplace(
+                const auto [name_iterator, inserted_name] =
+                    state->functions_by_name.emplace(
                         function.name,
                         &function
-                    ).second)
+                    );
+                if (!inserted_name)
                 {
-                    return lux::cxx::unexpected(scriptFailure(
-                        EScriptError::INVALID_MODULE,
-                        "native script exports a duplicate function name"
-                    ));
+                    // Names are diagnostic-only and overloads are legal. A
+                    // diagnostic query must not pick an arbitrary overload.
+                    name_iterator->second = nullptr;
                 }
                 if (!state->functions_by_symbol.emplace(
                         function.symbol_id,

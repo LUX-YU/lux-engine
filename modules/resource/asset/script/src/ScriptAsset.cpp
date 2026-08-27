@@ -13,7 +13,7 @@ namespace lux::asset
 {
     namespace
     {
-        constexpr std::uint32_t kWireVersion = 1U;
+        constexpr std::uint32_t kWireVersion = 2U;
 
         class Writer final
         {
@@ -202,6 +202,7 @@ namespace lux::asset
                 writer.u32(kWireVersion);
                 writer.u32(lux::rdesc::Script::kSchemaVersion);
                 writer.u32(static_cast<std::uint32_t>(asset.description.kind()));
+                writer.u32(static_cast<std::uint32_t>(asset.description.model));
                 writer.string(asset.description.module_name);
 
                 if (asset.description.exports.size() >
@@ -224,17 +225,6 @@ namespace lux::asset
                 }
 
                 writer.u32(static_cast<std::uint32_t>(
-                    asset.description.default_bindings.size()));
-                for (const auto& binding : asset.description.default_bindings)
-                {
-                    writer.u64(binding.function);
-                    writer.u8(static_cast<std::uint8_t>(binding.kind));
-                    writer.string(binding.system_type);
-                    writer.string(binding.system_instance);
-                    writer.string(binding.member);
-                }
-
-                writer.u32(static_cast<std::uint32_t>(
                     asset.description.dependencies.size()));
                 for (const auto& dependency : asset.description.dependencies)
                 {
@@ -253,6 +243,12 @@ namespace lux::asset
                 {
                     writer.string(lua->entry);
                 }
+                else if (const auto* python =
+                    std::get_if<lux::rdesc::PythonSourceScript>(
+                        &asset.description.body))
+                {
+                    writer.string(python->entry);
+                }
                 else if (const auto* native =
                     std::get_if<lux::rdesc::NativeModuleScript>(
                         &asset.description.body))
@@ -260,15 +256,16 @@ namespace lux::asset
                     writer.u32(native->abi_version);
                     writer.u64(native->state_layout_hash);
                     writer.u32(native->state_size);
+                    writer.u32(native->state_align);
                     writer.u32(static_cast<std::uint32_t>(
                         native->state_defaults.size()));
                     writer.raw(native->state_defaults);
                 }
-                else if (const auto* behavior =
-                    std::get_if<lux::rdesc::CppBehaviorScript>(
+                else if (const auto* cpp_static =
+                    std::get_if<lux::rdesc::CppStaticScript>(
                         &asset.description.body))
                 {
-                    writer.string(behavior->behavior);
+                    writer.string(cpp_static->descriptor);
                 }
 
                 writer.u64(asset.payload.size());
@@ -299,17 +296,29 @@ namespace lux::asset
             try
             {
                 Reader reader(bytes);
-                std::uint32_t magic{}, wire{}, schema{}, kind{};
+                std::uint32_t magic{}, wire{}, schema{}, kind{}, model{};
                 if (!reader.u32(magic) || !reader.u32(wire) ||
                     !reader.u32(schema) || !reader.u32(kind) ||
+                    !reader.u32(model) ||
                     magic != ScriptAssetPrimaryMagic || wire != kWireVersion ||
-                    schema != lux::rdesc::Script::kSchemaVersion)
+                    schema != lux::rdesc::Script::kSchemaVersion ||
+                    model > static_cast<std::uint32_t>(
+                        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR) ||
+                    (kind != static_cast<std::uint32_t>(
+                         lux::rdesc::Script::Kind::LUA_SOURCE) &&
+                     kind != static_cast<std::uint32_t>(
+                         lux::rdesc::Script::Kind::PYTHON_SOURCE) &&
+                     kind != static_cast<std::uint32_t>(
+                         lux::rdesc::Script::Kind::NATIVE_MODULE) &&
+                     kind != static_cast<std::uint32_t>(
+                         lux::rdesc::Script::Kind::CPP_STATIC)))
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
 
                 auto asset = std::make_shared<ScriptAssetContent>();
                 auto& description = asset->description;
+                description.model = static_cast<lux::rdesc::EScriptModel>(model);
                 std::size_t decoded = sizeof(ScriptAssetContent);
                 const auto limit = context.limits.max_decoded_bytes;
                 if (decoded > limit ||
@@ -364,30 +373,6 @@ namespace lux::asset
                 }
 
                 if (!reader.u32(count) || !reserveRecords(
-                        description.default_bindings, count, decoded, limit,
-                        reader.remaining()))
-                {
-                    return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                }
-                for (std::uint32_t index{}; index < count; ++index)
-                {
-                    lux::rdesc::ScriptBindingDescription binding;
-                    std::uint8_t binding_kind{};
-                    if (!reader.u64(binding.function) || !reader.u8(binding_kind) ||
-                        binding_kind > static_cast<std::uint8_t>(
-                            lux::rdesc::EScriptBindingKind::EVENT) ||
-                        !reader.string(binding.system_type, decoded, limit) ||
-                        !reader.string(binding.system_instance, decoded, limit) ||
-                        !reader.string(binding.member, decoded, limit))
-                    {
-                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                    }
-                    binding.kind = static_cast<lux::rdesc::EScriptBindingKind>(
-                        binding_kind);
-                    description.default_bindings.push_back(std::move(binding));
-                }
-
-                if (!reader.u32(count) || !reserveRecords(
                         description.dependencies, count, decoded, limit,
                         reader.remaining()))
                 {
@@ -421,6 +406,13 @@ namespace lux::asset
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     description.body = std::move(lua);
                 }
+                else if (script_kind == lux::rdesc::Script::Kind::PYTHON_SOURCE)
+                {
+                    lux::rdesc::PythonSourceScript python;
+                    if (!reader.string(python.entry, decoded, limit))
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    description.body = std::move(python);
+                }
                 else if (script_kind == lux::rdesc::Script::Kind::NATIVE_MODULE)
                 {
                     lux::rdesc::NativeModuleScript native;
@@ -428,6 +420,7 @@ namespace lux::asset
                     if (!reader.u32(native.abi_version) ||
                         !reader.u64(native.state_layout_hash) ||
                         !reader.u32(native.state_size) ||
+                        !reader.u32(native.state_align) ||
                         !reader.u32(defaults_size) ||
                         defaults_size > reader.remaining() ||
                         defaults_size > limit - decoded)
@@ -441,12 +434,12 @@ namespace lux::asset
                     decoded += defaults_size;
                     description.body = std::move(native);
                 }
-                else if (script_kind == lux::rdesc::Script::Kind::CPP_BEHAVIOR)
+                else if (script_kind == lux::rdesc::Script::Kind::CPP_STATIC)
                 {
-                    lux::rdesc::CppBehaviorScript behavior;
-                    if (!reader.string(behavior.behavior, decoded, limit))
+                    lux::rdesc::CppStaticScript cpp_static;
+                    if (!reader.string(cpp_static.descriptor, decoded, limit))
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                    description.body = std::move(behavior);
+                    description.body = std::move(cpp_static);
                 }
                 else
                 {

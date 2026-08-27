@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <new>
-#include <vector>
 
 namespace lux::simulation
 {
@@ -12,170 +12,206 @@ namespace lux::simulation
     {
         struct Instance final
         {
-            std::shared_ptr<lux::script::NativeModule> module;
-            std::vector<std::byte> instance_state;
+            void* state{};
+            std::size_t state_size{};
+            std::size_t state_align{1U};
         };
 
-        struct InstanceEntry final
-        {
-            lux::asset::AssetId script;
-            ecs::Entity entity{ecs::NullEntity};
-            std::uint32_t mount_ordinal{};
-            std::weak_ptr<Instance> instance;
-        };
-
-        struct Call final
-        {
-            std::shared_ptr<Instance> instance;
-            const lux_script_function_desc* function{};
-        };
-
-        explicit State(
+        State(
             std::shared_ptr<lux::script::NativeModule> value,
-            std::size_t instance_capacity
-        )
-            : module(std::move(value))
+            std::size_t capacity,
+            NativeScriptRecordLayoutResolver layouts
+        ) noexcept
+            : module(std::move(value)),
+              instance_capacity(capacity),
+              record_layouts(layouts)
         {
-            instances.reserve(instance_capacity);
         }
 
-        static int invoke(lux_script_call_frame* frame) noexcept
+        [[nodiscard]] bool expectedLayout(
+            const lux::rdesc::ScriptValueType& semantic,
+            lux_script_type_desc& result
+        ) const noexcept
         {
-            if (!frame || !frame->user_context)
-                return -1;
-            auto& call = *static_cast<Call*>(frame->user_context);
-            frame->user_context = call.instance->instance_state.empty()
-                ? nullptr
-                : call.instance->instance_state.data();
-            return call.function->invoke(frame);
+            if (const auto* builtin = lux::script::scriptBuiltinLayout(
+                    semantic.type_id))
+            {
+                if (builtin->canonical_name != semantic.canonical_name)
+                    return false;
+                result = lux_script_type_desc{
+                    builtin->canonical_name.data(),
+                    builtin->type_id,
+                    builtin->size,
+                    builtin->alignment,
+                    builtin->abi_kind,
+                    {}};
+                return true;
+            }
+            return record_layouts.resolve && record_layouts.resolve(
+                record_layouts.context,
+                semantic.type_id,
+                semantic.canonical_name,
+                result
+            );
         }
 
-        static EScriptBackendPrepareResult prepare(
+        [[nodiscard]] bool sameType(
+            const lux_script_type_desc& native_type,
+            const lux::rdesc::ScriptValueType& semantic
+        ) const noexcept
+        {
+            lux_script_type_desc expected{};
+            return expectedLayout(semantic, expected) && native_type.name &&
+                native_type.type_id == semantic.type_id &&
+                semantic.canonical_name == native_type.name &&
+                native_type.kind == expected.kind &&
+                native_type.size == expected.size &&
+                native_type.align == expected.align;
+        }
+
+        static EScriptBackendResult createInstance(
             void* opaque,
-            const ScriptPrepareContext& context,
+            const ScriptInstanceCreateContext&,
             const lux::asset::ScriptAssetContent& asset,
+            ScriptBackendInstance& result
+        ) noexcept
+        {
+            auto& self = *static_cast<State*>(opaque);
+            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
+                std::addressof(asset.description.body));
+            if (!self.module || !body ||
+                body->abi_version != self.module->abiVersion() ||
+                body->state_align == 0U ||
+                (body->state_align & (body->state_align - 1U)) != 0U ||
+                body->state_defaults.size() > body->state_size)
+            {
+                return EScriptBackendResult::CONSTRUCTION_FAILURE;
+            }
+            if (self.live_instances >= self.instance_capacity)
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            auto* instance = new (std::nothrow) Instance;
+            if (!instance)
+                return EScriptBackendResult::ALLOCATION_FAILURE;
+            instance->state_size = body->state_size;
+            instance->state_align = body->state_align;
+            if (body->state_size != 0U)
+            {
+                instance->state = ::operator new(
+                    body->state_size,
+                    std::align_val_t{body->state_align},
+                    std::nothrow
+                );
+                if (!instance->state)
+                {
+                    delete instance;
+                    return EScriptBackendResult::ALLOCATION_FAILURE;
+                }
+                std::memset(instance->state, 0, body->state_size);
+                if (!body->state_defaults.empty())
+                {
+                    std::memcpy(
+                        instance->state,
+                        body->state_defaults.data(),
+                        body->state_defaults.size()
+                    );
+                }
+            }
+            ++self.live_instances;
+            result.value = instance;
+            return EScriptBackendResult::SUCCESS;
+        }
+
+        static EScriptBackendResult prepareMethod(
+            void* opaque,
+            ScriptBackendInstance instance_value,
             const lux::rdesc::ScriptFunction& description,
             lux::script::BoundScriptCall& result
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
-                std::addressof(asset.description.body)
-            );
-            if (!self.module || !body ||
-                body->abi_version != self.module->abiVersion() ||
-                body->state_defaults.size() > body->state_size)
-            {
-                return EScriptBackendPrepareResult::CONSTRUCTION_FAILURE;
-            }
+            auto* instance = static_cast<Instance*>(instance_value.value);
+            if (!instance || !self.module)
+                return EScriptBackendResult::CONSTRUCTION_FAILURE;
             const auto* function = self.module->findFunction(
-                description.symbol_id
-            );
-            if (!function || function->arg_count != description.args.size() ||
+                description.symbol_id);
+            if (!function || !function->invoke ||
+                function->arg_count != description.args.size() ||
                 function->return_count != description.returns.size())
             {
-                return EScriptBackendPrepareResult::SIGNATURE_MISMATCH;
+                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
             }
-            const auto same = [](const lux_script_type_desc& native_type,
-                                 const lux::rdesc::ScriptValueType& semantic)
-                noexcept
-            {
-                return native_type.name &&
-                    native_type.type_id == semantic.type_id &&
-                    semantic.canonical_name == native_type.name;
-            };
             for (std::size_t index{}; index < description.args.size(); ++index)
             {
-                if (!same(function->args[index], description.args[index]))
-                    return EScriptBackendPrepareResult::SIGNATURE_MISMATCH;
+                if (!self.sameType(function->args[index], description.args[index]))
+                    return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
             }
             for (std::size_t index{}; index < description.returns.size(); ++index)
             {
-                if (!same(function->returns[index], description.returns[index]))
-                    return EScriptBackendPrepareResult::SIGNATURE_MISMATCH;
-            }
-            try
-            {
-                auto call = std::make_unique<Call>();
-                call->function = function;
-                for (auto& entry : self.instances)
+                if (!self.sameType(
+                        function->returns[index],
+                        description.returns[index]))
                 {
-                    if (entry.script == context.script &&
-                        entry.entity == context.entity &&
-                        entry.mount_ordinal == context.mount_ordinal)
-                    {
-                        call->instance = entry.instance.lock();
-                        break;
-                    }
+                    return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
                 }
-                if (!call->instance)
-                {
-                    self.instances.erase(
-                        std::remove_if(
-                            self.instances.begin(),
-                            self.instances.end(),
-                            [](const InstanceEntry& entry) noexcept
-                            {
-                                return entry.instance.expired();
-                            }
-                        ),
-                        self.instances.end()
-                    );
-                    if (self.instances.size() >= self.instances.capacity())
-                    {
-                        return EScriptBackendPrepareResult::CAPACITY_EXCEEDED;
-                    }
-                    call->instance = std::make_shared<Instance>();
-                    call->instance->module = self.module;
-                    call->instance->instance_state.resize(body->state_size);
-                    std::copy(
-                        body->state_defaults.begin(),
-                        body->state_defaults.end(),
-                        call->instance->instance_state.begin()
-                    );
-                    self.instances.push_back(InstanceEntry{
-                        context.script,
-                        context.entity,
-                        context.mount_ordinal,
-                        call->instance});
-                }
-                result = lux::script::BoundScriptCall{
-                    &State::invoke,
-                    call.release()};
-                return EScriptBackendPrepareResult::SUCCESS;
             }
-            catch (const std::bad_alloc&)
-            {
-                return EScriptBackendPrepareResult::ALLOCATION_FAILURE;
-            }
+            result = lux::script::BoundScriptCall{
+                function->invoke,
+                instance->state};
+            return EScriptBackendResult::SUCCESS;
         }
 
-        static void release(
+        static void releaseMethod(
             void*,
-            lux::script::BoundScriptCall call
+            ScriptBackendInstance,
+            lux::script::BoundScriptCall
         ) noexcept
         {
-            delete static_cast<Call*>(call.context);
+        }
+
+        static void destroyInstance(
+            void* opaque,
+            ScriptBackendInstance instance_value
+        ) noexcept
+        {
+            auto& self = *static_cast<State*>(opaque);
+            auto* instance = static_cast<Instance*>(instance_value.value);
+            if (!instance)
+                return;
+            if (instance->state)
+            {
+                ::operator delete(
+                    instance->state,
+                    std::align_val_t{instance->state_align}
+                );
+            }
+            delete instance;
+            if (self.live_instances != 0U)
+                --self.live_instances;
         }
 
         std::shared_ptr<lux::script::NativeModule> module;
-        std::vector<InstanceEntry> instances;
+        std::size_t instance_capacity{};
+        std::size_t live_instances{};
+        NativeScriptRecordLayoutResolver record_layouts;
     };
 
     NativeScriptBindingBackend::NativeScriptBindingBackend(
         std::shared_ptr<lux::script::NativeModule> module,
-        std::size_t instance_capacity
+        std::size_t instance_capacity,
+        NativeScriptRecordLayoutResolver record_layouts
     ) noexcept
     {
         try
         {
             state_ = std::make_unique<State>(
                 std::move(module),
-                instance_capacity
+                instance_capacity,
+                record_layouts
             );
         }
         catch (const std::bad_alloc&)
-        {}
+        {
+        }
     }
 
     NativeScriptBindingBackend::~NativeScriptBindingBackend() = default;
@@ -196,7 +232,9 @@ namespace lux::simulation
         return ScriptBackendDescriptor{
             lux::rdesc::Script::Kind::NATIVE_MODULE,
             state_.get(),
-            &State::prepare,
-            &State::release};
+            &State::createInstance,
+            &State::prepareMethod,
+            &State::releaseMethod,
+            &State::destroyInstance};
     }
 }

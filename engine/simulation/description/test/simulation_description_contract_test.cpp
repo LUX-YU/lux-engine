@@ -122,14 +122,14 @@ namespace
         std::array<std::uint8_t, 16U> script_id_bytes{};
         script_id_bytes[0] = 1U;
         ScriptMountDescription global_mount{
+            ScriptMountId{1U},
             lux::asset::AssetId{script_id_bytes},
-            EScriptBindingSetMode::EXPLICIT,
             {{
                 7U,
-                lux::rdesc::EScriptBindingKind::HOOK,
-                "lux.physics",
-                "physics.primary",
-                "after"
+                SystemHookBindingTarget{
+                    systemTypeId("lux.physics"),
+                    "physics.primary",
+                    "after"}
             }}};
         assert(builder.addGlobalScriptMount(global_mount));
         auto built = std::move(builder).build();
@@ -149,10 +149,7 @@ namespace
         assert(built->dependencyAt(0U).before().instanceName() == "physics.primary");
         assert(built->dependencyAt(0U).after().instanceName() == "animation");
         assert(built->globalScriptMountCount() == 1U);
-        assert(
-            built->globalScriptMountAt(0U).bindingMode() ==
-            EScriptBindingSetMode::EXPLICIT
-        );
+        assert(built->globalScriptMountAt(0U).id() == ScriptMountId{1U});
         assert(built->globalScriptMountAt(0U).bindingCount() == 1U);
         assert(built->globalScriptMountAt(0U).bindingAt(0U)->function == 7U);
         const auto after = built->findHookPoint("physics.primary", "after");
@@ -198,6 +195,16 @@ namespace
         );
         assert(!cycle);
         assert(cycle.error().code == ESimulationDescriptionError::DEPENDENCY_CYCLE);
+
+        ScriptMountDescription valid_mount = global_mount;
+        std::get<SystemHookBindingTarget>(
+            valid_mount.bindings[0].target
+        ).system_instance = "physics";
+        ScriptMountDescription duplicate_mount = valid_mount;
+        assert(invalid.addGlobalScriptMount(valid_mount));
+        assert(!invalid.addGlobalScriptMount(duplicate_mount));
+        assert(invalid.eraseGlobalScriptMount(ScriptMountId{1U}));
+        assert(!invalid.eraseGlobalScriptMount(ScriptMountId{1U}));
     }
 
     [[nodiscard]] SimulationDescription buildDescription(bool reverse)

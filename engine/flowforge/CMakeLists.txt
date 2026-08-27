@@ -104,9 +104,18 @@ endif()
 
 add_subdirectory(compiler)
 
+set(LUX_FLOWFORGE_COMPONENTS
+    flowforge_graph
+    flowforge_script
+    flowforge_script_compiler
+)
+if(TARGET flowforge_compiler)
+    list(APPEND LUX_FLOWFORGE_COMPONENTS flowforge_compiler)
+endif()
+
 install_components(
     PROJECT_NAME lux-engine-flowforge
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::flowforge
-    COMPONENTS   flowforge_graph flowforge_script
+    COMPONENTS   ${LUX_FLOWFORGE_COMPONENTS}
 )

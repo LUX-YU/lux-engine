@@ -126,10 +126,3 @@ if(LUX_ENABLE_FLOWFORGE_MLIR)
         add_subdirectory(test)
     endif()
 endif()
-
-install_components(
-    PROJECT_NAME lux-engine-flowforge
-    VERSION      ${PROJECT_VERSION}
-    NAMESPACE    lux::engine::flowforge
-    COMPONENTS   flowforge_script_compiler
-)

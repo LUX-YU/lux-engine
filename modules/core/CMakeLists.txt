@@ -15,6 +15,7 @@ add_subdirectory(serialization)
 add_subdirectory(log)
 add_subdirectory(events)
 add_subdirectory(task)
+add_subdirectory(meta_script)
 
 install_components(
 	PROJECT_NAME	lux-engine-core
@@ -27,6 +28,7 @@ install_components(
 					object
                     serialization
                     log
-                    events
+					events
 					task
+                    script_meta_adapter
 )

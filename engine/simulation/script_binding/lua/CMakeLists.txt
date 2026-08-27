@@ -68,10 +68,3 @@ add_test(
     NAME simulation_script_binding_lua_test
     COMMAND simulation_script_binding_lua_test
 )
-
-install_components(
-    PROJECT_NAME lux-engine-simulation
-    VERSION      ${PROJECT_VERSION}
-    NAMESPACE    lux::engine::simulation
-    COMPONENTS   simulation_script_binding_lua
-)

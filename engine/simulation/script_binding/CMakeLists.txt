@@ -34,8 +34,9 @@ target_link_libraries(
 )
 component_add_transitive_commands(
     simulation_script_binding
-    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS script_asset)"
+    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-resource-script REQUIRED COMPONENTS script_asset)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
 )
 lux_classify_target(
@@ -69,13 +70,6 @@ lux_classify_target(
 add_test(
     NAME simulation_script_binding_contract_test
     COMMAND simulation_script_binding_contract_test
-)
-
-install_components(
-    PROJECT_NAME lux-engine-simulation
-    VERSION      ${PROJECT_VERSION}
-    NAMESPACE    lux::engine::simulation
-    COMPONENTS   simulation_script_binding
 )
 
 if(TARGET script_native)

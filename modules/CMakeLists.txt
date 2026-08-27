@@ -1,13 +1,11 @@
-foreach(layer IN ITEMS platform core)
-    add_subdirectory(${layer})
-endforeach()
+add_subdirectory(platform)
 
 # Script ABI/signature primitives are L0 foundation even though their physical
 # package path remains under function/script for this migration.  Configure the
-# core target before Resource descriptions so the latter can depend on the
-# durable vocabulary without depending on a backend.
+# target before Core's cold meta adapter and Resource descriptions so they can
+# depend on the durable vocabulary without depending on a backend.
 add_subdirectory(function/script/core)
-add_subdirectory(core/meta_script)
+add_subdirectory(core)
 
 foreach(layer IN ITEMS resource function)
     add_subdirectory(${layer})

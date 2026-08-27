@@ -51,10 +51,3 @@ add_test(
     NAME script_meta_adapter_contract_test
     COMMAND script_meta_adapter_contract_test
 )
-
-install_components(
-    PROJECT_NAME lux-engine-core
-    VERSION      ${PROJECT_VERSION}
-    NAMESPACE    lux::engine::core
-    COMPONENTS   script_meta_adapter
-)

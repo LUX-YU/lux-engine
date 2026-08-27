@@ -2,9 +2,11 @@
 
 #include <lux/engine/resource/asset/script/ScriptAsset.hpp>
 #include <lux/engine/simulation/CppStaticScriptBridge.hpp>
+#include <lux/engine/simulation/ScriptBindingCompatibility.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -150,6 +152,14 @@ int main()
         assert(decoded_script);
         asset.content = *std::static_pointer_cast<
             const lux::asset::ScriptAssetContent>(decoded_script->payload);
+        assert(asset.content.description.module_name ==
+            projected->description().module_name);
+        assert(asset.content.description.model ==
+            projected->description().model);
+        assert(asset.content.description.body ==
+            projected->description().body);
+        assert(asset.content.description.exports ==
+            projected->description().exports);
 
         ScriptMountDescription mount{
             ScriptMountId{9U},
@@ -185,6 +195,26 @@ int main()
         assert(builder.addSystem("consumer", kSystem));
         auto description = std::move(builder).build();
         assert(description);
+        for (std::size_t binding_index{};
+             binding_index < mount.bindings.size(); ++binding_index)
+        {
+            const auto& binding = mount.bindings[binding_index];
+            const auto found = std::find_if(
+                asset.content.description.exports.begin(),
+                asset.content.description.exports.end(),
+                [&](const auto& function) noexcept
+                {
+                    return function.symbol_id == binding.function;
+                }
+            );
+            assert(found != asset.content.description.exports.end());
+            assert(evaluateScriptBindingCompatibility(
+                    *description,
+                    asset.content.description.model,
+                    *found,
+                    binding.target
+                ) == EScriptBindingCompatibility::COMPATIBLE);
+        }
         const auto simulation_codec = simulationAssetCodecDescriptor({});
         const auto encoded_simulation = simulation_codec.encode(
             std::addressof(*description),
@@ -210,7 +240,7 @@ int main()
         auto created = ScriptBindingSession::create(
             std::move(*description),
             registry,
-            ScriptBindingCapacities{1U, 5U, 4U, 4U, 4U},
+            ScriptBindingCapacities{1U, 5U, 4U, 8U, 8U, 4U, 4U},
             ScriptAssetResolver{&asset, &resolveAsset},
             std::span{&backend_descriptor, 1U}
         );

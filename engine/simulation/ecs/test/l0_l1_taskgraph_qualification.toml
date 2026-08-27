@@ -1,5 +1,5 @@
-version = 7
-benchmark_schema_version = 7
+version = 8
+benchmark_schema_version = 8
 
 [[scaling]]
 name = "Reactive dirty scaling"
@@ -80,32 +80,46 @@ field = "entities_examined"
 equals = 100000
 
 [[structural]]
-name = "Entity event hot path performs no scene scan"
+name = "Entity event performs one exact sparse lookup per occurrence"
 metric = "entity_targeted_event_sparse"
 size = 1000000
-field = "scene_scans"
+field = "target_range_lookups"
+equals = 100000
+
+[[structural]]
+name = "Entity event visits each bound handler exactly once"
+metric = "entity_targeted_event_sparse"
+size = 1000000
+field = "handlers_visited"
+equals = 100000
+
+[[structural]]
+name = "Entity event performs no asset resolution after prepare"
+metric = "entity_targeted_event_sparse"
+size = 1000000
+field = "asset_resolution_delta"
 equals = 0
 
 [[structural]]
-name = "Entity event hot path performs no lookup"
+name = "Entity event performs no target resolution after prepare"
 metric = "entity_targeted_event_sparse"
 size = 1000000
-field = "string_lookups"
+field = "target_resolution_delta"
 equals = 0
 
 [[structural]]
-name = "Entity event hot path performs no asset lookup"
+name = "Sparse target ranges do not exceed non-empty subscriptions"
 metric = "entity_targeted_event_sparse"
 size = 1000000
-field = "asset_lookups"
-equals = 0
+field = "target_ranges_built"
+max = 10000
 
 [[structural]]
-name = "Entity event hot path performs no signature adaptation"
+name = "Sparse handler storage matches non-empty subscriptions"
 metric = "entity_targeted_event_sparse"
 size = 1000000
-field = "signature_adaptations"
-equals = 0
+field = "dispatch_handlers_built"
+equals = 10000
 
 [[structural]]
 name = "Owned worker event buffer is allocation free after prepare"

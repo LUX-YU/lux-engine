@@ -115,12 +115,13 @@ namespace
         std::size_t updates{};
         std::size_t notifications{};
         std::size_t callbacks{};
-        std::size_t reflection_lookups{};
-        std::size_t string_lookups{};
-        std::size_t asset_lookups{};
-        std::size_t scene_scans{};
-        std::size_t signature_adaptations{};
+        std::size_t asset_resolution_delta{};
+        std::size_t target_resolution_delta{};
         std::size_t entities_examined{};
+        std::size_t target_range_lookups{};
+        std::size_t handlers_visited{};
+        std::size_t target_ranges_built{};
+        std::size_t dispatch_handlers_built{};
         std::size_t instance_creates{};
         std::size_t method_prepares{};
         std::size_t frame_builds{};
@@ -190,13 +191,14 @@ namespace
                 throw std::runtime_error("cannot open benchmark output");
             output << "benchmark_schema_version,git_commit,build_type,group,"
                       "metric,size,sample,nanoseconds,allocations,updates,"
-                      "notifications,callbacks,reflection_lookups,string_lookups,"
-                      "asset_lookups,scene_scans,signature_adaptations,"
-                      "entities_examined,instance_creates,method_prepares,"
-                      "frame_builds\n";
+                      "notifications,callbacks,asset_resolution_delta,"
+                      "target_resolution_delta,entities_examined,"
+                      "target_range_lookups,handlers_visited,"
+                      "target_ranges_built,dispatch_handlers_built,"
+                      "instance_creates,method_prepares,frame_builds\n";
             for (const auto& sample : samples)
             {
-                output << "7," << LUX_BENCHMARK_GIT_COMMIT << ','
+                output << "8," << LUX_BENCHMARK_GIT_COMMIT << ','
                        << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group
                        << ',' << metric << ',' << options.size << ','
                        << sample.index << ',' << sample.nanoseconds << ','
@@ -204,12 +206,13 @@ namespace
                        << sample.observation.updates << ','
                        << sample.observation.notifications << ','
                        << sample.observation.callbacks << ','
-                       << sample.observation.reflection_lookups << ','
-                       << sample.observation.string_lookups << ','
-                       << sample.observation.asset_lookups << ','
-                       << sample.observation.scene_scans << ','
-                       << sample.observation.signature_adaptations << ','
+                       << sample.observation.asset_resolution_delta << ','
+                       << sample.observation.target_resolution_delta << ','
                        << sample.observation.entities_examined << ','
+                       << sample.observation.target_range_lookups << ','
+                       << sample.observation.handlers_visited << ','
+                       << sample.observation.target_ranges_built << ','
+                       << sample.observation.dispatch_handlers_built << ','
                        << sample.observation.instance_creates << ','
                        << sample.observation.method_prepares << ','
                        << sample.observation.frame_builds << '\n';
@@ -324,6 +327,8 @@ namespace
 
     struct BindingBenchmarkState final
     {
+        static constexpr std::size_t kSparseTargetCount{300U};
+
         BindingBenchmarkState(std::size_t count, std::string_view kind)
             : kind(kind)
         {
@@ -350,8 +355,48 @@ namespace
                 lux::rdesc::ScriptFunction{"entity", 6U, {}, {}}
             );
 
+            std::vector<std::string> sparse_hook_names;
+            std::vector<std::string> sparse_event_names;
+            std::vector<lux::simulation::SystemHookPoint> sparse_hooks;
+            std::vector<lux::simulation::SystemEventDescription> sparse_events;
+            auto benchmark_system = kBindingSystem;
+            if (kind == "entity-targeted-event-sparse")
+            {
+                sparse_hook_names.reserve(kSparseTargetCount);
+                sparse_event_names.reserve(kSparseTargetCount);
+                sparse_hooks.reserve(kSparseTargetCount);
+                sparse_events.reserve(kSparseTargetCount);
+                for (std::size_t index{}; index < kSparseTargetCount; ++index)
+                {
+                    sparse_hook_names.push_back(
+                        "sparse-dispatch-" + std::to_string(index)
+                    );
+                    sparse_event_names.push_back(
+                        "sparse-event-" + std::to_string(index)
+                    );
+                }
+                for (std::size_t index{}; index < kSparseTargetCount; ++index)
+                {
+                    sparse_hooks.push_back(lux::simulation::SystemHookPoint{
+                        sparse_hook_names[index],
+                        lux::simulation::ESystemHookCardinality::MULTI,
+                        kBindingHooks[0].signature});
+                    sparse_events.push_back(
+                        lux::simulation::makeSystemEvent<void>(
+                            sparse_event_names[index],
+                            sparse_hooks[index],
+                            lux::simulation::ESystemEventTarget::ENTITY_TARGETED,
+                            {},
+                            0U
+                        )
+                    );
+                }
+                benchmark_system.hooks = sparse_hooks;
+                benchmark_system.events = sparse_events;
+            }
+
             lux::simulation::SimulationDescriptionBuilder builder;
-            if (!builder.addSystem("benchmark", kBindingSystem))
+            if (!builder.addSystem("benchmark", benchmark_system))
                 throw std::runtime_error("binding system build failed");
             std::vector<lux::simulation::ScriptBindingDescription>
                 global_bindings;
@@ -408,14 +453,22 @@ namespace
                 registry.storage<lux::simulation::ScriptComponent>().reserve(
                     scripted_count
                 );
+                std::size_t scripted_ordinal{};
                 for (std::size_t index{}; index < count; ++index)
                 {
                     const auto entity = registry.create();
-                    if (index < scripted_count)
+                    const auto scripted_index = scripted_count == 1U
+                        ? count - 1U
+                        : scripted_ordinal * (count - 1U) /
+                            (scripted_count - 1U);
+                    if (scripted_ordinal < scripted_count &&
+                        index == scripted_index)
                     {
                         const auto symbol = kind == "hook-entity-multi"
                             ? 1U
                             : 6U;
+                        const auto sparse_target_index =
+                            scripted_ordinal % kSparseTargetCount;
                         lux::simulation::ScriptBindingTarget target =
                             kind == "hook-entity-multi"
                             ? lux::simulation::ScriptBindingTarget{
@@ -431,7 +484,8 @@ namespace
                                         kBindingSystem.canonical_name
                                     ),
                                     "benchmark",
-                                    "entity-event"}};
+                                    "sparse-event-" +
+                                        std::to_string(sparse_target_index)}};
                         registry.emplace<lux::simulation::ScriptComponent>(
                             entity,
                             lux::simulation::ScriptComponent{{{
@@ -440,8 +494,11 @@ namespace
                                 {{symbol, std::move(target)}}}}}
                         );
                         entities.push_back(entity);
+                        ++scripted_ordinal;
                     }
                 }
+                if (entities.size() != scripted_count)
+                    throw std::runtime_error("scripted entity distribution failed");
             }
 
             const lux::simulation::ScriptBackendDescriptor backend{
@@ -462,6 +519,8 @@ namespace
                     mount_count + 4U,
                     mount_count * 4U + 4U,
                     entities.size() + 4U,
+                    mount_count * 4U + 4U,
+                    mount_count * 4U + 4U,
                     entities.size() + 4U,
                     16U},
                 lux::simulation::ScriptAssetResolver{
@@ -478,7 +537,20 @@ namespace
                 throw std::runtime_error("binding session prepare failed");
             hook = session->hookSlot("benchmark", "update");
             global_event = session->eventSlot("benchmark", "global-event");
-            entity_event = session->eventSlot("benchmark", "entity-event");
+            if (kind == "entity-targeted-event-sparse")
+            {
+                entity_events.reserve(kSparseTargetCount);
+                for (std::size_t index{}; index < kSparseTargetCount; ++index)
+                {
+                    const auto slot = session->eventSlot(
+                        "benchmark",
+                        "sparse-event-" + std::to_string(index)
+                    );
+                    if (!slot)
+                        throw std::runtime_error("sparse event slot missing");
+                    entity_events.push_back(slot);
+                }
+            }
         }
 
         static bool resolveAsset(
@@ -547,19 +619,63 @@ namespace
         std::unique_ptr<lux::simulation::ScriptBindingSession> session;
         lux::simulation::ScriptHookSlot hook;
         lux::simulation::ScriptEventSlot global_event;
-        lux::simulation::ScriptEventSlot entity_event;
+        std::vector<lux::simulation::ScriptEventSlot> entity_events;
         std::size_t callbacks{};
     };
 
     struct OwnedEventBufferBenchmarkState final
     {
         explicit OwnedEventBufferBenchmarkState(std::size_t count)
+            : count(count)
         {
             if (!buffer.prepare(4U, (count + 3U) / 4U))
                 throw std::runtime_error("event buffer prepare failed");
+            lux::task::TaskGraphBuilder builder;
+            for (std::size_t producer{}; producer < 4U; ++producer)
+            {
+                if (!builder.add([this, producer]() noexcept
+                    {
+                        auto begun = buffer.writer(producer);
+                        if (!begun)
+                        {
+                            producer_failed.store(true);
+                            return;
+                        }
+                        auto writer = std::move(*begun);
+                        for (std::size_t index = producer;
+                             index < this->count;
+                             index += 4U)
+                        {
+                            if (!writer.emit(
+                                    NullEntity,
+                                    static_cast<std::uint64_t>(index)
+                                ))
+                            {
+                                producer_failed.store(true);
+                                return;
+                            }
+                        }
+                        producers_completed.fetch_add(1U);
+                    }))
+                {
+                    throw std::runtime_error("event producer task add failed");
+                }
+            }
+            auto built = std::move(builder).build();
+            if (!built)
+                throw std::runtime_error("event producer graph build failed");
+            graph = std::move(*built);
+            executor = std::make_unique<lux::task::TaskExecutor>(
+                lux::task::TaskExecutorConfig{4U, graph.taskCount()}
+            );
         }
 
+        std::size_t count{};
         lux::simulation::SystemEventBuffer<std::uint64_t> buffer;
+        lux::task::TaskGraph graph;
+        std::unique_ptr<lux::task::TaskExecutor> executor;
+        std::atomic_bool producer_failed{};
+        std::atomic_size_t producers_completed{};
         std::size_t callbacks{};
     };
 
@@ -735,6 +851,7 @@ int main(int argc, char** argv)
             {
                 state.callbacks = 0U;
                 lux_script_call_frame frame{};
+                const auto before = state.session->instrumentation();
                 const auto iterations =
                     options->group == "entity-targeted-event-sparse"
                     ? std::min<std::size_t>(options->size, 100000U)
@@ -756,7 +873,9 @@ int main(int argc, char** argv)
                     for (std::size_t index{}; index < iterations; ++index)
                     {
                         dispatch_calls += state.session->dispatchEvent(
-                            state.entity_event,
+                            state.entity_events[
+                                index % state.entities.size() %
+                                BindingBenchmarkState::kSparseTargetCount],
                             state.entities[index % state.entities.size()],
                             frame
                         ).calls;
@@ -802,16 +921,27 @@ int main(int argc, char** argv)
                         ? iterations
                         : 0U,
                     .callbacks = state.callbacks,
-                    .reflection_lookups = instrumentation.reflection_accesses,
-                    .string_lookups = instrumentation.hot_path_name_lookups,
-                    .asset_lookups = instrumentation.hot_path_asset_lookups,
-                    .scene_scans = instrumentation.hot_path_scene_scans,
-                    .signature_adaptations =
-                        instrumentation.hot_path_signature_adaptations,
-                    .entities_examined = instrumentation.entities_examined,
+                    .asset_resolution_delta =
+                        instrumentation.asset_resolutions -
+                        before.asset_resolutions,
+                    .target_resolution_delta =
+                        instrumentation.target_resolutions -
+                        before.target_resolutions,
+                    .entities_examined = instrumentation.entities_examined -
+                        before.entities_examined,
+                    .target_range_lookups =
+                        instrumentation.target_range_lookups -
+                        before.target_range_lookups,
+                    .handlers_visited = instrumentation.handlers_visited -
+                        before.handlers_visited,
+                    .target_ranges_built =
+                        instrumentation.target_ranges_built,
+                    .dispatch_handlers_built =
+                        instrumentation.dispatch_handlers_built,
                     .instance_creates = instrumentation.instance_creates,
                     .method_prepares = instrumentation.method_prepares,
-                    .frame_builds = instrumentation.frame_builds};
+                    .frame_builds = instrumentation.frame_builds -
+                        before.frame_builds};
             },
             [](BindingBenchmarkState&) noexcept {}
         );
@@ -830,24 +960,13 @@ int main(int argc, char** argv)
             [&](OwnedEventBufferBenchmarkState& state)
             {
                 state.callbacks = 0U;
-                for (std::size_t producer{}; producer < 4U; ++producer)
+                state.producer_failed.store(false);
+                state.producers_completed.store(0U);
+                if (!state.executor->execute(state.graph) ||
+                    state.producer_failed.load() ||
+                    state.producers_completed.load() != 4U)
                 {
-                    auto begun = state.buffer.writer(producer);
-                    if (!begun)
-                        throw std::runtime_error("event writer begin failed");
-                    auto writer = std::move(*begun);
-                    for (std::size_t index = producer;
-                         index < options->size;
-                         index += 4U)
-                    {
-                        if (!writer.emit(
-                                NullEntity,
-                                static_cast<std::uint64_t>(index)
-                            ))
-                        {
-                            throw std::runtime_error("event emit failed");
-                        }
-                    }
+                    throw std::runtime_error("worker event production failed");
                 }
                 if (!state.buffer.drain(
                         [&state](Entity, const std::uint64_t&) noexcept

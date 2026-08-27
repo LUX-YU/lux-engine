@@ -93,13 +93,13 @@ namespace lux::asset
 
     struct AssetCodecDescriptor final
     {
-        AssetTypeId type;
-        std::string canonical_name;
-        std::uint32_t primary_magic{};
-        std::uint32_t legacy_magic{};
+        AssetTypeId         type;
+        std::string         canonical_name;
+        std::uint32_t       primary_magic{};
+        std::uint32_t       legacy_magic{};
         lux::cxx::TypeToken cpp_payload_type;
-        AssetDecodeFn decode{};
-        AssetEncodeFn encode{};
+        AssetDecodeFn       decode{};
+        AssetEncodeFn       encode{};
         std::shared_ptr<const void> code_lifetime;
     };
 

@@ -698,8 +698,7 @@ namespace lux::simulation
             return true;
         }
 
-        [[nodiscard]] lux::cxx::expected<SimulationDescription,
-                                         lux::asset::EAssetCodecError>
+        [[nodiscard]] lux::cxx::expected<SimulationDescription, lux::asset::EAssetCodecError>
         materializeDraft(const Draft& draft) noexcept
         {
             SimulationDescriptionBuilder builder;

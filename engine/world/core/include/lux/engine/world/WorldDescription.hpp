@@ -16,7 +16,7 @@ namespace lux::world
 
     class LUX_ENGINE_WORLD_PUBLIC WorldDataView final
     {
-      public:
+    public:
         WorldDataView() noexcept = default;
 
         [[nodiscard]] explicit operator bool() const noexcept
@@ -24,17 +24,14 @@ namespace lux::world
             return world_ != nullptr;
         }
 
-        [[nodiscard]] const WorldDataSchemaId& schema() const noexcept;
+        [[nodiscard]] const WorldDataSchemaId &schema() const noexcept;
         [[nodiscard]] std::uint32_t version() const noexcept;
         [[nodiscard]] std::span<const std::byte> payload() const noexcept;
 
-      private:
-        WorldDataView(
-            const WorldDescription& world,
-            std::size_t data_index
-        ) noexcept;
+    private:
+        WorldDataView(const WorldDescription &world, std::size_t data_index) noexcept;
 
-        const WorldDescription* world_{};
+        const WorldDescription *world_{};
         std::size_t data_index_{};
 
         friend class WorldDescription;
@@ -43,7 +40,7 @@ namespace lux::world
 
     class LUX_ENGINE_WORLD_PUBLIC WorldObjectView final
     {
-      public:
+    public:
         WorldObjectView() noexcept = default;
 
         [[nodiscard]] explicit operator bool() const noexcept
@@ -52,19 +49,14 @@ namespace lux::world
         }
 
         [[nodiscard]] WorldObjectId id() const noexcept;
-        [[nodiscard]] std::size_t dataCount() const noexcept;
+        [[nodiscard]] std::size_t   dataCount() const noexcept;
         [[nodiscard]] WorldDataView dataAt(std::size_t index) const noexcept;
-        [[nodiscard]] WorldDataView findData(
-            const WorldDataSchemaId& schema
-        ) const noexcept;
+        [[nodiscard]] WorldDataView findData(const WorldDataSchemaId &schema) const noexcept;
 
-      private:
-        WorldObjectView(
-            const WorldDescription& world,
-            std::size_t object_index
-        ) noexcept;
+    private:
+        WorldObjectView(const WorldDescription &world, std::size_t object_index) noexcept;
 
-        const WorldDescription* world_{};
+        const WorldDescription *world_{};
         std::size_t object_index_{};
 
         friend class WorldDescription;
@@ -72,14 +64,14 @@ namespace lux::world
 
     class LUX_ENGINE_WORLD_PUBLIC WorldDescription final
     {
-      public:
+    public:
         WorldDescription() noexcept = default;
-        WorldDescription(WorldDescription&&) noexcept = default;
-        WorldDescription& operator=(WorldDescription&&) noexcept = default;
+        WorldDescription(WorldDescription &&) noexcept = default;
+        WorldDescription &operator=(WorldDescription &&) noexcept = default;
         ~WorldDescription() = default;
 
-        WorldDescription(const WorldDescription&) = delete;
-        WorldDescription& operator=(const WorldDescription&) = delete;
+        WorldDescription(const WorldDescription &) = delete;
+        WorldDescription &operator=(const WorldDescription &) = delete;
 
         [[nodiscard]] bool empty() const noexcept;
         [[nodiscard]] std::size_t objectCount() const noexcept;
@@ -90,7 +82,7 @@ namespace lux::world
         [[nodiscard]] WorldObjectView objectAt(std::size_t index) const noexcept;
         [[nodiscard]] WorldObjectView findObject(WorldObjectId id) const noexcept;
 
-      private:
+    private:
         struct ObjectRecord final
         {
             WorldObjectId id;

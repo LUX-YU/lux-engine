@@ -12,10 +12,10 @@ namespace lux::simulation
 {
     struct SystemEventDescription final
     {
-        std::string_view name;
-        std::string_view dispatch_point;
-        std::string_view payload_schema_name;
-        std::uint32_t payload_schema_version{};
+        std::string_view    name;
+        std::string_view    dispatch_point;
+        std::string_view    payload_schema_name;
+        std::uint32_t       payload_schema_version{};
         lux::cxx::TypeToken payload_cpp_type;
     };
 

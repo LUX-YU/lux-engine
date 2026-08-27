@@ -2,6 +2,7 @@
 
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/function/script/ScriptResult.hpp>
+#include <lux/engine/function/script/ScriptSemantic.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/function/visibility.h>
 
@@ -34,6 +35,9 @@ namespace lux::script
             functions() const noexcept;
         [[nodiscard]] const lux_script_function_desc*
             findFunction(std::string_view name) const noexcept;
+        [[nodiscard]] const lux_script_function_desc*
+            findFunction(ScriptSymbolId symbol) const noexcept;
+        [[nodiscard]] std::uint32_t abiVersion() const noexcept;
 
     private:
         std::unique_ptr<State> state_;

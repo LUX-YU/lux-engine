@@ -81,7 +81,7 @@ typedef int (*lux_script_invoke_fn)(lux_script_call_frame* frame);
 /** Description of a single exported function. */
 typedef struct lux_script_function_desc {
     const char* name;        /**< Fully-qualified name, e.g. "BP_Player.OnHit". */
-    uint64_t    symbol_id;   /**< Optional stable id; 0 if unused. */
+    uint64_t    symbol_id;   /**< Required stable id; zero is invalid. */
 
     const lux_script_type_desc* args;
     uint32_t                    arg_count;

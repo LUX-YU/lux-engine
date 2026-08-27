@@ -16,7 +16,9 @@ namespace lux::script
         DynamicLibrary library;
         const lux_script_module_desc* descriptor{nullptr};
         std::unordered_map<std::string_view, const lux_script_function_desc*>
-            functions;
+            functions_by_name;
+        std::unordered_map<ScriptSymbolId, const lux_script_function_desc*>
+            functions_by_symbol;
     };
 
     namespace
@@ -84,12 +86,15 @@ namespace lux::script
             auto state = std::make_unique<NativeModule::State>();
             state->library = std::move(library);
             state->descriptor = descriptor;
-            state->functions.reserve(descriptor->function_count);
+            state->functions_by_name.reserve(descriptor->function_count);
+            state->functions_by_symbol.reserve(descriptor->function_count);
 
             for (std::uint32_t i = 0; i < descriptor->function_count; ++i)
             {
                 const auto& function = descriptor->functions[i];
-                if (!function.name || function.name[0] == '\0' || !function.invoke)
+                if (!function.name || function.name[0] == '\0' ||
+                    function.symbol_id == InvalidScriptSymbolId ||
+                    !function.invoke)
                 {
                     return lux::cxx::unexpected(scriptFailure(
                         EScriptError::INVALID_MODULE,
@@ -104,11 +109,24 @@ namespace lux::script
                         "native script function signature table is incomplete"
                     ));
                 }
-                if (!state->functions.emplace(function.name, &function).second)
+                if (!state->functions_by_name.emplace(
+                        function.name,
+                        &function
+                    ).second)
                 {
                     return lux::cxx::unexpected(scriptFailure(
                         EScriptError::INVALID_MODULE,
                         "native script exports a duplicate function name"
+                    ));
+                }
+                if (!state->functions_by_symbol.emplace(
+                        function.symbol_id,
+                        &function
+                    ).second)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_MODULE,
+                        "native script exports a duplicate symbol id"
                     ));
                 }
             }
@@ -166,8 +184,25 @@ namespace lux::script
     {
         if (!state_)
             return nullptr;
-        const auto it = state_->functions.find(name);
-        return it == state_->functions.end() ? nullptr : it->second;
+        const auto it = state_->functions_by_name.find(name);
+        return it == state_->functions_by_name.end() ? nullptr : it->second;
+    }
+
+    const lux_script_function_desc* NativeModule::findFunction(
+        ScriptSymbolId symbol
+    ) const noexcept
+    {
+        if (!state_ || symbol == InvalidScriptSymbolId)
+            return nullptr;
+        const auto it = state_->functions_by_symbol.find(symbol);
+        return it == state_->functions_by_symbol.end() ? nullptr : it->second;
+    }
+
+    std::uint32_t NativeModule::abiVersion() const noexcept
+    {
+        return state_ && state_->descriptor
+            ? state_->descriptor->abi_version
+            : 0U;
     }
 
     ScriptResult<NativeModule> loadNativeModule(

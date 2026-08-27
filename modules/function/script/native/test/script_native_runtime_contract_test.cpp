@@ -45,6 +45,9 @@ int main()
     assert(loaded);
     const auto* function = loaded.value().findFunction("Increment");
     assert(function && function->invoke);
+    assert(loaded.value().findFunction(1U) == function);
+    assert(loaded.value().findFunction(0U) == nullptr);
+    assert(loaded.value().abiVersion() == LUX_SCRIPT_ABI_VERSION);
 
     std::int32_t counter = 0;
     lux_script_call_frame raw{};

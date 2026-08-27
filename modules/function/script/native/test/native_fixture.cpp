@@ -1,18 +1,18 @@
 #include <lux/engine/function/script/abi/lux_script_abi.h>
-#include <lux/cxx/compile_time/type_info.hpp>
+#include <lux/engine/function/script/ScriptSemantic.hpp>
 
 #include <cstdint>
 
 namespace
 {
-    int increment(lux_script_call_frame* frame)
+    int increment(lux_script_call_frame* frame) noexcept
     {
         if (!frame || !frame->user_context) return 7;
         ++*static_cast<std::int32_t*>(frame->user_context);
         return 0;
     }
 
-    int onUpdate(lux_script_call_frame* frame)
+    int onUpdate(lux_script_call_frame* frame) noexcept
     {
         if (!frame || !frame->user_context || frame->arg_count != 1
             || !frame->args || !frame->args[0].data)
@@ -22,7 +22,7 @@ namespace
         return 0;
     }
 
-    int onPair(lux_script_call_frame* frame)
+    int onPair(lux_script_call_frame* frame) noexcept
     {
         if (!frame || !frame->user_context || frame->arg_count != 2
             || !frame->args || !frame->args[0].data || !frame->args[1].data)
@@ -36,8 +36,8 @@ namespace
     }
 
     const lux_script_type_desc kFloatType{
-        "float",
-        lux::cxx::type_hash<float>(),
+        "f32",
+        lux::script::scriptSemanticTypeId("f32"),
         sizeof(float),
         alignof(float),
         LUX_SCRIPT_VK_FLOAT,
@@ -45,8 +45,8 @@ namespace
     };
 
     const lux_script_type_desc kUint32Type{
-        "uint32_t",
-        lux::cxx::type_hash<std::uint32_t>(),
+        "u32",
+        lux::script::scriptSemanticTypeId("u32"),
         sizeof(std::uint32_t),
         alignof(std::uint32_t),
         LUX_SCRIPT_VK_UINT32,

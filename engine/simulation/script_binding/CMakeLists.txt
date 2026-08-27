@@ -77,3 +77,7 @@ install_components(
     NAMESPACE    lux::engine::simulation
     COMPONENTS   simulation_script_binding
 )
+
+if(TARGET script_native)
+    add_subdirectory(native)
+endif()

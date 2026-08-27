@@ -23,11 +23,14 @@ target_compile_definitions(
 )
 target_link_libraries(
     authoring_flowforge
-    PUBLIC lux::engine::simulation::description
+    PUBLIC
+        lux::engine::simulation::description
+        lux::engine::authoring::authoring_script_binding
 )
 component_add_transitive_commands(
     authoring_flowforge
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
+    "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_script_binding)"
 )
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     set(_flowforge_product TOOLCHAIN)
@@ -45,4 +48,5 @@ install_components(
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::authoring
     COMPONENTS   authoring_flowforge
+                 authoring_script_binding
 )

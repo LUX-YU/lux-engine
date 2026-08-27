@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <span>
 #include <vector>
 
 namespace lux::flowforge
@@ -17,6 +18,7 @@ namespace lux::flowforge
     {
         std::uint64_t hash{};
         std::uint32_t size{};
+        std::uint32_t align{1U};
         std::vector<std::byte> defaults;
     };
 
@@ -44,8 +46,9 @@ namespace lux::flowforge
     [[nodiscard]] LUX_ENGINE_TOOLCHAIN_FLOWFORGE_PUBLIC
     lux::cxx::expected<FlowForgeScriptArtifact, EFlowForgeCompileError>
     compileFlowForgeScript(
-        const lux::simulation::SimulationDescription& simulation,
         std::string module_name,
+        lux::rdesc::EScriptModel model,
+        std::span<const TypedEntryNode> graph_exports,
         FlowForgeStateLayout state
     );
 }

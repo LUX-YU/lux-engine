@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/authoring/flowforge/visibility.h>
+#include <lux/engine/authoring/ScriptBindingAuthoring.hpp>
 #include <lux/engine/function/script/ScriptSemantic.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
 
@@ -14,6 +15,7 @@ namespace lux::flowforge
     {
         HOOK,
         EVENT,
+        LIFECYCLE,
     };
 
     struct TypedEntryNode final
@@ -32,6 +34,7 @@ namespace lux::flowforge
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_FLOWFORGE_PUBLIC
     std::vector<TypedEntryNode> makeTypedEntryCatalog(
-        const lux::simulation::SimulationDescription& description
+        const lux::simulation::SimulationDescription& description,
+        lux::rdesc::EScriptModel model
     );
 }

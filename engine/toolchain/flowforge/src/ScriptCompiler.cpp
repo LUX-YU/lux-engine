@@ -21,8 +21,9 @@ namespace lux::flowforge
 
     lux::cxx::expected<FlowForgeScriptArtifact, EFlowForgeCompileError>
     compileFlowForgeScript(
-        const lux::simulation::SimulationDescription& simulation,
         std::string module_name,
+        lux::rdesc::EScriptModel model,
+        std::span<const TypedEntryNode> graph_exports,
         FlowForgeStateLayout state
     )
     {
@@ -32,7 +33,8 @@ namespace lux::flowforge
                 EFlowForgeCompileError::INVALID_MODULE_NAME
             );
         }
-        if (state.defaults.size() > state.size)
+        if (state.defaults.size() > state.size || state.align == 0U ||
+            (state.align & (state.align - 1U)) != 0U)
         {
             return lux::cxx::unexpected(
                 EFlowForgeCompileError::INVALID_STATE_LAYOUT
@@ -42,24 +44,36 @@ namespace lux::flowforge
         FlowForgeScriptArtifact result;
         result.description.schema_version = lux::rdesc::Script::kSchemaVersion;
         result.description.module_name = std::move(module_name);
+        result.description.model = model;
         result.description.body = lux::rdesc::NativeModuleScript{
             LUX_SCRIPT_ABI_VERSION,
             state.hash,
             state.size,
+            state.align,
             state.defaults};
         result.abi.abi_version = LUX_SCRIPT_ABI_VERSION;
         result.abi.state = std::move(state);
 
-        for (const auto& node : makeTypedEntryCatalog(simulation))
+        for (const auto& node : graph_exports)
         {
-            const auto kind_name = node.kind == ETypedEntryKind::HOOK
-                ? "hook"
-                : "event";
-            const auto canonical_symbol =
-                result.description.module_name + ":" + node.system_instance +
-                ":" + kind_name + ":" + node.member;
-            const auto symbol = lux::script::scriptSemanticTypeId(
-                canonical_symbol
+            const auto kind_name = [&]() noexcept -> std::string_view
+            {
+                switch (node.kind)
+                {
+                case ETypedEntryKind::HOOK: return "hook";
+                case ETypedEntryKind::EVENT: return "event";
+                case ETypedEntryKind::LIFECYCLE: return "lifecycle";
+                }
+                return "unknown";
+            }();
+            std::vector<lux::script::ScriptSemanticType> parameters =
+                node.parameters;
+            std::vector<lux::script::ScriptSemanticType> returns =
+                node.returns;
+            const auto symbol = lux::script::scriptSymbolId(
+                result.description.module_name,
+                node.member,
+                {parameters, returns}
             );
             if (symbol == lux::script::InvalidScriptSymbolId ||
                 std::find(
@@ -73,8 +87,8 @@ namespace lux::flowforge
                 );
             }
             lux::rdesc::ScriptFunction function;
-            function.name = node.system_instance + "." + kind_name + "." +
-                node.member;
+            function.name = node.system_instance + "." +
+                std::string{kind_name} + "." + node.member;
             function.symbol_id = symbol;
             function.args.reserve(node.parameters.size());
             function.returns.reserve(node.returns.size());
@@ -83,16 +97,6 @@ namespace lux::flowforge
             for (const auto& return_type : node.returns)
                 function.returns.push_back(copyType(return_type));
             result.description.exports.push_back(std::move(function));
-            result.description.default_bindings.push_back(
-                lux::rdesc::ScriptBindingDescription{
-                    symbol,
-                    node.kind == ETypedEntryKind::HOOK
-                        ? lux::rdesc::EScriptBindingKind::HOOK
-                        : lux::rdesc::EScriptBindingKind::EVENT,
-                    node.system_type,
-                    node.system_instance,
-                    node.member}
-            );
             result.abi.symbols.push_back(symbol);
         }
         if (!lux::rdesc::validScriptDescription(result.description))

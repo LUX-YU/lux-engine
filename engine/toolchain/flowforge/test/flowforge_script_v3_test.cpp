@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
 
 #include <array>
+#include <algorithm>
 #include <cassert>
 
 namespace
@@ -38,15 +39,39 @@ int main()
     auto simulation = std::move(builder).build();
     assert(simulation);
 
-    auto compiled = lux::flowforge::compileFlowForgeScript(
+    auto catalog = lux::flowforge::makeTypedEntryCatalog(
         *simulation,
+        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
+    );
+    catalog.erase(
+        std::remove_if(
+            catalog.begin(),
+            catalog.end(),
+            [](const auto& entry) noexcept
+            {
+                return entry.kind == lux::flowforge::ETypedEntryKind::LIFECYCLE;
+            }
+        ),
+        catalog.end()
+    );
+
+    auto compiled = lux::flowforge::compileFlowForgeScript(
         "gameplay.physics",
-        lux::flowforge::FlowForgeStateLayout{0x1234U, 16U, {std::byte{1U}}}
+        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR,
+        catalog,
+        lux::flowforge::FlowForgeStateLayout{
+            0x1234U,
+            16U,
+            16U,
+            {std::byte{1U}}}
     );
     assert(compiled);
-    assert(compiled->description.schema_version == 3U);
+    assert(compiled->description.schema_version == 4U);
+    assert(
+        compiled->description.model ==
+        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
+    );
     assert(compiled->description.exports.size() == 2U);
-    assert(compiled->description.default_bindings.size() == 2U);
     assert(compiled->description.exports[0].args.size() == 1U);
     assert(
         compiled->description.exports[0].args[0].canonical_name ==
@@ -57,12 +82,9 @@ int main()
         compiled->description.exports[1].args[0].canonical_name ==
         "lux.event.Contact"
     );
-    assert(
-        compiled->description.default_bindings[1].kind ==
-        lux::rdesc::EScriptBindingKind::EVENT
-    );
     assert(compiled->abi.symbols.size() == 2U);
     assert(compiled->abi.state.size == 16U);
+    assert(compiled->abi.state.align == 16U);
     assert(lux::rdesc::validScriptDescription(compiled->description));
     return 0;
 }

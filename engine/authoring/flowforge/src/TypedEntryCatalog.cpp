@@ -1,56 +1,74 @@
 #include <lux/engine/authoring/flowforge/TypedEntryCatalog.hpp>
 
+#include <type_traits>
+
 namespace lux::flowforge
 {
     std::vector<TypedEntryNode> makeTypedEntryCatalog(
-        const lux::simulation::SimulationDescription& description
+        const lux::simulation::SimulationDescription& description,
+        lux::rdesc::EScriptModel model
     )
     {
+        using namespace lux::simulation;
+        const auto source = lux::authoring::makeScriptBindingTargetCatalog(
+            description
+        );
         std::vector<TypedEntryNode> result;
-        for (std::size_t system_index{};
-             system_index < description.systemCount();
-             ++system_index)
+        for (const auto& entry : source)
         {
-            const auto system = description.systemAt(system_index);
-            for (std::size_t hook_index{};
-                 hook_index < system.hookPointCount();
-                 ++hook_index)
-            {
-                const auto hook = system.hookPointAt(hook_index);
-                TypedEntryNode node;
-                node.kind = ETypedEntryKind::HOOK;
-                node.system_type = system.type().name;
-                node.system_instance = system.instanceName();
-                node.member = hook.name();
-                node.cardinality = hook.cardinality();
-                node.parameters.reserve(hook.parameterCount());
-                node.returns.reserve(hook.returnCount());
-                for (std::size_t index{}; index < hook.parameterCount(); ++index)
-                    node.parameters.push_back(hook.parameterAt(index));
-                for (std::size_t index{}; index < hook.returnCount(); ++index)
-                    node.returns.push_back(hook.returnAt(index));
-                result.push_back(std::move(node));
-            }
-            for (std::size_t event_index{};
-                 event_index < system.eventCount();
-                 ++event_index)
-            {
-                const auto event = system.eventAt(event_index);
-                TypedEntryNode node;
-                node.kind = ETypedEntryKind::EVENT;
-                node.system_type = system.type().name;
-                node.system_instance = system.instanceName();
-                node.member = event.name();
-                node.event_target = event.target();
-                if (!event.payloadSchemaName().empty())
+            if (entry.model != model)
+                continue;
+            TypedEntryNode node;
+            node.cardinality = entry.cardinality;
+            node.parameters = entry.parameters;
+            node.returns = entry.returns;
+            std::visit(
+                [&](const auto& target)
                 {
-                    node.parameters.push_back(lux::script::ScriptSemanticType{
-                        event.payloadSchemaHash(),
-                        event.payloadSchemaName(),
-                        lux::script::EScriptPassMode::VALUE});
-                }
-                result.push_back(std::move(node));
-            }
+                    using Target = std::remove_cvref_t<decltype(target)>;
+                    if constexpr (std::is_same_v<
+                                      Target,
+                                      SystemHookBindingTarget>)
+                    {
+                        node.kind = ETypedEntryKind::HOOK;
+                        node.system_type = target.system_type.name;
+                        node.system_instance = target.system_instance;
+                        node.member = target.hook;
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Target,
+                                           SystemEventBindingTarget>)
+                    {
+                        node.kind = ETypedEntryKind::EVENT;
+                        node.system_type = target.system_type.name;
+                        node.system_instance = target.system_instance;
+                        node.member = target.event;
+                        const auto event = description.findEvent(
+                            target.system_instance,
+                            target.event
+                        );
+                        node.event_target = event.target();
+                    }
+                    else
+                    {
+                        node.kind = ETypedEntryKind::LIFECYCLE;
+                        switch (target.point)
+                        {
+                        case EBehaviorLifecyclePoint::CONSTRUCT:
+                            node.member = "construct";
+                            break;
+                        case EBehaviorLifecyclePoint::START:
+                            node.member = "start";
+                            break;
+                        case EBehaviorLifecyclePoint::STOP:
+                            node.member = "stop";
+                            break;
+                        }
+                    }
+                },
+                entry.target
+            );
+            result.push_back(std::move(node));
         }
         return result;
     }

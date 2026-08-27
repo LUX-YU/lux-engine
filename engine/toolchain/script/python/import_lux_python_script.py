@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import pathlib
-import re
 import struct
 import sys
 from dataclasses import dataclass
@@ -19,6 +19,7 @@ PYTHON_SOURCE_KIND = 2
 GLOBAL_MODULE = 0
 ENTITY_BEHAVIOR = 1
 VALUE_PASS = 0
+CONST_REF_PASS = 1
 
 
 def fnv1a(text: str) -> int:
@@ -29,7 +30,12 @@ def fnv1a(text: str) -> int:
     return value
 
 
-def symbol_id(scope: str, name: str, args: list[str], returns: list[str]) -> int:
+def symbol_id(
+    scope: str,
+    name: str,
+    args: list[tuple[str, int]],
+    returns: list[tuple[str, int]],
+) -> int:
     value = 14695981039346656037
 
     def append(text: str) -> None:
@@ -42,30 +48,59 @@ def symbol_id(scope: str, name: str, args: list[str], returns: list[str]) -> int
 
     append(scope)
     append(name)
-    for canonical in args:
+    for canonical, pass_mode in args:
         append(canonical)
-        value ^= VALUE_PASS
+        value ^= pass_mode
         value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
     value ^= 0xFE
     value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-    for canonical in returns:
+    for canonical, pass_mode in returns:
         append(canonical)
-        value ^= VALUE_PASS
+        value ^= pass_mode
         value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
     return value or 1
 
 
-def load_semantics(path: pathlib.Path) -> set[str]:
-    pattern = re.compile(
-        r'^\s*LUX_SCRIPT_BUILTIN\([^,]+,[^,]+,\s*"([^"]+)"\s*,'
-    )
-    result: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = pattern.match(line)
-        if match:
-            result.add(match.group(1))
-    if not result:
-        raise ValueError("semantic SSOT contains no builtin entries")
+@dataclass(frozen=True)
+class Semantic:
+    canonical: str
+    type_id: int
+    default_pass: int
+    return_allowed: bool
+
+
+def load_semantics(path: pathlib.Path) -> dict[str, Semantic]:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("schema") != "lux-script-semantics" or document.get("version") != 1:
+        raise ValueError("unsupported semantic catalog")
+    types = document.get("types")
+    if not isinstance(types, list) or not types:
+        raise ValueError("semantic catalog contains no types")
+    result: dict[str, Semantic] = {}
+    names: list[str] = []
+    for value in types:
+        canonical = value.get("canonical_name")
+        type_id = int(value.get("type_id"), 0)
+        default_name = value.get("default_parameter_pass")
+        default_pass = VALUE_PASS if default_name == "VALUE" else CONST_REF_PASS
+        allowed = value.get("allowed_parameter_passes", [])
+        if (
+            not isinstance(canonical, str)
+            or fnv1a(canonical) != type_id
+            or default_name not in ("VALUE", "CONST_REF")
+            or default_name not in allowed
+            or canonical in result
+        ):
+            raise ValueError("invalid semantic catalog entry")
+        result[canonical] = Semantic(
+            canonical,
+            type_id,
+            default_pass,
+            bool(value.get("return_allowed")),
+        )
+        names.append(canonical)
+    if names != sorted(names):
+        raise ValueError("semantic catalog is not canonical")
     return result
 
 
@@ -99,8 +134,38 @@ def is_lux_method(node: ast.expr) -> bool:
 class Export:
     name: str
     symbol: int
-    args: list[str]
-    returns: list[str]
+    args: list[Semantic]
+    returns: list[Semantic]
+
+
+def import_aliases(tree: ast.Module) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                result[alias.asname or alias.name.split(".")[0]] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                if alias.name != "*":
+                    result[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+    return result
+
+
+def resolve_annotation(
+    node: ast.expr | None,
+    semantics: dict[str, Semantic],
+    aliases: dict[str, str],
+) -> Semantic | None:
+    name = annotation_name(node)
+    if name in semantics:
+        return semantics[name]
+    if not name:
+        return None
+    root, separator, suffix = name.partition(".")
+    if root in aliases:
+        canonical = aliases[root] + (f".{suffix}" if separator else "")
+        return semantics.get(canonical)
+    return None
 
 
 def collect_exports(
@@ -108,8 +173,9 @@ def collect_exports(
     model: int,
     entry: str,
     module_name: str,
-    semantics: set[str],
+    semantics: dict[str, Semantic],
 ) -> list[Export]:
+    aliases = import_aliases(tree)
     if model == GLOBAL_MODULE:
         functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
         scope = module_name
@@ -142,23 +208,33 @@ def collect_exports(
             if not parameters or parameters[0].arg != "self":
                 raise ValueError(f"{function.name}: EntityBehavior method requires hidden self")
             parameters = parameters[1:]
-        argument_types: list[str] = []
+        argument_types: list[Semantic] = []
         for parameter in parameters:
-            canonical = annotation_name(parameter.annotation)
-            if canonical not in semantics:
+            semantic = resolve_annotation(
+                parameter.annotation,
+                semantics,
+                aliases,
+            )
+            if semantic is None:
                 raise ValueError(
                     f"{function.name}.{parameter.arg}: explicit Lux canonical type required"
                 )
-            argument_types.append(canonical)
+            argument_types.append(semantic)
         result = annotation_name(function.returns)
         if result is None:
             raise ValueError(f"{function.name}: explicit return annotation required")
-        return_types: list[str] = []
+        return_types: list[Semantic] = []
         if result not in ("None", "NoneType"):
-            if result not in semantics:
+            semantic = resolve_annotation(function.returns, semantics, aliases)
+            if semantic is None or not semantic.return_allowed:
                 raise ValueError(f"{function.name}: unsupported return type '{result}'")
-            return_types.append(result)
-        symbol = symbol_id(scope, function.name, argument_types, return_types)
+            return_types.append(semantic)
+        symbol = symbol_id(
+            scope,
+            function.name,
+            [(value.canonical, value.default_pass) for value in argument_types],
+            [(value.canonical, VALUE_PASS) for value in return_types],
+        )
         if symbol in symbols:
             raise ValueError(f"{function.name}: duplicate semantic symbol")
         symbols.add(symbol)
@@ -207,14 +283,14 @@ def encode(
         writer.string(function.name)
         writer.u64(function.symbol)
         writer.u32(len(function.args))
-        for canonical in function.args:
-            writer.string(canonical)
-            writer.u64(fnv1a(canonical))
-            writer.u8(VALUE_PASS)
+        for semantic in function.args:
+            writer.string(semantic.canonical)
+            writer.u64(semantic.type_id)
+            writer.u8(semantic.default_pass)
         writer.u32(len(function.returns))
-        for canonical in function.returns:
-            writer.string(canonical)
-            writer.u64(fnv1a(canonical))
+        for semantic in function.returns:
+            writer.string(semantic.canonical)
+            writer.u64(semantic.type_id)
             writer.u8(VALUE_PASS)
     writer.u32(0)  # dependencies
     writer.string("lux-python-ast")
@@ -232,7 +308,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
-    parser.add_argument("--semantic-table", required=True, type=pathlib.Path)
+    parser.add_argument("--semantic-catalog", required=True, type=pathlib.Path)
     parser.add_argument("--module", required=True)
     parser.add_argument("--entry", required=True)
     parser.add_argument(
@@ -245,7 +321,7 @@ def main() -> int:
         payload = arguments.source.read_bytes()
         source = payload.decode("utf-8")
         tree = ast.parse(source, filename=str(arguments.source))
-        semantics = load_semantics(arguments.semantic_table)
+        semantics = load_semantics(arguments.semantic_catalog)
         model = GLOBAL_MODULE if arguments.model == "GLOBAL_MODULE" else ENTITY_BEHAVIOR
         exports = collect_exports(
             tree,
@@ -265,7 +341,7 @@ def main() -> int:
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
         arguments.output.write_bytes(encoded)
         return 0
-    except (OSError, UnicodeError, SyntaxError, ValueError) as error:
+    except (OSError, UnicodeError, SyntaxError, ValueError, json.JSONDecodeError) as error:
         print(f"lux-python-import: {error}", file=sys.stderr)
         return 2
 

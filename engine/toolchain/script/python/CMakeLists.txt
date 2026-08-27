@@ -3,6 +3,9 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(_python_importer
     ${CMAKE_CURRENT_SOURCE_DIR}/import_lux_python_script.py
 )
+set(_script_semantic_catalog
+    ${CMAKE_SOURCE_DIR}/engine/authoring/script_binding/assets/lux-script-semantics-v1.json
+)
 add_custom_target(
     toolchain_python_script_importer
     SOURCES ${_python_importer}
@@ -24,14 +27,14 @@ add_custom_command(
         ${_python_importer}
         --source ${CMAKE_CURRENT_SOURCE_DIR}/test/python_behavior_fixture.py
         --output ${_python_fixture_lxsa}
-        --semantic-table ${CMAKE_SOURCE_DIR}/modules/function/script/core/include/lux/engine/function/script/ScriptSemanticBuiltin.def
+        --semantic-catalog ${_script_semantic_catalog}
         --module lux.test.python
         --entry EnemyBehavior
         --model ENTITY_BEHAVIOR
     DEPENDS
         ${_python_importer}
         ${CMAKE_CURRENT_SOURCE_DIR}/test/python_behavior_fixture.py
-        ${CMAKE_SOURCE_DIR}/modules/function/script/core/include/lux/engine/function/script/ScriptSemanticBuiltin.def
+        ${_script_semantic_catalog}
     VERBATIM
 )
 add_custom_target(

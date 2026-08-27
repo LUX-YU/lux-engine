@@ -64,10 +64,10 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC VertexPoolRegistry
     {
     public:
-        VertexPoolRegistry()  = default;
+        VertexPoolRegistry() = default;
         ~VertexPoolRegistry();
 
-        VertexPoolRegistry(const VertexPoolRegistry&)            = delete;
+        VertexPoolRegistry(const VertexPoolRegistry&) = delete;
         VertexPoolRegistry& operator=(const VertexPoolRegistry&) = delete;
 
         /// Initialize. Registers the set-7 layout with DescriptorService
@@ -76,9 +76,8 @@ namespace lux::render
         /// allocates the descriptor set, and zeros all slots.
         ///
         /// Returns false on DescriptorService failure.
-        [[nodiscard]] bool init(DeviceContext&        device_ctx,
-                                DescriptorService&    descriptor_svc,
-                                SceneDescriptorArena& arena);
+        [[nodiscard]] bool
+        init(DeviceContext& device_ctx, DescriptorService& descriptor_svc, SceneDescriptorArena& arena);
 
         void shutdown();
 
@@ -110,11 +109,14 @@ namespace lux::render
 
         /// 池是否已就绪。此前调用方拿 descriptorSet() 非空当这个判据用 ——
         /// per-set 实例退休后改问这个,语义也更直白。
-        [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
+        [[nodiscard]] bool isInitialized() const noexcept
+        {
+            return initialized_;
+        }
 
         /// 设置域写目标(句柄组 + 域内偏移)。后域集是唯一写目标。
-        [[nodiscard]] Expected<void> setDomainWriteTarget(std::span<const VkDescriptorSet> sets,
-                                  uint32_t binding_offset);
+        [[nodiscard]] Expected<void>
+        setDomainWriteTarget(std::span<const VkDescriptorSet> sets, uint32_t binding_offset);
 
         /// The VkDescriptorSetLayout — same handle as
         /// GeneralDescriptorSetLayout::getLayout(EDescriptorSetSlot::VertexPool)
@@ -124,21 +126,24 @@ namespace lux::render
     public:
         /// 自发上报的去处(非拥有)。注册表满是每帧的资源仲裁结果 —— 没有调用方
         /// 可以处置,但也不能不可见。由拥有它的 feature 在 attach 期装上。
-        void setErrorSink(RenderErrorSink* sink) noexcept { error_sink_ = sink; }
+        void setErrorSink(RenderErrorSink* sink) noexcept
+        {
+            error_sink_ = sink;
+        }
 
     private:
-        RenderErrorSink*   error_sink_     {nullptr};
-        DeviceContext*     device_ctx_     {nullptr};
-        DescriptorService* descriptor_svc_ {nullptr};
-        DescriptorLayoutId layout_id_      {kInvalidDescriptorLayoutId};
+        RenderErrorSink* error_sink_{nullptr};
+        DeviceContext* device_ctx_{nullptr};
+        DescriptorService* descriptor_svc_{nullptr};
+        DescriptorLayoutId layout_id_{kInvalidDescriptorLayoutId};
 
         /// 域写目标:逐 slice 句柄 + 域内偏移(绑成一体,见 DomainWriteTarget)。
-        DomainWriteTarget            domain_{};
+        DomainWriteTarget domain_{};
 
         /// One pointer per slot. nullptr = free.
         std::array<IVertexSource*, kVertexPoolMaxCount> slots_{};
 
-        bool initialized_ {false};
+        bool initialized_{false};
 
         void writeDescriptor(std::uint32_t pool_id, IVertexSource& source);
     };

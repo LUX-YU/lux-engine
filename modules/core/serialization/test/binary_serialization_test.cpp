@@ -32,73 +32,55 @@ namespace
         friend bool operator==(const Record&, const Record&) = default;
     };
 
-    struct ThrowingCustom final {};
-    struct AllocatingCustom final {};
-    struct EmptyCustom final {};
+    struct ThrowingCustom final
+    {
+    };
+    struct AllocatingCustom final
+    {
+    };
+    struct EmptyCustom final
+    {
+    };
 }
 
-template <>
-struct lux::serialization::Serializer<ThrowingCustom>
+template <> struct lux::serialization::Serializer<ThrowingCustom>
 {
     template <class Writer>
-    static SerializationResult write(
-        Writer&,
-        const ThrowingCustom&,
-        const SerializationContext&
-    )
+    static SerializationResult write(Writer&, const ThrowingCustom&, const SerializationContext&)
     {
         throw std::runtime_error("custom serializer failure");
     }
 };
 
-template <>
-struct lux::serialization::Serializer<AllocatingCustom>
+template <> struct lux::serialization::Serializer<AllocatingCustom>
 {
     template <class Writer>
-    static SerializationResult write(
-        Writer&,
-        const AllocatingCustom&,
-        const SerializationContext&
-    )
+    static SerializationResult write(Writer&, const AllocatingCustom&, const SerializationContext&)
     {
         throw std::bad_alloc{};
     }
 };
 
-template <>
-struct lux::serialization::Serializer<EmptyCustom>
+template <> struct lux::serialization::Serializer<EmptyCustom>
 {
     static constexpr EWireExtent wire_extent = EWireExtent::FIXED;
     static constexpr std::size_t fixed_wire_size = 4U;
 
     template <class Writer>
-    static SerializationResult write(
-        Writer& writer,
-        const EmptyCustom&,
-        const SerializationContext& context
-    )
+    static SerializationResult write(Writer& writer, const EmptyCustom&, const SerializationContext& context)
     {
-        return lux::serialization::write(
-            writer,
-            std::uint32_t{},
-            context
-        );
+        return lux::serialization::write(writer, std::uint32_t{}, context);
     }
 
     template <class Reader>
-    static SerializationResult read(
-        Reader& reader,
-        EmptyCustom&,
-        const SerializationContext& context
-    )
+    static SerializationResult read(Reader& reader, EmptyCustom&, const SerializationContext& context)
     {
         std::uint32_t ignored{};
         return lux::serialization::read(reader, ignored, context);
     }
 };
 
-template <>
-struct lux::meta::TypeStaticInfo<Record>
+template <> struct lux::meta::TypeStaticInfo<Record>
 {
     static constexpr bool available = true;
     static constexpr auto fields = std::make_tuple(
@@ -111,7 +93,8 @@ struct lux::meta::TypeStaticInfo<Record>
     );
 };
 
-int main()
+int
+main()
 {
     using namespace lux::serialization;
     static_assert(WireTraits<EmptyCustom>::extent == EWireExtent::FIXED);
@@ -119,14 +102,7 @@ int main()
     assert(binarySerializationContractVersion() == 1U);
     const SerializationBudget budget(1024U, 1024U, 16U);
 
-    Record source{
-        0x11223344U,
-        true,
-        EMode::SECOND,
-        "portable",
-        {-3, 4, 1024},
-        1.25F
-    };
+    Record source{0x11223344U, true, EMode::SECOND, "portable", {-3, 4, 1024}, 1.25F};
     std::vector<std::byte> bytes;
     BinaryWriter writer(bytes);
     assert(write(writer, source, budget));
@@ -175,32 +151,18 @@ int main()
     BinaryWriter quaternion_writer(quaternion_bytes);
     assert(write(quaternion_writer, quaternion, budget));
     BinaryReader quaternion_reader(quaternion_bytes);
-    auto decoded_quaternion = read<Eigen::Quaternionf>(
-        quaternion_reader,
-        budget
-    );
+    auto decoded_quaternion = read<Eigen::Quaternionf>(quaternion_reader, budget);
     assert(decoded_quaternion);
-    assert(decoded_quaternion->coeffs().isApprox(
-        quaternion.normalized().coeffs()
-    ));
+    assert(decoded_quaternion->coeffs().isApprox(quaternion.normalized().coeffs()));
 
     std::vector<std::byte> failure_bytes;
     BinaryWriter failure_writer(failure_bytes);
-    auto throwing_custom = write(
-        failure_writer,
-        ThrowingCustom{},
-        budget
-    );
+    auto throwing_custom = write(failure_writer, ThrowingCustom{}, budget);
     assert(!throwing_custom);
     assert(throwing_custom.error().code == ESerializationError::INVALID_VALUE);
-    auto allocating_custom = write(
-        failure_writer,
-        AllocatingCustom{},
-        budget
-    );
+    auto allocating_custom = write(failure_writer, AllocatingCustom{}, budget);
     assert(!allocating_custom);
-    assert(allocating_custom.error().code ==
-        ESerializationError::ALLOCATION_FAILURE);
+    assert(allocating_custom.error().code == ESerializationError::ALLOCATION_FAILURE);
 
     return 0;
 }

@@ -1,9 +1,9 @@
 #pragma once
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
-#include <lux/engine/render/RenderContextView.hpp>  // contextView() return type (narrow facade)
-#include <lux/engine/render/RenderSceneView.hpp>    // sceneView() return type (narrow facade)
-#include <lux/engine/function/render/client/core/FeatureHandle.hpp> // FeatureHandle (generational)
-#include <lux/engine/function/render/client/core/FeatureTypeId.hpp> // FeatureTypeId (stable type identity)
+#include <lux/engine/render/RenderContextView.hpp>                      // contextView() return type (narrow facade)
+#include <lux/engine/render/RenderSceneView.hpp>                        // sceneView() return type (narrow facade)
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>     // FeatureHandle (generational)
+#include <lux/engine/function/render/client/core/FeatureTypeId.hpp>     // FeatureTypeId (stable type identity)
 #include <lux/engine/function/render/client/core/FeatureDescriptor.hpp> // FeatureDescriptor (type-level metadata)
 #include <lux/engine/function/render/client/core/Errors.hpp>            // Expected<void> (attach result)
 #include <lux/engine/function/visibility.h>
@@ -21,14 +21,14 @@ namespace lux::render
     class RGBuilder;
     class RenderContext;
     class RenderScene;
-    struct RGFrameContext;           // Renderer passes this for ext-data injection
+    struct RGFrameContext; // Renderer passes this for ext-data injection
 
     // =========================================================================
     // Per-frame feature contexts
     // =========================================================================
     struct FeatureFrameContext
     {
-        uint32_t           frame_index{0};
+        uint32_t frame_index{0};
     };
 
     // =========================================================================
@@ -41,14 +41,14 @@ namespace lux::render
     // attach failed — it is detached, never enabled.
     enum class FeatureState : std::uint8_t
     {
-        Constructed,  ///< object built, not yet attached to a scene
-        Attaching,    ///< initAndAttachTo in progress
-        Disabled,     ///< attached, not contributing this frame
-        Enabling,     ///< Disabled → Enabled in progress
-        Enabled,      ///< attached + contributing
-        Disabling,    ///< Enabled → Disabled in progress
-        Detaching,    ///< being removed from the scene
-        Failed,       ///< attach failed; awaiting detach
+        Constructed, ///< object built, not yet attached to a scene
+        Attaching,   ///< initAndAttachTo in progress
+        Disabled,    ///< attached, not contributing this frame
+        Enabling,    ///< Disabled → Enabled in progress
+        Enabled,     ///< attached + contributing
+        Disabling,   ///< Enabled → Disabled in progress
+        Detaching,   ///< being removed from the scene
+        Failed,      ///< attach failed; awaiting detach
     };
 
     // =========================================================================
@@ -74,11 +74,12 @@ namespace lux::render
     public:
         struct Config
         {
-            std::string              name;
+            std::string name;
         };
 
-        RenderFeature(Config cfg)
-            : cfg_(std::move(cfg)){}
+        RenderFeature(Config cfg) : cfg_(std::move(cfg))
+        {
+        }
 
         virtual ~RenderFeature() = default;
 
@@ -95,10 +96,15 @@ namespace lux::render
         /// The scene/context accessors are valid inside this callback.
         /// Returns an error to ABORT the install: RenderScene::addFeatureImpl
         /// drops the half-attached feature and the add fails. Default = success.
-        virtual Expected<void> initAndAttachTo(RenderScene& /*scene*/) { return {}; }
+        virtual Expected<void> initAndAttachTo(RenderScene& /*scene*/)
+        {
+            return {};
+        }
 
         /// Called when this feature is removed from a RenderScene.
-        virtual void onDetachFromScene(RenderScene& /*scene*/) {}
+        virtual void onDetachFromScene(RenderScene& /*scene*/)
+        {
+        }
 
         /// Owning scene/context (valid after initAndAttachTo).
         ///
@@ -110,7 +116,7 @@ namespace lux::render
         /// instead (RenderContext / RenderScene are incomplete outside the render
         /// module, so those accessors are unusable there).
         [[nodiscard]] RenderContextView contextView() noexcept;
-        [[nodiscard]] RenderSceneView   sceneView() noexcept;
+        [[nodiscard]] RenderSceneView sceneView() noexcept;
 
         [[nodiscard]] RenderContext& renderContext() noexcept;
         [[nodiscard]] const RenderContext& renderContext() const noexcept;
@@ -123,30 +129,36 @@ namespace lux::render
         /// Return false on failure: RenderScene then records NO per-view state for
         /// this (feature, view) pair and will not call deallocateViewState() for
         /// it. Default: nothing to allocate, always succeeds.
-        virtual bool allocateViewState(uint32_t /*view*/, RenderScene& /*scene*/) { return true; }
+        virtual bool allocateViewState(uint32_t /*view*/, RenderScene& /*scene*/)
+        {
+            return true;
+        }
 
         /// Release GPU resources for a view. Called exactly once per successful
         /// allocateViewState() — on view removal OR when the feature itself is
         /// removed from the scene. Must not throw.
-        virtual void deallocateViewState(uint32_t /*view*/) {}
+        virtual void deallocateViewState(uint32_t /*view*/)
+        {
+        }
 
         // --- Per-frame callbacks --------------------------------------------
 
         /// Phase 1: process per-frame logic using scene-wide primitive contexts.
-        virtual void onFrameBegin(const FeatureFrameContext& /*ctx*/) {}
+        virtual void onFrameBegin(const FeatureFrameContext& /*ctx*/)
+        {
+        }
 
         /// Rare render-safe-point transaction used when the fixed scene page
         /// origin can no longer represent a newly active object. RenderScene
         /// runs the validation hook for every installed feature before it lets
         /// any feature mutate state, so a rejected rebase is never half-applied.
-        [[nodiscard]] virtual bool canRebaseSceneOrigin(
-            const std::int64_t /*origin_delta*/[3]) const noexcept
+        [[nodiscard]] virtual bool canRebaseSceneOrigin(const std::int64_t /*origin_delta*/[3]) const noexcept
         {
             return true;
         }
-        virtual void rebaseSceneOrigin(
-            const std::int64_t /*origin_delta*/[3]) noexcept
-        {}
+        virtual void rebaseSceneOrigin(const std::int64_t /*origin_delta*/[3]) noexcept
+        {
+        }
 
         // (onFrustumUpdated removed — now that View is no longer inherently 3D, the
         // per-view frustum is a feature domain. The cull / point-cloud features pull it
@@ -166,11 +178,15 @@ namespace lux::render
         /// Inject feature-owned per-frame data into the frame context.
         /// Called by Renderer::renderView() for each enabled feature,
         /// before graph recording.  Default is a no-op.
-        virtual void populateFrameContext(RGFrameContext& /*frame_ctx*/) {}
+        virtual void populateFrameContext(RGFrameContext& /*frame_ctx*/)
+        {
+        }
 
         /// Contribute render-graph passes. Resource-only capabilities keep the
         /// default no-op; pass-producing capabilities override it.
-        virtual void addPasses(RGBuilder& /*builder*/) {}
+        virtual void addPasses(RGBuilder& /*builder*/)
+        {
+        }
 
         /// 本特性需要渲染目标提供哪些**额外输出语义槽**
         /// (TargetSlot 位掩码,bit = `1u << static_cast<uint32_t>(slot)`)。
@@ -182,13 +198,19 @@ namespace lux::render
         /// 与池重建 —— 特性侧只声明"要什么",不碰"在哪/怎么建"。
         ///
         /// 默认 0 = 不需要额外槽。
-        [[nodiscard]] virtual uint32_t requiredTargetSlots() const { return 0; }
+        [[nodiscard]] virtual uint32_t requiredTargetSlots() const
+        {
+            return 0;
+        }
 
         // --- Runtime enable/disable -----------------------------------------
         // Single source of truth: enabled-ness DERIVES from the lifecycle state,
         // which only RenderScene::setFeatureEnabled (the handle path) drives. There is
         // no separate enabled_ flag that could diverge from it.
-        [[nodiscard]] bool isEnabled() const noexcept { return lifecycle_state_ == FeatureState::Enabled; }
+        [[nodiscard]] bool isEnabled() const noexcept
+        {
+            return lifecycle_state_ == FeatureState::Enabled;
+        }
 
         // --- Tunable parameters (feature-driven quality system) -------------
         //
@@ -204,27 +226,36 @@ namespace lux::render
         /// decide whether to force a graph recompile or accept a free hot-apply.
         enum class EParamApply : uint8_t
         {
-            UNSUPPORTED,      ///< feature exposes no params (default)
-            HOT,              ///< applied live; nothing to rebuild, visible next frame
-            NEEDS_RECOMPILE,  ///< caller must RenderScene::invalidateGraph()
-            NEEDS_RECREATE    ///< feature recreated GPU resources internally (GPU-idle)
+            UNSUPPORTED,     ///< feature exposes no params (default)
+            HOT,             ///< applied live; nothing to rebuild, visible next frame
+            NEEDS_RECOMPILE, ///< caller must RenderScene::invalidateGraph()
+            NEEDS_RECREATE   ///< feature recreated GPU resources internally (GPU-idle)
         };
 
         /// Fully-qualified reflected type name of this feature's param struct,
         /// or "" if it exposes none. The editor calls ReflectionRegistry::
         /// findClass(name) to enumerate the editable fields.
-        [[nodiscard]] virtual std::string_view paramStructName() const { return {}; }
+        [[nodiscard]] virtual std::string_view paramStructName() const
+        {
+            return {};
+        }
 
         /// Pointer to the LIVE param-struct instance (render-thread-owned storage
         /// the feature reads each frame), or nullptr. The editor edits it in place
         /// via the reflected field layout for hot preview.
-        [[nodiscard]] virtual void* paramData() noexcept { return nullptr; }
+        [[nodiscard]] virtual void* paramData() noexcept
+        {
+            return nullptr;
+        }
 
         /// Byte size of the struct paramData() points at, or 0 if none. The
         /// feature is the SOLE size authority: the render module has no reflection
         /// sidecar (editor-only), so the server cannot derive it. The editor uses
         /// this to snapshot the current param bytes for enumeration.
-        [[nodiscard]] virtual std::size_t paramSize() const noexcept { return 0; }
+        [[nodiscard]] virtual std::size_t paramSize() const noexcept
+        {
+            return 0;
+        }
 
         /// Apply a whole param-struct snapshot (already name-matched by the
         /// caller). The feature diffs against its current state and returns the
@@ -236,19 +267,31 @@ namespace lux::render
 
         // --- Feature ID (assigned by RenderScene during registration) ------
 
-        [[nodiscard]] FeatureHandle featureId() const noexcept { return feature_id_; }
+        [[nodiscard]] FeatureHandle featureId() const noexcept
+        {
+            return feature_id_;
+        }
 
         /// Stable type identity (== descriptor().type), set by RenderScene at
         /// add-time from the FeatureFactory descriptor. kInvalidFeatureTypeId for
         /// features whose factory declared none — they skip dependency/conflict checks.
-        [[nodiscard]] FeatureTypeId typeId() const noexcept { return descriptor_.type; }
+        [[nodiscard]] FeatureTypeId typeId() const noexcept
+        {
+            return descriptor_.type;
+        }
 
         /// Static type-level metadata (deps / conflicts / capability flags), copied
         /// from the FeatureFactory at add-time. Default-empty if none was declared.
-        [[nodiscard]] const FeatureDescriptor& descriptor() const noexcept { return descriptor_; }
+        [[nodiscard]] const FeatureDescriptor& descriptor() const noexcept
+        {
+            return descriptor_;
+        }
 
         /// Current lifecycle state (managed by RenderScene; see FeatureState).
-        [[nodiscard]] FeatureState featureState() const noexcept { return lifecycle_state_; }
+        [[nodiscard]] FeatureState featureState() const noexcept
+        {
+            return lifecycle_state_;
+        }
 
     protected:
         RenderFeature() = default;
@@ -257,13 +300,13 @@ namespace lux::render
         //  RenderScene::setFeatureEnabled, which owns the FeatureState transitions.)
 
     private:
-        Config                          cfg_;
-        RenderScene*                    scene_{nullptr};
+        Config cfg_;
+        RenderScene* scene_{nullptr};
 
         friend class RenderScene;
-        FeatureHandle                   feature_id_{};
-        FeatureDescriptor               descriptor_{};                       ///< type-level metadata
-        FeatureState                    lifecycle_state_{FeatureState::Constructed};
+        FeatureHandle feature_id_{};
+        FeatureDescriptor descriptor_{}; ///< type-level metadata
+        FeatureState lifecycle_state_{FeatureState::Constructed};
     };
 
 } // namespace lux::render

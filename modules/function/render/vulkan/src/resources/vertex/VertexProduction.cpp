@@ -16,9 +16,12 @@ namespace lux::render
         // skinning producer/consumer used before this refactor, so the RG name
         // is unchanged across the migration — only the way it's referenced
         // (typed enum vs raw string) changes.
-        case EVertexProductKind::Skinning: return "SkinnedVertexPool";
-        case EVertexProductKind::Morph:    return "MorphVertexPool";
-        case EVertexProductKind::Cloth:    return "ClothVertexPool";
+        case EVertexProductKind::Skinning:
+            return "SkinnedVertexPool";
+        case EVertexProductKind::Morph:
+            return "MorphVertexPool";
+        case EVertexProductKind::Cloth:
+            return "ClothVertexPool";
         }
         return "UnknownVertexPool";
     }
@@ -29,7 +32,7 @@ namespace lux::render
         {
             if (r.kind == kind)
             {
-                r.rg_buffer_name = vertexProductRgName(kind);  // refresh, no dup
+                r.rg_buffer_name = vertexProductRgName(kind); // refresh, no dup
                 return;
             }
         }
@@ -39,9 +42,13 @@ namespace lux::render
     void VertexProductionRegistry::unpublish(EVertexProductKind kind) noexcept
     {
         records_.erase(
-            std::remove_if(records_.begin(), records_.end(),
-                           [kind](const VertexProductionRecord& r) { return r.kind == kind; }),
-            records_.end());
+            std::remove_if(
+                records_.begin(),
+                records_.end(),
+                [kind](const VertexProductionRecord& r) { return r.kind == kind; }
+            ),
+            records_.end()
+        );
     }
 
 } // namespace lux::render

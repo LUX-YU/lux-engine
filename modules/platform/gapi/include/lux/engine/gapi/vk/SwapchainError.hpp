@@ -25,12 +25,11 @@ namespace lux::gapi::vk
 
     struct SwapchainBuildError final
     {
-        ESwapchainBuildStage   stage{ESwapchainBuildStage::CONFIGURE};
+        ESwapchainBuildStage stage{ESwapchainBuildStage::CONFIGURE};
         std::optional<VkResult> vk_result{};
     };
 
-    [[nodiscard]] constexpr std::uint32_t encodeSwapchainBuildStage(
-        ESwapchainBuildStage stage) noexcept
+    [[nodiscard]] constexpr std::uint32_t encodeSwapchainBuildStage(ESwapchainBuildStage stage) noexcept
     {
         return static_cast<std::uint32_t>(stage);
     }

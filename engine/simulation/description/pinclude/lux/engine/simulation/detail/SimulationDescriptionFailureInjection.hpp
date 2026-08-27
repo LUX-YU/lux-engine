@@ -14,11 +14,7 @@ namespace lux::simulation::detail
     };
 
     LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC void
-    failNextSimulationDescriptionOperationForTest(
-        ESimulationDescriptionFailurePoint point
-    ) noexcept;
+    failNextSimulationDescriptionOperationForTest(ESimulationDescriptionFailurePoint point) noexcept;
 
-    [[nodiscard]] bool consumeSimulationDescriptionFailureForTest(
-        ESimulationDescriptionFailurePoint point
-    ) noexcept;
+    [[nodiscard]] bool consumeSimulationDescriptionFailureForTest(ESimulationDescriptionFailurePoint point) noexcept;
 }

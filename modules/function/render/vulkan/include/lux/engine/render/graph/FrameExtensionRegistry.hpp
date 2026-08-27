@@ -63,23 +63,25 @@ namespace lux::render
     //  LUX_REGISTER_FRAME_EXTENSION macro
     // =========================================================================
 
-#define LUX_REGISTER_FRAME_EXTENSION_PASTE(ext_name, var_name, uid)              \
-    namespace {                                                                  \
-        struct _FrameExtRegistrar_##uid {                                        \
-            _FrameExtRegistrar_##uid() {                                         \
-                (var_name) = ::lux::render::FrameExtensionRegistry::instance()   \
-                                 .registerSlot((ext_name));                      \
-            }                                                                    \
-        } _frame_ext_registrar_instance_##uid;                                   \
+#define LUX_REGISTER_FRAME_EXTENSION_PASTE(ext_name, var_name, uid)                                                    \
+    namespace                                                                                                          \
+    {                                                                                                                  \
+        struct _FrameExtRegistrar_##uid                                                                                \
+        {                                                                                                              \
+            _FrameExtRegistrar_##uid()                                                                                 \
+            {                                                                                                          \
+                (var_name) = ::lux::render::FrameExtensionRegistry::instance().registerSlot((ext_name));               \
+            }                                                                                                          \
+        } _frame_ext_registrar_instance_##uid;                                                                         \
     }
 
-#define LUX_REGISTER_FRAME_EXTENSION_IMPL(ext_name, var_name, uid)               \
+#define LUX_REGISTER_FRAME_EXTENSION_IMPL(ext_name, var_name, uid)                                                     \
     LUX_REGISTER_FRAME_EXTENSION_PASTE(ext_name, var_name, uid)
 
 /// Register a named frame extension slot and store its ID in `var_name`.
 /// Usage: static FrameExtensionSlotId s_my_slot;
 ///        LUX_REGISTER_FRAME_EXTENSION("my_feature", s_my_slot)
-#define LUX_REGISTER_FRAME_EXTENSION(ext_name, var_name)                         \
+#define LUX_REGISTER_FRAME_EXTENSION(ext_name, var_name)                                                               \
     LUX_REGISTER_FRAME_EXTENSION_IMPL(ext_name, var_name, __COUNTER__)
 
 } // namespace lux::render

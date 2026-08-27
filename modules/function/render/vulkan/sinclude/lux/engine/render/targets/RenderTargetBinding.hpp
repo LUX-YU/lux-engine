@@ -13,16 +13,16 @@ namespace lux::render
 {
     struct SlotImages
     {
-        std::vector<VkImage>     images;
+        std::vector<VkImage> images;
         std::vector<VkImageView> views;
     };
 
     struct RenderTargetBinding
     {
-        const RenderTargetLayout*                layout{nullptr};
+        const RenderTargetLayout* layout{nullptr};
         std::array<SlotImages, kTargetSlotCount> slot_images{};
-        VkExtent2D                               extent{};
-        bool                                     is_presentable{false};
+        VkExtent2D extent{};
+        bool is_presentable{false};
 
         [[nodiscard]] const SlotImages& slot(TargetSlot slot) const noexcept
         {
@@ -33,26 +33,16 @@ namespace lux::render
     struct FinalLayoutSync
     {
         VkPipelineStageFlags2 stage{};
-        VkAccessFlags2        access{};
+        VkAccessFlags2 access{};
     };
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC VkFormat toVkFormat(
-        lux::rdesc::ETextureFormat format
-    ) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC VkFormat toVkFormat(lux::rdesc::ETextureFormat format) noexcept;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC VkImageUsageFlags toVkImageUsage(
-        ERenderImageUsage usage
-    ) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC VkImageUsageFlags toVkImageUsage(ERenderImageUsage usage) noexcept;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC VkImageAspectFlags toVkImageAspect(
-        ERenderAspect aspect
-    ) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC VkImageAspectFlags toVkImageAspect(ERenderAspect aspect) noexcept;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC VkImageLayout toVkImageLayout(
-        ERenderResourceState state
-    ) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC VkImageLayout toVkImageLayout(ERenderResourceState state) noexcept;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC FinalLayoutSync finalSyncForState(
-        ERenderResourceState state
-    ) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC FinalLayoutSync finalSyncForState(ERenderResourceState state) noexcept;
 } // namespace lux::render

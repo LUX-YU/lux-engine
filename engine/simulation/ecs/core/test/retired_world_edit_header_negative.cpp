@@ -2,4 +2,8 @@
 // the retired public header.
 #include "../../core/include/lux/engine/simulation/ecs/WorldEdit.hpp"
 
-int main() { return 0; }
+int
+main()
+{
+    return 0;
+}

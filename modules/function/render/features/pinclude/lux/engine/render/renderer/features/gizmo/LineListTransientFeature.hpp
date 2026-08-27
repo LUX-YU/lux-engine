@@ -32,11 +32,15 @@ namespace lux::render
             dirty_ = true;
         }
 
-        bool hasPending() const noexcept { return dirty_; }
+        bool hasPending() const noexcept
+        {
+            return dirty_;
+        }
 
         std::vector<GizmoVertex> take()
         {
-            if (!dirty_) return {};
+            if (!dirty_)
+                return {};
             dirty_ = false;
             return std::move(pending_);
         }
@@ -57,16 +61,19 @@ namespace lux::render
         {
             ShaderHandle vertex_shader{};
             ShaderHandle fragment_shader{};
-            float        line_width{1.5f};
-            uint32_t     max_vertices{200'000};
-            std::string  color_target{"SceneColor"};
-            std::string  depth_target{"SceneDepth"};
+            float line_width{1.5f};
+            uint32_t max_vertices{200'000};
+            std::string color_target{"SceneColor"};
+            std::string depth_target{"SceneDepth"};
         };
 
         explicit LineListTransientFeature(Config cfg);
         ~LineListTransientFeature() override;
 
-        [[nodiscard]] std::string_view name() const override { return "LineListTransient"; }
+        [[nodiscard]] std::string_view name() const override
+        {
+            return "LineListTransient";
+        }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
@@ -74,15 +81,15 @@ namespace lux::render
         void onDetachFromScene(RenderScene& scene) override;
 
     private:
-        Config                 cfg_;
+        Config cfg_;
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
 
         // Shared FIF vertex ring: sized to framesInFlight() and indexed by the REAL
         // frame_index (replaces the old fixed slots_[3] + private frame counter, which
         // could desync from the actual in-flight set).
-        TransientVertexRing    ring_;
-        uint32_t               active_slot_{0};
-        uint32_t               draw_count_{0};
+        TransientVertexRing ring_;
+        uint32_t active_slot_{0};
+        uint32_t draw_count_{0};
 
         TransientLineListBuffer* incoming_{nullptr};
     };

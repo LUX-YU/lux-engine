@@ -16,9 +16,7 @@ namespace lux::render
 {
     namespace detail
     {
-        [[nodiscard]] RenderError frameLifecycleFailure(
-            EFrameLifecycleCall call,
-            VkResult result) noexcept
+        [[nodiscard]] RenderError frameLifecycleFailure(EFrameLifecycleCall call, VkResult result) noexcept
         {
             return renderError<err::device::FrameLifecycleCallFailed>(
                 static_cast<std::uint32_t>(call),
@@ -26,21 +24,15 @@ namespace lux::render
             );
         }
 
-        Expected<void> waitFrameFence(
-            gapi::vk::Fence& fence,
-            VkDevice device,
-            const FrameDriverRuntimeOps& ops
-        ) noexcept
+        Expected<void>
+        waitFrameFence(gapi::vk::Fence& fence, VkDevice device, const FrameDriverRuntimeOps& ops) noexcept
         {
             if (ops.wait_fence == nullptr)
                 return renderFailure<err::internal::InvalidArgument>();
             const VkResult result = ops.wait_fence(fence, device);
             if (result != VK_SUCCESS)
                 return lux::cxx::unexpected<RenderError>(
-                    frameLifecycleFailure(
-                        EFrameLifecycleCall::SLOT_FENCE_WAIT,
-                        result
-                    )
+                    frameLifecycleFailure(EFrameLifecycleCall::SLOT_FENCE_WAIT, result)
                 );
             return {};
         }
@@ -52,9 +44,8 @@ namespace lux::render
             const FrameDriverRuntimeOps& ops
         ) noexcept
         {
-            if (ops.reset_fence == nullptr
-                || ops.reset_command_buffer == nullptr
-                || ops.begin_command_buffer == nullptr)
+            if (ops.reset_fence == nullptr || ops.reset_command_buffer == nullptr ||
+                ops.begin_command_buffer == nullptr)
             {
                 return renderFailure<err::internal::InvalidArgument>();
             }
@@ -62,31 +53,19 @@ namespace lux::render
             VkResult result = ops.reset_fence(fence, device);
             if (result != VK_SUCCESS)
                 return lux::cxx::unexpected<RenderError>(
-                    frameLifecycleFailure(
-                        EFrameLifecycleCall::FENCE_RESET,
-                        result
-                    )
+                    frameLifecycleFailure(EFrameLifecycleCall::FENCE_RESET, result)
                 );
 
             result = ops.reset_command_buffer(command_buffer);
             if (result != VK_SUCCESS)
                 return lux::cxx::unexpected<RenderError>(
-                    frameLifecycleFailure(
-                        EFrameLifecycleCall::COMMAND_BUFFER_RESET,
-                        result
-                    )
+                    frameLifecycleFailure(EFrameLifecycleCall::COMMAND_BUFFER_RESET, result)
                 );
 
-            result = ops.begin_command_buffer(
-                command_buffer,
-                VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-            );
+            result = ops.begin_command_buffer(command_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
             if (result != VK_SUCCESS)
                 return lux::cxx::unexpected<RenderError>(
-                    frameLifecycleFailure(
-                        EFrameLifecycleCall::COMMAND_BUFFER_BEGIN,
-                        result
-                    )
+                    frameLifecycleFailure(EFrameLifecycleCall::COMMAND_BUFFER_BEGIN, result)
                 );
             return {};
         }
@@ -105,14 +84,10 @@ namespace lux::render
             rollback();
         }
 
-        FrameDriverCreateCandidate::FrameDriverCreateCandidate(
-            FrameDriverCreateCandidate&& other
-        ) noexcept
+        FrameDriverCreateCandidate::FrameDriverCreateCandidate(FrameDriverCreateCandidate&& other) noexcept
             : device_(std::exchange(other.device_, VkDevice{})),
-              command_pool_(std::exchange(other.command_pool_, VkCommandPool{})),
-              ops_(other.ops_),
-              fences_(other.fences_),
-              command_buffers_(other.command_buffers_),
+              command_pool_(std::exchange(other.command_pool_, VkCommandPool{})), ops_(other.ops_),
+              fences_(other.fences_), command_buffers_(other.command_buffers_),
               fence_count_(std::exchange(other.fence_count_, 0)),
               command_buffer_count_(std::exchange(other.command_buffer_count_, 0))
         {
@@ -120,9 +95,7 @@ namespace lux::render
             other.command_buffers_ = {};
         }
 
-        FrameDriverCreateCandidate& FrameDriverCreateCandidate::operator=(
-            FrameDriverCreateCandidate&& other
-        ) noexcept
+        FrameDriverCreateCandidate& FrameDriverCreateCandidate::operator=(FrameDriverCreateCandidate&& other) noexcept
         {
             if (this == &other)
                 return *this;
@@ -149,15 +122,15 @@ namespace lux::render
         {
             if (frames_in_flight < 1 || frames_in_flight > kMaxFramesInFlight)
             {
-                return renderFailure<err::device::InvalidFramesInFlight>(
-                    frames_in_flight,
-                    kMaxFramesInFlight
-                );
+                return renderFailure<err::device::InvalidFramesInFlight>(frames_in_flight, kMaxFramesInFlight);
             }
-            if (ops.create_fence == nullptr
-                || ops.destroy_fence == nullptr
-                || ops.allocate_command_buffers == nullptr
-                || ops.free_command_buffers == nullptr)
+            const bool is_missing_create_fence = ops.create_fence == nullptr;
+            const bool is_missing_destroy_fence = ops.destroy_fence == nullptr;
+            const bool is_missing_allocate_buffers = ops.allocate_command_buffers == nullptr;
+            const bool is_missing_free_buffers = ops.free_command_buffers == nullptr;
+            const bool is_invalid_ops = is_missing_create_fence || is_missing_destroy_fence ||
+                is_missing_allocate_buffers || is_missing_free_buffers;
+            if (is_invalid_ops)
             {
                 return renderFailure<err::internal::InvalidArgument>();
             }
@@ -179,17 +152,10 @@ namespace lux::render
             for (std::uint32_t i = 0; i < frames_in_flight; ++i)
             {
                 VkFence fence = VK_NULL_HANDLE;
-                const VkResult fence_result = ops.create_fence(
-                    device,
-                    &fence_info,
-                    nullptr,
-                    &fence
-                );
+                const VkResult fence_result = ops.create_fence(device, &fence_info, nullptr, &fence);
                 if (fence_result != VK_SUCCESS)
                 {
-                    return renderFailure<err::device::VulkanCallFailed>(
-                        encodeVkResult(fence_result)
-                    );
+                    return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(fence_result));
                 }
                 if (fence == VK_NULL_HANDLE)
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
@@ -198,16 +164,11 @@ namespace lux::render
                 ++candidate.fence_count_;
 
                 VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-                const VkResult command_buffer_result = ops.allocate_command_buffers(
-                    device,
-                    &command_buffer_info,
-                    &command_buffer
-                );
+                const VkResult command_buffer_result =
+                    ops.allocate_command_buffers(device, &command_buffer_info, &command_buffer);
                 if (command_buffer_result != VK_SUCCESS)
                 {
-                    return renderFailure<err::device::VulkanCallFailed>(
-                        encodeVkResult(command_buffer_result)
-                    );
+                    return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(command_buffer_result));
                 }
                 if (command_buffer == VK_NULL_HANDLE)
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
@@ -242,12 +203,7 @@ namespace lux::render
                 const std::uint32_t i = --count;
                 if (i < command_buffer_count_ && command_buffers_[i] != VK_NULL_HANDLE)
                 {
-                    ops_.free_command_buffers(
-                        device_,
-                        command_pool_,
-                        1,
-                        &command_buffers_[i]
-                    );
+                    ops_.free_command_buffers(device_, command_pool_, 1, &command_buffers_[i]);
                 }
                 if (i < fence_count_ && fences_[i] != VK_NULL_HANDLE)
                     ops_.destroy_fence(device_, fences_[i], nullptr);
@@ -269,44 +225,20 @@ namespace lux::render
         };
 
         const detail::FrameDriverRuntimeOps kFrameDriverRuntimeOps{
-            .wait_fence = [](
-                gapi::vk::Fence& fence,
-                VkDevice device
-            ) noexcept
-            {
-                return fence.wait(device);
-            },
-            .reset_fence = [](
-                gapi::vk::Fence& fence,
-                VkDevice device
-            ) noexcept
-            {
-                return fence.reset(device);
-            },
-            .reset_command_buffer = [](
-                gapi::vk::CommandBuffer& command_buffer
-            ) noexcept
-            {
-                return command_buffer.reset();
-            },
-            .begin_command_buffer = [](
-                gapi::vk::CommandBuffer& command_buffer,
-                VkCommandBufferUsageFlags flags
-            ) noexcept
-            {
-                return command_buffer.begin(flags);
-            },
-            .end_command_buffer = [](
-                gapi::vk::CommandBuffer& command_buffer
-            ) noexcept
-            {
-                return command_buffer.end();
-            },
+            .wait_fence = [](gapi::vk::Fence& fence, VkDevice device) noexcept { return fence.wait(device); },
+            .reset_fence = [](gapi::vk::Fence& fence, VkDevice device) noexcept { return fence.reset(device); },
+            .reset_command_buffer =
+                [](gapi::vk::CommandBuffer& command_buffer) noexcept { return command_buffer.reset(); },
+            .begin_command_buffer =
+                [](gapi::vk::CommandBuffer& command_buffer, VkCommandBufferUsageFlags flags) noexcept {
+                    return command_buffer.begin(flags);
+                },
+            .end_command_buffer = [](gapi::vk::CommandBuffer& command_buffer) noexcept { return command_buffer.end(); },
         };
 
-        [[nodiscard]] VkQueue selectQueue(ResourceContext &res_ctx, ERGQueueType queue_type)
+        [[nodiscard]] VkQueue selectQueue(ResourceContext& res_ctx, ERGQueueType queue_type)
         {
-            auto &dev_ctx = res_ctx.deviceContext();
+            auto& dev_ctx = res_ctx.deviceContext();
             switch (queue_type)
             {
             case ERGQueueType::COMPUTE:
@@ -319,9 +251,7 @@ namespace lux::render
             }
         }
 
-        [[nodiscard]] std::mutex& selectQueueMutex(
-            ResourceContext& res_ctx,
-            ERGQueueType queue_type)
+        [[nodiscard]] std::mutex& selectQueueMutex(ResourceContext& res_ctx, ERGQueueType queue_type)
         {
             auto& dev_ctx = res_ctx.deviceContext();
             switch (queue_type)
@@ -340,10 +270,7 @@ namespace lux::render
     // =============================================================================
     // Construction / Destruction (RAII)
     // =============================================================================
-    Expected<std::unique_ptr<FrameDriver>> FrameDriver::create(
-        ResourceContext& res_ctx,
-        std::uint32_t frames_in_flight
-    )
+    Expected<std::unique_ptr<FrameDriver>> FrameDriver::create(ResourceContext& res_ctx, std::uint32_t frames_in_flight)
     {
         auto candidate = detail::FrameDriverCreateCandidate::create(
             res_ctx.deviceContext().logicalDevice(),
@@ -355,12 +282,9 @@ namespace lux::render
             return lux::cxx::unexpected<RenderError>(candidate.error());
 
         auto submission_merger = std::make_unique<SubmissionMerger>();
-        auto result = std::unique_ptr<FrameDriver>(new FrameDriver(
-            res_ctx,
-            frames_in_flight,
-            *candidate,
-            std::move(submission_merger)
-        ));
+        auto result = std::unique_ptr<FrameDriver>(
+            new FrameDriver(res_ctx, frames_in_flight, *candidate, std::move(submission_merger))
+        );
         candidate->commit();
         return Expected<std::unique_ptr<FrameDriver>>{std::move(result)};
     }
@@ -371,29 +295,25 @@ namespace lux::render
         const detail::FrameDriverCreateCandidate& candidate,
         std::unique_ptr<SubmissionMerger> submission_merger
     ) noexcept
-        : res_ctx_(res_ctx),
-          frames_in_flight_(frames_in_flight),
-          submission_merger_(std::move(submission_merger))
+        : res_ctx_(res_ctx), frames_in_flight_(frames_in_flight), submission_merger_(std::move(submission_merger))
     {
         for (uint32_t i = 0; i < frames_in_flight; ++i)
         {
             fences_.emplace_back(gapi::vk::Fence::adopt(candidate.fence(i)));
-            cmd_buffers_.emplace_back(
-                gapi::vk::CommandBuffer::adopt(candidate.commandBuffer(i))
-            );
+            cmd_buffers_.emplace_back(gapi::vk::CommandBuffer::adopt(candidate.commandBuffer(i)));
         }
     }
 
     FrameDriver::~FrameDriver()
     {
-        auto &dev = res_ctx_.deviceContext().logicalDevice();
+        auto& dev = res_ctx_.deviceContext().logicalDevice();
         const VkResult idle = dev.waitIdle();
         if (idle != VK_SUCCESS && idle != VK_ERROR_DEVICE_LOST)
             renderFatal("FrameDriver failed to wait for device idle during teardown");
 
-        for (auto &f : fences_)
+        for (auto& f : fences_)
             f.release(dev);
-        for (auto &cb : cmd_buffers_)
+        for (auto& cb : cmd_buffers_)
             cb.release(dev, res_ctx_.commandPool());
     }
 
@@ -403,11 +323,7 @@ namespace lux::render
     // beginFrame
     // =============================================================================
 
-    Expected<FrameRuntime> FrameDriver::beginFrame(
-        uint32_t frame_index,
-        uint64_t frame_id,
-        PresentContext* present
-    )
+    Expected<FrameRuntime> FrameDriver::beginFrame(uint32_t frame_index, uint64_t frame_id, PresentContext* present)
     {
         // Never fold an invalid slot with modulo: aliasing two logical slots onto
         // one fence/command buffer would hide the caller bug and corrupt the frame
@@ -415,7 +331,7 @@ namespace lux::render
         if (frame_index >= frames_in_flight_)
             return renderFailure<err::internal::InvalidArgument>();
 
-        auto &dev = res_ctx_.deviceContext().logicalDevice();
+        auto& dev = res_ctx_.deviceContext().logicalDevice();
         const auto fi = frame_index;
 
         // 1. Wait for the previous frame on this FIF slot. The fence proves the
@@ -461,9 +377,7 @@ namespace lux::render
             auto acquired_result = present->acquire();
             if (!acquired_result)
             {
-                return lux::cxx::unexpected<RenderError>(
-                    acquired_result.error()
-                );
+                return lux::cxx::unexpected<RenderError>(acquired_result.error());
             }
             acquired = *acquired_result;
             if (!acquired.valid)
@@ -486,9 +400,7 @@ namespace lux::render
                 acquired_result = present->acquire();
                 if (!acquired_result)
                 {
-                    return lux::cxx::unexpected<RenderError>(
-                        acquired_result.error()
-                    );
+                    return lux::cxx::unexpected<RenderError>(acquired_result.error());
                 }
                 acquired = *acquired_result;
                 if (!acquired.valid)
@@ -497,12 +409,7 @@ namespace lux::render
         }
 
         // 4. Reset fence + command buffer + begin recording.
-        auto recording = detail::beginFrameRecording(
-            fences_[fi],
-            cmd_buffers_[fi],
-            dev,
-            kFrameDriverRuntimeOps
-        );
+        auto recording = detail::beginFrameRecording(fences_[fi], cmd_buffers_[fi], dev, kFrameDriverRuntimeOps);
         if (!recording)
             return lux::cxx::unexpected<RenderError>(recording.error());
 
@@ -522,7 +429,7 @@ namespace lux::render
             rt.present_extent = acquired.extent;
             rt.is_present_frame = true;
             rt.present_acquire_sem = acquired.acquire_sem;
-            rt.present_signal_sem  = acquired.present_sem;
+            rt.present_signal_sem = acquired.present_sem;
         }
 
         return rt;
@@ -532,10 +439,7 @@ namespace lux::render
     // endFrame
     // =============================================================================
 
-    Expected<void> FrameDriver::endFrame(
-        const FrameRuntime& rt,
-        PresentContext* present
-    )
+    Expected<void> FrameDriver::endFrame(const FrameRuntime& rt, PresentContext* present)
     {
         // No primary CB ⇒ this serial never reaches the GPU (skipped frame) —
         // it must NOT enter the fence-proven completion bookkeeping.
@@ -554,43 +458,26 @@ namespace lux::render
                 return renderFailure<err::internal::Unspecified>();
         }
 
-        return detail::endFrameRecordingThen(
-            cmd_buffers_[fi],
-            kFrameDriverRuntimeOps,
-            [&]() -> Expected<void>
-            {
-                return detail::submitFrameThenRecordAndPresent(
-                    [&]() -> Expected<void>
-                    {
-                        return submitRecordedFrame(
-                            rt,
-                            present != nullptr,
-                            present_sem
-                        );
-                    },
-                    [&]() noexcept
-                    {
-                        // The queue submission carrying this slot's fence is
-                        // irreversible. Record it before present, whose failure
-                        // cannot make the submitted GPU work disappear.
-                        slot_last_submitted_[fi] = rt.stamp.serial;
-                    },
-                    [&]() -> Expected<void>
-                    {
-                        if (present == nullptr)
-                            return {};
-                        return present->present(rt.image_index, present_sem);
-                    }
-                );
-            }
+        return detail::endFrameRecordingThen(cmd_buffers_[fi], kFrameDriverRuntimeOps, [&]() -> Expected<void> {
+            return detail::submitFrameThenRecordAndPresent(
+                [&]() -> Expected<void> { return submitRecordedFrame(rt, present != nullptr, present_sem); },
+                [&]() noexcept {
+                    // The queue submission carrying this slot's fence is
+                    // irreversible. Record it before present, whose failure
+                    // cannot make the submitted GPU work disappear.
+                    slot_last_submitted_[fi] = rt.stamp.serial;
+                },
+                [&]() -> Expected<void> {
+                    if (present == nullptr)
+                        return {};
+                    return present->present(rt.image_index, present_sem);
+                }
+            );
+        }
         );
     }
 
-    Expected<void> FrameDriver::submitRecordedFrame(
-        const FrameRuntime& rt,
-        bool presenting,
-        VkSemaphore present_sem
-    )
+    Expected<void> FrameDriver::submitRecordedFrame(const FrameRuntime& rt, bool presenting, VkSemaphore present_sem)
     {
         const auto fi = rt.stamp.slotIndex();
         VkCommandBuffer cmd = cmd_buffers_[fi];
@@ -600,15 +487,14 @@ namespace lux::render
             // Merge submissions from all rendered views by (queue_type, cmd) — avoids
             // O(N^2) linear searches and redundant submits in the hot path. The merger
             // owns reused scratch; the returned ref is valid until its next merge().
-            const std::vector<RGQueueSubmission>& merged_subs =
-                submission_merger_->merge(rt.multi_queue_submits);
+            const std::vector<RGQueueSubmission>& merged_subs = submission_merger_->merge(rt.multi_queue_submits);
 
             if (!merged_subs.empty())
             {
-                std::vector<const RGQueueSubmission *>& executable_subs = exec_subs_scratch_;
+                std::vector<const RGQueueSubmission*>& executable_subs = exec_subs_scratch_;
                 executable_subs.clear();
                 executable_subs.reserve(merged_subs.size());
-                for (const auto &sub : merged_subs)
+                for (const auto& sub : merged_subs)
                 {
                     if (sub.cmd == VK_NULL_HANDLE)
                         continue;
@@ -631,34 +517,33 @@ namespace lux::render
                 std::vector<VkSemaphoreSubmitInfo>& retire_waits = retire_waits_scratch_;
                 retire_waits.reserve(16);
                 const auto retirement = analyzeFrameRetirement(
-                    std::span<const RGQueueSubmission* const>{
-                        executable_subs.data(),
-                        executable_subs.size()},
+                    std::span<const RGQueueSubmission* const>{executable_subs.data(), executable_subs.size()},
                     presenting,
-                    retire_waits);
+                    retire_waits
+                );
 
                 for (size_t si = 0; si < executable_subs.size(); ++si)
                 {
-                    const auto &sub = *executable_subs[si];
+                    const auto& sub = *executable_subs[si];
 
-                    const bool is_graphics        = (sub.queue_type == ERGQueueType::GRAPHICS);
-                    const bool inject_ext_waits   = is_graphics && !rt.external_graphics_waits.empty();
+                    const bool is_graphics = (sub.queue_type == ERGQueueType::GRAPHICS);
+                    const bool inject_ext_waits = is_graphics && !rt.external_graphics_waits.empty();
                     const bool inject_ext_signals = is_graphics && !rt.external_graphics_signals.empty();
 
                     std::vector<VkSemaphoreSubmitInfo>& waits_with_acquire = waits_with_acquire_scratch_;
                     waits_with_acquire.clear();
-                    const VkSemaphoreSubmitInfo *wait_infos = sub.wait_semaphores.data();
+                    const VkSemaphoreSubmitInfo* wait_infos = sub.wait_semaphores.data();
                     uint32_t wait_count = static_cast<uint32_t>(sub.wait_semaphores.size());
-                    const auto &signals = sub.signal_semaphores;
+                    const auto& signals = sub.signal_semaphores;
 
                     if (is_graphics && (presenting || inject_ext_waits))
                     {
-                        waits_with_acquire.reserve(
-                            sub.wait_semaphores.size() + 1u + rt.external_graphics_waits.size());
+                        waits_with_acquire.reserve(sub.wait_semaphores.size() + 1u + rt.external_graphics_waits.size());
                         waits_with_acquire.insert(
                             waits_with_acquire.end(),
                             sub.wait_semaphores.begin(),
-                            sub.wait_semaphores.end());
+                            sub.wait_semaphores.end()
+                        );
                         if (presenting)
                         {
                             VkSemaphoreSubmitInfo acquire_wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
@@ -667,11 +552,12 @@ namespace lux::render
                             acquire_wait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
                             waits_with_acquire.push_back(acquire_wait);
                         }
-                        if (inject_ext_waits)   // external (e.g. CUDA) waits before graphics samples
+                        if (inject_ext_waits) // external (e.g. CUDA) waits before graphics samples
                             waits_with_acquire.insert(
                                 waits_with_acquire.end(),
                                 rt.external_graphics_waits.begin(),
-                                rt.external_graphics_waits.end());
+                                rt.external_graphics_waits.end()
+                            );
 
                         wait_infos = waits_with_acquire.data();
                         wait_count = static_cast<uint32_t>(waits_with_acquire.size());
@@ -688,9 +574,7 @@ namespace lux::render
                         sig.clear();
                         sig.reserve(signals.size() + rt.external_graphics_signals.size());
                         sig.insert(sig.end(), signals.begin(), signals.end());
-                        sig.insert(sig.end(),
-                                   rt.external_graphics_signals.begin(),
-                                   rt.external_graphics_signals.end());
+                        sig.insert(sig.end(), rt.external_graphics_signals.begin(), rt.external_graphics_signals.end());
                         signal_infos = sig.data();
                         signal_count = static_cast<uint32_t>(sig.size());
                     }
@@ -707,22 +591,15 @@ namespace lux::render
                     submit2.pSignalSemaphoreInfos = signal_infos;
 
                     VkFence submit_fence = VK_NULL_HANDLE;
-                    if (retirement.fence_on_last_submission &&
-                        si + 1 == executable_subs.size())
+                    if (retirement.fence_on_last_submission && si + 1 == executable_subs.size())
                         submit_fence = fences_[fi];
 
-                    const std::scoped_lock queue_lock(
-                        selectQueueMutex(res_ctx_, sub.queue_type));
-                    VkResult sub_res = vkQueueSubmit2(
-                        selectQueue(res_ctx_, sub.queue_type),
-                        1, &submit2, submit_fence);
+                    const std::scoped_lock queue_lock(selectQueueMutex(res_ctx_, sub.queue_type));
+                    VkResult sub_res = vkQueueSubmit2(selectQueue(res_ctx_, sub.queue_type), 1, &submit2, submit_fence);
                     if (sub_res != VK_SUCCESS)
                     {
-                        return renderFailure<err::device::VulkanCallFailed>(
-                            encodeVkResult(sub_res)
-                        );
+                        return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(sub_res));
                     }
-
                 }
 
                 if (retirement.fence_on_last_submission)
@@ -740,35 +617,28 @@ namespace lux::render
                     // This compute submission exposed no signal that the graphics
                     // retire submit can join. Other submissions having signals does
                     // not make this one safe, so wait this queue explicitly.
-                    auto &dc = res_ctx_.deviceContext();
+                    auto& dc = res_ctx_.deviceContext();
                     VkResult async_compute_wait{VK_ERROR_UNKNOWN};
                     {
-                        const std::scoped_lock queue_lock(
-                            dc.asyncComputeQueueMutex());
-                        async_compute_wait = vkQueueWaitIdle(
-                            dc.asyncComputeQueue());
+                        const std::scoped_lock queue_lock(dc.asyncComputeQueueMutex());
+                        async_compute_wait = vkQueueWaitIdle(dc.asyncComputeQueue());
                     }
                     if (async_compute_wait != VK_SUCCESS)
                     {
-                        return renderFailure<err::device::VulkanCallFailed>(
-                            encodeVkResult(async_compute_wait)
-                        );
+                        return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(async_compute_wait));
                     }
                 }
                 if (retirement.wait_transfer_idle)
                 {
-                    auto &dc = res_ctx_.deviceContext();
+                    auto& dc = res_ctx_.deviceContext();
                     VkResult transfer_wait{VK_ERROR_UNKNOWN};
                     {
-                        const std::scoped_lock queue_lock(
-                            dc.transferQueueMutex());
+                        const std::scoped_lock queue_lock(dc.transferQueueMutex());
                         transfer_wait = vkQueueWaitIdle(dc.transferQueue());
                     }
                     if (transfer_wait != VK_SUCCESS)
                     {
-                        return renderFailure<err::device::VulkanCallFailed>(
-                            encodeVkResult(transfer_wait)
-                        );
+                        return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(transfer_wait));
                     }
                 }
 
@@ -788,15 +658,11 @@ namespace lux::render
                 retire_submit.signalSemaphoreInfoCount = static_cast<uint32_t>(retire_signals.size());
                 retire_submit.pSignalSemaphoreInfos = retire_signals.data();
 
-                const std::scoped_lock queue_lock(
-                    res_ctx_.deviceContext().graphicsQueueMutex());
-                VkResult retire_res = vkQueueSubmit2(
-                    res_ctx_.graphicsQueue(), 1, &retire_submit, fences_[fi]);
+                const std::scoped_lock queue_lock(res_ctx_.deviceContext().graphicsQueueMutex());
+                VkResult retire_res = vkQueueSubmit2(res_ctx_.graphicsQueue(), 1, &retire_submit, fences_[fi]);
                 if (retire_res != VK_SUCCESS)
                 {
-                    return renderFailure<err::device::VulkanCallFailed>(
-                        encodeVkResult(retire_res)
-                    );
+                    return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(retire_res));
                 }
 
                 return {};
@@ -828,20 +694,17 @@ namespace lux::render
             VkCommandBufferSubmitInfo ci{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
             ci.commandBuffer = cmd;
             VkSubmitInfo2 submit2{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
-            submit2.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
-            submit2.pWaitSemaphoreInfos      = waits.data();
-            submit2.commandBufferInfoCount   = 1;
-            submit2.pCommandBufferInfos      = &ci;
+            submit2.waitSemaphoreInfoCount = static_cast<uint32_t>(waits.size());
+            submit2.pWaitSemaphoreInfos = waits.data();
+            submit2.commandBufferInfoCount = 1;
+            submit2.pCommandBufferInfos = &ci;
             submit2.signalSemaphoreInfoCount = static_cast<uint32_t>(sigs.size());
-            submit2.pSignalSemaphoreInfos    = sigs.data();
-            const std::scoped_lock queue_lock(
-                res_ctx_.deviceContext().graphicsQueueMutex());
+            submit2.pSignalSemaphoreInfos = sigs.data();
+            const std::scoped_lock queue_lock(res_ctx_.deviceContext().graphicsQueueMutex());
             VkResult r = vkQueueSubmit2(res_ctx_.graphicsQueue(), 1, &submit2, fences_[fi]);
             if (r != VK_SUCCESS)
             {
-                return renderFailure<err::device::VulkanCallFailed>(
-                    encodeVkResult(r)
-                );
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(r));
             }
             return {};
         }
@@ -850,8 +713,7 @@ namespace lux::render
         {
             // Swapchain path: wait acquire_sem → draw → signal present_sem + fence.
             VkSemaphore wait_sems[] = {rt.present_acquire_sem};
-            VkPipelineStageFlags wait_stages[] = {
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+            VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
             VkSemaphore signal_sems[] = {present_sem};
 
             VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -863,16 +725,12 @@ namespace lux::render
             submit.signalSemaphoreCount = 1;
             submit.pSignalSemaphores = signal_sems;
 
-            const std::scoped_lock queue_lock(
-                res_ctx_.deviceContext().graphicsQueueMutex());
+            const std::scoped_lock queue_lock(res_ctx_.deviceContext().graphicsQueueMutex());
             VkResult r = vkQueueSubmit(res_ctx_.graphicsQueue(), 1, &submit, fences_[fi]);
             if (r != VK_SUCCESS)
             {
-                return renderFailure<err::device::VulkanCallFailed>(
-                    encodeVkResult(r)
-                );
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(r));
             }
-
         }
         else
         {
@@ -881,14 +739,11 @@ namespace lux::render
             submit.commandBufferCount = 1;
             submit.pCommandBuffers = &cmd;
 
-            const std::scoped_lock queue_lock(
-                res_ctx_.deviceContext().graphicsQueueMutex());
+            const std::scoped_lock queue_lock(res_ctx_.deviceContext().graphicsQueueMutex());
             VkResult r = vkQueueSubmit(res_ctx_.graphicsQueue(), 1, &submit, fences_[fi]);
             if (r != VK_SUCCESS)
             {
-                return renderFailure<err::device::VulkanCallFailed>(
-                    encodeVkResult(r)
-                );
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(r));
             }
         }
 
@@ -904,8 +759,8 @@ namespace lux::render
 
     Expected<void> FrameDriver::waitAllFences()
     {
-        auto &dev = res_ctx_.deviceContext().logicalDevice();
-        for (auto &f : fences_)
+        auto& dev = res_ctx_.deviceContext().logicalDevice();
+        for (auto& f : fences_)
         {
             auto waited = detail::waitFrameFence(f, dev, kFrameDriverRuntimeOps);
             if (!waited)

@@ -20,34 +20,23 @@ namespace lux::simulation::ecs
 
     namespace
     {
-        [[nodiscard]] std::uint64_t storageKey(
-            const ComponentSnapshotBinding& binding
-        ) noexcept
+        [[nodiscard]] std::uint64_t storageKey(const ComponentSnapshotBinding& binding) noexcept
         {
-            return detail::ComponentOperationsAccess::storageKey(
-                binding.schema().operations
-            );
+            return detail::ComponentOperationsAccess::storageKey(binding.schema().operations);
         }
 
-        [[nodiscard]] SnapshotError failure(
-            ESnapshotError code,
-            std::uint64_t storage = 0U,
-            ComponentSchemaId schema = {}
-        )
+        [[nodiscard]] SnapshotError
+        failure(ESnapshotError code, std::uint64_t storage = 0U, ComponentSchemaId schema = {})
         {
             return SnapshotError{code, storage, std::move(schema)};
         }
     } // namespace
 
-    ComponentSnapshotSet::ComponentSnapshotSet(
-        std::shared_ptr<const Impl> impl
-    ) noexcept
-        : impl_(std::move(impl))
+    ComponentSnapshotSet::ComponentSnapshotSet(std::shared_ptr<const Impl> impl) noexcept : impl_(std::move(impl))
     {
     }
 
-    lux::cxx::expected<ComponentSnapshotSet, SnapshotError>
-    ComponentSnapshotSet::build(
+    lux::cxx::expected<ComponentSnapshotSet, SnapshotError> ComponentSnapshotSet::build(
         const ComponentSchemaSet& schemas,
         std::span<const ComponentSnapshotContribution> contributions
     ) noexcept
@@ -68,66 +57,54 @@ namespace lux::simulation::ecs
             {
                 for (const auto& source : contribution.bindings)
                 {
-                    const ComponentSchema* schema = schemas.find(
-                        source.schema().id
-                    );
-                    if (schema == nullptr ||
-                        schema->snapshot != EComponentSnapshotPolicy::COPY ||
-                        schema->version != source.schema().version ||
-                        schema->cpp_type.hash() !=
-                            source.schema().cpp_type.hash() ||
-                        schema->cpp_type.name() !=
-                            source.schema().cpp_type.name())
+                    const ComponentSchema* schema = schemas.find(source.schema().id);
+                    const bool is_missing_schema = schema == nullptr;
+                    const bool is_invalid_policy = is_missing_schema ||
+                        schema->snapshot != EComponentSnapshotPolicy::COPY;
+                    const bool is_invalid_version = is_missing_schema ||
+                        schema->version != source.schema().version;
+                    const bool is_invalid_type = is_missing_schema ||
+                        schema->cpp_type.hash() != source.schema().cpp_type.hash() ||
+                        schema->cpp_type.name() != source.schema().cpp_type.name();
+                    const bool is_invalid_binding = is_invalid_policy || is_invalid_version || is_invalid_type;
+                    if (is_invalid_binding)
                     {
-                        return lux::cxx::unexpected(failure(
-                            ESnapshotError::BINDING_MISMATCH,
-                            storageKey(source),
-                            source.schema().id
-                        ));
+                        return lux::cxx::unexpected(
+                            failure(ESnapshotError::BINDING_MISMATCH, storageKey(source), source.schema().id)
+                        );
                     }
                     ComponentSnapshotBinding binding = source;
                     binding.schema_ = schema;
                     impl->bindings.push_back(binding);
                 }
             }
-            std::sort(
-                impl->bindings.begin(),
-                impl->bindings.end(),
-                [](const auto& left, const auto& right)
-                {
-                    return storageKey(left) < storageKey(right);
-                }
+            std::sort(impl->bindings.begin(), impl->bindings.end(), [](const auto& left, const auto& right) {
+                return storageKey(left) < storageKey(right);
+            }
             );
-            for (std::size_t index = 1U;
-                 index < impl->bindings.size();
-                 ++index)
+            for (std::size_t index = 1U; index < impl->bindings.size(); ++index)
             {
-                if (storageKey(impl->bindings[index - 1U]) ==
-                    storageKey(impl->bindings[index]))
+                if (storageKey(impl->bindings[index - 1U]) == storageKey(impl->bindings[index]))
                 {
                     return lux::cxx::unexpected(failure(
                         ESnapshotError::DUPLICATE_BINDING,
                         storageKey(impl->bindings[index]),
-                        impl->bindings[index].schema().id
-                    ));
+                        impl->bindings[index].schema().id)
+                    );
                 }
             }
             return ComponentSnapshotSet(std::move(impl));
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                failure(ESnapshotError::ALLOCATION_FAILURE)
-            );
+            return lux::cxx::unexpected(failure(ESnapshotError::ALLOCATION_FAILURE));
         }
     }
 
-    std::span<const ComponentSnapshotBinding>
-    ComponentSnapshotSet::all() const noexcept
+    std::span<const ComponentSnapshotBinding> ComponentSnapshotSet::all() const noexcept
     {
-        return impl_
-            ? std::span<const ComponentSnapshotBinding>(impl_->bindings)
-            : std::span<const ComponentSnapshotBinding>{};
+        return impl_ ? std::span<const ComponentSnapshotBinding>(impl_->bindings)
+                     : std::span<const ComponentSnapshotBinding>{};
     }
 
     bool ComponentSnapshotSet::empty() const noexcept
@@ -135,9 +112,7 @@ namespace lux::simulation::ecs
         return all().empty();
     }
 
-    const ComponentSchemaSet& detail::ComponentSnapshotSetAccess::schemas(
-        const ComponentSnapshotSet& set
-    ) noexcept
+    const ComponentSchemaSet& detail::ComponentSnapshotSetAccess::schemas(const ComponentSnapshotSet& set) noexcept
     {
         if (set.impl_ == nullptr)
             std::terminate();
@@ -145,10 +120,7 @@ namespace lux::simulation::ecs
     }
 
     const ComponentSnapshotBinding*
-    detail::ComponentSnapshotSetAccess::findStorage(
-        const ComponentSnapshotSet& set,
-        std::uint64_t storage
-    ) noexcept
+    detail::ComponentSnapshotSetAccess::findStorage(const ComponentSnapshotSet& set, std::uint64_t storage) noexcept
     {
         if (!set.impl_)
             return nullptr;
@@ -156,14 +128,8 @@ namespace lux::simulation::ecs
             set.impl_->bindings.begin(),
             set.impl_->bindings.end(),
             storage,
-            [](const auto& binding, std::uint64_t value)
-            {
-                return storageKey(binding) < value;
-            }
+            [](const auto& binding, std::uint64_t value) { return storageKey(binding) < value; }
         );
-        return iterator != set.impl_->bindings.end() &&
-                storageKey(*iterator) == storage
-            ? &*iterator
-            : nullptr;
+        return iterator != set.impl_->bindings.end() && storageKey(*iterator) == storage ? &*iterator : nullptr;
     }
 } // namespace lux::simulation::ecs

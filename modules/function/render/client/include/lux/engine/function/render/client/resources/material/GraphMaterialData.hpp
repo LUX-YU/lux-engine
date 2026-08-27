@@ -22,22 +22,21 @@ namespace lux::render
 {
     struct GraphMaterialData
     {
-        static constexpr uint32_t kMaxParams   = 16;  // matches GraphFamilyGPU::params
-        static constexpr uint32_t kMaxTextures = 8;   // matches GraphFamilyGPU::tex
+        static constexpr uint32_t kMaxParams = 16;  // matches GraphFamilyGPU::params
+        static constexpr uint32_t kMaxTextures = 8; // matches GraphFamilyGPU::tex
 
         // param slot i -> params[i] = {x,y,z,w}; unused lanes stay zero.
-        float    params[kMaxParams][4]{};
+        float params[kMaxParams][4]{};
         // texture slot i -> bindless index (RTextureHandle.index); unused stay 0.
         uint32_t tex_bindless[kMaxTextures]{};
 
-        uint32_t tex_mask{ 0 };      // bit i set if texture slot i is bound
-        uint32_t param_count{ 0 };   // number of declared param lanes actually used
-        uint32_t flags{ 0 };         // reserved (MATF_* style)
-        uint32_t _pad{ 0 };
+        uint32_t tex_mask{0};    // bit i set if texture slot i is bound
+        uint32_t param_count{0}; // number of declared param lanes actually used
+        uint32_t flags{0};       // reserved (MATF_* style)
+        uint32_t _pad{0};
     };
 
     static_assert(
         std::is_trivially_copyable_v<GraphMaterialData>,
-        "GraphMaterialData is sent as raw bytes over the comm channel"
-    );
+        "GraphMaterialData is sent as raw bytes over the comm channel");
 } // namespace lux::render

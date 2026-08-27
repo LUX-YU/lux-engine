@@ -67,7 +67,7 @@ namespace lux::render
         /// Whether parsing succeeded. When false, `words` was left
         /// unmodified — better to use the original as-is than to produce a
         /// module that may have been corrupted.
-        bool     ok{false};
+        bool ok{false};
         /// The failure reason (diagnostics only).
         const char* error{nullptr};
     };
@@ -86,15 +86,15 @@ namespace lux::render
     /// target happens to be another relocation's source, in which case the
     /// caller has specified a chained relocation on purpose).
     [[nodiscard]] LUX_FUNCTION_PUBLIC SpirvPatchResult
-    patchSpirvDescriptorPositions(std::span<uint32_t> words,
-                                  std::span<const SpirvRelocation> relocations) noexcept;
+    patchSpirvDescriptorPositions(std::span<uint32_t> words, std::span<const SpirvRelocation> relocations) noexcept;
 
     /// The copying variant: leaves the input untouched and returns the
     /// rewritten copy in `out`. On failure, `out` remains a copy of the
     /// input.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC SpirvPatchResult
-    patchSpirvDescriptorPositions(std::span<const uint32_t> words,
-                                  std::span<const SpirvRelocation> relocations,
-                                  std::vector<uint32_t>& out);
+    [[nodiscard]] LUX_FUNCTION_PUBLIC SpirvPatchResult patchSpirvDescriptorPositions(
+        std::span<const uint32_t> words,
+        std::span<const SpirvRelocation> relocations,
+        std::vector<uint32_t>& out
+    );
 
 } // namespace lux::render

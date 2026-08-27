@@ -36,11 +36,15 @@ namespace lux::render
             dirty_ = true;
         }
 
-        bool hasPending() const noexcept { return dirty_; }
+        bool hasPending() const noexcept
+        {
+            return dirty_;
+        }
 
         std::vector<GizmoVertex> take()
         {
-            if (!dirty_) return {};
+            if (!dirty_)
+                return {};
             dirty_ = false;
             return std::move(pending_);
         }
@@ -61,15 +65,18 @@ namespace lux::render
         {
             ShaderHandle vertex_shader{};
             ShaderHandle fragment_shader{};
-            uint32_t     max_vertices{200'000};
-            std::string  color_target{"SceneColor"};
-            std::string  depth_target{"SceneDepth"};
+            uint32_t max_vertices{200'000};
+            std::string color_target{"SceneColor"};
+            std::string depth_target{"SceneDepth"};
         };
 
         explicit TriOverlayTransientFeature(Config cfg);
         ~TriOverlayTransientFeature() override;
 
-        [[nodiscard]] std::string_view name() const override { return "TriOverlayTransient"; }
+        [[nodiscard]] std::string_view name() const override
+        {
+            return "TriOverlayTransient";
+        }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
@@ -81,19 +88,19 @@ namespace lux::render
 
         struct FrameSlot
         {
-            VkBuffer      buffer{VK_NULL_HANDLE};
+            VkBuffer buffer{VK_NULL_HANDLE};
             VmaAllocation alloc{nullptr};
-            void*         mapped{nullptr};
+            void* mapped{nullptr};
         };
 
-        Config                 cfg_;
+        Config cfg_;
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
 
-        VmaAllocator           allocator_{nullptr};
-        FrameSlot              slots_[kBufferCount]{};
-        uint32_t               active_slot_{0};
-        uint32_t               frame_counter_{0};
-        uint32_t               draw_count_{0};
+        VmaAllocator allocator_{nullptr};
+        FrameSlot slots_[kBufferCount]{};
+        uint32_t active_slot_{0};
+        uint32_t frame_counter_{0};
+        uint32_t draw_count_{0};
 
         TransientTriOverlayBuffer* incoming_{nullptr};
 

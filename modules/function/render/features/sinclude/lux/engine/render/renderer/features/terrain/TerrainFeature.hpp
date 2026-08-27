@@ -37,10 +37,8 @@ namespace lux::render
 
         Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept override;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept override;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept override;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept override;
         void onFrameBegin(const FeatureFrameContext& context) override;
         void addPasses(RGBuilder& builder) override;
 
@@ -56,7 +54,7 @@ namespace lux::render
         std::uint32_t patch_slot_{2u};
     };
 
-    inline TerrainFeature::TerrainFeature()
-        : TerrainFeature(Config{})
-    {}
+    inline TerrainFeature::TerrainFeature() : TerrainFeature(Config{})
+    {
+    }
 } // namespace lux::render

@@ -17,30 +17,30 @@
 
 namespace lux::render
 {
-	// ---------------------------------------------------------------
-	// Central descriptor set slot assignment.
-	// To add a new descriptor set, insert an entry before COUNT and
-	// define the corresponding binding enum + get_binding_set<> in
-	// DescriptorSetLayoutContract.hpp.
-	// ---------------------------------------------------------------
-	enum class EDescriptorSetSlot : uint32_t
-	{
-		Scene      = 0,
-		Instance   = 1,
-		Texture    = 2,
-		Light      = 3,
-		Material   = 4,
-		Particle   = 5,   ///< GPU particle SSBO (compute simulation + vertex billboard)
-		Compute    = 6,   ///< GPU-driven compute cull descriptor set
-		VertexPool = 7,   ///< Bindless vertex source array (R1.4 of render-refactor;
-		                  ///<   reads in VERTEX_BIT + COMPUTE_BIT; one descriptorCount
-		                  ///<   slot per registered IVertexSource)
-		COUNT    // <-- add new sets before this
-	};
+    // ---------------------------------------------------------------
+    // Central descriptor set slot assignment.
+    // To add a new descriptor set, insert an entry before COUNT and
+    // define the corresponding binding enum + get_binding_set<> in
+    // DescriptorSetLayoutContract.hpp.
+    // ---------------------------------------------------------------
+    enum class EDescriptorSetSlot : uint32_t
+    {
+        Scene = 0,
+        Instance = 1,
+        Texture = 2,
+        Light = 3,
+        Material = 4,
+        Particle = 5,   ///< GPU particle SSBO (compute simulation + vertex billboard)
+        Compute = 6,    ///< GPU-driven compute cull descriptor set
+        VertexPool = 7, ///< Bindless vertex source array (R1.4 of render-refactor;
+                        ///<   reads in VERTEX_BIT + COMPUTE_BIT; one descriptorCount
+                        ///<   slot per registered IVertexSource)
+        COUNT           // <-- add new sets before this
+    };
 
-	/// Total number of descriptor set slots (derived from EDescriptorSetSlot::COUNT).
-	inline constexpr uint32_t kDescriptorSetCount = static_cast<uint32_t>(EDescriptorSetSlot::COUNT);
+    /// Total number of descriptor set slots (derived from EDescriptorSetSlot::COUNT).
+    inline constexpr uint32_t kDescriptorSetCount = static_cast<uint32_t>(EDescriptorSetSlot::COUNT);
 
-	/// Bitmask covering all descriptor set slots (e.g. 0x1F for 5 sets).
-	inline constexpr uint32_t kAllSetsMask = (1u << kDescriptorSetCount) - 1u;
+    /// Bitmask covering all descriptor set slots (e.g. 0x1F for 5 sets).
+    inline constexpr uint32_t kAllSetsMask = (1u << kDescriptorSetCount) - 1u;
 }

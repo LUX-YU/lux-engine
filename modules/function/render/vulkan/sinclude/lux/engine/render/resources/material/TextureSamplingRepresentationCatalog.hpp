@@ -14,11 +14,11 @@
 
 namespace lux::render
 {
-    struct TextureSamplingRepresentationIdTag final {};
-    using TextureSamplingRepresentationIdView =
-        lux::cxx::StableNameIdView<TextureSamplingRepresentationIdTag>;
-    using TextureSamplingRepresentationId =
-        lux::cxx::StableNameId<TextureSamplingRepresentationIdTag>;
+    struct TextureSamplingRepresentationIdTag final
+    {
+    };
+    using TextureSamplingRepresentationIdView = lux::cxx::StableNameIdView<TextureSamplingRepresentationIdTag>;
+    using TextureSamplingRepresentationId = lux::cxx::StableNameId<TextureSamplingRepresentationIdTag>;
 
     [[nodiscard]] constexpr TextureSamplingRepresentationIdView
     textureSamplingRepresentationId(std::string_view name) noexcept
@@ -30,8 +30,7 @@ namespace lux::render
         textureSamplingRepresentationId("lux.render.texture.bindless");
 
     [[nodiscard]] inline TextureSamplingRepresentationId
-    ownTextureSamplingRepresentationId(
-        TextureSamplingRepresentationIdView id)
+    ownTextureSamplingRepresentationId(TextureSamplingRepresentationIdView id)
     {
         return TextureSamplingRepresentationId{id.name()};
     }
@@ -66,41 +65,31 @@ namespace lux::render
     {
     public:
         TextureSamplingRepresentationCatalog() = default;
-        TextureSamplingRepresentationCatalog(
-            TextureSamplingRepresentationCatalog&&) noexcept = default;
-        TextureSamplingRepresentationCatalog& operator=(
-            TextureSamplingRepresentationCatalog&&) noexcept = default;
-        TextureSamplingRepresentationCatalog(
-            const TextureSamplingRepresentationCatalog&) = delete;
-        TextureSamplingRepresentationCatalog& operator=(
-            const TextureSamplingRepresentationCatalog&) = delete;
+        TextureSamplingRepresentationCatalog(TextureSamplingRepresentationCatalog&&) noexcept = default;
+        TextureSamplingRepresentationCatalog& operator=(TextureSamplingRepresentationCatalog&&) noexcept = default;
+        TextureSamplingRepresentationCatalog(const TextureSamplingRepresentationCatalog&) = delete;
+        TextureSamplingRepresentationCatalog& operator=(const TextureSamplingRepresentationCatalog&) = delete;
 
-        [[nodiscard]] static lux::cxx::expected<
-            TextureSamplingRepresentationCatalog,
-            ETextureSamplingCatalogError>
-        build(
-            std::vector<TextureSamplingRepresentationDescriptor> descriptors)
-            noexcept;
+        [[nodiscard]] static lux::cxx::expected<TextureSamplingRepresentationCatalog, ETextureSamplingCatalogError>
+        build(std::vector<TextureSamplingRepresentationDescriptor> descriptors) noexcept;
 
-        [[nodiscard]] const TextureSamplingRepresentationDescriptor* find(
-            TextureSamplingRepresentationIdView id) const
-            noexcept;
-        [[nodiscard]] const TextureSamplingRepresentationDescriptor* find(
-            std::uint32_t representation_index) const noexcept;
+        [[nodiscard]] const TextureSamplingRepresentationDescriptor*
+        find(TextureSamplingRepresentationIdView id) const noexcept;
+        [[nodiscard]] const TextureSamplingRepresentationDescriptor*
+        find(std::uint32_t representation_index) const noexcept;
 
-        [[nodiscard]] std::span<const
-            TextureSamplingRepresentationDescriptor>
-        descriptors() const noexcept
+        [[nodiscard]] std::span<const TextureSamplingRepresentationDescriptor> descriptors() const noexcept
         {
             return descriptors_;
         }
 
     private:
         explicit TextureSamplingRepresentationCatalog(
-            std::vector<TextureSamplingRepresentationDescriptor> descriptors)
-            noexcept
+            std::vector<TextureSamplingRepresentationDescriptor> descriptors
+        ) noexcept
             : descriptors_(std::move(descriptors))
-        {}
+        {
+        }
 
         std::vector<TextureSamplingRepresentationDescriptor> descriptors_;
     };

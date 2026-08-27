@@ -10,7 +10,7 @@
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>
-#include <lux/engine/function/render/client/RenderTargetLayout.hpp>   // TargetSlot
+#include <lux/engine/function/render/client/RenderTargetLayout.hpp> // TargetSlot
 #include <lux/engine/function/render/client/genops/LinearDepthOperation.ops.hpp>
 #include <lux/engine/function/visibility.h>
 
@@ -19,36 +19,41 @@
 namespace lux::render
 {
 
-class LUX_FUNCTION_PUBLIC LinearDepthFeature : public RenderFeature
-{
-public:
-    struct Config
+    class LUX_FUNCTION_PUBLIC LinearDepthFeature : public RenderFeature
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+    public:
+        struct Config
+        {
+            ShaderHandle vertex_shader{};
+            ShaderHandle fragment_shader{};
+        };
+
+        explicit LinearDepthFeature(Config cfg) : cfg_(cfg)
+        {
+        }
+
+        std::string_view name() const override
+        {
+            return "LinearDepth";
+        }
+
+        /// 补 LinearDepth(缺槽,按形状表 R32F 建)+ 读 SceneDepth(既有槽,
+        /// 自动追加 SAMPLED)—— 槽声明管道的两种语义各用一位。
+        uint32_t requiredTargetSlots() const override
+        {
+            return (1u << static_cast<uint32_t>(TargetSlot::LINEAR_DEPTH)) |
+                   (1u << static_cast<uint32_t>(TargetSlot::SCENE_DEPTH));
+        }
+
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
+        void onDetachFromScene(RenderScene& scene) override;
+        void addPasses(RGBuilder& builder) override;
+
+    private:
+        Config cfg_;
+        GraphicsPipelineHandle pipeline_{kInvalidPipelineHandle};
+        VkDescriptorSetLayout depth_ds_layout_{VK_NULL_HANDLE}; ///< set1:深度采样(反射布局)
+        VkSampler depth_sampler_{VK_NULL_HANDLE};               ///< 服务缓存句柄(最近邻:深度不得插值)
     };
-
-    explicit LinearDepthFeature(Config cfg) : cfg_(cfg) {}
-
-    std::string_view name() const override { return "LinearDepth"; }
-
-    /// 补 LinearDepth(缺槽,按形状表 R32F 建)+ 读 SceneDepth(既有槽,
-    /// 自动追加 SAMPLED)—— 槽声明管道的两种语义各用一位。
-    uint32_t requiredTargetSlots() const override
-    {
-        return (1u << static_cast<uint32_t>(TargetSlot::LINEAR_DEPTH))
-             | (1u << static_cast<uint32_t>(TargetSlot::SCENE_DEPTH));
-    }
-
-    lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
-    void onDetachFromScene(RenderScene& scene) override;
-    void addPasses(RGBuilder& builder) override;
-
-private:
-    Config                 cfg_;
-    GraphicsPipelineHandle pipeline_{kInvalidPipelineHandle};
-    VkDescriptorSetLayout  depth_ds_layout_{VK_NULL_HANDLE};   ///< set1:深度采样(反射布局)
-    VkSampler              depth_sampler_{VK_NULL_HANDLE};     ///< 服务缓存句柄(最近邻:深度不得插值)
-};
 
 } // namespace lux::render

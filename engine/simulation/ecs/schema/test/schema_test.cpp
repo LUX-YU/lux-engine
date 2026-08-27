@@ -24,7 +24,8 @@ namespace
     };
 }
 
-int main()
+int
+main()
 {
     auto lifetime = std::make_shared<int>(42);
     auto position = lux::simulation::ecs::makeComponentSchema<Position>(
@@ -45,9 +46,7 @@ int main()
     assert(stable_pointer != nullptr);
     assert(stable_pointer->code_lifetime == lifetime);
 
-    auto extended = built->extended(
-        std::span<const lux::simulation::ecs::ComponentSchema>(&cache, 1U)
-    );
+    auto extended = built->extended(std::span<const lux::simulation::ecs::ComponentSchema>(&cache, 1U));
     assert(extended);
     assert(extended->all().size() == 2U);
     assert(built->all().size() == 1U);
@@ -55,16 +54,13 @@ int main()
 
     auto duplicate = lux::simulation::ecs::ComponentSchemaSet::build({position, position});
     assert(!duplicate);
-    assert(duplicate.error().code ==
-        lux::simulation::ecs::ESchemaError::DUPLICATE_SCHEMA_ID);
+    assert(duplicate.error().code == lux::simulation::ecs::ESchemaError::DUPLICATE_SCHEMA_ID);
 
     auto invalid_copy_schema = lux::simulation::ecs::makeComponentSchema<NonCopy>(
         lux::simulation::ecs::componentSchemaId("test.non-copy"),
         1,
         lux::simulation::ecs::EComponentSnapshotPolicy::COPY
     );
-    auto invalid_copy = lux::simulation::ecs::ComponentSchemaSet::build(
-        {invalid_copy_schema}
-    );
+    auto invalid_copy = lux::simulation::ecs::ComponentSchemaSet::build({invalid_copy_schema});
     assert(invalid_copy);
 }

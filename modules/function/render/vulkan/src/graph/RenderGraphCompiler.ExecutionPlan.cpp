@@ -5,10 +5,11 @@
 #include <lux/engine/render/graph/ProgramEmitter.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>                       // domain slot resolution (kEngineSetShapes)
-#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp> // domain set instance (record-time collapsed binding)
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>             // domain slot resolution (kEngineSetShapes)
+#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
+// domain set instance (record-time collapsed binding)
 #include <lux/engine/render/graph/RGBarrierUtils.hpp>
-#include <lux/engine/render/graph/vk_type_converter.hpp>   // convertVkImageLayout (neutral DS layout)
+#include <lux/engine/render/graph/vk_type_converter.hpp> // convertVkImageLayout (neutral DS layout)
 #include <algorithm>
 #include <string>
 #include <type_traits>
@@ -23,12 +24,17 @@ namespace lux::render
         // Scan a write-list for the first resource that has a downstream reader.
         // Returns {consumer_pass_index, resource_index} or {MAX, MAX} if none found.
         // The consumer lookup is only for error diagnostics, so it runs lazily.
-        struct ConsumedWriteResult { uint32_t consumer_pass; uint32_t resource; };
+        struct ConsumedWriteResult
+        {
+            uint32_t consumer_pass;
+            uint32_t resource;
+        };
 
         ConsumedWriteResult findFirstConsumedWrite(
-            uint32_t                  producer_pass_index,
+            uint32_t producer_pass_index,
             std::span<const uint32_t> write_list,
-            const std::vector<std::vector<uint32_t>>& readers_by_resource) noexcept
+            const std::vector<std::vector<uint32_t>>& readers_by_resource
+        ) noexcept
         {
             for (uint32_t ri : write_list)
             {
@@ -50,20 +56,17 @@ namespace lux::render
         // ProgramEmitter is defined in ProgramEmitter.hpp (sinclude).
 
         // Emit a BeginRendering command with prebuilt header + per-attachment view patches.
-        void emitBeginRendering(ProgramEmitter& e, uint32_t pi,
-                                const RGCompiledPass& cpass,
-                                const RGCompiledGraph& compiled)
+        void
+        emitBeginRendering(ProgramEmitter& e, uint32_t pi, const RGCompiledPass& cpass, const RGCompiledGraph& compiled)
         {
             const uint32_t group_idx = compiled.render_pass_layout.pass_to_group[pi];
             const auto& group = compiled.render_pass_layout.groups[group_idx];
 
             // wire structs shared with the decode side — see RGCompiledGraph.hpp.
             using ViewPatch = ExecutionProgram::BeginRenderingViewPatch;
-            using Header    = ExecutionProgram::BeginRenderingHeader;
-            static_assert(std::is_trivially_copyable_v<Header> &&
-                          std::is_trivially_copyable_v<ViewPatch>);
-            static_assert(RenderPassKey::kMaxColorAttachments <= 8,
-                          "lr_* masks in the wire header are 8-bit");
+            using Header = ExecutionProgram::BeginRenderingHeader;
+            static_assert(std::is_trivially_copyable_v<Header> && std::is_trivially_copyable_v<ViewPatch>);
+            static_assert(RenderPassKey::kMaxColorAttachments <= 8, "lr_* masks in the wire header are 8-bit");
 
             lux::cxx::SmallVector<ViewPatch, 9> patches;
             if (group.local_read)
@@ -91,38 +94,38 @@ namespace lux::render
             }
             else
             {
-            uint32_t color_slot_idx = 0;
-            for (const auto& tex_ref : cpass.pass->textures) {
-                if (tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT
-                    && color_slot_idx < group.key.color_count)
+                uint32_t color_slot_idx = 0;
+                for (const auto& tex_ref : cpass.pass->textures)
                 {
-                    ViewPatch vp{};
-                    vp.resource_index = tex_ref.resource.index;
-                    vp.is_depth = 0;
-                    vp.color_slot = static_cast<uint8_t>(color_slot_idx++);
-                    patches.push_back(vp);
+                    if (tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT &&
+                        color_slot_idx < group.key.color_count)
+                    {
+                        ViewPatch vp{};
+                        vp.resource_index = tex_ref.resource.index;
+                        vp.is_depth = 0;
+                        vp.color_slot = static_cast<uint8_t>(color_slot_idx++);
+                        patches.push_back(vp);
+                    }
+                    else if (tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                    {
+                        ViewPatch vp{};
+                        vp.resource_index = tex_ref.resource.index;
+                        vp.is_depth = 1;
+                        vp.color_slot = 0;
+                        patches.push_back(vp);
+                    }
                 }
-                else if (tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
-                {
-                    ViewPatch vp{};
-                    vp.resource_index = tex_ref.resource.index;
-                    vp.is_depth = 1;
-                    vp.color_slot = 0;
-                    patches.push_back(vp);
-                }
-            }
             }
 
-            const uint16_t total_size = static_cast<uint16_t>(
-                sizeof(Header) + patches.size() * sizeof(ViewPatch));
+            const uint16_t total_size = static_cast<uint16_t>(sizeof(Header) + patches.size() * sizeof(ViewPatch));
 
             Header hdr{};
-            hdr.group_idx    = group_idx;
-            hdr.color_count  = group.key.color_count;
-            hdr.color_op     = group.color_load_op;
-            hdr.depth_op     = group.depth_load_op;
+            hdr.group_idx = group_idx;
+            hdr.color_count = group.key.color_count;
+            hdr.color_op = group.color_load_op;
+            hdr.depth_op = group.depth_load_op;
             hdr.depth_format = group.key.depth_stencil_format;
-            hdr.patch_count  = static_cast<uint8_t>(patches.size());
+            hdr.patch_count = static_cast<uint8_t>(patches.size());
             if (group.local_read)
             {
                 hdr.lr_flags = 0x1;
@@ -168,23 +171,24 @@ namespace lux::render
                 const auto* bytes = reinterpret_cast<const std::byte*>(&hdr);
                 e.program.command_data.insert(e.program.command_data.end(), bytes, bytes + sizeof(Header));
             }
-            if (!patches.empty()) {
+            if (!patches.empty())
+            {
                 const auto* bytes = reinterpret_cast<const std::byte*>(patches.data());
-                e.program.command_data.insert(e.program.command_data.end(),
-                                              bytes, bytes + patches.size() * sizeof(ViewPatch));
+                e.program.command_data.insert(
+                    e.program.command_data.end(),
+                    bytes,
+                    bytes + patches.size() * sizeof(ViewPatch)
+                );
             }
-            e.program.commands.push_back({
-                ExecutionProgram::Command::EType::BeginRendering, offset, total_size});
+            e.program.commands.push_back({ExecutionProgram::Command::EType::BeginRendering, offset, total_size});
         }
     } // namespace
 
-    RenderGraphCompiler::LiveAccessIndex
-    RenderGraphCompiler::buildLiveAccessIndex(const RGCompiledGraph &compiled)
+    RenderGraphCompiler::LiveAccessIndex RenderGraphCompiler::buildLiveAccessIndex(const RGCompiledGraph& compiled)
     {
         LiveAccessIndex idx;
         const size_t res_count = compiled.original_graph.resources.size();
-        idx.order_of.assign(compiled.compiled_passes.size(),
-                            std::numeric_limits<uint32_t>::max());
+        idx.order_of.assign(compiled.compiled_passes.size(), std::numeric_limits<uint32_t>::max());
         idx.last_access_order.assign(res_count, 0u);
         idx.readers.resize(res_count);
         idx.image_writers.resize(res_count);
@@ -242,8 +246,7 @@ namespace lux::render
     // This moves the per-frame O(groups×passes×textures) scan into a single
     // compile-time pass, and replaces the per-frame unordered_set tracking in
     // the recorder with a direct field read from RGRenderPassGroup.
-    void RenderGraphCompiler::computeAttachmentOps(RGCompiledGraph& compiled,
-                                                  const LiveAccessIndex& access)
+    void RenderGraphCompiler::computeAttachmentOps(RGCompiledGraph& compiled, const LiveAccessIndex& access)
     {
         auto& groups = compiled.render_pass_layout.groups;
 
@@ -258,11 +261,10 @@ namespace lux::render
         // 上再无任何访问(读或写;组内后续 pass 的 LOAD 也是访问)。注意
         // 不能用 resource lifetimes 的 first/last——那是按 pass index 而非
         // 执行序统计的。
-        const auto& order_of          = access.order_of;
+        const auto& order_of = access.order_of;
         const auto& last_access_order = access.last_access_order;
 
-        auto derive_store_op = [&](uint32_t res_idx, uint32_t after_order) -> VkAttachmentStoreOp
-        {
+        auto derive_store_op = [&](uint32_t res_idx, uint32_t after_order) -> VkAttachmentStoreOp {
             if (res_idx >= res_count)
             {
                 return VK_ATTACHMENT_STORE_OP_STORE;
@@ -272,9 +274,8 @@ namespace lux::render
             {
                 return VK_ATTACHMENT_STORE_OP_STORE;
             }
-            return last_access_order[res_idx] <= after_order
-                ? VK_ATTACHMENT_STORE_OP_DONT_CARE
-                : VK_ATTACHMENT_STORE_OP_STORE;
+            return last_access_order[res_idx] <= after_order ? VK_ATTACHMENT_STORE_OP_DONT_CARE
+                                                             : VK_ATTACHMENT_STORE_OP_STORE;
         };
 
         // Pre-mark imported resources that can actually preserve prior content,
@@ -284,9 +285,7 @@ namespace lux::render
         {
             const auto& res = compiled.original_graph.resources[i];
             if (res.lifetime == ERGResourceLifetime::IMPORTED && res.import_info &&
-                shouldPreserveFirstWriteLoadOp(
-                    res.import_info->preserve_content,
-                    res.import_info->initial_layout))
+                shouldPreserveFirstWriteLoadOp(res.import_info->preserve_content, res.import_info->initial_layout))
             {
                 cleared_color[i] = true;
                 cleared_depth[i] = true;
@@ -320,8 +319,7 @@ namespace lux::render
                 // written by this group — otherwise the next group writing
                 // e.g. the lighting target would be misjudged as its first
                 // writer and CLEAR away the merged scope's output.
-                group.union_color_load_ops.assign(group.union_color_res.size(),
-                                                  VK_ATTACHMENT_LOAD_OP_LOAD);
+                group.union_color_load_ops.assign(group.union_color_res.size(), VK_ATTACHMENT_LOAD_OP_LOAD);
                 for (size_t s = 0; s < group.union_color_res.size(); ++s)
                 {
                     const uint32_t cr = group.union_color_res[s];
@@ -330,8 +328,7 @@ namespace lux::render
                         continue;
                     }
                     group.union_color_load_ops[s] =
-                        cleared_color[cr] ? VK_ATTACHMENT_LOAD_OP_LOAD
-                                          : VK_ATTACHMENT_LOAD_OP_CLEAR;
+                        cleared_color[cr] ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
                     cleared_color[cr] = true;
                 }
                 group.color_load_op = group.union_color_load_ops[0];
@@ -339,9 +336,7 @@ namespace lux::render
                 const uint32_t dr = group.union_depth_res;
                 if (dr < res_count)
                 {
-                    group.depth_load_op = cleared_depth[dr]
-                        ? VK_ATTACHMENT_LOAD_OP_LOAD
-                        : VK_ATTACHMENT_LOAD_OP_CLEAR;
+                    group.depth_load_op = cleared_depth[dr] ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
                     cleared_depth[dr] = true;
                 }
 
@@ -354,23 +349,20 @@ namespace lux::render
                         order_of[gp.pass_index] != std::numeric_limits<uint32_t>::max())
                         scope_end_order = std::max(scope_end_order, order_of[gp.pass_index]);
 
-                group.union_color_store_ops.assign(group.union_color_res.size(),
-                                                   VK_ATTACHMENT_STORE_OP_STORE);
+                group.union_color_store_ops.assign(group.union_color_res.size(), VK_ATTACHMENT_STORE_OP_STORE);
                 for (size_t s = 0; s < group.union_color_res.size(); ++s)
-                    group.union_color_store_ops[s] =
-                        derive_store_op(group.union_color_res[s], scope_end_order);
+                    group.union_color_store_ops[s] = derive_store_op(group.union_color_res[s], scope_end_order);
                 if (dr < res_count)
                 {
                     group.union_depth_store_op = derive_store_op(dr, scope_end_order);
                 }
 
                 // input-attachment 槽位掩码:一次聚合供 emit/serial 消费。
-                group.lr_input_mask  = 0;
+                group.lr_input_mask = 0;
                 group.lr_depth_input = false;
                 for (const auto& gp : group.passes)
                 {
-                    for (uint32_t s = 0; s < gp.input_indices.size()
-                         && s < RenderPassKey::kMaxColorAttachments; ++s)
+                    for (uint32_t s = 0; s < gp.input_indices.size() && s < RenderPassKey::kMaxColorAttachments; ++s)
                         if (gp.input_indices[s] != VK_ATTACHMENT_UNUSED)
                         {
                             group.lr_input_mask |= static_cast<uint8_t>(1u << s);
@@ -398,8 +390,7 @@ namespace lux::render
                     continue;
                 }
                 const uint32_t self_order =
-                    gp.pass_index < order_of.size() ? order_of[gp.pass_index]
-                                                    : std::numeric_limits<uint32_t>::max();
+                    gp.pass_index < order_of.size() ? order_of[gp.pass_index] : std::numeric_limits<uint32_t>::max();
                 for (const auto& tr : cpass.pass->textures)
                 {
                     if (tr.role == lux::render::ETextureRole::COLOR_ATTACHMENT)
@@ -408,8 +399,7 @@ namespace lux::render
                         VkAttachmentLoadOp op = VK_ATTACHMENT_LOAD_OP_LOAD;
                         if (cr < res_count)
                         {
-                            op = cleared_color[cr] ? VK_ATTACHMENT_LOAD_OP_LOAD
-                                                   : VK_ATTACHMENT_LOAD_OP_CLEAR;
+                            op = cleared_color[cr] ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
                             cleared_color[cr] = true;
                         }
                         gp.pass_color_load_ops.push_back(op);
@@ -420,9 +410,8 @@ namespace lux::render
                         const uint32_t dr = tr.resource.index;
                         if (dr < res_count)
                         {
-                            gp.pass_depth_load_op = cleared_depth[dr]
-                                ? VK_ATTACHMENT_LOAD_OP_LOAD
-                                : VK_ATTACHMENT_LOAD_OP_CLEAR;
+                            gp.pass_depth_load_op =
+                                cleared_depth[dr] ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
                             cleared_depth[dr] = true;
                         }
                         gp.pass_depth_store_op = derive_store_op(dr, self_order);
@@ -458,8 +447,7 @@ namespace lux::render
                     {
                         continue;
                     }
-                    const uint32_t wg = w < p2g.size() ? p2g[w]
-                                                       : std::numeric_limits<uint32_t>::max();
+                    const uint32_t wg = w < p2g.size() ? p2g[w] : std::numeric_limits<uint32_t>::max();
                     if (wg != std::numeric_limits<uint32_t>::max() && groups[wg].local_read)
                     {
                         return true;
@@ -492,14 +480,13 @@ namespace lux::render
                         if (d >= gp.pass_color_load_ops.size() ||
                             gp.pass_color_load_ops[d] != VK_ATTACHMENT_LOAD_OP_CLEAR)
                             continue;
-                        if (tr.resource.index < res_count &&
-                            writer_in_lr_group_after(tr.resource.index, self_order))
+                        if (tr.resource.index < res_count && writer_in_lr_group_after(tr.resource.index, self_order))
                         {
                             // 下一个写方落在 local-read 合并作用域里,pending-clear
                             // 的交接到不了合并的 Begin。改成让一个无条件 pass 拥有
                             // 这次 CLEAR。
-                            compiled.compile_error = renderError<err::graph::ConditionalPassOwnsClear>(
-                                cpass.pass_index, tr.resource.index);
+                            compiled.compile_error =
+                                renderError<err::graph::ConditionalPassOwnsClear>(cpass.pass_index, tr.resource.index);
                             return;
                         }
                     }
@@ -522,8 +509,7 @@ namespace lux::render
     // first-writer of a resource) currently do NOT exist in the engine.
     // If one is ever added, this function should assert/error rather than
     // silently producing an incorrect runtime schedule.
-    bool RenderGraphCompiler::classifyElectivePasses(RGCompiledGraph& compiled,
-                                                     const LiveAccessIndex& access)
+    bool RenderGraphCompiler::classifyElectivePasses(RGCompiledGraph& compiled, const LiveAccessIndex& access)
     {
         const auto& groups = compiled.render_pass_layout.groups;
         const uint32_t pass_count = static_cast<uint32_t>(compiled.compiled_passes.size());
@@ -532,7 +518,7 @@ namespace lux::render
         // 反查索引统一走 LiveAccessIndex(活 pass、执行序基准;F6/F12)。
         // image 写者用于链的读侧校验;buffer 读由 computeBarriers 的条件读
         // 累积规则兜底,无需链内约束。
-        const auto& readers_by_resource       = access.readers;
+        const auto& readers_by_resource = access.readers;
         const auto& image_writers_by_resource = access.image_writers;
 
         // 条件链判定(condition_tag != 0):P 写的每个资源的每个读者要么是
@@ -542,15 +528,13 @@ namespace lux::render
         // 读侧:P 读的 image 必须链内产(写者全同 tag)——链外 image 读会
         // 让布局转换 barrier 落在可跳过的 pass 上,跳过即断链;buffer 无布
         // 局,读同步由 computeBarriers 的累积规则复制给后续读者,不设限。
-        auto chain_classify = [&](const RGCompiledPass& cp) -> bool
-        {
+        auto chain_classify = [&](const RGCompiledPass& cp) -> bool {
             const uint64_t tag = cp.pass ? cp.pass->condition_tag : 0u;
             if (tag == 0u)
             {
                 return false;
             }
-            auto readers_ok = [&](uint32_t ri)
-            {
+            auto readers_ok = [&](uint32_t ri) {
                 for (uint32_t reader : readers_by_resource[ri])
                 {
                     if (reader == cp.pass_index)
@@ -612,18 +596,18 @@ namespace lux::render
             // Find the render-pass group this pass belongs to.
             const uint32_t pi = cpass.pass_index;
             const uint32_t group_idx = (pi < compiled.render_pass_layout.pass_to_group.size())
-                                       ? compiled.render_pass_layout.pass_to_group[pi]
-                                       : std::numeric_limits<uint32_t>::max();
+                                           ? compiled.render_pass_layout.pass_to_group[pi]
+                                           : std::numeric_limits<uint32_t>::max();
 
             if (group_idx == std::numeric_limits<uint32_t>::max())
             {
                 // Non-graphics (compute/transfer) conditional pass has no render-pass
                 // group, so runtime skip is only safe when it has no downstream readers.
-                auto result = findFirstConsumedWrite(cpass.pass_index,
-                                  cpass.resources.write_images, readers_by_resource);
+                auto result =
+                    findFirstConsumedWrite(cpass.pass_index, cpass.resources.write_images, readers_by_resource);
                 if (result.resource == std::numeric_limits<uint32_t>::max())
-                    result = findFirstConsumedWrite(cpass.pass_index,
-                                  cpass.resources.write_buffers, readers_by_resource);
+                    result =
+                        findFirstConsumedWrite(cpass.pass_index, cpass.resources.write_buffers, readers_by_resource);
 
                 if (result.resource != std::numeric_limits<uint32_t>::max())
                 {
@@ -637,9 +621,10 @@ namespace lux::render
 
                     // 写方是条件 pass,读方在条件链之外 —— 条件不成立时读到的是
                     // 未定义内容。给整条链一个 setCondition(cond, tag),或者去掉条件。
-                    compiled.compile_error =
-                        renderError<err::graph::ConditionalPassWritesUnconditionalRead>(
-                            cpass.pass_index, result.resource);
+                    compiled.compile_error = renderError<err::graph::ConditionalPassWritesUnconditionalRead>(
+                        cpass.pass_index,
+                        result.resource
+                    );
                     return false;
                 }
 
@@ -672,8 +657,7 @@ namespace lux::render
             }
             else
             {
-                compiled.compile_error =
-                    renderError<err::graph::AllConditionalPassGroup>(cpass.pass_index);
+                compiled.compile_error = renderError<err::graph::AllConditionalPassGroup>(cpass.pass_index);
                 return false;
             }
         }
@@ -726,8 +710,7 @@ namespace lux::render
     // bucket_id) to minimise runtime pipeline switches.  Buffer offsets
     // are assigned sequentially.
 
-    void RenderGraphCompiler::computeMeshBucketLayout(RGCompiledGraph& compiled,
-                                                      PipelineManager& pipeline_manager)
+    void RenderGraphCompiler::computeMeshBucketLayout(RGCompiledGraph& compiled, PipelineManager& pipeline_manager)
     {
         MeshBucketLayoutPlan plan;
 
@@ -749,48 +732,46 @@ namespace lux::render
 
         // Sort lanes by pass/pipeline and then IBO identity. Both pipeline and
         // index-buffer binds stay locally grouped without changing MDC offsets.
-        std::sort(plan.lanes.begin(), plan.lanes.end(),
-            [](const MeshLane& a, const MeshLane& b)
+        std::sort(plan.lanes.begin(), plan.lanes.end(), [](const MeshLane& a, const MeshLane& b) {
+            if (a.pass_index != b.pass_index)
             {
-                if (a.pass_index != b.pass_index)
-                {
-                    return a.pass_index < b.pass_index;
-                }
-                if (a.pipeline != b.pipeline)
-                {
-                    return a.pipeline < b.pipeline;
-                }
-                if (a.ibo_segment != b.ibo_segment)
-                {
-                    return a.ibo_segment < b.ibo_segment;
-                }
-                if (a.index_type != b.index_type)
-                {
-                    return a.index_type < b.index_type;
-                }
-                if (a.geometry_kind != b.geometry_kind)
-                {
-                    return a.geometry_kind < b.geometry_kind;
-                }
-                return a.bucket_id < b.bucket_id;
+                return a.pass_index < b.pass_index;
             }
+            if (a.pipeline != b.pipeline)
+            {
+                return a.pipeline < b.pipeline;
+            }
+            if (a.ibo_segment != b.ibo_segment)
+            {
+                return a.ibo_segment < b.ibo_segment;
+            }
+            if (a.index_type != b.index_type)
+            {
+                return a.index_type < b.index_type;
+            }
+            if (a.geometry_kind != b.geometry_kind)
+            {
+                return a.geometry_kind < b.geometry_kind;
+            }
+            return a.bucket_id < b.bucket_id;
+        }
         );
 
         // Assign offsets matching cull shader addressing.
         // Each lane maps to exactly one MDC entry.
         // indirect_offset = mdc_index * 20, count_offset = mdc_index * 4, maxDraw = 1
         VkPipeline prev_pipeline = VK_NULL_HANDLE;
-        uint32_t   prev_pass     = ~0u;
+        uint32_t prev_pass = ~0u;
 
         for (uint32_t i = 0; i < static_cast<uint32_t>(plan.lanes.size()); ++i)
         {
             auto& lane = plan.lanes[i];
-            lane.lane_id         = i;
+            lane.lane_id = i;
             lane.indirect_offset = static_cast<VkDeviceSize>(lane.mdc_index) * kIndirectCommandSize;
-            lane.count_offset    = static_cast<VkDeviceSize>(lane.mdc_index) * sizeof(uint32_t);
-            lane.bind_pipeline   = (lane.pipeline != prev_pipeline || lane.pass_index != prev_pass);
+            lane.count_offset = static_cast<VkDeviceSize>(lane.mdc_index) * sizeof(uint32_t);
+            lane.bind_pipeline = (lane.pipeline != prev_pipeline || lane.pass_index != prev_pass);
             prev_pipeline = lane.pipeline;
-            prev_pass     = lane.pass_index;
+            prev_pass = lane.pass_index;
         }
 
         // Size totals from max mdc_index
@@ -800,7 +781,7 @@ namespace lux::render
             max_mdc = std::max(max_mdc, lane.mdc_index + 1);
         }
         plan.total_indirect_size = static_cast<VkDeviceSize>(max_mdc) * kIndirectCommandSize;
-        plan.total_count_size    = static_cast<VkDeviceSize>(max_mdc) * sizeof(uint32_t);
+        plan.total_count_size = static_cast<VkDeviceSize>(max_mdc) * sizeof(uint32_t);
 
         compiled.mesh_bucket_layout = std::move(plan);
     }
@@ -830,10 +811,10 @@ namespace lux::render
         {
             ViewArenaRegion region{};
             region.region_id = static_cast<uint32_t>(plan.regions.size());
-            region.offset    = offset;
-            region.size      = compiled.mesh_bucket_layout->total_indirect_size;
+            region.offset = offset;
+            region.size = compiled.mesh_bucket_layout->total_indirect_size;
             region.alignment = kAlignment;
-            region.usage     = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            region.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             plan.regions.push_back(region);
             offset = alignUp(offset + region.size, kAlignment);
         }
@@ -843,11 +824,11 @@ namespace lux::render
         {
             ViewArenaRegion region{};
             region.region_id = static_cast<uint32_t>(plan.regions.size());
-            region.offset    = offset;
-            region.size      = alignUp(compiled.mesh_bucket_layout->total_count_size, 4);
+            region.offset = offset;
+            region.size = alignUp(compiled.mesh_bucket_layout->total_count_size, 4);
             region.alignment = kAlignment;
-            region.usage     = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                             | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            region.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                           VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             plan.regions.push_back(region);
             offset = alignUp(offset + region.size, kAlignment);
         }
@@ -870,23 +851,22 @@ namespace lux::render
             }
 
             const VkDeviceSize frustum_total =
-                kCullDataSize * arena_accum.frustum_ubo_count
-                + kCullDataSize * arena_accum.shadow_slice_count;
+                kCullDataSize * arena_accum.frustum_ubo_count + kCullDataSize * arena_accum.shadow_slice_count;
             if (frustum_total > 0)
             {
                 ViewArenaRegion region{};
                 region.region_id = static_cast<uint32_t>(plan.regions.size());
-                region.offset    = offset;
-                region.size      = frustum_total;
+                region.offset = offset;
+                region.size = frustum_total;
                 region.alignment = kAlignment;
-                region.usage     = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                region.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
                 plan.regions.push_back(region);
                 offset = alignUp(offset + region.size, kAlignment);
             }
         }
 
         plan.total_arena_size = offset;
-        plan.max_views = 4;   // Conservative default; can be tuned per renderer
+        plan.max_views = 4; // Conservative default; can be tuned per renderer
 
         compiled.view_allocator_plan = std::move(plan);
     }
@@ -922,14 +902,19 @@ namespace lux::render
             {
                 BarrierProgram::BarrierGroup group{};
                 group.pass_index = pi;
-                group.image_barriers.assign(sync.prebuilt_image_barriers.begin(),
-                                            sync.prebuilt_image_barriers.end());
-                group.buffer_barriers.assign(sync.prebuilt_buffer_barriers.begin(),
-                                             sync.prebuilt_buffer_barriers.end());
-                group.image_patch_resource_idx.assign(sync.image_patch_resource_idx.begin(),
-                                                      sync.image_patch_resource_idx.end());
-                group.buffer_patch_resource_idx.assign(sync.buffer_patch_resource_idx.begin(),
-                                                       sync.buffer_patch_resource_idx.end());
+                group.image_barriers.assign(sync.prebuilt_image_barriers.begin(), sync.prebuilt_image_barriers.end());
+                group.buffer_barriers.assign(
+                    sync.prebuilt_buffer_barriers.begin(),
+                    sync.prebuilt_buffer_barriers.end()
+                );
+                group.image_patch_resource_idx.assign(
+                    sync.image_patch_resource_idx.begin(),
+                    sync.image_patch_resource_idx.end()
+                );
+                group.buffer_patch_resource_idx.assign(
+                    sync.buffer_patch_resource_idx.begin(),
+                    sync.buffer_patch_resource_idx.end()
+                );
                 program.first_view_barriers.push_back(std::move(group));
             }
 
@@ -938,10 +923,14 @@ namespace lux::render
             {
                 BarrierProgram::BarrierGroup group{};
                 group.pass_index = pi;
-                group.buffer_barriers.assign(sync.prebuilt_buffer_barriers.begin(),
-                                             sync.prebuilt_buffer_barriers.end());
-                group.buffer_patch_resource_idx.assign(sync.buffer_patch_resource_idx.begin(),
-                                                       sync.buffer_patch_resource_idx.end());
+                group.buffer_barriers.assign(
+                    sync.prebuilt_buffer_barriers.begin(),
+                    sync.prebuilt_buffer_barriers.end()
+                );
+                group.buffer_patch_resource_idx.assign(
+                    sync.buffer_patch_resource_idx.begin(),
+                    sync.buffer_patch_resource_idx.end()
+                );
 
                 for (size_t bi = 0; bi < sync.prebuilt_image_barriers.size(); ++bi)
                 {
@@ -949,14 +938,13 @@ namespace lux::render
                     const uint32_t ri = sync.image_patch_resource_idx[bi];
                     uint8_t src_is_final = 0u;
 
-                    const bool can_patch_first_touch = ri < subsequent_view_patched.size()
-                                                    && !subsequent_view_patched[ri]
-                                                    && ri < compiled.imported_final_state_lut.size();
+                    const bool can_patch_first_touch = ri < subsequent_view_patched.size() &&
+                                                       !subsequent_view_patched[ri] &&
+                                                       ri < compiled.imported_final_state_lut.size();
                     if (can_patch_first_touch)
                     {
                         const uint32_t lut = compiled.imported_final_state_lut[ri];
-                        if (lut != RGCompiledGraph::kInvalidSlotIdx &&
-                            lut < compiled.imported_final_states.size())
+                        if (lut != RGCompiledGraph::kInvalidSlotIdx && lut < compiled.imported_final_states.size())
                         {
                             barrier.srcStageMask = compiled.imported_final_states[lut].stage_mask;
                             barrier.srcAccessMask = compiled.imported_final_states[lut].access_mask;
@@ -980,10 +968,14 @@ namespace lux::render
         {
             BarrierProgram::BarrierGroup final_group{};
             final_group.pass_index = ~0u;
-            final_group.image_barriers.assign(compiled.prebuilt_final_barriers.begin(),
-                                              compiled.prebuilt_final_barriers.end());
-            final_group.image_patch_resource_idx.assign(compiled.final_patch_resource_idx.begin(),
-                                                        compiled.final_patch_resource_idx.end());
+            final_group.image_barriers.assign(
+                compiled.prebuilt_final_barriers.begin(),
+                compiled.prebuilt_final_barriers.end()
+            );
+            final_group.image_patch_resource_idx.assign(
+                compiled.final_patch_resource_idx.begin(),
+                compiled.final_patch_resource_idx.end()
+            );
             program.final_barriers.push_back(std::move(final_group));
         }
 
@@ -991,8 +983,7 @@ namespace lux::render
         // replayExecutionRange does not need to rebuild them each frame.
         {
             const uint32_t pass_count = static_cast<uint32_t>(compiled.compiled_passes.size());
-            auto buildIndex = [&](const std::vector<BarrierProgram::BarrierGroup>& groups)
-            {
+            auto buildIndex = [&](const std::vector<BarrierProgram::BarrierGroup>& groups) {
                 std::vector<uint32_t> idx(pass_count, RGCompiledGraph::kInvalidSlotIdx);
                 for (uint32_t gi = 0; gi < static_cast<uint32_t>(groups.size()); ++gi)
                 {
@@ -1022,8 +1013,7 @@ namespace lux::render
         QueueSubmitProgram program;
         const auto& mqi = compiled.multi_queue_info;
 
-        auto makeSubmission = [&](ERGQueueType queue, const std::vector<uint32_t>& order)
-        {
+        auto makeSubmission = [&](ERGQueueType queue, const std::vector<uint32_t>& order) {
             if (order.empty())
             {
                 return;
@@ -1038,19 +1028,19 @@ namespace lux::render
                 for (const auto& dep : cpass.wait_dependencies)
                 {
                     VkSemaphoreSubmitInfo wait_info{};
-                    wait_info.sType       = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-                    wait_info.semaphore   = dep.semaphore;
-                    wait_info.value       = dep.signal_value;
-                    wait_info.stageMask   = dep.wait_stage;
+                    wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                    wait_info.semaphore = dep.semaphore;
+                    wait_info.value = dep.signal_value;
+                    wait_info.stageMask = dep.wait_stage;
                     tmpl.wait_templates.push_back(wait_info);
                 }
                 for (const auto& dep : cpass.signal_dependencies)
                 {
                     VkSemaphoreSubmitInfo signal_info{};
-                    signal_info.sType       = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-                    signal_info.semaphore   = dep.semaphore;
-                    signal_info.value       = dep.signal_value;
-                    signal_info.stageMask   = dep.signal_stage;
+                    signal_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                    signal_info.semaphore = dep.semaphore;
+                    signal_info.value = dep.signal_value;
+                    signal_info.stageMask = dep.signal_stage;
                     tmpl.signal_templates.push_back(signal_info);
                 }
             }
@@ -1058,7 +1048,7 @@ namespace lux::render
             program.submissions.push_back(std::move(tmpl));
         };
 
-        makeSubmission(ERGQueueType::COMPUTE,  mqi.compute_order);
+        makeSubmission(ERGQueueType::COMPUTE, mqi.compute_order);
         makeSubmission(ERGQueueType::TRANSFER, mqi.transfer_order);
         makeSubmission(ERGQueueType::GRAPHICS, mqi.graphics_order);
 
@@ -1096,20 +1086,21 @@ namespace lux::render
 
             const uint32_t span_start = static_cast<uint32_t>(program.commands.size());
 
-            const bool is_graphics =
-                cpass.pass->type == ERGPassType::GRAPHICS;
+            const bool is_graphics = cpass.pass->type == ERGPassType::GRAPHICS;
 
             // --- Set pass context (executor tracks current pass) ---
-            emitter.emit(ExecutionProgram::Command::EType::SetPassContext,
-                        &pi, sizeof(uint32_t));
+            emitter.emit(ExecutionProgram::Command::EType::SetPassContext, &pi, sizeof(uint32_t));
 
             // --- Pre-pass barriers ---
             const auto& sync = cpass.sync;
             if (!sync.prebuilt_image_barriers.empty() || !sync.prebuilt_buffer_barriers.empty())
             {
-                struct { uint32_t pass_index; uint32_t phase; } bd{pi, 0};
-                emitter.emit(ExecutionProgram::Command::EType::PipelineBarrier,
-                            &bd, static_cast<uint16_t>(sizeof(bd)));
+                struct
+                {
+                    uint32_t pass_index;
+                    uint32_t phase;
+                } bd{pi, 0};
+                emitter.emit(ExecutionProgram::Command::EType::PipelineBarrier, &bd, static_cast<uint16_t>(sizeof(bd)));
             }
 
             // --- Begin rendering (with prebuilt template) ---
@@ -1128,80 +1119,88 @@ namespace lux::render
             if (is_graphics)
             {
                 const uint32_t gi = compiled.render_pass_layout.pass_to_group[pi];
-                if (gi != std::numeric_limits<uint32_t>::max()
-                    && compiled.render_pass_layout.groups[gi].local_read)
+                if (gi != std::numeric_limits<uint32_t>::max() && compiled.render_pass_layout.groups[gi].local_read)
                 {
                     const auto& group = compiled.render_pass_layout.groups[gi];
                     const RGPassInRenderPass* in_group = nullptr;
                     for (const auto& p : group.passes)
-                        if (p.pass_index == pi) { in_group = &p; break; }
+                        if (p.pass_index == pi)
+                        {
+                            in_group = &p;
+                            break;
+                        }
                     if (in_group)
                     {
                         // wire struct shared with the decode side (RGCompiledGraph.hpp).
                         ExecutionProgram::LocalReadBoundaryPayload b{};
-                        b.color_count       = group.key.color_count;
-                        b.emit_barrier      = in_group->subpass_index > 0 ? 1u : 0u;
+                        b.color_count = group.key.color_count;
+                        b.emit_barrier = in_group->subpass_index > 0 ? 1u : 0u;
                         b.depth_input_index = in_group->depth_input_index;
                         for (uint32_t s = 0; s < RenderPassKey::kMaxColorAttachments; ++s)
                         {
-                            b.locations[s] = s < in_group->color_locations.size()
-                                ? in_group->color_locations[s] : VK_ATTACHMENT_UNUSED;
-                            b.input_indices[s] = s < in_group->input_indices.size()
-                                ? in_group->input_indices[s] : VK_ATTACHMENT_UNUSED;
+                            b.locations[s] = s < in_group->color_locations.size() ? in_group->color_locations[s]
+                                                                                  : VK_ATTACHMENT_UNUSED;
+                            b.input_indices[s] =
+                                s < in_group->input_indices.size() ? in_group->input_indices[s] : VK_ATTACHMENT_UNUSED;
                         }
-                        emitter.emit(ExecutionProgram::Command::EType::LocalReadBoundary,
-                                     &b, static_cast<uint16_t>(sizeof(b)));
+                        emitter.emit(
+                            ExecutionProgram::Command::EType::LocalReadBoundary,
+                            &b,
+                            static_cast<uint16_t>(sizeof(b))
+                        );
                     }
                 }
             }
 
             // --- Bind pipeline ---
-            const bool emit_pass_pipeline = full_fast_path
-                ? cpass.render.bind_pipeline
-                : (cpass.render.pipeline != VK_NULL_HANDLE);
+            const bool emit_pass_pipeline =
+                full_fast_path ? cpass.render.bind_pipeline : (cpass.render.pipeline != VK_NULL_HANDLE);
             if (emit_pass_pipeline && cpass.render.pipeline != VK_NULL_HANDLE)
             {
-                struct { VkPipeline pipeline; VkPipelineLayout layout; }
-                    bp{cpass.render.pipeline, cpass.render.pipeline_layout};
-                emitter.emit(ExecutionProgram::Command::EType::BindPipeline,
-                            &bp, static_cast<uint16_t>(sizeof(bp)));
+                struct
+                {
+                    VkPipeline pipeline;
+                    VkPipelineLayout layout;
+                } bp{cpass.render.pipeline, cpass.render.pipeline_layout};
+                emitter.emit(ExecutionProgram::Command::EType::BindPipeline, &bp, static_cast<uint16_t>(sizeof(bp)));
             }
 
             // --- Bind descriptor sets ---
             for (const auto& recipe : cpass.render.ds_bind_recipe)
             {
-                struct { uint32_t slot; VkDescriptorSet set; }
-                    bd{recipe.slot, recipe.immutable_set};
+                struct
+                {
+                    uint32_t slot;
+                    VkDescriptorSet set;
+                } bd{recipe.slot, recipe.immutable_set};
                 const uint32_t cmd_idx = emitter.emit(
                     ExecutionProgram::Command::EType::BindDescriptorSets,
-                    &bd, static_cast<uint16_t>(sizeof(bd)));
+                    &bd,
+                    static_cast<uint16_t>(sizeof(bd))
+                );
 
                 if (recipe.resolve != DSBindRecipe::resolveImmutable)
                 {
                     ExecutionProgram::DynamicPatch patch{};
-                    patch.command_index     = cmd_idx;
+                    patch.command_index = cmd_idx;
                     patch.data_field_offset = static_cast<uint16_t>(sizeof(uint32_t)); // offset of 'set' field
-                    patch.source            = ExecutionProgram::DynamicPatch::ESource::FrameIndex;
-                    patch.source_param      = recipe.slot;
+                    patch.source = ExecutionProgram::DynamicPatch::ESource::FrameIndex;
+                    patch.source_param = recipe.slot;
                     program.patches.push_back(patch);
                 }
             }
 
             // --- Push constants (graphics: scene_index + view_index) ---
-            if (is_graphics && !cpass.render.ds_bind_recipe.empty()
-                && cpass.render.pipeline_layout != VK_NULL_HANDLE)
+            if (is_graphics && !cpass.render.ds_bind_recipe.empty() && cpass.render.pipeline_layout != VK_NULL_HANDLE)
             {
-                emitter.emit(ExecutionProgram::Command::EType::PushConstants,
-                            &pi, sizeof(uint32_t));
+                emitter.emit(ExecutionProgram::Command::EType::PushConstants, &pi, sizeof(uint32_t));
             }
 
             // --- Viewport / Scissor (every graphics pass) ---
             if (is_graphics && !cpass.pass->manual_viewport)
             {
-                emitter.emit(ExecutionProgram::Command::EType::SetViewport,
-                            &pi, sizeof(uint32_t));
-                emitter.emit(ExecutionProgram::Command::EType::SetScissor,
-                            &pi, sizeof(uint32_t));
+                emitter.emit(ExecutionProgram::Command::EType::SetViewport, &pi, sizeof(uint32_t));
+                emitter.emit(ExecutionProgram::Command::EType::SetScissor, &pi, sizeof(uint32_t));
             }
 
             // --- Kernel-specific commands ---
@@ -1222,9 +1221,8 @@ namespace lux::render
 
             // Safety net: if a pass is classified as native but no kernel body command
             // was emitted, fall back to callback invocation when available.
-            if (cpass.execution_mode == EPassExecutionMode::COMPILED_NATIVE
-                && cpass.pass->kernel_fn
-                && static_cast<uint32_t>(program.commands.size()) == kernel_cmd_start)
+            if (cpass.execution_mode == EPassExecutionMode::COMPILED_NATIVE && cpass.pass->kernel_fn &&
+                static_cast<uint32_t>(program.commands.size()) == kernel_cmd_start)
             {
                 emitter.emit(ExecutionProgram::Command::EType::InvokeKernelFn, nullptr, 0);
             }
@@ -1247,7 +1245,7 @@ namespace lux::render
         // a [BeginRendering, EndRendering) scope.
         {
             bool inside_scope = false;
-            bool compatible   = true;
+            bool compatible = true;
             for (const auto& cmd : program.commands)
             {
                 if (cmd.type == ExecutionProgram::Command::EType::BeginRendering)
@@ -1269,6 +1267,5 @@ namespace lux::render
 
         compiled.execution_program = std::move(program);
     }
-
 
 } // namespace lux::render

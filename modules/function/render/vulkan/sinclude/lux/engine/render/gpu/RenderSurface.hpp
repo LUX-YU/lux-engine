@@ -35,9 +35,12 @@ namespace lux::render
     {
     public:
         RenderSurface() noexcept = default;
-        ~RenderSurface() { reset(); }
+        ~RenderSurface()
+        {
+            reset();
+        }
 
-        RenderSurface(const RenderSurface&)            = delete;
+        RenderSurface(const RenderSurface&) = delete;
         RenderSurface& operator=(const RenderSurface&) = delete;
 
         RenderSurface(RenderSurface&& other) noexcept;
@@ -45,43 +48,55 @@ namespace lux::render
         /// skipping that step is how a move-assign silently leaks a surface.
         RenderSurface& operator=(RenderSurface&& other) noexcept;
 
-        bool init(window::LuxWindow& window,
-                  lux::gapi::vk::Instance& instance,
-                  VkAllocationCallbacks* allocator = nullptr);
+        bool
+        init(window::LuxWindow& window, lux::gapi::vk::Instance& instance, VkAllocationCallbacks* allocator = nullptr);
 
         /// Create from a POD native window handle on the render thread (the
         /// command payload carries the handle across threads; Vulkan puts no
         /// thread affinity on surface creation). Win32 = HWND; the Android path
         /// is stubbed until the on-device stage.
-        bool initFromNative(std::uint64_t native_window_handle,
-                            VkExtent2D initial_extent,
-                            lux::gapi::vk::Instance& instance,
-                            VkAllocationCallbacks* allocator = nullptr);
+        bool initFromNative(
+            std::uint64_t native_window_handle,
+            VkExtent2D initial_extent,
+            lux::gapi::vk::Instance& instance,
+            VkAllocationCallbacks* allocator = nullptr
+        );
 
         /// Take ownership of an externally created surface (the imgui secondary
         /// viewport's Created event arrives with one the UI thread already built).
         /// The instance is required for the same reason the other two paths take
         /// it: an owner that cannot destroy what it holds is not an owner.
-        [[nodiscard]] static RenderSurface adopt(VkSurfaceKHR surface,
-                                                 VkExtent2D initial_extent,
-                                                 lux::gapi::vk::Instance& instance,
-                                                 VkAllocationCallbacks* allocator = nullptr) noexcept;
+        [[nodiscard]] static RenderSurface adopt(
+            VkSurfaceKHR surface,
+            VkExtent2D initial_extent,
+            lux::gapi::vk::Instance& instance,
+            VkAllocationCallbacks* allocator = nullptr
+        ) noexcept;
 
         /// Destroy now rather than at scope exit, and become empty. Idempotent.
         /// Only needed when release has to happen at a specific point; plain
         /// destruction is the normal path.
         void reset() noexcept;
 
-        [[nodiscard]] VkExtent2D extent() const noexcept { return extent_; }
-        [[nodiscard]] bool isValid() const noexcept { return surface_ != VK_NULL_HANDLE; }
+        [[nodiscard]] VkExtent2D extent() const noexcept
+        {
+            return extent_;
+        }
+        [[nodiscard]] bool isValid() const noexcept
+        {
+            return surface_ != VK_NULL_HANDLE;
+        }
 
-        operator VkSurfaceKHR() const noexcept { return surface_; }
+        operator VkSurfaceKHR() const noexcept
+        {
+            return surface_;
+        }
 
     private:
-        VkExtent2D             extent_{0, 0};
-        VkSurfaceKHR           surface_{VK_NULL_HANDLE};
+        VkExtent2D extent_{0, 0};
+        VkSurfaceKHR surface_{VK_NULL_HANDLE};
         // Destruction context, carried so the destructor can actually destroy.
-        VkInstance             instance_{VK_NULL_HANDLE};
+        VkInstance instance_{VK_NULL_HANDLE};
         VkAllocationCallbacks* allocator_{nullptr};
     };
 }

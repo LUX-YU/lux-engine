@@ -26,13 +26,12 @@ namespace lux::render
      */
     struct ProgramEmitter
     {
-        ExecutionProgram&       program;
-        const RGCompiledGraph&  compiled;
+        ExecutionProgram& program;
+        const RGCompiledGraph& compiled;
 
         /// Append a command with optional inline argument blob.
         /// @return  Command index (for DynamicPatch construction).
-        uint32_t emit(ExecutionProgram::Command::EType type,
-                      const void* data, uint16_t data_size)
+        uint32_t emit(ExecutionProgram::Command::EType type, const void* data, uint16_t data_size)
         {
             const uint32_t offset = static_cast<uint32_t>(program.command_data.size());
             if (data && data_size > 0)
@@ -62,11 +61,15 @@ namespace lux::render
         /// Emit a kernel-specific sub-command (EType::KernelCommand).
         /// The command data is packed as: [KernelTypeId kernel_id, uint8_t sub_cmd, payload...].
         /// @return Command index (for DynamicPatch construction).
-        uint32_t emitKernelCommand(KernelTypeId kernel_id, uint8_t sub_cmd,
-                                   const void* payload, uint16_t payload_size)
+        uint32_t emitKernelCommand(KernelTypeId kernel_id, uint8_t sub_cmd, const void* payload, uint16_t payload_size)
         {
             // Header: [kernel_id(1 byte) | sub_cmd(1 byte) | payload_size(2 bytes)]
-            struct Header { KernelTypeId kid; uint8_t sub; uint16_t psize; };
+            struct Header
+            {
+                KernelTypeId kid;
+                uint8_t sub;
+                uint16_t psize;
+            };
             static_assert(sizeof(Header) == 4);
             Header hdr{kernel_id, sub_cmd, payload_size};
 
@@ -75,8 +78,7 @@ namespace lux::render
 
             // Append header
             const auto* hdr_bytes = reinterpret_cast<const std::byte*>(&hdr);
-            program.command_data.insert(program.command_data.end(),
-                                        hdr_bytes, hdr_bytes + sizeof(hdr));
+            program.command_data.insert(program.command_data.end(), hdr_bytes, hdr_bytes + sizeof(hdr));
             // Append payload
             if (payload && payload_size > 0)
             {
@@ -84,8 +86,7 @@ namespace lux::render
                 program.command_data.insert(program.command_data.end(), p, p + payload_size);
             }
 
-            program.commands.push_back({
-                ExecutionProgram::Command::EType::KernelCommand, offset, total});
+            program.commands.push_back({ExecutionProgram::Command::EType::KernelCommand, offset, total});
             return static_cast<uint32_t>(program.commands.size() - 1);
         }
     };

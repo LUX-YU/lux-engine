@@ -10,13 +10,11 @@ namespace lux::render
     }
 
     RenderSceneLease::RenderSceneLease(RenderSceneLease&& other) noexcept
-        : session_(std::exchange(other.session_, nullptr)),
-          id_(std::exchange(other.id_, {}))
+        : session_(std::exchange(other.session_, nullptr)), id_(std::exchange(other.id_, {}))
     {
     }
 
-    RenderSceneLease&
-    RenderSceneLease::operator=(RenderSceneLease&& other) noexcept
+    RenderSceneLease& RenderSceneLease::operator=(RenderSceneLease&& other) noexcept
     {
         if (this == &other)
             return *this;
@@ -25,7 +23,7 @@ namespace lux::render
         // behaviour depend on whether a frame happens to be open at this line.
         deferOwnedRelease();
         session_ = std::exchange(other.session_, nullptr);
-        id_      = std::exchange(other.id_, {});
+        id_ = std::exchange(other.id_, {});
         return *this;
     }
 
@@ -56,10 +54,8 @@ namespace lux::render
     }
 
     RenderViewLease::RenderViewLease(RenderViewLease&& other) noexcept
-        : session_(std::exchange(other.session_, nullptr)),
-          scene_id_(std::exchange(other.scene_id_, {})),
-          view_(std::exchange(other.view_, {})),
-          observer_(std::move(other.observer_))
+        : session_(std::exchange(other.session_, nullptr)), scene_id_(std::exchange(other.scene_id_, {})),
+          view_(std::exchange(other.view_, {})), observer_(std::move(other.observer_))
     {
     }
 
@@ -69,9 +65,9 @@ namespace lux::render
             return *this;
 
         deferOwnedRelease();
-        session_  = std::exchange(other.session_, nullptr);
+        session_ = std::exchange(other.session_, nullptr);
         scene_id_ = std::exchange(other.scene_id_, {});
-        view_     = std::exchange(other.view_, {});
+        view_ = std::exchange(other.view_, {});
         observer_ = std::move(other.observer_);
         return *this;
     }
@@ -98,12 +94,8 @@ namespace lux::render
             return;
 
         const auto scene_id = std::exchange(scene_id_, {});
-        const auto view     = std::exchange(view_, {});
-        std::exchange(session_, nullptr)->deferRemoveView(
-            scene_id,
-            view,
-            std::move(observer_)
-        );
+        const auto view = std::exchange(view_, {});
+        std::exchange(session_, nullptr)->deferRemoveView(scene_id, view, std::move(observer_));
     }
 
     RenderTargetLease::~RenderTargetLease() noexcept
@@ -112,21 +104,19 @@ namespace lux::render
     }
 
     RenderTargetLease::RenderTargetLease(RenderTargetLease&& other) noexcept
-        : session_(std::exchange(other.session_, nullptr)),
-          target_(std::exchange(other.target_, {})),
+        : session_(std::exchange(other.session_, nullptr)), target_(std::exchange(other.target_, {})),
           observer_(std::move(other.observer_))
     {
     }
 
-    RenderTargetLease&
-    RenderTargetLease::operator=(RenderTargetLease&& other) noexcept
+    RenderTargetLease& RenderTargetLease::operator=(RenderTargetLease&& other) noexcept
     {
         if (this == &other)
             return *this;
 
         deferOwnedRelease();
-        session_  = std::exchange(other.session_, nullptr);
-        target_   = std::exchange(other.target_, {});
+        session_ = std::exchange(other.session_, nullptr);
+        target_ = std::exchange(other.target_, {});
         observer_ = std::move(other.observer_);
         return *this;
     }
@@ -134,8 +124,7 @@ namespace lux::render
     RenderTargetCloseResult RenderTargetLease::close() noexcept
     {
         if (!session_ || !target_.isValid())
-            return lux::cxx::unexpected(
-                ERenderTargetCloseError::AlreadyClosed);
+            return lux::cxx::unexpected(ERenderTargetCloseError::AlreadyClosed);
         auto request = session_->destroyRenderTarget(target_);
         if (request.isReady() && request.failed())
             return lux::cxx::unexpected(ERenderTargetCloseError::Stopping);
@@ -152,10 +141,7 @@ namespace lux::render
             return;
 
         const auto target = std::exchange(target_, {});
-        std::exchange(session_, nullptr)->deferDestroyTarget(
-            target,
-            std::move(observer_)
-        );
+        std::exchange(session_, nullptr)->deferDestroyTarget(target, std::move(observer_));
     }
 
 } // namespace lux::render

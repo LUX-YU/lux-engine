@@ -14,33 +14,23 @@ namespace lux::render
     // Defined in RenderServer.cpp
     RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
 
-    void handleSkyboxSetEquirect(GeneralRenderServer::Dispatcher::Ctx& ctx,
-                                 const SkyboxSetEquirectPayload& p)
+    void handleSkyboxSetEquirect(GeneralRenderServer::Dispatcher::Ctx& ctx, const SkyboxSetEquirectPayload& p)
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
         if (sc)
             if (auto* f = sc->getFeatureAs<SkyboxFeature>(p.feature))
-                f->applyEquirectangularHandle(
-                    p.texture,
-                    p.rotation_radians,
-                    p.intensity);
+                f->applyEquirectangularHandle(p.texture, p.rotation_radians, p.intensity);
     }
 
-    void handleSkyboxSetCubemap(GeneralRenderServer::Dispatcher::Ctx& ctx,
-                                const SkyboxSetCubemapPayload& p)
+    void handleSkyboxSetCubemap(GeneralRenderServer::Dispatcher::Ctx& ctx, const SkyboxSetCubemapPayload& p)
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
         if (sc)
             if (auto* f = sc->getFeatureAs<SkyboxFeature>(p.feature))
-                f->applyCubemapHandles(
-                    p.cube,
-                    p.rotation_radians,
-                    p.intensity);
+                f->applyCubemapHandles(p.cube, p.rotation_radians, p.intensity);
     }
 
-    void handleSkyboxStats(
-        GeneralRenderServer::Dispatcher::Ctx& ctx,
-        const SkyboxStatsPayload& payload)
+    void handleSkyboxStats(GeneralRenderServer::Dispatcher::Ctx& ctx, const SkyboxStatsPayload& payload)
     {
         const auto* scene = lookupScene(ctx.user_state, payload.scene_id);
         const SkyboxFeature* skybox = nullptr;
@@ -55,9 +45,7 @@ namespace lux::render
                 }
             }
         }
-        replyToCurrent<SkyboxStatsPayload>(
-            ctx,
-            skybox ? skybox->stats() : SkyboxStatsReply{});
+        replyToCurrent<SkyboxStatsPayload>(ctx, skybox ? skybox->stats() : SkyboxStatsReply{});
     }
 
     // custom_create:同名字段抄写之外还有装配决策(LDR 管线时 skybox 直画
@@ -72,8 +60,8 @@ namespace lux::render
         const SkyboxCommConfig& cc = *decoded;
 
         SkyboxFeature::Config cfg{};
-        cfg.vertex_shader     = cc.vertex_shader;
-        cfg.cubemap_fragment  = cc.cubemap_fragment;
+        cfg.vertex_shader = cc.vertex_shader;
+        cfg.cubemap_fragment = cc.cubemap_fragment;
         cfg.equirect_fragment = cc.equirect_fragment;
 
         // LDR pipeline → skybox renders on SceneColor directly

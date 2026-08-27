@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <vector>
 
-int main()
+int
+main()
 {
     using namespace lux::input;
     using namespace lux::window;

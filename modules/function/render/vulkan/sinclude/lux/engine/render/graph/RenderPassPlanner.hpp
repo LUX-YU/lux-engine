@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/function/render/client/core/Errors.hpp>   // RenderError
+#include <lux/engine/function/render/client/core/Errors.hpp> // RenderError
 
 #include <cstdint>
 #include <string>
@@ -14,9 +14,10 @@
 namespace lux::render
 {
     // Render pass information for each graphics pass
-    struct RGPassInRenderPass {
-        uint32_t pass_index; // Logical pass index
-        uint32_t subpass_index;// Subpass number in physical render pass (can be all 0 for now)
+    struct RGPassInRenderPass
+    {
+        uint32_t pass_index;    // Logical pass index
+        uint32_t subpass_index; // Subpass number in physical render pass (can be all 0 for now)
 
         // ── local-read merged-group remaps (line-B design P2) ────────────
         // Filled ONLY for passes inside a local_read group; empty vectors =
@@ -47,9 +48,10 @@ namespace lux::render
         VkAttachmentStoreOp pass_depth_store_op = VK_ATTACHMENT_STORE_OP_STORE;
     };
 
-    struct RGRenderPassGroup {
-        RenderPassKey key;                       ///< Format + samples
-        std::vector<RGPassInRenderPass> passes;  ///< Passes within the group
+    struct RGRenderPassGroup
+    {
+        RenderPassKey key;                      ///< Format + samples
+        std::vector<RGPassInRenderPass> passes; ///< Passes within the group
 
         /// 组级 loadOp(computeAttachmentOps 填充)。fast path 消费(整组只在
         /// 首 pass Begin 一次);serial 路径按逐 pass 表(pass_*_load_ops)。
@@ -89,18 +91,19 @@ namespace lux::render
         /// input-attachment 读的并集槽位掩码 + 深度输入标记(编译期由
         /// computeAttachmentOps 聚合一次;emit 与 serial 两个消费点直接读,
         /// 勿各自再扫 passes)。Only filled for local_read groups.
-        uint8_t lr_input_mask  = 0;
-        bool    lr_depth_input = false;
+        uint8_t lr_input_mask = 0;
+        bool lr_depth_input = false;
     };
 
-    struct RGRenderPassLayoutInfo {
+    struct RGRenderPassLayoutInfo
+    {
         std::vector<RGRenderPassGroup> groups;
 
         // Convenient query: pass_index -> (group_index, subpass_index)
-        std::vector<uint32_t> pass_to_group;  // size = pass_count, INVALID or group_index
+        std::vector<uint32_t> pass_to_group; // size = pass_count, INVALID or group_index
         std::vector<uint32_t> pass_to_subpass;
 
-        bool        valid{true};
+        bool valid{true};
         RenderError error;
     };
 
@@ -114,8 +117,7 @@ namespace lux::render
         ///        Never pass the array capacity as if it were a device limit:
         ///        Vulkan only guarantees 4 and a wider group fails at
         ///        vkCmdBeginRendering.
-        static RGRenderPassLayoutInfo plan(const RGGraphDescription& graph,
-                                           const RGDependencyInfo&   deps,
-                                           uint32_t                  max_color_attachments = 0);
+        static RGRenderPassLayoutInfo
+        plan(const RGGraphDescription& graph, const RGDependencyInfo& deps, uint32_t max_color_attachments = 0);
     };
 } // namespace lux::render

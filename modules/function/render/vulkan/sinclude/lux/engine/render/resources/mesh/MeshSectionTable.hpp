@@ -40,23 +40,36 @@ namespace lux::render
         ///        同一个 section id —— 在跨段几何错误之上再叠一层别名。
         ///        当前 GPU 驱动路径只接受段 0 的网格(serverAddMeshInstance 处强制),
         ///        所以实际取值恒为 0;此参数是给将来的按段分桶留的正确性余量。
-        [[nodiscard]] uint32_t registerSection(const MeshSectionRecord& section,
-                                               uint16_t ibo_segment = 0,
-                                               VkIndexType index_type =
-                                                   VK_INDEX_TYPE_UINT32);
+        [[nodiscard]] uint32_t registerSection(
+            const MeshSectionRecord& section,
+            uint16_t ibo_segment = 0,
+            VkIndexType index_type = VK_INDEX_TYPE_UINT32
+        );
         void unregisterSection(uint32_t section_id);
 
         [[nodiscard]] const MeshSectionRecord& at(uint32_t section_id) const noexcept;
-        [[nodiscard]] VkBuffer buffer() const noexcept { return stream_.buffer(); }
-        [[nodiscard]] bool hasWork() const noexcept { return !cpu_only_mode_ && (full_rebuild_ || stream_.hasDirtyPages()); }
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept { stream_.setDeferredQueue(q); }
+        [[nodiscard]] VkBuffer buffer() const noexcept
+        {
+            return stream_.buffer();
+        }
+        [[nodiscard]] bool hasWork() const noexcept
+        {
+            return !cpu_only_mode_ && (full_rebuild_ || stream_.hasDirtyPages());
+        }
+        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
+        {
+            stream_.setDeferredQueue(q);
+        }
 
         bool ensureCapacity(uint32_t required);
 
         /// Transfer subsystem path — submit copy requests to scheduler.
         void submitTransfers(TransferScheduler& scheduler);
 
-        void markFullRebuild() noexcept { full_rebuild_ = true; }
+        void markFullRebuild() noexcept
+        {
+            full_rebuild_ = true;
+        }
 
     private:
         struct SectionKey
@@ -71,12 +84,9 @@ namespace lux::render
 
             [[nodiscard]] bool operator==(const SectionKey& rhs) const noexcept
             {
-                return first_index == rhs.first_index
-                    && index_count == rhs.index_count
-                    && base_vertex == rhs.base_vertex
-                    && vertex_count == rhs.vertex_count
-                    && ibo_segment == rhs.ibo_segment
-                    && index_type == rhs.index_type;
+                return first_index == rhs.first_index && index_count == rhs.index_count &&
+                       base_vertex == rhs.base_vertex && vertex_count == rhs.vertex_count &&
+                       ibo_segment == rhs.ibo_segment && index_type == rhs.index_type;
             }
         };
 
@@ -94,9 +104,8 @@ namespace lux::render
             }
         };
 
-        [[nodiscard]] static SectionKey makeSectionKey(const MeshSectionRecord& section,
-                                                       uint16_t ibo_segment,
-                                                       VkIndexType index_type) noexcept;
+        [[nodiscard]] static SectionKey
+        makeSectionKey(const MeshSectionRecord& section, uint16_t ibo_segment, VkIndexType index_type) noexcept;
 
         PagedGpuStream<MeshSectionRecord> stream_;
         // Upload-chunk scratch reused across ticks (cleared at submitTransfers

@@ -18,11 +18,14 @@ namespace lux::script::lua
 
         ScriptRef(const ScriptRef&) = delete;
         ScriptRef& operator=(const ScriptRef&) = delete;
-    
+
         ScriptRef(ScriptRef&& other) noexcept;
         ScriptRef& operator=(ScriptRef&& other) noexcept;
 
-		int ref() const { return ref_; }
+        int ref() const
+        {
+            return ref_;
+        }
 
     private:
         int ref_;
@@ -39,12 +42,11 @@ namespace lux::script::lua
         std::optional<ScriptRef> parseScript(std::string_view script);
         [[nodiscard]] bool runScript(const ScriptRef& program);
 
-        using ErrorHandler =
-            lux::cxx::move_only_function<void(std::string_view)>;
+        using ErrorHandler = lux::cxx::move_only_function<void(std::string_view)>;
 
         void setOnError(ErrorHandler on_error);
-    private:
 
+    private:
         std::unique_ptr<ScriptEngineImpl> impl_;
     };
 }

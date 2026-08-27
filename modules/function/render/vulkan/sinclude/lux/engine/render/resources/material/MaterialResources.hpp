@@ -31,29 +31,30 @@ namespace lux::render
         : public GPUResourceBase<MaterialResources, EGPUResourceType::Material>
     {
     public:
-
         /// Internal record: maps handle → family/shading-model for dispatch.
-        struct SlotRecord {
-            ELightingTechnique  family{ ELightingTechnique::Unlit };
-            EShadingModel       shading_model{ EShadingModel::INVALID };
-            SlotHandle          local_slot{};
-            ShaderFeatureMask   feature_mask{0};
-            uint32_t            variant_bucket{0};
+        struct SlotRecord
+        {
+            ELightingTechnique family{ELightingTechnique::Unlit};
+            EShadingModel shading_model{EShadingModel::INVALID};
+            SlotHandle local_slot{};
+            ShaderFeatureMask feature_mask{0};
+            uint32_t variant_bucket{0};
             /// Pre-packed (family<<12)|shading_model — computed here at submit so
             /// the core (addMeshInstance) copies an OPAQUE uint32 into the instance
             /// property and never names EShadingModel / calls packMaterialType.
-            uint32_t            packed_material_type{0};
+            uint32_t packed_material_type{0};
         };
 
         // Bucket types now live in VariantBucketManager (S9). Aliased here so the
         // long-standing `MaterialResources::VariantBucketDesc` spelling used by
         // GpuDrivenMeshFeatureBase keeps compiling.
-        using VariantBucketDesc  = lux::render::VariantBucketDesc;
+        using VariantBucketDesc = lux::render::VariantBucketDesc;
 
-        struct InitInfo {
+        struct InitInfo
+        {
             SSBOInitConfig ssbo_config;
-            VkDescriptorPool descriptor_pool;     // Descriptor pool
-            VkDescriptorSetLayout set_layout;     // Descriptor set layout
+            VkDescriptorPool descriptor_pool; // Descriptor pool
+            VkDescriptorSetLayout set_layout; // Descriptor set layout
             const TextureSamplingRepresentationCatalog* texture_sampling_catalog{};
         };
 
@@ -84,19 +85,19 @@ namespace lux::render
         /// generic param/texture blob into the graph SSBO; returns a handle whose
         /// SlotRecord routes to the Graph family (ELightingTechnique::Graph) so
         /// the instance draws with the graph-override fragment pipeline.
-        Expected<MaterialHandle>
-        submitGraph(const GraphMaterialData& data,
-                    ShaderHandle gbuffer_shader = {},
-                    ShaderHandle forward_shader = {},
-                    uint64_t     shader_key     = 0,
-                    lux::rdesc::EAlphaMode alpha_mode   = lux::rdesc::EAlphaMode::Opaque,
-                    bool                   double_sided = false);
+        Expected<MaterialHandle> submitGraph(
+            const GraphMaterialData& data,
+            ShaderHandle gbuffer_shader = {},
+            ShaderHandle forward_shader = {},
+            uint64_t shader_key = 0,
+            lux::rdesc::EAlphaMode alpha_mode = lux::rdesc::EAlphaMode::Opaque,
+            bool double_sided = false
+        );
 
         /// Update an existing Graph-family material's blob in place (same slot) —
         /// the per-frame path for animated params. NotFound if the handle is
         /// unknown, TypeMismatch if it is not a Graph-family material.
-        RenderError
-        modifyGraph(MaterialHandle slot, const GraphMaterialData& data);
+        RenderError modifyGraph(MaterialHandle slot, const GraphMaterialData& data);
 
         [[nodiscard]] bool retainForInstance(MaterialHandle slot) noexcept;
         void releaseFromInstance(MaterialHandle slot) noexcept;
@@ -118,8 +119,7 @@ namespace lux::render
         /// Buffer-reference address of the Graph-family material table. The
         /// table already contains the stable texture bindless slots used by the
         /// wanted-mip pass, so no duplicate material-to-texture index is needed.
-        [[nodiscard]] VkDeviceAddress graphMaterialAddress(
-            uint32_t frame_slot) const noexcept
+        [[nodiscard]] VkDeviceAddress graphMaterialAddress(uint32_t frame_slot) const noexcept
         {
             return graph_ssbo_.deviceAddress(frame_slot);
         }
@@ -148,17 +148,17 @@ namespace lux::render
 
         /// DSResolverFn-compatible static resolver for bindResourceDS().
         /// view_id unused: the material set is per-FIF and scene-wide.
-        static VkDescriptorSet resolveDS(const void* resource, uint32_t frame_slot,
-                                         uint32_t /*view_id*/)
+        static VkDescriptorSet resolveDS(const void* resource, uint32_t frame_slot, uint32_t /*view_id*/)
         {
             return static_cast<const MaterialResources*>(resource)->descriptorSet(frame_slot);
         }
 
         // ========== IGPUResource Interface Implementation ==========
 
-         void shutdown()
+        void shutdown()
         {
-            if (!initialized_) return;
+            if (!initialized_)
+                return;
             initialized_ = false;
             //(此前这里逐个 reset 五个族 SSBO,理由同 LightResources —— "赶在 VMA
             // allocator 之前"的约束已被 FifOwned/DeferredDestroyQueue 消灭,
@@ -221,9 +221,7 @@ namespace lux::render
         [[nodiscard]] MaterialHandle allocateGlobalHandle();
         void releaseGlobalHandle(MaterialHandle h) noexcept;
         void removeNow(MaterialHandle slot);
-        void packGraphGpu(
-            const GraphMaterialData& data,
-            GraphFamilyGPU& gpu) const;
+        void packGraphGpu(const GraphMaterialData& data, GraphFamilyGPU& gpu) const;
 
         // Write SSBO descriptors for all 3 families to a specific per-frame set
         void writeDescriptorsOnSet(uint32_t set_index) const;
@@ -235,9 +233,8 @@ namespace lux::render
         /// global, while the domain set is per-scene, so targets accumulate
         /// as a set keyed by scene. Re-registering the same owner overwrites
         /// its old entry (this is the path taken on scene rebuild).
-        [[nodiscard]] Expected<void> addDomainWriteTarget(const void* owner,
-                                  std::span<const VkDescriptorSet> sets,
-                                  uint32_t binding_offset);
+        [[nodiscard]] Expected<void>
+        addDomainWriteTarget(const void* owner, std::span<const VkDescriptorSet> sets, uint32_t binding_offset);
 
         /// Removes a scene's target. **Must be called before the scene is
         /// destroyed** — otherwise subsequent writes land in a set that was
@@ -245,20 +242,18 @@ namespace lux::render
         void removeDomainWriteTarget(const void* owner) noexcept;
 
     private:
-
         // Rewrite ALL material descriptors with tight count-based range
         void refreshAllDescriptors(uint32_t slice);
 
         // Rewrite ALL material descriptors on a specific per-frame set
         void refreshAllDescriptorsOnSet(uint32_t set_index, uint32_t slice);
 
-
         // --- 5 family SSBOs (binding = ELightingTechnique ordinal) ---
-        SlicedSSBO<UnlitFamilyGPU>          unlit_ssbo_;
-        SlicedSSBO<LegacyLitFamilyGPU>      legacy_lit_ssbo_;
-        SlicedSSBO<PbrFamilyGPU>            pbr_ssbo_;
-        SlicedSSBO<StylizedFamilyGPU>       stylized_ssbo_;
-        SlicedSSBO<GraphFamilyGPU>          graph_ssbo_;
+        SlicedSSBO<UnlitFamilyGPU> unlit_ssbo_;
+        SlicedSSBO<LegacyLitFamilyGPU> legacy_lit_ssbo_;
+        SlicedSSBO<PbrFamilyGPU> pbr_ssbo_;
+        SlicedSSBO<StylizedFamilyGPU> stylized_ssbo_;
+        SlicedSSBO<GraphFamilyGPU> graph_ssbo_;
 
         // Per-frame descriptor sets (one per frame-in-flight)
         std::vector<VkDescriptorSet> descriptor_sets_;
@@ -279,8 +274,8 @@ namespace lux::render
         //  scene's own entry on teardown.
         struct DomainTarget
         {
-            const void*       owner{nullptr};   ///< Scene identity (used only as a key, never dereferenced)
-            DomainWriteTarget target{};         ///< 句柄组 + 域内偏移(绑成一体)
+            const void* owner{nullptr}; ///< Scene identity (used only as a key, never dereferenced)
+            DomainWriteTarget target{}; ///< 句柄组 + 域内偏移(绑成一体)
         };
         std::vector<DomainTarget> domain_targets_{};
         uint32_t current_frame_{0};

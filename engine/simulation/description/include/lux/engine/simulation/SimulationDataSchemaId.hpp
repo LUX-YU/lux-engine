@@ -21,24 +21,18 @@ namespace lux::simulation
             return !name.empty() && hash == lux::cxx::Fnv1a64::hash(name);
         }
 
-        friend bool operator==(
-            const SimulationDataSchemaId&,
-            const SimulationDataSchemaId&
-        ) noexcept = default;
+        friend bool operator==(const SimulationDataSchemaId&, const SimulationDataSchemaId&) noexcept = default;
     };
 
     struct SimulationDataSchemaIdLess final
     {
-        [[nodiscard]] bool operator()(
-            const SimulationDataSchemaId& left,
-            const SimulationDataSchemaId& right
-        ) const noexcept
+        [[nodiscard]] bool
+        operator()(const SimulationDataSchemaId& left, const SimulationDataSchemaId& right) const noexcept
         {
-            return left.hash < right.hash ||
-                (left.hash == right.hash && left.name < right.name);
+            return left.hash < right.hash || (left.hash == right.hash && left.name < right.name);
         }
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
-    SimulationDataSchemaId simulationDataSchemaId(std::string_view name);
+    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationDataSchemaId
+    simulationDataSchemaId(std::string_view name);
 }

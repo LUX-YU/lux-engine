@@ -19,14 +19,15 @@ namespace lux::render
 
         if (cc.comm_config_version != kDeferredLightingCommConfigVersion)
             return renderFailure<err::comm::ConfigVersionMismatch>(
-                kDeferredLightingCommConfigVersion, cc.comm_config_version);
+                kDeferredLightingCommConfigVersion,
+                cc.comm_config_version
+            );
 
         if (cc.read_mode > ELightingReadMode::INPUT_ATTACHMENT)
-            return renderFailure<err::lighting::ReadModeInvalid>(
-                static_cast<std::uint32_t>(cc.read_mode));
+            return renderFailure<err::lighting::ReadModeInvalid>(static_cast<std::uint32_t>(cc.read_mode));
 
         DeferredLightingFeature::Config cfg{};
-        cfg.vertex_shader   = cc.vertex_shader;
+        cfg.vertex_shader = cc.vertex_shader;
         cfg.fragment_shader = cc.fragment_shader;
         cfg.cluster_build_shader = cc.cluster_build_shader;
         cfg.cluster_count_shader = cc.cluster_count_shader;
@@ -38,8 +39,8 @@ namespace lux::render
         cfg.cluster_y = cc.cluster_y;
         cfg.cluster_z = cc.cluster_z;
         cfg.max_cluster_indices = cc.max_cluster_indices;
-        cfg.read_mode       = static_cast<DeferredLightingFeature::EReadMode>(cc.read_mode);
-        cfg.technique       = cc.technique;
+        cfg.read_mode = static_cast<DeferredLightingFeature::EReadMode>(cc.read_mode);
+        cfg.technique = cc.technique;
 
         // LDR pipeline → write directly to SceneColor (skip tonemap)
         if (sc->pipelineConfig().isLdr())

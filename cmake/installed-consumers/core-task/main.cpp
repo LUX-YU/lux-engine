@@ -3,7 +3,8 @@
 
 #include <utility>
 
-int main()
+int
+main()
 {
     int value{};
     lux::task::TaskGraphBuilder builder;

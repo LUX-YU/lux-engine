@@ -33,12 +33,12 @@ namespace lux::asset
 {
     enum class EVirtualPathError
     {
-        EMPTY,              ///< Empty input.
-        TOO_LONG,           ///< Exceeds kMaxLength bytes.
-        NOT_ABSOLUTE,       ///< Canonical form must start with '/'.
-        ILLEGAL_CHARACTER,  ///< Contains \ . : " | ? * < > or a control char.
-        EMPTY_SEGMENT,      ///< "//", trailing '/', or a bare root with no name.
-        MISSING_ASSET_NAME  ///< Only a root segment ("/Game").
+        EMPTY,             ///< Empty input.
+        TOO_LONG,          ///< Exceeds kMaxLength bytes.
+        NOT_ABSOLUTE,      ///< Canonical form must start with '/'.
+        ILLEGAL_CHARACTER, ///< Contains \ . : " | ? * < > or a control char.
+        EMPTY_SEGMENT,     ///< "//", trailing '/', or a bare root with no name.
+        MISSING_ASSET_NAME ///< Only a root segment ("/Game").
     };
 
     /// Parsed, validated, canonical virtual path. Immutable; the only way to
@@ -52,15 +52,13 @@ namespace lux::asset
 
         /// Parse a canonical ABSOLUTE path ("/Game/Materials/M_Box").
         /// No normalization: a string is either canonical or rejected.
-        [[nodiscard]] static lux::cxx::expected<VirtualPath, EVirtualPathError>
-        parse(std::string_view text);
+        [[nodiscard]] static lux::cxx::expected<VirtualPath, EVirtualPathError> parse(std::string_view text);
 
         /// Validate a mount-RELATIVE canonical path ("Materials/M_Box") —
         /// what IAssetProvider::resolve receives and what providers index.
         /// Same charset/segment rules, no leading slash, root not included.
         /// Returns nullopt when valid, the error otherwise.
-        [[nodiscard]] static std::optional<EVirtualPathError>
-        validateRelative(std::string_view rel) noexcept;
+        [[nodiscard]] static std::optional<EVirtualPathError> validateRelative(std::string_view rel) noexcept;
 
         /// Byte legality test for a single name character ('/' is structure,
         /// not a name char). UTF-8 continuation bytes (>= 0x80) pass.
@@ -71,24 +69,27 @@ namespace lux::asset
         [[nodiscard]] static bool isLegalRoot(std::string_view root) noexcept;
 
         /// Canonical absolute form, e.g. "/Game/Materials/M_Box".
-        [[nodiscard]] const std::string& str() const noexcept { return path_; }
+        [[nodiscard]] const std::string& str() const noexcept
+        {
+            return path_;
+        }
 
         /// Root segment without slashes, e.g. "Game".
         [[nodiscard]] std::string_view root() const noexcept
         {
-            return std::string_view{ path_ }.substr(1, root_len_);
+            return std::string_view{path_}.substr(1, root_len_);
         }
 
         /// Mount-relative remainder, e.g. "Materials/M_Box".
         [[nodiscard]] std::string_view relPath() const noexcept
         {
-            return std::string_view{ path_ }.substr(root_len_ + 2);
+            return std::string_view{path_}.substr(root_len_ + 2);
         }
 
         /// Final segment (the asset name), e.g. "M_Box".
         [[nodiscard]] std::string_view name() const noexcept
         {
-            return std::string_view{ path_ }.substr(name_pos_);
+            return std::string_view{path_}.substr(name_pos_);
         }
 
         /// Byte-sensitive equality — THE comparison semantics (ruling §11.1).
@@ -100,9 +101,9 @@ namespace lux::asset
     private:
         VirtualPath() = default;
 
-        std::string path_;        ///< Full canonical form.
-        std::size_t root_len_{};  ///< Byte length of the root segment.
-        std::size_t name_pos_{};  ///< Offset of the asset-name segment.
+        std::string path_;       ///< Full canonical form.
+        std::size_t root_len_{}; ///< Byte length of the root segment.
+        std::size_t name_pos_{}; ///< Offset of the asset-name segment.
     };
 
     /// ASCII-only case folding for collision DIAGNOSTICS (cook/scan reject

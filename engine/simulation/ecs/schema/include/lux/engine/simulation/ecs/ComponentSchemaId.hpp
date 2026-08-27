@@ -15,21 +15,14 @@ namespace lux::simulation::ecs
 
         [[nodiscard]] bool valid() const noexcept
         {
-            return !name.empty() &&
-                hash == lux::cxx::Fnv1a64::hash(name);
+            return !name.empty() && hash == lux::cxx::Fnv1a64::hash(name);
         }
 
-        [[nodiscard]] bool operator==(
-            const ComponentSchemaId& other
-        ) const noexcept = default;
+        [[nodiscard]] bool operator==(const ComponentSchemaId& other) const noexcept = default;
     };
 
-    [[nodiscard]] inline ComponentSchemaId componentSchemaId(
-        std::string_view name
-    )
+    [[nodiscard]] inline ComponentSchemaId componentSchemaId(std::string_view name)
     {
-        return ComponentSchemaId{
-            lux::cxx::Fnv1a64::hash(name),
-            std::string(name)};
+        return ComponentSchemaId{lux::cxx::Fnv1a64::hash(name), std::string(name)};
     }
 } // namespace lux::simulation::ecs

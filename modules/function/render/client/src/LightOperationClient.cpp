@@ -16,15 +16,8 @@ namespace lux::render
         return proxy.createLight(payload);
     }
 
-    void lightUpdate(
-        LightProxy proxy,
-        RenderSceneId scene_id,
-        RLightHandle handle,
-        const LightDescriptor& descriptor
-    )
+    void lightUpdate(LightProxy proxy, RenderSceneId scene_id, RLightHandle handle, const LightDescriptor& descriptor)
     {
-        proxy.updateLight(
-            toUpdateLightPayload(scene_id, handle, descriptor)
-        );
+        proxy.updateLight(toUpdateLightPayload(scene_id, handle, descriptor));
     }
 } // namespace lux::render

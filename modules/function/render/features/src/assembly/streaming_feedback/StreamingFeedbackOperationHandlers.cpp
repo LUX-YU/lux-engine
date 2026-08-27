@@ -5,14 +5,9 @@
 
 namespace lux::render
 {
-    Expected<FeatureHandle> StreamingFeedbackCreateFn(
-        void* scene,
-        const void* parameters,
-        std::size_t parameter_size)
+    Expected<FeatureHandle> StreamingFeedbackCreateFn(void* scene, const void* parameters, std::size_t parameter_size)
     {
-        auto decoded = decodeCommConfig<StreamingFeedbackCommConfig>(
-            parameters,
-            parameter_size);
+        auto decoded = decodeCommConfig<StreamingFeedbackCommConfig>(parameters, parameter_size);
         if (!decoded)
             return lux::cxx::unexpected(decoded.error());
 
@@ -23,8 +18,7 @@ namespace lux::render
         config.mask_vert = source.mask_vert;
         config.mask_frag = source.mask_frag;
         config.composite_frag = source.composite_frag;
-        config.descriptor_layout_version =
-            source.descriptor_layout_version;
+        config.descriptor_layout_version = source.descriptor_layout_version;
         config.extension_flags = source.extension_flags;
         config.tile_size = source.tile_size;
         config.speed = source.speed;
@@ -33,7 +27,6 @@ namespace lux::render
         config.color[1] = source.color[1];
         config.color[2] = source.color[2];
         config.pattern = source.pattern;
-        return static_cast<RenderScene*>(scene)
-            ->addFeature<StreamingFeedbackFeature>(std::move(config));
+        return static_cast<RenderScene*>(scene)->addFeature<StreamingFeedbackFeature>(std::move(config));
     }
 }

@@ -14,16 +14,20 @@
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/graph/RGRecorder.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>   // kDeferredGBufferDrawPassName
-#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp>            // kMeshShadowDrawPassName
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>             // kShadowViewUploadPassName / kEvsmBlurVPassName
+#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+// kDeferredGBufferDrawPassName
+#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
+#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>
+// kShadowViewUploadPassName / kEvsmBlurVPassName
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowMapFeature.hpp>       // attach 期 technique 交叉校验
+#include <lux/engine/render/renderer/features/shadow/ShadowMapFeature.hpp>         // attach 期 technique 交叉校验
 #include <lux/engine/render/renderer/features/deferred/DeferredGBufferFeature.hpp> // attach 期 local-read 交叉校验
-#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>              // FeatureFactory 完整定义(genops 头只前置声明)
-#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>        // kShadowMapFeatureFactory.descriptor.type
-#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp>  // kDeferredGBufferFeatureFactory.descriptor.type
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory 完整定义(genops 头只前置声明)
+#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+// kShadowMapFeatureFactory.descriptor.type
+#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp>
+// kDeferredGBufferFeatureFactory.descriptor.type
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
@@ -49,8 +53,7 @@ namespace lux::render
 #endif
 #endif
 
-        [[nodiscard]] bool tryExtractPerspectiveNearFar(
-            const Eigen::Matrix4f &proj, float &out_near, float &out_far)
+        [[nodiscard]] bool tryExtractPerspectiveNearFar(const Eigen::Matrix4f& proj, float& out_near, float& out_far)
         {
             constexpr float kEpsilon = 1e-5f;
             const float a = proj(2, 2);
@@ -78,8 +81,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    DeferredLightingFeature::DeferredLightingFeature(Config cfg)
-        : cfg_(std::move(cfg))
+    DeferredLightingFeature::DeferredLightingFeature(Config cfg) : cfg_(std::move(cfg))
     {
     }
 
@@ -92,7 +94,7 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    lux::render::Expected<void> DeferredLightingFeature::initAndAttachTo(RenderScene &scene)
+    lux::render::Expected<void> DeferredLightingFeature::initAndAttachTo(RenderScene& scene)
     {
         if (auto ready = init(); !ready)
             return ready;
@@ -115,7 +117,7 @@ namespace lux::render
         // `id=lux.render.shadow_map.v1` 反射标注。取工厂的 descriptor.type 而不是
         // 在这里写 featureId("lux.render.shadow_map.v1") 字面量:与注册**同源**,
         // 对方哪天把 .v1 提成 .v2,这里跟着变,不会静默失配。
-        for (const auto *f : scene.features())
+        for (const auto* f : scene.features())
         {
             if (f == nullptr)
                 continue;
@@ -124,28 +126,30 @@ namespace lux::render
             {
                 // lighting 的 SPIR-V 变体按 cfg_.technique 选定(PCF 采 D32 图集 vs
                 // EVSM 采 RGBA16F),与 ShadowMap 的活动 technique 错配就是采错图集。
-                const auto *shadow_map = static_cast<const ShadowMapFeature *>(f);
+                const auto* shadow_map = static_cast<const ShadowMapFeature*>(f);
                 if (shadow_map->activeTechnique() != cfg_.technique)
                     return renderFailure<err::lighting::ShadowTechniqueMismatch>(
                         static_cast<std::uint32_t>(cfg_.technique),
-                        static_cast<std::uint32_t>(shadow_map->activeTechnique()));
+                        static_cast<std::uint32_t>(shadow_map->activeTechnique())
+                    );
             }
             else if (f->typeId() == kDeferredGBufferFeatureFactory.descriptor.type)
             {
                 // G-buffer 写不写进合并作用域,与本 feature 读不读 input attachment,
                 // 必须是同一个决定。上层的同一个 if 会一起写这两项;这里防的是
                 // 只改了一边的配置。
-                const auto *gbuffer = static_cast<const DeferredGBufferFeature *>(f);
+                const auto* gbuffer = static_cast<const DeferredGBufferFeature*>(f);
                 if (gbuffer->localReadScope() != effective_local_read_)
                     return renderFailure<err::lighting::ReadModeScopeMismatch>(
                         static_cast<std::uint32_t>(gbuffer->localReadScope()),
-                        static_cast<std::uint32_t>(effective_local_read_));
+                        static_cast<std::uint32_t>(effective_local_read_)
+                    );
             }
         }
         return {};
     }
 
-    void DeferredLightingFeature::onDetachFromScene(RenderScene & /*scene*/)
+    void DeferredLightingFeature::onDetachFromScene(RenderScene& /*scene*/)
     {
         // gbuffer_sampler_ 来自 DescriptorService 采样器缓存——服务持有
         // 生命周期,removeFeature UAF(#17 sibling)不复存在 — no manual
@@ -155,7 +159,7 @@ namespace lux::render
         cluster_clear_ds_layout_ = VK_NULL_HANDLE;
     }
 
-    void DeferredLightingFeature::onFrameBegin(const FeatureFrameContext & /*ctx*/)
+    void DeferredLightingFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
     {
         // clustered_enabled is decided at graph-compile time (addPasses) from the
         // live light count, but adding/removing lights does NOT invalidate the
@@ -169,14 +173,11 @@ namespace lux::render
         // way (the shader's grid.w==0 fallback), so this is purely a perf fix. (perf)
         if (light_cache_ == nullptr)
             light_cache_ = renderScene().sceneRegistry().find<LightResources>();
-        auto *light_res = light_cache_;
+        auto* light_res = light_cache_;
         const uint32_t light_count =
-            light_res ? (light_res->lightCount<PointLightGPU>()
-                       + light_res->lightCount<SpotLightGPU>())
-                      : 0u;
+            light_res ? (light_res->lightCount<PointLightGPU>() + light_res->lightCount<SpotLightGPU>()) : 0u;
         if (clusteringWanted(light_count) != clustering_compiled_)
-            renderScene().invalidateGraph(
-                EGraphInvalidationReason::FEATURE_TOPOLOGY);
+            renderScene().invalidateGraph(EGraphInvalidationReason::FEATURE_TOPOLOGY);
     }
 
     // =========================================================================
@@ -185,7 +186,7 @@ namespace lux::render
 
     Expected<void> DeferredLightingFeature::init()
     {
-        auto &ctx = renderContext();
+        auto& ctx = renderContext();
         VkDevice device = ctx.deviceContext().logicalDevice();
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
 
@@ -200,19 +201,18 @@ namespace lux::render
         // 按 shadow technique × 读模式挑 SPIR-V 变体。调用方显式覆盖了 fragment_shader
         // 的话,回填会原样保留它。
         const bool evsm = cfg_.technique == EShadowTechnique::EVSM;
-        const auto frag_variant = effective_local_read_
-            ? (evsm ? EBuiltinShader::DEFERRED_LIGHTING_FRAG_EVSM_LR
-                    : EBuiltinShader::DEFERRED_LIGHTING_FRAG_PCF_LR)
-            : (evsm ? EBuiltinShader::DEFERRED_LIGHTING_FRAG_EVSM
-                    : EBuiltinShader::DEFERRED_LIGHTING_FRAG_PCF);
+        const auto frag_variant = effective_local_read_ ? (evsm ? EBuiltinShader::DEFERRED_LIGHTING_FRAG_EVSM_LR
+                                                                : EBuiltinShader::DEFERRED_LIGHTING_FRAG_PCF_LR)
+                                                        : (evsm ? EBuiltinShader::DEFERRED_LIGHTING_FRAG_EVSM
+                                                                : EBuiltinShader::DEFERRED_LIGHTING_FRAG_PCF);
 
         const std::array backfill{
-            ShaderStageSlot{EBuiltinShader::DEFERRED_LIGHTING_VERT,   &cfg_.vertex_shader},
-            ShaderStageSlot{frag_variant,                             &cfg_.fragment_shader},
-            ShaderStageSlot{EBuiltinShader::CLUSTER_BUILD_COMP,       &cfg_.cluster_build_shader},
-            ShaderStageSlot{EBuiltinShader::CLUSTER_COUNT_COMP,       &cfg_.cluster_count_shader},
-            ShaderStageSlot{EBuiltinShader::CLUSTER_SCAN_COMP,        &cfg_.cluster_scan_shader},
-            ShaderStageSlot{EBuiltinShader::CLUSTER_FILL_COMP,        &cfg_.cluster_fill_shader},
+            ShaderStageSlot{EBuiltinShader::DEFERRED_LIGHTING_VERT, &cfg_.vertex_shader},
+            ShaderStageSlot{frag_variant, &cfg_.fragment_shader},
+            ShaderStageSlot{EBuiltinShader::CLUSTER_BUILD_COMP, &cfg_.cluster_build_shader},
+            ShaderStageSlot{EBuiltinShader::CLUSTER_COUNT_COMP, &cfg_.cluster_count_shader},
+            ShaderStageSlot{EBuiltinShader::CLUSTER_SCAN_COMP, &cfg_.cluster_scan_shader},
+            ShaderStageSlot{EBuiltinShader::CLUSTER_FILL_COMP, &cfg_.cluster_fill_shader},
             ShaderStageSlot{EBuiltinShader::CLEAR_COUNT_BUFFERS_COMP, &cfg_.cluster_clear_shader}};
         if (auto filled = resolveShaderStages(shaders, backfill); !filled)
             return filled;
@@ -243,16 +243,39 @@ namespace lux::render
         // (which is exactly what the explicit_set_layouts channel is for).
         {
             const std::array<VkDescriptorSetLayoutBinding, 6> bindings{{
-                {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-                {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-                {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-                {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-                {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-                {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+                {0,
+                 VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                 1,
+                 VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                 nullptr},
+                {1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                 1,
+                 VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                 nullptr},
+                {2,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                 1,
+                 VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                 nullptr},
+                {3,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                 1,
+                 VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                 nullptr},
+                {4,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                 1,
+                 VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                 nullptr},
+                {5,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                 1,
+                 VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                 nullptr},
             }};
 
-            auto id = ctx.descriptorService().registerLayout({.bindings = bindings,
-                                                              .debug_name = "ClusterDSLayout"});
+            auto id = ctx.descriptorService().registerLayout({.bindings = bindings, .debug_name = "ClusterDSLayout"});
             cluster_ds_layout_ = ctx.descriptorService().layout(id);
         }
 
@@ -313,28 +336,28 @@ namespace lux::render
             // planner's per-pass maps (both derive from the same shape).
             if (effective_local_read_)
             {
-                tmpl.lr_color_locations = {VK_ATTACHMENT_UNUSED, VK_ATTACHMENT_UNUSED,
-                                           VK_ATTACHMENT_UNUSED, 0u};
-                tmpl.lr_input_indices   = {0u, 1u, 2u, VK_ATTACHMENT_UNUSED};
+                tmpl.lr_color_locations = {VK_ATTACHMENT_UNUSED, VK_ATTACHMENT_UNUSED, VK_ATTACHMENT_UNUSED, 0u};
+                tmpl.lr_input_indices = {0u, 1u, 2u, VK_ATTACHMENT_UNUSED};
                 tmpl.lr_depth_input_index = 3u;
             }
             // Authoritative PC ranges — prevents reflection from dropping
             // VERTEX_BIT (fullscreen vertex shader has no PC block).
             tmpl.push_constant_ranges.push_back(
-                {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, kViewPushPrefixSize});
+                {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, kViewPushPrefixSize}
+            );
 
             auto pipeline = ctx.pipelineManager().registerGraphicsTemplate(tmpl, stages->infos());
             if (!pipeline)
                 return lux::cxx::unexpected(pipeline.error());
 
-            lighting_pipeline_  = *pipeline;
-            gbuffer_ds_layout_  = ctx.pipelineManager().templateSetLayout(lighting_pipeline_, 1);
+            lighting_pipeline_ = *pipeline;
+            gbuffer_ds_layout_ = ctx.pipelineManager().templateSetLayout(lighting_pipeline_, 1);
             if (gbuffer_ds_layout_ == VK_NULL_HANDLE)
                 return renderFailure<err::pipeline::ReflectedSetLayoutMissing>(1);
         }
 
-        auto create_cluster_pipeline = [&](ShaderHandle shader_handle, const char *debug_name) -> ComputePipelineHandle
-        {
+        auto create_cluster_pipeline = [&](ShaderHandle shader_handle,
+                                           const char* debug_name) -> ComputePipelineHandle {
             if (shader_handle.isNull())
                 return kInvalidComputePipelineHandle;
 
@@ -356,19 +379,22 @@ namespace lux::render
             // set 0 = cluster (a set owned and shared by the feature,
             // declared explicitly); set 1 = Light (engine_set; after
             // switching over it lives in FEATURE domain slot 2).
-            const std::array<std::pair<uint32_t, VkDescriptorSetLayout>, 1> explicit_sets{
-                {{0u, cluster_ds_layout_}}};
+            const std::array<std::pair<uint32_t, VkDescriptorSetLayout>, 1> explicit_sets{{{0u, cluster_ds_layout_}}};
             auto h = ctx.pipelineManager().registerComputePipelineReflected(
-                prepared->module(0), prepared->info(0), debug_name, {}, explicit_sets);
+                prepared->module(0),
+                prepared->info(0),
+                debug_name,
+                {},
+                explicit_sets
+            );
             return h ? *h : kInvalidComputePipelineHandle;
         };
 
-        auto create_clear_pipeline = [&](ShaderHandle shader_handle, const char *debug_name) -> ComputePipelineHandle
-        {
+        auto create_clear_pipeline = [&](ShaderHandle shader_handle, const char* debug_name) -> ComputePipelineHandle {
             if (shader_handle.isNull())
                 return kInvalidComputePipelineHandle;
 
-            auto *shader_obj = shaders.get(shader_handle);
+            auto* shader_obj = shaders.get(shader_handle);
             if (!shader_obj)
                 return kInvalidComputePipelineHandle;
 
@@ -377,7 +403,10 @@ namespace lux::render
             // sees -> built purely from reflection; PC is also derived from
             // reflection.
             auto h = ctx.pipelineManager().registerComputePipelineReflected(
-                shader_obj->module, shader_obj->info, debug_name);
+                shader_obj->module,
+                shader_obj->info,
+                debug_name
+            );
             if (!h)
                 return kInvalidComputePipelineHandle;
             cluster_clear_ds_layout_ = ctx.pipelineManager().computeSetLayout(*h, 0);
@@ -405,9 +434,9 @@ namespace lux::render
     //  Render graph passes
     // =========================================================================
 
-    void DeferredLightingFeature::addPasses(RGBuilder &builder)
+    void DeferredLightingFeature::addPasses(RGBuilder& builder)
     {
-        auto &ctx = renderContext();
+        auto& ctx = renderContext();
 
         // ---- Reference GBuffer resources (forward references resolved at compile time) ----
         auto gbuf_albedo = builder.referenceTexture(cfg_.gbuffer.albedo_metallic);
@@ -426,9 +455,10 @@ namespace lux::render
         }
         else
         {
-            RGTextureDescription lit_desc = RGTextureDescription::Relative(
-                1.0f, 1.0f, renderScene().pipelineConfig().lit_color_format);
-            lit_desc.usage = static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT) | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED);
+            RGTextureDescription lit_desc =
+                RGTextureDescription::Relative(1.0f, 1.0f, renderScene().pipelineConfig().lit_color_format);
+            lit_desc.usage = static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT) |
+                             static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED);
             lit_color = builder.createTexture(cfg_.color_output, lit_desc);
         }
 
@@ -436,26 +466,51 @@ namespace lux::render
         // SAMPLED path: combined samplers over the finished G-buffer.
         // LOCAL_READ path: input-attachment descriptors over the
         // same bindings — the whole scope holds them in RENDERING_LOCAL_READ.
-        auto gbuffer_tds = effective_local_read_
-            ? builder.createTransientDS("GBufferDS", gbuffer_ds_layout_, {
-                  {0, EDescriptorType::INPUT_ATTACHMENT, gbuf_albedo,   {}, EImageLayout::RENDERING_LOCAL_READ},
-                  {1, EDescriptorType::INPUT_ATTACHMENT, gbuf_normal,   {}, EImageLayout::RENDERING_LOCAL_READ},
-                  {2, EDescriptorType::INPUT_ATTACHMENT, gbuf_emissive, {}, EImageLayout::RENDERING_LOCAL_READ},
-                  {3, EDescriptorType::INPUT_ATTACHMENT, gbuf_depth,    {}, EImageLayout::RENDERING_LOCAL_READ},
-              })
-            : builder.createTransientDS("GBufferDS", gbuffer_ds_layout_, {
-                  {0, EDescriptorType::COMBINED_IMAGE_SAMPLER, gbuf_albedo, gbuffer_sampler_, EImageLayout::SHADER_READ_ONLY_OPTIMAL},
-                  {1, EDescriptorType::COMBINED_IMAGE_SAMPLER, gbuf_normal, gbuffer_sampler_, EImageLayout::SHADER_READ_ONLY_OPTIMAL},
-                  {2, EDescriptorType::COMBINED_IMAGE_SAMPLER, gbuf_emissive, gbuffer_sampler_, EImageLayout::SHADER_READ_ONLY_OPTIMAL},
-                  {3, EDescriptorType::COMBINED_IMAGE_SAMPLER, gbuf_depth, gbuffer_sampler_, EImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL},
-              });
+        auto gbuffer_tds =
+            effective_local_read_
+                ? builder.createTransientDS(
+                      "GBufferDS",
+                      gbuffer_ds_layout_,
+                      {
+                          {0, EDescriptorType::INPUT_ATTACHMENT, gbuf_albedo, {}, EImageLayout::RENDERING_LOCAL_READ},
+                          {1, EDescriptorType::INPUT_ATTACHMENT, gbuf_normal, {}, EImageLayout::RENDERING_LOCAL_READ},
+                          {2, EDescriptorType::INPUT_ATTACHMENT, gbuf_emissive, {}, EImageLayout::RENDERING_LOCAL_READ},
+                          {3, EDescriptorType::INPUT_ATTACHMENT, gbuf_depth, {}, EImageLayout::RENDERING_LOCAL_READ},
+                      }
+                )
+                : builder.createTransientDS(
+                      "GBufferDS",
+                      gbuffer_ds_layout_,
+                      {
+                          {0,
+                           EDescriptorType::COMBINED_IMAGE_SAMPLER,
+                           gbuf_albedo,
+                           gbuffer_sampler_,
+                           EImageLayout::SHADER_READ_ONLY_OPTIMAL},
+                          {1,
+                           EDescriptorType::COMBINED_IMAGE_SAMPLER,
+                           gbuf_normal,
+                           gbuffer_sampler_,
+                           EImageLayout::SHADER_READ_ONLY_OPTIMAL},
+                          {2,
+                           EDescriptorType::COMBINED_IMAGE_SAMPLER,
+                           gbuf_emissive,
+                           gbuffer_sampler_,
+                           EImageLayout::SHADER_READ_ONLY_OPTIMAL},
+                          {3,
+                           EDescriptorType::COMBINED_IMAGE_SAMPLER,
+                           gbuf_depth,
+                           gbuffer_sampler_,
+                           EImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL},
+                      }
+                );
 
         // ---- Reference shadow atlas (forward ref — if ShadowMapFeature absent, pass is pruned) ----
         auto shadow_atlas = builder.referenceTexture(cfg_.shadow_atlas);
 
         if (light_cache_ == nullptr)
             light_cache_ = renderScene().sceneRegistry().find<LightResources>();
-        auto *light_res = light_cache_;
+        auto* light_res = light_cache_;
 
         const uint32_t cluster_x = std::max(cfg_.cluster_x, 1u);
         const uint32_t cluster_y = std::max(cfg_.cluster_y, 1u);
@@ -514,8 +569,8 @@ namespace lux::render
         auto cluster_overflow = builder.createBuffer("ClusterOverflow", overflow_desc);
 
         auto cluster_tds = builder.createTransientDS(
-            "ClusterDS", 
-            cluster_ds_layout_, 
+            "ClusterDS",
+            cluster_ds_layout_,
             {
                 {0, EDescriptorType::UNIFORM_BUFFER, cluster_params},
                 {1, EDescriptorType::STORAGE_BUFFER, cluster_counts},
@@ -534,28 +589,29 @@ namespace lux::render
         // runs and writes grid.w = clustered_enabled ? 1 : 0, so the shader
         // takes the right path; the Count/Scan/Fill passes are skipped.
         const uint32_t lighting_light_count =
-            light_res ? (light_res->lightCount<PointLightGPU>()
-                       + light_res->lightCount<SpotLightGPU>())
-                      : 0u;
+            light_res ? (light_res->lightCount<PointLightGPU>() + light_res->lightCount<SpotLightGPU>()) : 0u;
         const bool clustered_enabled = clusteringWanted(lighting_light_count);
         // Record the decision the graph is being compiled with so onFrameBegin can
         // detect a later threshold crossing and request a recompile. (perf)
         clustering_compiled_ = clustered_enabled;
-        const bool clear_counters_enabled =
-            clustered_enabled && cluster_clear_pipeline_.valid();
+        const bool clear_counters_enabled = clustered_enabled && cluster_clear_pipeline_.valid();
 
         if (clear_counters_enabled)
         {
-            auto cluster_clear_tds = builder.createTransientDS("ClusterClearDS", cluster_clear_ds_layout_, {
-                                                                                                               {0, EDescriptorType::STORAGE_BUFFER, cluster_counts},
-                                                                                                               {1, EDescriptorType::STORAGE_BUFFER, cluster_offsets},
-                                                                                                               {2, EDescriptorType::STORAGE_BUFFER, cluster_write_heads},
-                                                                                                               {3, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
-                                                                                                               {4, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
-                                                                                                               {5, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
-                                                                                                               {6, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
-                                                                                                               {7, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
-                                                                                                           });
+            auto cluster_clear_tds = builder.createTransientDS(
+                "ClusterClearDS",
+                cluster_clear_ds_layout_,
+                {
+                    {0, EDescriptorType::STORAGE_BUFFER, cluster_counts},
+                    {1, EDescriptorType::STORAGE_BUFFER, cluster_offsets},
+                    {2, EDescriptorType::STORAGE_BUFFER, cluster_write_heads},
+                    {3, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
+                    {4, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
+                    {5, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
+                    {6, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
+                    {7, EDescriptorType::STORAGE_BUFFER, cluster_overflow},
+                }
+            );
 
             ClearCountersKernelConfig clear_cfg{};
             clear_cfg.buffers[0] = cluster_counts;
@@ -574,129 +630,134 @@ namespace lux::render
                 .setKernel("ClearCounters", makeKernelConfig(clear_cfg));
         }
 
-        auto cluster_build_pass = builder.addPass(
-                                             "ClusterBuild",
-                                             clustered_enabled ? ERGPassType::COMPUTE : ERGPassType::TRANSFER)
-                                      .write(cluster_params, ERGBufferRole::CONSTANT)
-                                      .write(cluster_counts, ERGBufferRole::STORAGE)
-                                      .write(cluster_offsets, ERGBufferRole::STORAGE)
-                                      .write(cluster_write_heads, ERGBufferRole::STORAGE)
-                                      .write(cluster_indices, ERGBufferRole::STORAGE)
-                                      .write(cluster_overflow, ERGBufferRole::STORAGE)
-                                      .setKernelFn([this, light_res, clustered_enabled, clear_counters_enabled, cluster_x, cluster_y, cluster_z, cluster_count,
-                                                    cluster_params, cluster_counts, cluster_offsets, cluster_write_heads, cluster_indices, cluster_overflow](const PassRecordContext &rec)
-                                                   {
-                VkBuffer params_buf = rec.resolveBufferHandle(cluster_params);
-                VkBuffer counts_buf = rec.resolveBufferHandle(cluster_counts);
-                VkBuffer offsets_buf = rec.resolveBufferHandle(cluster_offsets);
-                VkBuffer heads_buf = rec.resolveBufferHandle(cluster_write_heads);
-                VkBuffer indices_buf = rec.resolveBufferHandle(cluster_indices);
-                VkBuffer overflow_buf = rec.resolveBufferHandle(cluster_overflow);
-                if (params_buf == VK_NULL_HANDLE
-                    || counts_buf == VK_NULL_HANDLE
-                    || offsets_buf == VK_NULL_HANDLE
-                    || heads_buf == VK_NULL_HANDLE
-                    || indices_buf == VK_NULL_HANDLE
-                    || overflow_buf == VK_NULL_HANDLE)
-                {
-                    return;
-                }
-
-                const uint32_t point_count = light_res ? light_res->lightCount<PointLightGPU>() : 0u;
-                const uint32_t spot_count = light_res ? light_res->lightCount<SpotLightGPU>() : 0u;
-
-                ClusterParamsGPU params{};
-                if (rec.view)
-                {
-                    auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().sceneRegistry());
-                    const ViewFrameData* cam_fd = cam ? cam->find(rec.view->handle.index) : nullptr;
-                    ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
-                    const auto& cv = vfd.camera_view;
-                    std::memcpy(params.view, cv.view.data(), sizeof(params.view));
-                    params.view[12] = 0.0f;
-                    params.view[13] = 0.0f;
-                    params.view[14] = 0.0f;
-                    std::memcpy(params.proj, cv.proj.data(), sizeof(params.proj));
-                    for (std::size_t axis = 0; axis != 3u; ++axis)
+        auto cluster_build_pass =
+            builder.addPass("ClusterBuild", clustered_enabled ? ERGPassType::COMPUTE : ERGPassType::TRANSFER)
+                .write(cluster_params, ERGBufferRole::CONSTANT)
+                .write(cluster_counts, ERGBufferRole::STORAGE)
+                .write(cluster_offsets, ERGBufferRole::STORAGE)
+                .write(cluster_write_heads, ERGBufferRole::STORAGE)
+                .write(cluster_indices, ERGBufferRole::STORAGE)
+                .write(cluster_overflow, ERGBufferRole::STORAGE)
+                .setKernelFn([this,
+                              light_res,
+                              clustered_enabled,
+                              clear_counters_enabled,
+                              cluster_x,
+                              cluster_y,
+                              cluster_z,
+                              cluster_count,
+                              cluster_params,
+                              cluster_counts,
+                              cluster_offsets,
+                              cluster_write_heads,
+                              cluster_indices,
+                              cluster_overflow](const PassRecordContext& rec) {
+                    VkBuffer params_buf = rec.resolveBufferHandle(cluster_params);
+                    VkBuffer counts_buf = rec.resolveBufferHandle(cluster_counts);
+                    VkBuffer offsets_buf = rec.resolveBufferHandle(cluster_offsets);
+                    VkBuffer heads_buf = rec.resolveBufferHandle(cluster_write_heads);
+                    VkBuffer indices_buf = rec.resolveBufferHandle(cluster_indices);
+                    VkBuffer overflow_buf = rec.resolveBufferHandle(cluster_overflow);
+                    const bool is_missing_params = params_buf == VK_NULL_HANDLE;
+                    const bool is_missing_counts = counts_buf == VK_NULL_HANDLE || offsets_buf == VK_NULL_HANDLE;
+                    const bool is_missing_indices = heads_buf == VK_NULL_HANDLE ||
+                        indices_buf == VK_NULL_HANDLE || overflow_buf == VK_NULL_HANDLE;
+                    const bool is_missing_buffer = is_missing_params || is_missing_counts || is_missing_indices;
+                    if (is_missing_buffer)
                     {
-                        params.camera_page[axis] = vfd.render_origin.page_delta[axis];
-                        params.camera_local_page_size[axis] = vfd.render_origin.local[axis];
+                        return;
                     }
-                    params.camera_local_page_size[3] = vfd.coordinate_page_size;
-                    float near_z = 0.1f;
-                    float far_z = 100.0f;
-                    (void)tryExtractPerspectiveNearFar(cv.proj, near_z, far_z);
-                    params.viewport[0] = rec.viewport.width;
-                    params.viewport[1] = rec.viewport.height;
-                    params.viewport[2] = near_z;
-                    params.viewport[3] = far_z;
-                }
-                else
-                {
-                    params.viewport[0] = rec.viewport.width;
-                    params.viewport[1] = rec.viewport.height;
-                    params.viewport[2] = 0.1f;
-                    params.viewport[3] = 100.0f;
-                }
-                params.grid[0] = cluster_x;
-                params.grid[1] = cluster_y;
-                params.grid[2] = cluster_z;
-                params.grid[3] = clustered_enabled ? 1u : 0u;
-                params.limits[0] = cluster_count;
-                params.limits[1] = std::max(cfg_.max_cluster_indices, 1u);
-                params.limits[2] = point_count;
-                params.limits[3] = spot_count;
 
-                synchronizeBeforeBufferTransferWrites(
-                    rec.cmd,
-                    std::array{params_buf}
-                );
-                vkCmdUpdateBuffer(rec.cmd, params_buf, 0, sizeof(ClusterParamsGPU), &params);
+                    const uint32_t point_count = light_res ? light_res->lightCount<PointLightGPU>() : 0u;
+                    const uint32_t spot_count = light_res ? light_res->lightCount<SpotLightGPU>() : 0u;
 
-                if (!clear_counters_enabled)
-                {
-                    synchronizeBeforeBufferTransferWrites(
-                        rec.cmd,
-                        std::array{
-                            counts_buf,
-                            offsets_buf,
-                            heads_buf,
-                            overflow_buf}
-                    );
-                    vkCmdFillBuffer(rec.cmd, counts_buf, 0, VK_WHOLE_SIZE, 0u);
-                    vkCmdFillBuffer(rec.cmd, offsets_buf, 0, VK_WHOLE_SIZE, 0u);
-                    vkCmdFillBuffer(rec.cmd, heads_buf, 0, VK_WHOLE_SIZE, 0u);
-                    vkCmdFillBuffer(rec.cmd, overflow_buf, 0, VK_WHOLE_SIZE, 0u);
-                }
+                    ClusterParamsGPU params{};
+                    if (rec.view)
+                    {
+                        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().sceneRegistry());
+                        const ViewFrameData* cam_fd = cam ? cam->find(rec.view->handle.index) : nullptr;
+                        ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
+                        const auto& cv = vfd.camera_view;
+                        std::memcpy(params.view, cv.view.data(), sizeof(params.view));
+                        params.view[12] = 0.0f;
+                        params.view[13] = 0.0f;
+                        params.view[14] = 0.0f;
+                        std::memcpy(params.proj, cv.proj.data(), sizeof(params.proj));
+                        for (std::size_t axis = 0; axis != 3u; ++axis)
+                        {
+                            params.camera_page[axis] = vfd.render_origin.page_delta[axis];
+                            params.camera_local_page_size[axis] = vfd.render_origin.local[axis];
+                        }
+                        params.camera_local_page_size[3] = vfd.coordinate_page_size;
+                        float near_z = 0.1f;
+                        float far_z = 100.0f;
+                        (void)tryExtractPerspectiveNearFar(cv.proj, near_z, far_z);
+                        params.viewport[0] = rec.viewport.width;
+                        params.viewport[1] = rec.viewport.height;
+                        params.viewport[2] = near_z;
+                        params.viewport[3] = far_z;
+                    }
+                    else
+                    {
+                        params.viewport[0] = rec.viewport.width;
+                        params.viewport[1] = rec.viewport.height;
+                        params.viewport[2] = 0.1f;
+                        params.viewport[3] = 100.0f;
+                    }
+                    params.grid[0] = cluster_x;
+                    params.grid[1] = cluster_y;
+                    params.grid[2] = cluster_z;
+                    params.grid[3] = clustered_enabled ? 1u : 0u;
+                    params.limits[0] = cluster_count;
+                    params.limits[1] = std::max(cfg_.max_cluster_indices, 1u);
+                    params.limits[2] = point_count;
+                    params.limits[3] = spot_count;
 
-                VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-                barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-                barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                if (clear_counters_enabled)
-                {
-                    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-                    barrier.dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT;
-                }
-                else
-                {
-                    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-                    barrier.dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-                }
-                VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-                dep.memoryBarrierCount = 1;
-                dep.pMemoryBarriers = &barrier;
-                vkCmdPipelineBarrier2(rec.cmd, &dep);
+                    synchronizeBeforeBufferTransferWrites(rec.cmd, std::array{params_buf});
+                    vkCmdUpdateBuffer(rec.cmd, params_buf, 0, sizeof(ClusterParamsGPU), &params);
 
-                if (clustered_enabled)
-                {
-                    vkCmdDispatch(rec.cmd, (cluster_count + 63u) / 64u, 1u, 1u);
-                } })
-                                      .setKernel("ClusterBuild");
+                    if (!clear_counters_enabled)
+                    {
+                        synchronizeBeforeBufferTransferWrites(
+                            rec.cmd,
+                            std::array{counts_buf, offsets_buf, heads_buf, overflow_buf}
+                        );
+                        vkCmdFillBuffer(rec.cmd, counts_buf, 0, VK_WHOLE_SIZE, 0u);
+                        vkCmdFillBuffer(rec.cmd, offsets_buf, 0, VK_WHOLE_SIZE, 0u);
+                        vkCmdFillBuffer(rec.cmd, heads_buf, 0, VK_WHOLE_SIZE, 0u);
+                        vkCmdFillBuffer(rec.cmd, overflow_buf, 0, VK_WHOLE_SIZE, 0u);
+                    }
+
+                    VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+                    barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                    if (clear_counters_enabled)
+                    {
+                        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT;
+                    }
+                    else
+                    {
+                        barrier.dstStageMask =
+                            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+                    }
+                    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                    dep.memoryBarrierCount = 1;
+                    dep.pMemoryBarriers = &barrier;
+                    vkCmdPipelineBarrier2(rec.cmd, &dep);
+
+                    if (clustered_enabled)
+                    {
+                        vkCmdDispatch(rec.cmd, (cluster_count + 63u) / 64u, 1u, 1u);
+                    }
+                }
+                )
+                .setKernel("ClusterBuild");
 
         if (clustered_enabled)
-            cluster_build_pass
-                .setComputePipeline(cluster_build_pipeline_)
-                .bindTransientDS(0, cluster_tds);
+            cluster_build_pass.setComputePipeline(cluster_build_pipeline_).bindTransientDS(0, cluster_tds);
         if (clear_counters_enabled)
             cluster_build_pass.after("ClusterClearCounters");
 
@@ -705,20 +766,24 @@ namespace lux::render
             builder.addPass("ClusterCount", ERGPassType::COMPUTE)
                 .setComputePipeline(cluster_count_pipeline_)
                 .bindTransientDS(0, cluster_tds)
-                .useEngineSet(EDescriptorSetSlot::Light,
-                                builder.trackExternalBuffer("ext.LightResources"), ERGResourceType::BUFFER)
+                .useEngineSet(
+                    EDescriptorSetSlot::Light,
+                    builder.trackExternalBuffer("ext.LightResources"),
+                    ERGResourceType::BUFFER
+                )
                 .read(cluster_params, ERGBufferRole::CONSTANT)
                 .read(cluster_counts, ERGBufferRole::STORAGE)
                 .write(cluster_counts, ERGBufferRole::STORAGE)
                 .after("ClusterBuild")
-                .setKernelFn([light_res](const PassRecordContext &rec)
-                             {
+                .setKernelFn([light_res](const PassRecordContext& rec) {
                     const uint32_t point_count = light_res ? light_res->lightCount<PointLightGPU>() : 0u;
                     const uint32_t spot_count = light_res ? light_res->lightCount<SpotLightGPU>() : 0u;
                     const uint32_t total = point_count + spot_count;
                     if (total == 0u || rec.pipeline_layout == VK_NULL_HANDLE)
                         return;
-                    vkCmdDispatch(rec.cmd, total, 1u, 1u); })
+                    vkCmdDispatch(rec.cmd, total, 1u, 1u);
+                }
+                )
                 .setKernel("ClusterCount");
 
             builder.addPass("PrefixScan", ERGPassType::COMPUTE)
@@ -730,15 +795,17 @@ namespace lux::render
                 .readWrite(cluster_write_heads, ERGBufferRole::STORAGE)
                 .readWrite(cluster_overflow, ERGBufferRole::STORAGE)
                 .after("ClusterCount")
-                .setKernelFn([](const PassRecordContext &rec)
-                             { vkCmdDispatch(rec.cmd, 1u, 1u, 1u); })
+                .setKernelFn([](const PassRecordContext& rec) { vkCmdDispatch(rec.cmd, 1u, 1u, 1u); })
                 .setKernel("PrefixScan");
 
             builder.addPass("ClusterFill", ERGPassType::COMPUTE)
                 .setComputePipeline(cluster_fill_pipeline_)
                 .bindTransientDS(0, cluster_tds)
-                .useEngineSet(EDescriptorSetSlot::Light,
-                                builder.trackExternalBuffer("ext.LightResources"), ERGResourceType::BUFFER)
+                .useEngineSet(
+                    EDescriptorSetSlot::Light,
+                    builder.trackExternalBuffer("ext.LightResources"),
+                    ERGResourceType::BUFFER
+                )
                 .read(cluster_params, ERGBufferRole::CONSTANT)
                 .read(cluster_offsets, ERGBufferRole::STORAGE)
                 .readWrite(cluster_write_heads, ERGBufferRole::STORAGE)
@@ -752,16 +819,14 @@ namespace lux::render
                 // precondition for merging them into one local-read rendering
                 // scope (P2). Pure reorder: zero visual change on any path.
                 .before(kDeferredGBufferDrawPassName)
-                .setKernelFn(
-                    [light_res](const PassRecordContext &rec)
-                    {
-                        const uint32_t point_count = light_res ? light_res->lightCount<PointLightGPU>() : 0u;
-                        const uint32_t spot_count = light_res ? light_res->lightCount<SpotLightGPU>() : 0u;
-                        const uint32_t total = point_count + spot_count;
-                        if (total == 0u || rec.pipeline_layout == VK_NULL_HANDLE)
-                            return;
-                        vkCmdDispatch(rec.cmd, total, 1u, 1u); 
-                    }
+                .setKernelFn([light_res](const PassRecordContext& rec) {
+                    const uint32_t point_count = light_res ? light_res->lightCount<PointLightGPU>() : 0u;
+                    const uint32_t spot_count = light_res ? light_res->lightCount<SpotLightGPU>() : 0u;
+                    const uint32_t total = point_count + spot_count;
+                    if (total == 0u || rec.pipeline_layout == VK_NULL_HANDLE)
+                        return;
+                    vkCmdDispatch(rec.cmd, total, 1u, 1u);
+                }
                 )
                 .setKernel("ClusterFill");
         }
@@ -774,29 +839,31 @@ namespace lux::render
             // (try_local_read_merge) — indices must bit-match the shader's
             // input_attachment_index decorations and the template lr_* maps.
             lighting_pass.inputRead(gbuf_albedo, 0)
-                         .inputRead(gbuf_normal, 1)
-                         .inputRead(gbuf_emissive, 2)
-                         .inputRead(gbuf_depth, 3);
+                .inputRead(gbuf_normal, 1)
+                .inputRead(gbuf_emissive, 2)
+                .inputRead(gbuf_depth, 3);
         }
         else
         {
             lighting_pass.read(gbuf_albedo, lux::render::ETextureRole::SAMPLED)
-                         .read(gbuf_normal, lux::render::ETextureRole::SAMPLED)
-                         .read(gbuf_emissive, lux::render::ETextureRole::SAMPLED)
-                         .read(gbuf_depth, lux::render::ETextureRole::SAMPLED);
+                .read(gbuf_normal, lux::render::ETextureRole::SAMPLED)
+                .read(gbuf_emissive, lux::render::ETextureRole::SAMPLED)
+                .read(gbuf_depth, lux::render::ETextureRole::SAMPLED);
         }
-        lighting_pass
-                                 .read(cluster_params, ERGBufferRole::CONSTANT)
-                                 .read(cluster_offsets, ERGBufferRole::STORAGE)
-                                 .read(cluster_indices, ERGBufferRole::STORAGE)
-                                 .read(cluster_overflow, ERGBufferRole::STORAGE)
-                                 .write(lit_color, lux::render::ETextureRole::COLOR_ATTACHMENT)
-                                 .setPipeline(lighting_pipeline_)
-                                 .bindSceneDS()
-                                 .bindTransientDS(1, gbuffer_tds)
-                                 .useEngineSet(EDescriptorSetSlot::Light,
-                                                 builder.trackExternalBuffer("ext.LightResources"), ERGResourceType::BUFFER)
-                                 .bindTransientDS(3, cluster_tds);
+        lighting_pass.read(cluster_params, ERGBufferRole::CONSTANT)
+            .read(cluster_offsets, ERGBufferRole::STORAGE)
+            .read(cluster_indices, ERGBufferRole::STORAGE)
+            .read(cluster_overflow, ERGBufferRole::STORAGE)
+            .write(lit_color, lux::render::ETextureRole::COLOR_ATTACHMENT)
+            .setPipeline(lighting_pipeline_)
+            .bindSceneDS()
+            .bindTransientDS(1, gbuffer_tds)
+            .useEngineSet(
+                EDescriptorSetSlot::Light,
+                builder.trackExternalBuffer("ext.LightResources"),
+                ERGResourceType::BUFFER
+            )
+            .bindTransientDS(3, cluster_tds);
 
         // Shadow atlas must be rendered before the lighting pass reads it via
         // the Light descriptor set (bindings 4-6).  Declaring a read dependency
@@ -825,13 +892,11 @@ namespace lux::render
         // (PCF mode keeps sampling the D32 `shadow_atlas` read declared above.)
         if (cfg_.technique == EShadowTechnique::EVSM)
         {
-            lighting_pass.read(builder.referenceTexture("evsm_moment_atlas"),
-                               lux::render::ETextureRole::SAMPLED);
+            lighting_pass.read(builder.referenceTexture("evsm_moment_atlas"), lux::render::ETextureRole::SAMPLED);
             lighting_pass.after(kEvsmBlurVPassName);
         }
 
-        lighting_pass.setKernelFn([](const PassRecordContext &rec)
-                                  { vkCmdDraw(rec.cmd, 3, 1, 0, 0); });
+        lighting_pass.setKernelFn([](const PassRecordContext& rec) { vkCmdDraw(rec.cmd, 3, 1, 0, 0); });
         lighting_pass.setKernel("DeferredLighting");
     }
 

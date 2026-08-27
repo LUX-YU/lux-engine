@@ -19,23 +19,17 @@ namespace lux::simulation::ecs
 
     class LUX_ENGINE_SIMULATION_ECS_SNAPSHOT_PUBLIC ComponentSnapshotSet final
     {
-      public:
+    public:
         ComponentSnapshotSet() noexcept = default;
 
-        [[nodiscard]] static lux::cxx::expected<
-            ComponentSnapshotSet,
-            SnapshotError>
-        build(
-            const ComponentSchemaSet& schemas,
-            std::span<const ComponentSnapshotContribution> contributions
-        ) noexcept;
+        [[nodiscard]] static lux::cxx::expected<ComponentSnapshotSet, SnapshotError>
+        build(const ComponentSchemaSet& schemas, std::span<const ComponentSnapshotContribution> contributions) noexcept;
 
-        [[nodiscard]] std::span<const ComponentSnapshotBinding>
-        all() const noexcept;
+        [[nodiscard]] std::span<const ComponentSnapshotBinding> all() const noexcept;
 
         [[nodiscard]] bool empty() const noexcept;
 
-      private:
+    private:
         struct Impl;
         explicit ComponentSnapshotSet(std::shared_ptr<const Impl> impl) noexcept;
 

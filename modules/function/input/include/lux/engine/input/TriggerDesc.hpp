@@ -25,16 +25,16 @@ namespace lux::input
 
     enum class ETriggerKind : uint8_t
     {
-        DOWN,            ///< Active whenever the raw value exceeds actuation threshold
-        PRESSED,         ///< Fires on the frame actuation threshold is crossed (rising edge)
-        RELEASED,        ///< Fires on the frame actuation drops below threshold (falling edge)
-        HOLD,            ///< Must be held for ≥ hold_time_seconds
-        HOLD_AND_RELEASE,///< Like HOLD but fires only on release after hold_time_seconds
-        TAP,             ///< Press+release within tap_time_seconds
-        PULSE,           ///< Fires repeatedly at pulse_interval while held
-        CHORD_ACTION,    ///< Another action must be active simultaneously
-        COMBO,           ///< [NOT YET IMPLEMENTED] A sequence of actions must fire in order within timeout.
-                       ///< Currently always evaluates to ETriggerState::NONE.
+        DOWN,             ///< Active whenever the raw value exceeds actuation threshold
+        PRESSED,          ///< Fires on the frame actuation threshold is crossed (rising edge)
+        RELEASED,         ///< Fires on the frame actuation drops below threshold (falling edge)
+        HOLD,             ///< Must be held for ≥ hold_time_seconds
+        HOLD_AND_RELEASE, ///< Like HOLD but fires only on release after hold_time_seconds
+        TAP,              ///< Press+release within tap_time_seconds
+        PULSE,            ///< Fires repeatedly at pulse_interval while held
+        CHORD_ACTION,     ///< Another action must be active simultaneously
+        COMBO,            ///< [NOT YET IMPLEMENTED] A sequence of actions must fire in order within timeout.
+                          ///< Currently always evaluates to ETriggerState::NONE.
     };
 
     // ------------------------------------------------------------------ //
@@ -54,17 +54,17 @@ namespace lux::input
 
     struct TriggerDesc
     {
-        ETriggerKind      kind  = ETriggerKind::DOWN;
+        ETriggerKind kind = ETriggerKind::DOWN;
         ETriggerLogicType logic = ETriggerLogicType::EXPLICIT;
 
-        float actuation_threshold = 0.5f;   ///< Axis magnitude considered "actuated"
-        float hold_time_seconds   = 0.0f;   ///< For Hold / HoldAndRelease
-        float tap_time_seconds    = 0.2f;   ///< For Tap
-        float pulse_interval      = 0.1f;   ///< For Pulse
+        float actuation_threshold = 0.5f; ///< Axis magnitude considered "actuated"
+        float hold_time_seconds = 0.0f;   ///< For Hold / HoldAndRelease
+        float tap_time_seconds = 0.2f;    ///< For Tap
+        float pulse_interval = 0.1f;      ///< For Pulse
 
-        ActionId chord_action = InvalidActionId;          ///< For ChordAction
-        std::vector<ActionId> combo_sequence;              ///< For Combo [NOT YET IMPLEMENTED]
-        float combo_timeout_seconds = 0.0f;               ///< For Combo [NOT YET IMPLEMENTED]
+        ActionId chord_action = InvalidActionId; ///< For ChordAction
+        std::vector<ActionId> combo_sequence;    ///< For Combo [NOT YET IMPLEMENTED]
+        float combo_timeout_seconds = 0.0f;      ///< For Combo [NOT YET IMPLEMENTED]
     };
 
     // ------------------------------------------------------------------ //
@@ -73,9 +73,9 @@ namespace lux::input
 
     struct TriggerRuntimeState
     {
-        float elapsed   = 0.0f;   ///< General-purpose timer (Hold / Tap / Pulse)
-        int   tap_count = 0;      ///< For Combo sequences
-        bool  actuated  = false;  ///< Was actuated last frame
+        float elapsed = 0.0f;  ///< General-purpose timer (Hold / Tap / Pulse)
+        int tap_count = 0;     ///< For Combo sequences
+        bool actuated = false; ///< Was actuated last frame
     };
 
 } // namespace lux::input

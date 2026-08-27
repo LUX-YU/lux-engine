@@ -29,7 +29,9 @@ namespace lux::rdesc
 
     [[nodiscard]] inline bool isNullOpaqueAssetId(const OpaqueAssetId& id) noexcept
     {
-        for (const auto b : id) if (b != 0) return false;
+        for (const auto b : id)
+            if (b != 0)
+                return false;
         return true;
     }
 
@@ -40,7 +42,7 @@ namespace lux::rdesc
     /// so applying a frame is a plain copy, no maths.
     struct AtlasFrame
     {
-        std::string     name;
+        std::string name;
         Eigen::Vector4f uv_rect{0.f, 0.f, 1.f, 1.f};
         Eigen::Vector2f pivot{0.5f, 0.5f};
     };
@@ -49,8 +51,8 @@ namespace lux::rdesc
     /// load-bearing (FlipbookClip indexes frames by ordinal).
     struct TextureAtlas
     {
-        std::string                   name;
-        OpaqueAssetId                 texture_uuid{};   ///< the TEXTURE asset (opaque)
+        std::string name;
+        OpaqueAssetId texture_uuid{}; ///< the TEXTURE asset (opaque)
         std::vector<AtlasFrame> frames;
 
         /// Linear scan by name (atlases hold tens of frames; a map is not
@@ -58,7 +60,8 @@ namespace lux::rdesc
         [[nodiscard]] const AtlasFrame* findFrame(std::string_view frame_name) const noexcept
         {
             for (const auto& f : frames)
-                if (f.name == frame_name) return &f;
+                if (f.name == frame_name)
+                    return &f;
             return nullptr;
         }
     };
@@ -70,14 +73,14 @@ namespace lux::rdesc
     struct FlipbookFrame
     {
         std::uint32_t frame_index{0};
-        float         duration{0.1f};   ///< seconds; must be > 0
+        float duration{0.1f}; ///< seconds; must be > 0
     };
 
     /// A gameplay marker attached to a step: fires when playback ENTERS that
     /// step (footstep sounds, hit windows, ...). `event_id` is game-defined.
     struct FlipbookEvent
     {
-        std::uint32_t frame_index{0};   ///< ordinal into FlipbookClip::frames
+        std::uint32_t frame_index{0}; ///< ordinal into FlipbookClip::frames
         std::uint32_t event_id{0};
     };
 
@@ -85,16 +88,17 @@ namespace lux::rdesc
     /// two share nothing (design §3B.4: never reuse ANIMATION_CLIP for 2D).
     struct FlipbookClip
     {
-        std::string                  name;
-        OpaqueAssetId                atlas_uuid{};   ///< the TEXTURE_ATLAS asset (opaque)
+        std::string name;
+        OpaqueAssetId atlas_uuid{}; ///< the TEXTURE_ATLAS asset (opaque)
         std::vector<FlipbookFrame> frames;
         std::vector<FlipbookEvent> events;
-        bool                         loop{true};
+        bool loop{true};
 
         [[nodiscard]] float totalDuration() const noexcept
         {
             float t = 0.f;
-            for (const auto& f : frames) t += f.duration;
+            for (const auto& f : frames)
+                t += f.duration;
             return t;
         }
     };

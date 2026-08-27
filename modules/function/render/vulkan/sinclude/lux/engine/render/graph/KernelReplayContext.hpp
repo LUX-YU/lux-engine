@@ -12,22 +12,25 @@
 #include <lux/engine/function/visibility.h>
 #include <cstdint>
 
-namespace lux::cxx { template <typename Key, typename Value, Key Offset> class OffsetAutoSparseSet; }
+namespace lux::cxx
+{
+    template <typename Key, typename Value, Key Offset> class OffsetAutoSparseSet;
+}
 
 namespace lux::render
 {
     struct RGPhysicalResource;
-    using  RGPhysicalResourceTable = lux::cxx::OffsetAutoSparseSet<uint32_t, RGPhysicalResource, 0>;
+    using RGPhysicalResourceTable = lux::cxx::OffsetAutoSparseSet<uint32_t, RGPhysicalResource, 0>;
 
     struct RGFrameContext;
 
     /// Context passed to KernelDescriptor::ReplayFn during command replay.
     struct LUX_FUNCTION_PUBLIC KernelReplayContext
     {
-        VkCommandBuffer                 cmd;
-        const RGFrameContext&           frame_ctx;
-        const RGPhysicalResourceTable&  physical_resources;
-        VkPipelineLayout                current_layout;
+        VkCommandBuffer cmd;
+        const RGFrameContext& frame_ctx;
+        const RGPhysicalResourceTable& physical_resources;
+        VkPipelineLayout current_layout;
 
         /// Conditional-draw flag shared with the generic DrawIndexedIndirectCount handler.
         /// A kernel replay function can set this to true to skip the next draw call.

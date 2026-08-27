@@ -28,10 +28,10 @@ namespace lux::render
     /// Push-constant params (after the framework's scene/view indices).
     struct Grid2DParams
     {
-        float cellSize   = 1.0f;   ///< world units per minor cell
-        float majorEvery = 10.0f;  ///< minor cells per major line
-        float linePx     = 1.0f;   ///< line width in pixels
-        std::uint32_t onTop = 0;   ///< 1 = over the content, 0 = under it
+        float cellSize = 1.0f;    ///< world units per minor cell
+        float majorEvery = 10.0f; ///< minor cells per major line
+        float linePx = 1.0f;      ///< line width in pixels
+        std::uint32_t onTop = 0;  ///< 1 = over the content, 0 = under it
     };
 
     class LUX_FUNCTION_PUBLIC Grid2DPassFeature : public RenderFeature
@@ -41,23 +41,29 @@ namespace lux::render
         {
             ShaderHandle vertex_shader{};
             ShaderHandle fragment_shader{};
-            std::string  color_target{"SceneColor"};
+            std::string color_target{"SceneColor"};
         };
 
         explicit Grid2DPassFeature(Config cfg);
 
-        std::string_view name() const override { return "Grid2DPass"; }
+        std::string_view name() const override
+        {
+            return "Grid2DPass";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
         void onFrameBegin(const FeatureFrameContext& ctx) override;
 
         /// Direct parameter update (used by the comm handler).
-        void setGrid2DParams(const Grid2DParams& params) { pending_params_ = params; }
+        void setGrid2DParams(const Grid2DParams& params)
+        {
+            pending_params_ = params;
+        }
 
     private:
-        Config                      cfg_{};
-        GraphicsPipelineHandle      pipeline_{kInvalidPipelineHandle};
-        Grid2DParams                params_{};
+        Config cfg_{};
+        GraphicsPipelineHandle pipeline_{kInvalidPipelineHandle};
+        Grid2DParams params_{};
         std::optional<Grid2DParams> pending_params_;
     };
 

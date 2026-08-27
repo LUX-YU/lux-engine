@@ -9,7 +9,7 @@ namespace lux::object::test::benchmark
     struct ListenerControl final
     {
         std::uint64_t* observed{nullptr};
-        void (*invoke)(std::uint64_t*, int) noexcept{nullptr};
+        void (*invoke)(std::uint64_t*, int) noexcept {nullptr};
         bool connected{true};
     };
 
@@ -21,8 +21,14 @@ namespace lux::object::test::benchmark
     class CandidateA final
     {
     public:
-        void append(ListenerControl& control) { direct_.push_back(&control); }
-        void pop() { direct_.pop_back(); }
+        void append(ListenerControl& control)
+        {
+            direct_.push_back(&control);
+        }
+        void pop()
+        {
+            direct_.pop_back();
+        }
 
         void notify(int value) noexcept
         {
@@ -41,7 +47,7 @@ namespace lux::object::test::benchmark
     {
         ListenerControl* control{nullptr};
         std::uint64_t* observed{nullptr};
-        void (*invoke)(std::uint64_t*, int) noexcept{nullptr};
+        void (*invoke)(std::uint64_t*, int) noexcept {nullptr};
     };
 
     class CandidateB final
@@ -52,7 +58,10 @@ namespace lux::object::test::benchmark
             direct_.push_back({&control, control.observed, control.invoke});
         }
 
-        void pop() { direct_.pop_back(); }
+        void pop()
+        {
+            direct_.pop_back();
+        }
 
         void notify(int value) noexcept
         {
@@ -67,6 +76,5 @@ namespace lux::object::test::benchmark
         std::vector<DirectListener> direct_;
     };
 
-    inline constexpr std::size_t kCandidateBExtraBytesPerConnection =
-        sizeof(DirectListener) - sizeof(ListenerControl*);
+    inline constexpr std::size_t kCandidateBExtraBytesPerConnection = sizeof(DirectListener) - sizeof(ListenerControl*);
 } // namespace lux::object::test::benchmark

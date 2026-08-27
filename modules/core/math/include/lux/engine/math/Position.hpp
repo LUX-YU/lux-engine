@@ -31,7 +31,6 @@ namespace lux::math
 
     [[nodiscard]] inline bool isFinite(const Position3d& value) noexcept
     {
-        return std::isfinite(value.x) && std::isfinite(value.y) &&
-            std::isfinite(value.z);
+        return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     }
 } // namespace lux::math

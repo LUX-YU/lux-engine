@@ -52,31 +52,31 @@ namespace lux::render
             /// 保留仅为线协议布局不变 —— 下次 ABI 大版本一并摘掉。
             ShaderHandle vertex_shader{};
             ShaderHandle fragment_shader{};
-            uint32_t     atlas_page_resolution = kDefaultShadowAtlasPageResolution;
-            uint32_t     atlas_page_count      = kDefaultShadowAtlasPageCount;
-            uint32_t     max_shadow_slices     = kDefaultMaxShadowSlices;
-            uint32_t     enable_directional_csm{0}; // 0: single-slice directional shadow, 1: CSM
-            float        non_directional_shadow_max_distance{60.0f}; // <=0: no distance limit
+            uint32_t atlas_page_resolution = kDefaultShadowAtlasPageResolution;
+            uint32_t atlas_page_count = kDefaultShadowAtlasPageCount;
+            uint32_t max_shadow_slices = kDefaultMaxShadowSlices;
+            uint32_t enable_directional_csm{0};               // 0: single-slice directional shadow, 1: CSM
+            float non_directional_shadow_max_distance{60.0f}; // <=0: no distance limit
             /// Initial shadow technique. Runtime switch via setActiveTechnique().
             EShadowTechnique default_technique{EShadowTechnique::PCF};
             /// EVSM-specific knobs. Ignored under PCF.
             // RGBA16F-safe; see ShadowMapOperation.hpp comment.
-            float    evsm_pos_exponent{5.0f};
-            float    evsm_neg_exponent{5.0f};
+            float evsm_pos_exponent{5.0f};
+            float evsm_neg_exponent{5.0f};
             /// 0.5 = aggressive light-leak clamp. With fp16 exponents capped
             /// at 5 (vs Frostbite's 40), Chebyshev's depth-discrimination is
             /// loose; lower bleed_reduction values (≤0.3) leave most shadows
             /// invisibly faint. Tune up to 0.7 for hard shadows, down toward
             /// 0.2 for soft shadows on small/distant geometry.
-            float    evsm_bleed_reduction{0.5f};
+            float evsm_bleed_reduction{0.5f};
             uint32_t evsm_atlas_page_count{4};
         };
 
         struct Config
         {
             ShadowConfig shadow_config{};
-            std::string  shadow_atlas{"ShadowAtlas"};
-            std::string  sync_buffer{"ShadowViewUploadSync"};
+            std::string shadow_atlas{"ShadowAtlas"};
+            std::string sync_buffer{"ShadowViewUploadSync"};
         };
 
         explicit ShadowMapFeature(Config cfg);
@@ -92,7 +92,10 @@ namespace lux::render
         /// 只会让相认静悄悄失败,而认不出来就等于那处校验没有了。
         static constexpr std::string_view kFeatureName = "ShadowMap";
 
-        std::string_view name() const override { return kFeatureName; }
+        std::string_view name() const override
+        {
+            return kFeatureName;
+        }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
@@ -106,7 +109,8 @@ namespace lux::render
             uint32_t atlas_page_resolution,
             uint32_t atlas_page_count,
             uint32_t max_shadow_slices,
-            float non_directional_shadow_max_distance);
+            float non_directional_shadow_max_distance
+        );
         /// Runtime switch for directional shadow mode.
         /// false: force one directional slice, true: use configured cascades.
         void setDirectionalCsmEnabled(bool enabled);
@@ -118,7 +122,10 @@ namespace lux::render
         /// next rebuild. Resource / pass dispatch routing through the active
         /// technique progressively lands in C3-C5.
         void setActiveTechnique(EShadowTechnique technique) noexcept;
-        [[nodiscard]] EShadowTechnique activeTechnique() const noexcept { return active_technique_; }
+        [[nodiscard]] EShadowTechnique activeTechnique() const noexcept
+        {
+            return active_technique_;
+        }
         [[nodiscard]] IShadowTechnique& currentTechnique() noexcept;
         [[nodiscard]] const IShadowTechnique& currentTechnique() const noexcept;
 
@@ -132,32 +139,38 @@ namespace lux::render
         {
             return "lux::render::ShadowQualityParams";
         }
-        [[nodiscard]] void* paramData() noexcept override { return &params_; }
-        [[nodiscard]] std::size_t paramSize() const noexcept override { return sizeof(ShadowQualityParams); }
+        [[nodiscard]] void* paramData() noexcept override
+        {
+            return &params_;
+        }
+        [[nodiscard]] std::size_t paramSize() const noexcept override
+        {
+            return sizeof(ShadowQualityParams);
+        }
         EParamApply applyParams(const void* src, std::size_t size) override;
 
     private:
         struct PerViewShadowState
         {
             std::vector<ShadowSliceGPU> slices;
-            std::vector<int32_t>        spot_shadow_slice_index;
-            std::vector<int32_t>        point_shadow_base_slice;
-            ShadowConfigGPU             config{};
+            std::vector<int32_t> spot_shadow_slice_index;
+            std::vector<int32_t> point_shadow_base_slice;
+            ShadowConfigGPU config{};
             /// 首次重建标记:churn 诊断只在「上次重建的结果」存在时比较 ——
             /// 没有它,首建会被当成一次「0 → N」的假变动。(诊断状态从
             /// static thread_local 搬进 per-view state:那份被渲染线程上
             /// 所有场景的所有 view 共享,预览世界一次重建就替主场景报假账。)
-            bool                        built_once{false};
+            bool built_once{false};
         };
 
         /// Fingerprint for incremental rebuild — if camera + lights haven't
         /// changed since last frame we can reuse the previous slice set.
         struct PerViewShadowFingerprint
         {
-            Eigen::Matrix4f  view_proj = Eigen::Matrix4f::Zero();
-            Eigen::Vector3f  camera_pos = Eigen::Vector3f::Zero();
-            uint64_t         light_config_hash{0};
-            uint32_t         shadow_config_serial{0};
+            Eigen::Matrix4f view_proj = Eigen::Matrix4f::Zero();
+            Eigen::Vector3f camera_pos = Eigen::Vector3f::Zero();
+            uint64_t light_config_hash{0};
+            uint32_t shadow_config_serial{0};
         };
 
         void buildSlicesForView(const View& view, LightResources* light_res, PerViewShadowState& out_state);
@@ -177,9 +190,12 @@ namespace lux::render
         ///
         /// @param domain_sets            Light 所在 FEATURE 域的 per-FIF 集
         /// @param domain_binding_offset  Light 在域内的起始偏移(= +2,跳过 Instance 的两条)
-        void writeEVSMBindings(LightResources& light_res, EVSMShadowResources& evsm_res,
-                               std::span<const VkDescriptorSet> domain_sets,
-                               uint32_t domain_binding_offset);
+        void writeEVSMBindings(
+            LightResources& light_res,
+            EVSMShadowResources& evsm_res,
+            std::span<const VkDescriptorSet> domain_sets,
+            uint32_t domain_binding_offset
+        );
         const PerViewShadowState* resolveViewState(uint32_t view_handle) const;
         uint64_t computeLightConfigHash(LightResources* light_res) const;
 

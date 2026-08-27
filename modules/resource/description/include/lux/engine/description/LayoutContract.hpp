@@ -33,7 +33,7 @@
 //  Implementation checklist: .internal/lux-engine-descriptor-layout-implementation-checklist.md
 // =============================================================================
 
-#include "ShaderInfo.hpp"   // EDescriptorType — shares its type family with reflection
+#include "ShaderInfo.hpp" // EDescriptorType — shares its type family with reflection
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -46,19 +46,19 @@ namespace lux::rdesc
     /// frozen slot or a free slot, and its binding-locality tier.
     enum class EBindFrequency : uint8_t
     {
-        GLOBAL,      ///< Scene/frame-global (frozen: the canonical slot IS the final slot)
-        BINDLESS,    ///< Bind-once unbounded array (frozen; SPIR-V patch remapping never touches it)
-        FEATURE,     ///< Feature-private resource (free: allocated per graph, at compile time)
-        PASS_LOCAL,  ///< Single-pass transient (free; the compute set0 convention belongs to this domain)
+        GLOBAL,     ///< Scene/frame-global (frozen: the canonical slot IS the final slot)
+        BINDLESS,   ///< Bind-once unbounded array (frozen; SPIR-V patch remapping never touches it)
+        FEATURE,    ///< Feature-private resource (free: allocated per graph, at compile time)
+        PASS_LOCAL, ///< Single-pass transient (free; the compute set0 convention belongs to this domain)
     };
 
     /// Lightweight stage-visibility bitmask (the contract only needs coarse
     /// granularity; reflection is the source of truth for exact stages).
     enum class EStageBits : uint8_t
     {
-        VERTEX   = 1u << 0,
+        VERTEX = 1u << 0,
         FRAGMENT = 1u << 1,
-        COMPUTE  = 1u << 2,
+        COMPUTE = 1u << 2,
     };
 
     /// Descriptor-binding behavior flags — the part of the layout truth that
@@ -68,10 +68,10 @@ namespace lux::rdesc
     /// VkDescriptorBindingFlags.
     enum class EBindingFlags : uint8_t
     {
-        NONE               = 0,
-        UPDATE_AFTER_BIND  = 1u << 0,
-        PARTIALLY_BOUND    = 1u << 1,
-        VARIABLE_COUNT     = 1u << 2,   ///< Trailing binding; actual count is derived from the device
+        NONE = 0,
+        UPDATE_AFTER_BIND = 1u << 0,
+        PARTIALLY_BOUND = 1u << 1,
+        VARIABLE_COUNT = 1u << 2, ///< Trailing binding; actual count is derived from the device
     };
     [[nodiscard]] constexpr uint8_t operator|(EBindingFlags a, EBindingFlags b) noexcept
     {
@@ -96,14 +96,14 @@ namespace lux::rdesc
     /// runtime array (its upper bound is managed separately on the C++ side).
     struct LogicalResourceDesc
     {
-        const char*     name;
-        EBindFrequency  frequency;
+        const char* name;
+        EBindFrequency frequency;
         EDescriptorType type;
-        uint32_t        count;             ///< 0 = runtime array
-        uint32_t        canonical_set;
-        uint32_t        canonical_binding;
-        uint8_t         stages;            ///< EStageBits bitmask
-        uint8_t         binding_flags{0};  ///< EBindingFlags bitmask (not recoverable from reflection; declared by the contract)
+        uint32_t count; ///< 0 = runtime array
+        uint32_t canonical_set;
+        uint32_t canonical_binding;
+        uint8_t stages;           ///< EStageBits bitmask
+        uint8_t binding_flags{0}; ///< EBindingFlags bitmask (not recoverable from reflection; declared by the contract)
 
         /// Whether this resource lives in an ENGINE-SHARED descriptor set
         /// (the set instance is allocated by an engine-side resource object:
@@ -121,7 +121,7 @@ namespace lux::rdesc
         /// false → a pipeline-private set (e.g. a transient descriptor set),
         ///         whose shape is exactly what reflection sees; DescriptorService
         ///         builds it from reflection plus the flags above.
-        bool            engine_set{false};
+        bool engine_set{false};
     };
 
     // -------------------------------------------------------------------------
@@ -145,31 +145,53 @@ namespace lux::rdesc
         //    declared FRAGMENT|COMPUTE, an over-broad declaration caught and
         //    fixed by the compile-time cross-check between the contract and
         //    the shape table (at the end of EngineSetShapes.hpp).
-        { "uTex",           EBindFrequency::BINDLESS, EDescriptorType::COMBINED_IMAGE_SAMPLER,
-          /*count*/ 0, /*set*/ 2, /*binding*/ 0, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND,
-          /*engine_set*/ true },
-        { "uCubeTex",       EBindFrequency::BINDLESS, EDescriptorType::COMBINED_IMAGE_SAMPLER,
-          /*count*/ 0, /*set*/ 2, /*binding*/ 1, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::VARIABLE_COUNT,
-          /*engine_set*/ true },
-        { "luxVertexPools", EBindFrequency::BINDLESS, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 0, /*set*/ 7, /*binding*/ 0,
-          EStageBits::VERTEX | EStageBits::FRAGMENT | EStageBits::COMPUTE,
-          EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND,
-          /*engine_set*/ true },
+        {"uTex",
+         EBindFrequency::BINDLESS,
+         EDescriptorType::COMBINED_IMAGE_SAMPLER,
+         /*count*/ 0,
+         /*set*/ 2,
+         /*binding*/ 0,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND,
+         /*engine_set*/ true},
+        {"uCubeTex",
+         EBindFrequency::BINDLESS,
+         EDescriptorType::COMBINED_IMAGE_SAMPLER,
+         /*count*/ 0,
+         /*set*/ 2,
+         /*binding*/ 1,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::VARIABLE_COUNT,
+         /*engine_set*/ true},
+        {"luxVertexPools",
+         EBindFrequency::BINDLESS,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 0,
+         /*set*/ 7,
+         /*binding*/ 0,
+         EStageBits::VERTEX | EStageBits::FRAGMENT | EStageBits::COMPUTE,
+         EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND,
+         /*engine_set*/ true},
 
         // ── GLOBAL domain (set0)
-        { "uSceneGlobals",  EBindFrequency::GLOBAL,   EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 0, /*binding*/ 0,
-          EStageBits::VERTEX | EStageBits::FRAGMENT | EStageBits::COMPUTE,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uViews",         EBindFrequency::GLOBAL,   EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 0, /*binding*/ 1,
-          EStageBits::VERTEX | EStageBits::FRAGMENT | EStageBits::COMPUTE,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
+        {"uSceneGlobals",
+         EBindFrequency::GLOBAL,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 0,
+         /*binding*/ 0,
+         EStageBits::VERTEX | EStageBits::FRAGMENT | EStageBits::COMPUTE,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uViews",
+         EBindFrequency::GLOBAL,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 0,
+         /*binding*/ 1,
+         EStageBits::VERTEX | EStageBits::FRAGMENT | EStageBits::COMPUTE,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
 
         // ── FEATURE domain (registered one at a time as each shader migrates
         //    into .lglsl; canonical = its current slot)
@@ -180,10 +202,15 @@ namespace lux::rdesc
         //    lighting_common.lglslh: the four light SSBOs (currently set3
         //    b0-3; they'll move together later when the tiering switches
         //    over, with zero shader changes)
-        { "uSpotLights",        EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 0, EStageBits::FRAGMENT | EStageBits::COMPUTE,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
+        {"uSpotLights",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 0,
+         EStageBits::FRAGMENT | EStageBits::COMPUTE,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
         //    shadow_pcf.glsl / shadow_evsm.glsl: the Light set's shadow
         //    section, b4-b10. Caught in one shot by the contract-completeness
         //    reconciliation test (the [contract] case in spirv_patcher_test):
@@ -198,56 +225,111 @@ namespace lux::rdesc
         //    that feature) puts it at its OWN set's b0 — that alternate slot
         //    is registered in the reconciliation test's kContractExemptions,
         //    not in this contract.
-        { "uShadowSlices",      EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 4, EStageBits::VERTEX | EStageBits::FRAGMENT,
-          EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
-          /*engine_set*/ true },
-        { "uShadowAtlas",       EBindFrequency::FEATURE, EDescriptorType::COMBINED_IMAGE_SAMPLER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 5, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
-          /*engine_set*/ true },
-        { "uShadowConfig",      EBindFrequency::FEATURE, EDescriptorType::UNIFORM_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 6, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
-          /*engine_set*/ true },
-        { "uSpotShadowMap",     EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 7, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
-          /*engine_set*/ true },
-        { "uPointShadowMap",    EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 8, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
-          /*engine_set*/ true },
-        { "uShadowAtlasEVSM",   EBindFrequency::FEATURE, EDescriptorType::COMBINED_IMAGE_SAMPLER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 9, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
-          /*engine_set*/ true },
-        { "uEvsmConfig",        EBindFrequency::FEATURE, EDescriptorType::UNIFORM_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 10, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
-          /*engine_set*/ true },
+        {"uShadowSlices",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 4,
+         EStageBits::VERTEX | EStageBits::FRAGMENT,
+         EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
+         /*engine_set*/ true},
+        {"uShadowAtlas",
+         EBindFrequency::FEATURE,
+         EDescriptorType::COMBINED_IMAGE_SAMPLER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 5,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
+         /*engine_set*/ true},
+        {"uShadowConfig",
+         EBindFrequency::FEATURE,
+         EDescriptorType::UNIFORM_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 6,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
+         /*engine_set*/ true},
+        {"uSpotShadowMap",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 7,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
+         /*engine_set*/ true},
+        {"uPointShadowMap",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 8,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
+         /*engine_set*/ true},
+        {"uShadowAtlasEVSM",
+         EBindFrequency::FEATURE,
+         EDescriptorType::COMBINED_IMAGE_SAMPLER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 9,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
+         /*engine_set*/ true},
+        {"uEvsmConfig",
+         EBindFrequency::FEATURE,
+         EDescriptorType::UNIFORM_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 10,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::UPDATE_AFTER_BIND | EBindingFlags::PARTIALLY_BOUND,
+         /*engine_set*/ true},
         //    shading_inputs.glsl:屏幕空间着色输入数组(b11,v0 只有 AO 一个
         //    槽)。与 b4-b10 的影子段不同,这条**没有 PARTIALLY_BOUND** ——
         //    LightResources 在 init 期就用 1×1 白纹理写满全部元素,消费者
         //    无条件采样(默认值 1.0 = 无遮蔽),提供者(如 SSAO)只是覆写。
         //    count 是 C++ 侧 EShadingInputSlot::COUNT 的镜像(形状表 B 用
         //    枚举,这里是字面量 —— 本表不依赖 render 头)。
-        { "uShadingInputs",     EBindFrequency::FEATURE, EDescriptorType::COMBINED_IMAGE_SAMPLER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 11, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uDirectionalLights", EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 1, EStageBits::FRAGMENT | EStageBits::COMPUTE,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uPointLights",       EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 2, EStageBits::FRAGMENT | EStageBits::COMPUTE,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uAreaLights",        EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 3, /*binding*/ 3, EStageBits::FRAGMENT | EStageBits::COMPUTE,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
+        {"uShadingInputs",
+         EBindFrequency::FEATURE,
+         EDescriptorType::COMBINED_IMAGE_SAMPLER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 11,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uDirectionalLights",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 1,
+         EStageBits::FRAGMENT | EStageBits::COMPUTE,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uPointLights",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 2,
+         EStageBits::FRAGMENT | EStageBits::COMPUTE,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uAreaLights",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 3,
+         /*binding*/ 3,
+         EStageBits::FRAGMENT | EStageBits::COMPUTE,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
         //    (原此处的 "uParticles"(set 5 binding 0)已删。粒子的 C++ 早在
         //     eb93bed 就删了,3 个着色器无人加载,现已移出构建 —— 声明它的
         //     particle.vert.lglsl 不复存在,而本表的条目必须对应一个真实的
@@ -258,18 +340,38 @@ namespace lux::rdesc
         //    order stream (FEATURE slot is set1 for all of them — it's a
         //    per-pipeline slot, so entries from different pipeline families
         //    are allowed to share it)
-        { "uImages",            EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 1, /*binding*/ 0, static_cast<uint8_t>(EStageBits::VERTEX),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND) },
-        { "uFields",            EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 1, /*binding*/ 0, static_cast<uint8_t>(EStageBits::VERTEX),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND) },
-        { "uTiles",             EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 1, /*binding*/ 0, static_cast<uint8_t>(EStageBits::VERTEX),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND) },
-        { "uOrder",             EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 1, /*binding*/ 1, static_cast<uint8_t>(EStageBits::VERTEX),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND) },
+        {"uImages",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 1,
+         /*binding*/ 0,
+         static_cast<uint8_t>(EStageBits::VERTEX),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND)},
+        {"uFields",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 1,
+         /*binding*/ 0,
+         static_cast<uint8_t>(EStageBits::VERTEX),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND)},
+        {"uTiles",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 1,
+         /*binding*/ 0,
+         static_cast<uint8_t>(EStageBits::VERTEX),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND)},
+        {"uOrder",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 1,
+         /*binding*/ 1,
+         static_cast<uint8_t>(EStageBits::VERTEX),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND)},
         //    (R2-1:uGroup / uBlurSrc / uBlur / uMask(canvas2d 合成与 highlight
         //     模糊/合成的管线私有采样输入,set1 b0 / b0 / b0+b1)已随 uHDRColor
         //     退出契约 —— 自动分配按声明序给出与原钉位逐字节相同的结果。
@@ -282,30 +384,60 @@ namespace lux::rdesc
         //    takes the forward family's convention; the shadow family's
         //    drifted set2 variant is left unmigrated for now and will be
         //    reconciled together when the tiering switches over later
-        { "uTransforms",        EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 1, /*binding*/ 0, EStageBits::VERTEX | EStageBits::FRAGMENT,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uProperties",        EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 1, /*binding*/ 1, EStageBits::VERTEX | EStageBits::FRAGMENT,
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uVisibleInstances",  EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 5, /*binding*/ 0, static_cast<uint8_t>(EStageBits::VERTEX) },
+        {"uTransforms",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 1,
+         /*binding*/ 0,
+         EStageBits::VERTEX | EStageBits::FRAGMENT,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uProperties",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 1,
+         /*binding*/ 1,
+         EStageBits::VERTEX | EStageBits::FRAGMENT,
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uVisibleInstances",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 5,
+         /*binding*/ 0,
+         static_cast<uint8_t>(EStageBits::VERTEX)},
         //    Material-family SSBO (binding = technique id; forward and
         //    gbuffer fragment shaders share the same name/slot)
-        { "uUnlit",             EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 4, /*binding*/ 0, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uPbr",               EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 4, /*binding*/ 2, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-        { "uStylized",          EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 4, /*binding*/ 3, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
+        {"uUnlit",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 4,
+         /*binding*/ 0,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uPbr",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 4,
+         /*binding*/ 2,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+        {"uStylized",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 4,
+         /*binding*/ 3,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
         //    The Graph family's (node-graph material) generic blob. Declared
         //    not in .lglsl but in engine/toolchain/shader/glsl's ShaderEmitter —
         //    material-graph shaders are generated at runtime, but this entry
@@ -314,11 +446,17 @@ namespace lux::rdesc
         //    build it a private layout instead, making the graph-material
         //    variant's pipeline layout incompatible with the built-in
         //    family's variant within the same pass (VUID-...-08600).
-        { "uMats",              EBindFrequency::FEATURE, EDescriptorType::STORAGE_BUFFER,
-          /*count*/ 1, /*set*/ 4, /*binding*/ 4, static_cast<uint8_t>(EStageBits::FRAGMENT),
-          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
-          /*engine_set*/ true },
-    });
+        {"uMats",
+         EBindFrequency::FEATURE,
+         EDescriptorType::STORAGE_BUFFER,
+         /*count*/ 1,
+         /*set*/ 4,
+         /*binding*/ 4,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
+         /*engine_set*/ true},
+    }
+    );
 
     [[nodiscard]] constexpr std::span<const LogicalResourceDesc> layoutContract() noexcept
     {
@@ -338,8 +476,7 @@ namespace lux::rdesc
     }
 
     /// 「不在契约里」的索引哨兵。
-    inline constexpr std::uint32_t kInvalidLogicalResourceIndex =
-        (std::numeric_limits<std::uint32_t>::max)();
+    inline constexpr std::uint32_t kInvalidLogicalResourceIndex = (std::numeric_limits<std::uint32_t>::max)();
 
     /// 表内下标。诊断与错误上报传这个索引而不是名字字符串:契约是引擎级常量,两端读
     /// 的是同一份表,所以名字在消费侧解析即可,不必跨线程/跨进程搬运字符串。

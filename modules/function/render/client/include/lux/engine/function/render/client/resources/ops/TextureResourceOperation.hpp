@@ -23,18 +23,18 @@ namespace lux::render
     {
         inline constexpr TypeId CreateTexture2D = 3;
         inline constexpr TypeId CreateCubeTexture = 4;
-        inline constexpr TypeId DestroyTexture = 5;     ///< 2D set ONLY
+        inline constexpr TypeId DestroyTexture = 5; ///< 2D set ONLY
         inline constexpr TypeId UpdateTexture2D = 14;
         inline constexpr TypeId UpdateCubeTexture = 15;
         inline constexpr TypeId DestroyCubeTexture = 18; ///< cube set ONLY (2D/cube index spaces are independent)
         // ── Region-upload protocol (U2-00; server side lands U2-01/02) ──
         inline constexpr TypeId CreatePersistentTexture2D = 19;
-        inline constexpr TypeId UpdateTextureRegions      = 20;
+        inline constexpr TypeId UpdateTextureRegions = 20;
         /// Rebuilds one immutable asset texture at a logical mip base while
         /// retaining its stable bindless texture handle. The old image is kept
         /// alive until the replacement is complete and frames-in-flight-safe.
-        inline constexpr TypeId ReplaceTexture2DMipRange  = 21;
-        inline constexpr TypeId QueryTextureMipDemands    = 22;
+        inline constexpr TypeId ReplaceTexture2DMipRange = 21;
+        inline constexpr TypeId QueryTextureMipDemands = 22;
     } // namespace type_ids
 
     inline constexpr uint32_t kTextureUploadMaxMipCount = 16;
@@ -109,8 +109,7 @@ namespace lux::render
     {
         std::uint32_t count{0u};
         std::uint32_t remaining_count{0u};
-        std::array<TextureMipDemandEntry, kTextureMipDemandBatchCapacity>
-            entries{};
+        std::array<TextureMipDemandEntry, kTextureMipDemandBatchCapacity> entries{};
     };
     static_assert(std::is_trivially_copyable_v<TextureMipDemandsReply>);
 
@@ -155,11 +154,11 @@ namespace lux::render
     /// validation is checked against this (the server keeps it per slot, U2-01).
     struct PersistentTexture2DDesc
     {
-        std::uint32_t width{0};          ///< texels, mip 0
-        std::uint32_t height{0};         ///< texels, mip 0
-        std::uint32_t mip_levels{1};     ///< pre-allocated mip chain (no runtime regen)
+        std::uint32_t width{0};      ///< texels, mip 0
+        std::uint32_t height{0};     ///< texels, mip 0
+        std::uint32_t mip_levels{1}; ///< pre-allocated mip chain (no runtime regen)
         std::uint32_t array_layers{1};
-        EPixelFormat  format{EPixelFormat::RGBA8_UNORM};
+        EPixelFormat format{EPixelFormat::RGBA8_UNORM};
     };
     static_assert(std::is_trivially_copyable_v<PersistentTexture2DDesc>);
 
@@ -174,12 +173,12 @@ namespace lux::render
     /// `height` rows of `row_pitch_bytes` (0 = tightly packed, width×texel bytes).
     struct TextureRegionDesc
     {
-        std::uint32_t x{0}, y{0};              ///< texel offset within the target mip level
-        std::uint32_t width{0}, height{0};     ///< texel extent (must be non-empty)
+        std::uint32_t x{0}, y{0};          ///< texel offset within the target mip level
+        std::uint32_t width{0}, height{0}; ///< texel extent (must be non-empty)
         std::uint32_t mip{0};
         std::uint32_t array_layer{0};
-        std::uint32_t row_pitch_bytes{0};      ///< source row stride; 0 = tight
-        std::uint32_t data_offset{0};          ///< byte offset into the batch's pixel block
+        std::uint32_t row_pitch_bytes{0}; ///< source row stride; 0 = tight
+        std::uint32_t data_offset{0};     ///< byte offset into the batch's pixel block
     };
     static_assert(std::is_trivially_copyable_v<TextureRegionDesc>);
 
@@ -188,12 +187,12 @@ namespace lux::render
     /// NO fixed-capacity array and no borrowed pointer crosses the frame.
     struct UpdateTextureRegionsPayload
     {
-        RTextureHandle  handle{};
-        std::uint64_t   content_revision{0};   ///< echoed in the reply (U2-03 ack token)
-        std::uint32_t   region_count{0};       ///< TextureRegionDesc count in `regions`
-        std::uint32_t   reserved_{0};
-        ExternalDataRef regions{};             ///< TextureRegionDesc[region_count]
-        ExternalDataRef pixels{};              ///< the pixel block regions' data_offset index into
+        RTextureHandle handle{};
+        std::uint64_t content_revision{0}; ///< echoed in the reply (U2-03 ack token)
+        std::uint32_t region_count{0};     ///< TextureRegionDesc count in `regions`
+        std::uint32_t reserved_{0};
+        ExternalDataRef regions{}; ///< TextureRegionDesc[region_count]
+        ExternalDataRef pixels{};  ///< the pixel block regions' data_offset index into
     };
     static_assert(std::is_trivially_copyable_v<UpdateTextureRegionsPayload>);
 
@@ -204,17 +203,17 @@ namespace lux::render
     enum class ERegionUploadStatus : std::uint32_t
     {
         Ok = 0,
-        InvalidHandle,        ///< dst handle dead/stale (server-side check, U2-01)
-        UnsupportedFormat,    ///< block-compressed (BC*) — persistent dynamic textures are uncompressed
-        InvalidDesc,          ///< create: zero extent / zero layers / mip chain deeper than log2(extent)
-        NoRegions,            ///< empty batch (a heartbeat is NOT expressed as zero regions)
-        EmptyRegion,          ///< a region has zero width or height
-        MipOutOfRange,        ///< region.mip >= desc.mip_levels
-        LayerOutOfRange,      ///< region.array_layer >= desc.array_layers
-        OutOfBounds,          ///< region rect exceeds the target MIP's extent
-        RowPitchTooSmall,     ///< non-zero pitch smaller than the region's tight row bytes
-        DataOutOfRange,       ///< region pixels (offset + rows×pitch) exceed the pixel block
-        CapacityExhausted,    ///< create: bindless/resource capacity is temporarily full
+        InvalidHandle,     ///< dst handle dead/stale (server-side check, U2-01)
+        UnsupportedFormat, ///< block-compressed (BC*) — persistent dynamic textures are uncompressed
+        InvalidDesc,       ///< create: zero extent / zero layers / mip chain deeper than log2(extent)
+        NoRegions,         ///< empty batch (a heartbeat is NOT expressed as zero regions)
+        EmptyRegion,       ///< a region has zero width or height
+        MipOutOfRange,     ///< region.mip >= desc.mip_levels
+        LayerOutOfRange,   ///< region.array_layer >= desc.array_layers
+        OutOfBounds,       ///< region rect exceeds the target MIP's extent
+        RowPitchTooSmall,  ///< non-zero pitch smaller than the region's tight row bytes
+        DataOutOfRange,    ///< region pixels (offset + rows×pitch) exceed the pixel block
+        CapacityExhausted, ///< create: bindless/resource capacity is temporarily full
     };
 
     /// Bytes per texel for formats a REGION update accepts; 0 for formats it
@@ -225,13 +224,20 @@ namespace lux::render
         switch (f)
         {
         case EPixelFormat::RGBA8_SRGB:
-        case EPixelFormat::RGBA8_UNORM:   return 4;
-        case EPixelFormat::RGBA16_SFLOAT: return 8;
-        case EPixelFormat::RG8_UNORM:     return 2;
-        case EPixelFormat::R8_UNORM:      return 1;
-        case EPixelFormat::R16_UINT:      return 2;
-        case EPixelFormat::R16_UNORM:     return 2;
-        default:                          return 0;   // BC* and anything future-unknown
+        case EPixelFormat::RGBA8_UNORM:
+            return 4;
+        case EPixelFormat::RGBA16_SFLOAT:
+            return 8;
+        case EPixelFormat::RG8_UNORM:
+            return 2;
+        case EPixelFormat::R8_UNORM:
+            return 1;
+        case EPixelFormat::R16_UINT:
+            return 2;
+        case EPixelFormat::R16_UNORM:
+            return 2;
+        default:
+            return 0; // BC* and anything future-unknown
         }
     }
 
@@ -242,8 +248,11 @@ namespace lux::render
     struct RegionValidationResult
     {
         ERegionUploadStatus status{ERegionUploadStatus::Ok};
-        std::uint32_t       region_index{kNoRegionIndex};
-        [[nodiscard]] constexpr bool ok() const noexcept { return status == ERegionUploadStatus::Ok; }
+        std::uint32_t region_index{kNoRegionIndex};
+        [[nodiscard]] constexpr bool ok() const noexcept
+        {
+            return status == ERegionUploadStatus::Ok;
+        }
     };
 
     /// Create-side validation: is @p desc a persistent texture this protocol can
@@ -254,12 +263,18 @@ namespace lux::render
     {
         if (regionTexelBytes(desc.format) == 0)
             return {ERegionUploadStatus::UnsupportedFormat, kNoRegionIndex};
-        if (desc.width == 0 || desc.height == 0 || desc.array_layers == 0 || desc.mip_levels == 0)
+        const bool is_missing_width = desc.width == 0;
+        const bool is_missing_height = desc.height == 0;
+        const bool is_missing_layers = desc.array_layers == 0;
+        const bool is_missing_mips = desc.mip_levels == 0;
+        const bool is_invalid_extent = is_missing_width || is_missing_height || is_missing_layers || is_missing_mips;
+        if (is_invalid_extent)
             return {ERegionUploadStatus::InvalidDesc, kNoRegionIndex};
         // Deepest legal chain: down to 1×1 on the LARGER axis (max(w,h) >> (mips-1) >= 1).
         const std::uint32_t max_extent = desc.width > desc.height ? desc.width : desc.height;
         std::uint32_t deepest = 1;
-        for (std::uint32_t e = max_extent; e > 1; e >>= 1u) ++deepest;
+        for (std::uint32_t e = max_extent; e > 1; e >>= 1u)
+            ++deepest;
         if (desc.mip_levels > deepest)
             return {ERegionUploadStatus::InvalidDesc, kNoRegionIndex};
         return {};
@@ -270,10 +285,11 @@ namespace lux::render
     /// authoritative check. @p pixel_bytes is the size of the batch's pixel block.
     /// Overlapping regions are LEGAL (later wins within one batch; U2-03's
     /// coalescer may merge them) — order, not overlap, is the contract.
-    [[nodiscard]] constexpr RegionValidationResult
-    validateTextureRegions(const PersistentTexture2DDesc& desc,
-                           std::span<const TextureRegionDesc> regions,
-                           std::uint64_t pixel_bytes) noexcept
+    [[nodiscard]] constexpr RegionValidationResult validateTextureRegions(
+        const PersistentTexture2DDesc& desc,
+        std::span<const TextureRegionDesc> regions,
+        std::uint64_t pixel_bytes
+    ) noexcept
     {
         const std::uint64_t texel = regionTexelBytes(desc.format);
         if (texel == 0)
@@ -292,7 +308,7 @@ namespace lux::render
                 return {ERegionUploadStatus::LayerOutOfRange, i};
 
             // The target MIP's extent (each level halves, floored, never below 1).
-            const std::uint64_t mip_w = desc.width  >> r.mip ? desc.width  >> r.mip : 1u;
+            const std::uint64_t mip_w = desc.width >> r.mip ? desc.width >> r.mip : 1u;
             const std::uint64_t mip_h = desc.height >> r.mip ? desc.height >> r.mip : 1u;
             if (std::uint64_t{r.x} + r.width > mip_w || std::uint64_t{r.y} + r.height > mip_h)
                 return {ERegionUploadStatus::OutOfBounds, i};
@@ -341,18 +357,21 @@ namespace lux::render
     {
         std::uint32_t width{0};
         std::uint32_t height{0};
-        std::uint64_t offset{0};  ///< tight offset into the packed staging buffer
-        std::uint64_t bytes{0};   ///< exact byte size of this mip
+        std::uint64_t offset{0}; ///< tight offset into the packed staging buffer
+        std::uint64_t bytes{0};  ///< exact byte size of this mip
     };
 
     struct Texture2DUploadPlan
     {
         ETextureUploadStatus status{ETextureUploadStatus::Ok};
-        std::uint32_t        bad_mip{kNoRegionIndex};  ///< offending mip (kNoRegionIndex = n/a)
-        std::uint32_t        mip_count{0};
-        std::uint64_t        total_bytes{0};
+        std::uint32_t bad_mip{kNoRegionIndex}; ///< offending mip (kNoRegionIndex = n/a)
+        std::uint32_t mip_count{0};
+        std::uint64_t total_bytes{0};
         std::array<TextureUploadMipPlan, kTextureUploadMaxMipCount> mips{};
-        [[nodiscard]] constexpr bool ok() const noexcept { return status == ETextureUploadStatus::Ok; }
+        [[nodiscard]] constexpr bool ok() const noexcept
+        {
+            return status == ETextureUploadStatus::Ok;
+        }
     };
 
     /// One mip's declared extent + provided byte count (from the payload client-side,
@@ -364,32 +383,53 @@ namespace lux::render
         std::uint64_t byte_count{0};
     };
 
-    [[nodiscard]] constexpr Texture2DUploadPlan
-    validateTexture2DUpload(EPixelFormat format, std::uint32_t mip_count,
-                            const TextureUploadMipInput* mips,
-                            std::uint32_t device_max_dim) noexcept
+    [[nodiscard]] constexpr Texture2DUploadPlan validateTexture2DUpload(
+        EPixelFormat format,
+        std::uint32_t mip_count,
+        const TextureUploadMipInput* mips,
+        std::uint32_t device_max_dim
+    ) noexcept
     {
         Texture2DUploadPlan plan{};
         if (!pixelFormatBlockInfo(format).supported)
-            { plan.status = ETextureUploadStatus::UnsupportedFormat; return plan; }
+        {
+            plan.status = ETextureUploadStatus::UnsupportedFormat;
+            return plan;
+        }
         if (mip_count == 0 || mip_count > kTextureUploadMaxMipCount)
-            { plan.status = ETextureUploadStatus::InvalidMipCount; return plan; }
+        {
+            plan.status = ETextureUploadStatus::InvalidMipCount;
+            return plan;
+        }
         if (mips == nullptr)
-            { plan.status = ETextureUploadStatus::NullInput; return plan; }
+        {
+            plan.status = ETextureUploadStatus::NullInput;
+            return plan;
+        }
         const std::uint32_t base_w = mips[0].width;
         const std::uint32_t base_h = mips[0].height;
         if (base_w == 0 || base_h == 0)
-            { plan.status = ETextureUploadStatus::ZeroBaseExtent; return plan; }
+        {
+            plan.status = ETextureUploadStatus::ZeroBaseExtent;
+            return plan;
+        }
         if (base_w > device_max_dim || base_h > device_max_dim)
-            { plan.status = ETextureUploadStatus::ExtentTooLarge; return plan; }
+        {
+            plan.status = ETextureUploadStatus::ExtentTooLarge;
+            return plan;
+        }
         // Vulkan mipLevels max = floor(log2(max(w,h)))+1; reject deeper chains (e.g. a
         // 1×1 texture claiming 16 mips — the extent bottoms out at 1×1).
         {
             const std::uint32_t max_extent = base_w > base_h ? base_w : base_h;
             std::uint32_t max_mips = 1;
-            for (std::uint32_t e = max_extent; e > 1; e >>= 1u) ++max_mips;
+            for (std::uint32_t e = max_extent; e > 1; e >>= 1u)
+                ++max_mips;
             if (mip_count > max_mips)
-                { plan.status = ETextureUploadStatus::MipCountExceedsExtent; return plan; }
+            {
+                plan.status = ETextureUploadStatus::MipCountExceedsExtent;
+                return plan;
+            }
         }
         std::uint64_t offset = 0;
         for (std::uint32_t i = 0; i < mip_count; ++i)
@@ -397,16 +437,27 @@ namespace lux::render
             const std::uint32_t ew = (base_w >> i) ? (base_w >> i) : 1u;
             const std::uint32_t eh = (base_h >> i) ? (base_h >> i) : 1u;
             if (mips[i].width != ew || mips[i].height != eh)
-                { plan.status = ETextureUploadStatus::MipDimMismatch; plan.bad_mip = i; return plan; }
+            {
+                plan.status = ETextureUploadStatus::MipDimMismatch;
+                plan.bad_mip = i;
+                return plan;
+            }
             const std::uint64_t need = pixelFormatMipBytes(format, ew, eh);
             if (need == 0 || mips[i].byte_count != need)
-                { plan.status = ETextureUploadStatus::MipByteMismatch; plan.bad_mip = i; return plan; }
-            if (offset > UINT64_MAX - need)  // total staging size would wrap
-                { plan.status = ETextureUploadStatus::SizeOverflow; return plan; }
+            {
+                plan.status = ETextureUploadStatus::MipByteMismatch;
+                plan.bad_mip = i;
+                return plan;
+            }
+            if (offset > UINT64_MAX - need) // total staging size would wrap
+            {
+                plan.status = ETextureUploadStatus::SizeOverflow;
+                return plan;
+            }
             plan.mips[i] = {ew, eh, offset, need};
             offset += need;
         }
-        plan.mip_count   = mip_count;
+        plan.mip_count = mip_count;
         plan.total_bytes = offset;
         return plan;
     }
@@ -414,41 +465,70 @@ namespace lux::render
     struct CubeUploadPlan
     {
         ETextureUploadStatus status{ETextureUploadStatus::Ok};
-        std::uint32_t        face_size{0};
-        std::uint64_t        face_bytes{0};   ///< exact bytes per face
-        std::uint64_t        total_bytes{0};  ///< face_bytes * 6
-        [[nodiscard]] constexpr bool ok() const noexcept { return status == ETextureUploadStatus::Ok; }
+        std::uint32_t face_size{0};
+        std::uint64_t face_bytes{0};  ///< exact bytes per face
+        std::uint64_t total_bytes{0}; ///< face_bytes * 6
+        [[nodiscard]] constexpr bool ok() const noexcept
+        {
+            return status == ETextureUploadStatus::Ok;
+        }
     };
 
-    [[nodiscard]] constexpr CubeUploadPlan
-    validateCubeUpload(EPixelFormat format, std::int32_t face_size,
-                       const std::uint64_t face_bytes[6],
-                       std::uint32_t device_max_dim) noexcept
+    [[nodiscard]] constexpr CubeUploadPlan validateCubeUpload(
+        EPixelFormat format,
+        std::int32_t face_size,
+        const std::uint64_t face_bytes[6],
+        std::uint32_t device_max_dim
+    ) noexcept
     {
         CubeUploadPlan plan{};
         if (face_bytes == nullptr)
-            { plan.status = ETextureUploadStatus::NullInput; return plan; }
+        {
+            plan.status = ETextureUploadStatus::NullInput;
+            return plan;
+        }
         if (!pixelFormatBlockInfo(format).supported)
-            { plan.status = ETextureUploadStatus::UnsupportedFormat; return plan; }
+        {
+            plan.status = ETextureUploadStatus::UnsupportedFormat;
+            return plan;
+        }
         if (face_size <= 0)
-            { plan.status = ETextureUploadStatus::ZeroBaseExtent; return plan; }
+        {
+            plan.status = ETextureUploadStatus::ZeroBaseExtent;
+            return plan;
+        }
         if (static_cast<std::uint32_t>(face_size) > device_max_dim)
-            { plan.status = ETextureUploadStatus::ExtentTooLarge; return plan; }
-        const std::uint64_t need = pixelFormatMipBytes(
-            format, static_cast<std::uint32_t>(face_size), static_cast<std::uint32_t>(face_size));
+        {
+            plan.status = ETextureUploadStatus::ExtentTooLarge;
+            return plan;
+        }
+        const std::uint64_t need =
+            pixelFormatMipBytes(format, static_cast<std::uint32_t>(face_size), static_cast<std::uint32_t>(face_size));
         if (need == 0)
-            { plan.status = ETextureUploadStatus::UnsupportedFormat; return plan; }
+        {
+            plan.status = ETextureUploadStatus::UnsupportedFormat;
+            return plan;
+        }
         for (int i = 0; i < 6; ++i)
         {
             if (face_bytes[i] == 0)
-                { plan.status = ETextureUploadStatus::EmptyFace; return plan; }
+            {
+                plan.status = ETextureUploadStatus::EmptyFace;
+                return plan;
+            }
             if (face_bytes[i] != need)
-                { plan.status = ETextureUploadStatus::FaceByteMismatch; return plan; }
+            {
+                plan.status = ETextureUploadStatus::FaceByteMismatch;
+                return plan;
+            }
         }
-        if (need > UINT64_MAX / 6)  // 6-face total would wrap
-            { plan.status = ETextureUploadStatus::SizeOverflow; return plan; }
-        plan.face_size   = static_cast<std::uint32_t>(face_size);
-        plan.face_bytes  = need;
+        if (need > UINT64_MAX / 6) // 6-face total would wrap
+        {
+            plan.status = ETextureUploadStatus::SizeOverflow;
+            return plan;
+        }
+        plan.face_size = static_cast<std::uint32_t>(face_size);
+        plan.face_bytes = need;
         plan.total_bytes = need * 6;
         return plan;
     }
@@ -462,10 +542,10 @@ namespace lux::render
     //  sharing `pixels` as their owner.
     struct OwnedTextureUploadBatch
     {
-        RTextureHandle                 dst{};
-        std::uint64_t                  content_revision{0};
+        RTextureHandle dst{};
+        std::uint64_t content_revision{0};
         std::vector<TextureRegionDesc> regions;
-        lux::cxx::SharedBytes<>          pixels;
+        lux::cxx::SharedBytes<> pixels;
 
         [[nodiscard]] RegionValidationResult validate(const PersistentTexture2DDesc& desc) const noexcept
         {

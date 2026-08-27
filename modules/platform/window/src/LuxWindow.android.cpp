@@ -21,7 +21,7 @@
 // VK_USE_PLATFORM_ANDROID_KHR must precede vulkan.h for the Android surface
 // declarations (VkAndroidSurfaceCreateInfoKHR, PFN_vkCreateAndroidSurfaceKHR).
 #ifndef VK_USE_PLATFORM_ANDROID_KHR
-#   define VK_USE_PLATFORM_ANDROID_KHR 1
+#define VK_USE_PLATFORM_ANDROID_KHR 1
 #endif
 #include <vulkan/vulkan.h>
 
@@ -29,13 +29,11 @@
 
 namespace lux::window
 {
-    LuxWindow::LuxWindow(int width, int height, std::string title)
-        : _parameter{width, height, std::move(title)}
+    LuxWindow::LuxWindow(int width, int height, std::string title) : _parameter{width, height, std::move(title)}
     {
     }
 
-    LuxWindow::LuxWindow(const InitParameter& parameter)
-        : _parameter{parameter}
+    LuxWindow::LuxWindow(const InitParameter& parameter) : _parameter{parameter}
     {
     }
 
@@ -50,24 +48,35 @@ namespace lux::window
         return true;
     }
 
-    bool LuxWindow::isInitialized() const { return _init; }
+    bool LuxWindow::isInitialized() const
+    {
+        return _init;
+    }
 
-    const char* LuxWindow::title() const { return _parameter.title.c_str(); }
+    const char* LuxWindow::title() const
+    {
+        return _parameter.title.c_str();
+    }
 
-    void LuxWindow::size(
-        std::uint32_t& width,
-        std::uint32_t& height
-    ) const
+    void LuxWindow::size(std::uint32_t& width, std::uint32_t& height) const
     {
         width = static_cast<std::uint32_t>(_parameter.width);
         height = static_cast<std::uint32_t>(_parameter.height);
     }
 
-    bool LuxWindow::shouldClose() { return false; }
+    bool LuxWindow::shouldClose()
+    {
+        return false;
+    }
 
-    void LuxWindow::hideCursor(bool) {}
+    void LuxWindow::hideCursor(bool)
+    {
+    }
 
-    bool LuxWindow::setRawMouseMotion(bool) { return false; }
+    bool LuxWindow::setRawMouseMotion(bool)
+    {
+        return false;
+    }
 
     void LuxWindow::getCursorPos(double* x, double* y) const
     {
@@ -81,7 +90,9 @@ namespace lux::window
         }
     }
 
-    void LuxWindow::setCursorPos(double, double) {}
+    void LuxWindow::setCursorPos(double, double)
+    {
+    }
 
     std::vector<WindowInputEvent> LuxWindow::drainInputEvents()
     {
@@ -90,29 +101,40 @@ namespace lux::window
         return events;
     }
 
-    int LuxWindow::exec() { return 0; }
+    int LuxWindow::exec()
+    {
+        return 0;
+    }
 
-    void LuxWindow::setExitBehavior(EExitBehavior behavior) { _exit_behavior = behavior; }
+    void LuxWindow::setExitBehavior(EExitBehavior behavior)
+    {
+        _exit_behavior = behavior;
+    }
 
-    void LuxWindow::exit() {}
+    void LuxWindow::exit()
+    {
+    }
 
-    void LuxWindow::hide(bool) {}
+    void LuxWindow::hide(bool)
+    {
+    }
 
-    std::string LuxWindow::windowFrameworkName() const { return "android-stub"; }
+    std::string LuxWindow::windowFrameworkName() const
+    {
+        return "android-stub";
+    }
 
-    float LuxWindow::lastFrameDelayTime() const { return _delta_time; }
+    float LuxWindow::lastFrameDelayTime() const
+    {
+        return _delta_time;
+    }
 
-    void LuxWindow::framebufferSize(
-        std::uint32_t& width,
-        std::uint32_t& height
-    ) const
+    void LuxWindow::framebufferSize(std::uint32_t& width, std::uint32_t& height) const
     {
         size(width, height);
     }
 
-    bool LuxWindow::createVulkanSurface(VkInstance,
-                                        const VkAllocationCallbacks*,
-                                        VkSurfaceKHR* out_surface)
+    bool LuxWindow::createVulkanSurface(VkInstance, const VkAllocationCallbacks*, VkSurfaceKHR* out_surface)
     {
         // Intentionally always false on Android, and NOT a gap to fill later.
         //
@@ -142,22 +164,45 @@ namespace lux::window
         return std::span<const char* const>{kExtensions};
     }
 
-    void LuxWindow::pollEvents() {}
+    void LuxWindow::pollEvents()
+    {
+    }
 
-    void LuxWindow::waitEvents() {}
+    void LuxWindow::waitEvents()
+    {
+    }
 
-    double LuxWindow::timeAfterFirstInitialization() { return 0.0; }
+    double LuxWindow::timeAfterFirstInitialization()
+    {
+        return 0.0;
+    }
 
-    GLFWwindow* LuxWindow::handle() { return nullptr; }
+    GLFWwindow* LuxWindow::handle()
+    {
+        return nullptr;
+    }
 
-    GLFWwindow* LuxWindow::currentContext() { return nullptr; }
+    GLFWwindow* LuxWindow::currentContext()
+    {
+        return nullptr;
+    }
 
-    void LuxWindow::makeContextCurrent(GLFWwindow*) {}
+    void LuxWindow::makeContextCurrent(GLFWwindow*)
+    {
+    }
 
-    LuxWindow::ProcPtr LuxWindow::getProcAddress(const char*) { return nullptr; }
+    LuxWindow::ProcPtr LuxWindow::getProcAddress(const char*)
+    {
+        return nullptr;
+    }
 
-    bool LuxWindow::vulkanSupported() { return true; }
+    bool LuxWindow::vulkanSupported()
+    {
+        return true;
+    }
 
-    void LuxWindow::newFrame() {}
+    void LuxWindow::newFrame()
+    {
+    }
 
 } // namespace lux::window

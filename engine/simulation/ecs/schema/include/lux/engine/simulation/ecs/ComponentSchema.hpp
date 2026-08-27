@@ -32,7 +32,8 @@ namespace lux::simulation::ecs
         ComponentSchemaId id,
         std::uint32_t version = 1,
         EComponentSnapshotPolicy snapshot = EComponentSnapshotPolicy::COPY,
-        std::shared_ptr<const void> code_lifetime = {})
+        std::shared_ptr<const void> code_lifetime = {}
+    )
     {
         return ComponentSchema{
             lux::cxx::typeToken<Component>(),

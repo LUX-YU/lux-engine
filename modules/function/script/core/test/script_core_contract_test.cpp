@@ -7,24 +7,17 @@
 #include <cstdint>
 #include <type_traits>
 
-int main()
+int
+main()
 {
     static_assert(LUX_SCRIPT_ABI_VERSION == 2u);
     static_assert(!std::is_default_constructible_v<lux::script::CallFrame>);
     static_assert(
-        lux::script::scriptSemanticTypeId("lux.i32") ==
-        lux::script::makeScriptSemanticType<std::int32_t>().type_id
-    );
-    static_assert(
-        lux::script::makeScriptSemanticType<std::int32_t>().canonical_name ==
-        "lux.i32"
-    );
+        lux::script::scriptSemanticTypeId("lux.i32") == lux::script::makeScriptSemanticType<std::int32_t>().type_id);
+    static_assert(lux::script::makeScriptSemanticType<std::int32_t>().canonical_name == "lux.i32");
 
-    const std::array parameters{
-        lux::script::makeScriptSemanticType<std::int32_t>()};
-    const lux::script::ScriptFunctionSignatureView signature{
-        parameters,
-        {}};
+    const std::array parameters{lux::script::makeScriptSemanticType<std::int32_t>()};
+    const lux::script::ScriptFunctionSignatureView signature{parameters, {}};
     assert(lux::script::sameScriptSignature(signature, signature));
 
     lux::script::BoundScriptCall unbound{};

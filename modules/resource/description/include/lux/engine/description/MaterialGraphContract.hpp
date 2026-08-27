@@ -23,7 +23,8 @@
 //  for details.
 // =============================================================================
 
-#include "MaterialEnums.hpp"   // Reuses ELightingTechnique as the shading-model selector (still here after Material.hpp was removed)
+#include "MaterialEnums.hpp"
+// Reuses ELightingTechnique as the shading-model selector (still here after Material.hpp was removed)
 #include <cstddef>
 #include <cstdint>
 
@@ -53,39 +54,37 @@ namespace lux::rdesc
      */
     enum class EMaterialAttribute : uint8_t
     {
-        BaseColor = 0,     ///< Vec3  albedo / unlit color      default (1,1,1)
-        Opacity,           ///< Float alpha                     default 1
-        Metallic,          ///< Float                           default 0
-        Roughness,         ///< Float                           default 1
-        NormalTS,          ///< Vec3  tangent-space normal       default (0,0,1)
-        Emissive,          ///< Vec3  emissive color             default (0,0,0)
-        AmbientOcclusion,  ///< Float ambient occlusion          default 1
+        BaseColor = 0,    ///< Vec3  albedo / unlit color      default (1,1,1)
+        Opacity,          ///< Float alpha                     default 1
+        Metallic,         ///< Float                           default 0
+        Roughness,        ///< Float                           default 1
+        NormalTS,         ///< Vec3  tangent-space normal       default (0,0,1)
+        Emissive,         ///< Vec3  emissive color             default (0,0,0)
+        AmbientOcclusion, ///< Float ambient occlusion          default 1
         COUNT
     };
 
     struct MaterialAttributeDesc
     {
         EMaterialAttribute attribute;
-        const char*        glsl_name;  ///< The field name in the generated MaterialAttributes struct
-        EMatValueType      type;
-        float              dflt[4];    ///< Default constant (unused components filled with 0)
+        const char* glsl_name; ///< The field name in the generated MaterialAttributes struct
+        EMatValueType type;
+        float dflt[4]; ///< Default constant (unused components filled with 0)
     };
 
     inline constexpr MaterialAttributeDesc kMaterialAttributes[] = {
-        { EMaterialAttribute::BaseColor,        "base_color", EMatValueType::Vec3,  { 1, 1, 1, 0 } },
-        { EMaterialAttribute::Opacity,          "opacity",    EMatValueType::Float, { 1, 0, 0, 0 } },
-        { EMaterialAttribute::Metallic,         "metallic",   EMatValueType::Float, { 0, 0, 0, 0 } },
-        { EMaterialAttribute::Roughness,        "roughness",  EMatValueType::Float, { 1, 0, 0, 0 } },
-        { EMaterialAttribute::NormalTS,         "normal_ts",  EMatValueType::Vec3,  { 0, 0, 1, 0 } },
-        { EMaterialAttribute::Emissive,         "emissive",   EMatValueType::Vec3,  { 0, 0, 0, 0 } },
-        { EMaterialAttribute::AmbientOcclusion, "ao",         EMatValueType::Float, { 1, 0, 0, 0 } },
+        {EMaterialAttribute::BaseColor, "base_color", EMatValueType::Vec3, {1, 1, 1, 0}},
+        {EMaterialAttribute::Opacity, "opacity", EMatValueType::Float, {1, 0, 0, 0}},
+        {EMaterialAttribute::Metallic, "metallic", EMatValueType::Float, {0, 0, 0, 0}},
+        {EMaterialAttribute::Roughness, "roughness", EMatValueType::Float, {1, 0, 0, 0}},
+        {EMaterialAttribute::NormalTS, "normal_ts", EMatValueType::Vec3, {0, 0, 1, 0}},
+        {EMaterialAttribute::Emissive, "emissive", EMatValueType::Vec3, {0, 0, 0, 0}},
+        {EMaterialAttribute::AmbientOcclusion, "ao", EMatValueType::Float, {1, 0, 0, 0}},
     };
 
     static_assert(
-        sizeof(kMaterialAttributes) / sizeof(kMaterialAttributes[0])
-            == static_cast<size_t>(EMaterialAttribute::COUNT),
-        "kMaterialAttributes table must stay in sync with EMaterialAttribute"
-    );
+        sizeof(kMaterialAttributes) / sizeof(kMaterialAttributes[0]) == static_cast<size_t>(EMaterialAttribute::COUNT),
+        "kMaterialAttributes table must stay in sync with EMaterialAttribute");
 
     /**
      * @brief The shading inputs the pass skeleton feeds into the graph's evalSurface().
@@ -96,34 +95,32 @@ namespace lux::rdesc
      */
     enum class EMaterialInput : uint8_t
     {
-        UV0 = 0,        ///< Vec2
-        WorldPosition,  ///< Vec3
-        WorldNormal,    ///< Vec3
-        WorldTangent,   ///< Vec4 (xyz + handedness w)
-        VertexColor,    ///< Vec4
+        UV0 = 0,       ///< Vec2
+        WorldPosition, ///< Vec3
+        WorldNormal,   ///< Vec3
+        WorldTangent,  ///< Vec4 (xyz + handedness w)
+        VertexColor,   ///< Vec4
         COUNT
     };
 
     struct MaterialInputDesc
     {
         EMaterialInput input;
-        const char*    glsl_name;
-        EMatValueType  type;
+        const char* glsl_name;
+        EMatValueType type;
     };
 
     inline constexpr MaterialInputDesc kMaterialInputs[] = {
-        { EMaterialInput::UV0,           "uv0",            EMatValueType::Vec2 },
-        { EMaterialInput::WorldPosition, "world_position", EMatValueType::Vec3 },
-        { EMaterialInput::WorldNormal,   "world_normal",   EMatValueType::Vec3 },
-        { EMaterialInput::WorldTangent,  "world_tangent",  EMatValueType::Vec4 },
-        { EMaterialInput::VertexColor,   "vertex_color",   EMatValueType::Vec4 },
+        {EMaterialInput::UV0, "uv0", EMatValueType::Vec2},
+        {EMaterialInput::WorldPosition, "world_position", EMatValueType::Vec3},
+        {EMaterialInput::WorldNormal, "world_normal", EMatValueType::Vec3},
+        {EMaterialInput::WorldTangent, "world_tangent", EMatValueType::Vec4},
+        {EMaterialInput::VertexColor, "vertex_color", EMatValueType::Vec4},
     };
 
     static_assert(
-        sizeof(kMaterialInputs) / sizeof(kMaterialInputs[0])
-            == static_cast<size_t>(EMaterialInput::COUNT),
-        "kMaterialInputs table must stay in sync with EMaterialInput"
-    );
+        sizeof(kMaterialInputs) / sizeof(kMaterialInputs[0]) == static_cast<size_t>(EMaterialInput::COUNT),
+        "kMaterialInputs table must stay in sync with EMaterialInput");
 
     /**
      * @brief The pass skeleton that codegen wraps evalSurface() into.

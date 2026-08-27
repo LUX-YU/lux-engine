@@ -10,7 +10,7 @@
 //  compile-time coupling。**声明序即 attach 并列决胜序**(见 resolver)。
 // ============================================================================
 
-#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>   // FeatureFactory / FeatureDescriptor / TypeId
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / FeatureDescriptor / TypeId
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 
 #include <algorithm>
@@ -34,20 +34,18 @@ namespace lux::render
         /// add() order == attach 并列决胜 order(resolver 的稳定拓扑排序以
         /// 声明序断平局 —— 同 stage 写后写的叠放语义靠它,例如 Grid2D 在
         /// Canvas2D 之后)。
-        void add(const FeatureFactory& factory,
-                 std::uint32_t server_type_id,
-                 std::span<const TypeId> ops)
+        void add(const FeatureFactory& factory, std::uint32_t server_type_id, std::span<const TypeId> ops)
         {
             if (factory.name == nullptr || factory.name[0] == '\0')
                 return;
             Entry e{};
-            e.name            = factory.name;
+            e.name = factory.name;
             e.feature_type_id = server_type_id;
-            e.op_count        = static_cast<std::uint32_t>(std::min<std::size_t>(ops.size(), 16));
+            e.op_count = static_cast<std::uint32_t>(std::min<std::size_t>(ops.size(), 16));
             for (std::uint32_t i = 0; i < e.op_count; ++i)
                 e.ops[i] = ops[i];
             e.param_set_op_index = factory.param_set_op_index;
-            e.descriptor         = factory.descriptor;   // 平凡拷贝;span 指向 render 模块静态存储
+            e.descriptor = factory.descriptor; // 平凡拷贝;span 指向 render 模块静态存储
             entries_.push_back(std::move(e));
         }
 
@@ -64,8 +62,7 @@ namespace lux::render
 
         /// Typed op-ids — e.g. ops<LightOperationIds>("Light"). Returns IdsT{}
         /// (invalid) when the feature is absent, so the matching XxxProxy no-ops.
-        template <class IdsT>
-        [[nodiscard]] IdsT ops(std::string_view name) const
+        template <class IdsT> [[nodiscard]] IdsT ops(std::string_view name) const
         {
             const Entry* e = find(name);
             return e ? IdsT::fromOps(e->ops, e->op_count) : IdsT{};
@@ -78,8 +75,7 @@ namespace lux::render
         [[nodiscard]] TypeId paramSetOp(std::string_view name) const
         {
             const Entry* e = find(name);
-            if (!e || e->param_set_op_index < 0 ||
-                e->param_set_op_index >= static_cast<int>(e->op_count))
+            if (!e || e->param_set_op_index < 0 || e->param_set_op_index >= static_cast<int>(e->op_count))
                 return kInvalidTypeId;
             return e->ops[e->param_set_op_index];
         }
@@ -93,10 +89,18 @@ namespace lux::render
 
         // ── 声明序遍历 + 稳定类型反查(attach 解析器的两条腿) ──
 
-        [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
-        [[nodiscard]] std::string_view nameAt(std::size_t i) const { return entries_[i].name; }
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            return entries_.size();
+        }
+        [[nodiscard]] std::string_view nameAt(std::size_t i) const
+        {
+            return entries_[i].name;
+        }
         [[nodiscard]] const FeatureDescriptor& descriptorAt(std::size_t i) const
-        { return entries_[i].descriptor; }
+        {
+            return entries_[i].descriptor;
+        }
 
         /// 稳定 FeatureTypeId(featureId("lux.render.xxx.v1"))→ 注册名。
         /// 依赖边以稳定 id 声明,而根集合与 attach 计划按名字说话 —— 这就是
@@ -104,7 +108,8 @@ namespace lux::render
         [[nodiscard]] std::string_view nameOfType(FeatureTypeId type) const
         {
             for (const auto& e : entries_)
-                if (e.descriptor.type == type) return e.name;
+                if (e.descriptor.type == type)
+                    return e.name;
             return {};
         }
 
@@ -124,8 +129,8 @@ namespace lux::render
             std::vector<std::string_view> unknown;
             struct MissingDep
             {
-                std::string_view dependent;   ///< 谁声明的依赖
-                FeatureTypeId    dep;         ///< 缺的稳定 type id
+                std::string_view dependent; ///< 谁声明的依赖
+                FeatureTypeId dep;          ///< 缺的稳定 type id
             };
             /// 必需依赖的 TYPE 没注册进目录。被依赖方仍留在 order 里 ——
             /// attach 会在服务端四道闸上响亮失败,而不是这里静默跳过。
@@ -139,8 +144,7 @@ namespace lux::render
         /// 最靠前且依赖已就位者)。可选依赖(FeatureDependency::optional)不拉
         /// 闭包,但双方都在集合里时参与排序(DeferredLighting→ShadowMap 的
         /// 「在场必须排前」正是这形状)。纯函数,不发命令。
-        [[nodiscard]] ResolveOutcome resolveAttachOrder(
-            std::span<const std::string_view> roots) const
+        [[nodiscard]] ResolveOutcome resolveAttachOrder(std::span<const std::string_view> roots) const
         {
             ResolveOutcome out;
 
@@ -149,20 +153,24 @@ namespace lux::render
             for (const auto r : roots)
             {
                 const std::size_t i = indexOf(r);
-                if (i == kNpos) out.unknown.push_back(r);
-                else            in_set[i] = true;
+                if (i == kNpos)
+                    out.unknown.push_back(r);
+                else
+                    in_set[i] = true;
             }
 
             // 必需依赖闭包(BFS;目录 ≤ 几十条,线性扫即可)。
-            for (bool grew = true; grew; )
+            for (bool grew = true; grew;)
             {
                 grew = false;
                 for (std::size_t i = 0; i < entries_.size(); ++i)
                 {
-                    if (!in_set[i]) continue;
+                    if (!in_set[i])
+                        continue;
                     for (const FeatureDependency& d : entries_[i].descriptor.dependencies)
                     {
-                        if (d.optional) continue;
+                        if (d.optional)
+                            continue;
                         const std::size_t j = indexOfType(d.type);
                         if (j == kNpos)
                         {
@@ -170,7 +178,11 @@ namespace lux::render
                                 out.missing_deps.push_back({entries_[i].name, d.type});
                             continue;
                         }
-                        if (!in_set[j]) { in_set[j] = true; grew = true; }
+                        if (!in_set[j])
+                        {
+                            in_set[j] = true;
+                            grew = true;
+                        }
                     }
                 }
             }
@@ -183,23 +195,35 @@ namespace lux::render
                 bool progressed = false;
                 for (std::size_t i = 0; i < entries_.size(); ++i)
                 {
-                    if (!in_set[i] || placed[i]) continue;
+                    if (!in_set[i] || placed[i])
+                        continue;
                     bool ready = true;
                     for (const FeatureDependency& d : entries_[i].descriptor.dependencies)
                     {
                         const std::size_t j = indexOfType(d.type);
-                        if (j == kNpos || !in_set[j]) continue;   // 缺席的可选/缺注册的必需:不挡
-                        if (!placed[j]) { ready = false; break; }
+                        if (j == kNpos || !in_set[j])
+                            continue; // 缺席的可选/缺注册的必需:不挡
+                        if (!placed[j])
+                        {
+                            ready = false;
+                            break;
+                        }
                     }
-                    if (!ready) continue;
+                    if (!ready)
+                        continue;
                     out.order.push_back(entries_[i].name);
-                    placed[i]  = true;
+                    placed[i] = true;
                     progressed = true;
                 }
                 bool remaining = false;
                 for (std::size_t i = 0; i < entries_.size(); ++i)
-                    if (in_set[i] && !placed[i]) { remaining = true; break; }
-                if (!remaining) break;
+                    if (in_set[i] && !placed[i])
+                    {
+                        remaining = true;
+                        break;
+                    }
+                if (!remaining)
+                    break;
                 if (!progressed)
                 {
                     for (std::size_t i = 0; i < entries_.size(); ++i)
@@ -223,14 +247,12 @@ namespace lux::render
         /// Tests that need scene handles seal a SceneRenderBinding separately:
         /// handles are scene-scoped state and never live in this Catalog.
         /// Never called on a production path.
-        void injectForTest(std::string_view name,
-                           std::span<const TypeId> ops,
-                           int param_set_op_index = -1)
+        void injectForTest(std::string_view name, std::span<const TypeId> ops, int param_set_op_index = -1)
         {
             Entry e{};
-            e.name               = std::string(name);
-            e.feature_type_id    = 0;
-            e.op_count           = static_cast<std::uint32_t>(std::min<std::size_t>(ops.size(), 16));
+            e.name = std::string(name);
+            e.feature_type_id = 0;
+            e.op_count = static_cast<std::uint32_t>(std::min<std::size_t>(ops.size(), 16));
             for (std::uint32_t i = 0; i < e.op_count; ++i)
                 e.ops[i] = ops[i];
             e.param_set_op_index = param_set_op_index;
@@ -240,18 +262,19 @@ namespace lux::render
     private:
         struct Entry
         {
-            std::string       name;
-            std::uint32_t     feature_type_id{0};   ///< 服务端动态注册序号
-            TypeId            ops[16]{};
-            std::uint32_t     op_count{0};
-            int               param_set_op_index{-1};
-            FeatureDescriptor descriptor{};          ///< 稳定 type + 依赖/冲突/多重性
+            std::string name;
+            std::uint32_t feature_type_id{0}; ///< 服务端动态注册序号
+            TypeId ops[16]{};
+            std::uint32_t op_count{0};
+            int param_set_op_index{-1};
+            FeatureDescriptor descriptor{}; ///< 稳定 type + 依赖/冲突/多重性
         };
 
         [[nodiscard]] const Entry* find(std::string_view name) const
         {
             for (const auto& e : entries_)
-                if (e.name == name) return &e;
+                if (e.name == name)
+                    return &e;
             return nullptr;
         }
 
@@ -260,24 +283,26 @@ namespace lux::render
         [[nodiscard]] std::size_t indexOf(std::string_view name) const
         {
             for (std::size_t i = 0; i < entries_.size(); ++i)
-                if (entries_[i].name == name) return i;
+                if (entries_[i].name == name)
+                    return i;
             return kNpos;
         }
 
         [[nodiscard]] std::size_t indexOfType(FeatureTypeId type) const
         {
-            if (type == kInvalidFeatureTypeId) return kNpos;
+            if (type == kInvalidFeatureTypeId)
+                return kNpos;
             for (std::size_t i = 0; i < entries_.size(); ++i)
-                if (entries_[i].descriptor.type == type) return i;
+                if (entries_[i].descriptor.type == type)
+                    return i;
             return kNpos;
         }
 
-        [[nodiscard]] static bool hasMissing(const ResolveOutcome& out,
-                                             std::string_view dependent,
-                                             FeatureTypeId dep)
+        [[nodiscard]] static bool hasMissing(const ResolveOutcome& out, std::string_view dependent, FeatureTypeId dep)
         {
             for (const auto& m : out.missing_deps)
-                if (m.dependent == dependent && m.dep == dep) return true;
+                if (m.dependent == dependent && m.dep == dep)
+                    return true;
             return false;
         }
 
@@ -294,13 +319,13 @@ namespace lux::render
     /// 裁决四:plan 先天是数据,生成器只是可选优化)。
     struct FeatureAttach
     {
-        std::string            name;      ///< == FeatureFactory.name(目录寻址键)
+        std::string name; ///< == FeatureFactory.name(目录寻址键)
         /// 同一个 feature TYPE 的第二套**配置**(空 = 标准那套)。区分的是同名
         /// feature 的配置变体,不是「谁该有哪些 feature」;名字相同、profile
         /// 不同的条目互斥,宿主 attach 时指定自己要哪一套。
-        std::string            profile;
-        std::uint32_t          type_id{0};   ///< 服务端动态 type id
-        std::vector<std::byte> config;       ///< 精确 sizeof(CommConfig) 字节
+        std::string profile;
+        std::uint32_t type_id{0};      ///< 服务端动态 type id
+        std::vector<std::byte> config; ///< 精确 sizeof(CommConfig) 字节
     };
 
     /// Cold-assembly name → FeatureHandle draft. SceneRenderBinding receives
@@ -312,7 +337,11 @@ namespace lux::render
         void bind(std::string_view name, FeatureHandle handle)
         {
             for (auto& e : entries_)
-                if (e.first == name) { e.second = handle; return; }
+                if (e.first == name)
+                {
+                    e.second = handle;
+                    return;
+                }
             entries_.emplace_back(std::string(name), handle);
         }
 
@@ -320,7 +349,8 @@ namespace lux::render
         [[nodiscard]] FeatureHandle handle(std::string_view name) const noexcept
         {
             for (const auto& e : entries_)
-                if (e.first == name) return e.second;
+                if (e.first == name)
+                    return e.second;
             return FeatureHandle{};
         }
 
@@ -335,12 +365,12 @@ namespace lux::render
     {
     public:
         RenderCapabilities() = default;
-        RenderCapabilities(const FeatureCatalog*  catalog,
-                      const FeatureBindings* bindings) noexcept
-            : catalog_(catalog), bindings_(bindings) {}
+        RenderCapabilities(const FeatureCatalog* catalog, const FeatureBindings* bindings) noexcept
+            : catalog_(catalog), bindings_(bindings)
+        {
+        }
 
-        template <class IdsT>
-        [[nodiscard]] IdsT ops(std::string_view name) const
+        template <class IdsT> [[nodiscard]] IdsT ops(std::string_view name) const
         {
             return catalog_ ? catalog_->ops<IdsT>(name) : IdsT{};
         }
@@ -361,7 +391,7 @@ namespace lux::render
         }
 
     private:
-        const FeatureCatalog*  catalog_{nullptr};
+        const FeatureCatalog* catalog_{nullptr};
         const FeatureBindings* bindings_{nullptr};
     };
 

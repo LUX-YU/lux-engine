@@ -20,10 +20,7 @@ namespace lux::flowforge
             return value != 0U;
         }
 
-        friend bool operator==(
-            FlowForgeExportNodeId,
-            FlowForgeExportNodeId
-        ) noexcept = default;
+        friend bool operator==(FlowForgeExportNodeId, FlowForgeExportNodeId) noexcept = default;
     };
 
     struct ExportMethodNode final
@@ -40,9 +37,6 @@ namespace lux::flowforge
         lux::simulation::ScriptBindingTarget target;
     };
 
-    [[nodiscard]] LUX_ENGINE_AUTHORING_FLOWFORGE_PUBLIC
-    bool validFlowForgeGraph(
-        std::span<const ExportMethodNode> exports,
-        std::span<const BindingEdge> bindings
-    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_AUTHORING_FLOWFORGE_PUBLIC bool
+    validFlowForgeGraph(std::span<const ExportMethodNode> exports, std::span<const BindingEdge> bindings) noexcept;
 }

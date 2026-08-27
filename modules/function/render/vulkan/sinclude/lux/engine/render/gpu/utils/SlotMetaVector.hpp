@@ -18,8 +18,7 @@ namespace lux::render
      * @tparam Meta    Payload type (must be default-constructible).
      * @tparam Handle  SlotKey-like handle type (needs .index, .gen, .isValid()).
      */
-    template <typename Meta, typename Handle>
-    class SlotMetaVector
+    template <typename Meta, typename Handle> class SlotMetaVector
     {
     public:
         SlotMetaVector() = default;
@@ -36,7 +35,8 @@ namespace lux::render
         /// Erase metadata for a handle. Returns true if found and erased.
         bool erase(Handle h)
         {
-            if (!contains(h)) return false;
+            if (!contains(h))
+                return false;
             alive_[h.index] = false;
             data_[h.index] = Meta{};
             return true;
@@ -45,10 +45,7 @@ namespace lux::render
         /// Check whether a handle has live metadata.
         [[nodiscard]] bool contains(Handle h) const noexcept
         {
-            return h.isValid()
-                && h.index < data_.size()
-                && alive_[h.index]
-                && gens_[h.index] == h.gen;
+            return h.isValid() && h.index < data_.size() && alive_[h.index] && gens_[h.index] == h.gen;
         }
 
         /// Access metadata. Returns nullptr if handle is stale or absent.
@@ -65,7 +62,8 @@ namespace lux::render
         /// Access metadata, returning std::nullopt if not found.
         [[nodiscard]] std::optional<Meta> get(Handle h) const
         {
-            if (!contains(h)) return std::nullopt;
+            if (!contains(h))
+                return std::nullopt;
             return data_[h.index];
         }
 
@@ -89,7 +87,10 @@ namespace lux::render
             alive_.clear();
         }
 
-        [[nodiscard]] std::size_t capacity() const noexcept { return data_.size(); }
+        [[nodiscard]] std::size_t capacity() const noexcept
+        {
+            return data_.size();
+        }
 
     private:
         void ensureCapacity(uint32_t required)
@@ -102,9 +103,9 @@ namespace lux::render
             }
         }
 
-        std::vector<Meta>     data_;
+        std::vector<Meta> data_;
         std::vector<uint32_t> gens_;
-        std::vector<bool>     alive_;
+        std::vector<bool> alive_;
     };
 
 } // namespace lux::render

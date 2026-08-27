@@ -37,14 +37,14 @@ namespace lux::render
 
         struct Config
         {
-            ShaderHandle     vertex_shader{};
-            ShaderHandle     fragment_shader{};
-            float        initial_point_size{3.0f};
+            ShaderHandle vertex_shader{};
+            ShaderHandle fragment_shader{};
+            float initial_point_size{3.0f};
             /// Used to auto-initialize PointCloudResources if not yet done.
-            uint32_t     max_global_points{4'000'000};
-            uint32_t     max_octree_nodes {65'536};
-            std::string  color_target{"SceneColor"};
-            std::string  depth_target{"SceneDepth"};
+            uint32_t max_global_points{4'000'000};
+            uint32_t max_octree_nodes{65'536};
+            std::string color_target{"SceneColor"};
+            std::string depth_target{"SceneDepth"};
         };
 
         explicit PCFeatureSimple(Config cfg);
@@ -57,7 +57,10 @@ namespace lux::render
         // -----------------------------------------------------------------------
         //  RenderFeature
         // -----------------------------------------------------------------------
-        [[nodiscard]] std::string_view name() const override { return "PointCloudSimple"; }
+        [[nodiscard]] std::string_view name() const override
+        {
+            return "PointCloudSimple";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         void addPasses(RGBuilder& builder) override;
@@ -69,8 +72,8 @@ namespace lux::render
         }
 
     private:
-        GraphicsPipelineHandle  pipeline_handle_{kInvalidPipelineHandle};
-        float                   point_size_{3.0f};
+        GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
+        float point_size_{3.0f};
 
         // Non-owning — points into PointCloudResources (outlives this feature).
         PointCloudGlobalBuffer* global_buf_{nullptr};
@@ -78,4 +81,3 @@ namespace lux::render
     };
 
 } // namespace lux::render
-

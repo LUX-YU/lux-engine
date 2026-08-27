@@ -11,7 +11,8 @@ namespace lux::render
         const RGCompiledGraph& graph,
         VkCommandBuffer cmd,
         VkCommandBuffer compute_cmd,
-        VkCommandBuffer transfer_cmd)
+        VkCommandBuffer transfer_cmd
+    )
     {
         if (!graph.multi_queue_info.has_async_work)
         {
@@ -22,8 +23,7 @@ namespace lux::render
         ctx.multi_queue_submit = {};
         ctx.multi_queue_submit.is_multi_queue = true;
 
-        auto add_semaphore_infos = [&](RGQueueSubmission& sub, const std::vector<uint32_t>& order)
-        {
+        auto add_semaphore_infos = [&](RGQueueSubmission& sub, const std::vector<uint32_t>& order) {
             if (ctx.timeline_semaphore == VK_NULL_HANDLE)
                 return;
             for (uint32_t pi : order)
@@ -31,7 +31,7 @@ namespace lux::render
                 const auto& cp = graph.compiled_passes[pi];
                 for (const auto& sig : cp.signal_dependencies)
                 {
-                    VkSemaphoreSubmitInfo ssi{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+                    VkSemaphoreSubmitInfo ssi{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
                     ssi.semaphore = ctx.timeline_semaphore;
                     ssi.value = sig.signal_value;
                     ssi.stageMask = sig.signal_stage;
@@ -39,7 +39,7 @@ namespace lux::render
                 }
                 for (const auto& w : cp.wait_dependencies)
                 {
-                    VkSemaphoreSubmitInfo wsi{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+                    VkSemaphoreSubmitInfo wsi{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
                     wsi.semaphore = ctx.timeline_semaphore;
                     wsi.value = w.signal_value;
                     wsi.stageMask = w.wait_stage;
@@ -49,7 +49,7 @@ namespace lux::render
         };
 
         {
-            RGQueueSubmission gfx{ .queue_type = ERGQueueType::GRAPHICS, .cmd = cmd };
+            RGQueueSubmission gfx{.queue_type = ERGQueueType::GRAPHICS, .cmd = cmd};
             add_semaphore_infos(gfx, graph.multi_queue_info.graphics_order);
             ctx.multi_queue_submit.submissions.push_back(std::move(gfx));
         }
@@ -57,7 +57,7 @@ namespace lux::render
         if (compute_cmd != VK_NULL_HANDLE)
         {
             vkEndCommandBuffer(compute_cmd);
-            RGQueueSubmission comp{ .queue_type = ERGQueueType::COMPUTE, .cmd = compute_cmd };
+            RGQueueSubmission comp{.queue_type = ERGQueueType::COMPUTE, .cmd = compute_cmd};
             add_semaphore_infos(comp, graph.multi_queue_info.compute_order);
             ctx.multi_queue_submit.submissions.push_back(std::move(comp));
         }
@@ -65,7 +65,7 @@ namespace lux::render
         if (transfer_cmd != VK_NULL_HANDLE)
         {
             vkEndCommandBuffer(transfer_cmd);
-            RGQueueSubmission xfer{ .queue_type = ERGQueueType::TRANSFER, .cmd = transfer_cmd };
+            RGQueueSubmission xfer{.queue_type = ERGQueueType::TRANSFER, .cmd = transfer_cmd};
             add_semaphore_infos(xfer, graph.multi_queue_info.transfer_order);
             ctx.multi_queue_submit.submissions.push_back(std::move(xfer));
         }
@@ -79,7 +79,8 @@ namespace lux::render
         const RGCompiledGraph& graph,
         const RGPhysicalResourceTable& physical_resources,
         RGRecordContext& ctx,
-        uint32_t frame_index)
+        uint32_t frame_index
+    )
     {
         if (graph.prebuilt_final_barriers.empty())
             return;
@@ -92,9 +93,8 @@ namespace lux::render
         {
             const uint32_t ri = graph.final_patch_resource_idx[i];
             VkImage h = VK_NULL_HANDLE;
-            if (ri < ctx.per_frame_images.size()
-                && frame_index < ctx.per_frame_images[ri].size()
-                && ctx.per_frame_images[ri][frame_index] != VK_NULL_HANDLE)
+            if (ri < ctx.per_frame_images.size() && frame_index < ctx.per_frame_images[ri].size() &&
+                ctx.per_frame_images[ri][frame_index] != VK_NULL_HANDLE)
             {
                 h = ctx.per_frame_images[ri][frame_index];
             }
@@ -119,15 +119,14 @@ namespace lux::render
                     const auto s = static_cast<TargetSlot>(si);
                     if (ctx.target_layout->hasSlot(s))
                     {
-                        const auto final_state =
-                            ctx.target_layout->slot(s).final_state;
+                        const auto final_state = ctx.target_layout->slot(s).final_state;
                         const VkImageLayout fl = toVkImageLayout(final_state);
                         if (fl != VK_IMAGE_LAYOUT_UNDEFINED)
                         {
                             auto& b = barriers.back();
                             b.newLayout = fl;
                             const auto sync = finalSyncForState(final_state);
-                            b.dstStageMask  = sync.stage;
+                            b.dstStageMask = sync.stage;
                             b.dstAccessMask = sync.access;
                         }
                     }
@@ -138,7 +137,7 @@ namespace lux::render
         if (barriers.empty())
             return;
 
-        VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dep.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
         dep.pImageMemoryBarriers = barriers.data();
         vkCmdPipelineBarrier2(cmd, &dep);

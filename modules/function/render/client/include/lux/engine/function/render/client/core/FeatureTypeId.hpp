@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <string_view>
 
-#include <lux/cxx/algorithm/hash.hpp>   // lux::cxx::algorithm::fnv1a (shared 64-bit FNV-1a)
+#include <lux/cxx/algorithm/hash.hpp> // lux::cxx::algorithm::fnv1a (shared 64-bit FNV-1a)
 
 namespace lux::render
 {

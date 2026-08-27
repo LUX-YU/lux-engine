@@ -6,7 +6,8 @@
 #include <limits>
 #include <vector>
 
-int main()
+int
+main()
 {
     std::ifstream input(LUX_PYTHON_FIXTURE_LXSA, std::ios::binary);
     assert(input);
@@ -23,35 +24,22 @@ int main()
         std::numeric_limits<std::size_t>::max(),
         std::numeric_limits<std::size_t>::max(),
         std::numeric_limits<std::size_t>::max()};
-    const auto decoded = codec.decode(
-        bytes,
-        lux::asset::AssetDecodeContext{limits}
-    );
+    const auto decoded = codec.decode(bytes, lux::asset::AssetDecodeContext{limits});
     assert(decoded);
-    const auto asset = std::static_pointer_cast<
-        const lux::asset::ScriptAssetContent>(decoded->payload);
+    const auto asset = std::static_pointer_cast<const lux::asset::ScriptAssetContent>(decoded->payload);
     assert(asset->description.schema_version == 4U);
-    assert(asset->description.kind() ==
-        lux::rdesc::Script::Kind::PYTHON_SOURCE);
-    assert(asset->description.model ==
-        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR);
+    assert(asset->description.kind() == lux::rdesc::Script::Kind::PYTHON_SOURCE);
+    assert(asset->description.model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR);
     assert(asset->description.exports.size() == 1U);
     assert(asset->description.exports[0].name == "tick");
     assert(asset->description.exports[0].args.size() == 3U);
-    assert(asset->description.exports[0].args[0].canonical_name ==
-        "lux.simulation.SimulationStepInfo");
-    assert(asset->description.exports[0].args[0].pass ==
-        lux::script::EScriptPassMode::CONST_REF);
-    assert(asset->description.exports[0].args[1].canonical_name ==
-        "lux.test.CollisionEvent");
-    assert(asset->description.exports[0].args[1].pass ==
-        lux::script::EScriptPassMode::CONST_REF);
+    assert(asset->description.exports[0].args[0].canonical_name == "lux.simulation.SimulationStepInfo");
+    assert(asset->description.exports[0].args[0].pass == lux::script::EScriptPassMode::CONST_REF);
+    assert(asset->description.exports[0].args[1].canonical_name == "lux.test.CollisionEvent");
+    assert(asset->description.exports[0].args[1].pass == lux::script::EScriptPassMode::CONST_REF);
     assert(asset->description.exports[0].args[2].canonical_name == "lux.f32");
     assert(asset->description.exports[0].returns[0].canonical_name == "lux.i32");
-    const auto encoded = codec.encode(
-        asset.get(),
-        lux::asset::AssetEncodeContext{limits}
-    );
+    const auto encoded = codec.encode(asset.get(), lux::asset::AssetEncodeContext{limits});
     assert(encoded);
     assert(*encoded == bytes);
 }

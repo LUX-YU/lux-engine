@@ -36,8 +36,8 @@
 //  emplaces the per-scene LightResources, not the core server.)
 #include <lux/engine/render/resources/material/MaterialResources.hpp>
 #include <lux/engine/render/resources/mesh/MeshResources.hpp>
-#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>   // vertex-layout SSOT
-#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // make*VertexLayout()
+#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp> // vertex-layout SSOT
+#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>     // make*VertexLayout()
 #include <lux/engine/render/resources/lighting/ShadowResources.hpp>
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <lux/engine/render/resources/vertex/StaticVertexPoolSet.hpp>
@@ -47,7 +47,7 @@
 #include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>
 
 // Resource descriptions (rdesc)
-#include <lux/engine/description/MaterialEnums.hpp>   // rdesc::EAlphaMode (graph render-state)
+#include <lux/engine/description/MaterialEnums.hpp> // rdesc::EAlphaMode (graph render-state)
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Texture.hpp>
 
@@ -69,7 +69,7 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
-#include <sstream>      // DumpRenderGraph → in-memory text capture
+#include <sstream> // DumpRenderGraph → in-memory text capture
 #include <limits>
 #include <unordered_map>
 #include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>
@@ -78,16 +78,12 @@ namespace lux::render
 {
     namespace
     {
-        [[nodiscard]] lux::render::CapacityDomainId ownCapacityId(
-            lux::render::CapacityDomainIdView id)
+        [[nodiscard]] lux::render::CapacityDomainId ownCapacityId(lux::render::CapacityDomainIdView id)
         {
-            return lux::render::CapacityDomainId{
-                id.name()};
+            return lux::render::CapacityDomainId{id.name()};
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            lux::render::CapacityCatalog,
-            lux::render::CapacityCatalogError>
+        [[nodiscard]] lux::cxx::expected<lux::render::CapacityCatalog, lux::render::CapacityCatalogError>
         makeCapacityCatalog(const CapacityDeviceFacts& device)
         {
             using namespace lux::render;
@@ -95,15 +91,11 @@ namespace lux::render
 
             constexpr std::uint64_t kInstanceProtocolLimit = 0xffffffffull;
             constexpr std::uint64_t kInstanceRecordBytes = 80u;
-            const std::uint64_t storage_range =
-                static_cast<std::uint64_t>(
-                    device.max_storage_buffer_range);
+            const std::uint64_t storage_range = static_cast<std::uint64_t>(device.max_storage_buffer_range);
             const std::uint64_t instance_device_limit =
                 device.buffer_device_address && device.shader_int64
-                ? kInstanceProtocolLimit
-                : std::min(
-                    kInstanceProtocolLimit,
-                    storage_range / kInstanceRecordBytes);
+                    ? kInstanceProtocolLimit
+                    : std::min(kInstanceProtocolLimit, storage_range / kInstanceRecordBytes);
             if (auto result = catalog.add(CapacityDomainDescriptor{
                     .id = ownCapacityId(kActiveInstancesCapacity),
                     .device_limit = instance_device_limit,
@@ -112,7 +104,8 @@ namespace lux::render
                     .minimum = 16'384u,
                     .units_per_granule = 16'384u,
                     .bytes_per_granule = 16'384u * 280u,
-                }); !result)
+                });
+                !result)
             {
                 return lux::cxx::unexpected(result.error());
             }
@@ -124,7 +117,8 @@ namespace lux::render
                     .minimum = 4'096u,
                     .units_per_granule = 4'096u,
                     .bytes_per_granule = 4'096u * 512u,
-                }); !result)
+                });
+                !result)
             {
                 return lux::cxx::unexpected(result.error());
             }
@@ -137,7 +131,8 @@ namespace lux::render
                     .minimum = 96ull * 1024u * 1024u,
                     .units_per_granule = kGeometryGranule,
                     .bytes_per_granule = kGeometryGranule,
-                }); !result)
+                });
+                !result)
             {
                 return lux::cxx::unexpected(result.error());
             }
@@ -160,7 +155,8 @@ namespace lux::render
     {
         std::vector<const char*> result;
         result.reserve(strs.size());
-        for (auto& s : strs) result.push_back(s.c_str());
+        for (auto& s : strs)
+            result.push_back(s.c_str());
         return result;
     }
 
@@ -171,10 +167,7 @@ namespace lux::render
         // object in its pristine, trivially destructible state.
         if (cfg.frames_in_flight < 1 || cfg.frames_in_flight > kMaxFramesInFlight)
         {
-            return renderFailure<err::device::InvalidFramesInFlight>(
-                cfg.frames_in_flight,
-                kMaxFramesInFlight
-            );
+            return renderFailure<err::device::InvalidFramesInFlight>(cfg.frames_in_flight, kMaxFramesInFlight);
         }
 
         // 0. Create Vulkan infrastructure (InstanceContext ctor may throw)
@@ -195,8 +188,8 @@ namespace lux::render
             // 是按键线性合并的非原子结构,多线程写它就是数据竞争。环负责跨线程
             // 传输,渲染线程在 flushErrorEvents() 里排空折进 sink。
             debug_cb = [err_counter = cfg.validation_error_counter,
-                        text_sink   = cfg.validation_message_sink,
-                        ring        = &validation_ring_](const DebugCallbackInfo& info) -> bool {
+                        text_sink = cfg.validation_message_sink,
+                        ring = &validation_ring_](const DebugCallbackInfo& info) -> bool {
                 // Mesh passes deliberately use one fixed vertex-stage superset
                 // interface across builtin and graph-material fragment stages.
                 // Vulkan permits an FS to consume only a subset, but the
@@ -206,24 +199,19 @@ namespace lux::render
                 // family contract, so suppress only this exact performance
                 // advisory. All VUIDs, synchronization hazards and other
                 // performance warnings continue through both outlets.
-                if ((info.flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-                    && info.message != nullptr
-                    && std::string_view{info.message}.find(
-                           "WARNING-Shader-OutputNotConsumed"
-                       ) != std::string_view::npos)
+                if ((info.flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) && info.message != nullptr &&
+                    std::string_view{info.message}.find("WARNING-Shader-OutputNotConsumed") != std::string_view::npos)
                     return false;
 
                 if (err_counter && (info.flags & VK_DEBUG_REPORT_ERROR_BIT_EXT))
                     err_counter->fetch_add(1, std::memory_order_relaxed);
 
-                std::uint32_t severity = 0;   // 0=info 1=warn 2=error
+                std::uint32_t severity = 0; // 0=info 1=warn 2=error
                 if (info.flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
                 {
                     severity = 2;
                 }
-                else if (info.flags &
-                         (VK_DEBUG_REPORT_WARNING_BIT_EXT |
-                          VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT))
+                else if (info.flags & (VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT))
                 {
                     // Synchronization Validation reports SYNC-HAZARD
                     // diagnostics through the performance-warning bit. Do
@@ -249,18 +237,19 @@ namespace lux::render
             };
         }
         inst_ctx_ = std::make_unique<InstanceContext>(cfg.instance_extensions, std::move(debug_cb));
-        dev_ctx_  = std::make_unique<DeviceContext>(*inst_ctx_);
-        res_ctx_  = std::make_unique<ResourceContext>(*dev_ctx_);
+        dev_ctx_ = std::make_unique<DeviceContext>(*inst_ctx_);
+        res_ctx_ = std::make_unique<ResourceContext>(*dev_ctx_);
 
         frames_in_flight_ = cfg.frames_in_flight;
         // 目标注册表要用设备资源上下文造默认池,设备就绪后立即注入。
         targets_registry_.init(*res_ctx_, frames_in_flight_);
         frame_orchestrator_ = FrameOrchestrator{cfg.frames_in_flight};
-        enable_vsync_     = cfg.enable_vsync;
+        enable_vsync_ = cfg.enable_vsync;
 
-        if (auto r = dev_ctx_->init(cfg.prefer_discrete_gpu
-                              ? EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED
-                              : EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED); !r)
+        if (auto r = dev_ctx_->init(
+                cfg.prefer_discrete_gpu ? EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED
+                                        : EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED);
+            !r)
             return lux::cxx::unexpected(r.error());
 
         // Resolve the session feature tier = min(device-achievable, caller
@@ -272,25 +261,19 @@ namespace lux::render
         //  是因为除了那一行之外没有任何办法知道自己跑在哪一档上。)
         dev_ctx_->resolveFeatureLevel(cfg.preferred_level);
 
-        const auto vram = VRAMBudgetGuard(
-            dev_ctx_->vmaAllocator()).snapshot();
+        const auto vram = VRAMBudgetGuard(dev_ctx_->vmaAllocator()).snapshot();
         const auto& device_caps = dev_ctx_->caps();
         const CapacityDeviceFacts capacity_caps{
             .vram_budget_bytes = vram.total_budget,
             .vram_usage_bytes = vram.total_usage,
-            .max_storage_buffer_range =
-                device_caps.max_storage_buffer_range,
-            .buffer_device_address =
-                device_caps.buffer_device_address,
+            .max_storage_buffer_range = device_caps.max_storage_buffer_range,
+            .buffer_device_address = device_caps.buffer_device_address,
             .shader_int64 = device_caps.shader_int64,
         };
         auto capacity_catalog = makeCapacityCatalog(capacity_caps);
         if (!capacity_catalog)
             return renderFailure<err::internal::Unspecified>();
-        auto capacity_plan = lux::render::makeCapacityPlan(
-            cfg.capacity_request,
-            capacity_caps,
-            *capacity_catalog);
+        auto capacity_plan = lux::render::makeCapacityPlan(cfg.capacity_request, capacity_caps, *capacity_catalog);
         if (!capacity_plan)
         {
             if (cfg.capacity_shortfall_output)
@@ -305,10 +288,10 @@ namespace lux::render
         if (auto r = res_ctx_->init(); !r)
             return lux::cxx::unexpected(r.error());
 
-        auto& device_ctx        = *dev_ctx_;
-        VkDescriptorPool dp     = res_ctx_->descriptorPool().handle();
-        VkCommandPool    cp     = res_ctx_->commandPool().handle();
-        uint32_t fif            = cfg.frames_in_flight;
+        auto& device_ctx = *dev_ctx_;
+        VkDescriptorPool dp = res_ctx_->descriptorPool().handle();
+        VkCommandPool cp = res_ctx_->commandPool().handle();
+        uint32_t fif = cfg.frames_in_flight;
 
         // 1. Descriptor layouts
         auto descriptor_layouts = std::make_unique<GeneralDescriptorSetLayout>(device_ctx);
@@ -338,43 +321,43 @@ namespace lux::render
             // VK_ERROR_OUT_OF_POOL_MEMORY at startup. Desktop NVIDIA never
             // complained because it does not account pool capacity per-type.
             const uint32_t tex2d_max = layouts.bindless2DCount();
-            const uint32_t cube_max  = layouts.bindlessCubeCount();
+            const uint32_t cube_max = layouts.bindlessCubeCount();
 
             BCInitInfo bc{};
-            bc.resource_context      = res_ctx_.get();
+            bc.resource_context = res_ctx_.get();
             bc.descriptor_set_layout = layouts.getLayout(EDescriptorSetSlot::Texture);
-            bc.set_index             = get_binding_set<ETextureSetBindings>::value;
-            bc.binding               = 0;
-            bc.layout_max_capacity   = tex2d_max;  // device-aware ceiling
-            bc.initial_capacity      = 1024;
-            bc.srgb_for_color        = true;
-            bc.frames_in_flight      = fif;
+            bc.set_index = get_binding_set<ETextureSetBindings>::value;
+            bc.binding = 0;
+            bc.layout_max_capacity = tex2d_max; // device-aware ceiling
+            bc.initial_capacity = 1024;
+            bc.srgb_for_color = true;
+            bc.frames_in_flight = fif;
 
             VkSamplerCreateInfo sampler_ci{};
-            sampler_ci.sType         = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-            sampler_ci.magFilter     = VK_FILTER_LINEAR;
-            sampler_ci.minFilter     = VK_FILTER_LINEAR;
-            sampler_ci.addressModeU  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            sampler_ci.addressModeV  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            sampler_ci.addressModeW  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            sampler_ci.anisotropyEnable        = VK_FALSE;
-            sampler_ci.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+            sampler_ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            sampler_ci.magFilter = VK_FILTER_LINEAR;
+            sampler_ci.minFilter = VK_FILTER_LINEAR;
+            sampler_ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            sampler_ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            sampler_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            sampler_ci.anisotropyEnable = VK_FALSE;
+            sampler_ci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
             sampler_ci.unnormalizedCoordinates = VK_FALSE;
-            sampler_ci.compareEnable           = VK_FALSE;
-            sampler_ci.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            sampler_ci.compareEnable = VK_FALSE;
+            sampler_ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
             TextureResources::InitInfo info{};
-            info.device_context     = &device_ctx;
-            info.graphics_queue     = device_ctx.graphicsQueue();
-            info.upload_cmd_pool    = cp;
-            info.combined_ci        = bc;
+            info.device_context = &device_ctx;
+            info.graphics_queue = device_ctx.graphicsQueue();
+            info.upload_cmd_pool = cp;
+            info.combined_ci = bc;
             // Same rule as tex2d_max: the cube table's pool share is charged
             // against the layout's binding-1 count, so take it from there
             // instead of leaving InitInfo's default to agree by coincidence.
-            info.cube_max_capacity  = cube_max;
-            info.slices             = fif;
+            info.cube_max_capacity = cube_max;
+            info.slices = fif;
             info.default_sampler_ci = sampler_ci;
-            info.fallback_pixel     = std::nullopt;
+            info.fallback_pixel = std::nullopt;
             // init() 的 bool 返回值此前被忽略 —— 而资源注册表没有 erase,失败 init
             // 的对象仍留在表里、指针非空,所以下游任何"非空判断"都发现不了它。
             // 这里是唯一能判定初始化成败的地方。(下游的判空已随 must<> 收敛删除:
@@ -383,9 +366,10 @@ namespace lux::render
             if (!tex->init(info))
                 return renderFailure<err::internal::Unspecified>();
             // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。
-            global_reg->addBeginFrameHook(
-                EUploadPhase::Upload,
-                [tex](const FrameStamp& s) { tex->onFrameBeginMaintenance(s); });
+            global_reg->addBeginFrameHook(EUploadPhase::Upload, [tex](const FrameStamp& s) {
+                tex->onFrameBeginMaintenance(s);
+            }
+            );
         }
 
         // LightResources is PER-SCENE and FEATURE-OWNED: LightFeature emplaces +
@@ -413,8 +397,8 @@ namespace lux::render
         // (= lean skinned output, geometry-only).
         {
             auto& vlr = *global_reg->emplace<VertexLayoutRegistry>();
-            vlr.registerLayout(makeDefaultVertexLayout());      // id 0
-            vlr.registerLayout(makeLeanSkinnedOutputLayout());  // id 1
+            vlr.registerLayout(makeDefaultVertexLayout());     // id 0
+            vlr.registerLayout(makeLeanSkinnedOutputLayout()); // id 1
         }
 
         // ShadowResources is now PER-SCENE (Plan A): each scene's
@@ -434,19 +418,18 @@ namespace lux::render
             auto& shaders = *global_reg->emplace<ShaderResources>();
             shaders.init(ShaderResources::InitInfo{
                 .device = device_ctx.logicalDevice(),
-                .sparse_instance_pages =
-                    device_caps.buffer_device_address &&
-                    device_caps.shader_int64,
-            });
+                .sparse_instance_pages = device_caps.buffer_device_address && device_caps.shader_int64,
+            }
+            );
         }
 
         // 5. Build RenderContext
         RenderContext::CreateInfo ci{};
-        ci.pipeline_mgr         = std::move(pipeline_mgr);
-        ci.descriptor_layouts   = std::move(descriptor_layouts);
-        ci.global_resources     = std::move(global_reg);
-        ci.frames_in_flight     = fif;
-        ci.capacity_plan        = *capacity_plan;
+        ci.pipeline_mgr = std::move(pipeline_mgr);
+        ci.descriptor_layouts = std::move(descriptor_layouts);
+        ci.global_resources = std::move(global_reg);
+        ci.frames_in_flight = fif;
+        ci.capacity_plan = *capacity_plan;
 
         auto render_context = RenderContext::create(*res_ctx_, std::move(ci));
         if (!render_context)
@@ -454,11 +437,9 @@ namespace lux::render
         render_ctx_ = std::move(*render_context);
         // 自发上报的去处。汇集器随 Impl 存活,覆盖 render_ctx_ 的生命周期。
         render_ctx_->setErrorSink(&error_sink_);
-        render_ctx_->globalTransferScheduler().contributors().add(
-            makeTransferContributorWithPost(
-                &render_ctx_->globalRegistry().must<TextureResources>(),
-                /*priority=*/10
-            )
+        render_ctx_->globalTransferScheduler().contributors().add(makeTransferContributorWithPost(
+            &render_ctx_->globalRegistry().must<TextureResources>(),
+            /*priority=*/10)
         );
 
         // 6. Build Renderer
@@ -483,27 +464,18 @@ namespace lux::render
             GpuTransferPipeline::Config ucfg{};
             ucfg.device_ctx = dev_ctx_.get();
             ucfg.notify_work_state = server_;
-            ucfg.notify_work = +[](void* state) noexcept
-            {
-                static_cast<GeneralRenderServer*>(state)
-                    ->channelSync().notifyRequestStateChanged();
+            ucfg.notify_work = +[](void* state) noexcept {
+                static_cast<GeneralRenderServer*>(state)->channelSync().notifyRequestStateChanged();
             };
             ucfg.lifecycle_state = this;
-            ucfg.lifecycle = +[](
-                void* state,
-                std::uint32_t request_id,
-                TransferCompletion::Kind kind,
-                std::uint32_t resource_index,
-                std::uint32_t resource_gen,
-                EUploadLifecycleState lifecycle_state) noexcept
-            {
-                static_cast<Impl*>(state)->transitionUpload(
-                    request_id,
-                    kind,
-                    resource_index,
-                    resource_gen,
-                    lifecycle_state
-                );
+            ucfg.lifecycle = +[](void* state,
+                                 std::uint32_t request_id,
+                                 TransferCompletion::Kind kind,
+                                 std::uint32_t resource_index,
+                                 std::uint32_t resource_gen,
+                                 EUploadLifecycleState lifecycle_state) noexcept {
+                static_cast<Impl*>(state)
+                    ->transitionUpload(request_id, kind, resource_index, resource_gen, lifecycle_state);
             };
             auto pipeline = GpuTransferPipeline::create(ucfg);
             if (!pipeline)
@@ -525,7 +497,8 @@ namespace lux::render
 
     GeneralRenderServer::Impl::~Impl()
     {
-        if (!dev_ctx_) return;  // init() was never called
+        if (!dev_ctx_)
+            return; // init() was never called
         bool device_lost_during_teardown = false;
 
         // Close admission and join the single transfer owner first. Recorded
@@ -539,19 +512,16 @@ namespace lux::render
             // RECORD_ONLY batches on the graphics queue and returns their
             // completion ownership to this thread.
             uint32_t n;
-            do {
-                n = transfer_pipeline_->drainResults(
-                    completion_buf_, kMaxDrainBatch);
+            do
+            {
+                n = transfer_pipeline_->drainResults(completion_buf_, kMaxDrainBatch);
                 for (uint32_t i = 0; i < n; ++i)
                     pending_completions_.push_back(completion_buf_[i]);
             } while (n > 0);
 
-            const auto transfer_idle =
-                dev_ctx_->logicalDevice().waitIdle();
-            device_lost_during_teardown =
-                transfer_idle == VK_ERROR_DEVICE_LOST;
-            if (transfer_idle != VK_SUCCESS &&
-                transfer_idle != VK_ERROR_DEVICE_LOST)
+            const auto transfer_idle = dev_ctx_->logicalDevice().waitIdle();
+            device_lost_during_teardown = transfer_idle == VK_ERROR_DEVICE_LOST;
+            if (transfer_idle != VK_SUCCESS && transfer_idle != VK_ERROR_DEVICE_LOST)
                 renderFatal("RenderServer transfer drain wait-idle failed");
 
             for (auto& pending : pending_graphics_finalizes_)
@@ -560,7 +530,8 @@ namespace lux::render
                         dev_ctx_->logicalDevice().handle(),
                         res_ctx_->commandPool(),
                         1,
-                        &pending.command_buffer);
+                        &pending.command_buffer
+                    );
             pending_graphics_finalizes_.clear();
             graphics_finalize_reply_batch_.clear();
             graphics_finalize_staging_batch_.clear();
@@ -573,24 +544,25 @@ namespace lux::render
         }
 
         const auto teardown_idle = dev_ctx_->logicalDevice().waitIdle();
-        device_lost_during_teardown = device_lost_during_teardown ||
-            teardown_idle == VK_ERROR_DEVICE_LOST;
-        if (teardown_idle != VK_SUCCESS &&
-            teardown_idle != VK_ERROR_DEVICE_LOST)
+        device_lost_during_teardown = device_lost_during_teardown || teardown_idle == VK_ERROR_DEVICE_LOST;
+        if (teardown_idle != VK_SUCCESS && teardown_idle != VK_ERROR_DEVICE_LOST)
             renderFatal("RenderServer failed to wait for device idle during teardown");
 
         // Free any in-flight async readbacks (GPU is idle after waitIdle above;
         // their deferred replies are simply dropped — the client gives up on
         // shutdown). res_ctx_ is still alive here (destroyed in reverse order).
         {
-            VmaAllocator  vma  = dev_ctx_->vmaAllocator();
-            VkDevice      dev  = dev_ctx_->logicalDevice();
+            VmaAllocator vma = dev_ctx_->vmaAllocator();
+            VkDevice dev = dev_ctx_->logicalDevice();
             VkCommandPool pool = res_ctx_->commandPool();
             for (auto& j : pending_readbacks_)
             {
-                if (j.fence) vkDestroyFence(dev, j.fence, nullptr);
-                if (j.cb)    vkFreeCommandBuffers(dev, pool, 1, &j.cb);
-                if (j.buf)   vmaDestroyBuffer(vma, j.buf, j.alloc);
+                if (j.fence)
+                    vkDestroyFence(dev, j.fence, nullptr);
+                if (j.cb)
+                    vkFreeCommandBuffers(dev, pool, 1, &j.cb);
+                if (j.buf)
+                    vmaDestroyBuffer(vma, j.buf, j.alloc);
             }
             pending_readbacks_.clear();
         }
@@ -610,8 +582,7 @@ namespace lux::render
                     if (device_lost_during_teardown)
                         release.ctx->acknowledgeDeviceLoss();
                     else
-                        renderFatal(
-                            "pending PresentContext close failed during shutdown");
+                        renderFatal("pending PresentContext close failed during shutdown");
                 }
             }
         for (auto& target : targets_registry_.all().values())
@@ -623,8 +594,7 @@ namespace lux::render
                     if (device_lost_during_teardown)
                         target.present->acknowledgeDeviceLoss();
                     else
-                        renderFatal(
-                            "target PresentContext close failed during shutdown");
+                        renderFatal("target PresentContext close failed during shutdown");
                 }
             }
 
@@ -730,22 +700,20 @@ namespace lux::render
         {
             RenderTargetLayout layout;
             RenderTargetSlotDesc color{};
-            color.format       = lux::rdesc::ETextureFormat::BGRA8_SRGB;
-            color.aspect       = ERenderAspect::COLOR;
+            color.format = lux::rdesc::ETextureFormat::BGRA8_SRGB;
+            color.aspect = ERenderAspect::COLOR;
             color.is_presentable = false;
             if (sampled)
             {
                 // TRANSFER_SRC 保留:SAMPLED 目标同样可 readback(缩略图
                 // 服务对预览视图的异步回读依赖此位)。
-                color.usage = ERenderImageUsage::COLOR_ATTACHMENT |
-                              ERenderImageUsage::SAMPLED |
+                color.usage = ERenderImageUsage::COLOR_ATTACHMENT | ERenderImageUsage::SAMPLED |
                               ERenderImageUsage::TRANSFER_SOURCE;
                 color.final_state = ERenderResourceState::SHADER_READ;
             }
             else
             {
-                color.usage = ERenderImageUsage::COLOR_ATTACHMENT |
-                              ERenderImageUsage::TRANSFER_SOURCE;
+                color.usage = ERenderImageUsage::COLOR_ATTACHMENT | ERenderImageUsage::TRANSFER_SOURCE;
                 color.final_state = ERenderResourceState::COLOR_ATTACHMENT;
             }
             layout.slots[static_cast<size_t>(TargetSlot::SCENE_COLOR)] = color;
@@ -780,7 +748,8 @@ namespace lux::render
         void handleDestroyScene(Ctx& ctx, const DestroyScenePayload& p)
         {
             auto& im = impl(ctx);
-            if (!im.renderer_->getScene(p.scene_id)) return;
+            if (!im.renderer_->getScene(p.scene_id))
+                return;
 
             // NO full-device vkDeviceWaitIdle here: it stalled every OTHER scene
             // on each teardown. Everything the GPU might still reference is retired
@@ -804,11 +773,12 @@ namespace lux::render
             // 设计不变量③);Offscreen target 因此空链的,池按 fence 水位
             // 延迟释放后整个 target 消亡;Surface target 只摘层不消亡。
             {
-                const auto keys = im.targets_registry_.all().keys();   // 拷贝:循环内 erase
+                const auto keys = im.targets_registry_.all().keys(); // 拷贝:循环内 erase
                 for (const auto key : keys)
                 {
                     auto* t = im.targets_registry_.tryGet(key);
-                    if (!t) continue;
+                    if (!t)
+                        continue;
                     bool removed = false;
                     for (size_t i = t->layers.size(); i-- > 0;)
                         if (t->layers[i].scene_id == p.scene_id)
@@ -826,22 +796,16 @@ namespace lux::render
             }
         }
 
-        void handleRebaseSceneOrigin(
-            Ctx& ctx,
-            const RebaseSceneOriginPayload& payload)
+        void handleRebaseSceneOrigin(Ctx& ctx, const RebaseSceneOriginPayload& payload)
         {
             auto& im = impl(ctx);
             auto* scene = im.renderer_->getScene(payload.scene_id);
             if (scene == nullptr)
                 return;
-            auto rebased = scene->rebaseSceneOrigin(
-                payload.scene_origin_page);
+            auto rebased = scene->rebaseSceneOrigin(payload.scene_origin_page);
             if (!rebased)
             {
-                im.error_sink_.emit(
-                    rebased.error(),
-                    payload.scene_id.index,
-                    im.current_stamp_.serial);
+                im.error_sink_.emit(rebased.error(), payload.scene_id.index, im.current_stamp_.serial);
             }
         }
 
@@ -851,22 +815,26 @@ namespace lux::render
             auto* sc = im.renderer_->getScene(p.scene_id);
             if (sc == nullptr)
             {
-                replyToCurrent<AddViewPayload>(ctx,
-                    ViewCreatedReply{{}, renderError<err::scene::NotFound>(p.scene_id.index)});
+                replyToCurrent<AddViewPayload>(
+                    ctx,
+                    ViewCreatedReply{{}, renderError<err::scene::NotFound>(p.scene_id.index)}
+                );
                 return;
             }
 
             const ViewCreateInfo ci{
                 .initial_extent = p.extent,
-                .debug_name     = p.name,
+                .debug_name = p.name,
             };
             const ViewHandle handle = sc->addView(ci);
 
             if (!handle.isValid())
             {
                 // addView 只在视图槽位耗尽时交回无效句柄(见 SceneViewSet)。
-                replyToCurrent<AddViewPayload>(ctx,
-                    ViewCreatedReply{{}, renderError<err::memory::CapacityExhausted>()});
+                replyToCurrent<AddViewPayload>(
+                    ctx,
+                    ViewCreatedReply{{}, renderError<err::memory::CapacityExhausted>()}
+                );
                 return;
             }
 
@@ -888,13 +856,11 @@ namespace lux::render
             auto* sc = im.renderer_->getScene(p.scene_id);
             if (sc == nullptr)
             {
-                reply = GenericOkReply{1,
-                    renderError<err::scene::NotFound>(p.scene_id.index)};
+                reply = GenericOkReply{1, renderError<err::scene::NotFound>(p.scene_id.index)};
             }
             else if (!sc->removeView(p.view))
             {
-                reply = GenericOkReply{2,
-                    renderError<err::scene::ViewNotRemovable>(p.view.index)};
+                reply = GenericOkReply{2, renderError<err::scene::ViewNotRemovable>(p.view.index)};
             }
 
             // View 销毁级联摘层(不变量③)。空链 Offscreen target 的池改走
@@ -903,8 +869,7 @@ namespace lux::render
             // 摘除被拒也照跑:合成链上不该再有这个 view 的层(幂等清扫)。
             const auto keys = im.targets_registry_.all().keys();
             for (const auto key : keys)
-                im.detachLayerAndReapIfEmpty(key, p.scene_id, p.view,
-                                             im.current_stamp_.serial);
+                im.detachLayerAndReapIfEmpty(key, p.scene_id, p.view, im.current_stamp_.serial);
 
             // 回执在级联摘层之后 —— code==0 代表「视图摘了,层也摘了」。
             replyToCurrent<RemoveViewPayload>(ctx, reply);
@@ -924,12 +889,10 @@ namespace lux::render
         // limits(原 UI 层 clampViewExtent 的职责,随命令面下沉到 base)。
         VkExtent2D clampTargetExtent(GeneralRenderServer::Impl& im, lux::math::Extent2u extent)
         {
-            const auto& limits = im.res_ctx_->deviceContext()
-                                     .physicalDevice().properties().properties.limits;
-            const uint32_t max_w = std::min(limits.maxFramebufferWidth,  limits.maxImageDimension2D);
+            const auto& limits = im.res_ctx_->deviceContext().physicalDevice().properties().properties.limits;
+            const uint32_t max_w = std::min(limits.maxFramebufferWidth, limits.maxImageDimension2D);
             const uint32_t max_h = std::min(limits.maxFramebufferHeight, limits.maxImageDimension2D);
-            return {std::clamp(extent.width,  1u, max_w),
-                    std::clamp(extent.height, 1u, max_h)};
+            return {std::clamp(extent.width, 1u, max_w), std::clamp(extent.height, 1u, max_h)};
         }
 
         void handleCreateOffscreenTarget(Ctx& ctx, const CreateOffscreenTargetPayload& p)
@@ -943,17 +906,16 @@ namespace lux::render
                 return;
             }
 
-            const RenderTargetLayout layout =
-                makeOffscreenTargetLayout((p.flags & kTargetFlagSampled) != 0);
+            const RenderTargetLayout layout = makeOffscreenTargetLayout((p.flags & kTargetFlagSampled) != 0);
             const VkExtent2D vk_extent = clampTargetExtent(im, p.extent);
 
             GeneralRenderServer::Impl::RenderTargetEntry entry{};
-            entry.kind   = GeneralRenderServer::Impl::RenderTargetEntry::EKind::Offscreen;
-            entry.flags  = p.flags;
+            entry.kind = GeneralRenderServer::Impl::RenderTargetEntry::EKind::Offscreen;
+            entry.flags = p.flags;
             entry.layout = layout;
             // 经扩展点创建:UI 层对 SAMPLED 目标返回 UIOffscreenImagePool
             //(ImGui 描述符),其余走基类池。
-            entry.pool   = im.makeTargetPool(layout, vk_extent, p.flags);
+            entry.pool = im.makeTargetPool(layout, vk_extent, p.flags);
             reply.target = im.targets_registry_.insert(std::move(entry));
             replyToCurrent<CreateOffscreenTargetPayload>(ctx, reply);
         }
@@ -963,17 +925,16 @@ namespace lux::render
             auto& im = impl(ctx);
             TargetReadyReply reply{};
             RenderSurface surface;
-            if (p.native_window_handle == 0 ||
-                !surface.initFromNative(p.native_window_handle,
-                                        VkExtent2D{p.extent.width, p.extent.height},
-                                        im.inst_ctx_->instance()))
+            if (p.native_window_handle == 0 || !surface.initFromNative(
+                                                   p.native_window_handle,
+                                                   VkExtent2D{p.extent.width, p.extent.height},
+                                                   im.inst_ctx_->instance()))
             {
                 reply.status = 1;
                 replyToCurrent<CreateSurfaceTargetPayload>(ctx, reply);
                 return;
             }
-            auto r = im.createSurfaceTargetInternal(
-                std::move(surface), VkExtent2D{p.extent.width, p.extent.height});
+            auto r = im.createSurfaceTargetInternal(std::move(surface), VkExtent2D{p.extent.width, p.extent.height});
             if (!r)
             {
                 reply.status = 2;
@@ -1004,18 +965,17 @@ namespace lux::render
                     im.targets_registry_.setSurfaceTarget({});
                 t->layers.clear();
                 GeneralRenderServer::Impl::PendingSurfaceRelease rel{};
-                rel.target        = p.target;
+                rel.target = p.target;
                 // 退休阈值 = 受理时已提交的最后一帧,不是 current serial:
                 // target 此刻已摘除,之后提交的帧不再引用它;而 current serial
                 // 属于本 tick——本 tick 可能因 targets 已空而不提交(关窗正是
                 // 最后一个 target),该 serial 永远无 fence 佐证,水位永不越过。
-                rel.retire_serial = im.frame_driver_
-                    ? im.frame_driver_->lastSubmittedSerial() : 0;
-                rel.request_id    = ctx.currentRequestId();
-                rel.ctx           = std::move(t->present);
+                rel.retire_serial = im.frame_driver_ ? im.frame_driver_->lastSubmittedSerial() : 0;
+                rel.request_id = ctx.currentRequestId();
+                rel.ctx = std::move(t->present);
                 im.targets_registry_.erase(p.target);
                 im.pending_surface_releases_.push_back(std::move(rel));
-                return;   // 回执延迟——TargetReleased 由 GC 步进送出
+                return; // 回执延迟——TargetReleased 由 GC 步进送出
             }
 
             // Offscreen:池经统一退休入口(UI 池路由到 UI 侧退休列表,
@@ -1035,8 +995,7 @@ namespace lux::render
             // 层引用 view,不拥有;order 位存在即替换,越界即追加到尾。
             sc->compileGraphTemplate(t->layout);
             const auto layer =
-                GeneralRenderServer::Impl::RenderTargetEntry::CompositeLayer::sceneView(
-                    p.scene_id, p.view);
+                GeneralRenderServer::Impl::RenderTargetEntry::CompositeLayer::sceneView(p.scene_id, p.view);
             if (p.order < t->layers.size())
                 t->layers[p.order] = layer;
             else
@@ -1058,22 +1017,15 @@ namespace lux::render
             auto* t = im.targets_registry_.tryGet(p.target);
             if (!t || !t->pool)
                 return;
-            t->pool->resize(clampTargetExtent(im, p.new_extent));   // 旧图进 retire,fence 水位 GC
+            t->pool->resize(clampTargetExtent(im, p.new_extent)); // 旧图进 retire,fence 水位 GC
         }
 
         void handleBindSwapchain(Ctx& ctx, const BindSwapchainPayload& p)
         {
             auto& im = impl(ctx);
             auto* scp = im.swapchainProvider();
-            const auto layout = scp ? scp->layout()
-                                  : RenderTargetLayout{};
-            (void)detail::bindSwapchainInternal(
-                im,
-                p.scene_id,
-                p.view,
-                layout,
-                true
-            );
+            const auto layout = scp ? scp->layout() : RenderTargetLayout{};
+            (void)detail::bindSwapchainInternal(im, p.scene_id, p.view, layout, true);
         }
 
         // (handleRequestSwapchainScene 已消亡:命令面零调用方;上屏路径是
@@ -1092,10 +1044,14 @@ namespace lux::render
             case VK_FORMAT_R8G8B8A8_UNORM:
             case VK_FORMAT_R8G8B8A8_SRGB:
             case VK_FORMAT_B8G8R8A8_UNORM:
-            case VK_FORMAT_B8G8R8A8_SRGB:       return 4;
-            case VK_FORMAT_R16G16B16A16_SFLOAT: return 8;
-            case VK_FORMAT_R32G32B32A32_SFLOAT: return 16;
-            default:                            return 0;
+            case VK_FORMAT_B8G8R8A8_SRGB:
+                return 4;
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+                return 8;
+            case VK_FORMAT_R32G32B32A32_SFLOAT:
+                return 16;
+            default:
+                return 0;
             }
         }
 
@@ -1113,60 +1069,63 @@ namespace lux::render
         // Record + submit the copy WITHOUT waiting. On success `j` holds the
         // in-flight buffer/fence/cb + dims; returns 0, else a non-zero status
         // (no GPU resources left allocated on failure).
-        uint32_t submitReadbackCopy(GeneralRenderServer::Impl& im,
-                                    GeneralRenderServer::Impl::PendingReadback& j)
+        uint32_t submitReadbackCopy(GeneralRenderServer::Impl& im, GeneralRenderServer::Impl::PendingReadback& j)
         {
             OffscreenImagePool* pool = nullptr;
             if (auto* t = im.targets_registry_.tryGet(j.target);
                 t && t->kind == GeneralRenderServer::Impl::RenderTargetEntry::EKind::Offscreen)
                 pool = t->pool.get();
-            if (!pool) return 1;
+            if (!pool)
+                return 1;
 
             const RenderTargetLayout rt_layout = pool->layout();
-            const TargetSlot slot = j.slot;                  // which output semantic to read
-            if (!rt_layout.hasSlot(slot)) return 2;
+            const TargetSlot slot = j.slot; // which output semantic to read
+            if (!rt_layout.hasSlot(slot))
+                return 2;
 
             const RenderTargetSlotDesc& slot_desc = rt_layout.slot(slot);
-            const VkFormat      fmt = toVkFormat(slot_desc.format);
-            const VkImageLayout from_layout =
-                toVkImageLayout(slot_desc.final_state);
-            const uint32_t      bpp         = readbackBpp(fmt);
-            const VkExtent2D    ext         = pool->extent();
-            if (bpp == 0 || ext.width == 0 || ext.height == 0) return 3;
+            const VkFormat fmt = toVkFormat(slot_desc.format);
+            const VkImageLayout from_layout = toVkImageLayout(slot_desc.final_state);
+            const uint32_t bpp = readbackBpp(fmt);
+            const VkExtent2D ext = pool->extent();
+            if (bpp == 0 || ext.width == 0 || ext.height == 0)
+                return 3;
 
             const RenderTargetBinding& binding = pool->binding();
             const SlotImages& slot_imgs = binding.slot(slot);
-            if (slot_imgs.images.empty()) return 4;
+            if (slot_imgs.images.empty())
+                return 4;
             const VkImage image = slot_imgs.images.front();
 
             const uint64_t needed = static_cast<uint64_t>(ext.width) * ext.height * bpp;
-            if (needed > j.dst_capacity || j.dst_ptr == 0) return 5;
+            if (needed > j.dst_capacity || j.dst_ptr == 0)
+                return 5;
 
             // Host-visible, persistently-mapped staging buffer (raw VMA).
             VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            bci.size        = needed;
-            bci.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            bci.size = needed;
+            bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             VmaAllocationCreateInfo aci{};
             aci.usage = VMA_MEMORY_USAGE_AUTO;
-            aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
-                      | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-            VmaAllocator      vma = im.dev_ctx_->vmaAllocator();
+            aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+            VmaAllocator vma = im.dev_ctx_->vmaAllocator();
             VmaAllocationInfo stg_info{};
             if (vmaCreateBuffer(vma, &bci, &aci, &j.buf, &j.alloc, &stg_info) != VK_SUCCESS)
                 return 6;
             j.mapped = stg_info.pMappedData;
 
-            VkDevice      dev      = im.dev_ctx_->logicalDevice();
+            VkDevice dev = im.dev_ctx_->logicalDevice();
             VkCommandPool cmd_pool = im.res_ctx_->commandPool();
 
             VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-            ai.commandPool        = cmd_pool;
-            ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            ai.commandPool = cmd_pool;
+            ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             ai.commandBufferCount = 1;
             if (vkAllocateCommandBuffers(dev, &ai, &j.cb) != VK_SUCCESS)
             {
-                vmaDestroyBuffer(vma, j.buf, j.alloc); j.buf = VK_NULL_HANDLE;
+                vmaDestroyBuffer(vma, j.buf, j.alloc);
+                j.buf = VK_NULL_HANDLE;
                 return 7;
             }
 
@@ -1174,37 +1133,50 @@ namespace lux::render
             bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
             vkBeginCommandBuffer(j.cb, &bi);
 
-            auto barrier = [&](VkImageLayout oldL, VkImageLayout newL,
-                               VkAccessFlags srcA, VkAccessFlags dstA,
-                               VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
-            {
+            auto barrier = [&](VkImageLayout oldL,
+                               VkImageLayout newL,
+                               VkAccessFlags srcA,
+                               VkAccessFlags dstA,
+                               VkPipelineStageFlags srcS,
+                               VkPipelineStageFlags dstS) {
                 VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-                b.oldLayout = oldL; b.newLayout = newL;
+                b.oldLayout = oldL;
+                b.newLayout = newL;
                 b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 b.image = image;
                 b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-                b.srcAccessMask = srcA; b.dstAccessMask = dstA;
+                b.srcAccessMask = srcA;
+                b.dstAccessMask = dstA;
                 vkCmdPipelineBarrier(j.cb, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
             };
 
-            barrier(from_layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            barrier(
+                from_layout,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_ACCESS_TRANSFER_READ_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT
+            );
 
             VkBufferImageCopy region{};
-            region.bufferOffset      = 0;
-            region.bufferRowLength   = 0; // tightly packed
+            region.bufferOffset = 0;
+            region.bufferRowLength = 0; // tightly packed
             region.bufferImageHeight = 0;
-            region.imageSubresource  = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-            region.imageOffset       = {0, 0, 0};
-            region.imageExtent       = {ext.width, ext.height, 1};
-            vkCmdCopyImageToBuffer(j.cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                   j.buf, 1, &region);
+            region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            region.imageOffset = {0, 0, 0};
+            region.imageExtent = {ext.width, ext.height, 1};
+            vkCmdCopyImageToBuffer(j.cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, j.buf, 1, &region);
 
-            barrier(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, from_layout,
-                    VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+            barrier(
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                from_layout,
+                VK_ACCESS_TRANSFER_READ_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+            );
 
             vkEndCommandBuffer(j.cb);
 
@@ -1212,61 +1184,74 @@ namespace lux::render
             vkCreateFence(dev, &fci, nullptr, &j.fence);
             VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
             si.commandBufferCount = 1;
-            si.pCommandBuffers    = &j.cb;
+            si.pCommandBuffers = &j.cb;
             VkResult submit_result{VK_ERROR_UNKNOWN};
             {
-                const std::scoped_lock queue_lock(
-                    im.dev_ctx_->graphicsQueueMutex());
-                submit_result = vkQueueSubmit(
-                    im.dev_ctx_->graphicsQueue(),
-                    1,
-                    &si,
-                    j.fence
-                );
+                const std::scoped_lock queue_lock(im.dev_ctx_->graphicsQueueMutex());
+                submit_result = vkQueueSubmit(im.dev_ctx_->graphicsQueue(), 1, &si, j.fence);
             }
             if (submit_result != VK_SUCCESS)
             {
-                vkDestroyFence(dev, j.fence, nullptr); j.fence = VK_NULL_HANDLE;
-                vkFreeCommandBuffers(dev, cmd_pool, 1, &j.cb); j.cb = VK_NULL_HANDLE;
-                vmaDestroyBuffer(vma, j.buf, j.alloc); j.buf = VK_NULL_HANDLE;
+                vkDestroyFence(dev, j.fence, nullptr);
+                j.fence = VK_NULL_HANDLE;
+                vkFreeCommandBuffers(dev, cmd_pool, 1, &j.cb);
+                j.cb = VK_NULL_HANDLE;
+                vmaDestroyBuffer(vma, j.buf, j.alloc);
+                j.buf = VK_NULL_HANDLE;
                 return 8;
             }
 
-            j.width  = ext.width;
+            j.width = ext.width;
             j.height = ext.height;
-            j.bpp    = bpp;
+            j.bpp = bpp;
             j.format = fmt;
             j.needed = needed;
             return 0;
         }
 
         // Free GPU resources without copying (error / timeout paths).
-        void freeReadbackGpu(GeneralRenderServer::Impl& im,
-                             GeneralRenderServer::Impl::PendingReadback& j)
+        void freeReadbackGpu(GeneralRenderServer::Impl& im, GeneralRenderServer::Impl::PendingReadback& j)
         {
             VkDevice dev = im.dev_ctx_->logicalDevice();
-            if (j.fence) { vkDestroyFence(dev, j.fence, nullptr); j.fence = VK_NULL_HANDLE; }
-            if (j.cb)    { vkFreeCommandBuffers(dev, im.res_ctx_->commandPool(), 1, &j.cb); j.cb = VK_NULL_HANDLE; }
-            if (j.buf)   { vmaDestroyBuffer(im.dev_ctx_->vmaAllocator(), j.buf, j.alloc); j.buf = VK_NULL_HANDLE; }
+            if (j.fence)
+            {
+                vkDestroyFence(dev, j.fence, nullptr);
+                j.fence = VK_NULL_HANDLE;
+            }
+            if (j.cb)
+            {
+                vkFreeCommandBuffers(dev, im.res_ctx_->commandPool(), 1, &j.cb);
+                j.cb = VK_NULL_HANDLE;
+            }
+            if (j.buf)
+            {
+                vmaDestroyBuffer(im.dev_ctx_->vmaAllocator(), j.buf, j.alloc);
+                j.buf = VK_NULL_HANDLE;
+            }
         }
 
         // Fence has signaled: make GPU writes visible, copy pixels out, free GPU
         // resources, and fill `reply`. Assumes submitReadbackCopy succeeded.
-        void finishReadbackCopy(GeneralRenderServer::Impl& im,
-                                GeneralRenderServer::Impl::PendingReadback& j,
-                                ReadbackTargetReply& reply)
+        void finishReadbackCopy(
+            GeneralRenderServer::Impl& im,
+            GeneralRenderServer::Impl::PendingReadback& j,
+            ReadbackTargetReply& reply
+        )
         {
             VmaAllocator vma = im.dev_ctx_->vmaAllocator();
             vmaInvalidateAllocation(vma, j.alloc, 0, j.needed);
-            std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(j.dst_ptr)),
-                        j.mapped, static_cast<std::size_t>(j.needed));
+            std::memcpy(
+                reinterpret_cast<void*>(static_cast<std::uintptr_t>(j.dst_ptr)),
+                j.mapped,
+                static_cast<std::size_t>(j.needed)
+            );
 
-            reply.status          = 0;
-            reply.width           = j.width;
-            reply.height          = j.height;
+            reply.status = 0;
+            reply.width = j.width;
+            reply.height = j.height;
             reply.bytes_per_pixel = j.bpp;
-            reply.bytes_written   = j.needed;
-            reply.format          = static_cast<uint32_t>(j.format);
+            reply.bytes_written = j.needed;
+            reply.format = static_cast<uint32_t>(j.format);
 
             freeReadbackGpu(im, j);
         }
@@ -1278,23 +1263,30 @@ namespace lux::render
         {
             auto& im = impl(ctx);
             GeneralRenderServer::Impl::PendingReadback j{};
-            j.target       = p.target;
-            j.dst_ptr      = p.dst_ptr;
+            j.target = p.target;
+            j.dst_ptr = p.dst_ptr;
             j.dst_capacity = p.dst_capacity;
-            j.slot         = static_cast<TargetSlot>(p.slot);
+            j.slot = static_cast<TargetSlot>(p.slot);
 
             ReadbackTargetReply reply{};
             const uint32_t st = submitReadbackCopy(im, j);
-            if (st != 0) { reply.status = st; replyToCurrent<ReadbackTargetPayload>(ctx, reply); return; }
+            if (st != 0)
+            {
+                reply.status = st;
+                replyToCurrent<ReadbackTargetPayload>(ctx, reply);
+                return;
+            }
 
             // Finite timeout: a GPU stall must never wedge the server thread.
             constexpr uint64_t kReadbackFenceTimeoutNs = 5'000'000'000ull; // 5 s
-            const VkResult wres = vkWaitForFences(im.dev_ctx_->logicalDevice(),
-                                                  1, &j.fence, VK_TRUE, kReadbackFenceTimeoutNs);
-            if (wres != VK_SUCCESS)  // VK_TIMEOUT or device-lost: do not hang
+            const VkResult wres =
+                vkWaitForFences(im.dev_ctx_->logicalDevice(), 1, &j.fence, VK_TRUE, kReadbackFenceTimeoutNs);
+            if (wres != VK_SUCCESS) // VK_TIMEOUT or device-lost: do not hang
             {
                 freeReadbackGpu(im, j);
-                reply.status = 9; replyToCurrent<ReadbackTargetPayload>(ctx, reply); return;
+                reply.status = 9;
+                replyToCurrent<ReadbackTargetPayload>(ctx, reply);
+                return;
             }
 
             finishReadbackCopy(im, j, reply);
@@ -1309,14 +1301,18 @@ namespace lux::render
         {
             auto& im = impl(ctx);
             GeneralRenderServer::Impl::PendingReadback j{};
-            j.target       = p.target;
-            j.dst_ptr      = p.dst_ptr;
+            j.target = p.target;
+            j.dst_ptr = p.dst_ptr;
             j.dst_capacity = p.dst_capacity;
-            j.slot         = static_cast<TargetSlot>(p.slot);
-            j.request_id   = ctx.currentRequestId();
-            j.settle_left  = std::max<uint32_t>(p.settle_frames, im.frames_in_flight_);
-            j.deadline     = 600; // ticks before a stuck fence is declared failed
-            if (p.dst_ptr == 0) { j.done = true; j.reply.status = 5; } // bad dst
+            j.slot = static_cast<TargetSlot>(p.slot);
+            j.request_id = ctx.currentRequestId();
+            j.settle_left = std::max<uint32_t>(p.settle_frames, im.frames_in_flight_);
+            j.deadline = 600; // ticks before a stuck fence is declared failed
+            if (p.dst_ptr == 0)
+            {
+                j.done = true;
+                j.reply.status = 5;
+            } // bad dst
             im.pending_readbacks_.push_back(j);
             // Deferred — reply is sent later by pollPendingReadbacks().
         }
@@ -1326,28 +1322,49 @@ namespace lux::render
         // entry resolves; the reply itself is sent by pollPendingReadbacks().
         void advancePendingReadbacks(GeneralRenderServer::Impl& im)
         {
-            if (im.pending_readbacks_.empty()) return;
+            if (im.pending_readbacks_.empty())
+                return;
             VkDevice dev = im.dev_ctx_->logicalDevice();
             for (auto& j : im.pending_readbacks_)
             {
-                if (j.done) continue;
+                if (j.done)
+                    continue;
                 if (!j.submitted)
                 {
-                    if (j.settle_left > 0) { --j.settle_left; continue; }
+                    if (j.settle_left > 0)
+                    {
+                        --j.settle_left;
+                        continue;
+                    }
                     const uint32_t st = submitReadbackCopy(im, j);
                     j.submitted = true;
-                    if (st != 0) { j.reply.status = st; j.done = true; }
+                    if (st != 0)
+                    {
+                        j.reply.status = st;
+                        j.done = true;
+                    }
                     continue; // poll the fence on a later tick
                 }
                 const VkResult fs = vkGetFenceStatus(dev, j.fence);
                 if (fs == VK_NOT_READY)
                 {
-                    if (j.deadline > 0) --j.deadline;
-                    if (j.deadline == 0) { freeReadbackGpu(im, j); j.reply.status = 9; j.done = true; }
+                    if (j.deadline > 0)
+                        --j.deadline;
+                    if (j.deadline == 0)
+                    {
+                        freeReadbackGpu(im, j);
+                        j.reply.status = 9;
+                        j.done = true;
+                    }
                     continue;
                 }
-                if (fs == VK_SUCCESS) finishReadbackCopy(im, j, j.reply);
-                else { freeReadbackGpu(im, j); j.reply.status = 10; } // device lost
+                if (fs == VK_SUCCESS)
+                    finishReadbackCopy(im, j, j.reply);
+                else
+                {
+                    freeReadbackGpu(im, j);
+                    j.reply.status = 10;
+                } // device lost
                 j.done = true;
             }
         }
@@ -1429,12 +1446,10 @@ namespace lux::render
         auto& im = *impl_;
         advancePendingReadbacks(im);
 
-        const bool any_done = std::ranges::any_of(
-            im.pending_readbacks_,
-            [](const Impl::PendingReadback& pending)
-            {
-                return pending.done;
-            });
+        const bool any_done = std::ranges::any_of(im.pending_readbacks_, [](const Impl::PendingReadback& pending) {
+            return pending.done;
+        }
+        );
         if (!any_done || control_server_->hasPendingReplyPublication())
             return;
 
@@ -1449,23 +1464,14 @@ namespace lux::render
         {
             if (pending.done)
             {
-                builder.push<ReadbackTargetReply>(
-                    type_ids::ReplyReadbackTarget,
-                    pending.reply,
-                    0,
-                    pending.request_id);
+                builder.push<ReadbackTargetReply>(type_ids::ReplyReadbackTarget, pending.reply, 0, pending.request_id);
             }
         }
 
         if (!responses.publishWrite())
             return;
         channelSync().notifyReplyProduced();
-        std::erase_if(
-            im.pending_readbacks_,
-            [](const Impl::PendingReadback& pending)
-            {
-                return pending.done;
-            });
+        std::erase_if(im.pending_readbacks_, [](const Impl::PendingReadback& pending) { return pending.done; });
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1479,25 +1485,73 @@ namespace lux::render
     void registerServerHandlers(GeneralRenderServer::Dispatcher& d)
     {
         // ── CommandOp: Scene lifecycle ──
-        d.registerUnary<CreateScenePayload,                 &handleCreateScene>      (opcodes::CommandOp, type_ids::CreateScene,       "CreateScene");
-        d.registerUnary<DestroyScenePayload,                &handleDestroyScene>     (opcodes::CommandOp, type_ids::DestroyScene,      "DestroyScene");
-        d.registerUnary<RebaseSceneOriginPayload,           &handleRebaseSceneOrigin>(opcodes::CommandOp, type_ids::RebaseSceneOrigin, "RebaseSceneOrigin");
-        d.registerUnary<AddViewPayload,                     &handleAddView>          (opcodes::CommandOp, type_ids::AddView,           "AddView");
-        d.registerUnary<RemoveViewPayload,                  &handleRemoveView>       (opcodes::CommandOp, type_ids::RemoveView,        "RemoveView");
-        d.registerUnary<ReadbackTargetPayload,              &handleReadbackTarget>     (opcodes::CommandOp, type_ids::ReadbackTarget,      "ReadbackTarget");
-        d.registerUnary<ReadbackTargetAsyncPayload,         &handleReadbackTargetAsync>(opcodes::CommandOp, type_ids::ReadbackTargetAsync, "ReadbackTargetAsync");
+        d.registerUnary<CreateScenePayload, &handleCreateScene>(
+            opcodes::CommandOp,
+            type_ids::CreateScene,
+            "CreateScene"
+        );
+        d.registerUnary<DestroyScenePayload, &handleDestroyScene>(
+            opcodes::CommandOp,
+            type_ids::DestroyScene,
+            "DestroyScene"
+        );
+        d.registerUnary<RebaseSceneOriginPayload, &handleRebaseSceneOrigin>(
+            opcodes::CommandOp,
+            type_ids::RebaseSceneOrigin,
+            "RebaseSceneOrigin"
+        );
+        d.registerUnary<AddViewPayload, &handleAddView>(opcodes::CommandOp, type_ids::AddView, "AddView");
+        d.registerUnary<RemoveViewPayload, &handleRemoveView>(opcodes::CommandOp, type_ids::RemoveView, "RemoveView");
+        d.registerUnary<ReadbackTargetPayload, &handleReadbackTarget>(
+            opcodes::CommandOp,
+            type_ids::ReadbackTarget,
+            "ReadbackTarget"
+        );
+        d.registerUnary<ReadbackTargetAsyncPayload, &handleReadbackTargetAsync>(
+            opcodes::CommandOp,
+            type_ids::ReadbackTargetAsync,
+            "ReadbackTargetAsync"
+        );
         // Mesh-instance ops (Add/Remove/Make|Hide/UpdateFlags/RenderState/UserMeta)
         // are registered dynamically by the StandardMeshStack feature's
         // register_ops_fn — no longer static core handlers.
-        d.registerUnary<SetActiveScenePayload,              &handleSetActiveScene>   (opcodes::CommandOp, type_ids::SetActiveScene,    "SetActiveScene");
+        d.registerUnary<SetActiveScenePayload, &handleSetActiveScene>(
+            opcodes::CommandOp,
+            type_ids::SetActiveScene,
+            "SetActiveScene"
+        );
         // ── RenderTarget 一等化命令面──
-        d.registerUnary<CreateOffscreenTargetPayload,       &handleCreateOffscreenTarget>(opcodes::CommandOp, type_ids::CreateOffscreenTarget, "CreateOffscreenTarget");
-        d.registerUnary<CreateSurfaceTargetPayload,         &handleCreateSurfaceTarget>  (opcodes::CommandOp, type_ids::CreateSurfaceTarget,   "CreateSurfaceTarget");
-        d.registerUnary<DestroyTargetPayload,               &handleDestroyTarget>    (opcodes::CommandOp, type_ids::DestroyTarget,     "DestroyTarget");
-        d.registerUnary<SetLayerPayload,                    &handleSetLayer>         (opcodes::CommandOp, type_ids::SetLayer,          "SetLayer");
-        d.registerUnary<RemoveLayerPayload,                 &handleRemoveLayer>      (opcodes::CommandOp, type_ids::RemoveLayer,       "RemoveLayer");
-        d.registerUnary<ResizeTargetPayload,                &handleResizeTarget>     (opcodes::CommandOp, type_ids::ResizeTarget,      "ResizeTarget");
-        d.registerUnary<BindSwapchainPayload,               &handleBindSwapchain>    (opcodes::CommandOp, type_ids::BindSwapchain,     "BindSwapchain");
+        d.registerUnary<CreateOffscreenTargetPayload, &handleCreateOffscreenTarget>(
+            opcodes::CommandOp,
+            type_ids::CreateOffscreenTarget,
+            "CreateOffscreenTarget"
+        );
+        d.registerUnary<CreateSurfaceTargetPayload, &handleCreateSurfaceTarget>(
+            opcodes::CommandOp,
+            type_ids::CreateSurfaceTarget,
+            "CreateSurfaceTarget"
+        );
+        d.registerUnary<DestroyTargetPayload, &handleDestroyTarget>(
+            opcodes::CommandOp,
+            type_ids::DestroyTarget,
+            "DestroyTarget"
+        );
+        d.registerUnary<SetLayerPayload, &handleSetLayer>(opcodes::CommandOp, type_ids::SetLayer, "SetLayer");
+        d.registerUnary<RemoveLayerPayload, &handleRemoveLayer>(
+            opcodes::CommandOp,
+            type_ids::RemoveLayer,
+            "RemoveLayer"
+        );
+        d.registerUnary<ResizeTargetPayload, &handleResizeTarget>(
+            opcodes::CommandOp,
+            type_ids::ResizeTarget,
+            "ResizeTarget"
+        );
+        d.registerUnary<BindSwapchainPayload, &handleBindSwapchain>(
+            opcodes::CommandOp,
+            type_ids::BindSwapchain,
+            "BindSwapchain"
+        );
         // ── Resource (texture/shader) + feature-lifecycle handlers ──
         // These are stateless protocol→resource delegations with no GPU-target machinery,
         // so they live in a sibling TU (RenderServerHandlers.cpp) to keep this file to the
@@ -1514,6 +1568,5 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     //  Construction / tick / attachToWindow
     // ─────────────────────────────────────────────────────────────────────
-
 
 } // namespace lux::render

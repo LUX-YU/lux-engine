@@ -28,13 +28,13 @@ namespace lux::render
     )
     {
         AddMeshInstancePayload payload{};
-        payload.scene_id        = scene_id;
-        payload.mesh            = mesh;
-        payload.material        = material;
-        payload.transform       = transform;
-        payload.flags           = flags;
-        payload.geometry_kind   = geometry_kind;
-        payload.pass_mask       = pass_mask;
+        payload.scene_id = scene_id;
+        payload.mesh = mesh;
+        payload.material = material;
+        payload.transform = transform;
+        payload.flags = flags;
+        payload.geometry_kind = geometry_kind;
+        payload.pass_mask = pass_mask;
         payload.user_meta_index = user_meta_index;
         payload.transition_milliseconds = transition_milliseconds;
         payload.transition_seed = transition_seed;
@@ -50,11 +50,9 @@ namespace lux::render
     {
         TransformWriteEntry entry{};
         entry.scene_id = scene_id;
-        entry.object   = object;
+        entry.object = object;
         entry.transform = transform;
-        proxy.updateTransforms(
-            std::span<const TransformWriteEntry>{&entry, 1}
-        );
+        proxy.updateTransforms(std::span<const TransformWriteEntry>{&entry, 1});
     }
 
     RenderRequest<MeshInstanceSlotReply> addTransientMeshInstance(
@@ -91,67 +89,40 @@ namespace lux::render
         const float transform[16]
     )
     {
-        updateTransform(
-            proxy,
-            scene_id,
-            object,
-            makeTransientRenderSpatialTransform3D(transform)
-        );
+        updateTransform(proxy, scene_id, object, makeTransientRenderSpatialTransform3D(transform));
     }
 
-    void updateTransforms(
-        MeshStackProxy proxy,
-        RenderSceneId scene_id,
-        std::span<TransformWriteEntry> entries
-    )
+    void updateTransforms(MeshStackProxy proxy, RenderSceneId scene_id, std::span<TransformWriteEntry> entries)
     {
         for (auto& entry : entries)
             entry.scene_id = scene_id;
         proxy.updateTransforms(entries);
     }
 
-    void updateTransforms(
-        MeshStackProxy proxy,
-        std::span<const TransformWriteEntry> entries
-    )
+    void updateTransforms(MeshStackProxy proxy, std::span<const TransformWriteEntry> entries)
     {
         proxy.updateTransforms(entries);
     }
 
-    lux::cxx::expected<
-        RenderRequest<MeshUploadedReply>,
-        ERenderUploadSubmitError
-    > uploadMesh(
-        MeshStackUploadClient client,
-        const lux::rdesc::Mesh& mesh,
-        VertexLayoutId layout_id
-    )
+    lux::cxx::expected<RenderRequest<MeshUploadedReply>, ERenderUploadSubmitError>
+    uploadMesh(MeshStackUploadClient client, const lux::rdesc::Mesh& mesh, VertexLayoutId layout_id)
     {
         auto owned = std::make_shared<lux::rdesc::Mesh>(mesh);
         const TypeId operation_id = client.ops().id<UploadMeshOp>();
         if (operation_id == kInvalidTypeId)
         {
-            return lux::cxx::unexpected(
-                ERenderUploadSubmitError::PAYLOAD_INVALID
-            );
+            return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
         }
 
         const auto retained_bytes = lux::rdesc::meshRetainedBytes(*owned);
         if (!retained_bytes)
         {
-            return lux::cxx::unexpected(
-                ERenderUploadSubmitError::PAYLOAD_INVALID
-            );
+            return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
         }
 
         return client.session().trySubmit<MeshUploadedReply>(
-            [owned = std::move(owned),
-             layout_id,
-             operation_id,
-             retained_bytes = *retained_bytes](
-                RenderUploadClient::Builder& builder
-            )
-            {
+            [owned = std::move(owned), layout_id, operation_id, retained_bytes = *retained_bytes](
+                RenderUploadClient::Builder& builder) {
                 UploadMeshPayload payload{};
                 payload.layout_id = layout_id;
                 payload.mesh_desc = builder.pushSharedBytes(

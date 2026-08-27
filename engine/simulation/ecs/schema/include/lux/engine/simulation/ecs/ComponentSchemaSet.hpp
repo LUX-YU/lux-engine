@@ -34,39 +34,29 @@ namespace lux::simulation::ecs
 
     class LUX_ENGINE_SIMULATION_ECS_SCHEMA_PUBLIC ComponentSchemaSet final
     {
-      public:
+    public:
         ComponentSchemaSet() noexcept = default;
 
         [[nodiscard]] static lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
         build(std::vector<ComponentSchema> schemas) noexcept;
 
         [[nodiscard]] static lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-        build(
-            std::span<const ComponentSchema> schemas,
-            std::shared_ptr<const void> code_lifetime
-        ) noexcept;
+        build(std::span<const ComponentSchema> schemas, std::shared_ptr<const void> code_lifetime) noexcept;
 
         [[nodiscard]] lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
         extended(std::span<const ComponentSchema> schemas) const noexcept;
 
         [[nodiscard]] lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-        extended(
-            std::span<const ComponentSchema> schemas,
-            std::shared_ptr<const void> code_lifetime
-        ) const noexcept;
+        extended(std::span<const ComponentSchema> schemas, std::shared_ptr<const void> code_lifetime) const noexcept;
 
-        [[nodiscard]] const ComponentSchema* find(
-            const ComponentSchemaId& id
-        ) const noexcept;
+        [[nodiscard]] const ComponentSchema* find(const ComponentSchemaId& id) const noexcept;
 
-        [[nodiscard]] const ComponentSchema* find(
-            lux::cxx::TypeToken type
-        ) const noexcept;
+        [[nodiscard]] const ComponentSchema* find(lux::cxx::TypeToken type) const noexcept;
 
         [[nodiscard]] std::span<const ComponentSchema> all() const noexcept;
         [[nodiscard]] bool empty() const noexcept;
 
-      private:
+    private:
         struct Impl;
         explicit ComponentSchemaSet(std::shared_ptr<const Impl> impl) noexcept;
 

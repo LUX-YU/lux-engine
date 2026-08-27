@@ -11,8 +11,7 @@ namespace lux::ui
 {
     struct PaneFactory final
     {
-        using Create = lux::cxx::move_only_function<std::unique_ptr<Pane>(
-            lux::object::ObjectDispatcherRef, PaneId)>;
+        using Create = lux::cxx::move_only_function<std::unique_ptr<Pane>(lux::object::ObjectDispatcherRef, PaneId)>;
 
         PaneTypeId type;
         std::string display_name;

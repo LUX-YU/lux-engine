@@ -10,11 +10,11 @@
 //  simply no-op). Handle staleness is the ARENA's job (generational slots).
 // ============================================================================
 
-#include <lux/engine/render/comm/server/RenderServer.hpp>            // Dispatcher, Ctx, replyToCurrent
-#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>      // typed-op register/unregister
-#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>   // FeatureFactory / GenericOkReply
-#include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>              // FeatureDescriptor / featureId
-#include <lux/engine/render/scene/RenderScene.hpp>                   // sceneRegistry().find
+#include <lux/engine/render/comm/server/RenderServer.hpp>                // Dispatcher, Ctx, replyToCurrent
+#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>          // typed-op register/unregister
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
+#include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>  // FeatureDescriptor / featureId
+#include <lux/engine/render/scene/RenderScene.hpp>                       // sceneRegistry().find
 
 #include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeature.hpp>
@@ -26,7 +26,7 @@
 namespace lux::render
 {
     using Dispatcher = GeneralRenderServer::Dispatcher;
-    using Ctx        = Dispatcher::Ctx;
+    using Ctx = Dispatcher::Ctx;
 
     // Exported by the server for feature operation handlers (grid convention).
     RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
@@ -36,14 +36,15 @@ namespace lux::render
         [[nodiscard]] Canvas2DInstanceArena* resolveArena(Ctx& ctx, RenderSceneId scene)
         {
             auto* sc = lookupScene(ctx.user_state, scene);
-            if (!sc) return nullptr;
+            if (!sc)
+                return nullptr;
             auto* arena = sc->sceneRegistry().find<Canvas2DInstanceArena>();
             return (arena && arena->initialized()) ? arena : nullptr;
         }
     } // namespace
 
-// handler 必须是**外部链接**:生成的 registrar 按 handle<OpName> 约定取地址
-// (缺了就是链接错)。与 Grid3D 等已迁特性同形。
+    // handler 必须是**外部链接**:生成的 registrar 按 handle<OpName> 约定取地址
+    // (缺了就是链接错)。与 Grid3D 等已迁特性同形。
 
     void handleAddImage2D(Ctx& ctx, const AddImage2DPayload& p)
     {

@@ -31,28 +31,33 @@ namespace
     [[nodiscard]] constexpr DeviceCaps desktopCaps() noexcept
     {
         DeviceCaps c{};
-        c.draw_indirect_count          = true;
-        c.shader_output_layer          = true;
-        c.buffer_device_address        = true;
-        c.shader_int64                 = true;
-        c.wide_lines                   = true;
+        c.draw_indirect_count = true;
+        c.shader_output_layer = true;
+        c.buffer_device_address = true;
+        c.shader_int64 = true;
+        c.wide_lines = true;
         c.dynamic_rendering_local_read = true;
         return c;
     }
 } // namespace
 
-int main()
+int
+main()
 {
     // ── 1. 每个位都真的映到它该映的 caps 成员 ─────────────────────────────
     // 逐位关掉一项,断言恰好这一位不满足、其余位不受影响。
     // 这是"表填错了行"唯一能被抓住的地方 —— 表本身的 static_assert 只查
     // 覆盖度,查不出把 wideLines 写成 shaderInt64 这种错。
     {
-        struct Probe { std::uint32_t bit; bool DeviceCaps::* off; };
+        struct Probe
+        {
+            std::uint32_t bit;
+            bool DeviceCaps::* off;
+        };
         constexpr Probe probes[]{
-            {kDevFeatDrawIndirectCount,         &DeviceCaps::draw_indirect_count},
-            {kDevFeatShaderOutputLayer,         &DeviceCaps::shader_output_layer},
-            {kDevFeatWideLines,                 &DeviceCaps::wide_lines},
+            {kDevFeatDrawIndirectCount, &DeviceCaps::draw_indirect_count},
+            {kDevFeatShaderOutputLayer, &DeviceCaps::shader_output_layer},
+            {kDevFeatWideLines, &DeviceCaps::wide_lines},
             {kDevFeatDynamicRenderingLocalRead, &DeviceCaps::dynamic_rendering_local_read},
         };
         constexpr std::uint32_t all_bits = (1u << kDevFeatDeclaredCount) - 1u;
@@ -63,10 +68,8 @@ int main()
             caps.*(p.off) = false;
 
             assert(!capsSatisfy(caps, p.bit) && "关掉了这一位对应的成员,它却仍报满足");
-            assert(unmetDeviceFeatures(caps, all_bits) == p.bit &&
-                   "关掉一个成员应当且只应当让一个位不满足");
-            assert(capsSatisfy(caps, all_bits & ~p.bit) &&
-                   "其余位不该受这个成员影响");
+            assert(unmetDeviceFeatures(caps, all_bits) == p.bit && "关掉一个成员应当且只应当让一个位不满足");
+            assert(capsSatisfy(caps, all_bits & ~p.bit) && "其余位不该受这个成员影响");
         }
     }
 
@@ -74,15 +77,12 @@ int main()
     // buffer_reference 的 SPIR-V 声明 Int64,所以一个位盖住两个成员。
     // 只关掉其中任意一个都必须让该位不满足。
     {
-        for (bool DeviceCaps::* off : {&DeviceCaps::buffer_device_address,
-                                       &DeviceCaps::shader_int64})
+        for (bool DeviceCaps::* off : {&DeviceCaps::buffer_device_address, &DeviceCaps::shader_int64})
         {
             DeviceCaps caps = desktopCaps();
             caps.*off = false;
-            assert(!capsSatisfy(caps, kDevFeatBufferDeviceAddress) &&
-                   "BDA 位要求两个成员同时启用,关掉其一就该不满足");
-            assert(unmetDeviceFeatures(caps, kDevFeatBufferDeviceAddress)
-                       == kDevFeatBufferDeviceAddress);
+            assert(!capsSatisfy(caps, kDevFeatBufferDeviceAddress) && "BDA 位要求两个成员同时启用,关掉其一就该不满足");
+            assert(unmetDeviceFeatures(caps, kDevFeatBufferDeviceAddress) == kDevFeatBufferDeviceAddress);
         }
     }
 
@@ -93,8 +93,7 @@ int main()
         assert(unmetDeviceFeatures(none, 0) == 0);
 
         constexpr std::uint32_t all_bits = (1u << kDevFeatDeclaredCount) - 1u;
-        assert(unmetDeviceFeatures(none, all_bits) == all_bits &&
-               "什么都没启用的设备应当每一位都缺");
+        assert(unmetDeviceFeatures(none, all_bits) == all_bits && "什么都没启用的设备应当每一位都缺");
     }
 
     // ── 4. 等级公式 ───────────────────────────────────────────────────────
@@ -105,8 +104,7 @@ int main()
         // 一台桌面设备会因为编辑器 gizmo 的一个位被判成移动端。
         DeviceCaps no_wide = desktopCaps();
         no_wide.wide_lines = false;
-        assert(achievableFeatureLevel(no_wide) == EFeatureLevel::Desktop &&
-               "wideLines 是装饰位,不该参与分级");
+        assert(achievableFeatureLevel(no_wide) == EFeatureLevel::Desktop && "wideLines 是装饰位,不该参与分级");
 
         // local_read 同理:它是变体选择器,不是分级门。
         DeviceCaps no_lr = desktopCaps();
@@ -131,11 +129,9 @@ int main()
         for (std::uint32_t i = 0; i < kDevFeatDeclaredCount; ++i)
         {
             const char* name = deviceFeatureName(1u << i);
-            assert(name != nullptr && std::strlen(name) > 0 &&
-                   "已声明的位在需求表里查不到名字");
+            assert(name != nullptr && std::strlen(name) > 0 && "已声明的位在需求表里查不到名字");
         }
-        assert(deviceFeatureName(1u << kDevFeatDeclaredCount) == nullptr &&
-               "未声明的位不该查出名字");
+        assert(deviceFeatureName(1u << kDevFeatDeclaredCount) == nullptr && "未声明的位不该查出名字");
     }
 
     std::printf("feature_level_test: OK\n");

@@ -31,27 +31,17 @@ namespace lux::task
         TaskCallable& operator=(const TaskCallable&) = delete;
 
         template <class Fn>
-            requires (
+            requires(
                 !std::same_as<std::remove_cvref_t<Fn>, TaskCallable> &&
                 std::is_move_constructible_v<std::remove_cvref_t<Fn>> &&
-                std::is_nothrow_invocable_r_v<
-                    void,
-                    const std::remove_cvref_t<Fn>&
-                >
-            )
+                std::is_nothrow_invocable_r_v<void, const std::remove_cvref_t<Fn>&>)
         explicit TaskCallable(Fn&& function)
         {
             using Function = std::remove_cvref_t<Fn>;
             auto object = std::make_unique<Function>(std::forward<Fn>(function));
             object_ = object.release();
-            invoke_ = [](const void* value) noexcept
-            {
-                std::invoke(*static_cast<const Function*>(value));
-            };
-            destroy_ = [](void* value) noexcept
-            {
-                delete static_cast<Function*>(value);
-            };
+            invoke_ = [](const void* value) noexcept { std::invoke(*static_cast<const Function*>(value)); };
+            destroy_ = [](void* value) noexcept { delete static_cast<Function*>(value); };
         }
 
         [[nodiscard]] bool valid() const noexcept
@@ -68,7 +58,7 @@ namespace lux::task
 
     private:
         void* object_{};
-        void (*invoke_)(const void*) noexcept{};
-        void (*destroy_)(void*) noexcept{};
+        void (*invoke_)(const void*) noexcept {};
+        void (*destroy_)(void*) noexcept {};
     };
 }

@@ -20,15 +20,10 @@ namespace lux::render
 
         auto& builder = session_->builder();
         SetFeatureParamsPayload payload{};
-        payload.scene   = scene;
+        payload.scene = scene;
         payload.feature = feature;
-        payload.params  = builder.pushBlob(
-            std::span<const std::byte>{
-                reinterpret_cast<const std::byte*>(blob),
-                size
-            },
-            16u
-        );
+        payload.params =
+            builder.pushBlob(std::span<const std::byte>{reinterpret_cast<const std::byte*>(blob), size}, 16u);
         builder.push(opcodes::CommandOp, op, payload);
     }
 } // namespace lux::render

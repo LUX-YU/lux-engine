@@ -20,34 +20,29 @@
 using namespace lux::render;
 namespace gvk = lux::gapi::vk;
 
-static_assert(!std::is_constructible_v<
-    gvk::Swapchain,
-    VkDevice,
-    const VkSwapchainCreateInfoKHR&,
-    VkAllocationCallbacks*
->);
+static_assert(
+    !std::is_constructible_v<gvk::Swapchain, VkDevice, const VkSwapchainCreateInfoKHR&, VkAllocationCallbacks*>);
 static_assert(std::is_move_constructible_v<gvk::Swapchain>);
 static_assert(std::is_move_assignable_v<gvk::Swapchain>);
 static_assert(std::is_move_constructible_v<detail::SwapchainImageViews>);
 static_assert(std::is_move_assignable_v<detail::SwapchainImageViews>);
 static_assert(!std::is_copy_constructible_v<detail::SwapchainImageViews>);
 static_assert(noexcept(std::declval<gvk::Swapchain&>().reset()));
-static_assert(noexcept(std::declval<gvk::SwapchainBuilder&>().build(
-    std::declval<VkDevice>()
-)));
+static_assert(noexcept(std::declval<gvk::SwapchainBuilder&>().build(std::declval<VkDevice>())));
 
-#define CHECK(cond)                                                              \
-    do {                                                                         \
-        if (!(cond)) {                                                           \
-            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            return false;                                                        \
-        }                                                                        \
+#define CHECK(cond)                                                                                                    \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (!(cond))                                                                                                   \
+        {                                                                                                              \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                                       \
+            return false;                                                                                              \
+        }                                                                                                              \
     } while (0)
 
 namespace
 {
-    template<typename Handle>
-    [[nodiscard]] Handle fakeHandle(std::uintptr_t value) noexcept
+    template <typename Handle> [[nodiscard]] Handle fakeHandle(std::uintptr_t value) noexcept
     {
         if constexpr (std::is_pointer_v<Handle>)
             return reinterpret_cast<Handle>(value);
@@ -55,8 +50,7 @@ namespace
             return static_cast<Handle>(value);
     }
 
-    template<typename Handle>
-    [[nodiscard]] std::uintptr_t handleValue(Handle handle) noexcept
+    template <typename Handle> [[nodiscard]] std::uintptr_t handleValue(Handle handle) noexcept
     {
         if constexpr (std::is_pointer_v<Handle>)
             return reinterpret_cast<std::uintptr_t>(handle);
@@ -64,8 +58,7 @@ namespace
             return static_cast<std::uintptr_t>(handle);
     }
 
-    constexpr std::uint32_t kNever =
-        (std::numeric_limits<std::uint32_t>::max)();
+    constexpr std::uint32_t kNever = (std::numeric_limits<std::uint32_t>::max)();
     constexpr std::uintptr_t kPhysicalDevice = 0x1000;
     constexpr std::uintptr_t kSurface = 0x2000;
     constexpr std::uintptr_t kDevice = 0x3000;
@@ -105,10 +98,8 @@ namespace
         g_fake = FakeWsi{};
     }
 
-    VKAPI_ATTR VkResult VKAPI_CALL fakeGetSurfaceCapabilities(
-        VkPhysicalDevice,
-        VkSurfaceKHR,
-        VkSurfaceCapabilitiesKHR* capabilities)
+    VKAPI_ATTR VkResult VKAPI_CALL
+    fakeGetSurfaceCapabilities(VkPhysicalDevice, VkSurfaceKHR, VkSurfaceCapabilitiesKHR* capabilities)
     {
         if (g_fake.capabilities_result != VK_SUCCESS)
             return g_fake.capabilities_result;
@@ -119,16 +110,12 @@ namespace
         capabilities->currentExtent = {640, 480};
         capabilities->minImageExtent = {1, 1};
         capabilities->maxImageExtent = {4096, 4096};
-        capabilities->currentTransform =
-            VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+        capabilities->currentTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR VkResult VKAPI_CALL fakeGetSurfaceFormats(
-        VkPhysicalDevice,
-        VkSurfaceKHR,
-        std::uint32_t* count,
-        VkSurfaceFormatKHR* formats)
+    VKAPI_ATTR VkResult VKAPI_CALL
+    fakeGetSurfaceFormats(VkPhysicalDevice, VkSurfaceKHR, std::uint32_t* count, VkSurfaceFormatKHR* formats)
     {
         if (formats == nullptr)
         {
@@ -151,11 +138,8 @@ namespace
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR VkResult VKAPI_CALL fakeGetPresentModes(
-        VkPhysicalDevice,
-        VkSurfaceKHR,
-        std::uint32_t* count,
-        VkPresentModeKHR* modes)
+    VKAPI_ATTR VkResult VKAPI_CALL
+    fakeGetPresentModes(VkPhysicalDevice, VkSurfaceKHR, std::uint32_t* count, VkPresentModeKHR* modes)
     {
         if (modes == nullptr)
         {
@@ -179,32 +163,25 @@ namespace
         VkDevice,
         const VkSwapchainCreateInfoKHR*,
         const VkAllocationCallbacks*,
-        VkSwapchainKHR* swapchain)
+        VkSwapchainKHR* swapchain
+    )
     {
         const std::uint32_t call = g_fake.create_swapchain_calls++;
         if (g_fake.create_swapchain_result != VK_SUCCESS)
             return g_fake.create_swapchain_result;
 
-        *swapchain = call == g_fake.null_swapchain_at
-            ? VK_NULL_HANDLE
-            : fakeHandle<VkSwapchainKHR>(kSwapchainBase + call);
+        *swapchain =
+            call == g_fake.null_swapchain_at ? VK_NULL_HANDLE : fakeHandle<VkSwapchainKHR>(kSwapchainBase + call);
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR void VKAPI_CALL fakeDestroySwapchain(
-        VkDevice,
-        VkSwapchainKHR swapchain,
-        const VkAllocationCallbacks*)
+    VKAPI_ATTR void VKAPI_CALL fakeDestroySwapchain(VkDevice, VkSwapchainKHR swapchain, const VkAllocationCallbacks*)
     {
-        g_fake.destroyed_swapchains[g_fake.destroy_swapchain_calls++] =
-            handleValue(swapchain);
+        g_fake.destroyed_swapchains[g_fake.destroy_swapchain_calls++] = handleValue(swapchain);
     }
 
-    VKAPI_ATTR VkResult VKAPI_CALL fakeGetSwapchainImages(
-        VkDevice,
-        VkSwapchainKHR,
-        std::uint32_t* count,
-        VkImage* images)
+    VKAPI_ATTR VkResult VKAPI_CALL
+    fakeGetSwapchainImages(VkDevice, VkSwapchainKHR, std::uint32_t* count, VkImage* images)
     {
         if (images == nullptr)
         {
@@ -218,38 +195,27 @@ namespace
             return g_fake.images_values_result;
         const std::uint32_t requested = *count;
         *count = g_fake.image_count;
-        for (std::uint32_t index = 0;
-             index < requested && index < g_fake.image_count;
-             ++index)
+        for (std::uint32_t index = 0; index < requested && index < g_fake.image_count; ++index)
         {
             images[index] = fakeHandle<VkImage>(kImageBase + index);
         }
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR VkResult VKAPI_CALL fakeCreateImageView(
-        VkDevice,
-        const VkImageViewCreateInfo*,
-        const VkAllocationCallbacks*,
-        VkImageView* view)
+    VKAPI_ATTR VkResult VKAPI_CALL
+    fakeCreateImageView(VkDevice, const VkImageViewCreateInfo*, const VkAllocationCallbacks*, VkImageView* view)
     {
         const std::uint32_t call = g_fake.create_image_view_calls++;
         if (call == g_fake.fail_image_view_at)
             return g_fake.create_image_view_result;
 
-        *view = call == g_fake.null_image_view_at
-            ? VK_NULL_HANDLE
-            : fakeHandle<VkImageView>(kImageViewBase + call);
+        *view = call == g_fake.null_image_view_at ? VK_NULL_HANDLE : fakeHandle<VkImageView>(kImageViewBase + call);
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR void VKAPI_CALL fakeDestroyImageView(
-        VkDevice,
-        VkImageView view,
-        const VkAllocationCallbacks*)
+    VKAPI_ATTR void VKAPI_CALL fakeDestroyImageView(VkDevice, VkImageView view, const VkAllocationCallbacks*)
     {
-        g_fake.destroyed_image_views[g_fake.destroy_image_view_calls++] =
-            handleValue(view);
+        g_fake.destroyed_image_views[g_fake.destroy_image_view_calls++] = handleValue(view);
     }
 
     [[nodiscard]] gvk::SwapchainBuildOps fakeOps() noexcept
@@ -278,14 +244,10 @@ namespace
         return builder;
     }
 
-    [[nodiscard]] bool hasExactError(
-        const gvk::SwapchainBuildError& error,
-        gvk::ESwapchainBuildStage stage,
-        VkResult result) noexcept
+    [[nodiscard]] bool
+    hasExactError(const gvk::SwapchainBuildError& error, gvk::ESwapchainBuildStage stage, VkResult result) noexcept
     {
-        return error.stage == stage
-            && error.vk_result.has_value()
-            && *error.vk_result == result;
+        return error.stage == stage && error.vk_result.has_value() && *error.vk_result == result;
     }
 
     bool testSurfaceFailurePreservesResult()
@@ -296,19 +258,12 @@ namespace
         auto builder = fakeBuilder();
         auto built = builder.build(fakeHandle<VkDevice>(kDevice));
         CHECK(!built);
-        CHECK(hasExactError(
-            built.error(),
-            gvk::ESwapchainBuildStage::SURFACE_CAPABILITIES,
-            VK_ERROR_SURFACE_LOST_KHR
-        ));
+        CHECK(hasExactError(built.error(), gvk::ESwapchainBuildStage::SURFACE_CAPABILITIES, VK_ERROR_SURFACE_LOST_KHR));
         CHECK(g_fake.create_swapchain_calls == 0);
 
-        const RenderError mapped =
-            detail::mapSwapchainBuildError(built.error());
+        const RenderError mapped = detail::mapSwapchainBuildError(built.error());
         CHECK(isError<err::device::SwapchainSurfaceChanged>(mapped));
-        CHECK(mapped.args[0] == gvk::encodeSwapchainBuildStage(
-            gvk::ESwapchainBuildStage::SURFACE_CAPABILITIES
-        ));
+        CHECK(mapped.args[0] == gvk::encodeSwapchainBuildStage(gvk::ESwapchainBuildStage::SURFACE_CAPABILITIES));
         CHECK(mapped.args[1] == encodeVkResult(VK_ERROR_SURFACE_LOST_KHR));
         CHECK(detail::isRetryableSwapchainFailure(mapped));
         return true;
@@ -322,16 +277,12 @@ namespace
         auto builder = fakeBuilder();
         auto built = builder.build(fakeHandle<VkDevice>(kDevice));
         CHECK(!built);
-        CHECK(built.error().stage ==
-              gvk::ESwapchainBuildStage::SURFACE_FORMATS);
+        CHECK(built.error().stage == gvk::ESwapchainBuildStage::SURFACE_FORMATS);
         CHECK(!built.error().vk_result.has_value());
 
-        const RenderError mapped =
-            detail::mapSwapchainBuildError(built.error());
+        const RenderError mapped = detail::mapSwapchainBuildError(built.error());
         CHECK(isError<err::device::SwapchainUnavailable>(mapped));
-        CHECK(mapped.args[0] == gvk::encodeSwapchainBuildStage(
-            gvk::ESwapchainBuildStage::SURFACE_FORMATS
-        ));
+        CHECK(mapped.args[0] == gvk::encodeSwapchainBuildStage(gvk::ESwapchainBuildStage::SURFACE_FORMATS));
         CHECK(mapped.args[1] == 0);
         CHECK(detail::isRetryableSwapchainFailure(mapped));
         return true;
@@ -345,18 +296,11 @@ namespace
         auto builder = fakeBuilder();
         auto built = builder.build(fakeHandle<VkDevice>(kDevice));
         CHECK(!built);
-        CHECK(hasExactError(
-            built.error(),
-            gvk::ESwapchainBuildStage::CREATE,
-            VK_ERROR_INITIALIZATION_FAILED
-        ));
+        CHECK(hasExactError(built.error(), gvk::ESwapchainBuildStage::CREATE, VK_ERROR_INITIALIZATION_FAILED));
 
-        const RenderError mapped =
-            detail::mapSwapchainBuildError(built.error());
+        const RenderError mapped = detail::mapSwapchainBuildError(built.error());
         CHECK(isError<err::device::SwapchainVulkanCallFailed>(mapped));
-        CHECK(mapped.args[1] == encodeVkResult(
-            VK_ERROR_INITIALIZATION_FAILED
-        ));
+        CHECK(mapped.args[1] == encodeVkResult(VK_ERROR_INITIALIZATION_FAILED));
         CHECK(!detail::isRetryableSwapchainFailure(mapped));
         CHECK(g_fake.destroy_swapchain_calls == 0);
         return true;
@@ -370,14 +314,9 @@ namespace
         auto builder = fakeBuilder();
         auto built = builder.build(fakeHandle<VkDevice>(kDevice));
         CHECK(!built);
-        CHECK(hasExactError(
-            built.error(),
-            gvk::ESwapchainBuildStage::CREATE,
-            VK_ERROR_OUT_OF_DATE_KHR
-        ));
+        CHECK(hasExactError(built.error(), gvk::ESwapchainBuildStage::CREATE, VK_ERROR_OUT_OF_DATE_KHR));
 
-        const RenderError mapped =
-            detail::mapSwapchainBuildError(built.error());
+        const RenderError mapped = detail::mapSwapchainBuildError(built.error());
         CHECK(isError<err::device::SwapchainSurfaceChanged>(mapped));
         CHECK(mapped.args[1] == encodeVkResult(VK_ERROR_OUT_OF_DATE_KHR));
         CHECK(detail::isRetryableSwapchainFailure(mapped));
@@ -394,15 +333,9 @@ namespace
             auto built = builder.build(fakeHandle<VkDevice>(kDevice));
             CHECK(built.has_value());
 
-            auto images = built->images(
-                builder.imageEnumerationFn()
-            );
+            auto images = built->images(builder.imageEnumerationFn());
             CHECK(!images);
-            CHECK(hasExactError(
-                images.error(),
-                gvk::ESwapchainBuildStage::ENUMERATE_IMAGES,
-                VK_ERROR_DEVICE_LOST
-            ));
+            CHECK(hasExactError(images.error(), gvk::ESwapchainBuildStage::ENUMERATE_IMAGES, VK_ERROR_DEVICE_LOST));
             CHECK(g_fake.destroy_swapchain_calls == 0);
         }
 
@@ -414,9 +347,7 @@ namespace
     bool testMoveAssignmentReleasesOldOwnerExactlyOnce()
     {
         resetFake();
-        VkSwapchainCreateInfoKHR info{
-            VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
-        };
+        VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
 
         {
             auto first = gvk::Swapchain::create(
@@ -477,14 +408,11 @@ namespace
                 }
             );
             CHECK(!views);
-            CHECK(isError<
-                err::device::SwapchainVulkanCallFailed>(views.error()));
-            CHECK(views.error().args[0] == gvk::encodeSwapchainBuildStage(
-                gvk::ESwapchainBuildStage::CREATE_IMAGE_VIEWS
-            ));
-            CHECK(views.error().args[1] == encodeVkResult(
-                VK_ERROR_OUT_OF_DEVICE_MEMORY
-            ));
+            CHECK(isError<err::device::SwapchainVulkanCallFailed>(views.error()));
+            CHECK(
+                views.error().args[0] == gvk::encodeSwapchainBuildStage(gvk::ESwapchainBuildStage::CREATE_IMAGE_VIEWS)
+            );
+            CHECK(views.error().args[1] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
             CHECK(g_fake.create_image_view_calls == 3);
             CHECK(g_fake.destroy_image_view_calls == 2);
             CHECK(g_fake.destroyed_image_views[0] == kImageViewBase);
@@ -516,15 +444,15 @@ namespace
             }
         );
         CHECK(!views);
-        CHECK(isError<
-            err::device::SwapchainBuildContractViolated>(views.error()));
+        CHECK(isError<err::device::SwapchainBuildContractViolated>(views.error()));
         CHECK(g_fake.destroy_image_view_calls == 1);
         CHECK(g_fake.destroyed_image_views[0] == kImageViewBase);
         return true;
     }
 } // namespace
 
-int main()
+int
+main()
 {
     if (!testSurfaceFailurePreservesResult())
         return 1;

@@ -42,57 +42,67 @@ namespace lux::render
     /// RenderRequest reply. Managed by RenderTaskScheduler.
     thread_local inline bool* g_waiting_render_reply = nullptr;
 
-    template <typename T>
-    auto operator co_await(RenderRequest<T>& req)
+    template <typename T> auto operator co_await(RenderRequest<T>& req)
     {
         struct RenderRequestAwaiter
         {
             RenderRequest<T>& req_;
 
-            bool await_ready() const noexcept { return req_.isReady(); }
+            bool await_ready() const noexcept
+            {
+                return req_.isReady();
+            }
 
             void await_suspend(std::coroutine_handle<> h)
             {
                 if (g_waiting_render_reply)
                     *g_waiting_render_reply = true;
-                req_.then([h](const T&) mutable
-                {
+                req_.then([h](const T&) mutable {
                     if (g_waiting_render_reply)
                         *g_waiting_render_reply = false;
                     // Don't resume immediately — stash for the scheduler.
                     if (g_pending_coro_resume)
                         *g_pending_coro_resume = h;
-                });
+                }
+                );
             }
 
-            const T& await_resume() const noexcept { return req_.tryResult()->get(); }
+            const T& await_resume() const noexcept
+            {
+                return req_.tryResult()->get();
+            }
         };
         return RenderRequestAwaiter{req};
     }
 
-    template <typename T>
-    auto operator co_await(RenderRequest<T>&& req)
+    template <typename T> auto operator co_await(RenderRequest<T>&& req)
     {
         struct RenderRequestAwaiter
         {
             RenderRequest<T> req_;
 
-            bool await_ready() const noexcept { return req_.isReady(); }
+            bool await_ready() const noexcept
+            {
+                return req_.isReady();
+            }
 
             void await_suspend(std::coroutine_handle<> h)
             {
                 if (g_waiting_render_reply)
                     *g_waiting_render_reply = true;
-                req_.then([h](const T&) mutable
-                {
+                req_.then([h](const T&) mutable {
                     if (g_waiting_render_reply)
                         *g_waiting_render_reply = false;
                     if (g_pending_coro_resume)
                         *g_pending_coro_resume = h;
-                });
+                }
+                );
             }
 
-            const T& await_resume() const noexcept { return req_.tryResult()->get(); }
+            const T& await_resume() const noexcept
+            {
+                return req_.tryResult()->get();
+            }
         };
         return RenderRequestAwaiter{std::move(req)};
     }
@@ -105,84 +115,112 @@ namespace lux::render
     // =====================================================================
     struct FrameYield
     {
-        bool await_ready() const noexcept { return false; }
-        void await_suspend(std::coroutine_handle<>) const noexcept {}
-        void await_resume() const noexcept {}
+        bool await_ready() const noexcept
+        {
+            return false;
+        }
+        void await_suspend(std::coroutine_handle<>) const noexcept
+        {
+        }
+        void await_resume() const noexcept
+        {
+        }
     };
 
     /// Convenience factory — usage: `co_await yield_frame();`
-    inline FrameYield yield_frame() noexcept { return {}; }
+    inline FrameYield yield_frame() noexcept
+    {
+        return {};
+    }
 
     // =====================================================================
     //  RenderTask<T> — coroutine return type
     // =====================================================================
-    template <typename T = void>
-    class RenderTask
+    template <typename T = void> class RenderTask
     {
     public:
         struct promise_type
         {
-            std::optional<T>        value{};
-            std::exception_ptr      exception{};
-            std::coroutine_handle<> continuation{};  // who to resume when we finish
+            std::optional<T> value{};
+            std::exception_ptr exception{};
+            std::coroutine_handle<> continuation{}; // who to resume when we finish
 
             RenderTask get_return_object()
             {
-                return RenderTask{
-                    std::coroutine_handle<promise_type>::from_promise(*this)
-                };
+                return RenderTask{std::coroutine_handle<promise_type>::from_promise(*this)};
             }
 
-            std::suspend_always initial_suspend() noexcept { return {}; }
+            std::suspend_always initial_suspend() noexcept
+            {
+                return {};
+            }
 
             auto final_suspend() noexcept
             {
                 // If there is a continuation (parent coroutine), resume it.
                 struct FinalAwaiter
                 {
-                    bool await_ready() const noexcept { return false; }
-                    std::coroutine_handle<> await_suspend(
-                        std::coroutine_handle<promise_type> h) noexcept
+                    bool await_ready() const noexcept
+                    {
+                        return false;
+                    }
+                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept
                     {
                         if (h.promise().continuation)
                             return h.promise().continuation;
                         return std::noop_coroutine();
                     }
-                    void await_resume() noexcept {}
+                    void await_resume() noexcept
+                    {
+                    }
                 };
                 return FinalAwaiter{};
             }
 
-            template <typename U>
-            void return_value(U&& val)
+            template <typename U> void return_value(U&& val)
             {
                 value.emplace(std::forward<U>(val));
             }
 
-            void unhandled_exception() { exception = std::current_exception(); }
+            void unhandled_exception()
+            {
+                exception = std::current_exception();
+            }
         };
 
         // -- Constructors / move --
         RenderTask() = default;
-        explicit RenderTask(std::coroutine_handle<promise_type> h) : handle_(h) {}
-        ~RenderTask() { if (handle_) handle_.destroy(); }
+        explicit RenderTask(std::coroutine_handle<promise_type> h) : handle_(h)
+        {
+        }
+        ~RenderTask()
+        {
+            if (handle_)
+                handle_.destroy();
+        }
 
         RenderTask(const RenderTask&) = delete;
         RenderTask& operator=(const RenderTask&) = delete;
 
-        RenderTask(RenderTask&& o) noexcept : handle_(std::exchange(o.handle_, nullptr)) {}
+        RenderTask(RenderTask&& o) noexcept : handle_(std::exchange(o.handle_, nullptr))
+        {
+        }
         RenderTask& operator=(RenderTask&& o) noexcept
         {
             if (this != &o)
             {
-                if (handle_) handle_.destroy();
+                if (handle_)
+                    handle_.destroy();
                 handle_ = std::exchange(o.handle_, nullptr);
             }
             return *this;
         }
 
         // -- Query --
-        [[nodiscard]] bool done() const noexcept { return !handle_ || handle_.done(); }
+        [[nodiscard]] bool done() const noexcept
+        {
+            return !handle_ || handle_.done();
+        }
 
         /// Resume until the coroutine suspends or finishes.
         void resume() const
@@ -196,18 +234,22 @@ namespace lux::render
         {
             assert(handle_ && handle_.done());
             auto& p = handle_.promise();
-            if (p.exception) std::rethrow_exception(p.exception);
+            if (p.exception)
+                std::rethrow_exception(p.exception);
             assert(p.value.has_value());
             return *p.value;
         }
 
         // -- co_await support (for nesting RenderTask inside another) --
-        bool await_ready() const noexcept { return done(); }
+        bool await_ready() const noexcept
+        {
+            return done();
+        }
 
         std::coroutine_handle<> await_suspend(std::coroutine_handle<> caller)
         {
             handle_.promise().continuation = caller;
-            return handle_;  // symmetric transfer into this task
+            return handle_; // symmetric transfer into this task
         }
 
         T await_resume()
@@ -228,63 +270,85 @@ namespace lux::render
     // =====================================================================
     //  RenderTask<void> specialization
     // =====================================================================
-    template <>
-    class RenderTask<void>
+    template <> class RenderTask<void>
     {
     public:
         struct promise_type
         {
-            std::exception_ptr      exception{};
+            std::exception_ptr exception{};
             std::coroutine_handle<> continuation{};
 
             RenderTask get_return_object()
             {
-                return RenderTask{
-                    std::coroutine_handle<promise_type>::from_promise(*this)};
+                return RenderTask{std::coroutine_handle<promise_type>::from_promise(*this)};
             }
 
-            std::suspend_always initial_suspend() noexcept { return {}; }
+            std::suspend_always initial_suspend() noexcept
+            {
+                return {};
+            }
 
             auto final_suspend() noexcept
             {
                 struct FinalAwaiter
                 {
-                    bool await_ready() const noexcept { return false; }
-                    std::coroutine_handle<> await_suspend(
-                        std::coroutine_handle<promise_type> h) noexcept
+                    bool await_ready() const noexcept
+                    {
+                        return false;
+                    }
+                    std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept
                     {
                         if (h.promise().continuation)
                             return h.promise().continuation;
                         return std::noop_coroutine();
                     }
-                    void await_resume() noexcept {}
+                    void await_resume() noexcept
+                    {
+                    }
                 };
                 return FinalAwaiter{};
             }
 
-            void return_void() {}
-            void unhandled_exception() { exception = std::current_exception(); }
+            void return_void()
+            {
+            }
+            void unhandled_exception()
+            {
+                exception = std::current_exception();
+            }
         };
 
         RenderTask() = default;
-        explicit RenderTask(std::coroutine_handle<promise_type> h) : handle_(h) {}
-        ~RenderTask() { if (handle_) handle_.destroy(); }
+        explicit RenderTask(std::coroutine_handle<promise_type> h) : handle_(h)
+        {
+        }
+        ~RenderTask()
+        {
+            if (handle_)
+                handle_.destroy();
+        }
 
         RenderTask(const RenderTask&) = delete;
         RenderTask& operator=(const RenderTask&) = delete;
 
-        RenderTask(RenderTask&& o) noexcept : handle_(std::exchange(o.handle_, nullptr)) {}
+        RenderTask(RenderTask&& o) noexcept : handle_(std::exchange(o.handle_, nullptr))
+        {
+        }
         RenderTask& operator=(RenderTask&& o) noexcept
         {
             if (this != &o)
             {
-                if (handle_) handle_.destroy();
+                if (handle_)
+                    handle_.destroy();
                 handle_ = std::exchange(o.handle_, nullptr);
             }
             return *this;
         }
 
-        [[nodiscard]] bool done() const noexcept { return !handle_ || handle_.done(); }
+        [[nodiscard]] bool done() const noexcept
+        {
+            return !handle_ || handle_.done();
+        }
 
         void resume() const
         {
@@ -299,7 +363,10 @@ namespace lux::render
                 std::rethrow_exception(handle_.promise().exception);
         }
 
-        bool await_ready() const noexcept { return done(); }
+        bool await_ready() const noexcept
+        {
+            return done();
+        }
 
         std::coroutine_handle<> await_suspend(std::coroutine_handle<> caller)
         {

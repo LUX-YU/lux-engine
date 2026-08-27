@@ -32,10 +32,10 @@ namespace lux::rdesc
      */
     struct Bone_t
     {
-        std::string       name;            ///< Bone name (matches Assimp / DCC tool)
-        int32_t           parent_index;    ///< Index into Skeleton::bones, or -1 for root
-        Eigen::Affine3f   bind_local;      ///< Local-space rest transform (relative to parent)
-        Eigen::Affine3f   inv_bind_world;  ///< Inverse of world-space rest transform
+        std::string name;               ///< Bone name (matches Assimp / DCC tool)
+        int32_t parent_index;           ///< Index into Skeleton::bones, or -1 for root
+        Eigen::Affine3f bind_local;     ///< Local-space rest transform (relative to parent)
+        Eigen::Affine3f inv_bind_world; ///< Inverse of world-space rest transform
     };
 
     /**
@@ -61,6 +61,6 @@ namespace lux::rdesc
         /// Identity in the common case where the root bone hangs directly under
         /// the scene root. `buildSkinningMatrices` left-multiplies this onto each
         /// root bone so models with a transformed armature skin correctly.
-        Eigen::Affine3f global_transform{ Eigen::Affine3f::Identity() };
+        Eigen::Affine3f global_transform{Eigen::Affine3f::Identity()};
     };
 } // namespace lux::rdesc

@@ -24,31 +24,22 @@ namespace
     };
 }
 
-int main()
+int
+main()
 {
-    const auto position_schema = lux::simulation::ecs::makeComponentSchema<Position>(
-        lux::simulation::ecs::componentSchemaId("test.position")
-    );
+    const auto position_schema =
+        lux::simulation::ecs::makeComponentSchema<Position>(lux::simulation::ecs::componentSchemaId("test.position"));
     const auto cache_schema = lux::simulation::ecs::makeComponentSchema<DerivedCache>(
         lux::simulation::ecs::componentSchemaId("test.cache"),
         1,
         lux::simulation::ecs::EComponentSnapshotPolicy::REBUILD
     );
-    auto schemas = lux::simulation::ecs::ComponentSchemaSet::build(
-        {position_schema, cache_schema}
-    );
+    auto schemas = lux::simulation::ecs::ComponentSchemaSet::build({position_schema, cache_schema});
     assert(schemas);
-    const std::array snapshot_bindings{
-        lux::simulation::ecs::bindComponentSnapshot<Position>(position_schema)
-    };
-    const lux::simulation::ecs::ComponentSnapshotContribution snapshot_contribution{
-        {},
-        snapshot_bindings
-    };
-    auto snapshot_components = lux::simulation::ecs::ComponentSnapshotSet::build(
-        *schemas,
-        std::span(&snapshot_contribution, 1U)
-    );
+    const std::array snapshot_bindings{lux::simulation::ecs::bindComponentSnapshot<Position>(position_schema)};
+    const lux::simulation::ecs::ComponentSnapshotContribution snapshot_contribution{{}, snapshot_bindings};
+    auto snapshot_components =
+        lux::simulation::ecs::ComponentSnapshotSet::build(*schemas, std::span(&snapshot_contribution, 1U));
     assert(snapshot_components);
 
     lux::simulation::ecs::Registry source;
@@ -61,7 +52,8 @@ int main()
     source.destroy(removed);
     std::vector<lux::simulation::ecs::Entity> bulk;
     bulk.reserve(10'000);
-    for (int index{}; index < 10'000; ++index)
+    for (int index{}; index < 10'000; ++index
+    )
     {
         const auto entity = source.create();
         source.emplace<Position>(entity, index, first);
@@ -71,15 +63,10 @@ int main()
         source.destroy(bulk[index]);
 
     lux::simulation::ecs::detail::ComponentSnapshotTestStats::reset();
-    auto snapshot = lux::simulation::ecs::EcsSnapshot::capture(
-        source,
-        *snapshot_components
-    );
+    auto snapshot = lux::simulation::ecs::EcsSnapshot::capture(source, *snapshot_components);
     assert(snapshot);
     assert(lux::simulation::ecs::detail::ComponentSnapshotTestStats::clone_calls == 1U);
-    assert(
-        lux::simulation::ecs::detail::ComponentSnapshotTestStats::storage_lookups == 1U
-    );
+    assert(lux::simulation::ecs::detail::ComponentSnapshotTestStats::storage_lookups == 1U);
     auto instance = snapshot->instantiate();
     assert(instance);
     assert((*instance)->valid(first));
@@ -113,11 +100,7 @@ int main()
     lux::simulation::ecs::Registry invalid;
     const auto unknown = invalid.create();
     invalid.emplace<UnknownStorage>(unknown, 3);
-    const auto invalid_snapshot = lux::simulation::ecs::EcsSnapshot::capture(
-        invalid,
-        *snapshot_components
-    );
+    const auto invalid_snapshot = lux::simulation::ecs::EcsSnapshot::capture(invalid, *snapshot_components);
     assert(!invalid_snapshot);
-    assert(invalid_snapshot.error().code ==
-        lux::simulation::ecs::ESnapshotError::UNKNOWN_COMPONENT_STORAGE);
+    assert(invalid_snapshot.error().code == lux::simulation::ecs::ESnapshotError::UNKNOWN_COMPONENT_STORAGE);
 }

@@ -56,7 +56,7 @@ namespace lux::render
             other.layouts_.fill(VK_NULL_HANDLE);
             domain_layouts_ = other.domain_layouts_;
             other.domain_layouts_.fill(VK_NULL_HANDLE);
-            bindless_2d_count_   = other.bindless_2d_count_;
+            bindless_2d_count_ = other.bindless_2d_count_;
             bindless_cube_count_ = other.bindless_cube_count_;
         }
         return *this;
@@ -83,12 +83,12 @@ namespace lux::render
         const auto& idx_props = device_context_.physicalDevice().descriptorIndexingProperties();
         const uint32_t raw_budget = std::min(
             idx_props.maxDescriptorSetUpdateAfterBindSampledImages,
-            idx_props.maxPerStageDescriptorUpdateAfterBindSampledImages);
+            idx_props.maxPerStageDescriptorUpdateAfterBindSampledImages
+        );
         constexpr uint32_t kNonTextureReserve = 8;
-        const uint32_t budget = (raw_budget > kNonTextureReserve)
-                                  ? (raw_budget - kNonTextureReserve) : raw_budget;
+        const uint32_t budget = (raw_budget > kNonTextureReserve) ? (raw_budget - kNonTextureReserve) : raw_budget;
         const uint32_t kCubeMaxCount = std::min(kBindlessCubeCeiling, budget);
-        const uint32_t uncapped_2d   = (budget > kCubeMaxCount) ? (budget - kCubeMaxCount) : 1u;
+        const uint32_t uncapped_2d = (budget > kCubeMaxCount) ? (budget - kCubeMaxCount) : 1u;
         // The ceiling is part of THIS derivation, not a caller's afterthought.
         // It used to live only in RenderServer, which meant the layout declared
         // the full device budget while the descriptor pool was sized for the
@@ -97,7 +97,7 @@ namespace lux::render
         // reports ~16.7M UAB sampled images, so the layout asked for 16,776,952
         // descriptors out of a pool holding 65,792. Desktop NVIDIA hid it by
         // not accounting per-type strictly.
-        const uint32_t k2DMaxCount   = std::min(uncapped_2d, kBindlessTex2DCeiling);
+        const uint32_t k2DMaxCount = std::min(uncapped_2d, kBindlessTex2DCeiling);
 
         // The device-derived bindless capacity is kept as a member — the
         // domain-merged layout must use these exact same values, AND every
@@ -110,7 +110,7 @@ namespace lux::render
         // That is not hypothetical any more: RenderServer did recompute it,
         // the two derivations differed by exactly this ceiling, and it took a
         // phone to notice.
-        bindless_2d_count_   = k2DMaxCount;
+        bindless_2d_count_ = k2DMaxCount;
         bindless_cube_count_ = kCubeMaxCount;
 
         for (const auto& shape : kEngineSetShapes)
@@ -118,20 +118,20 @@ namespace lux::render
             const uint32_t set_index = static_cast<uint32_t>(shape.slot);
 
             std::vector<VkDescriptorSetLayoutBinding> bindings;
-            std::vector<VkDescriptorBindingFlags>     flags;
+            std::vector<VkDescriptorBindingFlags> flags;
             expandEngineSet(shape, 0u, bindings, flags);
 
-            const bool any_flags = std::any_of(flags.begin(), flags.end(),
-                                               [](VkDescriptorBindingFlags f) { return f != 0; });
+            const bool any_flags =
+                std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags f) { return f != 0; });
 
             VkDescriptorSetLayoutBindingFlagsCreateInfo bf{
                 VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
-            bf.bindingCount  = static_cast<uint32_t>(flags.size());
+            bf.bindingCount = static_cast<uint32_t>(flags.size());
             bf.pBindingFlags = flags.data();
 
             VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
             ci.bindingCount = static_cast<uint32_t>(bindings.size());
-            ci.pBindings    = bindings.data();
+            ci.pBindings = bindings.data();
             if (shape.update_after_bind)
                 ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
             if (any_flags)
@@ -157,7 +157,7 @@ namespace lux::render
         for (const auto domain : kMergeable)
         {
             std::vector<VkDescriptorSetLayoutBinding> bindings;
-            std::vector<VkDescriptorBindingFlags>     flags;
+            std::vector<VkDescriptorBindingFlags> flags;
             bool update_after_bind = false;
 
             // Expand in ascending canonical-set-number order, shifting each
@@ -187,17 +187,17 @@ namespace lux::render
             if (bindings.size() != domainBindingCount(domain))
                 return false;
 
-            const bool any_flags = std::any_of(flags.begin(), flags.end(),
-                                               [](VkDescriptorBindingFlags f) { return f != 0; });
+            const bool any_flags =
+                std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags f) { return f != 0; });
 
             VkDescriptorSetLayoutBindingFlagsCreateInfo bf{
                 VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
-            bf.bindingCount  = static_cast<uint32_t>(flags.size());
+            bf.bindingCount = static_cast<uint32_t>(flags.size());
             bf.pBindingFlags = flags.data();
 
             VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
             ci.bindingCount = static_cast<uint32_t>(bindings.size());
-            ci.pBindings    = bindings.data();
+            ci.pBindings = bindings.data();
             if (update_after_bind)
                 ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
             if (any_flags)
@@ -215,18 +215,23 @@ namespace lux::render
         const EngineSetShape& shape,
         uint32_t binding_offset,
         std::vector<VkDescriptorSetLayoutBinding>& bindings,
-        std::vector<VkDescriptorBindingFlags>&     flags) const
+        std::vector<VkDescriptorBindingFlags>& flags
+    ) const
     {
-        const auto resolveCount = [this](const EngineSetBindingShape& b) -> uint32_t
-        {
+        const auto resolveCount = [this](const EngineSetBindingShape& b) -> uint32_t {
             switch (b.count_source)
             {
-            case EBindingCountSource::Bindless2DTextures:   return bindless_2d_count_;
-            case EBindingCountSource::BindlessCubeTextures: return bindless_cube_count_;
-            case EBindingCountSource::VertexPoolSlots:      return kVertexPoolMaxCount;
-            case EBindingCountSource::MaterialFamilies:     return 1u;   // expanded into N bindings, each with count 1
+            case EBindingCountSource::Bindless2DTextures:
+                return bindless_2d_count_;
+            case EBindingCountSource::BindlessCubeTextures:
+                return bindless_cube_count_;
+            case EBindingCountSource::VertexPoolSlots:
+                return kVertexPoolMaxCount;
+            case EBindingCountSource::MaterialFamilies:
+                return 1u; // expanded into N bindings, each with count 1
             case EBindingCountSource::Fixed:
-            default:                                        return b.count;
+            default:
+                return b.count;
             }
         };
 
@@ -235,16 +240,17 @@ namespace lux::render
             // expand_by_count_source: a template entry is expanded into N
             // identically-shaped bindings driven by the constant (Material's
             // per-family SSBO).
-            const uint32_t repeat = (shape.expand_by_count_source &&
-                                     b.count_source == EBindingCountSource::MaterialFamilies)
-                                  ? kMaterialFamilyBindingCount : 1u;
+            const uint32_t repeat =
+                (shape.expand_by_count_source && b.count_source == EBindingCountSource::MaterialFamilies)
+                    ? kMaterialFamilyBindingCount
+                    : 1u;
             for (uint32_t i = 0; i < repeat; ++i)
             {
                 VkDescriptorSetLayoutBinding vb{};
-                vb.binding         = binding_offset + b.binding + i;
-                vb.descriptorType  = b.type;
+                vb.binding = binding_offset + b.binding + i;
+                vb.descriptorType = b.type;
                 vb.descriptorCount = resolveCount(b);
-                vb.stageFlags      = b.stages;
+                vb.stageFlags = b.stages;
                 bindings.push_back(vb);
                 flags.push_back(b.binding_flags);
             }

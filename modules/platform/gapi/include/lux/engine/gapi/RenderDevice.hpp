@@ -4,7 +4,8 @@
 
 namespace lux::gapi
 {
-    enum class EDeviceType {
+    enum class EDeviceType
+    {
         OTHER = 0,
         INTEGRATED_GPU = 1,
         DISCRETE_GPU = 2,
@@ -15,7 +16,9 @@ namespace lux::gapi
     class RenderDevice
     {
     public:
-        LUX_PLATFORM_GAPI_PUBLIC virtual ~RenderDevice() {}
+        LUX_PLATFORM_GAPI_PUBLIC virtual ~RenderDevice()
+        {
+        }
 
         LUX_PLATFORM_GAPI_PUBLIC virtual EDeviceType deviceType() = 0;
 

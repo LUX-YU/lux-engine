@@ -19,9 +19,9 @@ namespace lux::math
      */
     struct BVHHit
     {
-        float    t;               ///< Distance along the ray
-        float    u, v;            ///< Barycentric coordinates on the triangle
-        uint32_t triangle_index;  ///< Index of the hit triangle (in the original index buffer)
+        float t;                 ///< Distance along the ray
+        float u, v;              ///< Barycentric coordinates on the triangle
+        uint32_t triangle_index; ///< Index of the hit triangle (in the original index buffer)
     };
 
     /**
@@ -52,16 +52,19 @@ namespace lux::math
          * @param index_count  Number of indices (must be divisible by 3).
          * @param max_leaf_tris Maximum triangles per leaf node (default 4).
          */
-        void build(const Eigen::Vector3f* positions,
-                   uint32_t               vertex_count,
-                   const uint32_t*        indices,
-                   uint32_t               index_count,
-                   uint32_t               max_leaf_tris = 4)
+        void build(
+            const Eigen::Vector3f* positions,
+            uint32_t vertex_count,
+            const uint32_t* indices,
+            uint32_t index_count,
+            uint32_t max_leaf_tris = 4
+        )
         {
             (void)vertex_count;
             assert(index_count % 3 == 0);
             const uint32_t tri_count = index_count / 3;
-            if (tri_count == 0) return;
+            if (tri_count == 0)
+                return;
 
             max_leaf_tris_ = std::max(max_leaf_tris, 1u);
 
@@ -75,8 +78,8 @@ namespace lux::math
                 uint32_t i0 = indices[i * 3 + 0];
                 uint32_t i1 = indices[i * 3 + 1];
                 uint32_t i2 = indices[i * 3 + 2];
-                tris_[i]         = { positions[i0], positions[i1], positions[i2] };
-                centroids_[i]    = (positions[i0] + positions[i1] + positions[i2]) / 3.0f;
+                tris_[i] = {positions[i0], positions[i1], positions[i2]};
+                centroids_[i] = (positions[i0] + positions[i1] + positions[i2]) / 3.0f;
                 orig_tri_idx_[i] = i;
             }
 
@@ -93,7 +96,8 @@ namespace lux::math
          */
         [[nodiscard]] std::optional<BVHHit> intersectLocal(const Ray& local_ray) const
         {
-            if (nodes_.empty()) return std::nullopt;
+            if (nodes_.empty())
+                return std::nullopt;
 
             BVHHit best{};
             best.t = std::numeric_limits<float>::max();
@@ -111,23 +115,22 @@ namespace lux::math
          * @param world      The entity's model-to-world matrix.
          * @return The closest BVHHit (t in world-space units), or nullopt.
          */
-        [[nodiscard]] std::optional<BVHHit> intersect(
-            const Ray& world_ray,
-            const Eigen::Matrix4f& world) const
+        [[nodiscard]] std::optional<BVHHit> intersect(const Ray& world_ray, const Eigen::Matrix4f& world) const
         {
             Eigen::Matrix4f inv = world.inverse();
 
             // Transform ray into local space
-            Eigen::Vector4f o4 = inv * Eigen::Vector4f(
-                world_ray.origin.x(), world_ray.origin.y(), world_ray.origin.z(), 1.0f);
-            Eigen::Vector4f d4 = inv * Eigen::Vector4f(
-                world_ray.direction.x(), world_ray.direction.y(), world_ray.direction.z(), 0.0f);
+            Eigen::Vector4f o4 =
+                inv * Eigen::Vector4f(world_ray.origin.x(), world_ray.origin.y(), world_ray.origin.z(), 1.0f);
+            Eigen::Vector4f d4 =
+                inv * Eigen::Vector4f(world_ray.direction.x(), world_ray.direction.y(), world_ray.direction.z(), 0.0f);
 
             Ray local_ray;
             local_ray.origin = o4.head<3>();
             Eigen::Vector3f ld = d4.head<3>();
             float scale = ld.norm();
-            if (scale < 1e-12f) return std::nullopt;
+            if (scale < 1e-12f)
+                return std::nullopt;
             local_ray.direction = ld / scale;
 
             auto hit = intersectLocal(local_ray);
@@ -140,18 +143,27 @@ namespace lux::math
             return hit;
         }
 
-        [[nodiscard]] uint32_t triangleCount() const { return static_cast<uint32_t>(tris_.size()); }
-        [[nodiscard]] uint32_t nodeCount()     const { return static_cast<uint32_t>(nodes_.size()); }
-        [[nodiscard]] bool     isBuilt()       const { return !nodes_.empty(); }
+        [[nodiscard]] uint32_t triangleCount() const
+        {
+            return static_cast<uint32_t>(tris_.size());
+        }
+        [[nodiscard]] uint32_t nodeCount() const
+        {
+            return static_cast<uint32_t>(nodes_.size());
+        }
+        [[nodiscard]] bool isBuilt() const
+        {
+            return !nodes_.empty();
+        }
 
     private:
         // ------- Flat node -------
         struct Node
         {
-            AABB     bounds;
-            uint32_t first;      ///< Interior: left child index.  Leaf: first tri index.
-            uint32_t count;      ///< 0 = interior node.  >0 = leaf (triangle count).
-            uint32_t right;      ///< Interior: right child index.  Leaf: unused.
+            AABB bounds;
+            uint32_t first; ///< Interior: left child index.  Leaf: first tri index.
+            uint32_t count; ///< 0 = interior node.  >0 = leaf (triangle count).
+            uint32_t right; ///< Interior: right child index.  Leaf: unused.
         };
 
         // ------- Build -------
@@ -183,8 +195,10 @@ namespace lux::math
             // Pick split axis = longest extent
             Eigen::Vector3f ext = box.extents();
             int axis = 0;
-            if (ext.y() > ext.x()) axis = 1;
-            if (ext.z() > ext[axis]) axis = 2;
+            if (ext.y() > ext.x())
+                axis = 1;
+            if (ext.z() > ext[axis])
+                axis = 2;
 
             // Centroid mean along axis
             float mid = 0.0f;
@@ -200,8 +214,8 @@ namespace lux::math
                 {
                     if (i != split)
                     {
-                        std::swap(tris_[i],         tris_[split]);
-                        std::swap(centroids_[i],    centroids_[split]);
+                        std::swap(tris_[i], tris_[split]);
+                        std::swap(centroids_[i], centroids_[split]);
                         std::swap(orig_tri_idx_[i], orig_tri_idx_[split]);
                     }
                     ++split;
@@ -213,7 +227,7 @@ namespace lux::math
                 split = begin + n / 2;
 
             // Build children (nodes_ may reallocate, so use idx not reference)
-            uint32_t left  = buildRecursive(begin, split);
+            uint32_t left = buildRecursive(begin, split);
             uint32_t right = buildRecursive(split, end);
 
             nodes_[idx].first = left;
@@ -259,11 +273,11 @@ namespace lux::math
         }
 
         // ------- Data -------
-        std::vector<Node>            nodes_;
-        std::vector<Triangle>        tris_;          ///< Permuted triangle data
-        std::vector<Eigen::Vector3f> centroids_;     ///< Parallel to tris_
-        std::vector<uint32_t>        orig_tri_idx_;  ///< Original triangle index
-        uint32_t                     max_leaf_tris_{ 4 };
+        std::vector<Node> nodes_;
+        std::vector<Triangle> tris_;             ///< Permuted triangle data
+        std::vector<Eigen::Vector3f> centroids_; ///< Parallel to tris_
+        std::vector<uint32_t> orig_tri_idx_;     ///< Original triangle index
+        uint32_t max_leaf_tris_{4};
     };
 
 } // namespace lux::math

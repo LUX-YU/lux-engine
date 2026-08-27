@@ -25,8 +25,8 @@
  * — using public headers alone.
  */
 
-#include <lux/engine/render/RenderFeature.hpp>                        // RenderFeature (the erased base)
-#include <lux/engine/function/render/client/core/Errors.hpp>                          // Expected<T>
+#include <lux/engine/render/RenderFeature.hpp>               // RenderFeature (the erased base)
+#include <lux/engine/function/render/client/core/Errors.hpp> // Expected<T>
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
@@ -39,9 +39,8 @@ namespace lux::render
     {
         /// Install an already-constructed feature into the (type-erased) scene.
         /// Forwards to RenderScene::addFeatureErased. Returns the generational handle.
-        LUX_FUNCTION_PUBLIC Expected<FeatureHandle> installFeatureErased(
-            void*                          scene,
-            std::unique_ptr<RenderFeature> feature);
+        LUX_FUNCTION_PUBLIC Expected<FeatureHandle>
+        installFeatureErased(void* scene, std::unique_ptr<RenderFeature> feature);
     } // namespace detail
 
     /**
@@ -52,13 +51,12 @@ namespace lux::render
      * counterpart of RenderScene::addFeature<T>). @p T must derive from RenderFeature.
      * Any @p args are forwarded to T's constructor.
      */
-    template <typename T, typename... Args>
-    Expected<FeatureHandle> addFeature(void* scene, Args&&... args)
+    template <typename T, typename... Args> Expected<FeatureHandle> addFeature(void* scene, Args&&... args)
     {
-        static_assert(std::is_base_of_v<RenderFeature, T>,
-                      "addFeature<T>: T must derive from lux::render::RenderFeature");
-        return detail::installFeatureErased(
-            scene, std::make_unique<T>(std::forward<Args>(args)...));
+        static_assert(
+            std::is_base_of_v<RenderFeature, T>,
+            "addFeature<T>: T must derive from lux::render::RenderFeature");
+        return detail::installFeatureErased(scene, std::make_unique<T>(std::forward<Args>(args)...));
     }
 
 } // namespace lux::render

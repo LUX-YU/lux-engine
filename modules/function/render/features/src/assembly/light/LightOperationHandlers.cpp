@@ -7,14 +7,14 @@
 //  no longer names light.
 // ============================================================================
 
-#include <lux/engine/render/comm/server/RenderServer.hpp>   // Dispatcher, Ctx, replyToCurrent, FeatureFactory
-#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>   // typed-op register/unregister
-#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>   // FeatureFactory / GenericOkReply
+#include <lux/engine/render/comm/server/RenderServer.hpp>       // Dispatcher, Ctx, replyToCurrent, FeatureFactory
+#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp> // typed-op register/unregister
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
 #include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/light/LightFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 
-#include <lux/engine/render/resources/lighting/LightResources.hpp>   // submit/modify/remove, LightHandle
+#include <lux/engine/render/resources/lighting/LightResources.hpp> // submit/modify/remove, LightHandle
 
 #include <cstdint>
 #include <span>
@@ -23,7 +23,7 @@
 namespace lux::render
 {
     using Dispatcher = GeneralRenderServer::Dispatcher;
-    using Ctx        = Dispatcher::Ctx;
+    using Ctx = Dispatcher::Ctx;
 
     // Exported by the server for feature operation handlers (resolves a scene from
     // the dispatcher user_state). Forward-declared — the grid-handler convention —
@@ -46,64 +46,58 @@ namespace lux::render
         }
     } // anonymous namespace (helpers)
 
-        // Create one light + REPLY with its RLightHandle. Inlines the old
-        // GeneralRenderServer::createLight (find<LightResources> + submit), so the
-        // handler needs no server-impl access.
+    // Create one light + REPLY with its RLightHandle. Inlines the old
+    // GeneralRenderServer::createLight (find<LightResources> + submit), so the
+    // handler needs no server-impl access.
     void handleCreateLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const CreateLightPayload& p)
+    {
+        RLightHandle handle{};
+        uint32_t status = 1; // 1 = failed (no LightFeature / submit error)
+        if (auto* light_res = resolveLights(ctx, p.scene_id))
         {
-            RLightHandle handle{};
-            uint32_t     status = 1;   // 1 = failed (no LightFeature / submit error)
-            if (auto* light_res = resolveLights(ctx, p.scene_id))
+            auto result = light_res->submit(fromLightPayload(p));
+            if (result)
             {
-                auto result = light_res->submit(fromLightPayload(p));
-                if (result)
+                const auto h = result.value();
+                handle = RLightHandle{h.index, h.gen};
+                if (p.transition_milliseconds > 0u)
                 {
-                    const auto h = result.value();
-                    handle = RLightHandle{h.index, h.gen};
-                    if (p.transition_milliseconds > 0u)
+                    if (auto* scene = lookupScene(ctx.user_state, p.scene_id))
                     {
-                        if (auto* scene = lookupScene(ctx.user_state, p.scene_id))
-                        {
-                            (void)light_res->beginFadeIn(
-                                h,
-                                scene->sceneTime(),
-                                static_cast<float>(p.transition_milliseconds) /
-                                    1000.0f);
-                        }
+                        (void)light_res->beginFadeIn(
+                            h,
+                            scene->sceneTime(),
+                            static_cast<float>(p.transition_milliseconds) / 1000.0f
+                        );
                     }
-                    status = 0;
                 }
+                status = 0;
             }
-            replyToCurrent<CreateLightPayload>(ctx, LightCreatedReply{handle, status});
         }
+        replyToCurrent<CreateLightPayload>(ctx, LightCreatedReply{handle, status});
+    }
 
     void handleUpdateLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const UpdateLightPayload& p)
-        {
-            if (auto* light_res = resolveLights(ctx, p.scene_id))
-                light_res->modify(handle_cast<LightHandle>(p.handle), fromUpdateLightPayload(p));
-        }
+    {
+        if (auto* light_res = resolveLights(ctx, p.scene_id))
+            light_res->modify(handle_cast<LightHandle>(p.handle), fromUpdateLightPayload(p));
+    }
 
     void handleDestroyLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const DestroyLightPayload& p)
+    {
+        if (auto* light_res = resolveLights(ctx, p.scene_id))
         {
-            if (auto* light_res = resolveLights(ctx, p.scene_id))
+            auto* scene = lookupScene(ctx.user_state, p.scene_id);
+            const auto handle = handle_cast<LightHandle>(p.handle);
+            const float duration = static_cast<float>(p.transition_milliseconds) / 1000.0f;
+            if (!scene || !light_res->beginFadeOut(handle, scene->sceneTime(), duration))
             {
-                auto* scene = lookupScene(ctx.user_state, p.scene_id);
-                const auto handle = handle_cast<LightHandle>(p.handle);
-                const float duration =
-                    static_cast<float>(p.transition_milliseconds) / 1000.0f;
-                if (!scene || !light_res->beginFadeOut(
-                        handle,
-                        scene->sceneTime(),
-                        duration))
-                {
-                    light_res->remove(handle);
-                }
+                light_res->remove(handle);
             }
         }
+    }
 
-    void handleLightStats(
-        GeneralRenderServer::Dispatcher::Ctx& ctx,
-        const LightStatsPayload& payload)
+    void handleLightStats(GeneralRenderServer::Dispatcher::Ctx& ctx, const LightStatsPayload& payload)
     {
         const auto* lights = resolveLights(ctx, payload.scene_id);
         replyToCurrent<LightStatsPayload>(
@@ -111,33 +105,35 @@ namespace lux::render
             lights
                 ? LightStatsReply{
                       lights->lightCount(
-                          ELightSetBindings::LIGHT_DIRECTIONAL),
+                          ELightSetBindings::LIGHT_DIRECTIONAL
+                      ),
                       lights->lightCount(ELightSetBindings::LIGHT_POINT),
                       lights->lightCount(ELightSetBindings::LIGHT_SPOT),
                       lights->lightCount(ELightSetBindings::LIGHT_AREA),
                       lights->transitionCount()}
-                : LightStatsReply{});
+                : LightStatsReply{}
+        );
     }
 
-        // Batched update — N per-instance UpdateLightPayloads in one command. Each
-        // entry carries its own scene_id; cache the last resolution since batches
-        // are typically single-scene.
+    // Batched update — N per-instance UpdateLightPayloads in one command. Each
+    // entry carries its own scene_id; cache the last resolution since batches
+    // are typically single-scene.
     void handleLightBatch(GeneralRenderServer::Dispatcher::Ctx& ctx, std::span<const UpdateLightPayload> entries)
+    {
+        LightResources* light_res = nullptr;
+        RenderSceneId cur{};
+        bool resolved = false;
+        for (const auto& p : entries)
         {
-            LightResources* light_res = nullptr;
-            RenderSceneId   cur{};
-            bool            resolved = false;
-            for (const auto& p : entries)
+            if (!resolved || p.scene_id != cur)
             {
-                if (!resolved || p.scene_id != cur)
-                {
-                    cur       = p.scene_id;
-                    light_res = resolveLights(ctx, cur);
-                    resolved  = true;
-                }
-                if (light_res)
-                    light_res->modify(handle_cast<LightHandle>(p.handle), fromUpdateLightPayload(p));
+                cur = p.scene_id;
+                light_res = resolveLights(ctx, cur);
+                resolved = true;
             }
+            if (light_res)
+                light_res->modify(handle_cast<LightHandle>(p.handle), fromUpdateLightPayload(p));
         }
+    }
 
 } // namespace lux::render

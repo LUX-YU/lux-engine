@@ -10,7 +10,8 @@
 #include <lux/engine/render/graph/PhysicalResourceAllocator.hpp>
 #include <lux/engine/render/graph/RGVulkanResourceAllocator.hpp>
 #include <lux/engine/render/resources/SceneResources.hpp>
-#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>   // scene_ds channel feeds the domain GLOBAL instance
+#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
+// scene_ds channel feeds the domain GLOBAL instance
 #include <lux/engine/render/RenderFeature.hpp>
 
 #include <cassert>
@@ -22,8 +23,7 @@ namespace lux::render
     //  Ctor / Dtor
     // ─────────────────────────────────────────────────────────────────────
 
-    Renderer::Renderer(std::shared_ptr<RenderContext> ctx)
-        : ctx_(std::move(ctx))
+    Renderer::Renderer(std::shared_ptr<RenderContext> ctx) : ctx_(std::move(ctx))
     {
         assert(ctx_ && "Renderer: RenderContext must not be null");
     }
@@ -86,15 +86,14 @@ namespace lux::render
         // bound of the scene's last possible GPU use; same-queue FIFO completion
         // makes the watermark monotone over all earlier submissions.
         const uint64_t fif = ctx_->framesInFlight();
-        const uint64_t completed =
-            completedSerialOr(frame_serial > fif ? frame_serial - fif : 0);
-        std::erase_if(retired_scenes_, [&](RetiredScene& r)
-        {
+        const uint64_t completed = completedSerialOr(frame_serial > fif ? frame_serial - fif : 0);
+        std::erase_if(retired_scenes_, [&](RetiredScene& r) {
             if (r.retire_serial > completed)
                 return false; // GPU may still reference this scene's resources
             r.scene->shutdownFull();
-            return true;      // drop — the unique_ptr frees the scene
-        });
+            return true; // drop — the unique_ptr frees the scene
+        }
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -105,10 +104,8 @@ namespace lux::render
     {
         current_stamp_ = stamp;
         const auto scene_clock_now = std::chrono::steady_clock::now();
-        const float scene_time = std::chrono::duration<float>(
-            scene_clock_now - scene_clock_start_).count();
-        const float scene_delta = std::chrono::duration<float>(
-            scene_clock_now - scene_clock_previous_).count();
+        const float scene_time = std::chrono::duration<float>(scene_clock_now - scene_clock_start_).count();
+        const float scene_delta = std::chrono::duration<float>(scene_clock_now - scene_clock_previous_).count();
         scene_clock_previous_ = scene_clock_now;
 
         // Set the current serial on the destroy queue and collect resources
@@ -118,8 +115,8 @@ namespace lux::render
         // advance on non-submitting ticks, so arithmetic alone over-claims.
         auto& dq = ctx_->deferredDestroyQueue();
         dq.beginFrame(stamp.serial);
-        const uint64_t completed = completedSerialOr(
-            (stamp.serial > stamp.frames_in_flight) ? stamp.serial - stamp.frames_in_flight : 0);
+        const uint64_t completed =
+            completedSerialOr((stamp.serial > stamp.frames_in_flight) ? stamp.serial - stamp.frames_in_flight : 0);
         dq.collect(completed);
         ctx_->retireScheduler().collect(completed);
 
@@ -137,17 +134,14 @@ namespace lux::render
                 hook(stamp);
         }
 
-        for (auto &scene_ptr : scenes_.values())
+        for (auto& scene_ptr : scenes_.values())
         {
             if (scene_ptr)
             {
                 // The render owner advances one monotonic clock for every scene.
                 // Transition shaders and delayed render-object retirement now
                 // observe the same time without a per-frame client command.
-                scene_ptr->setSceneTime(
-                    scene_time,
-                    scene_delta,
-                    stamp.serial);
+                scene_ptr->setSceneTime(scene_time, scene_delta, stamp.serial);
                 scene_ptr->beginFrame(stamp);
             }
         }
@@ -169,8 +163,8 @@ namespace lux::render
         if (!global_scheduler.isInitialized())
         {
             TransferScheduler::Config ts_cfg{
-                .allocator        = ctx_->vmaAllocator(),
-                .ring_capacity    = 4 * 1024 * 1024,
+                .allocator = ctx_->vmaAllocator(),
+                .ring_capacity = 4 * 1024 * 1024,
                 .frames_in_flight = ctx_->framesInFlight(),
             };
             (void)global_scheduler.init(ts_cfg);
@@ -184,7 +178,7 @@ namespace lux::render
         }
 
         // Per-scene uploads (instance data, point cloud, trajectory, etc.).
-        for (auto &scene_ptr : scenes_.values())
+        for (auto& scene_ptr : scenes_.values())
         {
             if (scene_ptr)
                 scene_ptr->record(cmd, stamp);
@@ -195,11 +189,9 @@ namespace lux::render
     //  prepareSceneForRender — shared preamble for renderSceneViews / renderSingleView
     // ─────────────────────────────────────────────────────────────────────
 
-    bool Renderer::prepareSceneForRender(
-        RenderScene &scene,
-        const RenderTargetLayout &layout)
+    bool Renderer::prepareSceneForRender(RenderScene& scene, const RenderTargetLayout& layout)
     {
-        auto &gs = scene.graphState();
+        auto& gs = scene.graphState();
 
         // The compiled graph template is only valid for the FORMAT KEY it was
         // built from(layout 拆分):槽位集合/format/aspect/initial_layout/
@@ -222,11 +214,13 @@ namespace lux::render
             //
             // 上报通道自带同键合并,所以这里不再需要一个 warned-once 标志:
             // 「说过一次就不说了」会让持续发生的问题在诊断面板上看着像已经好了。
-            if (layout_changed && gs.valid &&
-                gs.last_format_key_compile_serial == current_stamp_.serial)
+            if (layout_changed && gs.valid && gs.last_format_key_compile_serial == current_stamp_.serial)
             {
-                ctx_->reportError(renderError<err::frame::GraphRecompileThrash>(),
-                                         scene.sceneId().index, current_stamp_.serial);
+                ctx_->reportError(
+                    renderError<err::frame::GraphRecompileThrash>(),
+                    scene.sceneId().index,
+                    current_stamp_.serial
+                );
             }
             gs.last_format_key_compile_serial = current_stamp_.serial;
             // Always (re)compile against the REQUESTED layout — never fall back to the
@@ -240,8 +234,11 @@ namespace lux::render
             // 都是空的。上层多半以为自己已经把目标接好了。
             if (!gs.valid && !layout.hasSlot(TargetSlot::SCENE_COLOR))
             {
-                ctx_->reportError(renderError<err::frame::NoSceneColorTarget>(),
-                                         scene.sceneId().index, current_stamp_.serial);
+                ctx_->reportError(
+                    renderError<err::frame::NoSceneColorTarget>(),
+                    scene.sceneId().index,
+                    current_stamp_.serial
+                );
             }
         }
 
@@ -249,11 +246,12 @@ namespace lux::render
     }
 
     void Renderer::renderSingleView(
-        RenderScene &scene,
-        View &view,
-        const RenderTargetBinding &binding,
-        FrameRuntime &rt,
-        uint32_t cross_view_index)
+        RenderScene& scene,
+        View& view,
+        const RenderTargetBinding& binding,
+        FrameRuntime& rt,
+        uint32_t cross_view_index
+    )
     {
         // The binding is the single source of truth for its target: it carries both
         // the physical images AND the layout the graph must compile against (P4d
@@ -263,11 +261,14 @@ namespace lux::render
         // (they previously passed it as a separate argument).
         if (binding.layout == nullptr)
         {
-            ctx_->reportError(renderError<err::frame::BindingHasNoLayout>(),
-                                     scene.sceneId().index, current_stamp_.serial);
+            ctx_->reportError(
+                renderError<err::frame::BindingHasNoLayout>(),
+                scene.sceneId().index,
+                current_stamp_.serial
+            );
             return;
         }
-        const RenderTargetLayout &layout = *binding.layout;
+        const RenderTargetLayout& layout = *binding.layout;
 
         // View 瘦身:current_extent 是渲染期从 binding 派生的缓存(相机
         // 帧数据/HZB 读它拿到的就是本次实际渲染尺寸),视图不再自持尺寸账本。
@@ -279,7 +280,7 @@ namespace lux::render
         if (!prepareViewForRender(scene, view, binding, rt))
             return;
 
-        auto &gs = scene.graphState();
+        auto& gs = scene.graphState();
         DrawRequest req;
         req.scene = &scene;
         req.view = &view;
@@ -293,10 +294,9 @@ namespace lux::render
         // 无驱动(headless)时回落到旧算术 —— 那种 tick 从不提交 GPU 工作,算术在那里
         // 是空泛安全的。
         const uint64_t fif = ctx_->framesInFlight();
-        const uint64_t completed =
-            completedSerialOr(frame_serial > fif ? frame_serial - fif : 0);
+        const uint64_t completed = completedSerialOr(frame_serial > fif ? frame_serial - fif : 0);
 
-        for (auto &scene_ptr : scenes_.values())
+        for (auto& scene_ptr : scenes_.values())
         {
             if (scene_ptr)
                 scene_ptr->endFrame(frame_serial, completed);
@@ -312,13 +312,10 @@ namespace lux::render
     //  prepareViewForRender — ensure per-view GPU resources are ready
     // ─────────────────────────────────────────────────────────────────────
 
-    bool Renderer::prepareViewForRender(
-        RenderScene &scene,
-        View &view,
-        const RenderTargetBinding &binding,
-        FrameRuntime &rt)
+    bool
+    Renderer::prepareViewForRender(RenderScene& scene, View& view, const RenderTargetBinding& binding, FrameRuntime& rt)
     {
-        auto &gs = scene.graphState();
+        auto& gs = scene.graphState();
         if (!gs.valid || !gs.graph)
             return false;
 
@@ -341,10 +338,10 @@ namespace lux::render
             scene.graphAllocator(),
             ctx_->framesInFlight(),
             nullptr,
-            [&scene, current_graph_desc](RGResourceState&& retired_state)
-            {
+            [&scene, current_graph_desc](RGResourceState&& retired_state) {
                 scene.retireViewResourceState(std::move(retired_state), current_graph_desc);
-            });
+            }
+        );
         if (!resized_or_ready)
             return false;
 
@@ -358,12 +355,13 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
 
     void Renderer::renderView(
-        RenderScene &scene,
-        SceneGraphState &gs,
-        View &view,
-        const DrawRequest &req,
-        FrameRuntime &rt,
-        uint32_t cross_view_index)
+        RenderScene& scene,
+        SceneGraphState& gs,
+        View& view,
+        const DrawRequest& req,
+        FrameRuntime& rt,
+        uint32_t cross_view_index
+    )
     {
         assert(gs.graph && view.resource_state && "renderView: graph and view resources must be ready");
 
@@ -392,12 +390,9 @@ namespace lux::render
         // set, matching pre-migration behavior.
         {
             auto* domains = scene.domainDescriptorSets();
-            const VkDescriptorSet domain_scene = domains
-                ? domains->set(lux::rdesc::EBindFrequency::GLOBAL, slot)
-                : VK_NULL_HANDLE;
-            frame_ctx.scene_ds = (domain_scene != VK_NULL_HANDLE)
-                ? domain_scene
-                : scene_res.getDescriptorSet(slot);
+            const VkDescriptorSet domain_scene =
+                domains ? domains->set(lux::rdesc::EBindFrequency::GLOBAL, slot) : VK_NULL_HANDLE;
+            frame_ctx.scene_ds = (domain_scene != VK_NULL_HANDLE) ? domain_scene : scene_res.getDescriptorSet(slot);
         }
         frame_ctx.scene_index = scene.sceneGlobalSlot().index;
         frame_ctx.view_index = view.view_slot.index;
@@ -419,7 +414,7 @@ namespace lux::render
             frame_ctx.target_layout = req.target->layout;
             for (size_t si = 0; si < kTargetSlotCount; ++si)
             {
-                const auto &slot_imgs = req.target->slot(static_cast<TargetSlot>(si));
+                const auto& slot_imgs = req.target->slot(static_cast<TargetSlot>(si));
                 if (slot_imgs.images.empty())
                     continue;
 
@@ -437,13 +432,13 @@ namespace lux::render
             *gs.graph,
             frame_ctx,
             rt.primary_cmd,
-            &scene.renderContext().globalRegistry());
+            &scene.renderContext().globalRegistry()
+        );
 
         // Expose per-view multi-queue submissions to the frame driver.
         if (view.resource_state->record_ctx.multi_queue_submit.is_multi_queue)
         {
-            rt.multi_queue_submits.push_back(
-                &view.resource_state->record_ctx.multi_queue_submit);
+            rt.multi_queue_submits.push_back(&view.resource_state->record_ctx.multi_queue_submit);
         }
 
         // Fold this view's externally-injected sync (addExternalGraphicsWait/Signal,
@@ -453,22 +448,30 @@ namespace lux::render
             rt.external_graphics_waits.insert(
                 rt.external_graphics_waits.end(),
                 frame_ctx.external_graphics_waits.begin(),
-                frame_ctx.external_graphics_waits.end());
+                frame_ctx.external_graphics_waits.end()
+            );
         if (!frame_ctx.external_graphics_signals.empty())
             rt.external_graphics_signals.insert(
                 rt.external_graphics_signals.end(),
                 frame_ctx.external_graphics_signals.begin(),
-                frame_ctx.external_graphics_signals.end());
+                frame_ctx.external_graphics_signals.end()
+            );
     }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Accessors
     // ─────────────────────────────────────────────────────────────────────
 
-    RenderContext &Renderer::renderContext() noexcept { return *ctx_; }
-    uint32_t Renderer::framesInFlight() const noexcept { return ctx_->framesInFlight(); }
+    RenderContext& Renderer::renderContext() noexcept
+    {
+        return *ctx_;
+    }
+    uint32_t Renderer::framesInFlight() const noexcept
+    {
+        return ctx_->framesInFlight();
+    }
 
-    RenderScene *Renderer::getScene(RenderSceneId id) noexcept
+    RenderScene* Renderer::getScene(RenderSceneId id) noexcept
     {
         // tryGet returns nullptr for a stale id (generation mismatch) as well as
         // an unknown one — no separate validity check needed.

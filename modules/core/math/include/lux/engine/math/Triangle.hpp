@@ -16,8 +16,8 @@ namespace lux::math
      */
     struct TriangleHit
     {
-        float t;       ///< Distance along the ray to the intersection point
-        float u, v;    ///< Barycentric coordinates (w = 1 - u - v)
+        float t;    ///< Distance along the ray to the intersection point
+        float u, v; ///< Barycentric coordinates (w = 1 - u - v)
     };
 
 } // namespace lux::math

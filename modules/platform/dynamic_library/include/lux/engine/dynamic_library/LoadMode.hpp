@@ -19,12 +19,12 @@ namespace lux::engine::platform
 {
     enum class LoadMode : std::uint32_t
     {
-        Default                   = 0,
-        RTLD_Lazy                 = 1u << 0,
-        RTLD_Now                  = 1u << 1,
-        RTLD_Global               = 1u << 2,
+        Default = 0,
+        RTLD_Lazy = 1u << 0,
+        RTLD_Now = 1u << 1,
+        RTLD_Global = 1u << 2,
         LoadWithAlteredSearchPath = 1u << 3,
-        AppendDecorations         = 1u << 4,
+        AppendDecorations = 1u << 4,
     };
 
     constexpr LoadMode operator|(LoadMode a, LoadMode b) noexcept

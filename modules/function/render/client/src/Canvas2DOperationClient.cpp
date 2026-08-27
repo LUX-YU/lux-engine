@@ -17,40 +17,29 @@ namespace lux::render
     )
     {
         AddImage2DPayload payload{};
-        payload.scene    = scene;
-        payload.data     = data;
+        payload.scene = scene;
+        payload.data = data;
         payload.priority = priority;
-        payload.visible  = visible ? 1u : 0u;
-        payload.group    = group;
+        payload.visible = visible ? 1u : 0u;
+        payload.group = group;
         return proxy.addImageRaw(payload);
     }
 
-    void removeImage(
-        Canvas2DProxy proxy,
-        RenderSceneId scene,
-        Image2DHandle handle
-    )
+    void removeImage(Canvas2DProxy proxy, RenderSceneId scene, Image2DHandle handle)
     {
         if (!proxy.valid())
             return;
         proxy.removeImageRaw(RemoveImage2DPayload{scene, handle});
     }
 
-    void updateTransforms(
-        Canvas2DProxy proxy,
-        std::span<const Image2DTransformEntry> entries
-    )
+    void updateTransforms(Canvas2DProxy proxy, std::span<const Image2DTransformEntry> entries)
     {
         if (!proxy.valid() || entries.empty())
             return;
         proxy.updateTransformsRaw(entries);
     }
 
-    void updateTransforms(
-        Canvas2DProxy proxy,
-        RenderSceneId scene,
-        std::span<Image2DTransformEntry> entries
-    )
+    void updateTransforms(Canvas2DProxy proxy, RenderSceneId scene, std::span<Image2DTransformEntry> entries)
     {
         if (!proxy.valid() || entries.empty())
             return;
@@ -70,16 +59,11 @@ namespace lux::render
         if (!proxy.valid())
             return;
         Image2DTransformEntry entry{};
-        entry.scene  = scene;
+        entry.scene = scene;
         entry.handle = handle;
         std::memcpy(entry.m, matrix, sizeof(entry.m));
-        std::memcpy(
-            entry.page_delta,
-            page_delta,
-            sizeof(entry.page_delta));
-        proxy.updateTransformsRaw(
-            std::span<const Image2DTransformEntry>{&entry, 1}
-        );
+        std::memcpy(entry.page_delta, page_delta, sizeof(entry.page_delta));
+        proxy.updateTransformsRaw(std::span<const Image2DTransformEntry>{&entry, 1});
     }
 
     void updateVisual(
@@ -94,10 +78,10 @@ namespace lux::render
         if (!proxy.valid())
             return;
         UpdateImage2DVisualPayload payload{};
-        payload.scene  = scene;
+        payload.scene = scene;
         payload.handle = handle;
         std::memcpy(payload.uv, uv, sizeof(payload.uv));
-        payload.tint             = tint;
+        payload.tint = tint;
         payload.texture_bindless = texture_bindless;
         proxy.updateVisualRaw(payload);
     }
@@ -114,25 +98,19 @@ namespace lux::render
         if (!proxy.valid())
             return;
         UpdateImage2DKeyPayload payload{};
-        payload.scene    = scene;
-        payload.handle   = handle;
+        payload.scene = scene;
+        payload.handle = handle;
         payload.priority = priority;
-        payload.visible  = visible ? 1u : 0u;
-        payload.group    = group;
+        payload.visible = visible ? 1u : 0u;
+        payload.group = group;
         proxy.updateKeyRaw(payload);
     }
 
-    void setEnabled(
-        Canvas2DProxy proxy,
-        RenderSceneId scene,
-        bool enabled
-    )
+    void setEnabled(Canvas2DProxy proxy, RenderSceneId scene, bool enabled)
     {
         if (!proxy.valid())
             return;
-        proxy.setEnabledRaw(
-            SetCanvas2DEnabledPayload{scene, enabled ? 1u : 0u}
-        );
+        proxy.setEnabledRaw(SetCanvas2DEnabledPayload{scene, enabled ? 1u : 0u});
     }
 
     RenderRequest<PixelFieldSlotReply> addPixelField(
@@ -144,24 +122,18 @@ namespace lux::render
     )
     {
         AddPixelField2DPayload payload{};
-        payload.scene    = scene;
-        payload.data     = data;
+        payload.scene = scene;
+        payload.data = data;
         payload.priority = priority;
-        payload.visible  = visible ? 1u : 0u;
+        payload.visible = visible ? 1u : 0u;
         return proxy.addPixelFieldRaw(payload);
     }
 
-    void removePixelField(
-        Canvas2DProxy proxy,
-        RenderSceneId scene,
-        PixelFieldInstanceHandle handle
-    )
+    void removePixelField(Canvas2DProxy proxy, RenderSceneId scene, PixelFieldInstanceHandle handle)
     {
         if (!proxy.valid())
             return;
-        proxy.removePixelFieldRaw(
-            RemovePixelField2DPayload{scene, handle}
-        );
+        proxy.removePixelFieldRaw(RemovePixelField2DPayload{scene, handle});
     }
 
     void updatePixelFieldTransform(
@@ -175,13 +147,10 @@ namespace lux::render
         if (!proxy.valid())
             return;
         UpdatePixelField2DTransformPayload payload{};
-        payload.scene  = scene;
+        payload.scene = scene;
         payload.handle = handle;
         std::memcpy(payload.m, matrix, sizeof(payload.m));
-        std::memcpy(
-            payload.page_delta,
-            page_delta,
-            sizeof(payload.page_delta));
+        std::memcpy(payload.page_delta, page_delta, sizeof(payload.page_delta));
         proxy.updatePixelFieldTransformRaw(payload);
     }
 
@@ -196,34 +165,25 @@ namespace lux::render
         if (!proxy.valid())
             return;
         UpdatePixelField2DKeyPayload payload{};
-        payload.scene    = scene;
-        payload.handle   = handle;
+        payload.scene = scene;
+        payload.handle = handle;
         payload.priority = priority;
-        payload.visible  = visible ? 1u : 0u;
+        payload.visible = visible ? 1u : 0u;
         proxy.updatePixelFieldKeyRaw(payload);
     }
 
-    RenderRequest<Tile2DSlotReply> addTilemap(
-        Canvas2DProxy proxy,
-        RenderSceneId scene,
-        const Tile2DInstanceData& data,
-        float priority,
-        bool visible
-    )
+    RenderRequest<Tile2DSlotReply>
+    addTilemap(Canvas2DProxy proxy, RenderSceneId scene, const Tile2DInstanceData& data, float priority, bool visible)
     {
         AddTile2DPayload payload{};
-        payload.scene    = scene;
-        payload.data     = data;
+        payload.scene = scene;
+        payload.data = data;
         payload.priority = priority;
-        payload.visible  = visible ? 1u : 0u;
+        payload.visible = visible ? 1u : 0u;
         return proxy.addTilemapRaw(payload);
     }
 
-    void removeTilemap(
-        Canvas2DProxy proxy,
-        RenderSceneId scene,
-        Tile2DInstanceHandle handle
-    )
+    void removeTilemap(Canvas2DProxy proxy, RenderSceneId scene, Tile2DInstanceHandle handle)
     {
         if (!proxy.valid())
             return;
@@ -241,13 +201,10 @@ namespace lux::render
         if (!proxy.valid())
             return;
         UpdateTile2DTransformPayload payload{};
-        payload.scene  = scene;
+        payload.scene = scene;
         payload.handle = handle;
         std::memcpy(payload.m, matrix, sizeof(payload.m));
-        std::memcpy(
-            payload.page_delta,
-            page_delta,
-            sizeof(payload.page_delta));
+        std::memcpy(payload.page_delta, page_delta, sizeof(payload.page_delta));
         proxy.updateTilemapTransformRaw(payload);
     }
 
@@ -262,10 +219,10 @@ namespace lux::render
         if (!proxy.valid())
             return;
         UpdateTile2DKeyPayload payload{};
-        payload.scene    = scene;
-        payload.handle   = handle;
+        payload.scene = scene;
+        payload.handle = handle;
         payload.priority = priority;
-        payload.visible  = visible ? 1u : 0u;
+        payload.visible = visible ? 1u : 0u;
         proxy.updateTilemapKeyRaw(payload);
     }
 } // namespace lux::render

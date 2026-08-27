@@ -11,7 +11,7 @@
 //  payload + handler are shared. (Chosen design: one generic setParams op per feature.)
 // ============================================================================
 
-#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>   // BlobRef, TypeId, opcodes
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // BlobRef, TypeId, opcodes
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/function/visibility.h>
@@ -29,7 +29,7 @@ namespace lux::render
     {
         RenderSceneId scene{};
         FeatureHandle feature{};
-        BlobRef       params{};   ///< raw bytes of the feature's reflected param struct
+        BlobRef params{}; ///< raw bytes of the feature's reflected param struct
     };
     static_assert(std::is_trivially_copyable_v<SetFeatureParamsPayload>);
 
@@ -42,12 +42,13 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC FeatureParamsProxy
     {
     public:
-        explicit FeatureParamsProxy(RenderFrameSession& session) noexcept : session_(&session) {}
+        explicit FeatureParamsProxy(RenderFrameSession& session) noexcept : session_(&session)
+        {
+        }
 
         /// @p op = the feature's setParams op-id (FeatureCatalog::paramSetOp(name)).
         /// No-op if @p op is invalid (feature exposes no editable params).
-        void setParams(RenderSceneId scene, FeatureHandle feature, TypeId op,
-                       const void* blob, std::size_t size);
+        void setParams(RenderSceneId scene, FeatureHandle feature, TypeId op, const void* blob, std::size_t size);
 
     private:
         RenderFrameSession* session_;

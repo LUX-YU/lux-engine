@@ -40,9 +40,7 @@ namespace lux::object
         return state_->object.load(std::memory_order_acquire);
     }
 
-    LuxObject* ObjectWeakRef::getAsOnCurrentErased(
-        lux::cxx::TypeToken type
-    ) const noexcept
+    LuxObject* ObjectWeakRef::getAsOnCurrentErased(lux::cxx::TypeToken type) const noexcept
     {
         auto* object = getOnCurrent();
         return object && object->isObjectType(type) ? object : nullptr;

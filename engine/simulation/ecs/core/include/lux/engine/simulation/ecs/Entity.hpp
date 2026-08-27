@@ -16,7 +16,9 @@ namespace lux::simulation::ecs
 
     // A runtime Entity can only be serialized by an ECS-aware archive that
     // remaps identity. Generic enum serialization must not persist its bits.
-    constexpr void luxBinarySemanticArchiveOnly(Entity) noexcept {}
+    constexpr void luxBinarySemanticArchiveOnly(Entity) noexcept
+    {
+    }
 
     [[nodiscard]] constexpr std::uint64_t entityBits(Entity entity) noexcept
     {

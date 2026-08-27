@@ -15,15 +15,15 @@
 
 #include <lux/engine/render/renderer/features/GpuDrivenMeshFeatureBase.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>   // kMaxFramesInFlight
+#include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 #include <lux/engine/render/graph/RGPassTypes.hpp>
 #include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp>
-#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp>   // kShadowTechniqueCount
+#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp> // kShadowTechniqueCount
 #include <lux/engine/render/resources/lighting/ShadowFrameExtData.hpp>
-#include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp>  // kMaxShadowBiasGroups(唯一真相源)
+#include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp> // kMaxShadowBiasGroups(唯一真相源)
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/gapi/vk/Pipeline.hpp>
 
@@ -68,15 +68,18 @@ namespace lux::render
         explicit MeshShadowFeature(Config cfg);
         ~MeshShadowFeature() override;
 
-        MeshShadowFeature(const MeshShadowFeature &) = delete;
-        MeshShadowFeature &operator=(const MeshShadowFeature &) = delete;
+        MeshShadowFeature(const MeshShadowFeature&) = delete;
+        MeshShadowFeature& operator=(const MeshShadowFeature&) = delete;
 
-        std::string_view name() const override { return "MeshShadow"; }
+        std::string_view name() const override
+        {
+            return "MeshShadow";
+        }
 
-        lux::render::Expected<void> initAndAttachTo(RenderScene &scene) override;
-        void onFrameBegin(const FeatureFrameContext &ctx) override;
-        void addPasses(RGBuilder &builder) override;
-        void populateFrameContext(RGFrameContext &frame_ctx) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
+        void onFrameBegin(const FeatureFrameContext& ctx) override;
+        void addPasses(RGBuilder& builder) override;
+        void populateFrameContext(RGFrameContext& frame_ctx) override;
 
         // ---- Shadow native execution data (read by Renderer to fill RGFrameContext) ----
         struct ShadowFrameData
@@ -107,10 +110,16 @@ namespace lux::render
         };
 
         /// Access pre-computed shadow frame data (valid after onFrameBegin).
-        [[nodiscard]] const ShadowFrameData &shadowFrameData() const noexcept { return shadow_frame_data_; }
+        [[nodiscard]] const ShadowFrameData& shadowFrameData() const noexcept
+        {
+            return shadow_frame_data_;
+        }
 
         /// Access the frame extension data (valid after onFrameBegin, for Renderer injection).
-        [[nodiscard]] const ShadowFrameExtData &shadowFrameExtData() const noexcept { return shadow_frame_ext_data_; }
+        [[nodiscard]] const ShadowFrameExtData& shadowFrameExtData() const noexcept
+        {
+            return shadow_frame_ext_data_;
+        }
 
     private:
         /// 记忆化:ShadowResources 归 ShadowMapFeature 所有,而本 feature 的描述符
@@ -134,18 +143,18 @@ namespace lux::render
         // slot while a prior in-flight frame's cull/compact may still read a
         // different slot via binding 7. Growth retires the old slot through the
         // DeferredDestroyQueue instead of destroying an in-flight buffer.
-        std::array<VkBuffer, kMaxFramesInFlight>      shadow_mdc_info_buf_{};
+        std::array<VkBuffer, kMaxFramesInFlight> shadow_mdc_info_buf_{};
         std::array<VmaAllocation, kMaxFramesInFlight> shadow_mdc_info_alloc_{};
-        std::array<void *, kMaxFramesInFlight>        shadow_mdc_info_mapped_{};
-        std::array<VkDeviceSize, kMaxFramesInFlight>  shadow_mdc_info_buf_size_{};
-        uint32_t              mdc_info_slot_{0};
-        uint32_t              frame_counter_{0};
+        std::array<void*, kMaxFramesInFlight> shadow_mdc_info_mapped_{};
+        std::array<VkDeviceSize, kMaxFramesInFlight> shadow_mdc_info_buf_size_{};
+        uint32_t mdc_info_slot_{0};
+        uint32_t frame_counter_{0};
         std::vector<uint32_t> shadow_mdc_gpu_data_;
-        uint32_t        shadow_mdc_count_{0};
-        uint32_t        view_mdc_count_{0};
-        uint32_t        shadow_total_visible_capacity_{0};
-        uint32_t        last_compiled_shadow_mdc_{0};
-        uint32_t        last_compiled_shadow_capacity_{0};  ///< shadow visible-buffer size last compiled (P-7)
+        uint32_t shadow_mdc_count_{0};
+        uint32_t view_mdc_count_{0};
+        uint32_t shadow_total_visible_capacity_{0};
+        uint32_t last_compiled_shadow_mdc_{0};
+        uint32_t last_compiled_shadow_capacity_{0}; ///< shadow visible-buffer size last compiled (P-7)
 
         // --- Cull resources ---
         // No persistent cull descriptor set: the cull/compact passes bind a
@@ -160,7 +169,7 @@ namespace lux::render
         // still-in-flight cull read — a cross-frame WAR the render graph can't see
         // (the write is issued inside the cull pass). Mirrors shadow_mdc_info_buf_;
         // the slot is mdc_info_slot_ (rotated once per frame in onFrameBegin). (P1#24)
-        std::array<VkBuffer, kMaxFramesInFlight>      shadow_cull_ubo_{};
+        std::array<VkBuffer, kMaxFramesInFlight> shadow_cull_ubo_{};
         std::array<VmaAllocation, kMaxFramesInFlight> shadow_cull_ubo_alloc_{};
         VkDeviceSize shadow_cull_ssbo_size_{0};
 
@@ -171,7 +180,7 @@ namespace lux::render
         // pipeline bind, not a rebuild. Adding a technique needs ZERO change here —
         // it only implements the caster* hooks on IShadowTechnique.
         std::array<GraphicsPipelineHandle, kShadowTechniqueCount> caster_pipelines_{};
-        std::array<bool, kShadowTechniqueCount>                   caster_pipeline_ready_{};
+        std::array<bool, kShadowTechniqueCount> caster_pipeline_ready_{};
         void ensureCasterPipeline(IShadowTechnique& tech);
 
         // --- RG handles ---

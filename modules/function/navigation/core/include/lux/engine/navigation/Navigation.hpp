@@ -110,29 +110,20 @@ namespace lux::navigation
         std::uint64_t generation{0u};
     };
 
-    [[nodiscard]] inline bool
-    valid(const NavigationAgentConstraints& value) noexcept
+    [[nodiscard]] inline bool valid(const NavigationAgentConstraints& value) noexcept
     {
-        return std::isfinite(value.radius) && std::isfinite(value.height) &&
-               std::isfinite(value.maximum_climb) &&
-               std::isfinite(value.maximum_slope_degrees) &&
-               value.radius > 0.0f && value.height > 0.0f &&
-               value.maximum_climb >= 0.0f &&
-               value.maximum_slope_degrees >= 0.0f &&
+        return std::isfinite(value.radius) && std::isfinite(value.height) && std::isfinite(value.maximum_climb) &&
+               std::isfinite(value.maximum_slope_degrees) && value.radius > 0.0f && value.height > 0.0f &&
+               value.maximum_climb >= 0.0f && value.maximum_slope_degrees >= 0.0f &&
                value.maximum_slope_degrees < 90.0f;
     }
 
     [[nodiscard]] inline bool valid(const NavigationPathRequest& value) noexcept
     {
-        return lux::math::isFinite(value.start) &&
-               lux::math::isFinite(value.destination) &&
-               valid(value.agent) &&
-               std::isfinite(value.nearest_horizontal_extent) &&
-               std::isfinite(value.nearest_vertical_extent) &&
-               value.nearest_horizontal_extent > 0.0f &&
-               value.nearest_vertical_extent > 0.0f &&
-               value.maximum_path_nodes > 0u &&
-               value.maximum_path_points > 0u &&
+        return lux::math::isFinite(value.start) && lux::math::isFinite(value.destination) && valid(value.agent) &&
+               std::isfinite(value.nearest_horizontal_extent) && std::isfinite(value.nearest_vertical_extent) &&
+               value.nearest_horizontal_extent > 0.0f && value.nearest_vertical_extent > 0.0f &&
+               value.maximum_path_nodes > 0u && value.maximum_path_points > 0u &&
                (!value.start_region || value.start_region->valid()) &&
                (!value.destination_region || value.destination_region->valid());
     }

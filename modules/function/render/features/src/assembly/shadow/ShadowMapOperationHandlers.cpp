@@ -23,19 +23,18 @@ namespace lux::render
         const ShadowMapCommConfig& cc = *decoded;
 
         ShadowMapFeature::Config cfg{};
-        cfg.shadow_config.vertex_shader          = cc.shadow_vertex_shader;
-        cfg.shadow_config.fragment_shader        = cc.shadow_fragment_shader;
-        cfg.shadow_config.atlas_page_resolution  = cc.atlas_page_resolution;
-        cfg.shadow_config.atlas_page_count       = cc.atlas_page_count;
-        cfg.shadow_config.max_shadow_slices      = cc.max_shadow_slices;
+        cfg.shadow_config.vertex_shader = cc.shadow_vertex_shader;
+        cfg.shadow_config.fragment_shader = cc.shadow_fragment_shader;
+        cfg.shadow_config.atlas_page_resolution = cc.atlas_page_resolution;
+        cfg.shadow_config.atlas_page_count = cc.atlas_page_count;
+        cfg.shadow_config.max_shadow_slices = cc.max_shadow_slices;
         cfg.shadow_config.enable_directional_csm = cc.enable_directional_csm;
-        cfg.shadow_config.non_directional_shadow_max_distance =
-            cc.non_directional_shadow_max_distance;
-        cfg.shadow_config.default_technique      = cc.default_technique;
-        cfg.shadow_config.evsm_pos_exponent      = cc.evsm_pos_exponent;
-        cfg.shadow_config.evsm_neg_exponent      = cc.evsm_neg_exponent;
-        cfg.shadow_config.evsm_bleed_reduction   = cc.evsm_bleed_reduction;
-        cfg.shadow_config.evsm_atlas_page_count  = cc.evsm_atlas_page_count;
+        cfg.shadow_config.non_directional_shadow_max_distance = cc.non_directional_shadow_max_distance;
+        cfg.shadow_config.default_technique = cc.default_technique;
+        cfg.shadow_config.evsm_pos_exponent = cc.evsm_pos_exponent;
+        cfg.shadow_config.evsm_neg_exponent = cc.evsm_neg_exponent;
+        cfg.shadow_config.evsm_bleed_reduction = cc.evsm_bleed_reduction;
+        cfg.shadow_config.evsm_atlas_page_count = cc.evsm_atlas_page_count;
         return sc->addFeature<ShadowMapFeature>(cfg);
     }
 

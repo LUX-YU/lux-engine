@@ -31,10 +31,12 @@ namespace lux::render
     /// Comm-layer config for Grid3DPassFeature.
     /// The client fills this with shader indices returned by CompileShader.
     /// The generated create_fn copies same-named fields into Feature::Config.
-    struct LUX_COMM_CONFIG(prefix=Grid3D, id=lux.render.grid3d.v1, display=Grid3DPass,
-                           feature=Grid3DPassFeature,
-                           feature_header=lux/engine/render/renderer/features/grid/Grid3DPassFeature.hpp)
-    Grid3DCommConfig
+    struct LUX_COMM_CONFIG(
+        prefix = Grid3D,
+        id = lux.render.grid3d.v1,
+        display = Grid3DPass,
+        feature = Grid3DPassFeature,
+        feature_header = lux / engine / render / renderer / features / grid / Grid3DPassFeature.hpp) Grid3DCommConfig
     {
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
@@ -43,8 +45,7 @@ namespace lux::render
 
     /// Stream op (fire-and-forget, no reply); the handler's semantics live in
     /// Grid3DOperationHandlers.cpp (handleGrid3DSetParams).
-    struct LUX_OP(lane=frame, kind=stream, name=Grid3DSetParams, method=setParams)
-    Grid3DSetParamsPayload
+    struct LUX_OP(lane = frame, kind = stream, name = Grid3DSetParams, method = setParams) Grid3DSetParamsPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
@@ -53,7 +54,7 @@ namespace lux::render
         float linePx{1.1f};
         float fadeDist{50.f};
         float holeRatio{0.45f};
-        std::uint32_t onTop{0};   ///< 1 = X-ray (over geometry), 0 = depth-tested
+        std::uint32_t onTop{0}; ///< 1 = X-ray (over geometry), 0 = depth-tested
     };
     static_assert(std::is_trivially_copyable_v<Grid3DSetParamsPayload>);
 

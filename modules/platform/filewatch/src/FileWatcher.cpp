@@ -13,10 +13,10 @@ namespace lux::platform
     // 任何更聪明的处理(去抖/匹配资产)都属于主线程消费者。
     struct FileWatcher::Impl final : public efsw::FileWatchListener
     {
-        efsw::FileWatcher                  watcher;
-        std::mutex                         mtx;
-        std::vector<FileEvent>             queue;
-        std::vector<efsw::WatchID>         watch_ids;
+        efsw::FileWatcher watcher;
+        std::mutex mtx;
+        std::vector<FileEvent> queue;
+        std::vector<efsw::WatchID> watch_ids;
         std::vector<std::filesystem::path> watched_dirs;
 
         void handleFileAction(
@@ -24,7 +24,8 @@ namespace lux::platform
             const std::string& dir,
             const std::string& filename,
             efsw::Action action,
-            std::string old_filename = {}) override
+            std::string old_filename = {}
+        ) override
         {
             FileEvent ev;
             ev.path = std::filesystem::path(dir) / filename;
@@ -52,8 +53,7 @@ namespace lux::platform
         }
     };
 
-    FileWatcher::FileWatcher()
-        : impl_(std::make_unique<Impl>())
+    FileWatcher::FileWatcher() : impl_(std::make_unique<Impl>())
     {
         impl_->watcher.watch(); // 启动监视线程(efsw 自管生命周期)
     }
@@ -67,14 +67,12 @@ namespace lux::platform
             return false;
 
         const auto norm = dir.lexically_normal();
-        if (std::find(impl_->watched_dirs.begin(), impl_->watched_dirs.end(), norm)
-            != impl_->watched_dirs.end())
+        if (std::find(impl_->watched_dirs.begin(), impl_->watched_dirs.end(), norm) != impl_->watched_dirs.end())
         {
             return true; // 重复 watch 是 no-op
         }
 
-        const auto id =
-            impl_->watcher.addWatch(norm.string(), impl_.get(), recursive);
+        const auto id = impl_->watcher.addWatch(norm.string(), impl_.get(), recursive);
         if (id < 0)
             return false; // efsw 负值 = 错误码
         impl_->watch_ids.push_back(id);

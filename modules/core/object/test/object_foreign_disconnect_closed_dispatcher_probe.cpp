@@ -8,21 +8,20 @@ namespace
 
     class Receiver final : public lux::object::Object<Receiver>
     {
-      public:
-        void receive(const int &) noexcept
+    public:
+        void receive(const int&) noexcept
         {
         }
     };
 } // namespace
 
-int main()
+int
+main()
 {
     lux::object::ObjectMessageQueue queue;
     IntSender sender{queue.dispatcherRef()};
     Receiver receiver;
-    auto observed =
-        sender.observe<IntSender::changed, &Receiver::receive, lux::object::EDelivery::DIRECT>(
-            receiver);
+    auto observed = sender.observe<IntSender::changed, &Receiver::receive, lux::object::EDelivery::DIRECT>(receiver);
     if (!observed)
         return 0;
 

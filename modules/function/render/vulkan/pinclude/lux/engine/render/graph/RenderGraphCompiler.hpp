@@ -46,34 +46,32 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RenderGraphCompiler
     {
     public:
-        static RGCompiledGraph compile(
-            RGGraphDescription graph,
-            PipelineManager &pipeline_manager,
-            const RGCompileOptions &options = {});
+        static RGCompiledGraph
+        compile(RGGraphDescription graph, PipelineManager& pipeline_manager, const RGCompileOptions& options = {});
 
     private:
         // 0) Resolve forward resource references — rewrite placeholder handles
         //    to actual resource indices before any other analysis.
-        static void resolveForwardReferences(RGCompiledGraph &compiled);
+        static void resolveForwardReferences(RGCompiledGraph& compiled);
 
         // 0.5) Inject bindResourceDS-declared external consumption (declared_consume)
         //      as READ texture/buffer refs so dependency analysis, ordering and
         //      dead-pass elimination see it — without rewriting the DS bind itself,
         //      which is still resolved by the feature at record time.
-        static void injectResourceDSDependencies(RGCompiledGraph &compiled);
+        static void injectResourceDSDependencies(RGCompiledGraph& compiled);
 
         // 1.5) Auto-fill transient-DS image layouts from each binding pass's
         //      resource role (via determineTextureState) so the descriptor layout
         //      always matches what computeBarriers transitions the image to —
         //      eliminating hand-written, drift-prone layouts.
-        static void autoFillTransientDSLayouts(RGCompiledGraph &compiled);
+        static void autoFillTransientDSLayouts(RGCompiledGraph& compiled);
 
         // 1.6) Warn (phase A) about bindResourceDS bindings that don't declare the
         //      RG resource they consume — invisible to ordering/dead-pass.
-        static void validateResourceDSBindings(RGCompiledGraph &compiled);
+        static void validateResourceDSBindings(RGCompiledGraph& compiled);
 
         // 1) Global analysis: dependencies, lifetimes, resource validity, render pass layout
-        static bool buildGlobalInfo(RGCompiledGraph &compiled, const RGCompileOptions &options);
+        static bool buildGlobalInfo(RGCompiledGraph& compiled, const RGCompileOptions& options);
 
         // 1.7) Descriptor-layout allocation at graph-compile time.
         //      Walks the whole graph — pass -> pipeline template -> per-binding
@@ -86,44 +84,51 @@ namespace lux::render
         //      On failure, writes compiled.compile_error and returns false —
         //      RenderScene's build-then-commit keeps the last good graph
         //      (a zero-side-effect rollback).
-        static bool computeGraphDescriptorLayouts(RGCompiledGraph &compiled,
-                                                  PipelineManager &pipeline_manager);
+        static bool computeGraphDescriptorLayouts(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
 
         // 2) Build compiled info for each pass
-        static bool buildCompiledPasses(RGCompiledGraph &compiled, PipelineManager &pipeline_manager);
-        static bool buildSinglePass(RGCompiledGraph &compiled, uint32_t pass_index, PipelineManager &pipeline_manager);
+        static bool buildCompiledPasses(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
+        static bool buildSinglePass(RGCompiledGraph& compiled, uint32_t pass_index, PipelineManager& pipeline_manager);
 
         // 2.1 Graphics pass: render pass / framebuffer / pipeline
-        static void setupGraphicsPass(RGCompiledGraph &compiled, uint32_t pass_index,
-                                      RGCompiledPass &cpass, RGPassDescription &pass_desc,
-                                      PipelineManager &pipeline_manager);
+        static void setupGraphicsPass(
+            RGCompiledGraph& compiled,
+            uint32_t pass_index,
+            RGCompiledPass& cpass,
+            RGPassDescription& pass_desc,
+            PipelineManager& pipeline_manager
+        );
 
         // 2.1b Compute pass: pipeline layout / descriptor info (DESIGN-01)
-        static bool setupComputePass(RGCompiledGraph &compiled, RGCompiledPass &cpass, RGPassDescription &pass_desc,
-                                     PipelineManager &pipeline_manager);
+        static bool setupComputePass(
+            RGCompiledGraph& compiled,
+            RGCompiledPass& cpass,
+            RGPassDescription& pass_desc,
+            PipelineManager& pipeline_manager
+        );
 
         // 2.2 Resource mapping: logical -> physical
-        static void mapPassTextures(const RGCompiledGraph &compiled, RGCompiledPass &cpass);
-        static void mapPassBuffers(const RGCompiledGraph &compiled, RGCompiledPass &cpass);
+        static void mapPassTextures(const RGCompiledGraph& compiled, RGCompiledPass& cpass);
+        static void mapPassBuffers(const RGCompiledGraph& compiled, RGCompiledPass& cpass);
 
         // 3) Execution order
-        static void computeExecutionOrder(RGCompiledGraph &compiled);
+        static void computeExecutionOrder(RGCompiledGraph& compiled);
 
         // 3.1) Dead pass elimination — remove passes whose outputs contribute to no exported resource (A-02)
         /// Prune by INPUT: disable passes whose sources were never produced,
         /// transitively. Dual of eliminateDeadPasses (which prunes by output);
         /// run BEFORE it, since a starved pass must not keep its producers alive.
-        static void eliminateStarvedPasses(RGCompiledGraph &compiled);
-        static void eliminateDeadPasses(RGCompiledGraph &compiled);
+        static void eliminateStarvedPasses(RGCompiledGraph& compiled);
+        static void eliminateDeadPasses(RGCompiledGraph& compiled);
 
         // 3.5) Queue assignment based on pass type
-        static void computeQueueAssignment(RGCompiledGraph &compiled);
+        static void computeQueueAssignment(RGCompiledGraph& compiled);
 
         // 3.6) Cross-queue dependencies: timeline semaphore values + ownership transfers (A-01)
-        static void computeCrossQueueDependencies(RGCompiledGraph &compiled);
+        static void computeCrossQueueDependencies(RGCompiledGraph& compiled);
 
         // 4) RenderPass Begin/End
-        static void computeRenderPassBoundaries(RGCompiledGraph &compiled);
+        static void computeRenderPassBoundaries(RGCompiledGraph& compiled);
 
         // ── 活 pass 资源访问反查索引 ─────────────────────────────────────
         // dead-pass 消除后按 execution_order 构建一次,op 推导(9)与条件链
@@ -140,16 +145,15 @@ namespace lux::render
             /// res → 活 image 写者 pass 列表。
             std::vector<std::vector<uint32_t>> image_writers;
         };
-        static LiveAccessIndex buildLiveAccessIndex(const RGCompiledGraph &compiled);
+        static LiveAccessIndex buildLiveAccessIndex(const RGCompiledGraph& compiled);
 
         // 4.5) Classify conditional passes as elective (intra-group additive)
         //      Must run before binding plan steps so they can conservatively
         //      reset state after elective passes.
-        static bool classifyElectivePasses(RGCompiledGraph &compiled,
-                                           const LiveAccessIndex &access);
+        static bool classifyElectivePasses(RGCompiledGraph& compiled, const LiveAccessIndex& access);
 
         // 5) Pipeline binding strategy
-        static void computePipelineBindingPlan(RGCompiledGraph &compiled);
+        static void computePipelineBindingPlan(RGCompiledGraph& compiled);
 
         // 5.1) Descriptor set binding plan — per-slot layout-break mask.
         //      Must be called after computePipelineBindingPlan so that
@@ -158,12 +162,14 @@ namespace lux::render
         /// their logical identity to an actual slot number using the slot
         /// table of whichever pipeline this pass uses (the same engine set
         /// can sit at a different slot in different pipelines).
-        static void computeDescriptorBindingPlan(RGCompiledGraph &compiled,
-                                                 PipelineManager &pipeline_manager,
-                                                 const SceneDomainDescriptorSets *domain_sets);
+        static void computeDescriptorBindingPlan(
+            RGCompiledGraph& compiled,
+            PipelineManager& pipeline_manager,
+            const SceneDomainDescriptorSets* domain_sets
+        );
 
         // 6) Compute Barriers
-        static void computeBarriers(RGCompiledGraph &compiled);
+        static void computeBarriers(RGCompiledGraph& compiled);
 
         // (computeSplitBarriers removed: its release/acquire halves were plain
         //  pipeline barriers with empty intersecting scopes — they never chain
@@ -173,40 +179,39 @@ namespace lux::render
         // 6.6) Build pre-built VkBarrier arrays for the zero-copy hot path (P1)
         //      Must be called AFTER computeBarriers so all RGBarrierInfo2
         //      entries are finalised.
-        static void buildPrebuiltBarriers(RGCompiledGraph &compiled);
+        static void buildPrebuiltBarriers(RGCompiledGraph& compiled);
 
         // 7) Compute Descriptor Sets
-        static void computeDescriptorSets(RGCompiledGraph &compiled, PipelineManager &pipeline_manager);
+        static void computeDescriptorSets(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
 
         // 9) Pre-compute per-group / per-pass attachment load+store ops
-        static void computeAttachmentOps(RGCompiledGraph &compiled,
-                                        const LiveAccessIndex &access);
+        static void computeAttachmentOps(RGCompiledGraph& compiled, const LiveAccessIndex& access);
 
         // ===== Kernel-driven fast-path compiler stages =====
 
         // 11) Determine whether all graph passes use compile-time kernels,
         //     enabling the fast execution path.  Must be called after all
         //     existing stages so the compiled pass data is fully populated.
-        static bool canBuildFastPath(const RGCompiledGraph &compiled);
+        static bool canBuildFastPath(const RGCompiledGraph& compiled);
 
         // 11.1) Build mesh bucket layout from MeshCull/MeshDraw kernel configs.
         //       Generates ordered lane list with compile-time buffer offsets.
-        static void computeMeshBucketLayout(RGCompiledGraph &compiled, PipelineManager &pipeline_manager);
+        static void computeMeshBucketLayout(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
 
         // 11.2) Compute per-view arena allocation blueprint from bucket layout
         //       and frustum UBO/SSBO requirements.
-        static void computeViewAllocatorPlan(RGCompiledGraph &compiled);
+        static void computeViewAllocatorPlan(RGCompiledGraph& compiled);
 
         // 11.3) Build precompiled barrier program: first-view, subsequent-view,
         //       and final barrier sequences with handle-patch tables.
-        static void buildBarrierProgram(RGCompiledGraph &compiled);
+        static void buildBarrierProgram(RGCompiledGraph& compiled);
 
         // 11.4) Build multi-queue submission template from cross-queue deps.
-        static void buildQueueSubmitProgram(RGCompiledGraph &compiled);
+        static void buildQueueSubmitProgram(RGCompiledGraph& compiled);
 
         // 11.5) Build the bytecode-style execution program from all preceding
         //       compilation products.
-        static void buildExecutionProgram(RGCompiledGraph &compiled);
+        static void buildExecutionProgram(RGCompiledGraph& compiled);
     };
 
 } // namespace lux::render

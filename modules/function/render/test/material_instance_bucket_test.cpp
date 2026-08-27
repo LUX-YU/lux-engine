@@ -40,7 +40,8 @@ namespace
     }
 } // namespace
 
-int main()
+int
+main()
 {
     using lux::rdesc::EAlphaMode;
     using lux::render::VariantBucketManager;
@@ -48,8 +49,8 @@ int main()
     VariantBucketManager mgr;
     mgr.seedFamilyBootstrapBuckets();
 
-    const auto gb = shader(11);   // 父材质烘焙出的 GBuffer frag
-    const auto fw = shader(12);   // 同上,Forward
+    const auto gb = shader(11); // 父材质烘焙出的 GBuffer frag
+    const auto fw = shader(12); // 同上,Forward
     constexpr std::uint64_t kParentKey = 0xABCDEF01u;
 
     // ── 1. 同一父级的三个实例 ───────────────────────────────────────────
@@ -74,8 +75,7 @@ int main()
     // 再钉一次:两条断言必须同时成立,只有 1 没有 2 的话"全都塌成一个桶"也能过。
     const auto other_gb = shader(21);
     const auto other_fw = shader(22);
-    const std::uint32_t other = mgr.getOrCreateGraph(0x12345678u, other_gb, other_fw,
-                                                     EAlphaMode::Opaque, false);
+    const std::uint32_t other = mgr.getOrCreateGraph(0x12345678u, other_gb, other_fw, EAlphaMode::Opaque, false);
     check(other != b0, "不同父材质拿到不同的 bucket");
 
     // ── 3. 渲染状态覆盖会分桶(这是实例唯一会额外要一个 PSO 的情形)────
@@ -100,10 +100,12 @@ int main()
 
     if (g_failures != 0)
     {
-        std::fprintf(stderr,
+        std::fprintf(
+            stderr,
             "\n%d 项失败。第 1/2 组失败意味着实例不再共享 PSO —— "
             "N 个实例会变成 N 次管线切换,材质实例这个概念也就失去了意义。\n",
-            g_failures);
+            g_failures
+        );
         return 1;
     }
     std::puts("\nmaterial_instance_bucket_test PASSED");

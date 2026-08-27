@@ -26,18 +26,12 @@ namespace lux::world
             return !value.is_nil();
         }
 
-        friend bool operator==(
-            const WorldPartitionId&,
-            const WorldPartitionId&
-        ) noexcept = default;
+        friend bool operator==(const WorldPartitionId&, const WorldPartitionId&) noexcept = default;
     };
 
     struct WorldPartitionIdLess final
     {
-        [[nodiscard]] bool operator()(
-            const WorldPartitionId& left,
-            const WorldPartitionId& right
-        ) const noexcept
+        [[nodiscard]] bool operator()(const WorldPartitionId& left, const WorldPartitionId& right) const noexcept
         {
             return detail::uuidLess(left.value, right.value);
         }
@@ -45,9 +39,7 @@ namespace lux::world
 
     struct WorldPartitionIdHash final
     {
-        [[nodiscard]] std::size_t operator()(
-            const WorldPartitionId& value
-        ) const noexcept
+        [[nodiscard]] std::size_t operator()(const WorldPartitionId& value) const noexcept
         {
             return std::hash<uuids::uuid>{}(value.value);
         }
@@ -58,10 +50,7 @@ namespace lux::world
     {
         std::uint32_t value{};
 
-        friend bool operator==(
-            const WorldPartitionOrdinal&,
-            const WorldPartitionOrdinal&
-        ) noexcept = default;
+        friend bool operator==(const WorldPartitionOrdinal&, const WorldPartitionOrdinal&) noexcept = default;
     };
 
     struct WorldPartitionIndexTypeId final
@@ -74,19 +63,12 @@ namespace lux::world
             return !name.empty() && hash == lux::cxx::Fnv1a64::hash(name);
         }
 
-        friend bool operator==(
-            const WorldPartitionIndexTypeId&,
-            const WorldPartitionIndexTypeId&
-        ) noexcept = default;
+        friend bool operator==(const WorldPartitionIndexTypeId&, const WorldPartitionIndexTypeId&) noexcept = default;
     };
 
-    [[nodiscard]] inline WorldPartitionIndexTypeId worldPartitionIndexTypeId(
-        std::string_view name
-    )
+    [[nodiscard]] inline WorldPartitionIndexTypeId worldPartitionIndexTypeId(std::string_view name)
     {
-        return WorldPartitionIndexTypeId{
-            lux::cxx::Fnv1a64::hash(name),
-            std::string(name)};
+        return WorldPartitionIndexTypeId{lux::cxx::Fnv1a64::hash(name), std::string(name)};
     }
 
     struct WorldPartitionIndexArtifact final
@@ -129,7 +111,7 @@ namespace lux::world
 
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionView final
     {
-      public:
+    public:
         WorldPartitionView() noexcept = default;
 
         [[nodiscard]] explicit operator bool() const noexcept
@@ -141,11 +123,8 @@ namespace lux::world
         [[nodiscard]] WorldPartitionId id() const noexcept;
         [[nodiscard]] std::span<const WorldObjectId> objects() const noexcept;
 
-      private:
-        WorldPartitionView(
-            const WorldPartitionLayout& layout,
-            std::size_t partition_index
-        ) noexcept;
+    private:
+        WorldPartitionView(const WorldPartitionLayout& layout, std::size_t partition_index) noexcept;
 
         const WorldPartitionLayout* layout_{};
         std::size_t partition_index_{};
@@ -156,7 +135,7 @@ namespace lux::world
     /** Canonical exact-cover content ownership layout. */
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionLayout final
     {
-      public:
+    public:
         WorldPartitionLayout(WorldPartitionLayout&&) noexcept = default;
         WorldPartitionLayout& operator=(WorldPartitionLayout&&) noexcept = default;
         ~WorldPartitionLayout() = default;
@@ -169,7 +148,7 @@ namespace lux::world
         [[nodiscard]] WorldPartitionView partitionAt(std::size_t index) const noexcept;
         [[nodiscard]] WorldPartitionView findPartition(WorldPartitionId id) const noexcept;
 
-      private:
+    private:
         WorldPartitionLayout() noexcept = default;
 
         struct PartitionRecord final
@@ -188,7 +167,7 @@ namespace lux::world
 
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionLayoutBuilder final
     {
-      public:
+    public:
         explicit WorldPartitionLayoutBuilder(const WorldDescription& world);
         ~WorldPartitionLayoutBuilder();
         WorldPartitionLayoutBuilder(WorldPartitionLayoutBuilder&&) noexcept;
@@ -198,15 +177,11 @@ namespace lux::world
         WorldPartitionLayoutBuilder& operator=(const WorldPartitionLayoutBuilder&) = delete;
 
         [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
-        addPartition(
-            WorldPartitionId id,
-            std::span<const WorldObjectId> objects
-        ) noexcept;
+        addPartition(WorldPartitionId id, std::span<const WorldObjectId> objects) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<WorldPartitionLayout, WorldPartitionFailure>
-        build() && noexcept;
+        [[nodiscard]] lux::cxx::expected<WorldPartitionLayout, WorldPartitionFailure> build() && noexcept;
 
-      private:
+    private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
@@ -221,19 +196,12 @@ namespace lux::world
             return !name.empty() && hash == lux::cxx::Fnv1a64::hash(name);
         }
 
-        friend bool operator==(
-            const WorldPartitionerId&,
-            const WorldPartitionerId&
-        ) noexcept = default;
+        friend bool operator==(const WorldPartitionerId&, const WorldPartitionerId&) noexcept = default;
     };
 
-    [[nodiscard]] inline WorldPartitionerId worldPartitionerId(
-        std::string_view name
-    )
+    [[nodiscard]] inline WorldPartitionerId worldPartitionerId(std::string_view name)
     {
-        return WorldPartitionerId{
-            lux::cxx::Fnv1a64::hash(name),
-            std::string(name)};
+        return WorldPartitionerId{lux::cxx::Fnv1a64::hash(name), std::string(name)};
     }
 
     struct WorldPartitionerDescriptor final
@@ -244,7 +212,7 @@ namespace lux::world
 
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionBuildProduct final
     {
-      public:
+    public:
         WorldPartitionBuildProduct(WorldPartitionBuildProduct&&) noexcept = default;
         WorldPartitionBuildProduct& operator=(WorldPartitionBuildProduct&&) noexcept = default;
         ~WorldPartitionBuildProduct() = default;
@@ -252,10 +220,7 @@ namespace lux::world
         WorldPartitionBuildProduct(const WorldPartitionBuildProduct&) = delete;
         WorldPartitionBuildProduct& operator=(const WorldPartitionBuildProduct&) = delete;
 
-        [[nodiscard]] static lux::cxx::expected<
-            WorldPartitionBuildProduct,
-            WorldPartitionFailure>
-        build(
+        [[nodiscard]] static lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure> build(
             WorldPartitionerDescriptor partitioner,
             WorldPartitionLayout layout,
             std::vector<WorldPartitionIndexArtifact> indexes
@@ -264,11 +229,10 @@ namespace lux::world
         [[nodiscard]] const WorldPartitionerDescriptor& partitioner() const noexcept;
         [[nodiscard]] const WorldPartitionLayout& layout() const noexcept;
         [[nodiscard]] std::span<const WorldPartitionIndexArtifact> indexes() const noexcept;
-        [[nodiscard]] const WorldPartitionIndexArtifact* findIndex(
-            const WorldPartitionIndexTypeId& type
-        ) const noexcept;
+        [[nodiscard]] const WorldPartitionIndexArtifact*
+        findIndex(const WorldPartitionIndexTypeId& type) const noexcept;
 
-      private:
+    private:
         WorldPartitionBuildProduct(
             WorldPartitionerDescriptor partitioner,
             WorldPartitionLayout layout,

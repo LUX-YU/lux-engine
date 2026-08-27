@@ -32,17 +32,21 @@ namespace lux::render
 
     /// Comm-layer config for ShadowMapFeature.
     /// Client fills shader indices from CompileShader replies.
-    struct LUX_COMM_CONFIG(prefix=ShadowMap, id=lux.render.shadow_map.v1, display=ShadowMap,
-                           custom_create=true, requires=lux.render.light.v1,
-                           param_op=ShadowMapParams, param_lane=frame)
-    ShadowMapCommConfig
+    struct LUX_COMM_CONFIG(
+        prefix = ShadowMap,
+        id = lux.render.shadow_map.v1,
+        display = ShadowMap,
+        custom_create = true,
+        requires = lux.render.light.v1,
+        param_op = ShadowMapParams,
+        param_lane = frame) ShadowMapCommConfig
     {
         ShaderHandle shadow_vertex_shader{};
         ShaderHandle shadow_fragment_shader{};
         uint32_t atlas_page_resolution{kDefaultShadowAtlasPageResolution};
         uint32_t atlas_page_count{kDefaultShadowAtlasPageCount};
         uint32_t max_shadow_slices{kDefaultMaxShadowSlices};
-        uint32_t enable_directional_csm{0}; // 0: single-slice directional shadow, 1: CSM
+        uint32_t enable_directional_csm{0};               // 0: single-slice directional shadow, 1: CSM
         float non_directional_shadow_max_distance{60.0f}; // <=0: no distance limit
         /// Initial shadow technique selection. The active technique can be
         /// switched at runtime via `ShadowMapFeature::setActiveTechnique`.
@@ -57,10 +61,9 @@ namespace lux::render
         float evsm_pos_exponent{5.0f};
         float evsm_neg_exponent{5.0f};
         float evsm_bleed_reduction{0.2f};
-        uint32_t evsm_atlas_page_count{4};   ///< RGBA16F × 3 atlases at this page count
+        uint32_t evsm_atlas_page_count{4}; ///< RGBA16F × 3 atlases at this page count
     };
     static_assert(std::is_trivially_copyable_v<ShadowMapCommConfig>);
-
 
     /// 本特性产出的 render-graph pass 名(跨 feature 引用请用常量)。
     /// Forward / MeshShadow / DeferredLighting 三家都要排在它之后。

@@ -22,17 +22,18 @@ namespace lux::animation
     /// Map a cursor (seconds) to a clip step index. Linear walk — clips are
     /// tens of steps; a prefix-sum cache is not worth its invalidation.
     /// @pre total > 0 and !clip.frames.empty().
-    [[nodiscard]] inline std::uint32_t sampleFlipbookStep(
-        const lux::rdesc::FlipbookClip& clip, float t, float total) noexcept
+    [[nodiscard]] inline std::uint32_t
+    sampleFlipbookStep(const lux::rdesc::FlipbookClip& clip, float t, float total) noexcept
     {
         if (clip.loop)
         {
             t = std::fmod(t, total);
-            if (t < 0.f) t += total;
+            if (t < 0.f)
+                t += total;
         }
         else if (t >= total)
         {
-            return static_cast<std::uint32_t>(clip.frames.size()) - 1u;   // clamp on the last step
+            return static_cast<std::uint32_t>(clip.frames.size()) - 1u; // clamp on the last step
         }
         else if (t < 0.f)
         {
@@ -42,18 +43,19 @@ namespace lux::animation
         for (std::uint32_t i = 0; i < clip.frames.size(); ++i)
         {
             acc += clip.frames[i].duration;
-            if (t < acc) return i;
+            if (t < acc)
+                return i;
         }
-        return static_cast<std::uint32_t>(clip.frames.size()) - 1u;       // float-edge fallback
+        return static_cast<std::uint32_t>(clip.frames.size()) - 1u; // float-edge fallback
     }
 
     /// Append the event ids attached to @p step (fired when playback ENTERS it).
-    inline void appendFlipbookStepEvents(const lux::rdesc::FlipbookClip& clip,
-                                           std::uint32_t step,
-                                           std::vector<std::uint32_t>& out)
+    inline void
+    appendFlipbookStepEvents(const lux::rdesc::FlipbookClip& clip, std::uint32_t step, std::vector<std::uint32_t>& out)
     {
         for (const auto& e : clip.events)
-            if (e.frame_index == step) out.push_back(e.event_id);
+            if (e.frame_index == step)
+                out.push_back(e.event_id);
     }
 
 } // namespace lux::animation

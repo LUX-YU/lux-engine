@@ -2,5 +2,4 @@
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
 
-#define LUX_OBJECT(...) \
-    LUX_TYPE_INFO(runtime, object = true __VA_OPT__(, ) __VA_ARGS__)
+#define LUX_OBJECT(...) LUX_TYPE_INFO(runtime, object = true __VA_OPT__(, ) __VA_ARGS__)

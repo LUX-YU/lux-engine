@@ -35,21 +35,15 @@ namespace lux::render
         /// Pack normalized [0,1] RGBA channels into a single uint32_t.
         static constexpr uint32_t packColor(float r, float g, float b, float a = 1.0f) noexcept
         {
-            auto to_u8 = [](float v) constexpr -> uint32_t
-            {
+            auto to_u8 = [](float v) constexpr -> uint32_t {
                 return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
             };
-            return (to_u8(r) << 0) |
-                   (to_u8(g) << 8) |
-                   (to_u8(b) << 16) |
-                   (to_u8(a) << 24);
+            return (to_u8(r) << 0) | (to_u8(g) << 8) | (to_u8(b) << 16) | (to_u8(a) << 24);
         }
 
         /// Construct a complete vertex.
-        static constexpr GpuTrajectoryVertex make(
-            float px, float py, float pz,
-            float r, float g, float b, float a,
-            float t, float w) noexcept
+        static constexpr GpuTrajectoryVertex
+        make(float px, float py, float pz, float r, float g, float b, float a, float t, float w) noexcept
         {
             return {px, py, pz, packColor(r, g, b, a), t, w};
         }
@@ -88,7 +82,9 @@ namespace lux::render
         uint32_t first_vertex;
         uint32_t first_instance;
     };
-    static_assert(sizeof(TrajectoryDrawCommand) == 16, "TrajectoryDrawCommand must be 16 bytes to match VkDrawIndirectCommand");
+    static_assert(
+        sizeof(TrajectoryDrawCommand) == 16,
+        "TrajectoryDrawCommand must be 16 bytes to match VkDrawIndirectCommand");
 
     /// Header for indirect draw buffer (used with vkCmdDrawIndirectCount).
     struct TrajectoryIndirectHeader
@@ -96,6 +92,8 @@ namespace lux::render
         uint32_t draw_count; ///< Number of valid draw commands (atomic counter in compute)
         uint32_t padding[3]; ///< Align commands to 16 bytes
     };
-    static_assert(sizeof(TrajectoryIndirectHeader) == 16, "TrajectoryIndirectHeader must be 16 bytes to match VkDrawIndirectCommand");
+    static_assert(
+        sizeof(TrajectoryIndirectHeader) == 16,
+        "TrajectoryIndirectHeader must be 16 bytes to match VkDrawIndirectCommand");
 
 } // namespace lux::render

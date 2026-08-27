@@ -51,7 +51,6 @@ namespace lux::asset
         std::vector<PakInspectEntry> entries;
     };
 
-    [[nodiscard]] LUX_ASSET_PUBLIC
-    lux::cxx::expected<PakInspectInfo, std::string>
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<PakInspectInfo, std::string>
     inspectPak(const std::filesystem::path& pak_path);
 } // namespace lux::asset

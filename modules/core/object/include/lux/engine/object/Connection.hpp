@@ -14,7 +14,7 @@ namespace lux::object
 
     class LUX_CORE_PUBLIC Connection final
     {
-      public:
+    public:
         Connection() noexcept = default;
 
         [[nodiscard]] bool connected() const noexcept;
@@ -25,10 +25,12 @@ namespace lux::object
          */
         void disconnect() noexcept;
 
-      private:
+    private:
         friend class LuxObject;
-        Connection(lux::cxx::intrusive_ptr<detail::ObjectState> sender,
-                   lux::cxx::intrusive_ptr<detail::ConnectionControl> control) noexcept
+        Connection(
+            lux::cxx::intrusive_ptr<detail::ObjectState> sender,
+            lux::cxx::intrusive_ptr<detail::ConnectionControl> control
+        ) noexcept
             : sender_(std::move(sender)), control_(std::move(control))
         {
         }
@@ -39,17 +41,16 @@ namespace lux::object
 
     class ScopedConnection final
     {
-      public:
+    public:
         ScopedConnection() noexcept = default;
-        explicit ScopedConnection(Connection connection) noexcept
-            : connection_(std::move(connection))
+        explicit ScopedConnection(Connection connection) noexcept : connection_(std::move(connection))
         {
         }
 
-        ScopedConnection(const ScopedConnection &) = delete;
-        ScopedConnection &operator=(const ScopedConnection &) = delete;
-        ScopedConnection(ScopedConnection &&) noexcept = default;
-        ScopedConnection &operator=(ScopedConnection &&other) noexcept
+        ScopedConnection(const ScopedConnection&) = delete;
+        ScopedConnection& operator=(const ScopedConnection&) = delete;
+        ScopedConnection(ScopedConnection&&) noexcept = default;
+        ScopedConnection& operator=(ScopedConnection&& other) noexcept
         {
             if (this != std::addressof(other))
             {
@@ -81,7 +82,7 @@ namespace lux::object
             return std::exchange(connection_, {});
         }
 
-      private:
+    private:
         Connection connection_;
     };
 } // namespace lux::object

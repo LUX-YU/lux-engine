@@ -1,6 +1,7 @@
 #include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
 
-int main()
+int
+main()
 {
     lux::simulation::ecs::EcsState world;
     lux::simulation::ecs::HierarchyIndex hierarchy(world);

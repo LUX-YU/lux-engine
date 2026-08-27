@@ -2,20 +2,21 @@
 
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>  // descriptorLayouts().getLightSetLayout()
+#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp> // descriptorLayouts().getLightSetLayout()
 #include <lux/engine/render/resources/lighting/LightResources.hpp>
-#include <lux/engine/render/gpu/transfer/TransferContributor.hpp>   // makeTransferContributor
-#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>   // domain-set dual-write target
+#include <lux/engine/render/gpu/transfer/TransferContributor.hpp>         // makeTransferContributor
+#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp> // domain-set dual-write target
 
 #include <utility>
 
 namespace lux::render
 {
-    LightFeature::LightFeature(Config cfg)
-        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
-    {}
+    LightFeature::LightFeature(Config cfg) : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
+    {
+    }
 
-    lux::render::Expected<void> LightFeature::initAndAttachTo(RenderScene& sc){
+    lux::render::Expected<void> LightFeature::initAndAttachTo(RenderScene& sc)
+    {
         // Feature owns its scene resource (PointCloud/Trajectory pattern): emplace
         // LightResources here, NOT in the general RenderScene constructor. Must be
         // attached BEFORE the lighting consumers — ShadowMapFeature caches a raw
@@ -24,24 +25,24 @@ namespace lux::render
         // ensure<T>: whoever attaches first builds this scene's LightResources; a
         // second LightFeature receives the same instance. Only the first-time creator
         // runs init() + registers the transfer contributor below.
-        auto& reg        = sc.sceneRegistry();
+        auto& reg = sc.sceneRegistry();
         const bool fresh = (reg.find<LightResources>() == nullptr);
-        auto& ctx        = renderContext();
+        auto& ctx = renderContext();
 
         // Mirrors the per-scene init the core RenderScene ctor used to do: per-scene
         // SSBO + the SHARED light set layout (one handle so all pipelines stay
         // compatible; only the SETS/buffers are per-scene).
         LightResources::InitInfo li{};
         li.ssbo_config = SSBOInitConfig{
-            .device_context         = &ctx.deviceContext(),
+            .device_context = &ctx.deviceContext(),
             .initial_dense_capacity = 256,
-            .slices                 = ctx.framesInFlight(),
-            .clear_on_remove        = true,
+            .slices = ctx.framesInFlight(),
+            .clear_on_remove = true,
         };
         // b11 default shading-input texture (no PARTIALLY_BOUND — must be
         // written before the first bind, so init needs device + allocator).
-        li.device     = ctx.device();
-        li.allocator  = ctx.vmaAllocator();
+        li.device = ctx.device();
+        li.allocator = ctx.vmaAllocator();
         li.descriptor_svc = &ctx.descriptorService();
         // The Light set lives in the FEATURE domain, with a nonzero offset
         // (+2, to skip past Instance's two bindings). The offset value comes
@@ -50,8 +51,7 @@ namespace lux::render
         if (auto* domains = sc.domainDescriptorSets())
         {
             li.domain_sets = domains->setsFor(rdesc::EBindFrequency::FEATURE);
-            li.domain_binding_offset =
-                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::Light));
+            li.domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::Light));
         }
         // 光照资源建不起来,这个 feature 就无法有意义地工作 —— 装上一个「场景永远无光」
         // 的 LightFeature 只会让问题在别处以「东西不见了」的形式出现,该由上层决定要不
@@ -62,14 +62,16 @@ namespace lux::render
             return lux::cxx::unexpected<RenderError>(light_r.error());
         auto* light_res = *light_r;
         if (!fresh)
-            return {};   // 第二个 LightFeature:拿到同一实例,一次性副作用不重做
+            return {}; // 第二个 LightFeature:拿到同一实例,一次性副作用不重做
 
         // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。登记必须在
         // ensure 成功**之后**:此前它写在 init 之前,而"失败即不发布"意味着失败对象
         // 会被销毁 —— 早登记的钩子捕获的裸指针就成了每帧一次的 use-after-free
         // (注册表没有 removeBeginFrameHook)。
-        reg.addBeginFrameHook(EUploadPhase::Upload,
-                              [light_res](const FrameStamp& s) { light_res->onFrameBeginMaintenance(s); });
+        reg.addBeginFrameHook(EUploadPhase::Upload, [light_res](const FrameStamp& s) {
+            light_res->onFrameBeginMaintenance(s);
+        }
+        );
 
         light_res->setDeferredQueue(&ctx.deferredDestroyQueue());
 
@@ -78,8 +80,7 @@ namespace lux::render
         // ctor used to do this; the OWNER does it now.
         // WithPost: the post-transfer hook does the one-time clear + layout
         // transition of the b11 default texture on the first frame's cmd.
-        sc.transferScheduler().contributors().add(
-            makeTransferContributorWithPost(light_res, /*priority=*/6));
+        sc.transferScheduler().contributors().add(makeTransferContributorWithPost(light_res, /*priority=*/6));
         return {};
     }
 
@@ -97,19 +98,15 @@ namespace lux::render
         // ShadowResources that hold a raw LightResources*); nothing to do here.
     }
 
-    bool LightFeature::canRebaseSceneOrigin(
-        const std::int64_t origin_delta[3]) const noexcept
+    bool LightFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
-        const auto* lights = renderScene().sceneRegistry().find<
-            LightResources>();
+        const auto* lights = renderScene().sceneRegistry().find<LightResources>();
         return lights == nullptr || lights->canRebaseSceneOrigin(origin_delta);
     }
 
-    void LightFeature::rebaseSceneOrigin(
-        const std::int64_t origin_delta[3]) noexcept
+    void LightFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
     {
-        if (auto* lights = renderScene().sceneRegistry().find<
-                LightResources>())
+        if (auto* lights = renderScene().sceneRegistry().find<LightResources>())
         {
             lights->rebaseSceneOrigin(origin_delta);
         }

@@ -9,8 +9,7 @@ namespace lux::render
 {
     /// Append-only record storage whose existing element addresses never move.
     /// PageSize is part of the owning resource contract, not a growth heuristic.
-    template<typename T, std::size_t PageSize>
-    class StableRecordPages final
+    template <typename T, std::size_t PageSize> class StableRecordPages final
     {
     public:
         static_assert(PageSize != 0u);
@@ -33,7 +32,10 @@ namespace lux::render
             (*this)[size_++] = std::move(value);
         }
 
-        [[nodiscard]] std::size_t size() const noexcept { return size_; }
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            return size_;
+        }
         [[nodiscard]] std::size_t pageCount() const noexcept
         {
             return pages_.size();

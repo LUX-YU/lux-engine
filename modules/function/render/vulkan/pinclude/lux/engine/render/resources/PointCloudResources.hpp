@@ -40,18 +40,21 @@ namespace lux::render
      */
     class LUX_FUNCTION_PUBLIC PointCloudResources final
         : public GPUResourceBase<PointCloudResources, EGPUResourceType::PointCloud>
-        // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
-        //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
+    // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
+    //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
     {
     public:
         PointCloudResources() = default;
-        ~PointCloudResources() { shutdown(); }
+        ~PointCloudResources()
+        {
+            shutdown();
+        }
 
         // Non-copyable, non-movable (wraps Vulkan handles)
-        PointCloudResources(const PointCloudResources&)            = delete;
+        PointCloudResources(const PointCloudResources&) = delete;
         PointCloudResources& operator=(const PointCloudResources&) = delete;
-        PointCloudResources(PointCloudResources&&)                 = delete;
-        PointCloudResources& operator=(PointCloudResources&&)      = delete;
+        PointCloudResources(PointCloudResources&&) = delete;
+        PointCloudResources& operator=(PointCloudResources&&) = delete;
 
         // ========== Lifecycle ==========
 
@@ -63,7 +66,8 @@ namespace lux::render
          */
         bool init(VmaAllocator allocator, uint32_t max_points, uint32_t max_nodes)
         {
-            if (initialized_) return true;
+            if (initialized_)
+                return true;
 
             if (!global_buf_.init(allocator, max_points))
                 return false;
@@ -80,21 +84,37 @@ namespace lux::render
 
         void shutdown()
         {
-            if (!initialized_) return;
+            if (!initialized_)
+                return;
             node_buf_.shutdown();
             global_buf_.shutdown();
             initialized_ = false;
         }
 
-        bool isInitialized() const noexcept { return initialized_; }
+        bool isInitialized() const noexcept
+        {
+            return initialized_;
+        }
 
         // ========== Access ==========
 
-        PointCloudGlobalBuffer&       globalBuffer() noexcept       { return global_buf_; }
-        const PointCloudGlobalBuffer& globalBuffer() const noexcept { return global_buf_; }
+        PointCloudGlobalBuffer& globalBuffer() noexcept
+        {
+            return global_buf_;
+        }
+        const PointCloudGlobalBuffer& globalBuffer() const noexcept
+        {
+            return global_buf_;
+        }
 
-        GpuOctreeNodeBuffer&          nodeBuffer()   noexcept       { return node_buf_; }
-        const GpuOctreeNodeBuffer&    nodeBuffer()   const noexcept { return node_buf_; }
+        GpuOctreeNodeBuffer& nodeBuffer() noexcept
+        {
+            return node_buf_;
+        }
+        const GpuOctreeNodeBuffer& nodeBuffer() const noexcept
+        {
+            return node_buf_;
+        }
 
         // ========== Deferred Destroy Queue ==========
 
@@ -120,7 +140,7 @@ namespace lux::render
         /// Data is copied into the pending queue; the source can be freed after return.
         void queueUpload(uint32_t chunk_id, std::span<const GpuPointVertex> data)
         {
-            pending_ops_.push_back(PcOp{ PcOpType::Upload, chunk_id, {data.begin(), data.end()} });
+            pending_ops_.push_back(PcOp{PcOpType::Upload, chunk_id, {data.begin(), data.end()}});
         }
 
         /// Queue a full clear: frees all point slots and removes all octree nodes.
@@ -132,14 +152,14 @@ namespace lux::render
         /// PointCloudGlobalBuffer::freeAllSlots().
         void queueClearAll()
         {
-            pending_ops_.push_back(PcOp{ PcOpType::ClearAll, 0u, {} });
+            pending_ops_.push_back(PcOp{PcOpType::ClearAll, 0u, {}});
         }
 
         /// Queue a lightweight chunk reset: sets point_count=0 and removes the
         /// octree node, but keeps the slot allocation for reuse.
         void queueResetChunk(uint32_t chunk_id)
         {
-            pending_ops_.push_back(PcOp{ PcOpType::Reset, chunk_id, {} });
+            pending_ops_.push_back(PcOp{PcOpType::Reset, chunk_id, {}});
         }
 
         bool hasPendingUploads() const noexcept
@@ -149,8 +169,14 @@ namespace lux::render
 
         // ========== TransferScheduler integration ==========
 
-        void setUseTransferScheduler(bool v) noexcept { use_transfer_scheduler_ = v; }
-        bool usesTransferScheduler()  const noexcept { return use_transfer_scheduler_; }
+        void setUseTransferScheduler(bool v) noexcept
+        {
+            use_transfer_scheduler_ = v;
+        }
+        bool usesTransferScheduler() const noexcept
+        {
+            return use_transfer_scheduler_;
+        }
 
         void submitTransfers(TransferScheduler& scheduler)
         {
@@ -178,26 +204,25 @@ namespace lux::render
                     node_dirty = true;
                     break;
 
-                case PcOpType::Upload:
-                {
+                case PcOpType::Upload: {
                     const auto count = static_cast<uint32_t>(op.data.size());
-                    if (count == 0) break;
+                    if (count == 0)
+                        break;
 
                     // Skip the upload if capacity growth failed (VMA OOM or the
                     // uint32 point ceiling in allocOrGrow) — otherwise upload()
                     // would write past the slot into the neighbouring chunk. (C-2)
                     if (!global_buf_.ensureSlotCapacity(op.chunk_id, count, scheduler))
                         break;
-                    global_buf_.upload(op.chunk_id,
-                        std::span<const GpuPointVertex>(op.data), scheduler);
+                    global_buf_.upload(op.chunk_id, std::span<const GpuPointVertex>(op.data), scheduler);
 
                     auto slot_opt = global_buf_.getSlot(op.chunk_id);
                     if (slot_opt)
                     {
-                        constexpr float fmax =  std::numeric_limits<float>::max();
+                        constexpr float fmax = std::numeric_limits<float>::max();
                         constexpr float fmin = -std::numeric_limits<float>::max();
-                        float bmin[3] = { fmax, fmax, fmax };
-                        float bmax[3] = { fmin, fmin, fmin };
+                        float bmin[3] = {fmax, fmax, fmax};
+                        float bmax[3] = {fmin, fmin, fmin};
                         for (const auto& v : op.data)
                         {
                             bmin[0] = std::min(bmin[0], v.x);
@@ -211,10 +236,10 @@ namespace lux::render
                         GpuOctreeNode node{};
                         std::memcpy(node.bbox_min, bmin, sizeof(bmin));
                         std::memcpy(node.bbox_max, bmax, sizeof(bmax));
-                        node.first_point  = slot_opt->first;
-                        node.point_count  = count;
+                        node.first_point = slot_opt->first;
+                        node.point_count = count;
                         node.stream_state = 2;
-                        node.lod_error    = 1000.0f;
+                        node.lod_error = 1000.0f;
 
                         node_buf_.upsertNode(op.chunk_id, node, scheduler);
                         node_dirty = true;
@@ -236,7 +261,12 @@ namespace lux::render
         }
 
     private:
-        enum class PcOpType : uint8_t { Upload, Reset, ClearAll };
+        enum class PcOpType : uint8_t
+        {
+            Upload,
+            Reset,
+            ClearAll
+        };
 
         // One ordered command stream. Keeping uploads, resets and clear-alls in a
         // single arrival-ordered queue (rather than three separate ones drained
@@ -244,15 +274,15 @@ namespace lux::render
         // survive" contract — see queueClearAll (#7).
         struct PcOp
         {
-            PcOpType                    type;
-            uint32_t                    chunk_id{0};   ///< Upload / Reset
-            std::vector<GpuPointVertex> data;          ///< Upload only
+            PcOpType type;
+            uint32_t chunk_id{0};             ///< Upload / Reset
+            std::vector<GpuPointVertex> data; ///< Upload only
         };
 
-        PointCloudGlobalBuffer          global_buf_;
-        GpuOctreeNodeBuffer             node_buf_;
-        std::vector<PcOp>               pending_ops_;
-        bool                            use_transfer_scheduler_{false};
+        PointCloudGlobalBuffer global_buf_;
+        GpuOctreeNodeBuffer node_buf_;
+        std::vector<PcOp> pending_ops_;
+        bool use_transfer_scheduler_{false};
     };
 
 } // namespace lux::render

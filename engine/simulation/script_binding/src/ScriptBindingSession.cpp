@@ -24,9 +24,7 @@ namespace lux::simulation
 
     namespace
     {
-        [[nodiscard]] EScriptBindingError mapBackendResult(
-            EScriptBackendResult result
-        ) noexcept
+        [[nodiscard]] EScriptBindingError mapBackendResult(EScriptBackendResult result) noexcept
         {
             switch (result)
             {
@@ -61,22 +59,14 @@ namespace lux::simulation
         return attached() ? self_ : ecs::NullEntity;
     }
 
-    const void* ScriptInstanceHostContext::read(
-        std::uint64_t component_type
-    ) const noexcept
+    const void* ScriptInstanceHostContext::read(std::uint64_t component_type) const noexcept
     {
-        return attached() && api_->read
-            ? api_->read(api_->context, self_, component_type)
-            : nullptr;
+        return attached() && api_->read ? api_->read(api_->context, self_, component_type) : nullptr;
     }
 
-    bool ScriptInstanceHostContext::patch(
-        std::uint64_t component_type,
-        const void* value
-    ) const noexcept
+    bool ScriptInstanceHostContext::patch(std::uint64_t component_type, const void* value) const noexcept
     {
-        return attached() && api_->patch &&
-            api_->patch(api_->context, self_, component_type, value);
+        return attached() && api_->patch && api_->patch(api_->context, self_, component_type, value);
     }
 
     bool ScriptInstanceHostContext::command(
@@ -85,28 +75,16 @@ namespace lux::simulation
         const void* value
     ) const noexcept
     {
-        return attached() && api_->command &&
-            api_->command(
-                api_->context,
-                command_value,
-                self_,
-                component_type,
-                value
-            );
+        return attached() && api_->command && api_->command(api_->context, command_value, self_, component_type, value);
     }
 
-    bool ScriptInstanceHostContext::componentContract(
-        std::uint64_t component_type,
-        ScriptHostComponentContract& result
-    ) const noexcept
+    bool ScriptInstanceHostContext::componentContract(std::uint64_t component_type, ScriptHostComponentContract& result)
+        const noexcept
     {
-        return api_ && api_->component_contract &&
-            api_->component_contract(api_->context, component_type, result);
+        return api_ && api_->component_contract && api_->component_contract(api_->context, component_type, result);
     }
 
-    void ScriptInstanceHostContext::configure(
-        const ScriptHostApi& api
-    ) noexcept
+    void ScriptInstanceHostContext::configure(const ScriptHostApi& api) noexcept
     {
         api_ = std::addressof(api);
     }
@@ -140,7 +118,7 @@ namespace lux::simulation
             ScriptInstanceHostContext host;
             const lux::asset::ScriptAssetContent* asset{};
             void* lease{};
-            void (*release_lease)(void*) noexcept{};
+            void (*release_lease)(void*) noexcept {};
             std::size_t backend{};
             ScriptBackendInstance instance;
             std::vector<std::unique_ptr<PreparedMethod>> methods;
@@ -222,17 +200,11 @@ namespace lux::simulation
             std::span<const ScriptBackendDescriptor> source_backends,
             ScriptHostApi source_host_api
         )
-            : description(std::move(source)),
-              registry(std::addressof(source_registry)),
-              capacities(source_capacities),
-              resolver(source_resolver),
-              host_api(source_host_api),
-              constructed(source_registry.on_construct<ScriptComponent>()
-                  .connect<&State::onConstruct>(*this)),
-              updated(source_registry.on_update<ScriptComponent>()
-                  .connect<&State::onUpdate>(*this)),
-              destroyed(source_registry.on_destroy<ScriptComponent>()
-                  .connect<&State::onDestroy>(*this))
+            : description(std::move(source)), registry(std::addressof(source_registry)), capacities(source_capacities),
+              resolver(source_resolver), host_api(source_host_api),
+              constructed(source_registry.on_construct<ScriptComponent>().connect<&State::onConstruct>(*this)),
+              updated(source_registry.on_update<ScriptComponent>().connect<&State::onUpdate>(*this)),
+              destroyed(source_registry.on_destroy<ScriptComponent>().connect<&State::onDestroy>(*this))
         {
             backends.assign(source_backends.begin(), source_backends.end());
             mounts.reserve(capacities.mount_instances);
@@ -256,47 +228,37 @@ namespace lux::simulation
 
         void makeSlots()
         {
-            for (std::size_t system_index{};
-                 system_index < description.systemCount(); ++system_index)
+            for (std::size_t system_index{}; system_index < description.systemCount(); ++system_index)
             {
                 const auto system = description.systemAt(system_index);
-                for (std::size_t hook_index{};
-                     hook_index < system.hookPointCount(); ++hook_index)
+                for (std::size_t hook_index{}; hook_index < system.hookPointCount(); ++hook_index)
                 {
-                    hooks.push_back(Hook{
-                        system_index,
-                        hook_index,
-                        system.hookPointAt(hook_index).cardinality()});
+                    hooks.push_back(Hook{system_index, hook_index, system.hookPointAt(hook_index).cardinality()});
                 }
             }
-            for (std::size_t system_index{};
-                 system_index < description.systemCount(); ++system_index)
+            for (std::size_t system_index{}; system_index < description.systemCount(); ++system_index)
             {
                 const auto system = description.systemAt(system_index);
-                for (std::size_t event_index{};
-                     event_index < system.eventCount(); ++event_index)
+                for (std::size_t event_index{}; event_index < system.eventCount(); ++event_index)
                 {
                     const auto event = system.eventAt(event_index);
                     events.push_back(Event{
                         system_index,
                         event_index,
                         findHookSlot(system_index, event.dispatchHook().name()),
-                        event.target()});
+                        event.target()}
+                    );
                 }
             }
         }
 
-        [[nodiscard]] ScriptHookSlot findHookSlot(
-            std::size_t system_index,
-            std::string_view name
-        ) const noexcept
+        [[nodiscard]] ScriptHookSlot findHookSlot(std::size_t system_index, std::string_view name) const noexcept
         {
             for (std::size_t index{}; index < hooks.size(); ++index)
             {
                 const auto& hook = hooks[index];
                 if (hook.system == system_index &&
-                    description.systemAt(system_index)
-                        .hookPointAt(hook.member).name() == name)
+                    description.systemAt(system_index).hookPointAt(hook.member).name() == name)
                 {
                     return ScriptHookSlot{static_cast<std::uint32_t>(index)};
                 }
@@ -304,17 +266,13 @@ namespace lux::simulation
             return {};
         }
 
-        [[nodiscard]] ScriptEventSlot findEventSlot(
-            std::size_t system_index,
-            std::string_view name
-        ) const noexcept
+        [[nodiscard]] ScriptEventSlot findEventSlot(std::size_t system_index, std::string_view name) const noexcept
         {
             for (std::size_t index{}; index < events.size(); ++index)
             {
                 const auto& event = events[index];
                 if (event.system == system_index &&
-                    description.systemAt(system_index)
-                        .eventAt(event.member).name() == name)
+                    description.systemAt(system_index).eventAt(event.member).name() == name)
                 {
                     return ScriptEventSlot{static_cast<std::uint32_t>(index)};
                 }
@@ -322,10 +280,8 @@ namespace lux::simulation
             return {};
         }
 
-        [[nodiscard]] const ScriptBackendDescriptor* backendFor(
-            lux::rdesc::Script::Kind kind,
-            std::size_t& index
-        ) const noexcept
+        [[nodiscard]] const ScriptBackendDescriptor*
+        backendFor(lux::rdesc::Script::Kind kind, std::size_t& index) const noexcept
         {
             for (index = 0U; index < backends.size(); ++index)
             {
@@ -335,41 +291,28 @@ namespace lux::simulation
             return nullptr;
         }
 
-        [[nodiscard]] const lux::rdesc::ScriptFunction* findFunction(
-            const lux::asset::ScriptAssetContent& asset,
-            lux::script::ScriptSymbolId symbol
-        ) const noexcept
+        [[nodiscard]] const lux::rdesc::ScriptFunction*
+        findFunction(const lux::asset::ScriptAssetContent& asset, lux::script::ScriptSymbolId symbol) const noexcept
         {
             const auto found = std::find_if(
                 asset.description.exports.begin(),
                 asset.description.exports.end(),
-                [symbol](const auto& function) noexcept
-                {
-                    return function.symbol_id == symbol;
-                }
+                [symbol](const auto& function) noexcept { return function.symbol_id == symbol; }
             );
-            return found == asset.description.exports.end()
-                ? nullptr
-                : std::addressof(*found);
+            return found == asset.description.exports.end() ? nullptr : std::addressof(*found);
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            SimulationSystemView,
-            EScriptBindingError> resolveSystem(
-                const SystemTypeId& type,
-                std::string_view instance
-            ) noexcept
+        [[nodiscard]] lux::cxx::expected<SimulationSystemView, EScriptBindingError>
+        resolveSystem(const SystemTypeId& type, std::string_view instance) noexcept
         {
             ++instrumentation.target_resolutions;
             if (!instance.empty())
             {
                 const auto system = description.findSystem(instance);
                 if (!system)
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::TARGET_SYSTEM_NOT_FOUND);
+                    return lux::cxx::unexpected(EScriptBindingError::TARGET_SYSTEM_NOT_FOUND);
                 if (system.type() != type)
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::TARGET_TYPE_MISMATCH);
+                    return lux::cxx::unexpected(EScriptBindingError::TARGET_TYPE_MISMATCH);
                 return system;
             }
             SimulationSystemView resolved;
@@ -379,18 +322,15 @@ namespace lux::simulation
                 if (candidate.type() != type)
                     continue;
                 if (resolved)
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::TARGET_SYSTEM_AMBIGUOUS);
+                    return lux::cxx::unexpected(EScriptBindingError::TARGET_SYSTEM_AMBIGUOUS);
                 resolved = candidate;
             }
             if (!resolved)
-                return lux::cxx::unexpected(
-                    EScriptBindingError::TARGET_SYSTEM_NOT_FOUND);
+                return lux::cxx::unexpected(EScriptBindingError::TARGET_SYSTEM_NOT_FOUND);
             return resolved;
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        validateBinding(
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> validateBinding(
             bool entity_scope,
             const lux::rdesc::ScriptFunction& function,
             const ScriptBindingDescription& binding
@@ -398,9 +338,7 @@ namespace lux::simulation
         {
             const auto compatibility = evaluateScriptBindingCompatibility(
                 description,
-                entity_scope
-                    ? lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
-                    : lux::rdesc::EScriptModel::GLOBAL_MODULE,
+                entity_scope ? lux::rdesc::EScriptModel::ENTITY_BEHAVIOR : lux::rdesc::EScriptModel::GLOBAL_MODULE,
                 function,
                 binding.target
             );
@@ -409,61 +347,40 @@ namespace lux::simulation
             case EScriptBindingCompatibility::COMPATIBLE:
                 return {};
             case EScriptBindingCompatibility::TARGET_NOT_FOUND:
-                return lux::cxx::unexpected(
-                    EScriptBindingError::MEMBER_NOT_FOUND);
+                return lux::cxx::unexpected(EScriptBindingError::MEMBER_NOT_FOUND);
             case EScriptBindingCompatibility::TARGET_AMBIGUOUS:
-                return lux::cxx::unexpected(
-                    EScriptBindingError::TARGET_SYSTEM_AMBIGUOUS);
+                return lux::cxx::unexpected(EScriptBindingError::TARGET_SYSTEM_AMBIGUOUS);
             case EScriptBindingCompatibility::TARGET_TYPE_MISMATCH:
-                return lux::cxx::unexpected(
-                    EScriptBindingError::TARGET_TYPE_MISMATCH);
+                return lux::cxx::unexpected(EScriptBindingError::TARGET_TYPE_MISMATCH);
             case EScriptBindingCompatibility::SCOPE_MISMATCH:
-                return lux::cxx::unexpected(
-                    EScriptBindingError::SCOPE_MISMATCH);
+                return lux::cxx::unexpected(EScriptBindingError::SCOPE_MISMATCH);
             case EScriptBindingCompatibility::CARDINALITY_MISMATCH:
-                return lux::cxx::unexpected(
-                    EScriptBindingError::CARDINALITY_MISMATCH);
+                return lux::cxx::unexpected(EScriptBindingError::CARDINALITY_MISMATCH);
             case EScriptBindingCompatibility::INVALID_FUNCTION:
             case EScriptBindingCompatibility::SIGNATURE_MISMATCH:
-                return lux::cxx::unexpected(
-                    EScriptBindingError::SIGNATURE_MISMATCH);
+                return lux::cxx::unexpected(EScriptBindingError::SIGNATURE_MISMATCH);
             }
-            return lux::cxx::unexpected(
-                EScriptBindingError::SIGNATURE_MISMATCH);
+            return lux::cxx::unexpected(EScriptBindingError::SIGNATURE_MISMATCH);
         }
 
-        [[nodiscard]] PreparedMethod* findMethod(
-            MountRuntime& mount,
-            lux::script::ScriptSymbolId symbol
-        ) noexcept
+        [[nodiscard]] PreparedMethod* findMethod(MountRuntime& mount, lux::script::ScriptSymbolId symbol) noexcept
         {
-            const auto found = std::find_if(
-                mount.methods.begin(),
-                mount.methods.end(),
-                [symbol](const auto& method) noexcept
-                {
+            const auto found =
+                std::find_if(mount.methods.begin(), mount.methods.end(), [symbol](const auto& method) noexcept {
                     return method && method->symbol == symbol;
                 }
-            );
+                );
             return found == mount.methods.end() ? nullptr : found->get();
         }
 
-        [[nodiscard]] const ScriptMountDescription& effectiveAuthored(
-            const MountRuntime& mount
-        ) const noexcept
+        [[nodiscard]] const ScriptMountDescription& effectiveAuthored(const MountRuntime& mount) const noexcept
         {
-            return mount.pending_authored
-                ? *mount.pending_authored
-                : mount.authored;
+            return mount.pending_authored ? *mount.pending_authored : mount.authored;
         }
 
-        [[nodiscard]] std::size_t effectiveMountOrder(
-            const MountRuntime& mount
-        ) const noexcept
+        [[nodiscard]] std::size_t effectiveMountOrder(const MountRuntime& mount) const noexcept
         {
-            return mount.pending_authored
-                ? mount.pending_mount_order
-                : mount.mount_order;
+            return mount.pending_authored ? mount.pending_mount_order : mount.mount_order;
         }
 
         void recordFailure(
@@ -485,38 +402,33 @@ namespace lux::simulation
                     mount.authored.id,
                     symbol,
                     mount.self,
-                    status});
+                    status}
+                );
             }
         }
 
-        [[nodiscard]] ScriptDispatchResult invoke(
-            Handler handler,
-            lux_script_call_frame& frame,
-            bool single
-        ) noexcept
+        [[nodiscard]] ScriptDispatchResult invoke(Handler handler, lux_script_call_frame& frame, bool single) noexcept
         {
             ScriptDispatchResult result;
-            if (!handler.mount || !handler.method ||
-                handler.mount->state != EMountState::ACTIVE ||
-                !handler.method->call)
+            const bool is_missing_mount = handler.mount == nullptr;
+            const bool is_missing_method = handler.method == nullptr;
+            const bool is_inactive_mount = !is_missing_mount && handler.mount->state != EMountState::ACTIVE;
+            const bool is_missing_call = !is_missing_method && !handler.method->call;
+            const bool is_invalid_handler = is_missing_mount || is_missing_method || is_inactive_mount ||
+                is_missing_call;
+            if (is_invalid_handler)
             {
                 return result;
             }
             frame.world_context = std::addressof(handler.mount->host);
             frame.user_context = handler.method->call.context;
-            const auto status = handler.method->call.invoke(
-                std::addressof(frame));
+            const auto status = handler.method->call.invoke(std::addressof(frame));
             result.calls = 1U;
             result.status = status;
             if (status != 0)
             {
                 result.failures = 1U;
-                recordFailure(
-                    *handler.mount,
-                    handler.method->symbol,
-                    status,
-                    true
-                );
+                recordFailure(*handler.mount, handler.method->symbol, status, true);
             }
             (void)single;
             return result;
@@ -531,9 +443,7 @@ namespace lux::simulation
             bool success = true;
             for (const auto& binding : mount.authored.bindings)
             {
-                const auto* lifecycle =
-                    std::get_if<BehaviorLifecycleBindingTarget>(
-                        std::addressof(binding.target));
+                const auto* lifecycle = std::get_if<BehaviorLifecycleBindingTarget>(std::addressof(binding.target));
                 if (!lifecycle || lifecycle->point != point)
                     continue;
                 auto* method = findMethod(mount, binding.function);
@@ -548,13 +458,10 @@ namespace lux::simulation
                     LUX_SCRIPT_VK_UINT32,
                     {},
                     sizeof(reason_value),
-                    lux::script::scriptSemanticTypeId(
-                        BehaviorStopReasonCanonicalName),
+                    lux::script::scriptSemanticTypeId(BehaviorStopReasonCanonicalName),
                     std::addressof(reason_value)};
                 lux_script_call_frame frame{
-                    point == EBehaviorLifecyclePoint::STOP
-                        ? std::addressof(reason_slot)
-                        : nullptr,
+                    point == EBehaviorLifecyclePoint::STOP ? std::addressof(reason_slot) : nullptr,
                     point == EBehaviorLifecyclePoint::STOP ? 1U : 0U,
                     0U,
                     nullptr,
@@ -581,17 +488,13 @@ namespace lux::simulation
 
         void releaseMount(MountRuntime& mount, bool invoke_stop) noexcept
         {
-            if (invoke_stop &&
-                (mount.published || mount.construct_entered ||
-                 mount.start_entered) &&
-                !mount.stop_called)
+            const bool has_entered_lifecycle =
+                mount.published || mount.construct_entered || mount.start_entered;
+            const bool should_invoke_stop = invoke_stop && has_entered_lifecycle && !mount.stop_called;
+            if (should_invoke_stop)
             {
                 mount.stop_called = true;
-                (void)invokeLifecycle(
-                    mount,
-                    EBehaviorLifecyclePoint::STOP,
-                    mount.stop_reason
-                );
+                (void)invokeLifecycle(mount, EBehaviorLifecyclePoint::STOP, mount.stop_reason);
             }
             if (mount.backend < backends.size())
             {
@@ -600,11 +503,7 @@ namespace lux::simulation
                 {
                     if (method && backend.releaseMethod && method->call)
                     {
-                        backend.releaseMethod(
-                            backend.context,
-                            mount.instance,
-                            method->call
-                        );
+                        backend.releaseMethod(backend.context, mount.instance, method->call);
                     }
                 }
                 mount.methods.clear();
@@ -622,46 +521,31 @@ namespace lux::simulation
             mount.state = EMountState::DEAD;
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            std::unique_ptr<MountRuntime>,
-            EScriptBindingError> createMount(
-                const ScriptMountDescription& authored,
-                ecs::Entity self,
-                std::size_t mount_order
-            ) noexcept
+        [[nodiscard]] lux::cxx::expected<std::unique_ptr<MountRuntime>, EScriptBindingError>
+        createMount(const ScriptMountDescription& authored, ecs::Entity self, std::size_t mount_order) noexcept
         {
             if (mounts.size() >= capacities.mount_instances)
-                return lux::cxx::unexpected(
-                    EScriptBindingError::CAPACITY_EXCEEDED);
+                return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
             ResolvedScriptAsset resolved;
             ++instrumentation.asset_resolutions;
-            if (!resolver.resolve ||
-                !resolver.resolve(resolver.context, authored.script, resolved) ||
-                !resolved.asset)
+            if (!resolver.resolve || !resolver.resolve(resolver.context, authored.script, resolved) || !resolved.asset)
             {
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ASSET_NOT_FOUND);
+                return lux::cxx::unexpected(EScriptBindingError::ASSET_NOT_FOUND);
             }
-            const auto release_resolved = [&]() noexcept
-            {
+            const auto release_resolved = [&]() noexcept {
                 if (resolved.release)
                     resolved.release(resolved.lease);
             };
-            if (!lux::rdesc::validScriptDescription(
-                    resolved.asset->description))
+            if (!lux::rdesc::validScriptDescription(resolved.asset->description))
             {
                 release_resolved();
-                return lux::cxx::unexpected(
-                    EScriptBindingError::INVALID_ASSET);
+                return lux::cxx::unexpected(EScriptBindingError::INVALID_ASSET);
             }
             const bool entity_scope = self != ecs::NullEntity;
-            if (entity_scope !=
-                (resolved.asset->description.model ==
-                 lux::rdesc::EScriptModel::ENTITY_BEHAVIOR))
+            if (entity_scope != (resolved.asset->description.model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR))
             {
                 release_resolved();
-                return lux::cxx::unexpected(
-                    EScriptBindingError::SCOPE_MISMATCH);
+                return lux::cxx::unexpected(EScriptBindingError::SCOPE_MISMATCH);
             }
             for (const auto& binding : authored.bindings)
             {
@@ -669,14 +553,9 @@ namespace lux::simulation
                 if (!function)
                 {
                     release_resolved();
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::SYMBOL_NOT_FOUND);
+                    return lux::cxx::unexpected(EScriptBindingError::SYMBOL_NOT_FOUND);
                 }
-                const auto valid = validateBinding(
-                    entity_scope,
-                    *function,
-                    binding
-                );
+                const auto valid = validateBinding(entity_scope, *function, binding);
                 if (!valid)
                 {
                     release_resolved();
@@ -690,8 +569,7 @@ namespace lux::simulation
                 bool first = true;
                 for (std::size_t previous{}; previous < index; ++previous)
                 {
-                    if (authored.bindings[previous].function ==
-                        authored.bindings[index].function)
+                    if (authored.bindings[previous].function == authored.bindings[index].function)
                     {
                         first = false;
                         break;
@@ -701,24 +579,18 @@ namespace lux::simulation
                     ++requested_methods;
             }
             const auto prepared = preparedMethodCount();
-            if (requested_methods > capacities.prepared_methods -
-                std::min(prepared, capacities.prepared_methods))
+            if (requested_methods > capacities.prepared_methods - std::min(prepared, capacities.prepared_methods))
             {
                 release_resolved();
-                return lux::cxx::unexpected(
-                    EScriptBindingError::CAPACITY_EXCEEDED);
+                return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
             }
 
             std::size_t backend_index{};
-            const auto* backend = backendFor(
-                resolved.asset->description.kind(),
-                backend_index
-            );
+            const auto* backend = backendFor(resolved.asset->description.kind(), backend_index);
             if (!backend)
             {
                 release_resolved();
-                return lux::cxx::unexpected(
-                    EScriptBindingError::BACKEND_NOT_AVAILABLE);
+                return lux::cxx::unexpected(EScriptBindingError::BACKEND_NOT_AVAILABLE);
             }
             std::unique_ptr<MountRuntime> runtime;
             try
@@ -741,12 +613,8 @@ namespace lux::simulation
                     self,
                     std::addressof(runtime->host)};
                 ++instrumentation.instance_creates;
-                const auto create_result = backend->createInstance(
-                    backend->context,
-                    create_context,
-                    *resolved.asset,
-                    runtime->instance
-                );
+                const auto create_result =
+                    backend->createInstance(backend->context, create_context, *resolved.asset, runtime->instance);
                 if (create_result != EScriptBackendResult::SUCCESS)
                 {
                     releaseMount(*runtime, false);
@@ -757,28 +625,18 @@ namespace lux::simulation
                 {
                     if (findMethod(*runtime, binding.function))
                         continue;
-                    const auto* function = findFunction(
-                        *resolved.asset,
-                        binding.function
-                    );
+                    const auto* function = findFunction(*resolved.asset, binding.function);
                     lux::script::BoundScriptCall call;
                     ++instrumentation.method_prepares;
-                    const auto prepare_result = backend->prepareMethod(
-                        backend->context,
-                        runtime->instance,
-                        *function,
-                        call
-                    );
+                    const auto prepare_result =
+                        backend->prepareMethod(backend->context, runtime->instance, *function, call);
                     if (prepare_result != EScriptBackendResult::SUCCESS || !call)
                     {
                         releaseMount(*runtime, false);
-                        return lux::cxx::unexpected(
-                            mapBackendResult(prepare_result));
+                        return lux::cxx::unexpected(mapBackendResult(prepare_result));
                     }
                     runtime->methods.push_back(
-                        std::make_unique<PreparedMethod>(
-                            PreparedMethod{binding.function, call}
-                        )
+                        std::make_unique<PreparedMethod>(PreparedMethod{binding.function, call})
                     );
                 }
                 return runtime;
@@ -788,8 +646,7 @@ namespace lux::simulation
                 if (runtime)
                     releaseMount(*runtime, false);
                 release_resolved();
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
             }
         }
 
@@ -810,24 +667,19 @@ namespace lux::simulation
             for (const auto& authored : authored_mounts)
             {
                 auto* runtime = findMount(self, authored.id);
-                const bool reusable = runtime &&
-                    runtime->authored.script == authored.script;
-                for (std::size_t index{};
-                     index < authored.bindings.size(); ++index)
+                const bool reusable = runtime && runtime->authored.script == authored.script;
+                for (std::size_t index{}; index < authored.bindings.size(); ++index)
                 {
                     bool first = true;
                     for (std::size_t previous{}; previous < index; ++previous)
                     {
-                        if (authored.bindings[previous].function ==
-                            authored.bindings[index].function)
+                        if (authored.bindings[previous].function == authored.bindings[index].function)
                         {
                             first = false;
                             break;
                         }
                     }
-                    if (!first || (reusable && findMethod(
-                            *runtime,
-                            authored.bindings[index].function)))
+                    if (!first || (reusable && findMethod(*runtime, authored.bindings[index].function)))
                     {
                         continue;
                     }
@@ -837,16 +689,15 @@ namespace lux::simulation
             return missing;
         }
 
-        [[nodiscard]] MountRuntime* findMount(
-            ecs::Entity self,
-            ScriptMountId id
-        ) const noexcept
+        [[nodiscard]] MountRuntime* findMount(ecs::Entity self, ScriptMountId id) const noexcept
         {
             for (const auto& mount : mounts)
             {
-                if ((mount->state == EMountState::CONSTRUCTING ||
-                     mount->state == EMountState::ACTIVE) &&
-                    mount->self == self && mount->authored.id == id)
+                const bool is_live = mount->state == EMountState::CONSTRUCTING || mount->state == EMountState::ACTIVE;
+                const bool is_matching_self = mount->self == self;
+                const bool is_matching_id = mount->authored.id == id;
+                const bool is_match = is_live && is_matching_self && is_matching_id;
+                if (is_match)
                 {
                     return mount.get();
                 }
@@ -854,27 +705,21 @@ namespace lux::simulation
             return nullptr;
         }
 
-        void markRemoved(
-            ecs::Entity self,
-            const ScriptComponent* desired,
-            EBehaviorStopReason reason
-        ) noexcept
+        void markRemoved(ecs::Entity self, const ScriptComponent* desired, EBehaviorStopReason reason) noexcept
         {
             for (auto& runtime : mounts)
             {
-                if (runtime->self != self ||
-                    runtime->state == EMountState::DEAD)
+                if (runtime->self != self || runtime->state == EMountState::DEAD)
                     continue;
-                const auto found = desired
-                    ? std::find_if(
-                        desired->mounts.begin(),
-                        desired->mounts.end(),
-                        [&](const auto& mount) noexcept
-                        {
-                            return mount.id == runtime->authored.id &&
-                                mount.script == runtime->authored.script;
-                        })
-                    : std::vector<ScriptMountDescription>::const_iterator{};
+                const auto found = desired ? std::find_if(
+                                                 desired->mounts.begin(),
+                                                 desired->mounts.end(),
+                                                 [&](const auto& mount) noexcept {
+                                                     return mount.id == runtime->authored.id &&
+                                                            mount.script == runtime->authored.script;
+                                                 }
+                )
+                                           : std::vector<ScriptMountDescription>::const_iterator{};
                 if (!desired || found == desired->mounts.end())
                 {
                     runtime->state = EMountState::RETIRING;
@@ -894,34 +739,22 @@ namespace lux::simulation
                 std::remove_if(
                     mounts.begin(),
                     mounts.end(),
-                    [](const auto& mount) noexcept
-                    {
-                        return mount->state == EMountState::DEAD;
-                    }
+                    [](const auto& mount) noexcept { return mount->state == EMountState::DEAD; }
                 ),
                 mounts.end()
             );
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        reconcileMount(
-            MountRuntime& runtime,
-            const ScriptMountDescription& authored,
-            std::size_t mount_order
-        ) noexcept
+        reconcileMount(MountRuntime& runtime, const ScriptMountDescription& authored, std::size_t mount_order) noexcept
         {
             const bool entity_scope = runtime.self != ecs::NullEntity;
             for (const auto& binding : authored.bindings)
             {
                 const auto* function = findFunction(*runtime.asset, binding.function);
                 if (!function)
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::SYMBOL_NOT_FOUND);
-                const auto valid = validateBinding(
-                    entity_scope,
-                    *function,
-                    binding
-                );
+                    return lux::cxx::unexpected(EScriptBindingError::SYMBOL_NOT_FOUND);
+                const auto valid = validateBinding(entity_scope, *function, binding);
                 if (!valid)
                     return lux::cxx::unexpected(valid.error());
             }
@@ -934,8 +767,7 @@ namespace lux::simulation
                 bool first = true;
                 for (std::size_t previous{}; previous < index; ++previous)
                 {
-                    if (authored.bindings[previous].function ==
-                        authored.bindings[index].function)
+                    if (authored.bindings[previous].function == authored.bindings[index].function)
                     {
                         first = false;
                         break;
@@ -945,25 +777,18 @@ namespace lux::simulation
                     ++missing;
             }
             const auto prepared = preparedMethodCount();
-            if (missing > capacities.prepared_methods -
-                std::min(prepared, capacities.prepared_methods))
+            if (missing > capacities.prepared_methods - std::min(prepared, capacities.prepared_methods))
             {
-                return lux::cxx::unexpected(
-                    EScriptBindingError::CAPACITY_EXCEEDED);
+                return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
             }
             const auto original_size = runtime.methods.size();
-            const auto rollback = [&]() noexcept
-            {
+            const auto rollback = [&]() noexcept {
                 while (runtime.methods.size() > original_size)
                 {
                     auto& method = runtime.methods.back();
                     if (method && backend.releaseMethod && method->call)
                     {
-                        backend.releaseMethod(
-                            backend.context,
-                            runtime.instance,
-                            method->call
-                        );
+                        backend.releaseMethod(backend.context, runtime.instance, method->call);
                     }
                     runtime.methods.pop_back();
                 }
@@ -975,18 +800,10 @@ namespace lux::simulation
                 {
                     if (findMethod(runtime, binding.function))
                         continue;
-                    const auto* function = findFunction(
-                        *runtime.asset,
-                        binding.function
-                    );
+                    const auto* function = findFunction(*runtime.asset, binding.function);
                     lux::script::BoundScriptCall call;
                     ++instrumentation.method_prepares;
-                    const auto result = backend.prepareMethod(
-                        backend.context,
-                        runtime.instance,
-                        *function,
-                        call
-                    );
+                    const auto result = backend.prepareMethod(backend.context, runtime.instance, *function, call);
                     if (result != EScriptBackendResult::SUCCESS || !call)
                     {
                         rollback();
@@ -995,24 +812,17 @@ namespace lux::simulation
                     try
                     {
                         runtime.methods.push_back(
-                            std::make_unique<PreparedMethod>(
-                                PreparedMethod{binding.function, call}
-                            )
+                            std::make_unique<PreparedMethod>(PreparedMethod{binding.function, call})
                         );
                     }
                     catch (const std::bad_alloc&)
                     {
                         if (backend.releaseMethod)
                         {
-                            backend.releaseMethod(
-                                backend.context,
-                                runtime.instance,
-                                call
-                            );
+                            backend.releaseMethod(backend.context, runtime.instance, call);
                         }
                         rollback();
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::ALLOCATION_FAILURE);
+                        return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
                     }
                 }
                 runtime.pending_authored = authored;
@@ -1022,31 +832,22 @@ namespace lux::simulation
             catch (const std::bad_alloc&)
             {
                 rollback();
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
             }
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        upsertOwner(
-            ecs::Entity self,
-            const std::vector<ScriptMountDescription>& authored_mounts
-        ) noexcept
+        upsertOwner(ecs::Entity self, const std::vector<ScriptMountDescription>& authored_mounts) noexcept
         {
             if (!validScriptMountList(authored_mounts))
-                return lux::cxx::unexpected(
-                    EScriptBindingError::INVALID_ASSET);
+                return lux::cxx::unexpected(EScriptBindingError::INVALID_ASSET);
             for (std::size_t index{}; index < authored_mounts.size(); ++index)
             {
                 const auto& authored = authored_mounts[index];
                 if (auto* runtime = findMount(self, authored.id);
                     runtime && runtime->authored.script == authored.script)
                 {
-                    const auto reconciled = reconcileMount(
-                        *runtime,
-                        authored,
-                        index
-                    );
+                    const auto reconciled = reconcileMount(*runtime, authored, index);
                     if (!reconciled)
                         return reconciled;
                     continue;
@@ -1060,10 +861,7 @@ namespace lux::simulation
         }
 
         [[nodiscard]] lux::cxx::expected<DispatchIndex, EScriptBindingError>
-        makeDispatch(
-            bool include_constructing = true,
-            bool use_pending_authored = true
-        ) noexcept
+        makeDispatch(bool include_constructing = true, bool use_pending_authored = true) noexcept
         {
             try
             {
@@ -1101,104 +899,65 @@ namespace lux::simulation
                 for (auto& mount : mounts)
                 {
                     if (mount->state == EMountState::ACTIVE ||
-                        (include_constructing &&
-                         mount->state == EMountState::CONSTRUCTING))
+                        (include_constructing && mount->state == EMountState::CONSTRUCTING))
                         ordered.push_back(mount.get());
                 }
-                std::sort(
-                    ordered.begin(),
-                    ordered.end(),
-                    [&](const auto* left, const auto* right) noexcept
+                std::sort(ordered.begin(), ordered.end(), [&](const auto* left, const auto* right) noexcept {
+                    if ((left->self == ecs::NullEntity) != (right->self == ecs::NullEntity))
                     {
-                        if ((left->self == ecs::NullEntity) !=
-                            (right->self == ecs::NullEntity))
-                        {
-                            return left->self == ecs::NullEntity;
-                        }
-                        if (left->self != right->self)
-                            return ecs::entityBits(left->self) <
-                                ecs::entityBits(right->self);
-                        const auto left_order = use_pending_authored
-                            ? effectiveMountOrder(*left)
-                            : left->mount_order;
-                        const auto right_order = use_pending_authored
-                            ? effectiveMountOrder(*right)
-                            : right->mount_order;
-                        return left_order < right_order;
+                        return left->self == ecs::NullEntity;
                     }
+                    if (left->self != right->self)
+                        return ecs::entityBits(left->self) < ecs::entityBits(right->self);
+                    const auto left_order = use_pending_authored ? effectiveMountOrder(*left) : left->mount_order;
+                    const auto right_order = use_pending_authored ? effectiveMountOrder(*right) : right->mount_order;
+                    return left_order < right_order;
+                }
                 );
 
                 std::size_t sequence{};
                 std::size_t handler_count{};
                 for (auto* mount : ordered)
                 {
-                    const auto& authored = use_pending_authored
-                        ? effectiveAuthored(*mount)
-                        : mount->authored;
+                    const auto& authored = use_pending_authored ? effectiveAuthored(*mount) : mount->authored;
                     for (const auto& binding : authored.bindings)
                     {
                         auto* method = findMethod(*mount, binding.function);
                         if (!method)
-                            return lux::cxx::unexpected(
-                                EScriptBindingError::SYMBOL_NOT_FOUND);
+                            return lux::cxx::unexpected(EScriptBindingError::SYMBOL_NOT_FOUND);
                         const Handler handler{mount, method};
                         const auto indexed = std::visit(
-                            [&](const auto& target) noexcept -> bool
-                            {
-                                using Target =
-                                    std::remove_cvref_t<decltype(target)>;
-                                if constexpr (
-                                    std::is_same_v<Target,
-                                        SystemHookBindingTarget>)
+                            [&](const auto& target) noexcept -> bool {
+                                using Target = std::remove_cvref_t<decltype(target)>;
+                                if constexpr (std::is_same_v<Target, SystemHookBindingTarget>)
                                 {
-                                    auto system = resolveSystem(
-                                        target.system_type,
-                                        target.system_instance
-                                    );
+                                    auto system = resolveSystem(target.system_type, target.system_instance);
                                     if (!system)
                                         return false;
                                     ScriptHookSlot resolved_slot;
-                                    for (std::size_t index{};
-                                         index < description.systemCount(); ++index)
+                                    for (std::size_t index{}; index < description.systemCount(); ++index)
                                     {
-                                        if (description.systemAt(index).instanceName() ==
-                                            system->instanceName())
+                                        if (description.systemAt(index).instanceName() == system->instanceName())
                                         {
-                                            resolved_slot = findHookSlot(
-                                                index,
-                                                target.hook
-                                            );
+                                            resolved_slot = findHookSlot(index, target.hook);
                                             break;
                                         }
                                     }
                                     if (!resolved_slot)
                                         return false;
-                                    pending_hooks.push_back(PendingHook{
-                                        resolved_slot.value,
-                                        handler,
-                                        sequence++});
+                                    pending_hooks.push_back(PendingHook{resolved_slot.value, handler, sequence++});
                                 }
-                                else if constexpr (
-                                    std::is_same_v<Target,
-                                        SystemEventBindingTarget>)
+                                else if constexpr (std::is_same_v<Target, SystemEventBindingTarget>)
                                 {
-                                    auto system = resolveSystem(
-                                        target.system_type,
-                                        target.system_instance
-                                    );
+                                    auto system = resolveSystem(target.system_type, target.system_instance);
                                     if (!system)
                                         return false;
                                     ScriptEventSlot resolved_slot;
-                                    for (std::size_t index{};
-                                         index < description.systemCount(); ++index)
+                                    for (std::size_t index{}; index < description.systemCount(); ++index)
                                     {
-                                        if (description.systemAt(index).instanceName() ==
-                                            system->instanceName())
+                                        if (description.systemAt(index).instanceName() == system->instanceName())
                                         {
-                                            resolved_slot = findEventSlot(
-                                                index,
-                                                target.event
-                                            );
+                                            resolved_slot = findEventSlot(index, target.event);
                                             break;
                                         }
                                     }
@@ -1206,16 +965,13 @@ namespace lux::simulation
                                         return false;
                                     if (mount->self != ecs::NullEntity)
                                     {
-                                        pending_events.push_back(PendingEvent{
-                                            mount->self,
-                                            resolved_slot.value,
-                                            handler,
-                                            sequence++});
+                                        pending_events.push_back(
+                                            PendingEvent{mount->self, resolved_slot.value, handler, sequence++}
+                                        );
                                     }
                                     else
                                     {
-                                        shadow.global_event_handlers[
-                                            resolved_slot.value].push_back(handler);
+                                        shadow.global_event_handlers[resolved_slot.value].push_back(handler);
                                     }
                                 }
                                 return true;
@@ -1225,42 +981,27 @@ namespace lux::simulation
                         if (!indexed)
                         {
                             const bool duplicate_single = std::visit(
-                                [&](const auto& target) noexcept
-                                {
-                                    using Target = std::remove_cvref_t<
-                                        decltype(target)>;
-                                    if constexpr (!std::is_same_v<
-                                        Target,
-                                        SystemHookBindingTarget>)
+                                [&](const auto& target) noexcept {
+                                    using Target = std::remove_cvref_t<decltype(target)>;
+                                    if constexpr (!std::is_same_v<Target, SystemHookBindingTarget>)
                                     {
                                         return false;
                                     }
                                     else
                                     {
-                                        const auto system = resolveSystem(
-                                            target.system_type,
-                                            target.system_instance
-                                        );
+                                        const auto system = resolveSystem(target.system_type, target.system_instance);
                                         if (!system)
                                             return false;
-                                        for (std::size_t index{};
-                                             index < description.systemCount();
-                                             ++index)
+                                        for (std::size_t index{}; index < description.systemCount(); ++index)
                                         {
-                                            if (description.systemAt(index)
-                                                    .instanceName() !=
-                                                system->instanceName())
+                                            if (description.systemAt(index).instanceName() != system->instanceName())
                                             {
                                                 continue;
                                             }
-                                            const auto slot = findHookSlot(
-                                                index,
-                                                target.hook
-                                            );
+                                            const auto slot = findHookSlot(index, target.hook);
                                             return slot &&
-                                                hooks[slot.value].cardinality ==
-                                                    ESystemHookCardinality::SINGLE &&
-                                                mount->self == ecs::NullEntity;
+                                                   hooks[slot.value].cardinality == ESystemHookCardinality::SINGLE &&
+                                                   mount->self == ecs::NullEntity;
                                         }
                                         return false;
                                     }
@@ -1268,16 +1009,14 @@ namespace lux::simulation
                                 binding.target
                             );
                             return lux::cxx::unexpected(
-                                duplicate_single
-                                    ? EScriptBindingError::
-                                        SINGLE_HOOK_MULTIPLE_HANDLERS
-                                    : EScriptBindingError::MEMBER_NOT_FOUND);
+                                duplicate_single ? EScriptBindingError::SINGLE_HOOK_MULTIPLE_HANDLERS
+                                                 : EScriptBindingError::MEMBER_NOT_FOUND
+                            );
                         }
                         ++handler_count;
                         if (handler_count > capacities.dispatch_handlers)
                         {
-                            return lux::cxx::unexpected(
-                                EScriptBindingError::CAPACITY_EXCEEDED);
+                            return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
                         }
                     }
                 }
@@ -1285,11 +1024,7 @@ namespace lux::simulation
                 std::stable_sort(
                     pending_hooks.begin(),
                     pending_hooks.end(),
-                    [](const PendingHook& left,
-                       const PendingHook& right) noexcept
-                    {
-                        return left.slot < right.slot;
-                    }
+                    [](const PendingHook& left, const PendingHook& right) noexcept { return left.slot < right.slot; }
                 );
                 std::size_t hook_cursor{};
                 while (hook_cursor < pending_hooks.size())
@@ -1297,34 +1032,24 @@ namespace lux::simulation
                     const auto slot = pending_hooks[hook_cursor].slot;
                     if (slot >= shadow.hook_ranges.size())
                     {
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::MEMBER_NOT_FOUND);
+                        return lux::cxx::unexpected(EScriptBindingError::MEMBER_NOT_FOUND);
                     }
                     const auto begin = shadow.hook_handlers.size();
-                    while (hook_cursor < pending_hooks.size() &&
-                           pending_hooks[hook_cursor].slot == slot)
+                    while (hook_cursor < pending_hooks.size() && pending_hooks[hook_cursor].slot == slot)
                     {
-                        shadow.hook_handlers.push_back(
-                            pending_hooks[hook_cursor].handler);
+                        shadow.hook_handlers.push_back(pending_hooks[hook_cursor].handler);
                         ++hook_cursor;
                     }
                     const auto count = shadow.hook_handlers.size() - begin;
-                    if (hooks[slot].cardinality ==
-                            ESystemHookCardinality::SINGLE &&
-                        count > 1U)
+                    if (hooks[slot].cardinality == ESystemHookCardinality::SINGLE && count > 1U)
                     {
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::
-                                SINGLE_HOOK_MULTIPLE_HANDLERS);
+                        return lux::cxx::unexpected(EScriptBindingError::SINGLE_HOOK_MULTIPLE_HANDLERS);
                     }
-                    shadow.hook_ranges[slot] = HandlerRange{
-                        static_cast<std::uint32_t>(begin),
-                        static_cast<std::uint32_t>(count)};
+                    shadow.hook_ranges[slot] =
+                        HandlerRange{static_cast<std::uint32_t>(begin), static_cast<std::uint32_t>(count)};
                 }
 
-                const auto pending_less = [](const PendingEvent& left,
-                                             const PendingEvent& right) noexcept
-                {
+                const auto pending_less = [](const PendingEvent& left, const PendingEvent& right) noexcept {
                     const auto left_bits = ecs::entityBits(left.owner);
                     const auto right_bits = ecs::entityBits(right.owner);
                     if (left_bits != right_bits)
@@ -1345,17 +1070,15 @@ namespace lux::simulation
                     }
                     if (owners.size() >= capacities.scripted_entities)
                     {
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::CAPACITY_EXCEEDED);
+                        return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
                     }
                     owners.push_back(pending.owner);
                     shadow.entities.push(pending.owner);
                     shadow.sidecars.push_back(EntitySidecar{pending.owner});
                 }
 
-                const auto flatten = [&](const std::vector<PendingEvent>& pending)
-                    -> lux::cxx::expected<void, EScriptBindingError>
-                {
+                const auto flatten =
+                    [&](const std::vector<PendingEvent>& pending) -> lux::cxx::expected<void, EScriptBindingError> {
                     auto& ranges = shadow.event_ranges;
                     auto& handlers = shadow.event_handlers;
                     std::size_t cursor{};
@@ -1364,32 +1087,26 @@ namespace lux::simulation
                         const auto owner = pending[cursor].owner;
                         if (!shadow.entities.contains(owner))
                         {
-                            return lux::cxx::unexpected(
-                                EScriptBindingError::INVALID_ENTITY);
+                            return lux::cxx::unexpected(EScriptBindingError::INVALID_ENTITY);
                         }
                         const auto sidecar_index = shadow.entities.index(owner);
                         if (sidecar_index >= shadow.sidecars.size())
                         {
-                            return lux::cxx::unexpected(
-                                EScriptBindingError::INVALID_ENTITY);
+                            return lux::cxx::unexpected(EScriptBindingError::INVALID_ENTITY);
                         }
                         auto& sidecar = shadow.sidecars[sidecar_index];
                         auto& range_begin = sidecar.event_range_begin;
                         auto& range_count = sidecar.event_range_count;
                         range_begin = static_cast<std::uint32_t>(ranges.size());
-                        while (cursor < pending.size() &&
-                               pending[cursor].owner == owner)
+                        while (cursor < pending.size() && pending[cursor].owner == owner)
                         {
-                            if (shadow.event_ranges.size() >=
-                                capacities.dispatch_target_ranges)
+                            if (shadow.event_ranges.size() >= capacities.dispatch_target_ranges)
                             {
-                                return lux::cxx::unexpected(
-                                    EScriptBindingError::CAPACITY_EXCEEDED);
+                                return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
                             }
                             const auto slot = pending[cursor].slot;
                             const auto begin = handlers.size();
-                            while (cursor < pending.size() &&
-                                   pending[cursor].owner == owner &&
+                            while (cursor < pending.size() && pending[cursor].owner == owner &&
                                    pending[cursor].slot == slot)
                             {
                                 handlers.push_back(pending[cursor].handler);
@@ -1398,8 +1115,8 @@ namespace lux::simulation
                             ranges.push_back(TargetRange{
                                 slot,
                                 static_cast<std::uint32_t>(begin),
-                                static_cast<std::uint32_t>(
-                                    handlers.size() - begin)});
+                                static_cast<std::uint32_t>(handlers.size() - begin)}
+                            );
                             ++range_count;
                         }
                     }
@@ -1412,15 +1129,11 @@ namespace lux::simulation
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
             }
         }
 
-        void enqueue(
-            ecs::Entity entity,
-            EBehaviorStopReason reason
-        ) noexcept
+        void enqueue(ecs::Entity entity, EBehaviorStopReason reason) noexcept
         {
             if (dirty_next.size() >= capacities.dirty_entities)
             {
@@ -1438,11 +1151,7 @@ namespace lux::simulation
         void onUpdate(ecs::Registry& source, ecs::Entity entity) noexcept
         {
             const auto* component = source.try_get<ScriptComponent>(entity);
-            markRemoved(
-                entity,
-                component,
-                EBehaviorStopReason::MOUNT_REMOVED
-            );
+            markRemoved(entity, component, EBehaviorStopReason::MOUNT_REMOVED);
             enqueue(entity, EBehaviorStopReason::MOUNT_REMOVED);
         }
 
@@ -1452,26 +1161,22 @@ namespace lux::simulation
             enqueue(entity, EBehaviorStopReason::ENTITY_DESTROYED);
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        prepareInitial() noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> prepareInitial() noexcept
         {
             if (shut_down)
-                return lux::cxx::unexpected(
-                    EScriptBindingError::SESSION_SHUT_DOWN);
+                return lux::cxx::unexpected(EScriptBindingError::SESSION_SHUT_DOWN);
             if (prepared_once)
                 return {};
             try
             {
                 std::vector<ScriptMountDescription> global_mounts;
                 global_mounts.reserve(description.globalScriptMountCount());
-                for (std::size_t index{};
-                     index < description.globalScriptMountCount(); ++index)
+                for (std::size_t index{}; index < description.globalScriptMountCount(); ++index)
                 {
                     const auto view = description.globalScriptMountAt(index);
                     ScriptMountDescription mount{view.id(), view.script(), {}};
                     mount.bindings.reserve(view.bindingCount());
-                    for (std::size_t binding{};
-                         binding < view.bindingCount(); ++binding)
+                    for (std::size_t binding{}; binding < view.bindingCount(); ++binding)
                     {
                         mount.bindings.push_back(*view.bindingAt(binding));
                     }
@@ -1481,26 +1186,15 @@ namespace lux::simulation
                 const auto view = registry->view<ScriptComponent>();
                 for (const auto entity : view)
                     entities.push_back(entity);
-                std::sort(
-                    entities.begin(),
-                    entities.end(),
-                    [](auto left, auto right) noexcept
-                    {
-                        return ecs::entityBits(left) < ecs::entityBits(right);
-                    }
+                std::sort(entities.begin(), entities.end(), [](auto left, auto right) noexcept {
+                    return ecs::entityBits(left) < ecs::entityBits(right);
+                }
                 );
                 std::size_t required_methods{};
-                const auto account = [&](
-                    ecs::Entity owner,
-                    const std::vector<ScriptMountDescription>& owner_mounts
-                ) noexcept
-                {
-                    const auto missing = missingPreparedMethodCount(
-                        owner,
-                        owner_mounts
-                    );
-                    if (missing > capacities.prepared_methods -
-                        std::min(required_methods, capacities.prepared_methods))
+                const auto account = [&](ecs::Entity owner,
+                                         const std::vector<ScriptMountDescription>& owner_mounts) noexcept {
+                    const auto missing = missingPreparedMethodCount(owner, owner_mounts);
+                    if (missing > capacities.prepared_methods - std::min(required_methods, capacities.prepared_methods))
                     {
                         return false;
                     }
@@ -1509,17 +1203,13 @@ namespace lux::simulation
                 };
                 if (!account(ecs::NullEntity, global_mounts))
                 {
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::CAPACITY_EXCEEDED);
+                    return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
                 }
                 for (const auto entity : entities)
                 {
-                    if (!account(
-                            entity,
-                            registry->get<ScriptComponent>(entity).mounts))
+                    if (!account(entity, registry->get<ScriptComponent>(entity).mounts))
                     {
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::CAPACITY_EXCEEDED);
+                        return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
                     }
                 }
                 auto result = upsertOwner(ecs::NullEntity, global_mounts);
@@ -1550,17 +1240,14 @@ namespace lux::simulation
             {
                 rollbackStaged();
                 full_resync_next = true;
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        applyMutations() noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> applyMutations() noexcept
         {
             if (shut_down)
-                return lux::cxx::unexpected(
-                    EScriptBindingError::SESSION_SHUT_DOWN);
+                return lux::cxx::unexpected(EScriptBindingError::SESSION_SHUT_DOWN);
             if (!prepared_once)
                 return prepareInitial();
             try
@@ -1573,58 +1260,43 @@ namespace lux::simulation
                 {
                     for (auto& runtime : mounts)
                     {
-                        if (runtime->self == ecs::NullEntity ||
-                            runtime->state == EMountState::DEAD)
+                        if (runtime->self == ecs::NullEntity || runtime->state == EMountState::DEAD)
                             continue;
                         const auto* component = registry->valid(runtime->self)
-                            ? registry->try_get<ScriptComponent>(runtime->self)
-                            : nullptr;
+                                                    ? registry->try_get<ScriptComponent>(runtime->self)
+                                                    : nullptr;
                         markRemoved(
                             runtime->self,
                             component,
-                            registry->valid(runtime->self)
-                                ? EBehaviorStopReason::MOUNT_REMOVED
-                                : EBehaviorStopReason::ENTITY_DESTROYED
+                            registry->valid(runtime->self) ? EBehaviorStopReason::MOUNT_REMOVED
+                                                           : EBehaviorStopReason::ENTITY_DESTROYED
                         );
                     }
                     std::vector<ecs::Entity> entities;
                     const auto view = registry->view<ScriptComponent>();
                     for (const auto entity : view)
                         entities.push_back(entity);
-                    std::sort(
-                        entities.begin(),
-                        entities.end(),
-                        [](auto left, auto right) noexcept
-                        {
-                            return ecs::entityBits(left) <
-                                ecs::entityBits(right);
-                        }
+                    std::sort(entities.begin(), entities.end(), [](auto left, auto right) noexcept {
+                        return ecs::entityBits(left) < ecs::entityBits(right);
+                    }
                     );
                     std::size_t required_methods = preparedMethodCount();
                     for (const auto entity : entities)
                     {
-                        const auto missing = missingPreparedMethodCount(
-                            entity,
-                            registry->get<ScriptComponent>(entity).mounts
-                        );
-                        if (missing > capacities.prepared_methods -
-                            std::min(
-                                required_methods,
-                                capacities.prepared_methods))
+                        const auto missing =
+                            missingPreparedMethodCount(entity, registry->get<ScriptComponent>(entity).mounts);
+                        if (missing >
+                            capacities.prepared_methods - std::min(required_methods, capacities.prepared_methods))
                         {
                             rollbackStaged();
                             full_resync_next = true;
-                            return lux::cxx::unexpected(
-                                EScriptBindingError::CAPACITY_EXCEEDED);
+                            return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
                         }
                         required_methods += missing;
                     }
                     for (const auto entity : entities)
                     {
-                        const auto result = upsertOwner(
-                            entity,
-                            registry->get<ScriptComponent>(entity).mounts
-                        );
+                        const auto result = upsertOwner(entity, registry->get<ScriptComponent>(entity).mounts);
                         if (!result)
                         {
                             rollbackStaged();
@@ -1638,32 +1310,27 @@ namespace lux::simulation
                     std::sort(
                         dirty_current.begin(),
                         dirty_current.end(),
-                        [](const auto& left, const auto& right) noexcept
-                        {
+                        [](const auto& left, const auto& right) noexcept {
                             const auto left_bits = ecs::entityBits(left.entity);
                             const auto right_bits = ecs::entityBits(right.entity);
                             if (left_bits != right_bits)
                                 return left_bits < right_bits;
-                            return static_cast<std::uint32_t>(left.reason) >
-                                static_cast<std::uint32_t>(right.reason);
+                            return static_cast<std::uint32_t>(left.reason) > static_cast<std::uint32_t>(right.reason);
                         }
                     );
                     dirty_current.erase(
                         std::unique(
                             dirty_current.begin(),
                             dirty_current.end(),
-                            [](const auto& left, const auto& right) noexcept
-                            {
-                                return left.entity == right.entity;
-                            }
+                            [](const auto& left, const auto& right) noexcept { return left.entity == right.entity; }
                         ),
                         dirty_current.end()
                     );
                     for (const auto change : dirty_current)
                     {
                         const auto* component = registry->valid(change.entity)
-                            ? registry->try_get<ScriptComponent>(change.entity)
-                            : nullptr;
+                                                    ? registry->try_get<ScriptComponent>(change.entity)
+                                                    : nullptr;
                         markRemoved(change.entity, component, change.reason);
                     }
                     std::size_t required_methods = preparedMethodCount();
@@ -1671,23 +1338,16 @@ namespace lux::simulation
                     {
                         if (!registry->valid(change.entity))
                             continue;
-                        const auto* component =
-                            registry->try_get<ScriptComponent>(change.entity);
+                        const auto* component = registry->try_get<ScriptComponent>(change.entity);
                         if (!component)
                             continue;
-                        const auto missing = missingPreparedMethodCount(
-                            change.entity,
-                            component->mounts
-                        );
-                        if (missing > capacities.prepared_methods -
-                            std::min(
-                                required_methods,
-                                capacities.prepared_methods))
+                        const auto missing = missingPreparedMethodCount(change.entity, component->mounts);
+                        if (missing >
+                            capacities.prepared_methods - std::min(required_methods, capacities.prepared_methods))
                         {
                             rollbackStaged();
                             full_resync_next = true;
-                            return lux::cxx::unexpected(
-                                EScriptBindingError::CAPACITY_EXCEEDED);
+                            return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
                         }
                         required_methods += missing;
                     }
@@ -1695,14 +1355,10 @@ namespace lux::simulation
                     {
                         if (!registry->valid(change.entity))
                             continue;
-                        const auto* component =
-                            registry->try_get<ScriptComponent>(change.entity);
+                        const auto* component = registry->try_get<ScriptComponent>(change.entity);
                         if (!component)
                             continue;
-                        const auto result = upsertOwner(
-                            change.entity,
-                            component->mounts
-                        );
+                        const auto result = upsertOwner(change.entity, component->mounts);
                         if (!result)
                         {
                             rollbackStaged();
@@ -1722,13 +1378,11 @@ namespace lux::simulation
             {
                 rollbackStaged();
                 full_resync_next = true;
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        shutdown() noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> shutdown() noexcept
         {
             if (shut_down)
                 return {};
@@ -1737,8 +1391,7 @@ namespace lux::simulation
                 if (mount->state != EMountState::DEAD)
                 {
                     mount->state = EMountState::RETIRING;
-                    mount->stop_reason =
-                        EBehaviorStopReason::SIMULATION_STOPPED;
+                    mount->stop_reason = EBehaviorStopReason::SIMULATION_STOPPED;
                 }
             }
             destroyRetired();
@@ -1747,9 +1400,7 @@ namespace lux::simulation
             return {};
         }
 
-        [[nodiscard]] EntitySidecar* sidecarFor(
-            ecs::Entity entity
-        ) noexcept
+        [[nodiscard]] EntitySidecar* sidecarFor(ecs::Entity entity) noexcept
         {
             if (!dispatch.entities.contains(entity))
                 return nullptr;
@@ -1769,54 +1420,42 @@ namespace lux::simulation
                 if (mount->state == EMountState::CONSTRUCTING)
                     ordered.push_back(mount.get());
             }
-            std::sort(
-                ordered.begin(),
-                ordered.end(),
-                [](const auto* left, const auto* right) noexcept
+            std::sort(ordered.begin(), ordered.end(), [](const auto* left, const auto* right) noexcept {
+                if ((left->self == ecs::NullEntity) != (right->self == ecs::NullEntity))
                 {
-                    if ((left->self == ecs::NullEntity) !=
-                        (right->self == ecs::NullEntity))
-                    {
-                        return left->self == ecs::NullEntity;
-                    }
-                    if (left->self != right->self)
-                    {
-                        return ecs::entityBits(left->self) <
-                            ecs::entityBits(right->self);
-                    }
-                    return left->mount_order < right->mount_order;
+                    return left->self == ecs::NullEntity;
                 }
+                if (left->self != right->self)
+                {
+                    return ecs::entityBits(left->self) < ecs::entityBits(right->self);
+                }
+                return left->mount_order < right->mount_order;
+            }
             );
             return ordered;
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        constructPending() noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> constructPending() noexcept
         {
             try
             {
                 const auto ordered = orderedConstructing();
                 for (auto* mount : ordered)
                 {
-                    if (!invokeLifecycle(
-                            *mount,
-                            EBehaviorLifecyclePoint::CONSTRUCT))
+                    if (!invokeLifecycle(*mount, EBehaviorLifecyclePoint::CONSTRUCT))
                     {
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::INVOCATION_FAILURE);
+                        return lux::cxx::unexpected(EScriptBindingError::INVOCATION_FAILURE);
                     }
                 }
                 return {};
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        startPending() noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> startPending() noexcept
         {
             try
             {
@@ -1825,8 +1464,7 @@ namespace lux::simulation
                 {
                     if (!invokeLifecycle(*mount, EBehaviorLifecyclePoint::START))
                     {
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::INVOCATION_FAILURE);
+                        return lux::cxx::unexpected(EScriptBindingError::INVOCATION_FAILURE);
                     }
                 }
                 for (auto* mount : ordered)
@@ -1835,8 +1473,7 @@ namespace lux::simulation
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(
-                    EScriptBindingError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
             }
         }
 
@@ -1846,36 +1483,25 @@ namespace lux::simulation
             {
                 if (!mount->published)
                 {
-                    mount->stop_reason =
-                        EBehaviorStopReason::INITIALIZATION_FAILED;
+                    mount->stop_reason = EBehaviorStopReason::INITIALIZATION_FAILED;
                     releaseMount(*mount, true);
                     continue;
                 }
                 if (!mount->pending_authored)
                     continue;
                 const auto& backend = backends[mount->backend];
-                std::erase_if(
-                    mount->methods,
-                    [&](const auto& method) noexcept
+                std::erase_if(mount->methods, [&](const auto& method) noexcept {
+                    const auto committed = std::any_of(
+                        mount->authored.bindings.begin(),
+                        mount->authored.bindings.end(),
+                        [&](const auto& binding) noexcept { return binding.function == method->symbol; }
+                    );
+                    if (!committed && backend.releaseMethod && method->call)
                     {
-                        const auto committed = std::any_of(
-                            mount->authored.bindings.begin(),
-                            mount->authored.bindings.end(),
-                            [&](const auto& binding) noexcept
-                            {
-                                return binding.function == method->symbol;
-                            }
-                        );
-                        if (!committed && backend.releaseMethod && method->call)
-                        {
-                            backend.releaseMethod(
-                                backend.context,
-                                mount->instance,
-                                method->call
-                            );
-                        }
-                        return !committed;
+                        backend.releaseMethod(backend.context, mount->instance, method->call);
                     }
+                    return !committed;
+                }
                 );
                 mount->pending_authored.reset();
             }
@@ -1883,10 +1509,7 @@ namespace lux::simulation
                 std::remove_if(
                     mounts.begin(),
                     mounts.end(),
-                    [](const auto& mount) noexcept
-                    {
-                        return mount->state == EMountState::DEAD;
-                    }
+                    [](const auto& mount) noexcept { return mount->state == EMountState::DEAD; }
                 ),
                 mounts.end()
             );
@@ -1898,13 +1521,9 @@ namespace lux::simulation
                 static_cast<std::size_t>(std::count_if(
                     shadow.hook_ranges.begin(),
                     shadow.hook_ranges.end(),
-                    [](const HandlerRange& range) noexcept
-                    {
-                        return range.count != 0U;
-                    })) +
+                    [](const HandlerRange& range) noexcept { return range.count != 0U; })) +
                 shadow.event_ranges.size();
-            instrumentation.dispatch_handlers_built =
-                shadow.hook_handlers.size() + shadow.event_handlers.size();
+            instrumentation.dispatch_handlers_built = shadow.hook_handlers.size() + shadow.event_handlers.size();
             dispatch = std::move(shadow);
         }
 
@@ -1922,36 +1541,26 @@ namespace lux::simulation
                     continue;
                 mount->published = true;
                 const auto& backend = backends[mount->backend];
-                std::erase_if(
-                    mount->methods,
-                    [&](const auto& method) noexcept
+                std::erase_if(mount->methods, [&](const auto& method) noexcept {
+                    const auto retained = std::any_of(
+                        mount->authored.bindings.begin(),
+                        mount->authored.bindings.end(),
+                        [&](const auto& binding) noexcept { return method && binding.function == method->symbol; }
+                    );
+                    const bool is_releaseable_method = method != nullptr && backend.releaseMethod != nullptr &&
+                        method->call;
+                    const bool should_release_method = !retained && is_releaseable_method;
+                    if (should_release_method)
                     {
-                        const auto retained = std::any_of(
-                            mount->authored.bindings.begin(),
-                            mount->authored.bindings.end(),
-                            [&](const auto& binding) noexcept
-                            {
-                                return method &&
-                                    binding.function == method->symbol;
-                            }
-                        );
-                        if (!retained && method && backend.releaseMethod &&
-                            method->call)
-                        {
-                            backend.releaseMethod(
-                                backend.context,
-                                mount->instance,
-                                method->call
-                            );
-                        }
-                        return !retained;
+                        backend.releaseMethod(backend.context, mount->instance, method->call);
                     }
+                    return !retained;
+                }
                 );
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        activateAndPublish() noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> activateAndPublish() noexcept
         {
             auto constructed_result = constructPending();
             if (!constructed_result)
@@ -1988,10 +1597,7 @@ namespace lux::simulation
             return {};
         }
 
-        [[nodiscard]] std::span<const Handler> eventHandlersFor(
-            ecs::Entity entity,
-            std::uint32_t slot
-        ) noexcept
+        [[nodiscard]] std::span<const Handler> eventHandlersFor(ecs::Entity entity, std::uint32_t slot) noexcept
         {
             const auto* sidecar = sidecarFor(entity);
             if (!sidecar)
@@ -2005,18 +1611,18 @@ namespace lux::simulation
             const auto first = ranges.begin() + begin;
             const auto last = first + count;
             ++instrumentation.target_range_lookups;
-            const auto found = std::lower_bound(
-                first,
-                last,
-                slot,
-                [](const TargetRange& range, std::uint32_t value) noexcept
-                {
+            const auto found =
+                std::lower_bound(first, last, slot, [](const TargetRange& range, std::uint32_t value) noexcept {
                     return range.slot < value;
                 }
-            );
-            if (found == last || found->slot != slot ||
-                found->begin > handlers.size() ||
-                found->count > handlers.size() - found->begin)
+                );
+            const bool is_missing_range = found == last;
+            const bool is_wrong_slot = !is_missing_range && found->slot != slot;
+            const bool is_invalid_begin = !is_missing_range && found->begin > handlers.size();
+            const bool is_invalid_count = !is_missing_range && !is_invalid_begin &&
+                found->count > handlers.size() - found->begin;
+            const bool is_invalid_range = is_missing_range || is_wrong_slot || is_invalid_begin || is_invalid_count;
+            if (is_invalid_range)
             {
                 return {};
             }
@@ -2046,15 +1652,11 @@ namespace lux::simulation
         bool shut_down{};
     };
 
-    ScriptBindingSession::ScriptBindingSession(
-        std::unique_ptr<State> state
-    ) noexcept
-        : state_(std::move(state))
+    ScriptBindingSession::ScriptBindingSession(std::unique_ptr<State> state) noexcept : state_(std::move(state))
     {
     }
 
-    lux::cxx::expected<ScriptBindingSession, EScriptBindingError>
-    ScriptBindingSession::create(
+    lux::cxx::expected<ScriptBindingSession, EScriptBindingError> ScriptBindingSession::create(
         SimulationDescription description,
         ecs::Registry& registry,
         ScriptBindingCapacities capacities,
@@ -2063,128 +1665,110 @@ namespace lux::simulation
         ScriptHostApi host_api
     ) noexcept
     {
-        if (!resolver.resolve || capacities.mount_instances == 0U ||
-            capacities.prepared_methods == 0U ||
-            capacities.scripted_entities == 0U ||
-            capacities.dispatch_target_ranges == 0U ||
-            capacities.dispatch_handlers == 0U ||
-            capacities.dirty_entities == 0U)
+        const bool is_missing_resolver = resolver.resolve == nullptr;
+        const bool is_invalid_mount_capacity = capacities.mount_instances == 0U ||
+            capacities.prepared_methods == 0U;
+        const bool is_invalid_entity_capacity = capacities.scripted_entities == 0U ||
+            capacities.dispatch_target_ranges == 0U || capacities.dispatch_handlers == 0U ||
+            capacities.dirty_entities == 0U;
+        const bool is_invalid_capacity = is_missing_resolver || is_invalid_mount_capacity ||
+            is_invalid_entity_capacity;
+        if (is_invalid_capacity)
         {
-            return lux::cxx::unexpected(
-                EScriptBindingError::CAPACITY_EXCEEDED);
+            return lux::cxx::unexpected(EScriptBindingError::CAPACITY_EXCEEDED);
         }
         for (std::size_t index{}; index < backends.size(); ++index)
         {
             const auto& backend = backends[index];
-            if (backend.kind == lux::rdesc::Script::Kind::UNKNOWN ||
-                !backend.createInstance || !backend.prepareMethod ||
-                !backend.destroyInstance)
+            const bool is_unknown_kind = backend.kind == lux::rdesc::Script::Kind::UNKNOWN;
+            const bool is_missing_create = !backend.createInstance;
+            const bool is_missing_prepare = !backend.prepareMethod;
+            const bool is_missing_destroy = !backend.destroyInstance;
+            const bool is_invalid_backend = is_unknown_kind || is_missing_create || is_missing_prepare ||
+                is_missing_destroy;
+            if (is_invalid_backend)
             {
-                return lux::cxx::unexpected(
-                    EScriptBindingError::BACKEND_CONSTRUCTION_FAILURE);
+                return lux::cxx::unexpected(EScriptBindingError::BACKEND_CONSTRUCTION_FAILURE);
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
                 if (backends[previous].kind == backend.kind)
                 {
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::DUPLICATE_BACKEND_KIND);
+                    return lux::cxx::unexpected(EScriptBindingError::DUPLICATE_BACKEND_KIND);
                 }
             }
         }
         try
         {
-            return ScriptBindingSession(std::make_unique<State>(
-                std::move(description),
-                registry,
-                capacities,
-                resolver,
-                backends,
-                host_api
-            ));
+            return ScriptBindingSession(
+                std::make_unique<State>(std::move(description), registry, capacities, resolver, backends, host_api)
+            );
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                EScriptBindingError::ALLOCATION_FAILURE);
+            return lux::cxx::unexpected(EScriptBindingError::ALLOCATION_FAILURE);
         }
     }
 
-    ScriptBindingSession::ScriptBindingSession(ScriptBindingSession&&) noexcept =
-        default;
-    ScriptBindingSession& ScriptBindingSession::operator=(
-        ScriptBindingSession&&
-    ) noexcept = default;
+    ScriptBindingSession::ScriptBindingSession(ScriptBindingSession&&) noexcept = default;
+    ScriptBindingSession& ScriptBindingSession::operator=(ScriptBindingSession&&) noexcept = default;
     ScriptBindingSession::~ScriptBindingSession() = default;
 
-    lux::cxx::expected<void, EScriptBindingError>
-    ScriptBindingSession::prepare() noexcept
+    lux::cxx::expected<void, EScriptBindingError> ScriptBindingSession::prepare() noexcept
     {
-        return state_
-            ? state_->prepareInitial()
-            : lux::cxx::expected<void, EScriptBindingError>{
-                lux::cxx::unexpected(EScriptBindingError::INVALID_SLOT)};
+        return state_ ? state_->prepareInitial()
+                      : lux::cxx::expected<void, EScriptBindingError>{
+                            lux::cxx::unexpected(EScriptBindingError::INVALID_SLOT)};
     }
 
-    lux::cxx::expected<void, EScriptBindingError>
-    ScriptBindingSession::applyQuiescentMutations() noexcept
+    lux::cxx::expected<void, EScriptBindingError> ScriptBindingSession::applyQuiescentMutations() noexcept
     {
-        return state_
-            ? state_->applyMutations()
-            : lux::cxx::expected<void, EScriptBindingError>{
-                lux::cxx::unexpected(EScriptBindingError::INVALID_SLOT)};
+        return state_ ? state_->applyMutations()
+                      : lux::cxx::expected<void, EScriptBindingError>{
+                            lux::cxx::unexpected(EScriptBindingError::INVALID_SLOT)};
     }
 
-    lux::cxx::expected<void, EScriptBindingError>
-    ScriptBindingSession::shutdown() noexcept
+    lux::cxx::expected<void, EScriptBindingError> ScriptBindingSession::shutdown() noexcept
     {
-        return state_
-            ? state_->shutdown()
-            : lux::cxx::expected<void, EScriptBindingError>{};
+        return state_ ? state_->shutdown() : lux::cxx::expected<void, EScriptBindingError>{};
     }
 
-    ScriptHookSlot ScriptBindingSession::hookSlot(
-        std::string_view system_instance,
-        std::string_view hook_name
-    ) const noexcept
+    ScriptHookSlot
+    ScriptBindingSession::hookSlot(std::string_view system_instance, std::string_view hook_name) const noexcept
     {
         if (!state_)
             return {};
-        for (std::size_t index{};
-             index < state_->description.systemCount(); ++index)
+        for (std::size_t index{}; index < state_->description.systemCount(); ++index)
         {
-            if (state_->description.systemAt(index).instanceName() ==
-                system_instance)
+            if (state_->description.systemAt(index).instanceName() == system_instance)
                 return state_->findHookSlot(index, hook_name);
         }
         return {};
     }
 
-    ScriptEventSlot ScriptBindingSession::eventSlot(
-        std::string_view system_instance,
-        std::string_view event_name
-    ) const noexcept
+    ScriptEventSlot
+    ScriptBindingSession::eventSlot(std::string_view system_instance, std::string_view event_name) const noexcept
     {
         if (!state_)
             return {};
-        for (std::size_t index{};
-             index < state_->description.systemCount(); ++index)
+        for (std::size_t index{}; index < state_->description.systemCount(); ++index)
         {
-            if (state_->description.systemAt(index).instanceName() ==
-                system_instance)
+            if (state_->description.systemAt(index).instanceName() == system_instance)
                 return state_->findEventSlot(index, event_name);
         }
         return {};
     }
 
-    ScriptDispatchResult ScriptBindingSession::dispatchHook(
-        ScriptHookSlot hook,
-        const lux_script_call_frame& source_frame
-    ) noexcept
+    ScriptDispatchResult
+    ScriptBindingSession::dispatchHook(ScriptHookSlot hook, const lux_script_call_frame& source_frame) noexcept
     {
         ScriptDispatchResult total;
-        if (!state_ || state_->shut_down || !hook ||
-            hook.value >= state_->hooks.size())
+        const bool is_missing_state = state_ == nullptr;
+        const bool is_shutdown = !is_missing_state && state_->shut_down;
+        const bool is_missing_hook = !hook;
+        const bool is_out_of_range = !is_missing_state && hook.value >= state_->hooks.size();
+        const bool is_invalid_hook = is_missing_state || is_shutdown || is_missing_hook || is_out_of_range;
+        if (is_invalid_hook)
         {
             total.status = -1;
             total.failures = 1U;
@@ -2194,22 +1778,17 @@ namespace lux::simulation
         auto frame = source_frame;
         const auto& metadata = state_->hooks[hook.value];
         const auto range = state_->dispatch.hook_ranges[hook.value];
-        const auto handlers = std::span<const State::Handler>{
-            state_->dispatch.hook_handlers}.subspan(range.begin, range.count);
+        const auto handlers =
+            std::span<const State::Handler>{state_->dispatch.hook_handlers}.subspan(range.begin, range.count);
         for (const auto handler : handlers)
         {
             ++state_->instrumentation.handlers_visited;
-            const auto result = state_->invoke(
-                handler,
-                frame,
-                metadata.cardinality == ESystemHookCardinality::SINGLE
-            );
+            const auto result = state_->invoke(handler, frame, metadata.cardinality == ESystemHookCardinality::SINGLE);
             total.calls += result.calls;
             total.failures += result.failures;
             if (result.status != 0)
                 total.status = result.status;
-            if (metadata.cardinality == ESystemHookCardinality::SINGLE &&
-                result.calls != 0U)
+            if (metadata.cardinality == ESystemHookCardinality::SINGLE && result.calls != 0U)
                 break;
         }
         return total;
@@ -2222,16 +1801,19 @@ namespace lux::simulation
     ) noexcept
     {
         ScriptDispatchResult total;
-        if (!state_ || state_->shut_down || !event ||
-            event.value >= state_->events.size())
+        const bool is_missing_state = state_ == nullptr;
+        const bool is_shutdown = !is_missing_state && state_->shut_down;
+        const bool is_missing_event = !event;
+        const bool is_out_of_range = !is_missing_state && event.value >= state_->events.size();
+        const bool is_invalid_event = is_missing_state || is_shutdown || is_missing_event || is_out_of_range;
+        if (is_invalid_event)
         {
             total.status = -1;
             total.failures = 1U;
             return total;
         }
         const auto& metadata = state_->events[event.value];
-        if ((target == ecs::NullEntity) !=
-            (metadata.target == ESystemEventTarget::GLOBAL))
+        if ((target == ecs::NullEntity) != (metadata.target == ESystemEventTarget::GLOBAL))
         {
             total.status = -1;
             total.failures = 1U;
@@ -2267,12 +1849,10 @@ namespace lux::simulation
             state_->failures.clear();
     }
 
-    std::span<const ScriptBindingFailure> ScriptBindingSession::failures() const
-        noexcept
+    std::span<const ScriptBindingFailure> ScriptBindingSession::failures() const noexcept
     {
-        return state_
-            ? std::span<const ScriptBindingFailure>{state_->failures}
-            : std::span<const ScriptBindingFailure>{};
+        return state_ ? std::span<const ScriptBindingFailure>{state_->failures}
+                      : std::span<const ScriptBindingFailure>{};
     }
 
     std::size_t ScriptBindingSession::instanceCount() const noexcept
@@ -2285,8 +1865,7 @@ namespace lux::simulation
         return state_ ? state_->preparedMethodCount() : 0U;
     }
 
-    const ScriptBindingInstrumentation&
-    ScriptBindingSession::instrumentation() const noexcept
+    const ScriptBindingInstrumentation& ScriptBindingSession::instrumentation() const noexcept
     {
         static const ScriptBindingInstrumentation empty;
         return state_ ? state_->instrumentation : empty;

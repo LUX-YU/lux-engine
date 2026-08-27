@@ -29,15 +29,15 @@ namespace
 
     class FakeProvider final : public IAssetProvider
     {
-      public:
+    public:
         struct Record final
         {
             ProviderEntry entry;
             lux::cxx::SharedBytes<> bytes;
         };
 
-        void add(
-            AssetId record_id,
+        void
+        add(AssetId record_id,
             std::string path,
             std::uint32_t magic,
             std::initializer_list<std::byte> bytes,
@@ -53,39 +53,34 @@ namespace
                     tombstone,
                 },
                 lux::cxx::SharedBytes<>::copyOf(owned),
-            });
+            }
+            );
         }
 
-        [[nodiscard]] std::optional<AssetId> resolve(
-            std::string_view path
-        ) const override
+        [[nodiscard]] std::optional<AssetId> resolve(std::string_view path) const override
         {
             for (const auto& record : records_)
             {
                 if (record.entry.vpath == path)
-                    return record.entry.tombstone
-                        ? std::optional<AssetId>{}
-                        : std::optional<AssetId>{record.entry.id};
+                    return record.entry.tombstone ? std::optional<AssetId>{} : std::optional<AssetId>{record.entry.id};
             }
             return std::nullopt;
         }
 
-        [[nodiscard]] bool contains(
-            const AssetId& record_id
-        ) const override
+        [[nodiscard]] bool contains(const AssetId& record_id) const override
         {
             for (const auto& record : records_)
-                if (record.entry.id == record_id) return true;
+                if (record.entry.id == record_id)
+                    return true;
             return false;
         }
 
-        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError> open(
-            const AssetId& record_id
-        ) const override
+        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError> open(const AssetId& record_id) const override
         {
             for (const auto& record : records_)
             {
-                if (record.entry.id != record_id) continue;
+                if (record.entry.id != record_id)
+                    continue;
                 if (record.entry.tombstone)
                     return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
                 return AssetBlob::fromShared(record.bytes);
@@ -93,16 +88,13 @@ namespace
             return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
         }
 
-        void enumerate(
-            const std::function<void(const ProviderEntry&)>& fn
-        ) const override
+        void enumerate(const std::function<void(const ProviderEntry&)>& fn) const override
         {
-            for (const auto& record : records_) fn(record.entry);
+            for (const auto& record : records_)
+                fn(record.entry);
         }
 
-        [[nodiscard]] std::optional<std::string> pathOf(
-            const AssetId& record_id
-        ) const override
+        [[nodiscard]] std::optional<std::string> pathOf(const AssetId& record_id) const override
         {
             for (const auto& record : records_)
             {
@@ -112,19 +104,21 @@ namespace
             return std::nullopt;
         }
 
-      private:
+    private:
         std::vector<Record> records_;
     };
 
     bool check(bool condition, std::string_view message)
     {
-        if (condition) return true;
+        if (condition)
+            return true;
         std::cerr << "FAILED: " << message << '\n';
         return false;
     }
 }
 
-int main()
+int
+main()
 {
     using namespace lux::asset;
 
@@ -138,12 +132,7 @@ int main()
         0x5345584cu,
         {std::byte{0x4c}, std::byte{0x58}, std::byte{0x45}, std::byte{0x53}}
     );
-    base->add(
-        deleted_id,
-        "Opaque/Deleted",
-        0x4353584cu,
-        {std::byte{0x4c}}
-    );
+    base->add(deleted_id, "Opaque/Deleted", 0x4353584cu, {std::byte{0x4c}});
 
     auto patch = std::make_shared<FakeProvider>();
     patch->add(
@@ -152,56 +141,38 @@ int main()
         0x5345584cu,
         {std::byte{0x50}, std::byte{0x41}, std::byte{0x54}, std::byte{0x43}}
     );
-    patch->add(
-        deleted_id,
-        "Opaque/Deleted",
-        0x4353584cu,
-        {},
-        true
-    );
+    patch->add(deleted_id, "Opaque/Deleted", 0x4353584cu, {}, true);
 
     auto vfs = std::make_shared<AssetVfs>();
     bool success = true;
-    success &= check(
-        vfs->mount({"Game", base, 0}) == kInvalidMountId,
-        "illegal mount root is rejected"
-    );
+    success &= check(vfs->mount({"Game", base, 0}) == kInvalidMountId, "illegal mount root is rejected");
     const auto base_mount = vfs->mount({"/Game", base, 0});
     const auto patch_mount = vfs->mount({"/Game", patch, 10});
     success &= check(
-        base_mount != kInvalidMountId && patch_mount != kInvalidMountId &&
-            vfs->mountCount() == 2u,
+        base_mount != kInvalidMountId && patch_mount != kInvalidMountId && vfs->mountCount() == 2u,
         "base and patch providers mount"
     );
-    success &= check(
-        vfs->resolve("/Game/Opaque/Section") == patch_id,
-        "higher-priority provider shadows the base path"
-    );
+    success &=
+        check(vfs->resolve("/Game/Opaque/Section") == patch_id, "higher-priority provider shadows the base path");
     const auto opened = vfs->open(patch_id);
     success &= check(
-        opened && opened->bytes.size() == 4u &&
-            opened->bytes.data()[0] == std::byte{0x50},
+        opened && opened->bytes.size() == 4u && opened->bytes.data()[0] == std::byte{0x50},
         "opaque Section bytes are returned without Asset interpretation"
     );
     success &= check(
-        vfs->resolve("/Game/Opaque/Deleted") == deleted_id &&
-            !vfs->open(deleted_id),
+        vfs->resolve("/Game/Opaque/Deleted") == deleted_id && !vfs->open(deleted_id),
         "tombstone claims the UUID while the base path remains resolvable"
     );
 
     std::size_t enumerated = 0u;
-    vfs->enumerate([&](const ProviderEntry& entry)
-    {
-        if (entry.vpath == "/Game/Opaque/Section" &&
-            entry.id == patch_id && entry.magic_number == 0x5345584cu)
+    vfs->enumerate([&](const ProviderEntry& entry) {
+        if (entry.vpath == "/Game/Opaque/Section" && entry.id == patch_id && entry.magic_number == 0x5345584cu)
         {
             ++enumerated;
         }
-    });
-    success &= check(
-        enumerated == 1u,
-        "shadow-aware enumeration exposes one winning opaque record"
+    }
     );
+    success &= check(enumerated == 1u, "shadow-aware enumeration exposes one winning opaque record");
 
     const auto direct_open = vfs->open(patch_id);
     success &= check(
@@ -210,22 +181,11 @@ int main()
     );
 
     vfs->unmount(patch_mount);
-    success &= check(
-        vfs->resolve("/Game/Opaque/Section") == base_id,
-        "unmount restores the base provider"
-    );
+    success &= check(vfs->resolve("/Game/Opaque/Section") == base_id, "unmount restores the base provider");
 
     auto newest = std::make_shared<FakeProvider>();
-    newest->add(
-        patch_id,
-        "Opaque/Section",
-        0x5345584cu,
-        {std::byte{0x4e}}
-    );
+    newest->add(patch_id, "Opaque/Section", 0x5345584cu, {std::byte{0x4e}});
     vfs->mount({"/Game", newest, 0});
-    success &= check(
-        vfs->resolve("/Game/Opaque/Section") == patch_id,
-        "newest equal-priority mount wins"
-    );
+    success &= check(vfs->resolve("/Game/Opaque/Section") == patch_id, "newest equal-priority mount wins");
     return success ? 0 : 1;
 }

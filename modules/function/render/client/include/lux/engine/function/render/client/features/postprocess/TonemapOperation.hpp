@@ -27,24 +27,27 @@ namespace lux::render
     /// 枚举名而非裸数字;server 侧 EToneMapOperator 是它的别名。
     enum class ETonemapOperator : uint8_t
     {
-        REINHARD     = 0,
-        ACES_FILMIC  = 1,
-        UNCHARTED2   = 2,
-        NONE         = 3,   ///< pass-through (debug: view raw HDR values)
+        REINHARD = 0,
+        ACES_FILMIC = 1,
+        UNCHARTED2 = 2,
+        NONE = 3, ///< pass-through (debug: view raw HDR values)
     };
 
     /// Comm-layer config for TonemapFeature.
-    struct LUX_COMM_CONFIG(prefix=Tonemap, id=lux.render.tonemap.v1, display=Tonemap,
-                           feature=TonemapFeature,
-                           feature_header=lux/engine/render/renderer/features/postprocess/TonemapFeature.hpp,
-                           param_op=TonemapParams, param_lane=frame)
-    TonemapCommConfig
+    struct LUX_COMM_CONFIG(
+        prefix = Tonemap,
+        id = lux.render.tonemap.v1,
+        display = Tonemap,
+        feature = TonemapFeature,
+        feature_header = lux / engine / render / renderer / features / postprocess / TonemapFeature.hpp,
+        param_op = TonemapParams,
+        param_lane = frame) TonemapCommConfig
     {
-        ShaderHandle vertex_shader{};     ///< fullscreen triangle
-        ShaderHandle fragment_shader{};   ///< tonemap.frag
+        ShaderHandle vertex_shader{};   ///< fullscreen triangle
+        ShaderHandle fragment_shader{}; ///< tonemap.frag
         ETonemapOperator tone_map_op{ETonemapOperator::ACES_FILMIC};
-        float    exposure{1.0f};
-        float    gamma{2.2f};
+        float exposure{1.0f};
+        float gamma{2.2f};
     };
     static_assert(std::is_trivially_copyable_v<TonemapCommConfig>);
 

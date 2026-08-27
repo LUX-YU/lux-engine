@@ -9,20 +9,16 @@ namespace lux::render
         uint32_t bucket_id,
         uint32_t section_id,
         uint16_t ibo_segment,
-        VkIndexType index_type)
+        VkIndexType index_type
+    )
     {
-        MdcKey key{
-            geometry_kind,
-            bucket_id,
-            section_id,
-            ibo_segment,
-            index_type};
+        MdcKey key{geometry_kind, bucket_id, section_id, ibo_segment, index_type};
         auto it = key_to_index_.find(key);
         if (it != key_to_index_.end())
         {
-            MdcEntry &entry = entries_[it->second];
+            MdcEntry& entry = entries_[it->second];
             entry.instance_count += 1;
-            ++mutation_serial_;   // exact per-mutation fingerprint
+            ++mutation_serial_; // exact per-mutation fingerprint
             // Only a power-of-two capacity band crossing shifts later offsets and
             // thus needs a recompile; staying within the band is free. (P-7)
             if (entry.instance_count > entry.capacity)
@@ -44,34 +40,34 @@ namespace lux::render
         {
             index = free_list_.back();
             free_list_.pop_back();
-            MdcEntry &entry = entries_[index];
-            entry.section_id     = section_id;
-            entry.geometry_kind  = geometry_kind;
-            entry.bucket_id      = bucket_id;
-            entry.ibo_segment    = ibo_segment;
-            entry.index_type     = index_type;
+            MdcEntry& entry = entries_[index];
+            entry.section_id = section_id;
+            entry.geometry_kind = geometry_kind;
+            entry.bucket_id = bucket_id;
+            entry.ibo_segment = ibo_segment;
+            entry.index_type = index_type;
             entry.instance_count = 1;
             entry.visible_offset = 0;
-            entry.capacity       = bucketCapacity(1);   // dead slot had capacity 0
+            entry.capacity = bucketCapacity(1); // dead slot had capacity 0
         }
         else
         {
             index = static_cast<uint32_t>(entries_.size());
             MdcEntry entry{};
-            entry.section_id     = section_id;
-            entry.geometry_kind  = geometry_kind;
-            entry.bucket_id      = bucket_id;
-            entry.ibo_segment    = ibo_segment;
-            entry.index_type     = index_type;
+            entry.section_id = section_id;
+            entry.geometry_kind = geometry_kind;
+            entry.bucket_id = bucket_id;
+            entry.ibo_segment = ibo_segment;
+            entry.index_type = index_type;
             entry.instance_count = 1;
             entry.visible_offset = 0;
-            entry.capacity       = bucketCapacity(1);
+            entry.capacity = bucketCapacity(1);
             entries_.push_back(entry);
         }
 
         key_to_index_.emplace(key, index);
-        ++mutation_serial_;   // new MDC -> new offset layout
-        ++layout_serial_;     // a new/revived bucket shifts the offset layout (P-7)
+        ++mutation_serial_; // new MDC -> new offset layout
+        ++layout_serial_;   // a new/revived bucket shifts the offset layout (P-7)
         return index;
     }
 
@@ -79,19 +75,19 @@ namespace lux::render
     {
         if (mdc_index >= entries_.size())
             return;
-        auto &e = entries_[mdc_index];
+        auto& e = entries_[mdc_index];
         if (e.instance_count > 0)
         {
             --e.instance_count;
-            ++mutation_serial_;   // exact per-mutation fingerprint
+            ++mutation_serial_; // exact per-mutation fingerprint
             // Capacity is sticky: a count drop within a live bucket keeps the band
             // (offsets unchanged) so no recompile — only bucket DEATH below shifts
             // the layout. (P-7)
 
             if (e.instance_count == 0)
             {
-                e.capacity = 0;       // dead slot reserves no visible-buffer space
-                ++layout_serial_;     // bucket death shifts every later MDC's offset
+                e.capacity = 0;   // dead slot reserves no visible-buffer space
+                ++layout_serial_; // bucket death shifts every later MDC's offset
                 // Slot is now dead. Drop its key and recycle the slot so a future
                 // registerInstance can reuse it. Index stability is preserved: a
                 // slot only dies once NO live instance references it, so no caller
@@ -99,12 +95,7 @@ namespace lux::render
                 // "zeroed entry silently revives" wrinkle — a later instance with
                 // the same key now takes the normal new-key path instead of
                 // resurrecting a stale entry. (M10)
-                key_to_index_.erase(MdcKey{
-                    e.geometry_kind,
-                    e.bucket_id,
-                    e.section_id,
-                    e.ibo_segment,
-                    e.index_type});
+                key_to_index_.erase(MdcKey{e.geometry_kind, e.bucket_id, e.section_id, e.ibo_segment, e.index_type});
                 free_list_.push_back(mdc_index);
             }
         }
@@ -122,7 +113,7 @@ namespace lux::render
         uint32_t running_offset = 0;
         for (uint32_t i = 0; i < n; ++i)
         {
-            const auto &e = entries_[i];
+            const auto& e = entries_[i];
             gpu_data_[i * 2 + 0] = running_offset;
             gpu_data_[i * 2 + 1] = e.section_id;
             entries_[i].visible_offset = running_offset;
@@ -147,8 +138,8 @@ namespace lux::render
         free_list_.clear();
         gpu_data_.clear();
         total_visible_capacity_ = 0;
-        ++mutation_serial_;   // monotonic: never reset, so a reused table still invalidates
-        ++layout_serial_;     // the offset layout is gone too (P-7)
+        ++mutation_serial_; // monotonic: never reset, so a reused table still invalidates
+        ++layout_serial_;   // the offset layout is gone too (P-7)
     }
 
 } // namespace lux::render

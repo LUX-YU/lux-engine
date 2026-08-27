@@ -23,7 +23,7 @@
  * parallel array indexed by slotIndexFor(): the ring owns GPU lifecycle, nothing else.
  */
 
-#include <lux/engine/function/render/client/core/Errors.hpp>   // Expected / renderFailure
+#include <lux/engine/function/render/client/core/Errors.hpp> // Expected / renderFailure
 
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
@@ -39,22 +39,24 @@ namespace lux::render
     public:
         struct Slot
         {
-            VkBuffer      buffer{VK_NULL_HANDLE};
+            VkBuffer buffer{VK_NULL_HANDLE};
             VmaAllocation alloc{nullptr};
-            void*         mapped{nullptr};
+            void* mapped{nullptr};
         };
 
         TransientVertexRing() = default;
-        ~TransientVertexRing() { destroy(); }
-        TransientVertexRing(const TransientVertexRing&)            = delete;
+        ~TransientVertexRing()
+        {
+            destroy();
+        }
+        TransientVertexRing(const TransientVertexRing&) = delete;
         TransientVertexRing& operator=(const TransientVertexRing&) = delete;
 
         /// Create one host-mapped VERTEX_BUFFER slot of @p slot_bytes per frame-in-flight
         /// (at least one). On any slot's failure the already-created slots are rolled
         /// back and the ring is left empty.
-        [[nodiscard]] Expected<void> create(VmaAllocator allocator,
-                                            std::uint32_t frames_in_flight,
-                                            VkDeviceSize slot_bytes)
+        [[nodiscard]] Expected<void>
+        create(VmaAllocator allocator, std::uint32_t frames_in_flight, VkDeviceSize slot_bytes)
         {
             allocator_ = allocator;
             const std::uint32_t count = std::max<std::uint32_t>(1u, frames_in_flight);
@@ -62,17 +64,15 @@ namespace lux::render
             for (auto& slot : slots_)
             {
                 VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-                bci.size  = slot_bytes;
+                bci.size = slot_bytes;
                 bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
                 VmaAllocationCreateInfo aci{};
                 aci.usage = VMA_MEMORY_USAGE_AUTO;
-                aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
                 VmaAllocationInfo info{};
-                const VkResult r = vmaCreateBuffer(allocator_, &bci, &aci,
-                                                   &slot.buffer, &slot.alloc, &info);
+                const VkResult r = vmaCreateBuffer(allocator_, &bci, &aci, &slot.buffer, &slot.alloc, &info);
                 if (r != VK_SUCCESS || info.pMappedData == nullptr)
                 {
                     destroy();
@@ -83,17 +83,32 @@ namespace lux::render
             return {};
         }
 
-        [[nodiscard]] bool          empty() const noexcept { return slots_.empty(); }
-        [[nodiscard]] std::uint32_t size()  const noexcept { return static_cast<std::uint32_t>(slots_.size()); }
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return slots_.empty();
+        }
+        [[nodiscard]] std::uint32_t size() const noexcept
+        {
+            return static_cast<std::uint32_t>(slots_.size());
+        }
 
         /// The slot index for the engine's REAL frame-in-flight (rule 1 above).
         [[nodiscard]] std::uint32_t slotIndexFor(std::uint32_t frame_index) const noexcept
         {
             return frame_index % static_cast<std::uint32_t>(slots_.size());
         }
-        [[nodiscard]] Slot&       slotAt(std::uint32_t index)       noexcept { return slots_[index]; }
-        [[nodiscard]] const Slot& slotAt(std::uint32_t index) const noexcept { return slots_[index]; }
-        [[nodiscard]] Slot&       slotFor(std::uint32_t frame_index) noexcept { return slots_[slotIndexFor(frame_index)]; }
+        [[nodiscard]] Slot& slotAt(std::uint32_t index) noexcept
+        {
+            return slots_[index];
+        }
+        [[nodiscard]] const Slot& slotAt(std::uint32_t index) const noexcept
+        {
+            return slots_[index];
+        }
+        [[nodiscard]] Slot& slotFor(std::uint32_t frame_index) noexcept
+        {
+            return slots_[slotIndexFor(frame_index)];
+        }
 
         /// Flush @p bytes of a slot's host-mapped range to the device.
         void flush(std::uint32_t index, VkDeviceSize bytes)
@@ -105,8 +120,7 @@ namespace lux::render
         /// flight retire sink — `retire(VkBuffer, VmaAllocation)`, e.g. the deferred-
         /// destroy queue or a ContextView's retireBuffer — and null the handles so the
         /// destructor's destroy() becomes a no-op.
-        template <class RetireFn>
-        void retireInto(RetireFn&& retire)
+        template <class RetireFn> void retireInto(RetireFn&& retire)
         {
             for (auto& slot : slots_)
             {
@@ -120,7 +134,8 @@ namespace lux::render
         /// shutdown); a no-op after retireInto() nulled the handles.
         void destroy()
         {
-            if (!allocator_) return;
+            if (!allocator_)
+                return;
             for (auto& slot : slots_)
             {
                 if (slot.buffer != VK_NULL_HANDLE)
@@ -131,7 +146,7 @@ namespace lux::render
         }
 
     private:
-        VmaAllocator      allocator_{nullptr};
+        VmaAllocator allocator_{nullptr};
         std::vector<Slot> slots_;
     };
 

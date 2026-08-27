@@ -12,9 +12,9 @@ namespace lux::render
     {
         VkSemaphoreSubmitInfo makeSemaphoreSubmit(VkSemaphore sem, uint64_t value, uint64_t stage)
         {
-            VkSemaphoreSubmitInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+            VkSemaphoreSubmitInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
             info.semaphore = sem;
-            info.value     = value;
+            info.value = value;
             info.stageMask = static_cast<VkPipelineStageFlags2>(stage);
             return info;
         }

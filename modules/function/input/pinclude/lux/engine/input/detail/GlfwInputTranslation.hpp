@@ -48,19 +48,11 @@ namespace lux::input::detail
     [[nodiscard]] inline EKeyModifier glfwModifiers(int modifiers) noexcept
     {
         constexpr int kKnownModifiers =
-            GLFW_MOD_SHIFT |
-            GLFW_MOD_CONTROL |
-            GLFW_MOD_ALT |
-            GLFW_MOD_SUPER |
-            GLFW_MOD_CAPS_LOCK |
-            GLFW_MOD_NUM_LOCK;
+            GLFW_MOD_SHIFT | GLFW_MOD_CONTROL | GLFW_MOD_ALT | GLFW_MOD_SUPER | GLFW_MOD_CAPS_LOCK | GLFW_MOD_NUM_LOCK;
         return static_cast<EKeyModifier>(modifiers & kKnownModifiers);
     }
 
-    inline void applyGlfwWindowEvents(
-        InputSnapshot& snapshot,
-        std::span<const lux::window::WindowInputEvent> events
-    )
+    inline void applyGlfwWindowEvents(InputSnapshot& snapshot, std::span<const lux::window::WindowInputEvent> events)
     {
         for (const auto& raw : events)
         {
@@ -87,26 +79,19 @@ namespace lux::input::detail
                     }
                 }
 
-                snapshot.events.emplace_back(KeyAction{
-                    translated_key,
-                    key->scancode,
-                    translated_state,
-                    glfwModifiers(key->modifiers)
-                });
+                snapshot.events.emplace_back(
+                    KeyAction{translated_key, key->scancode, translated_state, glfwModifiers(key->modifiers)}
+                );
                 continue;
             }
 
             if (const auto* mouse = std::get_if<lux::window::WindowMouseButtonEvent>(&raw))
             {
-                const EMouseButton translated_button =
-                    glfwMouseButton(mouse->button);
-                const EInputState translated_state =
-                    glfwInputState(mouse->action);
+                const EMouseButton translated_button = glfwMouseButton(mouse->button);
+                const EInputState translated_state = glfwInputState(mouse->action);
                 if (mouse->button >= 0 && mouse->button < 8)
                 {
-                    const auto bit = static_cast<std::uint8_t>(
-                        1u << mouse->button
-                    );
+                    const auto bit = static_cast<std::uint8_t>(1u << mouse->button);
                     if (translated_state == EInputState::PRESS)
                     {
                         snapshot.mouse_held |= bit;
@@ -114,18 +99,14 @@ namespace lux::input::detail
                     }
                     else if (translated_state == EInputState::RELEASE)
                     {
-                        snapshot.mouse_held = static_cast<std::uint8_t>(
-                            snapshot.mouse_held & ~bit
-                        );
+                        snapshot.mouse_held = static_cast<std::uint8_t>(snapshot.mouse_held & ~bit);
                         snapshot.mouse_just_released |= bit;
                     }
                 }
 
-                snapshot.events.emplace_back(MouseButtonAction{
-                    translated_button,
-                    translated_state,
-                    glfwModifiers(mouse->modifiers)
-                });
+                snapshot.events.emplace_back(
+                    MouseButtonAction{translated_button, translated_state, glfwModifiers(mouse->modifiers)}
+                );
                 continue;
             }
 
@@ -133,9 +114,7 @@ namespace lux::input::detail
             {
                 snapshot.scroll_dx += scroll->x;
                 snapshot.scroll_dy += scroll->y;
-                snapshot.events.emplace_back(
-                    MouseScrollAction{scroll->x, scroll->y}
-                );
+                snapshot.events.emplace_back(MouseScrollAction{scroll->x, scroll->y});
                 continue;
             }
 

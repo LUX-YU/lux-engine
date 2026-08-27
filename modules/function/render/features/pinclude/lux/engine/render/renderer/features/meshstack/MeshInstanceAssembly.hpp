@@ -42,7 +42,8 @@ namespace lux::render::detail
         bool visible_in_all_views,
         MeshInstanceCreateStatus& status,
         std::uint32_t transition_milliseconds = 0u,
-        std::uint32_t transition_seed = 0u);
+        std::uint32_t transition_seed = 0u
+    );
 
     /// Reconfigures existing live objects as one render-thread transaction.
     /// All mesh/material references, sections and MDC entries are prepared
@@ -52,32 +53,29 @@ namespace lux::render::detail
         void* server_state,
         RenderSceneId scene,
         std::span<const MeshInstanceRevision> revisions,
-        MeshInstanceCreateStatus& status);
+        MeshInstanceCreateStatus& status
+    );
 
     /// Symmetric render-thread destruction. It first unregisters the object
     /// from every live View, then returns all MeshStack/MDC slots.
-    void destroyMeshInstance(
-        void* server_state,
-        RenderSceneId scene,
-        RenderObjectHandle object) noexcept;
+    void destroyMeshInstance(void* server_state, RenderSceneId scene, RenderObjectHandle object) noexcept;
 
     /// Same destruction transaction for feature frame hooks, where the scene
     /// and render context are already resolved and no server shim is available.
-    void destroyMeshInstance(
-        RenderScene& scene,
-        RenderContext& context,
-        RenderObjectHandle object) noexcept;
+    void destroyMeshInstance(RenderScene& scene, RenderContext& context, RenderObjectHandle object) noexcept;
 
     /// Back-fill a newly created View with an already-live object.
     void makeMeshInstanceVisible(
         void* server_state,
         RenderSceneId scene,
         std::uint32_t view_index,
-        RenderObjectHandle object) noexcept;
+        RenderObjectHandle object
+    ) noexcept;
 
     void setMeshInstanceVisibility(
         void* server_state,
         RenderSceneId scene,
         RenderObjectHandle object,
-        bool visible) noexcept;
+        bool visible
+    ) noexcept;
 } // namespace lux::render::detail

@@ -6,16 +6,13 @@
 #include <cassert>
 #include <tuple>
 
-int main()
+int
+main()
 {
     static_assert(lux::meta::HasTypeStaticInfo<StaticInfoProbe>);
-    static_assert(std::tuple_size_v<decltype(
-        lux::meta::TypeStaticInfo<StaticInfoProbe>::fields
-    )> == 2U);
+    static_assert(std::tuple_size_v<decltype(lux::meta::TypeStaticInfo<StaticInfoProbe>::fields)> == 2U);
     StaticInfoProbe value{3U, 4.0F, 5U};
-    const auto& first = std::get<0>(
-        lux::meta::TypeStaticInfo<StaticInfoProbe>::fields
-    );
+    const auto& first = std::get<0>(lux::meta::TypeStaticInfo<StaticInfoProbe>::fields);
     assert(value.*first.pointer == 3U);
     return 0;
 }

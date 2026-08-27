@@ -16,7 +16,7 @@ namespace lux::simulation
             lux::asset::AssetId asset;
             const lux::script::NativeModule* module{};
             void* lease{};
-            void (*release)(void*) noexcept{};
+            void (*release)(void*) noexcept {};
         };
 
         struct Instance final
@@ -34,10 +34,8 @@ namespace lux::simulation
             std::size_t source_instance_capacity,
             NativeScriptRecordLayoutResolver layouts
         )
-            : resolver(source_resolver),
-              module_capacity(source_module_capacity),
-              instance_capacity(source_instance_capacity),
-              record_layouts(layouts)
+            : resolver(source_resolver), module_capacity(source_module_capacity),
+              instance_capacity(source_instance_capacity), record_layouts(layouts)
         {
             modules.reserve(module_capacity);
         }
@@ -51,13 +49,10 @@ namespace lux::simulation
             }
         }
 
-        [[nodiscard]] bool expectedLayout(
-            const lux::rdesc::ScriptValueType& semantic,
-            lux_script_type_desc& result
-        ) const noexcept
+        [[nodiscard]] bool
+        expectedLayout(const lux::rdesc::ScriptValueType& semantic, lux_script_type_desc& result) const noexcept
         {
-            if (const auto* builtin = lux::script::scriptBuiltinLayout(
-                    semantic.type_id))
+            if (const auto* builtin = lux::script::scriptBuiltinLayout(semantic.type_id))
             {
                 if (builtin->canonical_name != semantic.canonical_name)
                     return false;
@@ -68,30 +63,22 @@ namespace lux::simulation
                     builtin->alignment,
                     builtin->abi_kind,
                     static_cast<std::uint8_t>(semantic.pass),
-                    {}};
+                    {}
+                };
                 return true;
             }
-            return record_layouts.resolve && record_layouts.resolve(
-                record_layouts.context,
-                semantic.type_id,
-                semantic.canonical_name,
-                result
-            );
+            return record_layouts.resolve &&
+                   record_layouts.resolve(record_layouts.context, semantic.type_id, semantic.canonical_name, result);
         }
 
-        [[nodiscard]] bool sameType(
-            const lux_script_type_desc& native_type,
-            const lux::rdesc::ScriptValueType& semantic
-        ) const noexcept
+        [[nodiscard]] bool
+        sameType(const lux_script_type_desc& native_type, const lux::rdesc::ScriptValueType& semantic) const noexcept
         {
             lux_script_type_desc expected{};
-            return expectedLayout(semantic, expected) && native_type.name &&
-                native_type.type_id == semantic.type_id &&
-                semantic.canonical_name == native_type.name &&
-                native_type.kind == expected.kind &&
-                native_type.pass == static_cast<std::uint8_t>(semantic.pass) &&
-                native_type.size == expected.size &&
-                native_type.align == expected.align;
+            return expectedLayout(semantic, expected) && native_type.name && native_type.type_id == semantic.type_id &&
+                   semantic.canonical_name == native_type.name && native_type.kind == expected.kind &&
+                   native_type.pass == static_cast<std::uint8_t>(semantic.pass) && native_type.size == expected.size &&
+                   native_type.align == expected.align;
         }
 
         [[nodiscard]] bool executableContractMatches(
@@ -99,30 +86,33 @@ namespace lux::simulation
             const lux::asset::ScriptAssetContent& asset
         ) const noexcept
         {
-            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
-                std::addressof(asset.description.body)
-            );
-            if (!body || body->abi_version != LUX_SCRIPT_ABI_VERSION ||
-                module.abiVersion() != LUX_SCRIPT_ABI_VERSION ||
-                module.name() != asset.description.module_name ||
-                module.stateLayoutHash() != body->state_layout_hash ||
-                module.stateSize() != body->state_size ||
-                module.stateAlignment() != body->state_align)
+            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(std::addressof(asset.description.body));
+            if (!body)
+                return false;
+            const bool is_invalid_abi = body->abi_version != LUX_SCRIPT_ABI_VERSION ||
+                module.abiVersion() != LUX_SCRIPT_ABI_VERSION;
+            const bool is_invalid_module = module.name() != asset.description.module_name;
+            const bool is_invalid_state_layout = module.stateLayoutHash() != body->state_layout_hash ||
+                module.stateSize() != body->state_size || module.stateAlignment() != body->state_align;
+            const bool is_invalid_contract = is_invalid_abi || is_invalid_module || is_invalid_state_layout;
+            if (is_invalid_contract)
             {
                 return false;
             }
             const auto functions = module.functions();
             if (functions.size() != asset.description.exports.size())
                 return false;
-            for (std::size_t function_index{};
-                 function_index < functions.size(); ++function_index)
+            for (std::size_t function_index{}; function_index < functions.size(); ++function_index)
             {
                 const auto& native = functions[function_index];
                 const auto& semantic = asset.description.exports[function_index];
-                if (!native.name || semantic.name != native.name ||
-                    semantic.symbol_id != native.symbol_id ||
-                    semantic.args.size() != native.arg_count ||
-                    semantic.returns.size() != native.return_count)
+                const bool is_name_mismatch = !native.name || semantic.name != native.name;
+                const bool is_symbol_mismatch = semantic.symbol_id != native.symbol_id;
+                const bool is_arg_count_mismatch = semantic.args.size() != native.arg_count;
+                const bool is_return_count_mismatch = semantic.returns.size() != native.return_count;
+                const bool is_mismatch =
+                    is_name_mismatch || is_symbol_mismatch || is_arg_count_mismatch || is_return_count_mismatch;
+                if (is_mismatch)
                 {
                     return false;
                 }
@@ -131,8 +121,7 @@ namespace lux::simulation
                     if (!sameType(native.args[index], semantic.args[index]))
                         return false;
                 }
-                for (std::size_t index{};
-                     index < semantic.returns.size(); ++index)
+                for (std::size_t index{}; index < semantic.returns.size(); ++index)
                 {
                     if (!sameType(native.returns[index], semantic.returns[index]))
                         return false;
@@ -147,20 +136,15 @@ namespace lux::simulation
             ModuleEntry*& result
         ) noexcept
         {
-            const auto found = std::find_if(
-                modules.begin(),
-                modules.end(),
-                [&](const ModuleEntry& entry) noexcept
-                {
-                    return entry.asset == asset_id;
-                }
+            const auto found = std::find_if(modules.begin(), modules.end(), [&](const ModuleEntry& entry) noexcept {
+                return entry.asset == asset_id;
+            }
             );
             if (found != modules.end())
             {
                 if (!executableContractMatches(*found->module, asset))
                 {
-                    return EScriptBackendResult::
-                        EXECUTABLE_CONTRACT_MISMATCH;
+                    return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 }
                 result = std::addressof(*found);
                 return EScriptBackendResult::SUCCESS;
@@ -168,14 +152,9 @@ namespace lux::simulation
             if (modules.size() >= module_capacity)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             ResolvedNativeModule resolved;
-            if (!resolver.resolve ||
-                !resolver.resolve(
-                    resolver.context,
-                    asset_id,
-                    asset,
-                    resolved
-                ) ||
-                !resolved.module)
+            const bool has_resolved_module = resolver.resolve &&
+                resolver.resolve(resolver.context, asset_id, asset, resolved) && resolved.module;
+            if (!has_resolved_module)
             {
                 if (resolved.release)
                     resolved.release(resolved.lease);
@@ -189,11 +168,7 @@ namespace lux::simulation
             }
             try
             {
-                modules.push_back(ModuleEntry{
-                    asset_id,
-                    resolved.module,
-                    resolved.lease,
-                    resolved.release});
+                modules.push_back(ModuleEntry{asset_id, resolved.module, resolved.lease, resolved.release});
                 resolved.lease = nullptr;
                 resolved.release = nullptr;
                 result = std::addressof(modules.back());
@@ -215,22 +190,21 @@ namespace lux::simulation
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
-                std::addressof(asset.description.body));
-            if (!body || body->state_align == 0U ||
-                (body->state_align & (body->state_align - 1U)) != 0U ||
-                body->state_defaults.size() > body->state_size)
+            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(std::addressof(asset.description.body));
+            if (!body)
+                return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+            const bool is_invalid_alignment = body->state_align == 0U ||
+                (body->state_align & (body->state_align - 1U)) != 0U;
+            const bool is_invalid_defaults = body->state_defaults.size() > body->state_size;
+            const bool is_invalid_contract = is_invalid_alignment || is_invalid_defaults;
+            if (is_invalid_contract)
             {
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             }
             if (self.live_instances >= self.instance_capacity)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             ModuleEntry* module{};
-            const auto module_result = self.resolveModule(
-                context.script,
-                asset,
-                module
-            );
+            const auto module_result = self.resolveModule(context.script, asset, module);
             if (module_result != EScriptBackendResult::SUCCESS)
                 return module_result;
             auto* instance = new (std::nothrow) Instance;
@@ -239,16 +213,13 @@ namespace lux::simulation
             instance->module = module;
             instance->state_size = body->state_size;
             instance->state_align = body->state_align;
-            instance->over_aligned = body->state_align >
-                __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+            instance->over_aligned = body->state_align > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
             if (body->state_size != 0U)
             {
-                instance->state = instance->over_aligned
-                    ? ::operator new(
-                        body->state_size,
-                        std::align_val_t{body->state_align},
-                        std::nothrow)
-                    : ::operator new(body->state_size, std::nothrow);
+                instance->state =
+                    instance->over_aligned
+                        ? ::operator new(body->state_size, std::align_val_t{body->state_align}, std::nothrow)
+                        : ::operator new(body->state_size, std::nothrow);
                 if (!instance->state)
                 {
                     delete instance;
@@ -257,11 +228,7 @@ namespace lux::simulation
                 std::memset(instance->state, 0, body->state_size);
                 if (!body->state_defaults.empty())
                 {
-                    std::memcpy(
-                        instance->state,
-                        body->state_defaults.data(),
-                        body->state_defaults.size()
-                    );
+                    std::memcpy(instance->state, body->state_defaults.data(), body->state_defaults.size());
                 }
             }
             ++self.live_instances;
@@ -280,11 +247,10 @@ namespace lux::simulation
             auto* instance = static_cast<Instance*>(instance_value.value);
             if (!instance || !instance->module || !instance->module->module)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            const auto* function = instance->module->module->findFunction(
-                description.symbol_id);
-            if (!function || !function->invoke ||
-                function->arg_count != description.args.size() ||
-                function->return_count != description.returns.size())
+            const auto* function = instance->module->module->findFunction(description.symbol_id);
+            const bool is_invalid_function = !function || !function->invoke ||
+                function->arg_count != description.args.size() || function->return_count != description.returns.size();
+            if (is_invalid_function)
             {
                 return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
             }
@@ -295,31 +261,20 @@ namespace lux::simulation
             }
             for (std::size_t index{}; index < description.returns.size(); ++index)
             {
-                if (!self.sameType(
-                        function->returns[index],
-                        description.returns[index]))
+                if (!self.sameType(function->returns[index], description.returns[index]))
                 {
                     return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
                 }
             }
-            result = lux::script::BoundScriptCall{
-                function->invoke,
-                instance->state};
+            result = lux::script::BoundScriptCall{function->invoke, instance->state};
             return EScriptBackendResult::SUCCESS;
         }
 
-        static void releaseMethod(
-            void*,
-            ScriptBackendInstance,
-            lux::script::BoundScriptCall
-        ) noexcept
+        static void releaseMethod(void*, ScriptBackendInstance, lux::script::BoundScriptCall) noexcept
         {
         }
 
-        static void destroyInstance(
-            void* opaque,
-            ScriptBackendInstance instance_value
-        ) noexcept
+        static void destroyInstance(void* opaque, ScriptBackendInstance instance_value) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
             auto* instance = static_cast<Instance*>(instance_value.value);
@@ -329,10 +284,7 @@ namespace lux::simulation
             {
                 if (instance->over_aligned)
                 {
-                    ::operator delete(
-                        instance->state,
-                        std::align_val_t{instance->state_align}
-                    );
+                    ::operator delete(instance->state, std::align_val_t{instance->state_align});
                 }
                 else
                 {
@@ -359,19 +311,13 @@ namespace lux::simulation
         NativeScriptRecordLayoutResolver record_layouts
     ) noexcept
     {
-        if (!resolver.resolve || module_capacity == 0U ||
-            instance_capacity == 0U)
+        if (!resolver.resolve || module_capacity == 0U || instance_capacity == 0U)
         {
             return;
         }
         try
         {
-            state_ = std::make_unique<State>(
-                resolver,
-                module_capacity,
-                instance_capacity,
-                record_layouts
-            );
+            state_ = std::make_unique<State>(resolver, module_capacity, instance_capacity, record_layouts);
         }
         catch (const std::bad_alloc&)
         {
@@ -379,12 +325,8 @@ namespace lux::simulation
     }
 
     NativeScriptBindingBackend::~NativeScriptBindingBackend() = default;
-    NativeScriptBindingBackend::NativeScriptBindingBackend(
-        NativeScriptBindingBackend&&
-    ) noexcept = default;
-    NativeScriptBindingBackend& NativeScriptBindingBackend::operator=(
-        NativeScriptBindingBackend&&
-    ) noexcept = default;
+    NativeScriptBindingBackend::NativeScriptBindingBackend(NativeScriptBindingBackend&&) noexcept = default;
+    NativeScriptBindingBackend& NativeScriptBindingBackend::operator=(NativeScriptBindingBackend&&) noexcept = default;
 
     NativeScriptBindingBackend::operator bool() const noexcept
     {
@@ -394,13 +336,14 @@ namespace lux::simulation
     ScriptBackendDescriptor NativeScriptBindingBackend::descriptor() noexcept
     {
         return state_
-            ? ScriptBackendDescriptor{
-                lux::rdesc::Script::Kind::NATIVE_MODULE,
-                state_.get(),
-                &State::createInstance,
-                &State::prepareMethod,
-                &State::releaseMethod,
-                &State::destroyInstance}
-            : ScriptBackendDescriptor{};
+                   ? ScriptBackendDescriptor{
+                         lux::rdesc::Script::Kind::NATIVE_MODULE,
+                         state_.get(),
+                         &State::createInstance,
+                         &State::prepareMethod,
+                         &State::releaseMethod,
+                         &State::destroyInstance
+                     }
+                   : ScriptBackendDescriptor{};
     }
 }

@@ -28,17 +28,17 @@ namespace lux::render
     /// 由生成的 .pass.hpp 逐偏移 static_assert 看住。
     struct LUX_PASS_SCALARS() HighlightBlurScalars
     {
-        float dir_x{1.0f};    ///< 模糊轴 x —— H 趟 (1,0),V 趟 (0,1)
-        float dir_y{0.0f};    ///< 模糊轴 y
-        float radius{1.0f};   ///< 每 tap 步长倍率(texel)
+        float dir_x{1.0f};  ///< 模糊轴 x —— H 趟 (1,0),V 趟 (0,1)
+        float dir_y{0.0f};  ///< 模糊轴 y
+        float radius{1.0f}; ///< 每 tap 步长倍率(texel)
     };
 
     /// 分离高斯模糊单趟的资源面:一进(采样)一出(色附件)。
     struct LUX_PASS_PARAMS() HighlightBlurPassParams
     {
-        LUX_RESOURCE(role=read, glsl=uBlurSrc)   RGResourceHandle blur_src{};
+        LUX_RESOURCE(role = read, glsl = uBlurSrc) RGResourceHandle blur_src {};
         LUX_RESOURCE(role=sampler, for=blur_src) VkSampler        blur_src_sampler{VK_NULL_HANDLE};
-        LUX_RESOURCE(role=write)                 RGResourceHandle color_out{};
+        LUX_RESOURCE(role = write) RGResourceHandle color_out {};
 
         HighlightBlurScalars scalars{};
     };

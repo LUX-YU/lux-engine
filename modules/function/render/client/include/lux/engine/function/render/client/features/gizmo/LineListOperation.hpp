@@ -23,15 +23,18 @@
 namespace lux::render
 {
     /// CommConfig (trivially copyable, transferred as attachment).
-    struct LUX_COMM_CONFIG(prefix=LineList, id=lux.render.line_list.v1, display=LineListTransient,
-                           feature=LineListTransientFeature,
-                           feature_header=lux/engine/render/renderer/features/gizmo/LineListTransientFeature.hpp)
-    LineListTransientCommConfig
+    struct LUX_COMM_CONFIG(
+        prefix = LineList,
+        id = lux.render.line_list.v1,
+        display = LineListTransient,
+        feature = LineListTransientFeature,
+        feature_header = lux / engine / render / renderer / features / gizmo /
+                         LineListTransientFeature.hpp) LineListTransientCommConfig
     {
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
-        float        line_width{1.5f};
-        uint32_t     max_vertices{200'000};
+        float line_width{1.5f};
+        uint32_t max_vertices{200'000};
     };
     static_assert(std::is_trivially_copyable_v<LineListTransientCommConfig>);
 
@@ -43,14 +46,18 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<LineListUploadedReply>);
 
-    struct LUX_OP(lane=frame, kind=blob, name=LineListUpload, method=uploadLines,
-                  reply=LineListUploadedReply, opcode=resource)
-    UploadLineListPayload
+    struct LUX_OP(
+        lane = frame,
+        kind = blob,
+        name = LineListUpload,
+        method = uploadLines,
+        reply = LineListUploadedReply,
+        opcode = resource) UploadLineListPayload
     {
         RenderSceneId scene_id{};
-        uint32_t      chunk_id{0};
-        uint32_t      vertex_count{0};   ///< 必须等于 blob 字节数 / sizeof(GizmoVertex)
-        LUX_OP_BLOB() BlobRef vertex_data{};
+        uint32_t chunk_id{0};
+        uint32_t vertex_count{0}; ///< 必须等于 blob 字节数 / sizeof(GizmoVertex)
+        LUX_OP_BLOB() BlobRef vertex_data {};
     };
     static_assert(std::is_trivially_copyable_v<UploadLineListPayload>);
 

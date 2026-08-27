@@ -12,10 +12,10 @@
 // ============================================================================
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>      // TypeId, opcodes, CommandTraits
-#include <lux/engine/function/render/client/protocol/FeatureOps.hpp>  // EOpKind / FeatureOpIds / reply_type_id_of_v
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // TypeId, opcodes, CommandTraits
+#include <lux/engine/function/render/client/protocol/FeatureOps.hpp>      // EOpKind / FeatureOpIds / reply_type_id_of_v
 #include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>
-#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>  // RLightHandle
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp> // RLightHandle
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/function/visibility.h>
 
@@ -39,11 +39,10 @@ namespace lux::render
     //  Feature-scoped operation name constants (allocated dynamically at
     //  register_ops_fn time; the client reads the ids from the registration reply)
     // =========================================================================
-    struct LUX_OP(lane=frame, kind=resource, name=CreateLight, method=createLight,
-                  reply=LightCreatedReply)
-    CreateLightPayload
+    struct LUX_OP(lane = frame, kind = resource, name = CreateLight, method = createLight, reply = LightCreatedReply)
+        CreateLightPayload
     {
-        RenderSceneId scene_id{};   // light is created in THIS scene
+        RenderSceneId scene_id{}; // light is created in THIS scene
         std::uint32_t transition_milliseconds{0u};
         uint8_t light_type{0}; // 0=Dir, 1=Point, 2=Spot, 3=Area
         RenderLargePosition3D spatial_position{};
@@ -66,11 +65,16 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<CreateLightPayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=UpdateLight, method=updateLight, opcode=resource,
-                  bulk=LightBatch, bulk_method=updateLights)
-    UpdateLightPayload
+    struct LUX_OP(
+        lane = frame,
+        kind = stream,
+        name = UpdateLight,
+        method = updateLight,
+        opcode = resource,
+        bulk = LightBatch,
+        bulk_method = updateLights) UpdateLightPayload
     {
-        RenderSceneId scene_id{};   // which scene owns `handle`
+        RenderSceneId scene_id{}; // which scene owns `handle`
         RLightHandle handle{};
         uint8_t light_type{0};
         RenderLargePosition3D spatial_position{};
@@ -97,11 +101,11 @@ namespace lux::render
     // light handle is only meaningful paired with its owning scene — per-scene
     // LightResources free-lists are independent, so the same {index,gen} can be
     // valid in two scenes.
-    struct LUX_OP(lane=frame, kind=stream, name=DestroyLight, method=destroyLight, opcode=resource)
-    DestroyLightPayload
+    struct LUX_OP(lane = frame, kind = stream, name = DestroyLight, method = destroyLight, opcode = resource)
+        DestroyLightPayload
     {
         RenderSceneId scene_id{};
-        RLightHandle  handle{};
+        RLightHandle handle{};
         std::uint32_t transition_milliseconds{0u};
     };
     static_assert(std::is_trivially_copyable_v<DestroyLightPayload>);
@@ -116,9 +120,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<LightStatsReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=LightStats,
-                  method=stats, reply=LightStatsReply, opcode=command)
-    LightStatsPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = LightStats,
+        method = stats,
+        reply = LightStatsReply,
+        opcode = command) LightStatsPayload final
     {
         RenderSceneId scene_id{};
     };
@@ -136,12 +144,11 @@ namespace lux::render
 #endif
     inline constexpr std::size_t kLightPayloadTailBytes =
 #ifdef __LUX_PARSE_TIME__
-        0;   // 解析期占位(见上)
+        0; // 解析期占位(见上)
 #else
         sizeof(CreateLightPayload) - offsetof(CreateLightPayload, light_type);
     static_assert(
-        kLightPayloadTailBytes ==
-            sizeof(UpdateLightPayload) - offsetof(UpdateLightPayload, light_type),
+        kLightPayloadTailBytes == sizeof(UpdateLightPayload) - offsetof(UpdateLightPayload, light_type),
         "Create/Update light payload shared tail must have identical layout");
 #endif
 
@@ -149,87 +156,84 @@ namespace lux::render
     //  LightDescriptor ↔ flat payload conversion
     // =========================================================================
 
-    inline CreateLightPayload toLightPayload(RenderSceneId scene_id,
-                                             const LightDescriptor &desc)
+    inline CreateLightPayload toLightPayload(RenderSceneId scene_id, const LightDescriptor& desc)
     {
         CreateLightPayload p{};
         p.scene_id = scene_id;
 
         std::visit(
-            [&](auto &&arg)
-            {
+            [&](auto&& arg) {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, DirectionalLightDesc>)
                 {
                     p.light_type = 0;
                     Eigen::Map<Eigen::Vector3f>(p.direction) = arg.direction;
-                    Eigen::Map<Eigen::Vector3f>(p.color)     = arg.color;
-                    p.intensity        = arg.intensity;
-                    p.flags            = arg.flags;
-                    p.shadow_map_size  = arg.shadow_map_size;
-                    p.shadow_bias      = arg.shadow_bias;
+                    Eigen::Map<Eigen::Vector3f>(p.color) = arg.color;
+                    p.intensity = arg.intensity;
+                    p.flags = arg.flags;
+                    p.shadow_map_size = arg.shadow_map_size;
+                    p.shadow_bias = arg.shadow_bias;
                     p.shadow_normal_bias = arg.shadow_normal_bias;
-                    p.cascade_count    = arg.cascade_count;
+                    p.cascade_count = arg.cascade_count;
                     std::copy(arg.cascade_splits.begin(), arg.cascade_splits.end(), p.cascade_splits);
                 }
                 else if constexpr (std::is_same_v<T, PointLightDesc>)
                 {
                     p.light_type = 1;
                     p.spatial_position = arg.spatial_position;
-                    Eigen::Map<Eigen::Vector3f>(p.color)     = arg.color;
-                    p.intensity             = arg.intensity;
-                    p.range                 = arg.range;
-                    p.attenuation_constant  = arg.attenuation_constant;
-                    p.attenuation_linear    = arg.attenuation_linear;
+                    Eigen::Map<Eigen::Vector3f>(p.color) = arg.color;
+                    p.intensity = arg.intensity;
+                    p.range = arg.range;
+                    p.attenuation_constant = arg.attenuation_constant;
+                    p.attenuation_linear = arg.attenuation_linear;
                     p.attenuation_quadratic = arg.attenuation_quadratic;
-                    p.flags                 = arg.flags;
-                    p.shadow_map_size       = arg.shadow_map_size;
-                    p.shadow_bias           = arg.shadow_bias;
-                    p.shadow_normal_bias    = arg.shadow_normal_bias;
+                    p.flags = arg.flags;
+                    p.shadow_map_size = arg.shadow_map_size;
+                    p.shadow_bias = arg.shadow_bias;
+                    p.shadow_normal_bias = arg.shadow_normal_bias;
                 }
                 else if constexpr (std::is_same_v<T, SpotLightDesc>)
                 {
                     p.light_type = 2;
                     p.spatial_position = arg.spatial_position;
                     Eigen::Map<Eigen::Vector3f>(p.direction) = arg.direction;
-                    Eigen::Map<Eigen::Vector3f>(p.color)     = arg.color;
-                    p.intensity             = arg.intensity;
-                    p.range                 = arg.range;
-                    p.attenuation_constant  = arg.attenuation_constant;
-                    p.attenuation_linear    = arg.attenuation_linear;
+                    Eigen::Map<Eigen::Vector3f>(p.color) = arg.color;
+                    p.intensity = arg.intensity;
+                    p.range = arg.range;
+                    p.attenuation_constant = arg.attenuation_constant;
+                    p.attenuation_linear = arg.attenuation_linear;
                     p.attenuation_quadratic = arg.attenuation_quadratic;
-                    p.inner_cone_angle      = arg.inner_cone_angle;
-                    p.outer_cone_angle      = arg.outer_cone_angle;
-                    p.flags                 = arg.flags;
-                    p.shadow_map_size       = arg.shadow_map_size;
-                    p.shadow_bias           = arg.shadow_bias;
-                    p.shadow_normal_bias    = arg.shadow_normal_bias;
+                    p.inner_cone_angle = arg.inner_cone_angle;
+                    p.outer_cone_angle = arg.outer_cone_angle;
+                    p.flags = arg.flags;
+                    p.shadow_map_size = arg.shadow_map_size;
+                    p.shadow_bias = arg.shadow_bias;
+                    p.shadow_normal_bias = arg.shadow_normal_bias;
                 }
                 else if constexpr (std::is_same_v<T, AreaLightDesc>)
                 {
                     p.light_type = 3;
-                    Eigen::Map<Eigen::Vector3f>(p.color)     = arg.color;
-                    p.intensity        = arg.intensity;
-                    p.area_size[0]     = arg.size.x();
-                    p.area_size[1]     = arg.size.y();
-                    p.flags            = arg.flags;
-                    p.shadow_map_size  = arg.shadow_map_size;
-                    p.shadow_bias      = arg.shadow_bias;
+                    Eigen::Map<Eigen::Vector3f>(p.color) = arg.color;
+                    p.intensity = arg.intensity;
+                    p.area_size[0] = arg.size.x();
+                    p.area_size[1] = arg.size.y();
+                    p.flags = arg.flags;
+                    p.shadow_map_size = arg.shadow_map_size;
+                    p.shadow_bias = arg.shadow_bias;
                     p.shadow_normal_bias = arg.shadow_normal_bias;
-                } 
-            }, 
+                }
+            },
             desc
         );
 
         return p;
     }
 
-    inline LightDescriptor fromLightPayload(const CreateLightPayload &p)
+    inline LightDescriptor fromLightPayload(const CreateLightPayload& p)
     {
         switch (p.light_type)
         {
-        case 0:
-        {
+        case 0: {
             DirectionalLightDesc d{};
             d.direction = Eigen::Map<const Eigen::Vector3f>(p.direction);
             d.color = Eigen::Map<const Eigen::Vector3f>(p.color);
@@ -242,8 +246,7 @@ namespace lux::render
             std::copy_n(p.cascade_splits, 8, d.cascade_splits.begin());
             return d;
         }
-        case 1:
-        {
+        case 1: {
             PointLightDesc d{};
             d.spatial_position = p.spatial_position;
             d.color = Eigen::Map<const Eigen::Vector3f>(p.color);
@@ -258,8 +261,7 @@ namespace lux::render
             d.shadow_normal_bias = p.shadow_normal_bias;
             return d;
         }
-        case 2:
-        {
+        case 2: {
             SpotLightDesc d{};
             d.spatial_position = p.spatial_position;
             d.direction = Eigen::Map<const Eigen::Vector3f>(p.direction);
@@ -277,8 +279,7 @@ namespace lux::render
             d.shadow_normal_bias = p.shadow_normal_bias;
             return d;
         }
-        case 3:
-        {
+        case 3: {
             AreaLightDesc d{};
             d.color = Eigen::Map<const Eigen::Vector3f>(p.color);
             d.intensity = p.intensity;
@@ -294,21 +295,20 @@ namespace lux::render
         }
     }
 
-    inline UpdateLightPayload toUpdateLightPayload(RenderSceneId scene_id,
-                                                   RLightHandle handle,
-                                                   const LightDescriptor &desc)
+    inline UpdateLightPayload
+    toUpdateLightPayload(RenderSceneId scene_id, RLightHandle handle, const LightDescriptor& desc)
     {
         auto cp = toLightPayload(scene_id, desc);
         UpdateLightPayload up{};
         up.scene_id = scene_id;
-        up.handle   = handle;
+        up.handle = handle;
         // Copy ONLY the shared light-field tail (light_type .. area_size).
         // NOT sizeof(CreateLightPayload) — that would overrun past scene_id.
         std::memcpy(&up.light_type, &cp.light_type, kLightPayloadTailBytes);
         return up;
     }
 
-    inline LightDescriptor fromUpdateLightPayload(const UpdateLightPayload &p)
+    inline LightDescriptor fromUpdateLightPayload(const UpdateLightPayload& p)
     {
         CreateLightPayload cp{};
         // Copy ONLY the shared light-field tail (see toUpdateLightPayload).
@@ -324,23 +324,24 @@ namespace lux::render
     struct LightCreatedReply
     {
         RLightHandle handle{};
-        uint32_t     status{0};
+        uint32_t status{0};
     };
     static_assert(std::is_trivially_copyable_v<LightCreatedReply>);
 
-
     /// 无客户端创建参数 —— 空 tag 承载特性身份(数据型基础特性,
     /// SinglePerScene:第二实例只是同一注册表资源上的空壳,拒绝之)。
-    struct LUX_COMM_CONFIG(prefix=Light, id=lux.render.light.v1, display=Light,
-                           feature=LightFeature,
-                           feature_header=lux/engine/render/renderer/features/light/LightFeature.hpp,
-                           multiplicity=single)
-    LightCommTag
+    struct LUX_COMM_CONFIG(
+        prefix = Light,
+        id = lux.render.light.v1,
+        display = Light,
+        feature = LightFeature,
+        feature_header = lux / engine / render / renderer / features / light / LightFeature.hpp,
+        multiplicity = single) LightCommTag
     {
     };
     static_assert(std::is_trivially_copyable_v<LightCommTag>);
 
-    class LightProxy;   // 生成于 comm/genops/LightOperation.ops.hpp
+    class LightProxy; // 生成于 comm/genops/LightOperation.ops.hpp
 
     // ── 便捷面(§7.5):LightDescriptor 变体 → flat 载荷的转换留手写,
     //    定义在 LightOperationHandlers.cpp;proxy 按值传以接临时对象。──
@@ -348,8 +349,8 @@ namespace lux::render
         LightProxy proxy,
         RenderSceneId scene_id,
         const LightDescriptor& desc,
-        std::uint32_t transition_milliseconds = 0u);
-    LUX_FUNCTION_PUBLIC void lightUpdate(
-        LightProxy proxy, RenderSceneId scene_id, RLightHandle handle,
-        const LightDescriptor& desc);
+        std::uint32_t transition_milliseconds = 0u
+    );
+    LUX_FUNCTION_PUBLIC void
+    lightUpdate(LightProxy proxy, RenderSceneId scene_id, RLightHandle handle, const LightDescriptor& desc);
 } // namespace lux::render

@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-int main()
+int
+main()
 {
     std::vector<std::byte> bytes;
     lux::serialization::BinaryWriter writer(bytes);

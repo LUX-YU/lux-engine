@@ -1,6 +1,6 @@
 #include <lux/engine/render/renderer/RenderTargetRegistry.hpp>
 
-#include <lux/engine/render/gpu/VulkanContext.hpp>          // ResourceContext
+#include <lux/engine/render/gpu/VulkanContext.hpp> // ResourceContext
 #include <lux/engine/render/targets/SwapchainProvider.hpp>
 
 #include <algorithm>
@@ -19,8 +19,7 @@ namespace lux::render
         return pc ? pc->provider() : nullptr;
     }
 
-    RenderTargetId RenderTargetRegistry::findOffscreenKeyByView(
-        RenderSceneId s, ViewHandle v) const noexcept
+    RenderTargetId RenderTargetRegistry::findOffscreenKeyByView(RenderSceneId s, ViewHandle v) const noexcept
     {
         const auto& keys = targets_.keys();
         const auto& vals = targets_.values();
@@ -32,18 +31,22 @@ namespace lux::render
         return {};
     }
 
-    RenderTargetEntry* RenderTargetRegistry::findOffscreenByView(
-        RenderSceneId s, ViewHandle v) noexcept
+    RenderTargetEntry* RenderTargetRegistry::findOffscreenByView(RenderSceneId s, ViewHandle v) noexcept
     {
         const auto key = findOffscreenKeyByView(s, v);
         return key.isValid() ? targets_.tryGet(key) : nullptr;
     }
 
     bool RenderTargetRegistry::detachLayerAndReapIfEmpty(
-        RenderTargetId key, RenderSceneId s, ViewHandle v, uint64_t retire_serial)
+        RenderTargetId key,
+        RenderSceneId s,
+        ViewHandle v,
+        uint64_t retire_serial
+    )
     {
         auto* t = targets_.tryGet(key);
-        if (!t) return false;
+        if (!t)
+            return false;
 
         bool removed = false;
         for (size_t i = t->layers.size(); i-- > 0;)
@@ -61,14 +64,13 @@ namespace lux::render
         return removed;
     }
 
-    std::unique_ptr<OffscreenImagePool> RenderTargetRegistry::makeTargetPool(
-        const RenderTargetLayout& layout, VkExtent2D extent, uint32_t target_flags)
+    std::unique_ptr<OffscreenImagePool>
+    RenderTargetRegistry::makeTargetPool(const RenderTargetLayout& layout, VkExtent2D extent, uint32_t target_flags)
     {
         if (make_pool_cb_)
             if (auto pool = make_pool_cb_(*this, layout, extent, target_flags))
                 return pool;
-        return std::make_unique<OffscreenImagePool>(
-            *res_ctx_, layout, extent, frames_in_flight_);
+        return std::make_unique<OffscreenImagePool>(*res_ctx_, layout, extent, frames_in_flight_);
     }
 
     void RenderTargetRegistry::retireTargetPool(Entry& t, uint64_t retire_serial)
@@ -82,8 +84,7 @@ namespace lux::render
 
     void RenderTargetRegistry::collectRetiredPools(uint64_t gpu_completed)
     {
-        std::erase_if(deferred_pools_,
-                      [&](const auto& e) { return e.first <= gpu_completed; });
+        std::erase_if(deferred_pools_, [&](const auto& e) { return e.first <= gpu_completed; });
     }
 
     void RenderTargetRegistry::shutdown()

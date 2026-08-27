@@ -14,7 +14,10 @@ namespace lux::window
         ~GlfwRuntime();
 
         /// Returns true if glfwInit() succeeded.
-        [[nodiscard]] bool valid() const noexcept { return valid_; }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return valid_;
+        }
 
         // Non-copyable, non-movable.
         GlfwRuntime(const GlfwRuntime&) = delete;

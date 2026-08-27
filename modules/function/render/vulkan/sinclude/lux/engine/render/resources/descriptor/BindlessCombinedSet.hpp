@@ -18,66 +18,71 @@
 #include <cstring>
 #include <cmath>
 
-namespace lux::render { class TransferScheduler; }
+namespace lux::render
+{
+    class TransferScheduler;
+}
 
 namespace lux::render
 {
     struct BCInitInfo
     {
         // Required - Use shared resources provided by ResourceContext
-        ResourceContext*                resource_context{};
+        ResourceContext* resource_context{};
 
         // Externally provided descriptor set layout
-        VkDescriptorSetLayout           descriptor_set_layout{VK_NULL_HANDLE};
+        VkDescriptorSetLayout descriptor_set_layout{VK_NULL_HANDLE};
 
         // Shader layout
-        uint32_t                        set_index = get_binding_set<ETextureSetBindings>::value;
+        uint32_t set_index = get_binding_set<ETextureSetBindings>::value;
         /// 2D 无绑定纹理数组。此前是字面量 0 加一句 "COMBINED_IMAGE_SAMPLER binding" ——
         /// 于是契约里的 ETextureSetBindings::TEXTURES 看起来"零使用",而它其实是这条
         /// **活 binding** 的唯一名字。旁边的 cube 路径一直是按名字给的
         /// (TextureResources.cpp 的 ci_cube.binding = ...::CUBE_TEXTURES),两边现在一致。
-        uint32_t                        binding = static_cast<uint32_t>(ETextureSetBindings::TEXTURES);
+        uint32_t binding = static_cast<uint32_t>(ETextureSetBindings::TEXTURES);
 
         // Capacity: "maximum limit" of layout and first actual allocation
-        uint32_t                        layout_max_capacity = 16384; // descriptorCount in SetLayout (try to set to device safe limit)
-        uint32_t                        initial_capacity = 1024;     // "Variable descriptor count" for first allocation (<= the above)
+        uint32_t layout_max_capacity = 16384; // descriptorCount in SetLayout (try to set to device safe limit)
+        uint32_t initial_capacity = 1024;     // "Variable descriptor count" for first allocation (<= the above)
 
         // Write empty descriptor on removal (requires robustness2.nullDescriptor)
-        bool                            clear_on_remove = false;
+        bool clear_on_remove = false;
 
         // Texture creation defaults
-        VkFormat                        default_image_format = VK_FORMAT_R8G8B8A8_UNORM;
-        bool                            srgb_for_color = false;
-        bool                            generate_mipmaps = true;
-        VkImageTiling                   image_tiling = VK_IMAGE_TILING_OPTIMAL;
-        VkImageUsageFlags               image_usage = VK_IMAGE_USAGE_SAMPLED_BIT |
-                                                    VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                                                    VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-        VkImageViewType                 view_type = VK_IMAGE_VIEW_TYPE_2D;
-        VkImageAspectFlags              aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        VkFormat default_image_format = VK_FORMAT_R8G8B8A8_UNORM;
+        bool srgb_for_color = false;
+        bool generate_mipmaps = true;
+        VkImageTiling image_tiling = VK_IMAGE_TILING_OPTIMAL;
+        VkImageUsageFlags image_usage =
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
+        VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 
         // Default sampler (can be overridden in addTexture)
-        VkSamplerCreateInfo             default_sampler_ci{};
+        VkSamplerCreateInfo default_sampler_ci{};
 
         // External descriptor pool + set mode (optional).
         // When both are non-null, skip internal pool/set creation and write
         // descriptors into the caller-provided set.  The caller owns their
         // lifetime; shutdown() will NOT destroy them.
-        VkDescriptorPool                external_pool{VK_NULL_HANDLE};
-        VkDescriptorSet                 external_set{VK_NULL_HANDLE};
+        VkDescriptorPool external_pool{VK_NULL_HANDLE};
+        VkDescriptorSet external_set{VK_NULL_HANDLE};
 
         // Number of frames in flight (for per-frame deferred staging arrays).
-        uint32_t                        frames_in_flight{kMaxFramesInFlight};
+        uint32_t frames_in_flight{kMaxFramesInFlight};
     };
 
     class LUX_FUNCTION_PUBLIC BindlessCombinedSet
     {
     public:
         BindlessCombinedSet() = default;
-        ~BindlessCombinedSet() { shutdown(); }
+        ~BindlessCombinedSet()
+        {
+            shutdown();
+        }
 
-        BindlessCombinedSet(const BindlessCombinedSet &) = delete;
-        BindlessCombinedSet &operator=(const BindlessCombinedSet &) = delete;
+        BindlessCombinedSet(const BindlessCombinedSet&) = delete;
+        BindlessCombinedSet& operator=(const BindlessCombinedSet&) = delete;
 
         BindlessCombinedSet(BindlessCombinedSet&& o) noexcept
         {
@@ -95,10 +100,13 @@ namespace lux::render
         }
 
         // ========== Deferred Destroy Queue (opt-in) ==========
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept { deferred_queue_ = q; }
+        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
+        {
+            deferred_queue_ = q;
+        }
 
         // ========== Initialization / Shutdown ==========
-        [[nodiscard]] bool init(const BCInitInfo &ci);
+        [[nodiscard]] bool init(const BCInitInfo& ci);
 
         /// PERF-05: Call once per frame to advance frame counter and flush retired descriptor sets.
         void beginFrame();
@@ -141,31 +149,35 @@ namespace lux::render
          * VkImageView / VkSampler on the transfer queue.  The slot's descriptor
          * is updated in-place via UPDATE_AFTER_BIND.
          */
-        void finalizeTransferredTexture(uint32_t slot_idx,
-                                        VkImage     image,
-                                        VmaAllocation alloc,
-                                        VkImageView view,
-                                        VkSampler   sampler,
-                                        VkFormat    format,
-                                        uint32_t    mip_levels,
-                                        uint32_t    array_layers,
-                                        int32_t     w,
-                                        int32_t     h);
+        void finalizeTransferredTexture(
+            uint32_t slot_idx,
+            VkImage image,
+            VmaAllocation alloc,
+            VkImageView view,
+            VkSampler sampler,
+            VkFormat format,
+            uint32_t mip_levels,
+            uint32_t array_layers,
+            int32_t w,
+            int32_t h
+        );
 
         /// Atomically replace the GPU objects behind an already-live descriptor
         /// slot. The slot index/generation remain unchanged. The prior image,
         /// view and sampler are retired through the frames-in-flight destroy
         /// queue after the descriptor points at the replacement.
-        void replaceTransferredTexture(uint32_t slot_idx,
-                                       VkImage     image,
-                                       VmaAllocation alloc,
-                                       VkImageView view,
-                                       VkSampler   sampler,
-                                       VkFormat    format,
-                                       uint32_t    mip_levels,
-                                       uint32_t    array_layers,
-                                       int32_t     w,
-                                       int32_t     h);
+        void replaceTransferredTexture(
+            uint32_t slot_idx,
+            VkImage image,
+            VmaAllocation alloc,
+            VkImageView view,
+            VkSampler sampler,
+            VkFormat format,
+            uint32_t mip_levels,
+            uint32_t array_layers,
+            int32_t w,
+            int32_t h
+        );
 
         /**
          * @brief Read the current generation counter for a slot (render OR game thread).
@@ -187,16 +199,17 @@ namespace lux::render
          * The slot index must have been reserved by TextureResources::reserveSlot2D().
          */
         void finalizeTexture(
-            SlotHandle                  h,
-            const uint8_t*              pixels,
-            std::size_t                 size,
-            int32_t                     w,
-            int32_t                     h_dim,
-            int32_t                     c,
-            VkFormat                    fmt_hint,
-            const VkSamplerCreateInfo&  sci,
-            bool                        do_mips,
-            bool                        srgb);
+            SlotHandle h,
+            const uint8_t* pixels,
+            std::size_t size,
+            int32_t w,
+            int32_t h_dim,
+            int32_t c,
+            VkFormat fmt_hint,
+            const VkSamplerCreateInfo& sci,
+            bool do_mips,
+            bool srgb
+        );
 
         /**
          * @brief Finalize a pre-reserved slot for a cube-map texture (render thread).
@@ -206,15 +219,16 @@ namespace lux::render
          * @param face_stride      Bytes per individual face.
          */
         void finalizeCubeTexture(
-            SlotHandle                  h,
-            const uint8_t*              combined_pixels,
-            std::size_t                 total_size,
-            int32_t                     w,
-            int32_t                     h_dim,
-            int32_t                     c,
-            VkFormat                    fmt_hint,
-            const VkSamplerCreateInfo&  sci,
-            VkDeviceSize                face_stride);
+            SlotHandle h,
+            const uint8_t* combined_pixels,
+            std::size_t total_size,
+            int32_t w,
+            int32_t h_dim,
+            int32_t c,
+            VkFormat fmt_hint,
+            const VkSamplerCreateInfo& sci,
+            VkDeviceSize face_stride
+        );
 
         struct TextureUpdateMip
         {
@@ -231,10 +245,8 @@ namespace lux::render
         };
 
         /// Queue an in-place 2D texture update for an existing live slot.
-        [[nodiscard]] bool updateTextureMips(
-            const SlotHandle& h,
-            std::span<const TextureUpdateMip> mips,
-            bool generate_mips);
+        [[nodiscard]] bool
+        updateTextureMips(const SlotHandle& h, std::span<const TextureUpdateMip> mips, bool generate_mips);
 
         // ========== Persistent dynamic textures + region updates (U2-01) ==========
 
@@ -244,9 +256,13 @@ namespace lux::render
         /// updates can barrier from it uniformly). The slot — and therefore the
         /// bindless index — never changes across region updates. 2D set only;
         /// single-layer (2D_ARRAY views arrive with the chunk-atlas slice).
-        SlotHandle addPersistentTexture(uint32_t width, uint32_t height,
-                                        uint32_t mip_levels, VkFormat fmt,
-                                        const VkSamplerCreateInfo* opt_sampler_ci = nullptr);
+        SlotHandle addPersistentTexture(
+            uint32_t width,
+            uint32_t height,
+            uint32_t mip_levels,
+            VkFormat fmt,
+            const VkSamplerCreateInfo* opt_sampler_ci = nullptr
+        );
 
         /// One region write for updateTextureRegions — the comm-free mirror of the
         /// wire TextureRegionDesc (this header stays out of the comm layer).
@@ -256,8 +272,8 @@ namespace lux::render
             uint32_t width{0}, height{0};
             uint32_t mip{0};
             uint32_t array_layer{0};
-            uint32_t row_pitch_bytes{0};   ///< source stride; 0 = tight
-            uint32_t data_offset{0};       ///< byte offset into @p pixels
+            uint32_t row_pitch_bytes{0}; ///< source stride; 0 = tight
+            uint32_t data_offset{0};     ///< byte offset into @p pixels
         };
 
         /// Queue in-place region updates for a live slot. Source rows are repacked
@@ -266,15 +282,15 @@ namespace lux::render
         /// both drain paths (direct record + transfer scheduler) apply them with no
         /// new machinery. The caller has already bounds-validated the batch
         /// (validateTextureRegions); this checks only slot liveness.
-        [[nodiscard]] bool updateTextureRegions(const SlotHandle& h,
-                                                std::span<const RegionUpdate> regions,
-                                                std::span<const std::byte> pixels,
-                                                uint32_t texel_bytes);
+        [[nodiscard]] bool updateTextureRegions(
+            const SlotHandle& h,
+            std::span<const RegionUpdate> regions,
+            std::span<const std::byte> pixels,
+            uint32_t texel_bytes
+        );
 
         /// Queue an in-place cube texture update for an existing live slot.
-        [[nodiscard]] bool updateCubeFaces(
-            const SlotHandle& h,
-            const std::array<TextureUpdateFace, 6>& faces);
+        [[nodiscard]] bool updateCubeFaces(const SlotHandle& h, const std::array<TextureUpdateFace, 6>& faces);
 
         // (destroySlotForRecycle — an IMMEDIATE-destroy removal path — is gone.
         //  It had no callers and contradicted removeTexture()'s own CRITICAL note:
@@ -290,11 +306,12 @@ namespace lux::render
         // srgb_override: when set, overrides the member srgb_for_color_ flag
         //   for this texture's format selection (true = sRGB, false = UNORM).
         SlotHandle addTexture(
-            const rdesc::Texture &tex,
-            const VkSamplerCreateInfo *opt_sampler_ci = nullptr,
+            const rdesc::Texture& tex,
+            const VkSamplerCreateInfo* opt_sampler_ci = nullptr,
             VkFormat fmt = VK_FORMAT_UNDEFINED,
             std::optional<bool> gen_mips = std::nullopt,
-            std::optional<bool> srgb_override = std::nullopt);
+            std::optional<bool> srgb_override = std::nullopt
+        );
 
         /**
          * @brief Add a cubemap texture (6 faces) to the bindless set.
@@ -306,10 +323,11 @@ namespace lux::render
          */
         SlotHandle addCubeTexture(
             const rdesc::Texture faces[6],
-            const VkSamplerCreateInfo *opt_sampler_ci = nullptr,
-            VkFormat fmt = VK_FORMAT_UNDEFINED);
+            const VkSamplerCreateInfo* opt_sampler_ci = nullptr,
+            VkFormat fmt = VK_FORMAT_UNDEFINED
+        );
 
-        bool removeTexture(const SlotHandle &h);
+        bool removeTexture(const SlotHandle& h);
 
         /// Flush all pending texture uploads in a single GPU submission.
         /// Must be called before rendering if addTexture() was used since last flush.
@@ -325,10 +343,9 @@ namespace lux::render
         /// Call in beginFrame(fi) after the fence for slot fi has been waited on.
         void retireDeferredStaging(uint32_t fi);
 
-        bool isTextureAlive(const SlotHandle &h) const
+        bool isTextureAlive(const SlotHandle& h) const
         {
-            return h.isValid() && h.index < cur_cap_ &&
-                alive_[h.index] && gen_[h.index] == h.gen;
+            return h.isValid() && h.index < cur_cap_ && alive_[h.index] && gen_[h.index] == h.gen;
         }
 
         // Can expand capacity without exceeding layout_max_cap_ (reallocate larger DescriptorSet and backfill)
@@ -337,9 +354,14 @@ namespace lux::render
         // ========== Async acquire barriers (QFOT, render-thread only) ==========
 
         /// Push an image acquire barrier for a texture transferred on a different queue family.
-        void pushImageAcquireBarrier(VkImage image, uint32_t mip_levels, uint32_t array_layers,
-                                     VkImageLayout layout,
-                                     uint32_t src_queue_family, uint32_t dst_queue_family);
+        void pushImageAcquireBarrier(
+            VkImage image,
+            uint32_t mip_levels,
+            uint32_t array_layers,
+            VkImageLayout layout,
+            uint32_t src_queue_family,
+            uint32_t dst_queue_family
+        );
 
         /// Record all pending image acquire barriers and clear the list.
         void recordAcquireBarriers(VkCommandBuffer cmd);
@@ -347,14 +369,16 @@ namespace lux::render
         // ========== StagingOnly texture copy (iGPU fallback, render thread) ==========
 
         /// Staging-only texture copy descriptor.
-        struct PendingStagingTexture {
-            VkBuffer     stg_buf;        ///< staging buffer with pixel data
-            VkDeviceSize stg_size;       ///< staging buffer byte size
-            uint32_t     slot_index;
-            bool         do_mips;
-            bool         is_cube;
-            VkDeviceSize face_stride;    ///< bytes per face (cube only)
-            struct MipCopy {
+        struct PendingStagingTexture
+        {
+            VkBuffer stg_buf;      ///< staging buffer with pixel data
+            VkDeviceSize stg_size; ///< staging buffer byte size
+            uint32_t slot_index;
+            bool do_mips;
+            bool is_cube;
+            VkDeviceSize face_stride; ///< bytes per face (cube only)
+            struct MipCopy
+            {
                 VkDeviceSize buffer_offset{0};
                 uint32_t mip_level{0};
                 uint32_t width{0};
@@ -401,13 +425,34 @@ namespace lux::render
         // BINDLESS 域的实例就是这张全局表本身。)
 
         // ========== Query ==========
-        VkDescriptorSetLayout descriptorLayout() const { return set_layout_; }
-        VkDescriptorSet descriptorSet() const { return descriptor_set_; }
-        uint32_t binding() const { return binding_; }
-        uint32_t setIndex() const { return set_index_; }
-        uint32_t capacity() const { return cur_cap_; }
-        uint32_t count() const { return count_; }
-        uint32_t layoutMaxCapacity() const { return layout_max_cap_; }
+        VkDescriptorSetLayout descriptorLayout() const
+        {
+            return set_layout_;
+        }
+        VkDescriptorSet descriptorSet() const
+        {
+            return descriptor_set_;
+        }
+        uint32_t binding() const
+        {
+            return binding_;
+        }
+        uint32_t setIndex() const
+        {
+            return set_index_;
+        }
+        uint32_t capacity() const
+        {
+            return cur_cap_;
+        }
+        uint32_t count() const
+        {
+            return count_;
+        }
+        uint32_t layoutMaxCapacity() const
+        {
+            return layout_max_cap_;
+        }
 
         /// Per-slot image view (VK_NULL_HANDLE if slot is dead).
         VkImageView slotImageView(uint32_t idx) const noexcept
@@ -423,26 +468,24 @@ namespace lux::render
 
         [[nodiscard]] uint32_t slotMipLevels(uint32_t idx) const noexcept
         {
-            return (idx < cur_cap_ && alive_[idx])
-                ? slots_[idx].mip_levels : 0u;
+            return (idx < cur_cap_ && alive_[idx]) ? slots_[idx].mip_levels : 0u;
         }
 
         [[nodiscard]] VkFormat slotFormat(uint32_t idx) const noexcept
         {
-            return (idx < cur_cap_ && alive_[idx])
-                ? slots_[idx].format : VK_FORMAT_UNDEFINED;
+            return (idx < cur_cap_ && alive_[idx]) ? slots_[idx].format : VK_FORMAT_UNDEFINED;
         }
 
         [[nodiscard]] uint32_t slotWidth(uint32_t idx) const noexcept
         {
-            return (idx < cur_cap_ && alive_[idx] && slots_[idx].width > 0)
-                ? static_cast<uint32_t>(slots_[idx].width) : 0u;
+            return (idx < cur_cap_ && alive_[idx] && slots_[idx].width > 0) ? static_cast<uint32_t>(slots_[idx].width)
+                                                                            : 0u;
         }
 
         [[nodiscard]] uint32_t slotHeight(uint32_t idx) const noexcept
         {
-            return (idx < cur_cap_ && alive_[idx] && slots_[idx].height > 0)
-                ? static_cast<uint32_t>(slots_[idx].height) : 0u;
+            return (idx < cur_cap_ && alive_[idx] && slots_[idx].height > 0) ? static_cast<uint32_t>(slots_[idx].height)
+                                                                             : 0u;
         }
 
     private:
@@ -461,7 +504,6 @@ namespace lux::render
 
         void reallocateSetAndCopy(uint32_t newCount);
 
-
         // ===== Slots and Capacity =====
         static uint32_t roundUpPow2(uint32_t v)
         {
@@ -475,9 +517,12 @@ namespace lux::render
             v |= v >> 16;
             return ++v;
         }
-        static uint32_t nextCap(uint32_t cur, uint32_t need) { return roundUpPow2(std::max(cur ? cur * 2 : 1u, need)); }
+        static uint32_t nextCap(uint32_t cur, uint32_t need)
+        {
+            return roundUpPow2(std::max(cur ? cur * 2 : 1u, need));
+        }
         [[nodiscard]] bool ensureRoom();
-        static uint32_t allocIndex(std::vector<uint32_t> &free_list, uint32_t &count_ref)
+        static uint32_t allocIndex(std::vector<uint32_t>& free_list, uint32_t& count_ref)
         {
             if (!free_list.empty())
             {
@@ -487,7 +532,10 @@ namespace lux::render
             }
             return count_ref++;
         }
-        uint32_t allocIndex() { return allocIndex(free_, count_); }
+        uint32_t allocIndex()
+        {
+            return allocIndex(free_, count_);
+        }
 
         // ===== Write combined descriptor =====
         void writeCombinedDescriptor(uint32_t idx, VkImageView view, VkSampler sampler);
@@ -502,13 +550,19 @@ namespace lux::render
             VkSampler sampler{VK_NULL_HANDLE};
             VkFormat format{VK_FORMAT_UNDEFINED};
             uint32_t mip_levels{1};
-            uint32_t array_layers{1};  ///< 1 for 2D, 6 for cube
+            uint32_t array_layers{1}; ///< 1 for 2D, 6 for cube
             int width{0}, height{0};
         };
 
-        static uint32_t calcMipLevels(uint32_t w, uint32_t h) { return 1u + (uint32_t)std::floor(std::log2(std::max(w, h))); }
+        static uint32_t calcMipLevels(uint32_t w, uint32_t h)
+        {
+            return 1u + (uint32_t)std::floor(std::log2(std::max(w, h)));
+        }
 
-        VkFormat pickFormat(int c, VkFormat req) const { return pickFormat(c, req, srgb_for_color_); }
+        VkFormat pickFormat(int c, VkFormat req) const
+        {
+            return pickFormat(c, req, srgb_for_color_);
+        }
 
         static VkFormat pickFormat(int c, VkFormat req, bool srgb)
         {
@@ -525,17 +579,17 @@ namespace lux::render
             return VK_FORMAT_R8G8B8A8_UNORM; // fallback
         }
 
-        void createImageGPU(CombinedSlot &s);
+        void createImageGPU(CombinedSlot& s);
 
-        void createImageView(CombinedSlot &s);
+        void createImageView(CombinedSlot& s);
 
-        void destroyCombined(CombinedSlot &s);
+        void destroyCombined(CombinedSlot& s);
 
         /// Retire a slot's GPU objects (image/view/sampler) through the shared
         /// DeferredDestroyQueue so they outlive any in-flight frame that may
         /// still sample them. Falls back to immediate destroy only when no
         /// deferred queue is wired (standalone/tests, which waitIdle).
-        void retireCombinedDeferred(CombinedSlot &s);
+        void retireCombinedDeferred(CombinedSlot& s);
 
         struct StagingBuf
         {
@@ -543,19 +597,28 @@ namespace lux::render
             VmaAllocation alloc{VK_NULL_HANDLE};
             VkDeviceSize size{0};
         };
-        StagingBuf createStaging(VkDeviceSize size, const void *data);
-        void destroyStaging(StagingBuf &b);
+        StagingBuf createStaging(VkDeviceSize size, const void* data);
+        void destroyStaging(StagingBuf& b);
 
         Expected<VkCommandBuffer> beginOneTime();
         Expected<void> endOneTime(VkCommandBuffer cb);
 
-        static void barrierImage(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect,
-                                 VkImageLayout oldL, VkImageLayout newL,
-                                 uint32_t base = 0, uint32_t levels = VK_REMAINING_MIP_LEVELS,
-                                 uint32_t layer_count = 1);
+        static void barrierImage(
+            VkCommandBuffer cb,
+            VkImage img,
+            VkImageAspectFlags aspect,
+            VkImageLayout oldL,
+            VkImageLayout newL,
+            uint32_t base = 0,
+            uint32_t levels = VK_REMAINING_MIP_LEVELS,
+            uint32_t layer_count = 1
+        );
 
-        void genMipsLinear(VkCommandBuffer cb, CombinedSlot &s,
-                   VkImageLayout untouched_old_layout = VK_IMAGE_LAYOUT_UNDEFINED);
+        void genMipsLinear(
+            VkCommandBuffer cb,
+            CombinedSlot& s,
+            VkImageLayout untouched_old_layout = VK_IMAGE_LAYOUT_UNDEFINED
+        );
 
         struct TextureCopyRegion
         {
@@ -578,90 +641,99 @@ namespace lux::render
         };
 
         /// Record upload commands for a single texture into an existing command buffer.
-        void recordTextureUploadInternal(VkCommandBuffer cb, CombinedSlot &s,
-                         StagingBuf &staging, bool do_mips,
-                         const TextureCopyPlan* copy_plan,
-                         VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED);
+        void recordTextureUploadInternal(
+            VkCommandBuffer cb,
+            CombinedSlot& s,
+            StagingBuf& staging,
+            bool do_mips,
+            const TextureCopyPlan* copy_plan,
+            VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED
+        );
 
         /// Record upload commands for a cubemap (6-face) texture.
-        void recordCubeTextureUpload(VkCommandBuffer cb, CombinedSlot &s,
-                                     StagingBuf &staging, VkDeviceSize face_stride,
-                                     VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED);
+        void recordCubeTextureUpload(
+            VkCommandBuffer cb,
+            CombinedSlot& s,
+            StagingBuf& staging,
+            VkDeviceSize face_stride,
+            VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED
+        );
 
     private:
         // ctx
-        ResourceContext*            rc_{};
+        ResourceContext* rc_{};
 
         // features / properties
-        VkPhysicalDeviceDescriptorIndexingFeatures      features_{};
-        VkPhysicalDeviceRobustness2FeaturesEXT          robustness2_features_{};
-        VkPhysicalDeviceDescriptorIndexingProperties    indexing_props_{};
-        bool                                            null_desc_supported_{false};
+        VkPhysicalDeviceDescriptorIndexingFeatures features_{};
+        VkPhysicalDeviceRobustness2FeaturesEXT robustness2_features_{};
+        VkPhysicalDeviceDescriptorIndexingProperties indexing_props_{};
+        bool null_desc_supported_{false};
 
         // layout/pool/set
-        VkDescriptorSetLayout       set_layout_{VK_NULL_HANDLE};
-        VkDescriptorPool            desc_pool_{VK_NULL_HANDLE};
-        VkDescriptorSet             descriptor_set_{VK_NULL_HANDLE};
-        uint32_t                    set_index_{0};
-        uint32_t                    binding_{0}; 
-        VkShaderStageFlags          stages_{VK_SHADER_STAGE_ALL};
-        uint32_t                    layout_max_cap_{0};
-        uint32_t                    cur_cap_{0};
+        VkDescriptorSetLayout set_layout_{VK_NULL_HANDLE};
+        VkDescriptorPool desc_pool_{VK_NULL_HANDLE};
+        VkDescriptorSet descriptor_set_{VK_NULL_HANDLE};
+        uint32_t set_index_{0};
+        uint32_t binding_{0};
+        VkShaderStageFlags stages_{VK_SHADER_STAGE_ALL};
+        uint32_t layout_max_cap_{0};
+        uint32_t cur_cap_{0};
 
         // host arrays
         struct CombinedSlot;
-        std::vector<CombinedSlot>   slots_;
-        std::vector<uint32_t>       gen_;
-        std::vector<uint8_t>        alive_;
-        std::vector<uint32_t>       free_;
-        uint32_t                    count_{0};
-        bool                        clear_on_remove_{false};
+        std::vector<CombinedSlot> slots_;
+        std::vector<uint32_t> gen_;
+        std::vector<uint8_t> alive_;
+        std::vector<uint32_t> free_;
+        uint32_t count_{0};
+        bool clear_on_remove_{false};
 
         // removeTexture() defers index reuse until the retire-serial is GPU-
         // complete: (slot index, retire serial). Drained by recycleCompletedSlots().
         std::vector<std::pair<uint32_t, uint64_t>> pending_recycle_;
 
         // PERF-05: Frame-delayed descriptor set retirement
-        DeferredDestroyQueue*       deferred_queue_{nullptr};
+        DeferredDestroyQueue* deferred_queue_{nullptr};
 
         // texture cfg
-        VkFormat                    default_format_{VK_FORMAT_R8G8B8A8_UNORM};
-        bool                        srgb_for_color_{false};
-        bool                        gen_mips_{true};
-        VkImageTiling               image_tiling_{VK_IMAGE_TILING_OPTIMAL};
-        VkImageUsageFlags           image_usage_{};
-        VkImageViewType             view_type_{VK_IMAGE_VIEW_TYPE_2D};
-        VkImageAspectFlags          image_aspect_{VK_IMAGE_ASPECT_COLOR_BIT};
-        VkSamplerCreateInfo         default_sampler_ci_{};
+        VkFormat default_format_{VK_FORMAT_R8G8B8A8_UNORM};
+        bool srgb_for_color_{false};
+        bool gen_mips_{true};
+        VkImageTiling image_tiling_{VK_IMAGE_TILING_OPTIMAL};
+        VkImageUsageFlags image_usage_{};
+        VkImageViewType view_type_{VK_IMAGE_VIEW_TYPE_2D};
+        VkImageAspectFlags image_aspect_{VK_IMAGE_ASPECT_COLOR_BIT};
+        VkSamplerCreateInfo default_sampler_ci_{};
 
         // ── Pending upload batch (render-thread only after A1) ───────────────────
         //
         // Populated by addTexture() (init path) and finalizeTexture() / finalizeCubeTexture().
         // flushUploads() also runs on the render thread.  No mutex required.
-        struct PendingUpload {
+        struct PendingUpload
+        {
             StagingBuf staging;
-            uint32_t   slot_index;
-            bool       do_mips;
-            bool       is_cube{false};        ///< true for cube textures
-            VkDeviceSize face_stride{0};      ///< byte stride per face (cube only)
+            uint32_t slot_index;
+            bool do_mips;
+            bool is_cube{false};         ///< true for cube textures
+            VkDeviceSize face_stride{0}; ///< byte stride per face (cube only)
             TextureCopyPlan copy_plan{};
             VkImageLayout old_layout{VK_IMAGE_LAYOUT_UNDEFINED};
         };
         std::vector<PendingUpload> pending_uploads_;
-        std::vector<StagingBuf>              one_shot_staging_;   ///< temp collection from recordPendingUploads
-        std::vector<std::vector<StagingBuf>> deferred_staging_;   ///< per-frame-slot staging awaiting GPU completion
-        std::vector<VkImageMemoryBarrier2>   pending_acquire_barriers_;  ///< QFOT acquire barriers from async uploads
-        std::vector<PendingStagingTexture>  pending_staging_textures_;  ///< StagingOnly texture uploads
-        std::vector<uint32_t>              pending_mip_gen_slots_;     ///< QFOT mip fallback
-        uint32_t                    frames_in_flight_{kMaxFramesInFlight};
-        bool                        owns_pool_{true};  ///< false when using external pool/set
+        std::vector<StagingBuf> one_shot_staging_;              ///< temp collection from recordPendingUploads
+        std::vector<std::vector<StagingBuf>> deferred_staging_; ///< per-frame-slot staging awaiting GPU completion
+        std::vector<VkImageMemoryBarrier2> pending_acquire_barriers_; ///< QFOT acquire barriers from async uploads
+        std::vector<PendingStagingTexture> pending_staging_textures_; ///< StagingOnly texture uploads
+        std::vector<uint32_t> pending_mip_gen_slots_;                 ///< QFOT mip fallback
+        uint32_t frames_in_flight_{kMaxFramesInFlight};
+        bool owns_pool_{true}; ///< false when using external pool/set
 
         // Fallback 1x1 magenta texture for writeCombinedDescriptorNull when
         // nullDescriptor is not supported.
-        VkImage         fallback_image_{VK_NULL_HANDLE};
-        VmaAllocation   fallback_alloc_{VK_NULL_HANDLE};
-        VkImageView     fallback_view_{VK_NULL_HANDLE};
-        VkSampler       fallback_sampler_{VK_NULL_HANDLE};
+        VkImage fallback_image_{VK_NULL_HANDLE};
+        VmaAllocation fallback_alloc_{VK_NULL_HANDLE};
+        VkImageView fallback_view_{VK_NULL_HANDLE};
+        VkSampler fallback_sampler_{VK_NULL_HANDLE};
 
         void swapWith(BindlessCombinedSet& o) noexcept
         {

@@ -19,7 +19,7 @@
 // ============================================================================
 
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
-#include <lux/cxx/compile_time/type_info.hpp>   // lux::cxx::type_hash (compile-time type id)
+#include <lux/cxx/compile_time/type_info.hpp> // lux::cxx::type_hash (compile-time type id)
 
 #include <array>
 #include <concepts>
@@ -33,11 +33,11 @@ namespace lux::render
     /// `static constexpr OpCode opcode` — e.g. a reply-bearing op on CommandOp).
     enum class EOpKind : std::uint8_t
     {
-        Stream,    ///< per-frame fire-and-forget POD, no reply          (CommandOp,  push)
-        Resource,  ///< create / lifecycle carrying a reply              (ResourceOp, pushResource)
-        Bulk,      ///< N copies of one POD in a single command          (BulkData,   pushBulk)
-        Blob,      ///< payload embeds a BlobRef to variable-length data (CommandOp,  pushBlob + push)
-        Param,     ///< Stream specialised as a reflected param setter   (CommandOp,  push)
+        Stream,   ///< per-frame fire-and-forget POD, no reply          (CommandOp,  push)
+        Resource, ///< create / lifecycle carrying a reply              (ResourceOp, pushResource)
+        Bulk,     ///< N copies of one POD in a single command          (BulkData,   pushBulk)
+        Blob,     ///< payload embeds a BlobRef to variable-length data (CommandOp,  pushBlob + push)
+        Param,    ///< Stream specialised as a reflected param setter   (CommandOp,  push)
     };
 
     /// Which transport admits an operation. This is deliberately independent
@@ -45,9 +45,9 @@ namespace lux::render
     /// lifetime and scheduling semantics.
     enum class EOperationLane : std::uint8_t
     {
-        Frame,    ///< lexical-frame extraction and retained scene deltas
-        Control,  ///< scene/view/feature/query/destroy; legal with no frame open
-        Upload,   ///< owning persistent payload; bounded and non-blocking
+        Frame,   ///< lexical-frame extraction and retained scene deltas
+        Control, ///< scene/view/feature/query/destroy; legal with no frame open
+        Upload,  ///< owning persistent payload; bounded and non-blocking
     };
 
     /// An op descriptor: a tag type carrying { Payload, kind, name }. The server
@@ -68,23 +68,27 @@ namespace lux::render
         {
             switch (kind)
             {
-            case EOpKind::Resource: return opcodes::ResourceOp;
-            case EOpKind::Bulk:     return opcodes::BulkData;
-            default:                return opcodes::CommandOp; // Stream / Blob / Param
+            case EOpKind::Resource:
+                return opcodes::ResourceOp;
+            case EOpKind::Bulk:
+                return opcodes::BulkData;
+            default:
+                return opcodes::CommandOp; // Stream / Blob / Param
             }
         }
 
-        template <class Op, class = void>
-        struct OpcodeOf : std::integral_constant<OpCode, defaultOpcode(Op::kind)> {};
+        template <class Op, class = void> struct OpcodeOf : std::integral_constant<OpCode, defaultOpcode(Op::kind)>
+        {
+        };
 
         template <class Op>
-        struct OpcodeOf<Op, std::void_t<decltype(Op::opcode)>>
-            : std::integral_constant<OpCode, Op::opcode> {};
+        struct OpcodeOf<Op, std::void_t<decltype(Op::opcode)>> : std::integral_constant<OpCode, Op::opcode>
+        {
+        };
     } // namespace detail
 
     /// Comm opcode an op routes on: its kind's default, or the op's override.
-    template <class Op>
-    inline constexpr OpCode opcode_of_v = detail::OpcodeOf<Op>::value;
+    template <class Op> inline constexpr OpCode opcode_of_v = detail::OpcodeOf<Op>::value;
 
     // ── reply_type_id derived from the Reply TYPE (kills hand-picked ids) ──────
     //  Same Reply shape → same id on both ends (constexpr, header-shared); no central
@@ -97,15 +101,13 @@ namespace lux::render
     //  guard — client and server share one build so the values agree — not a persisted or
     //  cross-build identifier (see type_info.hpp's caveat).
     template <class Reply>
-    inline constexpr TypeId reply_type_id_of_v =
-        static_cast<TypeId>(lux::cxx::type_hash<Reply>());
+    inline constexpr TypeId reply_type_id_of_v = static_cast<TypeId>(lux::cxx::type_hash<Reply>());
 
     // ── Client-side typed op-id store — replaces hand-written XxxOperationIds ──
     //  Built from the register reply's ops[]; looked up by op TYPE, never by a
     //  raw index. Ops... order must match the server registrar's order (both come
     //  from the same per-feature declaration).
-    template <FeatureOpDesc... Ops>
-    class FeatureOpIds
+    template <FeatureOpDesc... Ops> class FeatureOpIds
     {
     public:
         static constexpr std::size_t kCount = sizeof...(Ops);
@@ -122,8 +124,7 @@ namespace lux::render
         }
 
         /// The dynamic TypeId of op `Op` (compile-time index into the list).
-        template <class Op>
-        [[nodiscard]] TypeId id() const noexcept
+        template <class Op> [[nodiscard]] TypeId id() const noexcept
         {
             constexpr std::size_t i = indexOf<Op>();
             static_assert(i < kCount, "op is not part of this feature's declared op list");
@@ -137,8 +138,7 @@ namespace lux::render
         }
 
     private:
-        template <class Op>
-        static constexpr std::size_t indexOf() noexcept
+        template <class Op> static constexpr std::size_t indexOf() noexcept
         {
             std::size_t i = 0, result = kCount;
             (void)((std::is_same_v<Op, Ops> ? (result = i, true) : (++i, false)) || ...);
@@ -150,7 +150,8 @@ namespace lux::render
         static constexpr std::array<TypeId, kStore> allInvalid() noexcept
         {
             std::array<TypeId, kStore> a{};
-            for (TypeId& v : a) v = kInvalidTypeId;
+            for (TypeId& v : a)
+                v = kInvalidTypeId;
             return a;
         }
 

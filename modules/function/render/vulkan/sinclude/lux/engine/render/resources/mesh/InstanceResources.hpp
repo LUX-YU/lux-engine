@@ -16,7 +16,11 @@
 #include <lux/engine/function/visibility.h>
 
 // Transfer subsystem forward declaration
-namespace lux::render { class TransferScheduler; class SceneDescriptorArena; }
+namespace lux::render
+{
+    class TransferScheduler;
+    class SceneDescriptorArena;
+}
 
 #include <array>
 #include <cstdint>
@@ -37,8 +41,7 @@ namespace lux::render
 {
     /// Render-thread-only classification bit. Public mesh operations must mask
     /// it from authored flags; RenderCluster owns the only writer that sets it.
-    inline constexpr std::uint32_t kInstanceInternalFlagClusterOwned =
-        1u << 31u;
+    inline constexpr std::uint32_t kInstanceInternalFlagClusterOwned = 1u << 31u;
 
     // =========================================================================
     //  GPU-compatible struct definitions (std430 layout)
@@ -56,12 +59,12 @@ namespace lux::render
     /// instance to lod_mdc[lod]. lod_count==0 marks an unregistered slot.
     struct alignas(16) InstanceCullMeta
     {
-        float bsphere[4];      // xyz=normalized page-local center, w=radius (<0 → tombstone)
+        float bsphere[4];             // xyz=normalized page-local center, w=radius (<0 → tombstone)
         std::int32_t bsphere_page[4]; // center page relative to RenderScene origin
         uint32_t bucket_id;
-        uint32_t lod_count;    ///< valid lod_mdc[] entries (0 → unregistered)
-        uint32_t lod_mdc[4];   ///< MDC index per LOD level (len must be >= kMaxMeshLod)
-        uint32_t _pad[2];      // 64 bytes total
+        uint32_t lod_count;  ///< valid lod_mdc[] entries (0 → unregistered)
+        uint32_t lod_mdc[4]; ///< MDC index per LOD level (len must be >= kMaxMeshLod)
+        uint32_t _pad[2];    // 64 bytes total
     };
     static_assert(sizeof(InstanceCullMeta) == 64);
 
@@ -78,9 +81,9 @@ namespace lux::render
         uint32_t flags;
         uint32_t material_type; // canonical: (family_id << 12) | shading_model_id
         uint32_t material_index;
-        uint32_t transform_index; // normally == slot index (identity mapping)
+        uint32_t transform_index;   // normally == slot index (identity mapping)
         uint32_t pass_and_geometry; // low16 pass_mask, next8 geometry_kind
-        uint32_t user_meta_index; //                                    32 B mark
+        uint32_t user_meta_index;   //                                    32 B mark
         // ---- vertex source (see IVertexSource.hpp) ----
         // Default ~0u so any shader reading this without explicit init can
         // detect "no bindless source" cleanly.
@@ -89,8 +92,8 @@ namespace lux::render
         // 过时:属性路径的 vert 在 P3.2 R6 随 _vp 化一起删除。现在填这个字段的
         // 是各条 mesh 上传路径本身。)
         uint32_t vertex_pool_id = ~0u; // index into VertexPoolRegistry bindless array
-        uint32_t vertex_base    = 0;   // first vertex within the pool (honest output base)
-        uint32_t vertex_count   = 0;   // vertex count for this draw
+        uint32_t vertex_base = 0;      // first vertex within the pool (honest output base)
+        uint32_t vertex_count = 0;     // vertex count for this draw
         // Bias subtracted from gl_VertexIndex in the _vp path. Equals
         // the draw's vertexOffset (the input mesh's base_vertex). Lets the _vp
         // shader compute local = gl_VertexIndex - input_vertex_offset, so
@@ -109,8 +112,7 @@ namespace lux::render
         uint32_t rgba8 = 0xffffffffu;
         uint32_t _property_pad[3]{};
     };
-    static_assert(sizeof(InstanceProperty) == 80,
-                  "InstanceProperty layout drift — keep instance.glsl in sync.");
+    static_assert(sizeof(InstanceProperty) == 80, "InstanceProperty layout drift — keep instance.glsl in sync.");
 
     // =========================================================================
     //  InstanceResources
@@ -127,8 +129,7 @@ namespace lux::render
      * (coalesced consecutive-run copy via staging buffer) unless a full
      * rebuild is forced.
      */
-    class LUX_FUNCTION_PUBLIC InstanceResources
-        : public GPUResourceBase<InstanceResources, EGPUResourceType::Instance>
+    class LUX_FUNCTION_PUBLIC InstanceResources : public GPUResourceBase<InstanceResources, EGPUResourceType::Instance>
     {
     public:
         struct ResourceBinding final
@@ -139,9 +140,9 @@ namespace lux::render
 
         struct InitInfo
         {
-            DeviceContext *device_context{nullptr};
-            DescriptorService *descriptor_svc{nullptr};   // layouts (global)
-            SceneDescriptorArena *arena{nullptr};         // set allocation (per-scene)
+            DeviceContext* device_context{nullptr};
+            DescriptorService* descriptor_svc{nullptr}; // layouts (global)
+            SceneDescriptorArena* arena{nullptr};       // set allocation (per-scene)
             uint32_t initial_capacity{4096};
             uint32_t max_capacity{65536};
             double coordinate_page_size{1024.0};
@@ -151,43 +152,38 @@ namespace lux::render
         InstanceResources() = default;
         ~InstanceResources();
 
-        InstanceResources(const InstanceResources &) = delete;
-        InstanceResources &operator=(const InstanceResources &) = delete;
+        InstanceResources(const InstanceResources&) = delete;
+        InstanceResources& operator=(const InstanceResources&) = delete;
 
-        void init(const InitInfo &info);
+        void init(const InitInfo& info);
         void shutdown();
 
         // ─── Slot management ────────────────────────────────────────────
-        [[nodiscard]] InstanceSlot          allocate();
-        void                                free(InstanceSlot slot);
-        [[nodiscard]] bool                  isAlive(InstanceSlot slot) const noexcept;
-        [[nodiscard]] RenderObjectHandle    allocateObject();
-        void                                freeObject(RenderObjectHandle handle);
-        [[nodiscard]] bool                  isAlive(RenderObjectHandle handle) const noexcept;
-        [[nodiscard]] uint32_t              generation(InstanceSlot slot) const noexcept;
-        [[nodiscard]] InstanceSlot          resolveSlot(RenderObjectHandle handle) const noexcept;
-        [[nodiscard]] RenderObjectHandle    handleForSlot(InstanceSlot slot) const noexcept;
-        [[nodiscard]] bool bindResources(
-            RenderObjectHandle object,
-            ResourceBinding binding);
+        [[nodiscard]] InstanceSlot allocate();
+        void free(InstanceSlot slot);
+        [[nodiscard]] bool isAlive(InstanceSlot slot) const noexcept;
+        [[nodiscard]] RenderObjectHandle allocateObject();
+        void freeObject(RenderObjectHandle handle);
+        [[nodiscard]] bool isAlive(RenderObjectHandle handle) const noexcept;
+        [[nodiscard]] uint32_t generation(InstanceSlot slot) const noexcept;
+        [[nodiscard]] InstanceSlot resolveSlot(RenderObjectHandle handle) const noexcept;
+        [[nodiscard]] RenderObjectHandle handleForSlot(InstanceSlot slot) const noexcept;
+        [[nodiscard]] bool bindResources(RenderObjectHandle object, ResourceBinding binding);
         /// Replaces an existing live binding without allocating a new map node.
         /// The caller must already own references for `binding`; on success it
         /// receives the previous binding and is responsible for releasing it.
-        [[nodiscard]] std::optional<ResourceBinding> replaceResources(
-            RenderObjectHandle object,
-            ResourceBinding binding) noexcept;
-        [[nodiscard]] std::optional<ResourceBinding> resourceBinding(
-            RenderObjectHandle object) const noexcept;
-        [[nodiscard]] std::optional<ResourceBinding> takeResources(
-            RenderObjectHandle object) noexcept;
+        [[nodiscard]] std::optional<ResourceBinding>
+        replaceResources(RenderObjectHandle object, ResourceBinding binding) noexcept;
+        [[nodiscard]] std::optional<ResourceBinding> resourceBinding(RenderObjectHandle object) const noexcept;
+        [[nodiscard]] std::optional<ResourceBinding> takeResources(RenderObjectHandle object) noexcept;
         [[nodiscard]] std::vector<ResourceBinding> takeAllResources();
         [[nodiscard]] bool beginFadeRetirement(
             RenderObjectHandle object,
             float scene_time,
             float duration_seconds,
-            std::uint32_t transition_seed) noexcept;
-        [[nodiscard]] std::vector<RenderObjectHandle>
-        collectExpiredFadeRetirements(float scene_time);
+            std::uint32_t transition_seed
+        ) noexcept;
+        [[nodiscard]] std::vector<RenderObjectHandle> collectExpiredFadeRetirements(float scene_time);
         void cancelFadeRetirement(RenderObjectHandle object) noexcept;
         [[nodiscard]] std::uint32_t fadeRetirementCount() const noexcept
         {
@@ -207,31 +203,29 @@ namespace lux::render
         // 一并删除。真要重新引入,该跟着那条同步命令一起设计。)
 
         // ─── Per-stream write (marks dirty automatically) ───────────────
-        void writeTransform(InstanceSlot slot, const InstanceTransform &xform);
+        void writeTransform(InstanceSlot slot, const InstanceTransform& xform);
         /// 未接线(运动矢量路径整体未接):prev-transform 流已分配并上传,但没有
         /// 写入者或消费 pass。写点、prevTransformBuffer 与 motion-vector pass
         /// 应由对应的 renderer feature 成套接入。
         void writePrevTransform(InstanceSlot slot, const InstanceTransformPrev& xform_prev);
-        void writeProperty(InstanceSlot slot, const InstanceProperty &prop);
+        void writeProperty(InstanceSlot slot, const InstanceProperty& prop);
         /// Writes draw/cull metadata and then refreshes world-space bsphere from
         /// current local bsphere + transform.
         /// If section_id changes, old mesh-section references are released.
-        void writeCullMeta(InstanceSlot slot, const InstanceCullMeta &meta);
+        void writeCullMeta(InstanceSlot slot, const InstanceCullMeta& meta);
 
         /// Store mesh-local bounding sphere and recompute world-space bsphere.
         void setLocalBsphere(InstanceSlot slot, float cx, float cy, float cz, float r);
 
         // ─── Direct staging access for in-place patching ────────────────
-        [[nodiscard]] InstanceTransform &transformAt(InstanceSlot slot) noexcept;
-        [[nodiscard]] InstanceTransformPrev &prevTransformAt(InstanceSlot slot) noexcept;
-        [[nodiscard]] InstanceProperty &propertyAt(InstanceSlot slot) noexcept;
-        [[nodiscard]] const InstanceProperty &propertyAt(InstanceSlot slot) const noexcept;
-        [[nodiscard]] InstanceCullMeta &cullMetaAt(InstanceSlot slot) noexcept;
-        [[nodiscard]] const InstanceCullMeta &cullMetaAt(InstanceSlot slot) const noexcept;
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept;
+        [[nodiscard]] InstanceTransform& transformAt(InstanceSlot slot) noexcept;
+        [[nodiscard]] InstanceTransformPrev& prevTransformAt(InstanceSlot slot) noexcept;
+        [[nodiscard]] InstanceProperty& propertyAt(InstanceSlot slot) noexcept;
+        [[nodiscard]] const InstanceProperty& propertyAt(InstanceSlot slot) const noexcept;
+        [[nodiscard]] InstanceCullMeta& cullMetaAt(InstanceSlot slot) noexcept;
+        [[nodiscard]] const InstanceCullMeta& cullMetaAt(InstanceSlot slot) const noexcept;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept;
         [[nodiscard]] float spatialTileSize() const noexcept
         {
             return coordinate_page_size_;
@@ -284,9 +278,12 @@ namespace lux::render
         /// (原注释说"每个 owner 的 init 路径形状不同,所以用 setter 统一" —— 那是
         ///  init 分散在三个 feature 里时的事实。A-4 把 init 收进了唯一的
         ///  StandardMeshStackFeature,此处也就只剩一个调用方。)
-        [[nodiscard]] Expected<void> setDomainWriteTarget(std::span<const VkDescriptorSet> sets,
-                                  uint32_t binding_offset);
-        [[nodiscard]] VkDescriptorSetLayout getDescriptorSetLayout() const noexcept { return descriptorSetLayout(); }
+        [[nodiscard]] Expected<void>
+        setDomainWriteTarget(std::span<const VkDescriptorSet> sets, uint32_t binding_offset);
+        [[nodiscard]] VkDescriptorSetLayout getDescriptorSetLayout() const noexcept
+        {
+            return descriptorSetLayout();
+        }
 
         // ─── Buffer accessors ───────────────────────────────────────────
         /// 未接线:现役绑定走域描述符集(useEngineSet),不再逐个取裸 VkBuffer。
@@ -317,7 +314,10 @@ namespace lux::render
         {
             return dense_dynamic_slots_;
         }
-        [[nodiscard]] uint32_t capacity() const noexcept { return capacity_; }
+        [[nodiscard]] uint32_t capacity() const noexcept
+        {
+            return capacity_;
+        }
         [[nodiscard]] bool usesSparsePageTable() const noexcept
         {
             return sparse_bda_;
@@ -334,12 +334,9 @@ namespace lux::render
         {
             return descriptor_write_count_;
         }
-        [[nodiscard]] VkDeviceSize fieldStorageImportBytes(
-            VkDeviceSize flat_stride) const noexcept
+        [[nodiscard]] VkDeviceSize fieldStorageImportBytes(VkDeviceSize flat_stride) const noexcept
         {
-            return sparse_bda_
-                ? page_table_.rootBufferBytes()
-                : static_cast<VkDeviceSize>(capacity_) * flat_stride;
+            return sparse_bda_ ? page_table_.rootBufferBytes() : static_cast<VkDeviceSize>(capacity_) * flat_stride;
         }
         /// Stable slots are never compacted. This serial remains constant for
         /// the scene lifetime and lets consumers prove ordinary page growth did
@@ -349,24 +346,36 @@ namespace lux::render
             return slot_layout_serial_;
         }
         [[nodiscard]] std::span<const uint32_t> denseAliveSlots() const noexcept;
-        [[nodiscard]] bool needsFullRebuild() const noexcept { return full_rebuild_; }
-        void markFullRebuild() noexcept { full_rebuild_ = true; }
+        [[nodiscard]] bool needsFullRebuild() const noexcept
+        {
+            return full_rebuild_;
+        }
+        void markFullRebuild() noexcept
+        {
+            full_rebuild_ = true;
+        }
         /// @param ibo_segment 网格索引所在的竞技场段号,仅参与 CPU 侧去重键
         ///        (见 MeshSectionTable::registerSection)。
-        [[nodiscard]] uint32_t registerMeshSection(const MeshSectionRecord& section,
-                                                   uint16_t ibo_segment = 0,
-                                                   VkIndexType index_type =
-                                                       VK_INDEX_TYPE_UINT32);
+        [[nodiscard]] uint32_t registerMeshSection(
+            const MeshSectionRecord& section,
+            uint16_t ibo_segment = 0,
+            VkIndexType index_type = VK_INDEX_TYPE_UINT32
+        );
         void unregisterMeshSection(uint32_t section_id);
-        [[nodiscard]] const MeshSectionRecord& meshSectionAt(
-            std::uint32_t section_id) const noexcept
+        [[nodiscard]] const MeshSectionRecord& meshSectionAt(std::uint32_t section_id) const noexcept
         {
             return mesh_section_table_.at(section_id);
         }
 
         // ─── MDC table (Mesh Draw Command dedup) ───────────────────────
-        [[nodiscard]] MdcTable& mdcTable() noexcept { return mdc_table_; }
-        [[nodiscard]] const MdcTable& mdcTable() const noexcept { return mdc_table_; }
+        [[nodiscard]] MdcTable& mdcTable() noexcept
+        {
+            return mdc_table_;
+        }
+        [[nodiscard]] const MdcTable& mdcTable() const noexcept
+        {
+            return mdc_table_;
+        }
 
         /// GPU buffer holding the MdcInfo (offsets) for the LATEST compile.
         /// CRITICAL: this is a recompile-indexed ring (see uploadMdcInfo). The
@@ -374,7 +383,10 @@ namespace lux::render
         /// and read mdcInfoBufferAt(slot) — NOT this accessor — so an in-flight
         /// frame keeps reading the buffer it was recorded with even after a later
         /// recompile rewrites a different ring slot.
-        [[nodiscard]] VkBuffer mdcInfoBuffer() const noexcept { return mdc_info_buffers_[mdc_info_current_slot_]; }
+        [[nodiscard]] VkBuffer mdcInfoBuffer() const noexcept
+        {
+            return mdc_info_buffers_[mdc_info_current_slot_];
+        }
 
         /// Buffer for a specific ring slot (captured at compile time).
         [[nodiscard]] VkBuffer mdcInfoBufferAt(uint32_t slot) const noexcept
@@ -383,7 +395,10 @@ namespace lux::render
         }
 
         /// Ring slot written by the most recent uploadMdcInfo() (= the current compile).
-        [[nodiscard]] uint32_t currentMdcInfoSlot() const noexcept { return mdc_info_current_slot_; }
+        [[nodiscard]] uint32_t currentMdcInfoSlot() const noexcept
+        {
+            return mdc_info_current_slot_;
+        }
 
         /// Rebuild MDC offsets and upload them into a fresh ring slot.
         /// Called once per graph compile (idempotent within one frame serial).
@@ -413,24 +428,21 @@ namespace lux::render
         void rebuildAliveSlotStream();
         void addDynamicSlot(std::uint32_t slot_index);
         void removeDynamicSlot(std::uint32_t slot_index);
-        void updateDynamicMembership(
-            std::uint32_t slot_index,
-            std::uint32_t old_flags,
-            std::uint32_t new_flags);
+        void updateDynamicMembership(std::uint32_t slot_index, std::uint32_t old_flags, std::uint32_t new_flags);
         void rebuildDynamicSlotStream();
         // Unregister an instance's N LOD MDCs + their mesh sections (section ids
         // are read back from the MDC entries). Resets cull.lod_count to 0.
         void unregisterInstanceLods(InstanceCullMeta& cull);
 
-        SparseInstancePageTable               page_table_;
+        SparseInstancePageTable page_table_;
         SparseInstanceStream<InstanceTransform> transform_stream_;
         SparseInstanceStream<InstanceTransformPrev> prev_transform_stream_;
         SparseInstanceStream<InstanceProperty> property_stream_;
         SparseInstanceStream<InstanceCullMeta> cull_meta_stream_;
-        PagedGpuStream<uint32_t>              alive_slot_stream_;
-        PagedGpuStream<uint32_t>              dynamic_slot_stream_;
-        MeshSectionTable                      mesh_section_table_;
-        MdcTable                              mdc_table_;
+        PagedGpuStream<uint32_t> alive_slot_stream_;
+        PagedGpuStream<uint32_t> dynamic_slot_stream_;
+        MeshSectionTable mesh_section_table_;
+        MdcTable mdc_table_;
 
         // Per-stream upload-chunk scratch, reused across ticks (cleared at the top
         // of submitTransfers before each collectUploadChunks). submitTransfers runs
@@ -442,8 +454,8 @@ namespace lux::render
         std::vector<SparseInstanceStream<InstanceTransformPrev>::UploadChunk> prev_xform_chunks_;
         std::vector<SparseInstanceStream<InstanceProperty>::UploadChunk> prop_chunks_;
         std::vector<SparseInstanceStream<InstanceCullMeta>::UploadChunk> cull_chunks_;
-        std::vector<PagedGpuStream<uint32_t>::UploadChunk>              alive_slot_chunks_;
-        std::vector<PagedGpuStream<uint32_t>::UploadChunk>              dynamic_slot_chunks_;
+        std::vector<PagedGpuStream<uint32_t>::UploadChunk> alive_slot_chunks_;
+        std::vector<PagedGpuStream<uint32_t>::UploadChunk> dynamic_slot_chunks_;
 
         // MdcInfo is rebuilt only at graph compile, but in-flight frames N-1/N-2
         // are still reading the previous compile's buffer on their own GPU. A
@@ -453,16 +465,16 @@ namespace lux::render
         // fresh slot and the cull pass captures that slot, leaving prior slots
         // untouched until their frames retire. Ring size = FIF + 1 guarantees a
         // reused slot is at least FIF+1 frames old even under per-frame recompiles.
-        static constexpr uint32_t            kMdcInfoRingSize = kMaxFramesInFlight + 1u;
-        std::array<VkBuffer, kMdcInfoRingSize>      mdc_info_buffers_{};
+        static constexpr uint32_t kMdcInfoRingSize = kMaxFramesInFlight + 1u;
+        std::array<VkBuffer, kMdcInfoRingSize> mdc_info_buffers_{};
         std::array<VmaAllocation, kMdcInfoRingSize> mdc_info_allocs_{};
-        std::array<VkDeviceSize, kMdcInfoRingSize>  mdc_info_sizes_{};
-        std::array<void*, kMdcInfoRingSize>         mdc_info_mapped_{};
-        uint32_t                             mdc_info_ring_cursor_{0};
-        uint32_t                             mdc_info_current_slot_{0};
-        uint64_t                             mdc_info_current_serial_{0};   ///< set by onBeginFrame
-        uint64_t                             mdc_info_last_upload_serial_{~0ull};
-        StableInstanceCpuPages<std::array<float,4>> local_bsphere_;
+        std::array<VkDeviceSize, kMdcInfoRingSize> mdc_info_sizes_{};
+        std::array<void*, kMdcInfoRingSize> mdc_info_mapped_{};
+        uint32_t mdc_info_ring_cursor_{0};
+        uint32_t mdc_info_current_slot_{0};
+        uint64_t mdc_info_current_serial_{0}; ///< set by onBeginFrame
+        uint64_t mdc_info_last_upload_serial_{~0ull};
+        StableInstanceCpuPages<std::array<float, 4>> local_bsphere_;
 
         /// 值成员而非 unique_ptr:InstanceSlotRegistry 的头就在本文件顶部 include
         /// (无编译防火墙收益),它自己有 init()/shutdown() 管生命周期,而"建了没有"
@@ -477,8 +489,7 @@ namespace lux::render
         static constexpr std::uint32_t kInvalidDynamicPosition = ~0u;
         std::vector<std::uint32_t> dense_dynamic_slots_;
         std::vector<std::uint32_t> dynamic_positions_;
-        std::unordered_map<std::uint64_t, ResourceBinding>
-            resource_bindings_;
+        std::unordered_map<std::uint64_t, ResourceBinding> resource_bindings_;
         struct FadeRetirement final
         {
             RenderObjectHandle object{};
@@ -513,12 +524,12 @@ namespace lux::render
 
         /// Dual-write target: per-slice domain-set handles plus the
         /// in-domain binding offset.
-        DomainWriteTarget            domain_{};
+        DomainWriteTarget domain_{};
 
-        DeviceContext *device_ctx_{nullptr};
-        DescriptorService *descriptor_svc_{nullptr};
-        SceneDescriptorArena *arena_{nullptr};
-        DeferredDestroyQueue *deferred_queue_{nullptr};
+        DeviceContext* device_ctx_{nullptr};
+        DescriptorService* descriptor_svc_{nullptr};
+        SceneDescriptorArena* arena_{nullptr};
+        DeferredDestroyQueue* deferred_queue_{nullptr};
     };
 
 } // namespace lux::render

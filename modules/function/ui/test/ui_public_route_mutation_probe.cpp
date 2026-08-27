@@ -2,7 +2,8 @@
 
 #include <array>
 
-int main()
+int
+main()
 {
     lux::ui::CommandRouter router;
     std::array contexts{lux::ui::kGlobalContext};

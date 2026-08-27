@@ -1,10 +1,14 @@
 #include <lux/engine/function/script/lua/LuaImpl.hpp>
 
-namespace lux::script::lua 
+namespace lux::script::lua
 {
-    ScriptRef::ScriptRef(int ref, ScriptEngine* engine) : ref_(ref), engine_(engine) {}
-    ScriptRef::~ScriptRef() {
-        if (ref_ != LUA_NOREF) {
+    ScriptRef::ScriptRef(int ref, ScriptEngine* engine) : ref_(ref), engine_(engine)
+    {
+    }
+    ScriptRef::~ScriptRef()
+    {
+        if (ref_ != LUA_NOREF)
+        {
             luaL_unref(static_cast<lua_State*>(engine_->state()), LUA_REGISTRYINDEX, ref_);
         }
     }
@@ -13,34 +17,40 @@ namespace lux::script::lua
     {
         ref_ = other.ref_;
         engine_ = other.engine_;
-        other.ref_ = LUA_NOREF; // Invalidate the moved-from reference
+        other.ref_ = LUA_NOREF;  // Invalidate the moved-from reference
         other.engine_ = nullptr; // Invalidate the moved-from engine
     }
 
     ScriptRef& ScriptRef::operator=(ScriptRef&& other) noexcept
     {
-        if (this != &other) {
+        if (this != &other)
+        {
             // Unreference the current ref_ if it's valid
-            if (ref_ != LUA_NOREF) {
+            if (ref_ != LUA_NOREF)
+            {
                 luaL_unref(static_cast<lua_State*>(engine_->state()), LUA_REGISTRYINDEX, ref_);
             }
             ref_ = other.ref_;
             engine_ = other.engine_;
-            other.ref_ = LUA_NOREF; // Invalidate the moved-from reference
+            other.ref_ = LUA_NOREF;  // Invalidate the moved-from reference
             other.engine_ = nullptr; // Invalidate the moved-from engine
         }
         return *this;
     }
 
-    ScriptEngine::ScriptEngine() 
-        : impl_(std::make_unique<ScriptEngineImpl>()){}
+    ScriptEngine::ScriptEngine() : impl_(std::make_unique<ScriptEngineImpl>())
+    {
+    }
 
-    ScriptEngine::~ScriptEngine(){}
+    ScriptEngine::~ScriptEngine()
+    {
+    }
 
     std::optional<ScriptRef> ScriptEngine::parseScript(std::string_view script)
     {
         auto program_ref_opt = impl_->parseScript(script);
-        if(!program_ref_opt) {
+        if (!program_ref_opt)
+        {
             return std::nullopt;
         }
         return ScriptRef(*program_ref_opt, this);

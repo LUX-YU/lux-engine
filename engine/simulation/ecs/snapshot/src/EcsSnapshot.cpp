@@ -21,14 +21,10 @@ namespace lux::simulation::ecs
     namespace
     {
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
-        validateStorages(
-            const Registry& source,
-            const ComponentSnapshotSet& components
-        ) noexcept
+        validateStorages(const Registry& source, const ComponentSnapshotSet& components) noexcept
         {
             const std::uint64_t entity_storage = entt::type_hash<Entity>::value();
-            const auto& schemas =
-                detail::ComponentSnapshotSetAccess::schemas(components);
+            const auto& schemas = detail::ComponentSnapshotSetAccess::schemas(components);
             for (auto&& [storage_id, storage] : source.storage())
             {
                 if (storage_id == entity_storage || storage.empty())
@@ -36,29 +32,20 @@ namespace lux::simulation::ecs
                 const auto iterator = std::find_if(
                     schemas.all().begin(),
                     schemas.all().end(),
-                    [storage_id](const ComponentSchema& schema)
-                    {
-                        return detail::ComponentOperationsAccess::storageKey(
-                            schema.operations
-                        ) == storage_id;
+                    [storage_id](const ComponentSchema& schema) {
+                        return detail::ComponentOperationsAccess::storageKey(schema.operations) == storage_id;
                     }
                 );
                 if (iterator == schemas.all().end())
                 {
-                    return lux::cxx::unexpected(SnapshotError{
-                        ESnapshotError::UNKNOWN_COMPONENT_STORAGE,
-                        storage_id});
+                    return lux::cxx::unexpected(SnapshotError{ESnapshotError::UNKNOWN_COMPONENT_STORAGE, storage_id});
                 }
                 if (iterator->snapshot == EComponentSnapshotPolicy::COPY &&
-                    detail::ComponentSnapshotSetAccess::findStorage(
-                        components,
-                        storage_id
-                    ) == nullptr)
+                    detail::ComponentSnapshotSetAccess::findStorage(components, storage_id) == nullptr)
                 {
-                    return lux::cxx::unexpected(SnapshotError{
-                        ESnapshotError::INVALID_COPY_SCHEMA,
-                        storage_id,
-                        iterator->id});
+                    return lux::cxx::unexpected(
+                        SnapshotError{ESnapshotError::INVALID_COPY_SCHEMA, storage_id, iterator->id}
+                    );
                 }
             }
             return {};
@@ -72,9 +59,7 @@ namespace lux::simulation::ecs
             auto& target_entities = target.storage<Entity>();
             target_entities.reserve(source_entities->size());
             Entity placeholder = NullEntity;
-            for (auto iterator = source_entities->rbegin();
-                 iterator != source_entities->rend();
-                 ++iterator)
+            for (auto iterator = source_entities->rbegin(); iterator != source_entities->rend(); ++iterator)
             {
                 target_entities.generate(*iterator);
                 if (*iterator > placeholder)
@@ -84,11 +69,8 @@ namespace lux::simulation::ecs
             target_entities.free_list(source_entities->free_list());
         }
 
-        [[nodiscard]] lux::cxx::expected<void, SnapshotError> cloneRegistry(
-            const Registry& source,
-            Registry& target,
-            const ComponentSnapshotSet& components
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<void, SnapshotError>
+        cloneRegistry(const Registry& source, Registry& target, const ComponentSnapshotSet& components) noexcept
         {
             try
             {
@@ -98,50 +80,35 @@ namespace lux::simulation::ecs
                 {
                     if (storage_id == entity_storage || storage.empty())
                         continue;
-                    const auto* binding =
-                        detail::ComponentSnapshotSetAccess::findStorage(
-                            components,
-                            storage_id
-                        );
+                    const auto* binding = detail::ComponentSnapshotSetAccess::findStorage(components, storage_id);
                     if (binding != nullptr)
                     {
-                        detail::ComponentSnapshotSetAccess::clone(
-                            *binding,
-                            source,
-                            target
-                        );
+                        detail::ComponentSnapshotSetAccess::clone(*binding, source, target);
                     }
                 }
                 return {};
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(
-                    SnapshotError{ESnapshotError::ALLOCATION_FAILURE}
-                );
+                return lux::cxx::unexpected(SnapshotError{ESnapshotError::ALLOCATION_FAILURE});
             }
             catch (...)
             {
-                return lux::cxx::unexpected(
-                    SnapshotError{ESnapshotError::ALLOCATION_FAILURE}
-                );
+                return lux::cxx::unexpected(SnapshotError{ESnapshotError::ALLOCATION_FAILURE});
             }
         }
     }
 
     EcsSnapshot::EcsSnapshot() noexcept = default;
-    EcsSnapshot::EcsSnapshot(std::unique_ptr<Impl> impl) noexcept
-        : impl_(std::move(impl))
+    EcsSnapshot::EcsSnapshot(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
     }
     EcsSnapshot::EcsSnapshot(EcsSnapshot&&) noexcept = default;
     EcsSnapshot& EcsSnapshot::operator=(EcsSnapshot&&) noexcept = default;
     EcsSnapshot::~EcsSnapshot() noexcept = default;
 
-    lux::cxx::expected<EcsSnapshot, SnapshotError> EcsSnapshot::capture(
-        const Registry& registry,
-        const ComponentSnapshotSet& components
-    ) noexcept
+    lux::cxx::expected<EcsSnapshot, SnapshotError>
+    EcsSnapshot::capture(const Registry& registry, const ComponentSnapshotSet& components) noexcept
     {
         if (auto validation = validateStorages(registry, components); !validation)
             return lux::cxx::unexpected(validation.error());
@@ -150,11 +117,7 @@ namespace lux::simulation::ecs
             auto impl = std::make_unique<Impl>();
             impl->components = components;
             impl->shadow = std::make_unique<Registry>();
-            if (auto cloned = cloneRegistry(
-                    registry,
-                    *impl->shadow,
-                    components
-                ); !cloned)
+            if (auto cloned = cloneRegistry(registry, *impl->shadow, components); !cloned)
             {
                 return lux::cxx::unexpected(cloned.error());
             }
@@ -162,29 +125,20 @@ namespace lux::simulation::ecs
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                SnapshotError{ESnapshotError::ALLOCATION_FAILURE}
-            );
+            return lux::cxx::unexpected(SnapshotError{ESnapshotError::ALLOCATION_FAILURE});
         }
     }
 
-    lux::cxx::expected<std::unique_ptr<Registry>, SnapshotError>
-    EcsSnapshot::instantiate() const noexcept
+    lux::cxx::expected<std::unique_ptr<Registry>, SnapshotError> EcsSnapshot::instantiate() const noexcept
     {
         if (!impl_ || !impl_->shadow)
         {
-            return lux::cxx::unexpected(
-                SnapshotError{ESnapshotError::INVALID_COPY_SCHEMA}
-            );
+            return lux::cxx::unexpected(SnapshotError{ESnapshotError::INVALID_COPY_SCHEMA});
         }
         try
         {
             auto result = std::make_unique<Registry>();
-            if (auto cloned = cloneRegistry(
-                    *impl_->shadow,
-                    *result,
-                    impl_->components
-                ); !cloned)
+            if (auto cloned = cloneRegistry(*impl_->shadow, *result, impl_->components); !cloned)
             {
                 return lux::cxx::unexpected(cloned.error());
             }
@@ -192,15 +146,11 @@ namespace lux::simulation::ecs
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                SnapshotError{ESnapshotError::ALLOCATION_FAILURE}
-            );
+            return lux::cxx::unexpected(SnapshotError{ESnapshotError::ALLOCATION_FAILURE});
         }
     }
 
-    lux::cxx::expected<void, SnapshotError> EcsSnapshot::restore(
-        Registry& registry
-    ) const noexcept
+    lux::cxx::expected<void, SnapshotError> EcsSnapshot::restore(Registry& registry) const noexcept
     {
         auto replacement = instantiate();
         if (!replacement)
@@ -209,7 +159,10 @@ namespace lux::simulation::ecs
         return {};
     }
 
-    void EcsSnapshot::clear() noexcept { impl_.reset(); }
+    void EcsSnapshot::clear() noexcept
+    {
+        impl_.reset();
+    }
 
     bool EcsSnapshot::empty() const noexcept
     {

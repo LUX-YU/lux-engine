@@ -12,32 +12,22 @@ namespace lux::asset
 
     namespace
     {
-        [[nodiscard]] bool sameCppType(
-            lux::cxx::TypeToken left,
-            lux::cxx::TypeToken right
-        ) noexcept
+        [[nodiscard]] bool sameCppType(lux::cxx::TypeToken left, lux::cxx::TypeToken right) noexcept
         {
             return left.hash() == right.hash() && left.name() == right.name();
         }
 
-        [[nodiscard]] bool magicConflicts(
-            const AssetCodecDescriptor& left,
-            const AssetCodecDescriptor& right
-        ) noexcept
+        [[nodiscard]] bool magicConflicts(const AssetCodecDescriptor& left, const AssetCodecDescriptor& right) noexcept
         {
             return left.primary_magic == right.primary_magic ||
-                (left.legacy_magic != 0u &&
-                    (left.legacy_magic == right.primary_magic ||
-                     left.legacy_magic == right.legacy_magic)) ||
-                (right.legacy_magic != 0u &&
-                    right.legacy_magic == left.primary_magic);
+                   (left.legacy_magic != 0u &&
+                    (left.legacy_magic == right.primary_magic || left.legacy_magic == right.legacy_magic)) ||
+                   (right.legacy_magic != 0u && right.legacy_magic == left.primary_magic);
         }
     } // namespace
 
     lux::cxx::expected<AssetCodecSet, EAssetCodecError>
-    AssetCodecSet::build(
-        std::vector<AssetCodecDescriptor> descriptors
-    ) noexcept
+    AssetCodecSet::build(std::vector<AssetCodecDescriptor> descriptors) noexcept
     {
         try
         {
@@ -46,14 +36,22 @@ namespace lux::asset
                 const auto& descriptor = descriptors[index];
                 if (descriptor.canonical_name.empty())
                     return lux::cxx::unexpected(EAssetCodecError::EMPTY_CANONICAL_NAME);
-                if (!descriptor.type ||
-                    descriptor.type != AssetTypeId::fromName(
-                        descriptor.canonical_name
-                    ) ||
-                    descriptor.primary_magic == 0u ||
-                    descriptor.cpp_payload_type.hash() == 0u ||
-                    descriptor.cpp_payload_type.name().empty() ||
-                    descriptor.decode == nullptr || descriptor.encode == nullptr)
+
+                const bool is_invalid_type     = !descriptor.type ||
+                    descriptor.type != AssetTypeId::fromName(descriptor.canonical_name);
+
+                const bool is_invalid_magic    = descriptor.primary_magic == 0u;
+                const bool is_invalid_cpp_type = descriptor.cpp_payload_type.hash() == 0u ||
+                    descriptor.cpp_payload_type.name().empty();
+                const bool is_invalid_decode   = descriptor.decode == nullptr;
+                const bool is_invalid_encode   = descriptor.encode == nullptr;
+                const bool is_invalid_descriptor = is_invalid_type ||
+                    is_invalid_magic ||
+                    is_invalid_cpp_type ||
+                    is_invalid_decode ||
+                    is_invalid_encode;
+
+                if (is_invalid_descriptor)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::INVALID_DESCRIPTOR);
                 }
@@ -80,13 +78,9 @@ namespace lux::asset
                 }
             }
 
-            std::sort(
-                descriptors.begin(),
-                descriptors.end(),
-                [](const auto& left, const auto& right)
-                {
-                    return left.type < right.type;
-                }
+            std::sort(descriptors.begin(), descriptors.end(), [](const auto& left, const auto& right) {
+                return left.type < right.type;
+            }
             );
             auto impl = std::make_shared<Impl>();
             impl->descriptors = std::move(descriptors);
@@ -103,9 +97,7 @@ namespace lux::asset
     }
 
     lux::cxx::expected<AssetCodecSet, EAssetCodecError>
-    AssetCodecSet::extended(
-        std::span<const AssetCodecDescriptor> descriptors
-    ) const noexcept
+    AssetCodecSet::extended(std::span<const AssetCodecDescriptor> descriptors) const noexcept
     {
         try
         {
@@ -125,9 +117,7 @@ namespace lux::asset
         }
     }
 
-    const AssetCodecDescriptor* AssetCodecSet::find(
-        AssetTypeId type
-    ) const noexcept
+    const AssetCodecDescriptor* AssetCodecSet::find(AssetTypeId type) const noexcept
     {
         if (!impl_)
             return nullptr;
@@ -135,53 +125,38 @@ namespace lux::asset
             impl_->descriptors.begin(),
             impl_->descriptors.end(),
             type,
-            [](const AssetCodecDescriptor& descriptor, AssetTypeId value)
-            {
-                return descriptor.type < value;
-            }
+            [](const AssetCodecDescriptor& descriptor, AssetTypeId value) { return descriptor.type < value; }
         );
-        return found != impl_->descriptors.end() && found->type == type
-            ? std::addressof(*found)
-            : nullptr;
+        return found != impl_->descriptors.end() && found->type == type ? std::addressof(*found) : nullptr;
     }
 
-    const AssetCodecDescriptor* AssetCodecSet::findByMagic(
-        std::uint32_t magic
-    ) const noexcept
+    const AssetCodecDescriptor* AssetCodecSet::findByMagic(std::uint32_t magic) const noexcept
     {
         if (!impl_ || magic == 0u)
             return nullptr;
         const auto found = std::find_if(
             impl_->descriptors.begin(),
             impl_->descriptors.end(),
-            [magic](const AssetCodecDescriptor& descriptor)
-            {
-                return descriptor.primary_magic == magic ||
-                    descriptor.legacy_magic == magic;
+            [magic](const AssetCodecDescriptor& descriptor) {
+                return descriptor.primary_magic == magic || descriptor.legacy_magic == magic;
             }
         );
         return found != impl_->descriptors.end() ? std::addressof(*found) : nullptr;
     }
 
-    const AssetCodecDescriptor* AssetCodecSet::findByPayloadType(
-        lux::cxx::TypeToken type
-    ) const noexcept
+    const AssetCodecDescriptor* AssetCodecSet::findByPayloadType(lux::cxx::TypeToken type) const noexcept
     {
         if (!impl_)
             return nullptr;
         const auto found = std::find_if(
             impl_->descriptors.begin(),
             impl_->descriptors.end(),
-            [type](const AssetCodecDescriptor& descriptor)
-            {
-                return sameCppType(descriptor.cpp_payload_type, type);
-            }
+            [type](const AssetCodecDescriptor& descriptor) { return sameCppType(descriptor.cpp_payload_type, type); }
         );
         return found != impl_->descriptors.end() ? std::addressof(*found) : nullptr;
     }
 
-    std::span<const AssetCodecDescriptor>
-    AssetCodecSet::descriptors() const noexcept
+    std::span<const AssetCodecDescriptor> AssetCodecSet::descriptors() const noexcept
     {
         return impl_ ? std::span<const AssetCodecDescriptor>{impl_->descriptors}
                      : std::span<const AssetCodecDescriptor>{};

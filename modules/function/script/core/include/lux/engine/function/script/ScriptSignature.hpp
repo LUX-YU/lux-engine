@@ -14,30 +14,24 @@ namespace lux::script
 {
     struct TypeDesc
     {
-        std::string   name;
+        std::string name;
         std::uint64_t type_id = 0;
-        std::uint32_t size    = 0;
-        std::uint32_t align   = 0;
-        std::uint8_t  kind    = LUX_SCRIPT_VK_VOID;
+        std::uint32_t size = 0;
+        std::uint32_t align = 0;
+        std::uint8_t kind = LUX_SCRIPT_VK_VOID;
 
         static TypeDesc from(const lux_script_type_desc& d)
         {
-            return TypeDesc{
-                d.name ? std::string(d.name) : std::string{},
-                d.type_id,
-                d.size,
-                d.align,
-                d.kind
-            };
+            return TypeDesc{d.name ? std::string(d.name) : std::string{}, d.type_id, d.size, d.align, d.kind};
         }
     };
 
     struct FunctionSignature
     {
-        std::string             name;
-        std::uint64_t           symbol_id = 0;
-        std::vector<TypeDesc>   args;
-        std::vector<TypeDesc>   returns;
+        std::string name;
+        std::uint64_t symbol_id = 0;
+        std::vector<TypeDesc> args;
+        std::vector<TypeDesc> returns;
 
         static FunctionSignature from(const lux_script_function_desc& d)
         {

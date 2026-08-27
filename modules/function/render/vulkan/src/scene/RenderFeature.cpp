@@ -11,24 +11,24 @@
 
 namespace lux::render
 {
-    RenderScene &RenderFeature::renderScene() noexcept
+    RenderScene& RenderFeature::renderScene() noexcept
     {
         assert(scene_ && "RenderFeature::renderScene() called before attach");
         return *scene_;
     }
 
-    const RenderScene &RenderFeature::renderScene() const noexcept
+    const RenderScene& RenderFeature::renderScene() const noexcept
     {
         assert(scene_ && "RenderFeature::renderScene() called before attach");
         return *scene_;
     }
 
-    RenderContext &RenderFeature::renderContext() noexcept
+    RenderContext& RenderFeature::renderContext() noexcept
     {
         return renderScene().renderContext();
     }
 
-    const RenderContext &RenderFeature::renderContext() const noexcept
+    const RenderContext& RenderFeature::renderContext() const noexcept
     {
         return renderScene().renderContext();
     }

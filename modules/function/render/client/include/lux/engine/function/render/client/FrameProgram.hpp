@@ -13,14 +13,11 @@
 
 namespace lux::render
 {
-    template <std::size_t PayloadAlignment = 64>
-    struct CommandStorage
+    template <std::size_t PayloadAlignment = 64> struct CommandStorage
     {
-        using PayloadVector = std::vector<
-            std::byte,
-            AlignedAllocator<std::byte, PayloadAlignment>>;
+        using PayloadVector = std::vector<std::byte, AlignedAllocator<std::byte, PayloadAlignment>>;
 
-        PayloadVector                 payload;
+        PayloadVector payload;
         std::vector<AttachmentRecord> attachments;
 
         CommandStorage() = default;
@@ -41,14 +38,12 @@ namespace lux::render
             payload.clear();
         }
 
-        [[nodiscard]] std::optional<std::size_t>
-        measureAccountedBytes() const noexcept
+        [[nodiscard]] std::optional<std::size_t> measureAccountedBytes() const noexcept
         {
             std::size_t bytes = payload.size();
             for (const auto& attachment : attachments)
             {
-                if (attachment.accounted_size >
-                    std::numeric_limits<std::size_t>::max() - bytes)
+                if (attachment.accounted_size > std::numeric_limits<std::size_t>::max() - bytes)
                     return std::nullopt;
                 bytes += attachment.accounted_size;
             }
@@ -58,41 +53,30 @@ namespace lux::render
 
     struct CommandPacketView
     {
-        std::span<const std::byte>        payload{};
+        std::span<const std::byte> payload{};
         std::span<const AttachmentRecord> attachments{};
 
         template <std::size_t PayloadAlignment>
-        CommandPacketView(
-            const CommandStorage<PayloadAlignment>& storage
-        ) noexcept
+        CommandPacketView(const CommandStorage<PayloadAlignment>& storage) noexcept
             : payload(storage.payload), attachments(storage.attachments)
         {
         }
 
-        [[nodiscard]] Expected<std::span<const std::byte>> bytes(
-            std::uint32_t offset,
-            std::uint32_t size
-        ) const noexcept
+        [[nodiscard]] Expected<std::span<const std::byte>>
+        bytes(std::uint32_t offset, std::uint32_t size) const noexcept
         {
             if (offset > payload.size() || size > payload.size() - offset)
-                return renderFailure<err::comm::PayloadOutOfBounds>(
-                    offset,
-                    size
-                );
+                return renderFailure<err::comm::PayloadOutOfBounds>(offset, size);
             return payload.subspan(offset, size);
         }
 
-        [[nodiscard]] Expected<std::span<const std::byte>> bytes(
-            const CmdRecord& command
-        ) const noexcept
+        [[nodiscard]] Expected<std::span<const std::byte>> bytes(const CmdRecord& command) const noexcept
         {
             return bytes(command.payload_offset, command.payload_size);
         }
 
-        [[nodiscard]] Expected<
-            std::reference_wrapper<const AttachmentRecord>> attachment(
-            std::uint32_t index
-        ) const noexcept
+        [[nodiscard]] Expected<std::reference_wrapper<const AttachmentRecord>>
+        attachment(std::uint32_t index) const noexcept
         {
             if (index >= attachments.size())
                 return renderFailure<err::comm::AttachmentIndexOutOfRange>(
@@ -103,8 +87,7 @@ namespace lux::render
         }
     };
 
-    template <std::size_t PayloadAlignment = 64>
-    struct FrameProgram : CommandStorage<PayloadAlignment>
+    template <std::size_t PayloadAlignment = 64> struct FrameProgram : CommandStorage<PayloadAlignment>
     {
         using Storage = CommandStorage<PayloadAlignment>;
         using MemoryHints = FrameMemoryHints;
@@ -144,13 +127,12 @@ namespace lux::render
         std::size_t attachment_capacity{2};
     };
 
-    template <std::size_t PayloadAlignment = 64>
-    struct OperationPacket final : CommandStorage<PayloadAlignment>
+    template <std::size_t PayloadAlignment = 64> struct OperationPacket final : CommandStorage<PayloadAlignment>
     {
         using MemoryHints = OperationMemoryHints;
 
         CmdRecord command{};
-        bool      has_command{false};
+        bool has_command{false};
         std::size_t accounted_byte_count{0};
 
         OperationPacket() = default;
@@ -207,13 +189,12 @@ namespace lux::render
         }
     };
 
-    template <std::size_t PayloadAlignment = 64>
-    struct ReplyPacket
+    template <std::size_t PayloadAlignment = 64> struct ReplyPacket
     {
         using PayloadVector = std::vector<std::byte, AlignedAllocator<std::byte, PayloadAlignment>>;
 
         std::vector<ReplyRecord> replies;
-        PayloadVector            payload;
+        PayloadVector payload;
 
         ReplyPacket() = default;
         ReplyPacket(const ReplyPacket&) = delete;
@@ -246,7 +227,7 @@ namespace lux::render
         std::atomic<std::uint64_t> work_epoch{0};
         /// Client-side wait domain shared by frame/control/upload replies.
         std::atomic<std::uint64_t> reply_epoch{0};
-        std::atomic<bool>          stopping{false};
+        std::atomic<bool> stopping{false};
 
         /// First terminal render error, published independently of response
         /// ring capacity. The render owner writes it once before closing
@@ -257,25 +238,16 @@ namespace lux::render
             if (error.ok())
                 return;
             std::uint32_t expected = 0u;
-            if (!terminal_error_state.compare_exchange_strong(
-                    expected,
-                    1u,
-                    std::memory_order_acq_rel,
-                    std::memory_order_acquire))
+            if (!terminal_error_state
+                     .compare_exchange_strong(expected, 1u, std::memory_order_acq_rel, std::memory_order_acquire))
             {
                 return;
             }
-            terminal_error_words[0].store(
-                error.type.index,
-                std::memory_order_relaxed);
-            terminal_error_words[1].store(
-                error.type.gen,
-                std::memory_order_relaxed);
+            terminal_error_words[0].store(error.type.index, std::memory_order_relaxed);
+            terminal_error_words[1].store(error.type.gen, std::memory_order_relaxed);
             for (std::size_t index = 0u; index < error.args.size(); ++index)
             {
-                terminal_error_words[index + 2u].store(
-                    error.args[index],
-                    std::memory_order_relaxed);
+                terminal_error_words[index + 2u].store(error.args[index], std::memory_order_relaxed);
             }
             terminal_error_state.store(2u, std::memory_order_release);
         }
@@ -290,8 +262,7 @@ namespace lux::render
                 terminal_error_words[1].load(std::memory_order_relaxed)};
             for (std::size_t index = 0u; index < result.args.size(); ++index)
             {
-                result.args[index] = terminal_error_words[index + 2u].load(
-                    std::memory_order_relaxed);
+                result.args[index] = terminal_error_words[index + 2u].load(std::memory_order_relaxed);
             }
             return result;
         }
@@ -356,7 +327,7 @@ namespace lux::render
             return stopping.load(std::memory_order_acquire);
         }
 
-        std::atomic<void*>        external_wake_context{nullptr};
+        std::atomic<void*> external_wake_context{nullptr};
         std::atomic<ExternalWake> external_wake{nullptr};
 
     private:
@@ -370,7 +341,7 @@ namespace lux::render
     struct ReplyPacketView
     {
         std::span<const ReplyRecord> replies{};
-        std::span<const std::byte>   payload{};
+        std::span<const std::byte> payload{};
 
         ReplyPacketView() noexcept = default;
 
@@ -380,29 +351,18 @@ namespace lux::render
         {
         }
 
-        [[nodiscard]] Expected<std::span<const std::byte>> bytes(
-            const ReplyRecord& reply
-        ) const noexcept
+        [[nodiscard]] Expected<std::span<const std::byte>> bytes(const ReplyRecord& reply) const noexcept
         {
-            if (reply.payload_offset > payload.size() ||
-                reply.payload_size > payload.size() - reply.payload_offset)
-                return renderFailure<err::comm::PayloadOutOfBounds>(
-                    reply.payload_offset,
-                    reply.payload_size
-                );
+            if (reply.payload_offset > payload.size() || reply.payload_size > payload.size() - reply.payload_offset)
+                return renderFailure<err::comm::PayloadOutOfBounds>(reply.payload_offset, reply.payload_size);
             return payload.subspan(reply.payload_offset, reply.payload_size);
         }
 
-        template <FrameBlobPayload T>
-        [[nodiscard]] Expected<T> decode(
-            const ReplyRecord& reply
-        ) const noexcept
+        template <FrameBlobPayload T> [[nodiscard]] Expected<T> decode(const ReplyRecord& reply) const noexcept
         {
             auto payload_bytes = bytes(reply);
             if (!payload_bytes)
-                return lux::cxx::unexpected<RenderError>(
-                    payload_bytes.error()
-                );
+                return lux::cxx::unexpected<RenderError>(payload_bytes.error());
             if (payload_bytes->size() != sizeof(T))
                 return renderFailure<err::comm::PayloadSizeMismatch>(
                     static_cast<std::uint32_t>(sizeof(T)),
@@ -417,23 +377,20 @@ namespace lux::render
     struct ReplyDispatchCallback
     {
         using MainAdoption = lux::cxx::move_only_function<void()>;
-        using Dispatch = lux::cxx::move_only_function<void(
-            ReplyPacketView,
-            const ReplyRecord&)>;
+        using Dispatch = lux::cxx::move_only_function<void(ReplyPacketView, const ReplyRecord&)>;
         using Failure = lux::cxx::move_only_function<void(RenderError)>;
-        using PrepareMainAdoption = lux::cxx::move_only_function<
-            Expected<MainAdoption>(ReplyPacketView, const ReplyRecord&)>;
+        using PrepareMainAdoption =
+            lux::cxx::move_only_function<Expected<MainAdoption>(ReplyPacketView, const ReplyRecord&)>;
 
-        mutable Dispatch    dispatch{};
-        mutable Failure     failure{};
+        mutable Dispatch dispatch{};
+        mutable Failure failure{};
         PrepareMainAdoption prepare_main_adoption{};
 
         ReplyDispatchCallback() = default;
 
         template <typename F>
             requires std::invocable<F&, ReplyPacketView, const ReplyRecord&>
-        ReplyDispatchCallback(F&& fn)
-            : dispatch(std::forward<F>(fn))
+        ReplyDispatchCallback(F&& fn) : dispatch(std::forward<F>(fn))
         {
         }
 
@@ -442,19 +399,13 @@ namespace lux::render
         {
         }
 
-        ReplyDispatchCallback(
-            Dispatch on_reply,
-            Failure on_failure,
-            PrepareMainAdoption prepare_adoption)
-            : dispatch(std::move(on_reply))
-            , failure(std::move(on_failure))
-            , prepare_main_adoption(std::move(prepare_adoption))
+        ReplyDispatchCallback(Dispatch on_reply, Failure on_failure, PrepareMainAdoption prepare_adoption)
+            : dispatch(std::move(on_reply)), failure(std::move(on_failure)),
+              prepare_main_adoption(std::move(prepare_adoption))
         {
         }
 
-        void operator()(
-            ReplyPacketView packet,
-            const ReplyRecord& reply) const
+        void operator()(ReplyPacketView packet, const ReplyRecord& reply) const
         {
             if (dispatch)
                 dispatch(packet, reply);
@@ -468,9 +419,7 @@ namespace lux::render
             return true;
         }
 
-        [[nodiscard]] Expected<MainAdoption> prepareMainAdoption(
-            ReplyPacketView packet,
-            const ReplyRecord& reply)
+        [[nodiscard]] Expected<MainAdoption> prepareMainAdoption(ReplyPacketView packet, const ReplyRecord& reply)
         {
             if (!prepare_main_adoption)
                 return renderFailure<err::comm::RequestInvalid>();
@@ -485,9 +434,9 @@ namespace lux::render
 
     enum class ERequestLane : std::uint8_t
     {
-        FRAME   = 0,
+        FRAME = 0,
         CONTROL = 1,
-        UPLOAD  = 2
+        UPLOAD = 2
     };
 
     [[nodiscard]] constexpr ERequestLane requestLane(RequestId id) noexcept
@@ -496,72 +445,56 @@ namespace lux::render
     }
 
     template <std::size_t PayloadAlignment>
-    [[nodiscard]] ReplyPacketView replyPacketView(
-        const ReplyPacket<PayloadAlignment>& packet) noexcept
+    [[nodiscard]] ReplyPacketView replyPacketView(const ReplyPacket<PayloadAlignment>& packet) noexcept
     {
         return ReplyPacketView{packet};
     }
 
-    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64>
-    struct RenderFrameChannel
+    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct RenderFrameChannel
     {
-        explicit RenderFrameChannel(
-            std::size_t max_pending_packets = 2) noexcept
+        explicit RenderFrameChannel(std::size_t max_pending_packets = 2) noexcept
             : requests(max_pending_packets), responses(max_pending_packets)
         {
         }
 
         lux::cxx::BoundedSpscFrameRing<FrameProgram<RequestAlignment>, 4> requests;
-        lux::cxx::BoundedSpscFrameRing<ReplyPacket<ReplyAlignment>, 4>    responses;
+        lux::cxx::BoundedSpscFrameRing<ReplyPacket<ReplyAlignment>, 4> responses;
 
-        [[nodiscard]] static std::shared_ptr<RenderFrameChannel> create(
-            std::size_t max_pending_packets = 2)
+        [[nodiscard]] static std::shared_ptr<RenderFrameChannel> create(std::size_t max_pending_packets = 2)
         {
-            return std::make_shared<RenderFrameChannel>(
-                max_pending_packets
-            );
+            return std::make_shared<RenderFrameChannel>(max_pending_packets);
         }
     };
 
-    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64>
-    struct RenderControlChannel
+    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct RenderControlChannel
     {
-        explicit RenderControlChannel(
-            std::size_t queue_capacity = 16)
-            : requests(queue_capacity)
+        explicit RenderControlChannel(std::size_t queue_capacity = 16) : requests(queue_capacity)
         {
         }
 
         lux::cxx::SpscLockFreeRingQueue<OperationPacket<RequestAlignment>> requests;
         lux::cxx::BoundedSpscFrameRing<ReplyPacket<ReplyAlignment>, 4> responses{2};
 
-        [[nodiscard]] static std::shared_ptr<RenderControlChannel> create(
-            std::size_t queue_capacity = 16)
+        [[nodiscard]] static std::shared_ptr<RenderControlChannel> create(std::size_t queue_capacity = 16)
         {
-            return std::make_shared<RenderControlChannel>(
-                queue_capacity
-            );
+            return std::make_shared<RenderControlChannel>(queue_capacity);
         }
     };
 
-    template <std::size_t ReplyAlignment = 64>
-    class RenderUploadChannel final
+    template <std::size_t ReplyAlignment = 64> class RenderUploadChannel final
     {
     public:
         using ResponsePacket = ReplyPacket<ReplyAlignment>;
 
-        explicit RenderUploadChannel(std::size_t queue_capacity = 64,
-                                     std::size_t byte_budget = 256u * 1024u * 1024u)
+        explicit RenderUploadChannel(std::size_t queue_capacity = 64, std::size_t byte_budget = 256u * 1024u * 1024u)
             : requests(queue_capacity), byte_budget_(byte_budget)
         {
         }
 
-        [[nodiscard]] static std::shared_ptr<RenderUploadChannel> create(
-            std::size_t queue_capacity = 64,
-            std::size_t byte_budget = 256u * 1024u * 1024u)
+        [[nodiscard]] static std::shared_ptr<RenderUploadChannel>
+        create(std::size_t queue_capacity = 64, std::size_t byte_budget = 256u * 1024u * 1024u)
         {
-            return std::make_shared<RenderUploadChannel>(
-                queue_capacity, byte_budget);
+            return std::make_shared<RenderUploadChannel>(queue_capacity, byte_budget);
         }
 
         [[nodiscard]] bool tryReserveBytes(std::size_t bytes) noexcept
@@ -572,20 +505,18 @@ namespace lux::render
                 if (bytes > byte_budget_ || used > byte_budget_ - bytes)
                     return false;
                 if (payload_bytes_.compare_exchange_weak(
-                        used, used + bytes,
+                        used,
+                        used + bytes,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed))
                 {
-                    auto high = payload_high_water_.load(
-                        std::memory_order_relaxed
-                    );
+                    auto high = payload_high_water_.load(std::memory_order_relaxed);
                     const auto current = used + bytes;
-                    while (high < current &&
-                           !payload_high_water_.compare_exchange_weak(
-                               high,
-                               current,
-                               std::memory_order_relaxed,
-                               std::memory_order_relaxed))
+                    while (high < current && !payload_high_water_.compare_exchange_weak(
+                                                 high,
+                                                 current,
+                                                 std::memory_order_relaxed,
+                                                 std::memory_order_relaxed))
                     {
                     }
                     return true;
@@ -598,11 +529,8 @@ namespace lux::render
             const auto current = requests.size();
             auto high = queue_high_water_.load(std::memory_order_relaxed);
             while (high < current &&
-                   !queue_high_water_.compare_exchange_weak(
-                       high,
-                       current,
-                       std::memory_order_relaxed,
-                       std::memory_order_relaxed))
+                   !queue_high_water_
+                        .compare_exchange_weak(high, current, std::memory_order_relaxed, std::memory_order_relaxed))
             {
             }
         }
@@ -636,7 +564,7 @@ namespace lux::render
         lux::cxx::BoundedSpscFrameRing<ResponsePacket, 4> responses{2};
 
     private:
-        const std::size_t        byte_budget_;
+        const std::size_t byte_budget_;
         std::atomic<std::size_t> payload_bytes_{0};
         std::atomic<std::size_t> payload_high_water_{0};
         std::atomic<std::size_t> queue_high_water_{0};

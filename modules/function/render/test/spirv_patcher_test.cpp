@@ -17,7 +17,7 @@
 //        literals, never touches structure."
 // =============================================================================
 #include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>   // relocationsFor (the name-driven relocation table)
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp> // relocationsFor (the name-driven relocation table)
 
 #include <cstdio>
 #include <cstdlib>
@@ -52,9 +52,8 @@ namespace
     /// isn't guaranteed, and a single-pass implementation would trip up here.
     std::vector<uint32_t> makeModule()
     {
-        auto decorate = [](std::vector<uint32_t>& w, uint32_t target,
-                           uint32_t decoration, uint32_t literal) {
-            w.push_back((4u << 16) | 71u);   // wordcount=4, OpDecorate
+        auto decorate = [](std::vector<uint32_t>& w, uint32_t target, uint32_t decoration, uint32_t literal) {
+            w.push_back((4u << 16) | 71u); // wordcount=4, OpDecorate
             w.push_back(target);
             w.push_back(decoration);
             w.push_back(literal);
@@ -82,19 +81,27 @@ namespace
     }
 
     /// Read a variable's current (set, binding); returns false if not found.
-    bool readPos(const std::vector<uint32_t>& w, uint32_t target,
-                 uint32_t& set, uint32_t& binding)
+    bool readPos(const std::vector<uint32_t>& w, uint32_t target, uint32_t& set, uint32_t& binding)
     {
         bool hs = false, hb = false;
         for (std::size_t i = 5; i < w.size();)
         {
             const uint32_t wc = w[i] >> 16;
             const uint32_t op = w[i] & 0xFFFFu;
-            if (wc == 0) return false;
+            if (wc == 0)
+                return false;
             if (op == 71u && wc >= 4 && w[i + 1] == target)
             {
-                if (w[i + 2] == 34u) { set = w[i + 3];     hs = true; }
-                if (w[i + 2] == 33u) { binding = w[i + 3]; hb = true; }
+                if (w[i + 2] == 34u)
+                {
+                    set = w[i + 3];
+                    hs = true;
+                }
+                if (w[i + 2] == 33u)
+                {
+                    binding = w[i + 3];
+                    hb = true;
+                }
             }
             i += wc;
         }
@@ -109,8 +116,8 @@ namespace
         const auto original = w;
 
         const SpirvRelocation relocs[] = {
-            {2, 0, 0, 4},   // %10 : set2/b0 → set0/b4
-            {7, 0, 0, 5},   // %11 : set7/b0 → set0/b5
+            {2, 0, 0, 4}, // %10 : set2/b0 → set0/b4
+            {7, 0, 0, 5}, // %11 : set7/b0 → set0/b5
         };
 
         auto r = patchSpirvDescriptorPositions(std::span<uint32_t>{w}, relocs);
@@ -124,10 +131,12 @@ namespace
         check(w.size() == original.size(), "字数不变(只改字面量)");
 
         // %13 (Binding-only) and the unrelated decoration must stay byte-for-byte unchanged.
-        check(w[original.size() - 3] == original[original.size() - 3] &&
-              w[original.size() - 2] == original[original.size() - 2] &&
-              w[original.size() - 1] == original[original.size() - 1],
-              "非位置装饰逐字不动");
+        check(
+            w[original.size() - 3] == original[original.size() - 3] &&
+                w[original.size() - 2] == original[original.size() - 2] &&
+                w[original.size() - 1] == original[original.size() - 1],
+            "非位置装饰逐字不动"
+        );
     }
 
     void testOrderIndependence()
@@ -138,7 +147,7 @@ namespace
         // before Set has been read (defaulting to 0), it would incorrectly
         // match the {0,0} relocation.
         auto w = makeModule();
-        const SpirvRelocation trap[] = { {0, 0, 6, 6} };   // trap: matches set0/b0
+        const SpirvRelocation trap[] = {{0, 0, 6, 6}}; // trap: matches set0/b0
 
         auto r = patchSpirvDescriptorPositions(std::span<uint32_t>{w}, trap);
         check(r.ok, "解析成功");
@@ -151,7 +160,7 @@ namespace
 
         auto w = makeModule();
         const auto original = w;
-        const SpirvRelocation identity[] = { {2, 0, 2, 0}, {7, 0, 7, 0} };
+        const SpirvRelocation identity[] = {{2, 0, 2, 0}, {7, 0, 7, 0}};
 
         auto r = patchSpirvDescriptorPositions(std::span<uint32_t>{w}, identity);
         check(r.ok, "解析成功");
@@ -168,7 +177,7 @@ namespace
         check(!r1.ok, "过短模块被拒");
 
         std::vector<uint32_t> bad_magic{0xDEADBEEFu, 0, 0, 0, 0};
-        const SpirvRelocation rel[] = { {0, 0, 1, 1} };
+        const SpirvRelocation rel[] = {{0, 0, 1, 1}};
         auto r2 = patchSpirvDescriptorPositions(std::span<uint32_t>{bad_magic}, rel);
         check(!r2.ok, "magic 不对被拒");
 
@@ -183,8 +192,7 @@ namespace
 
         // On the failure path, the copying overload must leave out == input.
         std::vector<uint32_t> out;
-        auto r5 = patchSpirvDescriptorPositions(
-            std::span<const uint32_t>{bad_magic}, rel, out);
+        auto r5 = patchSpirvDescriptorPositions(std::span<const uint32_t>{bad_magic}, rel, out);
         check(!r5.ok && out == bad_magic, "失败时拷贝版保持输入原样");
     }
 
@@ -221,11 +229,9 @@ namespace
             build_root = fs::current_path();
 
         std::error_code ec;
-        for (auto it = fs::recursive_directory_iterator(
-                 build_root,
-                 fs::directory_options::skip_permission_denied,
-                 ec);
-             it != fs::recursive_directory_iterator(); it.increment(ec))
+        for (auto it = fs::recursive_directory_iterator(build_root, fs::directory_options::skip_permission_denied, ec);
+             it != fs::recursive_directory_iterator();
+             it.increment(ec))
         {
             if (ec)
             {
@@ -244,7 +250,7 @@ namespace
 
     void testRealShadersRoundTrip()
     {
-        const auto files = findRealSpv(40);   // sampling is enough here: this verifies the parser's general robustness
+        const auto files = findRealSpv(40); // sampling is enough here: this verifies the parser's general robustness
         if (files.empty())
         {
             std::printf("[real] 构建树里没找到 .spv —— 跳过(不算失败)\n");
@@ -256,14 +262,16 @@ namespace
         for (const auto& f : files)
         {
             std::ifstream in(f, std::ios::binary);
-            if (!in) continue;
-            std::vector<char> bytes((std::istreambuf_iterator<char>(in)),
-                                     std::istreambuf_iterator<char>());
-            if (bytes.size() < 20 || bytes.size() % 4 != 0) continue;
+            if (!in)
+                continue;
+            std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (bytes.size() < 20 || bytes.size() % 4 != 0)
+                continue;
 
             std::vector<uint32_t> words(bytes.size() / 4);
             std::memcpy(words.data(), bytes.data(), bytes.size());
-            if (words[0] != kMagic) continue;
+            if (words[0] != kMagic)
+                continue;
 
             const auto original = words;
 
@@ -278,9 +286,7 @@ namespace
             auto r1 = patchSpirvDescriptorPositions(std::span<uint32_t>{words}, forward);
             if (!r1.ok)
             {
-                std::printf("  [FAIL] 解析失败 %s : %s\n",
-                            f.filename().string().c_str(),
-                            r1.error ? r1.error : "?");
+                std::printf("  [FAIL] 解析失败 %s : %s\n", f.filename().string().c_str(), r1.error ? r1.error : "?");
                 ++g_failures;
                 continue;
             }
@@ -296,11 +302,9 @@ namespace
                 ++g_failures;
             }
         }
-        std::printf("  解析 %u 个模块,累计搬运 %u 处,全部往返还原\n",
-                    parsed, moved_total);
+        std::printf("  解析 %u 个模块,累计搬运 %u 处,全部往返还原\n", parsed, moved_total);
         check(parsed > 0, "至少解析了一个真实模块");
     }
-
 
     // ─────────────────────────────────────────────────────────────────────
     //  Contract-completeness reconciliation (closing the loop, part 2)
@@ -330,8 +334,8 @@ namespace
 
     struct DeclaredBinding
     {
-        uint32_t    set{0};
-        uint32_t    binding{0};
+        uint32_t set{0};
+        uint32_t binding{0};
         std::string name;
     };
 
@@ -339,19 +343,24 @@ namespace
     /// along with its OpName.
     std::vector<DeclaredBinding> parseDeclaredBindings(const std::vector<uint32_t>& w)
     {
-        constexpr uint32_t kOpName     = 5u;
+        constexpr uint32_t kOpName = 5u;
         constexpr uint32_t kOpDecorate = 71u;
         constexpr uint32_t kDecoBinding = 33u, kDecoSet = 34u;
 
-        struct Pos { uint32_t set{0}, binding{0}; bool hs{false}, hb{false}; };
-        std::unordered_map<uint32_t, Pos>         pos;
+        struct Pos
+        {
+            uint32_t set{0}, binding{0};
+            bool hs{false}, hb{false};
+        };
+        std::unordered_map<uint32_t, Pos> pos;
         std::unordered_map<uint32_t, std::string> names;
 
         for (std::size_t i = 5; i < w.size();)
         {
             const uint32_t wc = w[i] >> 16;
             const uint32_t op = w[i] & 0xFFFFu;
-            if (wc == 0 || i + wc > w.size()) break;
+            if (wc == 0 || i + wc > w.size())
+                break;
 
             if (op == kOpName && wc >= 3)
             {
@@ -361,8 +370,16 @@ namespace
             }
             else if (op == kOpDecorate && wc >= 4)
             {
-                if (w[i + 2] == kDecoSet)     { pos[w[i + 1]].set = w[i + 3];     pos[w[i + 1]].hs = true; }
-                if (w[i + 2] == kDecoBinding) { pos[w[i + 1]].binding = w[i + 3]; pos[w[i + 1]].hb = true; }
+                if (w[i + 2] == kDecoSet)
+                {
+                    pos[w[i + 1]].set = w[i + 3];
+                    pos[w[i + 1]].hs = true;
+                }
+                if (w[i + 2] == kDecoBinding)
+                {
+                    pos[w[i + 1]].binding = w[i + 3];
+                    pos[w[i + 1]].hb = true;
+                }
             }
             i += wc;
         }
@@ -372,8 +389,7 @@ namespace
             if (p.hs && p.hb)
             {
                 const auto it = names.find(id);
-                out.push_back({p.set, p.binding,
-                               it != names.end() ? it->second : std::string{}});
+                out.push_back({p.set, p.binding, it != names.end() ? it->second : std::string{}});
             }
         return out;
     }
@@ -387,13 +403,14 @@ namespace
     struct ContractExemption
     {
         const char* name;
-        uint32_t    declared_binding;
+        uint32_t declared_binding;
         const char* reason;
     };
     constexpr ContractExemption kContractExemptions[] = {
-        { "uShadowSlices", 0,
-          "MeshShadow 系紧凑 caster set(feature 显式声明)把 slice 表放自己 set 的 b0;"
-          "Light set 里的 canonical 位置是 b4,两处是同一数据的两个合法住址" },
+        {"uShadowSlices",
+         0,
+         "MeshShadow 系紧凑 caster set(feature 显式声明)把 slice 表放自己 set 的 b0;"
+         "Light set 里的 canonical 位置是 b4,两处是同一数据的两个合法住址"},
     };
 
     [[nodiscard]] bool isExempt(const std::string& name, uint32_t declared_binding)
@@ -418,16 +435,19 @@ namespace
         for (const auto& f : files)
         {
             std::ifstream in(f, std::ios::binary);
-            if (!in) continue;
-            std::vector<char> bytes((std::istreambuf_iterator<char>(in)),
-                                     std::istreambuf_iterator<char>());
-            if (bytes.size() < 20 || bytes.size() % 4 != 0) continue;
+            if (!in)
+                continue;
+            std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (bytes.size() < 20 || bytes.size() % 4 != 0)
+                continue;
             std::vector<uint32_t> words(bytes.size() / 4);
             std::memcpy(words.data(), bytes.data(), bytes.size());
-            if (words[0] != kMagic) continue;
+            if (words[0] != kMagic)
+                continue;
 
             const auto decls = parseDeclaredBindings(words);
-            if (decls.empty()) continue;
+            if (decls.empty())
+                continue;
             ++scanned;
 
             // Reconcile grouped by set.
@@ -436,10 +456,13 @@ namespace
                 // Process each set only once, when its first binding is encountered.
                 bool first_of_set = true;
                 for (const auto& other : decls)
-                    if (other.set == d.set &&
-                        (&other != &d) && (other.binding < d.binding))
-                    { first_of_set = false; break; }
-                if (!first_of_set) continue;
+                    if (other.set == d.set && (&other != &d) && (other.binding < d.binding))
+                    {
+                        first_of_set = false;
+                        break;
+                    }
+                if (!first_of_set)
+                    continue;
 
                 std::size_t total = 0, hits = 0;
                 for (const auto& other : decls)
@@ -450,7 +473,7 @@ namespace
                             ++hits;
                     }
                 if (hits == 0)
-                    continue;   // pure private/feature set, not the contract's concern
+                    continue; // pure private/feature set, not the contract's concern
                 ++engine_sets_seen;
 
                 // Rule 1: partial registration is a failure, called out by name.
@@ -458,11 +481,15 @@ namespace
                     for (const auto& other : decls)
                         if (other.set == d.set && !engineOwnedResource(other.name))
                         {
-                            std::printf("  [FAIL] %s : set%u b%u '%s' 与契约资源同住"
-                                        "一个 set 却未登记 —— 切该管线会被半搬守门拒绝。"
-                                        "补进 kLayoutContractV0(engine_set)或改名避让。\n",
-                                        f.filename().string().c_str(),
-                                        other.set, other.binding, other.name.c_str());
+                            std::printf(
+                                "  [FAIL] %s : set%u b%u '%s' 与契约资源同住"
+                                "一个 set 却未登记 —— 切该管线会被半搬守门拒绝。"
+                                "补进 kLayoutContractV0(engine_set)或改名避让。\n",
+                                f.filename().string().c_str(),
+                                other.set,
+                                other.binding,
+                                other.name.c_str()
+                            );
                             ++g_failures;
                         }
 
@@ -470,21 +497,22 @@ namespace
                 for (const auto& other : decls)
                     if (other.set == d.set)
                         if (const auto* e = engineOwnedResource(other.name))
-                            if (other.binding != e->canonical_binding &&
-                                !isExempt(other.name, other.binding))
+                            if (other.binding != e->canonical_binding && !isExempt(other.name, other.binding))
                             {
-                                std::printf("  [FAIL] %s : '%s' 声明在 b%u,契约 canonical "
-                                            "是 b%u —— 若这是 feature 显式 set 的合法别位,"
-                                            "加进 kContractExemptions(写明原因);否则是漂移。\n",
-                                            f.filename().string().c_str(),
-                                            other.name.c_str(), other.binding,
-                                            e->canonical_binding);
+                                std::printf(
+                                    "  [FAIL] %s : '%s' 声明在 b%u,契约 canonical "
+                                    "是 b%u —— 若这是 feature 显式 set 的合法别位,"
+                                    "加进 kContractExemptions(写明原因);否则是漂移。\n",
+                                    f.filename().string().c_str(),
+                                    other.name.c_str(),
+                                    other.binding,
+                                    e->canonical_binding
+                                );
                                 ++g_failures;
                             }
             }
         }
-        std::printf("  扫描 %u 个带描述符的模块,其中 %u 个引擎 set 视图完成对账\n",
-                    scanned, engine_sets_seen);
+        std::printf("  扫描 %u 个带描述符的模块,其中 %u 个引擎 set 视图完成对账\n", scanned, engine_sets_seen);
         check(scanned > 0, "至少扫描了一个真实模块");
     }
 
@@ -525,30 +553,32 @@ namespace
         check(light.size() == 1, "uSpotLights 产出一条搬运");
         if (light.size() == 1)
         {
-            check(light[0].to_set == domainSetSlot(lux::rdesc::EBindFrequency::FEATURE),
-                  "uSpotLights 搬去 FEATURE 域,而不是 shader set 号所指的 BINDLESS");
-            check(light[0].to_binding == engineSetDomainOffset(3),
-                  "uSpotLights 的 binding 用 canonical 偏移,不是 shader 局部号");
+            check(
+                light[0].to_set == domainSetSlot(lux::rdesc::EBindFrequency::FEATURE),
+                "uSpotLights 搬去 FEATURE 域,而不是 shader set 号所指的 BINDLESS"
+            );
+            check(
+                light[0].to_binding == engineSetDomainOffset(3),
+                "uSpotLights 的 binding 用 canonical 偏移,不是 shader 局部号"
+            );
         }
 
         // uTex is also declared at set2, but it truly belongs to Texture -- must be relocated to BINDLESS.
         const auto tex = relocationsFor(makeInfo("uTex", 2, 0));
         check(tex.size() == 1, "uTex 产出一条搬运");
         if (tex.size() == 1)
-            check(tex[0].to_set == domainSetSlot(lux::rdesc::EBindFrequency::BINDLESS),
-                  "uTex 搬去 BINDLESS 域");
+            check(tex[0].to_set == domainSetSlot(lux::rdesc::EBindFrequency::BINDLESS), "uTex 搬去 BINDLESS 域");
 
         if (light.size() == 1 && tex.size() == 1)
-            check(light[0].to_set != tex[0].to_set,
-                  "同在 set2 的两者去向不同 —— 按 set 号搬就会在这里撞号");
+            check(light[0].to_set != tex[0].to_set, "同在 set2 的两者去向不同 —— 按 set 号搬就会在这里撞号");
 
         // An unregistered name (a single-pipeline private set) produces no relocation.
-        check(relocationsFor(makeInfo("uPrivateNotInContract", 1, 0)).empty(),
-              "未登记资源不搬");
+        check(relocationsFor(makeInfo("uPrivateNotInContract", 1, 0)).empty(), "未登记资源不搬");
     }
 } // namespace
 
-int main()
+int
+main()
 {
     std::printf("=== SpirvPatcher test ===\n");
     testSyntheticRelocation();

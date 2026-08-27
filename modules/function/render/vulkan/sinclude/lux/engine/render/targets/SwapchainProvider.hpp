@@ -32,7 +32,7 @@ namespace lux::render
     {
         struct SwapchainImageViewOps final
         {
-            PFN_vkCreateImageView  create{nullptr};
+            PFN_vkCreateImageView create{nullptr};
             PFN_vkDestroyImageView destroy{nullptr};
 
             [[nodiscard]] static SwapchainImageViewOps defaults() noexcept
@@ -49,9 +49,7 @@ namespace lux::render
         public:
             SwapchainImageViews() noexcept = default;
 
-            [[nodiscard]] static SwapchainImageViews adopt(
-                VkDevice device,
-                PFN_vkDestroyImageView destroy) noexcept
+            [[nodiscard]] static SwapchainImageViews adopt(VkDevice device, PFN_vkDestroyImageView destroy) noexcept
             {
                 SwapchainImageViews result;
                 result.device_ = device;
@@ -68,13 +66,12 @@ namespace lux::render
             SwapchainImageViews& operator=(const SwapchainImageViews&) = delete;
 
             SwapchainImageViews(SwapchainImageViews&& other) noexcept
-                : device_(std::exchange(other.device_, VkDevice{}))
-                , destroy_(std::exchange(other.destroy_, nullptr))
-                , views_(std::move(other.views_))
-            {}
+                : device_(std::exchange(other.device_, VkDevice{})), destroy_(std::exchange(other.destroy_, nullptr)),
+                  views_(std::move(other.views_))
+            {
+            }
 
-            SwapchainImageViews& operator=(
-                SwapchainImageViews&& other) noexcept
+            SwapchainImageViews& operator=(SwapchainImageViews&& other) noexcept
             {
                 if (this == &other)
                     return *this;
@@ -118,32 +115,27 @@ namespace lux::render
                 return views_.size();
             }
 
-            [[nodiscard]] VkImageView operator[](
-                std::size_t index) const noexcept
+            [[nodiscard]] VkImageView operator[](std::size_t index) const noexcept
             {
                 return views_[index];
             }
 
         private:
-            VkDevice                     device_{VK_NULL_HANDLE};
-            PFN_vkDestroyImageView       destroy_{nullptr};
-            std::vector<VkImageView>     views_;
+            VkDevice device_{VK_NULL_HANDLE};
+            PFN_vkDestroyImageView destroy_{nullptr};
+            std::vector<VkImageView> views_;
         };
 
         /// Translate the lower-level optional-VkResult error without inventing
         /// a driver result for local validation failures.
-        [[nodiscard]] LUX_FUNCTION_PUBLIC RenderError mapSwapchainBuildError(
-            const gapi::vk::SwapchainBuildError& error
-        ) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC RenderError
+        mapSwapchainBuildError(const gapi::vk::SwapchainBuildError& error) noexcept;
 
-        [[nodiscard]] LUX_FUNCTION_PUBLIC bool isRetryableSwapchainFailure(
-            const RenderError& error
-        ) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC bool isRetryableSwapchainFailure(const RenderError& error) noexcept;
 
         /// Build the complete image-view vector transactionally. A failed
         /// element destroys the successful prefix before returning.
-        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainImageViews>
-        createSwapchainImageViews(
+        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainImageViews> createSwapchainImageViews(
             VkDevice device,
             std::span<const VkImage> images,
             VkFormat format,
@@ -164,16 +156,10 @@ namespace lux::render
         /// Normalize only the explicitly recoverable WSI statuses. Any other
         /// non-success result retains its exact VkResult in a permanent error.
         [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainAcquireDisposition>
-        classifySwapchainAcquireResult(
-            VkResult result,
-            bool present_scaling
-        ) noexcept;
+        classifySwapchainAcquireResult(VkResult result, bool present_scaling) noexcept;
 
         [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainPresentDisposition>
-        classifySwapchainPresentResult(
-            VkResult result,
-            bool present_scaling
-        ) noexcept;
+        classifySwapchainPresentResult(VkResult result, bool present_scaling) noexcept;
     } // namespace detail
 
     // =============================================================================
@@ -210,15 +196,15 @@ namespace lux::render
 
         // ── Lifecycle ────────────────────────────────────────────
 
-        [[nodiscard]] static Expected<SwapchainProvider> create(
-            ResourceContext &res_ctx, RenderSurface &surface, const Config &config);
+        [[nodiscard]] static Expected<SwapchainProvider>
+        create(ResourceContext& res_ctx, RenderSurface& surface, const Config& config);
 
         ~SwapchainProvider();
 
-        SwapchainProvider(const SwapchainProvider &) = delete;
-        SwapchainProvider &operator=(const SwapchainProvider &) = delete;
-        SwapchainProvider(SwapchainProvider &&) noexcept;
-        SwapchainProvider &operator=(SwapchainProvider &&) noexcept;
+        SwapchainProvider(const SwapchainProvider&) = delete;
+        SwapchainProvider& operator=(const SwapchainProvider&) = delete;
+        SwapchainProvider(SwapchainProvider&&) noexcept;
+        SwapchainProvider& operator=(SwapchainProvider&&) noexcept;
 
         // ── Swapchain operations ─────────────────────────────────
 

@@ -8,18 +8,16 @@
 
 namespace installed_consumer
 {
-    inline lux::simulation::ecs::Entity observed_self{
-        lux::simulation::ecs::NullEntity};
+    inline lux::simulation::ecs::Entity observed_self{lux::simulation::ecs::NullEntity};
     inline float observed_value{};
     inline std::int32_t observed_event{};
     inline std::uint32_t constructs{};
     inline std::uint32_t starts{};
     inline std::uint32_t stops{};
 
-    class LUX_TYPE_INFO(runtime) ConsumerBehavior final
-        : public lux::simulation::EntityBehavior
+    class LUX_TYPE_INFO(runtime) ConsumerBehavior final : public lux::simulation::EntityBehavior
     {
-      public:
+    public:
         LUX_METHOD()
         void construct() noexcept
         {

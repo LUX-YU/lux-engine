@@ -20,8 +20,7 @@ namespace lux::task::detail
         class ExecuteGuard final
         {
         public:
-            explicit ExecuteGuard(std::atomic_bool& executing) noexcept
-                : executing_(executing)
+            explicit ExecuteGuard(std::atomic_bool& executing) noexcept : executing_(executing)
             {
             }
 
@@ -35,8 +34,7 @@ namespace lux::task::detail
         };
     }
 
-    TaskExecutorImpl::TaskExecutorImpl(TaskExecutorConfig config)
-        : worker_count(config.worker_count)
+    TaskExecutorImpl::TaskExecutorImpl(TaskExecutorConfig config) : worker_count(config.worker_count)
     {
         if (worker_count != 0U)
             worker_ready = std::make_unique<ReadyStack[]>(worker_count);
@@ -49,10 +47,7 @@ namespace lux::task::detail
             workers.reserve(worker_count);
             for (std::uint32_t worker{}; worker < worker_count; ++worker)
             {
-                workers.emplace_back([this, worker]() noexcept
-                {
-                    workerLoop(worker);
-                });
+                workers.emplace_back([this, worker]() noexcept { workerLoop(worker); });
             }
         }
         catch (...)
@@ -81,23 +76,18 @@ namespace lux::task::detail
     {
         if (capacity <= task_capacity)
             return;
-        auto new_remaining =
-            std::make_unique<std::atomic<std::uint32_t>[]>(capacity);
+        auto new_remaining = std::make_unique<std::atomic<std::uint32_t>[]>(capacity);
         auto new_next = std::make_unique<std::uint32_t[]>(capacity);
         remaining = std::move(new_remaining);
         next_ready = std::move(new_next);
         task_capacity = capacity;
     }
 
-    lux::cxx::expected<void, TaskExecutorFailure> TaskExecutorImpl::reserve(
-        std::size_t capacity
-    ) noexcept
+    lux::cxx::expected<void, TaskExecutorFailure> TaskExecutorImpl::reserve(std::size_t capacity) noexcept
     {
         if (executing.load(std::memory_order_acquire))
         {
-            return lux::cxx::unexpected(TaskExecutorFailure{
-                ETaskExecutorError::ALREADY_EXECUTING
-            });
+            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALREADY_EXECUTING});
         }
         try
         {
@@ -106,27 +96,16 @@ namespace lux::task::detail
         }
         catch (...)
         {
-            return lux::cxx::unexpected(TaskExecutorFailure{
-                ETaskExecutorError::ALLOCATION_FAILURE
-            });
+            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
         }
     }
 
-    lux::cxx::expected<void, TaskExecutorFailure> TaskExecutorImpl::execute(
-        const TaskGraph& graph
-    ) noexcept
+    lux::cxx::expected<void, TaskExecutorFailure> TaskExecutorImpl::execute(const TaskGraph& graph) noexcept
     {
         bool expected = false;
-        if (!executing.compare_exchange_strong(
-            expected,
-            true,
-            std::memory_order_acq_rel,
-            std::memory_order_acquire
-        ))
+        if (!executing.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
         {
-            return lux::cxx::unexpected(TaskExecutorFailure{
-                ETaskExecutorError::ALREADY_EXECUTING
-            });
+            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALREADY_EXECUTING});
         }
         ExecuteGuard execute_guard(executing);
 
@@ -136,9 +115,7 @@ namespace lux::task::detail
         }
         catch (...)
         {
-            return lux::cxx::unexpected(TaskExecutorFailure{
-                ETaskExecutorError::ALLOCATION_FAILURE
-            });
+            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
         }
 
         if (graph.taskCount() == 0U)
@@ -146,10 +123,7 @@ namespace lux::task::detail
 
         for (std::uint32_t task{}; task < graph.taskCount(); ++task)
         {
-            remaining[task].store(
-                graph.initial_dependencies_[task],
-                std::memory_order_relaxed
-            );
+            remaining[task].store(graph.initial_dependencies_[task], std::memory_order_relaxed);
             next_ready[task] = InvalidTaskIndex;
         }
         for (std::uint32_t worker{}; worker < worker_count; ++worker)
@@ -157,10 +131,7 @@ namespace lux::task::detail
         caller_ready.reset();
 
         round_robin.store(0U, std::memory_order_relaxed);
-        remaining_terminals.store(
-            graph.terminal_task_count_,
-            std::memory_order_relaxed
-        );
+        remaining_terminals.store(graph.terminal_task_count_, std::memory_order_relaxed);
         active_graph.store(std::addressof(graph), std::memory_order_release);
 
         // Precomputed roots avoid scanning dependency counters every execution.
@@ -197,8 +168,7 @@ namespace lux::task::detail
             if (stopping.load(std::memory_order_acquire))
                 return;
 
-            if (const TaskGraph* graph =
-                    active_graph.load(std::memory_order_acquire))
+            if (const TaskGraph* graph = active_graph.load(std::memory_order_acquire))
             {
                 const std::uint32_t task = popWorkerTask(worker);
                 if (task != InvalidTaskIndex)
@@ -212,23 +182,18 @@ namespace lux::task::detail
             // either observes the sleeper and signals, or it published earlier
             // and this recheck observes the work without requiring a wakeup.
             sleeping_workers.fetch_add(1U, std::memory_order_acq_rel);
-            const std::uint64_t observed =
-                worker_event.load(std::memory_order_acquire);
+            const std::uint64_t observed = worker_event.load(std::memory_order_acquire);
             if (stopping.load(std::memory_order_acquire))
             {
                 sleeping_workers.fetch_sub(1U, std::memory_order_acq_rel);
                 return;
             }
-            if (const TaskGraph* graph =
-                    active_graph.load(std::memory_order_acquire))
+            if (const TaskGraph* graph = active_graph.load(std::memory_order_acquire))
             {
                 const std::uint32_t task = popWorkerTask(worker);
                 if (task != InvalidTaskIndex)
                 {
-                    sleeping_workers.fetch_sub(
-                        1U,
-                        std::memory_order_acq_rel
-                    );
+                    sleeping_workers.fetch_sub(1U, std::memory_order_acq_rel);
                     executeTask(*graph, task, worker);
                     continue;
                 }
@@ -238,9 +203,7 @@ namespace lux::task::detail
         }
     }
 
-    std::uint32_t TaskExecutorImpl::popWorkerTask(
-        std::uint32_t preferred_worker
-    ) noexcept
+    std::uint32_t TaskExecutorImpl::popWorkerTask(std::uint32_t preferred_worker) noexcept
     {
         if (worker_count == 0U)
             return InvalidTaskIndex;
@@ -253,8 +216,8 @@ namespace lux::task::detail
         }
 
         const std::uint32_t start = preferred_worker < worker_count
-            ? preferred_worker + 1U
-            : round_robin.fetch_add(1U, std::memory_order_relaxed);
+                                        ? preferred_worker + 1U
+                                        : round_robin.fetch_add(1U, std::memory_order_relaxed);
 
         // Stealing is paid only after the local queue misses.
         for (std::uint32_t offset{}; offset < worker_count; ++offset)
@@ -269,11 +232,7 @@ namespace lux::task::detail
         return InvalidTaskIndex;
     }
 
-    void TaskExecutorImpl::schedule(
-        const TaskGraph& graph,
-        std::uint32_t task,
-        std::uint32_t worker_hint
-    ) noexcept
+    void TaskExecutorImpl::schedule(const TaskGraph& graph, std::uint32_t task, std::uint32_t worker_hint) noexcept
     {
         if (task >= graph.tasks_.size())
             contractFailure();
@@ -287,8 +246,8 @@ namespace lux::task::detail
         }
 
         const std::uint32_t target = worker_hint < worker_count
-            ? worker_hint
-            : round_robin.fetch_add(1U, std::memory_order_relaxed) % worker_count;
+                                         ? worker_hint
+                                         : round_robin.fetch_add(1U, std::memory_order_relaxed) % worker_count;
         worker_ready[target].push(task, next_ready.get());
         if (sleeping_workers.load(std::memory_order_acquire) != 0U)
         {
@@ -297,17 +256,12 @@ namespace lux::task::detail
         }
     }
 
-    void TaskExecutorImpl::executeTask(
-        const TaskGraph& graph,
-        std::uint32_t task,
-        std::uint32_t worker
-    ) noexcept
+    void TaskExecutorImpl::executeTask(const TaskGraph& graph, std::uint32_t task, std::uint32_t worker) noexcept
     {
         if (task >= graph.tasks_.size())
             contractFailure();
 
-        if (worker != InvalidWorkerIndex &&
-            graph.tasks_[task].affinity == ETaskAffinity::CALLER_THREAD)
+        if (worker != InvalidWorkerIndex && graph.tasks_[task].affinity == ETaskAffinity::CALLER_THREAD)
         {
             contractFailure();
         }
@@ -321,20 +275,13 @@ namespace lux::task::detail
             const std::uint32_t successor = graph.successors_[edge];
             // The final predecessor acquires the release sequence formed by all
             // predecessor RMWs, then publishes the successor into a ready stack.
-            if (remaining[successor].fetch_sub(
-                    1U,
-                    std::memory_order_acq_rel
-                ) == 1U)
+            if (remaining[successor].fetch_sub(1U, std::memory_order_acq_rel) == 1U)
             {
                 schedule(graph, successor, worker);
             }
         }
 
-        if (begin == end &&
-            remaining_terminals.fetch_sub(
-                1U,
-                std::memory_order_acq_rel
-            ) == 1U)
+        if (begin == end && remaining_terminals.fetch_sub(1U, std::memory_order_acq_rel) == 1U)
         {
             event.fetch_add(1U, std::memory_order_release);
             event.notify_all();

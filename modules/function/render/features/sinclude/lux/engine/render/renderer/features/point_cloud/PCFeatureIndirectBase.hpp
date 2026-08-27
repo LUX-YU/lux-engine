@@ -24,7 +24,7 @@
 #include <lux/engine/render/renderer/features/point_cloud/IPointCloudFeature.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
-#include <lux/engine/function/render/graph/RGEnums.hpp>   // phaseBit / ECoreRenderPhase
+#include <lux/engine/function/render/graph/RGEnums.hpp> // phaseBit / ECoreRenderPhase
 #include <lux/engine/render/core/FrustumCuller.hpp>
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
@@ -63,8 +63,8 @@ namespace lux::render
      * Subclass constructors must:
      *   1. Call one of the protected base-init helpers to allocate GPU resources.
      *   2. Create the graphics pipeline (draw_handle_) for their specific mode.
- *   3. Implement mode() / name() / priority() / addPasses().
- */
+     *   3. Implement mode() / name() / priority() / addPasses().
+     */
     class LUX_FUNCTION_PUBLIC PCFeatureIndirectBase : public IPointCloudFeature
     {
     public:
@@ -92,10 +92,11 @@ namespace lux::render
          *                     (e.g. "GPUDriven", "LOD", "Splat").
          */
         explicit PCFeatureIndirectBase(
-            ShaderHandle         compute_shader_id,
-            uint32_t             max_nodes,
+            ShaderHandle compute_shader_id,
+            uint32_t max_nodes,
             RenderFeature::Config feature_cfg,
-            std::string_view     pass_label);
+            std::string_view pass_label
+        );
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
@@ -116,26 +117,27 @@ namespace lux::render
         //  constant (offset 8, VERTEX stage). Shared by GPUDriven/LOD/Splatting.
         // -------------------------------------------------------------------
         void addIndirectDrawPass(
-            RGBuilder&                                    builder,
-            std::string_view                              pass_name,
-            std::string_view                              color_target,
-            std::string_view                              depth_target,
-            RGResourceHandle                              indirect_rg,
-            std::function<void(const PassRecordContext&)> push_constant_fn);
+            RGBuilder& builder,
+            std::string_view pass_name,
+            std::string_view color_target,
+            std::string_view depth_target,
+            RGResourceHandle indirect_rg,
+            std::function<void(const PassRecordContext&)> push_constant_fn
+        );
 
         // -------------------------------------------------------------------
         //  Protected members — accessible in subclass addPasses() recorders
         // -------------------------------------------------------------------
 
-        std::string                 pass_label_;
-        ShaderHandle                    compute_shader_id_{};
+        std::string pass_label_;
+        ShaderHandle compute_shader_id_{};
 
         /// 可选相机资源的记忆化缓存(见 resolveViewCameraOnce)。原先在 setKernelFn
         /// lambda 里每次录制(即每帧)重查一次。
-        ViewCameraResource*         cam_cache_{nullptr};
+        ViewCameraResource* cam_cache_{nullptr};
 
-        VkDevice                    vk_device_{VK_NULL_HANDLE};
-        VmaAllocator                allocator_{};
+        VkDevice vk_device_{VK_NULL_HANDLE};
+        VmaAllocator allocator_{};
 
         /// 共享点缓冲的点位容量。
         ///
@@ -143,27 +145,26 @@ namespace lux::render
         /// 而本基类的 Config 没有这一项 —— 同一个 `PointCloudResources` 因此会被
         /// 两条路以不同容量初始化,谁先 attach 谁说了算。提成常量先让这一侧的两个
         /// 用处不会各自漂,真正的收敛要等 Config 补上这个字段。
-        static constexpr uint32_t   kMaxGlobalPoints = 4'000'000;
+        static constexpr uint32_t kMaxGlobalPoints = 4'000'000;
 
-        uint32_t                    max_nodes_{};
-        uint32_t                    current_frame_{};
+        uint32_t max_nodes_{};
+        uint32_t current_frame_{};
 
-        ComputePipelineHandle       compute_handle_{};
-        GraphicsPipelineHandle      draw_handle_{};   ///< Filled by subclass constructor
+        ComputePipelineHandle compute_handle_{};
+        GraphicsPipelineHandle draw_handle_{}; ///< Filled by subclass constructor
 
         // Compute descriptor layout (transient DS created per-frame in addComputePass)
-        DescriptorLayoutId          cull_layout_id_{kInvalidDescriptorLayoutId};
-        VkDescriptorSetLayout       cull_layout_{VK_NULL_HANDLE};
+        DescriptorLayoutId cull_layout_id_{kInvalidDescriptorLayoutId};
+        VkDescriptorSetLayout cull_layout_{VK_NULL_HANDLE};
 
-        uint32_t                    fif_{1}; ///< actual frames-in-flight (set in initAndAttachTo)
+        uint32_t fif_{1}; ///< actual frames-in-flight (set in initAndAttachTo)
 
         // Non-owning — points into PointCloudResources (outlives this feature).
-        PointCloudGlobalBuffer*     global_buf_{nullptr};
-        GpuOctreeNodeBuffer*        node_buf_{nullptr};
+        PointCloudGlobalBuffer* global_buf_{nullptr};
+        GpuOctreeNodeBuffer* node_buf_{nullptr};
 
     private:
         void createDescriptorLayout(VkDevice device);
     };
 
 } // namespace lux::render
-

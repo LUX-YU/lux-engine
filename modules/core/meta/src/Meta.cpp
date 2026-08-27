@@ -15,8 +15,7 @@ namespace lux::meta
         return head;
     }
 
-    MetaModuleRegistrar::MetaModuleRegistrar(InitFn fn) noexcept
-        : node_{fn, nullptr}
+    MetaModuleRegistrar::MetaModuleRegistrar(InitFn fn) noexcept : node_{fn, nullptr}
     {
         // Prepend this node into the pending list.
         // Safe because the list is only drained inside initRegistry(),
@@ -29,39 +28,39 @@ namespace lux::meta
 
     static void registerSpecialSupportType()
     {
-		std::unique_ptr<RefClass> stdstring_ref_info = std::make_unique<RefClass>();
-        stdstring_ref_info->name                = "string";
-        stdstring_ref_info->full_name           = "std::string";
-        stdstring_ref_info->is_abstract         = false;
-        stdstring_ref_info->hash                = lux::cxx::type_hash<std::string>();
-        stdstring_ref_info->type                = lux::meta::ref_type_of_v<std::string>;
-		stdstring_ref_info->construct           = [](void* p) { new (p) std::string(); };
-		stdstring_ref_info->destruct            = [](void* p) { static_cast<std::string*>(p)->~basic_string(); };
+        std::unique_ptr<RefClass> stdstring_ref_info = std::make_unique<RefClass>();
+        stdstring_ref_info->name = "string";
+        stdstring_ref_info->full_name = "std::string";
+        stdstring_ref_info->is_abstract = false;
+        stdstring_ref_info->hash = lux::cxx::type_hash<std::string>();
+        stdstring_ref_info->type = lux::meta::ref_type_of_v<std::string>;
+        stdstring_ref_info->construct = [](void* p) { new (p) std::string(); };
+        stdstring_ref_info->destruct = [](void* p) { static_cast<std::string*>(p)->~basic_string(); };
         lux::meta::ref_class_func_gen<RefClass>(*stdstring_ref_info);
         // Self-link RefType.ptr -> the owning RefClass (generated meta code
         // gets this via the qual_type_index fix-up; hand-registered classes
         // must do it themselves). Without it RuntimeObject::cleanup()
         // dereferences a null RefClass to run the destructor.
-        stdstring_ref_info->type.ptr            = stdstring_ref_info.get();
-		ReflectionRegistry::instance().registerClass(std::move(stdstring_ref_info));
+        stdstring_ref_info->type.ptr = stdstring_ref_info.get();
+        ReflectionRegistry::instance().registerClass(std::move(stdstring_ref_info));
 
-		std::unique_ptr<RefClass> stdstring_view_ref_info = std::make_unique<RefClass>();
-		stdstring_view_ref_info->name           = "string_view";
-		stdstring_view_ref_info->full_name      = "std::string_view";
-		stdstring_view_ref_info->is_abstract    = false;
-		stdstring_view_ref_info->hash           = lux::cxx::type_hash<std::string_view>();
-		stdstring_view_ref_info->type           = lux::meta::ref_type_of_v<std::string_view>;
-		stdstring_view_ref_info->construct      = [](void* p) { new (p) std::string_view(); };
-		stdstring_view_ref_info->destruct       = [](void* p) { static_cast<std::string_view*>(p)->~basic_string_view(); };
-		lux::meta::ref_class_func_gen<RefClass>(*stdstring_view_ref_info);
-		stdstring_view_ref_info->type.ptr       = stdstring_view_ref_info.get();
-		ReflectionRegistry::instance().registerClass(std::move(stdstring_view_ref_info));
+        std::unique_ptr<RefClass> stdstring_view_ref_info = std::make_unique<RefClass>();
+        stdstring_view_ref_info->name = "string_view";
+        stdstring_view_ref_info->full_name = "std::string_view";
+        stdstring_view_ref_info->is_abstract = false;
+        stdstring_view_ref_info->hash = lux::cxx::type_hash<std::string_view>();
+        stdstring_view_ref_info->type = lux::meta::ref_type_of_v<std::string_view>;
+        stdstring_view_ref_info->construct = [](void* p) { new (p) std::string_view(); };
+        stdstring_view_ref_info->destruct = [](void* p) { static_cast<std::string_view*>(p)->~basic_string_view(); };
+        lux::meta::ref_class_func_gen<RefClass>(*stdstring_view_ref_info);
+        stdstring_view_ref_info->type.ptr = stdstring_view_ref_info.get();
+        ReflectionRegistry::instance().registerClass(std::move(stdstring_view_ref_info));
     }
 
     void meta_module_init()
     {
-		ReflectionRegistry::initRegistry();
-		registerSpecialSupportType();
+        ReflectionRegistry::initRegistry();
+        registerSpecialSupportType();
     }
 
     void meta_module_drain()
@@ -79,7 +78,7 @@ namespace lux::meta
         ReflectionRegistry::destroyRegistry();
     }
 
-	static inline ReflectionRegistry* g_reflection_registry = nullptr;
+    static inline ReflectionRegistry* g_reflection_registry = nullptr;
 
     void ReflectionRegistry::drainPending()
     {
@@ -88,9 +87,11 @@ namespace lux::meta
         // actual mistake. Say what is wrong instead.
         if (g_reflection_registry == nullptr)
         {
-            std::fprintf(stderr,
+            std::fprintf(
+                stderr,
                 "[meta] drainPending() before meta_module_init() — ignored. "
-                "The host must initialise reflection before loading modules.\n");
+                "The host must initialise reflection before loading modules.\n"
+            );
             return;
         }
 
@@ -109,15 +110,12 @@ namespace lux::meta
     {
         if (g_reflection_registry == nullptr)
         {
-            auto draft = std::unique_ptr<ReflectionRegistry>{
-                new ReflectionRegistry()};
-            draft->failRegistration(
-                EReflectionRegistrationError::REGISTRY_NOT_INITIALIZED);
+            auto draft = std::unique_ptr<ReflectionRegistry>{new ReflectionRegistry()};
+            draft->failRegistration(EReflectionRegistrationError::REGISTRY_NOT_INITIALIZED);
             return ReflectionRegistrationDraft{nullptr, std::move(draft)};
         }
 
-        auto draft = std::unique_ptr<ReflectionRegistry>{
-            new ReflectionRegistry(*g_reflection_registry)};
+        auto draft = std::unique_ptr<ReflectionRegistry>{new ReflectionRegistry(*g_reflection_registry)};
         qual_type_index_fix_list fix_list;
 
         // Detach first. A registrar created while generated callbacks execute
@@ -131,24 +129,18 @@ namespace lux::meta
         {
             if (type == nullptr)
             {
-                draft->failRegistration(
-                    EReflectionRegistrationError::INVALID_QUAL_TYPE_FIX,
-                    name);
+                draft->failRegistration(EReflectionRegistrationError::INVALID_QUAL_TYPE_FIX, name);
                 continue;
             }
             const auto* ref_class = draft->findClass(name);
             if (ref_class == nullptr)
             {
-                draft->failRegistration(
-                    EReflectionRegistrationError::QUAL_TYPE_NOT_FOUND,
-                    name);
+                draft->failRegistration(EReflectionRegistrationError::QUAL_TYPE_NOT_FOUND, name);
                 continue;
             }
             type->ptr = ref_class;
         }
-        return ReflectionRegistrationDraft{
-            g_reflection_registry,
-            std::move(draft)};
+        return ReflectionRegistrationDraft{g_reflection_registry, std::move(draft)};
     }
 
     void ReflectionRegistry::initRegistry()
@@ -163,13 +155,13 @@ namespace lux::meta
 
     void ReflectionRegistry::destroyRegistry()
     {
-		delete g_reflection_registry;
+        delete g_reflection_registry;
         g_reflection_registry = nullptr;
     }
 
     ReflectionRegistry& ReflectionRegistry::instance() noexcept
     {
-		return *g_reflection_registry;
+        return *g_reflection_registry;
     }
 
     bool ReflectionRegistry::initialized() noexcept
@@ -179,30 +171,27 @@ namespace lux::meta
 
     ReflectionRegistry::ReflectionRegistry() = default;
 
-    ReflectionRegistry::ReflectionRegistry(
-        ReflectionRegistry& fallback) noexcept
-        : fallback_(&fallback)
-        , class_index_base_(fallback.class_pool_.next_id())
-        , enum_index_base_(fallback.enum_pool_.next_id())
-        , function_index_base_(fallback.func_pool_.next_id())
-        , invokable_index_base_(fallback.invokable_registry_.size())
-    {}
+    ReflectionRegistry::ReflectionRegistry(ReflectionRegistry& fallback) noexcept
+        : fallback_(&fallback), class_index_base_(fallback.class_pool_.next_id()),
+          enum_index_base_(fallback.enum_pool_.next_id()), function_index_base_(fallback.func_pool_.next_id()),
+          invokable_index_base_(fallback.invokable_registry_.size())
+    {
+    }
 
     void ReflectionRegistry::failRegistration(
         EReflectionRegistrationError error,
         std::string_view name,
-        std::string_view conflicting_name)
+        std::string_view conflicting_name
+    )
     {
         if (registration_failure_)
             return;
-        registration_failure_.emplace(ReflectionRegistrationFailure{
-            error,
-            std::string{name},
-            std::string{conflicting_name}});
+        registration_failure_.emplace(
+            ReflectionRegistrationFailure{error, std::string{name}, std::string{conflicting_name}}
+        );
     }
 
-    const RefClass* ReflectionRegistry::findClassByHash(
-        std::uint64_t hash) const noexcept
+    const RefClass* ReflectionRegistry::findClassByHash(std::uint64_t hash) const noexcept
     {
         for (const auto& value : class_pool_.values())
             if (value && value->hash == hash)
@@ -216,24 +205,17 @@ namespace lux::meta
             return add(class_pool_, class_map_, meta);
         if (!meta)
         {
-            failRegistration(
-                EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN);
+            failRegistration(EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN);
             return class_index_base_ + class_pool_.next_id();
         }
         if (const auto* duplicate = findClass(meta->full_name))
         {
-            failRegistration(
-                EReflectionRegistrationError::DUPLICATE_CLASS,
-                meta->full_name,
-                duplicate->full_name);
+            failRegistration(EReflectionRegistrationError::DUPLICATE_CLASS, meta->full_name, duplicate->full_name);
             return duplicate->container_index;
         }
         if (const auto* collision = findClassByHash(meta->hash))
         {
-            failRegistration(
-                EReflectionRegistrationError::CLASS_HASH_COLLISION,
-                meta->full_name,
-                collision->full_name);
+            failRegistration(EReflectionRegistrationError::CLASS_HASH_COLLISION, meta->full_name, collision->full_name);
             return collision->container_index;
         }
         const auto local = class_pool_.insert(std::move(meta));
@@ -248,16 +230,12 @@ namespace lux::meta
             return add(enum_pool_, enum_map_, meta);
         if (!meta)
         {
-            failRegistration(
-                EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN);
+            failRegistration(EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN);
             return enum_index_base_ + enum_pool_.next_id();
         }
         if (const auto* duplicate = findEnum(meta->full_name))
         {
-            failRegistration(
-                EReflectionRegistrationError::DUPLICATE_ENUM,
-                meta->full_name,
-                duplicate->full_name);
+            failRegistration(EReflectionRegistrationError::DUPLICATE_ENUM, meta->full_name, duplicate->full_name);
             return duplicate->container_index;
         }
         const auto local = enum_pool_.insert(std::move(meta));
@@ -267,13 +245,15 @@ namespace lux::meta
         return index;
     }
 
-    const RefClass* ReflectionRegistry::findClass(std::string_view full) noexcept {
+    const RefClass* ReflectionRegistry::findClass(std::string_view full) noexcept
+    {
         if (const auto* value = find(class_map_, class_pool_, full))
             return value;
         return fallback_ ? fallback_->findClass(full) : nullptr;
     }
 
-    const RefEnum* ReflectionRegistry::findEnum(std::string_view full) noexcept {
+    const RefEnum* ReflectionRegistry::findEnum(std::string_view full) noexcept
+    {
         if (const auto* value = find(enum_map_, enum_pool_, full))
             return value;
         return fallback_ ? fallback_->findEnum(full) : nullptr;
@@ -281,7 +261,7 @@ namespace lux::meta
 
     const RefFunction* ReflectionRegistry::findFunction(std::string_view full, std::span<const uint64_t> ids) noexcept
     {
-        RefFunctionKey key{ full, {ids.begin(), ids.end()} };
+        RefFunctionKey key{full, {ids.begin(), ids.end()}};
         auto it = func_map_.find(key);
         if (it != func_map_.end())
             return func_pool_.at(it->second).get();
@@ -290,22 +270,17 @@ namespace lux::meta
 
     size_t ReflectionRegistry::registerFunction(const RefFunctionKey& k, std::unique_ptr<RefFunction> meta)
     {
-        if (auto it = func_map_.find(k); it != func_map_.end()) {
+        if (auto it = func_map_.find(k); it != func_map_.end())
+        {
             if (fallback_)
-                failRegistration(
-                    EReflectionRegistrationError::DUPLICATE_FUNCTION,
-                    k.name);
-            return fallback_ ? function_index_base_ + it->second
-                             : it->second;
+                failRegistration(EReflectionRegistrationError::DUPLICATE_FUNCTION, k.name);
+            return fallback_ ? function_index_base_ + it->second : it->second;
         }
         if (fallback_)
         {
-            if (const auto found = fallback_->func_map_.find(k);
-                found != fallback_->func_map_.end())
+            if (const auto found = fallback_->func_map_.find(k); found != fallback_->func_map_.end())
             {
-                failRegistration(
-                    EReflectionRegistrationError::DUPLICATE_FUNCTION,
-                    k.name);
+                failRegistration(EReflectionRegistrationError::DUPLICATE_FUNCTION, k.name);
                 return found->second;
             }
         }
@@ -320,23 +295,18 @@ namespace lux::meta
     {
         // Check if already registered
         auto it = invokable_map_.find(invokable.full_name);
-        if (it != invokable_map_.end()) {
+        if (it != invokable_map_.end())
+        {
             if (fallback_)
-                failRegistration(
-                    EReflectionRegistrationError::DUPLICATE_INVOKABLE,
-                    invokable.full_name);
-            return fallback_ ? invokable_index_base_ + it->second
-                             : it->second;
+                failRegistration(EReflectionRegistrationError::DUPLICATE_INVOKABLE, invokable.full_name);
+            return fallback_ ? invokable_index_base_ + it->second : it->second;
         }
         if (fallback_)
         {
-            if (const auto found = fallback_->invokable_map_.find(
-                    invokable.full_name);
+            if (const auto found = fallback_->invokable_map_.find(invokable.full_name);
                 found != fallback_->invokable_map_.end())
             {
-                failRegistration(
-                    EReflectionRegistrationError::DUPLICATE_INVOKABLE,
-                    invokable.full_name);
+                failRegistration(EReflectionRegistrationError::DUPLICATE_INVOKABLE, invokable.full_name);
                 return found->second;
             }
         }
@@ -357,42 +327,39 @@ namespace lux::meta
             if (index < invokable_index_base_)
                 return fallback_->findInvokableByIndex(index);
             const auto local = index - invokable_index_base_;
-            return local < invokable_registry_.size()
-                ? &invokable_registry_[local]
-                : nullptr;
+            return local < invokable_registry_.size() ? &invokable_registry_[local] : nullptr;
         }
-        if (index < invokable_registry_.size()) {
+        if (index < invokable_registry_.size())
+        {
             return &invokable_registry_[index];
         }
         return nullptr;
     }
 
-    bool ReflectionRegistry::publishDraft(
-        ReflectionRegistry&& draft) noexcept
+    bool ReflectionRegistry::publishDraft(ReflectionRegistry&& draft) noexcept
     {
-        if (draft.fallback_ != this || draft.registration_failure_ ||
-            class_pool_.next_id() != draft.class_index_base_ ||
-            enum_pool_.next_id() != draft.enum_index_base_ ||
-            func_pool_.next_id() != draft.function_index_base_ ||
-            invokable_registry_.size() != draft.invokable_index_base_)
+        const bool is_invalid_owner = draft.fallback_ != this || draft.registration_failure_;
+        const bool is_invalid_class_index = class_pool_.next_id() != draft.class_index_base_;
+        const bool is_invalid_enum_index = enum_pool_.next_id() != draft.enum_index_base_;
+        const bool is_invalid_function_index = func_pool_.next_id() != draft.function_index_base_;
+        const bool is_invalid_invokable_index = invokable_registry_.size() != draft.invokable_index_base_;
+        const bool is_invalid_draft = is_invalid_owner || is_invalid_class_index || is_invalid_enum_index ||
+            is_invalid_function_index || is_invalid_invokable_index;
+        if (is_invalid_draft)
             return false;
 
         for (const auto& [name, local] : draft.class_map_)
-            if (class_map_.contains(name) ||
-                class_pool_.contains(draft.class_index_base_ + local))
+            if (class_map_.contains(name) || class_pool_.contains(draft.class_index_base_ + local))
                 return false;
         for (const auto& [name, local] : draft.enum_map_)
-            if (enum_map_.contains(name) ||
-                enum_pool_.contains(draft.enum_index_base_ + local))
+            if (enum_map_.contains(name) || enum_pool_.contains(draft.enum_index_base_ + local))
                 return false;
         for (const auto& [key, local] : draft.func_map_)
-            if (func_map_.contains(key) ||
-                func_pool_.contains(draft.function_index_base_ + local))
+            if (func_map_.contains(key) || func_pool_.contains(draft.function_index_base_ + local))
                 return false;
         for (const auto& [name, local] : draft.invokable_map_)
             if (invokable_map_.contains(name) ||
-                draft.invokable_index_base_ + local !=
-                    invokable_registry_.size() + local)
+                draft.invokable_index_base_ + local != invokable_registry_.size() + local)
                 return false;
 
         class_pool_.reserve(class_pool_.size() + draft.class_pool_.size());
@@ -401,10 +368,8 @@ namespace lux::meta
         class_map_.reserve(class_map_.size() + draft.class_map_.size());
         enum_map_.reserve(enum_map_.size() + draft.enum_map_.size());
         func_map_.reserve(func_map_.size() + draft.func_map_.size());
-        invokable_registry_.reserve(
-            invokable_registry_.size() + draft.invokable_registry_.size());
-        invokable_map_.reserve(
-            invokable_map_.size() + draft.invokable_map_.size());
+        invokable_registry_.reserve(invokable_registry_.size() + draft.invokable_registry_.size());
+        invokable_map_.reserve(invokable_map_.size() + draft.invokable_map_.size());
 
         const auto class_keys = draft.class_pool_.keys();
         for (const auto local : class_keys)
@@ -439,9 +404,7 @@ namespace lux::meta
         {
             std::unique_ptr<RefFunction> value;
             if (!draft.func_pool_.extract(local, value) || !value ||
-                !func_pool_.try_emplace_at(
-                    draft.function_index_base_ + local,
-                    std::move(value)))
+                !func_pool_.try_emplace_at(draft.function_index_base_ + local, std::move(value)))
                 return false;
         }
 
@@ -450,44 +413,39 @@ namespace lux::meta
             const auto index = invokable_registry_.size();
             invokable_registry_.push_back(std::move(value));
             invokable_registry_.back().container_index = index;
-            invokable_map_.emplace(
-                invokable_registry_.back().full_name,
-                index);
+            invokable_map_.emplace(invokable_registry_.back().full_name, index);
         }
         return true;
     }
 
     ReflectionRegistrationDraft::ReflectionRegistrationDraft(
         ReflectionRegistry* target,
-        std::unique_ptr<ReflectionRegistry> draft) noexcept
+        std::unique_ptr<ReflectionRegistry> draft
+    ) noexcept
         : target_(target), draft_(std::move(draft))
-    {}
+    {
+    }
 
     ReflectionRegistrationDraft::operator bool() const noexcept
     {
-        return target_ != nullptr && draft_ &&
-            !draft_->registration_failure_;
+        return target_ != nullptr && draft_ && !draft_->registration_failure_;
     }
 
-    const ReflectionRegistrationFailure&
-    ReflectionRegistrationDraft::error() const noexcept
+    const ReflectionRegistrationFailure& ReflectionRegistrationDraft::error() const noexcept
     {
-        static const ReflectionRegistrationFailure invalid{
-            EReflectionRegistrationError::REGISTRY_NOT_INITIALIZED};
-        return draft_ && draft_->registration_failure_
-            ? *draft_->registration_failure_
-            : invalid;
+        static const ReflectionRegistrationFailure invalid{EReflectionRegistrationError::REGISTRY_NOT_INITIALIZED};
+        return draft_ && draft_->registration_failure_ ? *draft_->registration_failure_ : invalid;
     }
 
-    lux::cxx::expected<void, ReflectionRegistrationFailure>
-    ReflectionRegistrationDraft::commit() noexcept
+    lux::cxx::expected<void, ReflectionRegistrationFailure> ReflectionRegistrationDraft::commit() noexcept
     {
         if (!static_cast<bool>(*this))
             return lux::cxx::unexpected(error());
         if (!target_->publishDraft(std::move(*draft_)))
         {
-            return lux::cxx::unexpected(ReflectionRegistrationFailure{
-                EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN});
+            return lux::cxx::unexpected(
+                ReflectionRegistrationFailure{EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN}
+            );
         }
         draft_.reset();
         target_ = nullptr;
@@ -500,8 +458,8 @@ namespace lux::meta
         {
             auto ref_class = registry.findClass(name);
             assert(ref_class && "[While fix index]:WTF? class meta infomation is nullptr?");
-            assert(type_ptr  && "[While fix index]:WTF? type ptr infomation is nullptr?");
-			type_ptr->ptr = ref_class;
+            assert(type_ptr && "[While fix index]:WTF? type ptr infomation is nullptr?");
+            type_ptr->ptr = ref_class;
         }
     }
 

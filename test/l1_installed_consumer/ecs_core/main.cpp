@@ -1,6 +1,7 @@
 #include <lux/engine/simulation/ecs/Registry.hpp>
 
-int main()
+int
+main()
 {
     lux::simulation::ecs::Registry registry;
     const auto entity = registry.create();

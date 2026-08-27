@@ -40,8 +40,14 @@ namespace lux::render
         RGResourceHandle cur{};
         RGResourceHandle prev{};
 
-        [[nodiscard]] RGResourceHandle current()  const noexcept { return cur; }
-        [[nodiscard]] RGResourceHandle previous() const noexcept { return prev; }
+        [[nodiscard]] RGResourceHandle current() const noexcept
+        {
+            return cur;
+        }
+        [[nodiscard]] RGResourceHandle previous() const noexcept
+        {
+            return prev;
+        }
     };
 
     // ── Pass kernel identifiers ──────────────────────────────────────────

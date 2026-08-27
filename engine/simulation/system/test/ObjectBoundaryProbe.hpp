@@ -32,27 +32,21 @@ namespace lux::simulation::test
         std::uint32_t texture{};
     };
 
-    class LUX_OBJECT() MaterialTextureSystem final
-        : public lux::object::Object<MaterialTextureSystem>
+    class LUX_OBJECT() MaterialTextureSystem final : public lux::object::Object<MaterialTextureSystem>
     {
-      public:
+    public:
         using Object::Object;
 
         static const signal_type<MaterialTextureDemand> textureDemand;
-        inline static constexpr std::array Capabilities{
-            std::string_view{"material.texture-residency"}};
-        inline static constexpr std::array Hooks{
-            makeSystemHookPoint<void()>("update")};
-        inline static constexpr std::array Events{
-            makeSystemEvent<MaterialTextureDemand>(
-                "texture-demand",
-                Hooks[0],
-                ESystemEventTarget::GLOBAL,
-                "lux.material.TextureDemand",
-                1U
-            )};
-        inline static constexpr auto Access = makeSystemAccessSpec<
-            ComponentWrite<MaterialTextureResident>>();
+        inline static constexpr std::array Capabilities{std::string_view{"material.texture-residency"}};
+        inline static constexpr std::array Hooks{makeSystemHookPoint<void()>("update")};
+        inline static constexpr std::array Events{makeSystemEvent<MaterialTextureDemand>(
+            "texture-demand",
+            Hooks[0],
+            ESystemEventTarget::GLOBAL,
+            "lux.material.TextureDemand",
+            1U)};
+        inline static constexpr auto Access = makeSystemAccessSpec<ComponentWrite<MaterialTextureResident>>();
         inline static constexpr SystemDescription Description{
             .canonical_name = "lux.test.material-texture",
             .version = 1U,
@@ -84,10 +78,7 @@ namespace lux::simulation::test
 
             for (const TextureReady& ready : inbox_)
             {
-                if (!commands.emplace<MaterialTextureResident>(
-                        ready.entity,
-                        MaterialTextureResident{ready.texture}
-                    ))
+                if (!commands.emplace<MaterialTextureResident>(ready.entity, MaterialTextureResident{ready.texture}))
                 {
                     ++discarded_completions_;
                 }
@@ -95,7 +86,7 @@ namespace lux::simulation::test
             inbox_.clear();
         }
 
-      protected:
+    protected:
         void event(lux::object::EventView& view) noexcept override
         {
             if (const auto* ready = view.getIf<TextureReady>())
@@ -108,7 +99,7 @@ namespace lux::simulation::test
             }
         }
 
-      private:
+    private:
         std::vector<TextureReady> inbox_;
         std::uint64_t discarded_completions_{};
         bool demand_published_{};

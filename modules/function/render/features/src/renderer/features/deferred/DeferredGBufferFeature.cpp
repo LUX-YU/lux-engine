@@ -13,14 +13,15 @@
 #include <lux/engine/render/resources/material/MaterialResources.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>
-#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp>  // kDeferredGBufferKnownExtFlags
+#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp> // kDeferredGBufferKnownExtFlags
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
-#include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>   // set-7 bind
-#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>  // vertex-layout SSOT
-#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>      // appendVertexLayoutSpecs
-#include <lux/engine/render/resources/vertex/VertexProduction.hpp>     // producer registry
+#include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp> // set-7 bind
+#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>   // vertex-layout SSOT
+#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
+#include <lux/engine/render/resources/vertex/VertexProduction.hpp>   // producer registry
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>   // kDeferredGBufferDrawPassName
+#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+// kDeferredGBufferDrawPassName
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>
@@ -36,8 +37,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    DeferredGBufferFeature::DeferredGBufferFeature(Config cfg)
-        : cfg_(std::move(cfg))
+    DeferredGBufferFeature::DeferredGBufferFeature(Config cfg) : cfg_(std::move(cfg))
     {
     }
 
@@ -57,11 +57,12 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    lux::render::Expected<void> DeferredGBufferFeature::initAndAttachTo(RenderScene & /*scene*/){
-        return init();  // propagate init failure instead of swallowing it (audit feat-init)
+    lux::render::Expected<void> DeferredGBufferFeature::initAndAttachTo(RenderScene& /*scene*/)
+    {
+        return init(); // propagate init failure instead of swallowing it (audit feat-init)
     }
 
-    void DeferredGBufferFeature::onDetachFromScene(RenderScene & /*scene*/)
+    void DeferredGBufferFeature::onDetachFromScene(RenderScene& /*scene*/)
     {
         releaseAll();
     }
@@ -78,11 +79,11 @@ namespace lux::render
             auto& shaders = renderContext().globalRegistry().must<ShaderResources>();
             const std::array backfill{
                 ShaderStageSlot{EBuiltinShader::MESH_CULL_UNIFIED_COMP, &cfg_.cull_compute_shader},
-                ShaderStageSlot{EBuiltinShader::MDC_COMPACT_COMP,       &cfg_.compact_compute_shader},
-                ShaderStageSlot{EBuiltinShader::GBUFFER_VERT,           &cfg_.gbuffer_vertex_shader},
-                ShaderStageSlot{EBuiltinShader::GBUFFER_UNLIT_FRAG,     &cfg_.gbuffer_unlit_fragment_shader},
-                ShaderStageSlot{EBuiltinShader::GBUFFER_PBR_FRAG,       &cfg_.gbuffer_pbr_fragment_shader},
-                ShaderStageSlot{EBuiltinShader::GBUFFER_STYLIZED_FRAG,  &cfg_.gbuffer_stylized_fragment_shader}};
+                ShaderStageSlot{EBuiltinShader::MDC_COMPACT_COMP, &cfg_.compact_compute_shader},
+                ShaderStageSlot{EBuiltinShader::GBUFFER_VERT, &cfg_.gbuffer_vertex_shader},
+                ShaderStageSlot{EBuiltinShader::GBUFFER_UNLIT_FRAG, &cfg_.gbuffer_unlit_fragment_shader},
+                ShaderStageSlot{EBuiltinShader::GBUFFER_PBR_FRAG, &cfg_.gbuffer_pbr_fragment_shader},
+                ShaderStageSlot{EBuiltinShader::GBUFFER_STYLIZED_FRAG, &cfg_.gbuffer_stylized_fragment_shader}};
             if (auto filled = resolveShaderStages(shaders, backfill); !filled)
                 return filled;
         }
@@ -94,19 +95,24 @@ namespace lux::render
         if (auto r = initCommon(cfg_.cull_compute_shader, cfg_.extension_flags); !r)
             return r;
 
-        auto &ctx = renderContext();
+        auto& ctx = renderContext();
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
         assert(shaders.get(cfg_.gbuffer_vertex_shader) && "DeferredGBufferFeature: gbuffer_vertex_shader is invalid");
-        assert(shaders.get(cfg_.gbuffer_unlit_fragment_shader) && "DeferredGBufferFeature: gbuffer_unlit_fragment_shader index is invalid");
-        assert(shaders.get(cfg_.gbuffer_pbr_fragment_shader) && "DeferredGBufferFeature: gbuffer_pbr_fragment_shader index is invalid");
-        assert(shaders.get(cfg_.gbuffer_stylized_fragment_shader) && "DeferredGBufferFeature: gbuffer_stylized_fragment_shader index is invalid");
+        assert(
+            shaders.get(cfg_.gbuffer_unlit_fragment_shader) &&
+            "DeferredGBufferFeature: gbuffer_unlit_fragment_shader index is invalid");
+        assert(
+            shaders.get(cfg_.gbuffer_pbr_fragment_shader) &&
+            "DeferredGBufferFeature: gbuffer_pbr_fragment_shader index is invalid");
+        assert(
+            shaders.get(cfg_.gbuffer_stylized_fragment_shader) &&
+            "DeferredGBufferFeature: gbuffer_stylized_fragment_shader index is invalid");
         // Graph family frag is OPTIONAL (no builtin). null handle => Graph family
         // gets no pipeline (registerFamilyPipelines skips it).
 
         if (visible_set_layout_ == VK_NULL_HANDLE)
         {
-            auto id = ctx.descriptorService().registerLayout(
-                storageBufferVertexLayout("GBufferVisibleSetLayout"));
+            auto id = ctx.descriptorService().registerLayout(storageBufferVertexLayout("GBufferVisibleSetLayout"));
             visible_set_layout_ = ctx.descriptorService().layout(id);
         }
 
@@ -162,13 +168,14 @@ namespace lux::render
             // lighting-technique family needs a new case below. The pipeline
             // registration itself lives in the shared base method
             // registerFamilyPipelines (same source of truth as the forward path).
-            auto resolveFragmentShader =
-                [this](EShadingModel sm) -> ShaderHandle
-            {
-                return resolveFragmentForFamily(sm, cfg_.gbuffer_unlit_fragment_shader,
-                                                cfg_.gbuffer_pbr_fragment_shader,
-                                                cfg_.gbuffer_stylized_fragment_shader,
-                                                cfg_.gbuffer_graph_fragment_shader);
+            auto resolveFragmentShader = [this](EShadingModel sm) -> ShaderHandle {
+                return resolveFragmentForFamily(
+                    sm,
+                    cfg_.gbuffer_unlit_fragment_shader,
+                    cfg_.gbuffer_pbr_fragment_shader,
+                    cfg_.gbuffer_stylized_fragment_shader,
+                    cfg_.gbuffer_graph_fragment_shader
+                );
             };
 
             if (auto family = registerFamilyPipelines(
@@ -176,14 +183,14 @@ namespace lux::render
                     cfg_.gbuffer_vertex_shader,
                     vlr,
                     vp_read_layout,
-                    resolveFragmentShader
-                ); !family)
+                    resolveFragmentShader);
+                !family)
                 return family;
         }
 
         // ---- Compact compute pipeline (per-MDC, replaces finalize for view path) ----
         if (auto r = initCompactPipeline(cfg_.compact_compute_shader, "DeferredGBufferCompactLayout"); !r)
-            return lux::cxx::unexpected(r.error());   // propagate, don't swallow
+            return lux::cxx::unexpected(r.error()); // propagate, don't swallow
         return {};
     }
 
@@ -191,9 +198,9 @@ namespace lux::render
     //  Render graph passes
     // =========================================================================
 
-    void DeferredGBufferFeature::addPasses(RGBuilder &builder)
+    void DeferredGBufferFeature::addPasses(RGBuilder& builder)
     {
-        auto &ctx = renderContext();
+        auto& ctx = renderContext();
 
         // ---- Create GBuffer transient textures ----
         // LOCAL_READ 作用域激活时消费者(lighting)以 input attachment 读,
@@ -202,22 +209,23 @@ namespace lux::render
         // SAMPLED 读模式(无 local_read 能力的设备)保持原声明。
         const bool lr_scope = local_read_scope_;
         const ERGTextureUsageFlags gbuf_usage =
-            static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT)
-            | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::INPUT_ATTACHMENT)
-            | (lr_scope ? static_cast<ERGTextureUsageFlags>(0)
-                        : static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED));
+            static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT) |
+            static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::INPUT_ATTACHMENT) |
+            (lr_scope ? static_cast<ERGTextureUsageFlags>(0)
+                      : static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED));
 
-        RGTextureDescription albedo_desc = RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::RGBA8_UNORM);
+        RGTextureDescription albedo_desc =
+            RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::RGBA8_UNORM);
         albedo_desc.usage = gbuf_usage;
         auto gbuf_albedo = builder.createTexture(cfg_.gbuffer.albedo_metallic, albedo_desc);
 
-        RGTextureDescription normal_desc = RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::RGBA16_SFLOAT);
+        RGTextureDescription normal_desc =
+            RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::RGBA16_SFLOAT);
         normal_desc.usage = gbuf_usage;
         auto gbuf_normal = builder.createTexture(cfg_.gbuffer.normal_roughness, normal_desc);
 
-        auto emissive_fmt = renderScene().pipelineConfig().isLdr()
-                                ? lux::rdesc::ETextureFormat::RGBA8_UNORM
-                                : lux::rdesc::ETextureFormat::RGBA16_SFLOAT;
+        auto emissive_fmt = renderScene().pipelineConfig().isLdr() ? lux::rdesc::ETextureFormat::RGBA8_UNORM
+                                                                   : lux::rdesc::ETextureFormat::RGBA16_SFLOAT;
         RGTextureDescription emissive_desc = RGTextureDescription::Relative(1.0f, 1.0f, emissive_fmt);
         emissive_desc.usage = gbuf_usage;
         auto gbuf_emissive = builder.createTexture(cfg_.gbuffer.emissive_ao, emissive_desc);
@@ -226,21 +234,28 @@ namespace lux::render
         // No publish() needed — downstream features reference "GBufAlbedoMetallic" etc. directly.
 
         // ---- Cull + compact (shared GPU-driven view path; H9 de-dup) ----
-        addCullAndCompactPasses(builder, CullCompactParams{
-            .prefix                    = "DeferredGBuf",
-            .phase                     = ECoreRenderPhase::GBuffer,
-            .domain                    = EPassDomain::GBuffer,
-            .cull_pass_name            = "DeferredGBufferCull",
-            .compact_pass_name         = "DeferredGBufferCompact",
-            .descriptor_layout_version = cfg_.descriptor_layout_version,
-            .extension_flags           = cfg_.extension_flags,
-        });
+        addCullAndCompactPasses(
+            builder,
+            CullCompactParams{
+                .prefix = "DeferredGBuf",
+                .phase = ECoreRenderPhase::GBuffer,
+                .domain = EPassDomain::GBuffer,
+                .cull_pass_name = "DeferredGBufferCull",
+                .compact_pass_name = "DeferredGBufferCompact",
+                .descriptor_layout_version = cfg_.descriptor_layout_version,
+                .extension_flags = cfg_.extension_flags,
+            }
+        );
 
-        auto visible_tds = builder.createTransientDS("DeferredVisibleDS", visible_set_layout_, {
-                                                                                                   {0, EDescriptorType::STORAGE_BUFFER, visible_instance_rg_},
-                                                                                               });
+        auto visible_tds = builder.createTransientDS(
+            "DeferredVisibleDS",
+            visible_set_layout_,
+            {
+                {0, EDescriptorType::STORAGE_BUFFER, visible_instance_rg_},
+            }
+        );
 
-        auto *mat_res = ctx.globalRegistry().find<MaterialResources>();
+        auto* mat_res = ctx.globalRegistry().find<MaterialResources>();
         auto variant_buckets = collectVariantBuckets(mat_res);
         // R1: give each graph material its own PSO (gbuffer pass) before the
         // per-bucket pick() loop reads the override.
@@ -251,22 +266,26 @@ namespace lux::render
         auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
 
         // ---- Pass 3: GBuffer draw (graphics, MRT) ----
-        auto draw_pass = builder.addPass(kDeferredGBufferDrawPassName, ERGPassType::GRAPHICS)
-                             .write(gbuf_albedo, lux::render::ETextureRole::COLOR_ATTACHMENT)
-                             .write(gbuf_normal, lux::render::ETextureRole::COLOR_ATTACHMENT)
-                             .write(gbuf_emissive, lux::render::ETextureRole::COLOR_ATTACHMENT)
-                             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
-                             .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
-                             .bindSceneDS()
-                             .useEngineSet(EDescriptorSetSlot::Instance)
-                             .bindImmutableDS(EDescriptorSetSlot::Texture, ctx.globalRegistry().descriptorSetOf<TextureResources>())
-                             .useEngineSet(EDescriptorSetSlot::Material,
-                                             builder.trackExternalBuffer("ext.MaterialResources"), ERGResourceType::BUFFER)
-                             .bindTransientDS(5, visible_tds)
-                             .read(draw_indirect_rg_, ERGBufferRole::INDIRECT)
-                             .read(draw_count_rg_, ERGBufferRole::INDIRECT)
-                             .read(visible_instance_rg_, ERGBufferRole::STORAGE)
-                             .after("DeferredGBufferCompact");
+        auto draw_pass =
+            builder.addPass(kDeferredGBufferDrawPassName, ERGPassType::GRAPHICS)
+                .write(gbuf_albedo, lux::render::ETextureRole::COLOR_ATTACHMENT)
+                .write(gbuf_normal, lux::render::ETextureRole::COLOR_ATTACHMENT)
+                .write(gbuf_emissive, lux::render::ETextureRole::COLOR_ATTACHMENT)
+                .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
+                .bindSceneDS()
+                .useEngineSet(EDescriptorSetSlot::Instance)
+                .bindImmutableDS(EDescriptorSetSlot::Texture, ctx.globalRegistry().descriptorSetOf<TextureResources>())
+                .useEngineSet(
+                    EDescriptorSetSlot::Material,
+                    builder.trackExternalBuffer("ext.MaterialResources"),
+                    ERGResourceType::BUFFER
+                )
+                .bindTransientDS(5, visible_tds)
+                .read(draw_indirect_rg_, ERGBufferRole::INDIRECT)
+                .read(draw_count_rg_, ERGBufferRole::INDIRECT)
+                .read(visible_instance_rg_, ERGBufferRole::STORAGE)
+                .after("DeferredGBufferCompact");
 
         // One pipeline per VARIANT BUCKET (each resolved by bucket_pipelines_.pick;
         // no skinned half). The kernel's `family_count` is left 0 (below) so it
@@ -290,26 +309,24 @@ namespace lux::render
         // One variant-feature entry per bucket (no skinned half).
         std::vector<uint32_t> variant_features;
         variant_features.reserve(bucket_count);
-        for (const auto &bucket : variant_buckets)
+        for (const auto& bucket : variant_buckets)
             variant_features.push_back(bucket.feature_mask);
         draw_pass.setPipelineVariantFeatures(variant_features);
 
         const auto index_buffers = importSharedIndexBuffers(builder);
-        draw_pass.setKernel("MeshDraw", 
-            makeKernelConfig(
-                MeshDrawKernelConfig{
-                    .draw_count_rg = draw_count_rg_,
-                    .indirect_rg = draw_indirect_rg_,
-                    .index_buffers_rg = index_buffers.data(),
-                    .index_buffer_count = static_cast<std::uint32_t>(
-                        index_buffers.size()),
-                    .geometry_mask = supportedGeometryMask(),
-                    .mdc_count = mdcCount(),
-                    .mdc_entries = instance_res_->mdcTable().entries().data(),
-                    // family_count = 0 skips skinned `+N` offset.
-                    .family_count = 0u,
-                }
-            )
+        draw_pass.setKernel(
+            "MeshDraw",
+            makeKernelConfig(MeshDrawKernelConfig{
+                .draw_count_rg = draw_count_rg_,
+                .indirect_rg = draw_indirect_rg_,
+                .index_buffers_rg = index_buffers.data(),
+                .index_buffer_count = static_cast<std::uint32_t>(index_buffers.size()),
+                .geometry_mask = supportedGeometryMask(),
+                .mdc_count = mdcCount(),
+                .mdc_entries = instance_res_->mdcTable().entries().data(),
+                // family_count = 0 skips skinned `+N` offset.
+                .family_count = 0u,
+            })
         );
     }
 } // namespace lux::render

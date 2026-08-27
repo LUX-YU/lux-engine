@@ -16,10 +16,16 @@
 #include <lux/engine/function/render/client/genops/ForwardMeshOperation.ops.hpp>
 #include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
 #include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>  // kMaterialFeatureFactory (standard material stack; no config; attaches before StandardMeshStack)
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>  // kMeshStackFeatureFactory (standard 3D mesh stack; no config)
-#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>  // LightFeature / LightProxy / LightOperationIds / LightDescriptor / DirectionalLightDesc / LIGHT_FLAG_CAST_SHADOW
-#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>  // kViewCameraFeatureFactory / ViewCameraProxy / ViewCameraOperationIds (per-view camera data; no config; attaches before every camera consumer)
+// kMaterialFeatureFactory (standard material stack; no config; attaches before StandardMeshStack)
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
+// kMeshStackFeatureFactory (standard 3D mesh stack; no config)
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+// LightFeature / LightProxy / LightOperationIds / LightDescriptor /
+// DirectionalLightDesc / LIGHT_FLAG_CAST_SHADOW
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
+// kViewCameraFeatureFactory / ViewCameraProxy / ViewCameraOperationIds (per-view camera data;
+// no config; attaches before every camera consumer)
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
@@ -29,8 +35,7 @@
 
 #include <lux/engine/window/LuxWindow.hpp>
 
-#include <Eigen/Geometry>  // Eigen::Vector3f::cross — no longer pulled in transitively via render headers
-
+#include <Eigen/Geometry> // Eigen::Vector3f::cross — no longer pulled in transitively via render headers
 
 #include <atomic>
 #include <chrono>
@@ -51,7 +56,8 @@ using namespace lux::render;
 static int g_pass = 0;
 static int g_fail = 0;
 
-static void check(bool cond, const char *name)
+static void
+check(bool cond, const char* name)
 {
     if (cond)
     {
@@ -67,9 +73,8 @@ static void check(bool cond, const char *name)
 
 // ── Simple geometry builders ────────────────────────────────────────────
 
-static void buildGroundPlane(std::vector<lux::rdesc::Vertex> &verts,
-                             std::vector<uint32_t> &indices,
-                             float half_size = 5.f)
+static void
+buildGroundPlane(std::vector<lux::rdesc::Vertex>& verts, std::vector<uint32_t>& indices, float half_size = 5.f)
 {
     using V3 = Eigen::Vector3f;
     using V2 = Eigen::Vector2f;
@@ -83,9 +88,8 @@ static void buildGroundPlane(std::vector<lux::rdesc::Vertex> &verts,
     indices = {0, 1, 2, 0, 2, 3};
 }
 
-static void buildCube(std::vector<lux::rdesc::Vertex> &verts,
-                      std::vector<uint32_t> &indices,
-                      float half = 0.5f)
+static void
+buildCube(std::vector<lux::rdesc::Vertex>& verts, std::vector<uint32_t>& indices, float half = 0.5f)
 {
     using V3 = Eigen::Vector3f;
     using V2 = Eigen::Vector2f;
@@ -96,18 +100,36 @@ static void buildCube(std::vector<lux::rdesc::Vertex> &verts,
         V3 corners[4];
     };
     FaceInfo faces[6] = {
-        {{0, 0, 1}, {1, 0, 0}, {0, 1, 0}, {{-half, -half, half}, {half, -half, half}, {half, half, half}, {-half, half, half}}},
-        {{0, 0, -1}, {-1, 0, 0}, {0, 1, 0}, {{half, -half, -half}, {-half, -half, -half}, {-half, half, -half}, {half, half, -half}}},
-        {{1, 0, 0}, {0, 0, -1}, {0, 1, 0}, {{half, -half, half}, {half, -half, -half}, {half, half, -half}, {half, half, half}}},
-        {{-1, 0, 0}, {0, 0, 1}, {0, 1, 0}, {{-half, -half, -half}, {-half, -half, half}, {-half, half, half}, {-half, half, -half}}},
-        {{0, 1, 0}, {1, 0, 0}, {0, 0, 1}, {{-half, half, half}, {half, half, half}, {half, half, -half}, {-half, half, -half}}},
-        {{0, -1, 0}, {1, 0, 0}, {0, 0, -1}, {{-half, -half, -half}, {half, -half, -half}, {half, -half, half}, {-half, -half, half}}},
+        {{0, 0, 1},
+         {1, 0, 0},
+         {0, 1, 0},
+         {{-half, -half, half}, {half, -half, half}, {half, half, half}, {-half, half, half}}},
+        {{0, 0, -1},
+         {-1, 0, 0},
+         {0, 1, 0},
+         {{half, -half, -half}, {-half, -half, -half}, {-half, half, -half}, {half, half, -half}}},
+        {{1, 0, 0},
+         {0, 0, -1},
+         {0, 1, 0},
+         {{half, -half, half}, {half, -half, -half}, {half, half, -half}, {half, half, half}}},
+        {{-1, 0, 0},
+         {0, 0, 1},
+         {0, 1, 0},
+         {{-half, -half, -half}, {-half, -half, half}, {-half, half, half}, {-half, half, -half}}},
+        {{0, 1, 0},
+         {1, 0, 0},
+         {0, 0, 1},
+         {{-half, half, half}, {half, half, half}, {half, half, -half}, {-half, half, -half}}},
+        {{0, -1, 0},
+         {1, 0, 0},
+         {0, 0, -1},
+         {{-half, -half, -half}, {half, -half, -half}, {half, -half, half}, {-half, -half, half}}},
     };
     V2 uvs[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
 
     verts.reserve(24);
     indices.reserve(36);
-    for (auto &f : faces)
+    for (auto& f : faces)
     {
         auto base = static_cast<uint32_t>(verts.size());
         for (int i = 0; i < 4; ++i)
@@ -118,13 +140,15 @@ static void buildCube(std::vector<lux::rdesc::Vertex> &verts,
 
 // ── Matrix helpers ──────────────────────────────────────────────────────
 
-static void setIdentity(float m[16])
+static void
+setIdentity(float m[16])
 {
     std::memset(m, 0, 16 * sizeof(float));
     m[0] = m[5] = m[10] = m[15] = 1.f;
 }
 
-static void setTranslation(float m[16], float x, float y, float z)
+static void
+setTranslation(float m[16], float x, float y, float z)
 {
     setIdentity(m);
     m[12] = x;
@@ -134,7 +158,8 @@ static void setTranslation(float m[16], float x, float y, float z)
 
 // ── Vulkan instance extensions ──────────────────────────────────────────
 
-static std::vector<const char*> getVulkanExtensions()
+static std::vector<const char*>
+getVulkanExtensions()
 {
     const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
     return {exts.begin(), exts.end()};
@@ -142,9 +167,8 @@ static std::vector<const char*> getVulkanExtensions()
 
 // ── Build look-at view matrix ───────────────────────────────────────────
 
-static Eigen::Matrix4f buildViewMatrix(const Eigen::Vector3f &eye,
-                                       const Eigen::Vector3f &target,
-                                       const Eigen::Vector3f &up)
+static Eigen::Matrix4f
+buildViewMatrix(const Eigen::Vector3f& eye, const Eigen::Vector3f& target, const Eigen::Vector3f& up)
 {
     Eigen::Vector3f f = (target - eye).normalized();
     Eigen::Vector3f s = f.cross(up).normalized();
@@ -168,8 +192,8 @@ static Eigen::Matrix4f buildViewMatrix(const Eigen::Vector3f &eye,
 
 // ── Build perspective projection matrix (Vulkan Y-down, ZO depth) ────────
 
-static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect,
-                                       float near_z, float far_z)
+static Eigen::Matrix4f
+buildProjMatrix(float fov_rad, float aspect, float near_z, float far_z)
 {
     float tanHalf = std::tan(fov_rad * 0.5f);
     Eigen::Matrix4f P = Eigen::Matrix4f::Zero();
@@ -200,7 +224,8 @@ enum class Phase
     Done
 };
 
-static const char *phaseName(Phase p)
+static const char*
+phaseName(Phase p)
 {
     switch (p)
     {
@@ -237,15 +262,16 @@ static const char *phaseName(Phase p)
 // ── main ────────────────────────────────────────────────────────────────
 
 template <class Reply>
-static RenderRequest<Reply> acceptedUploadOrFailure(
-    UploadSubmitResult<Reply> submitted)
+static RenderRequest<Reply>
+acceptedUploadOrFailure(UploadSubmitResult<Reply> submitted)
 {
     if (!submitted)
         return RenderRequestFactory<Reply>::makeImmediateFailure({});
     return std::move(submitted.value());
 }
 
-int main()
+int
+main()
 {
     std::cout << "=== Game Loop Test ===\n\n";
 
@@ -257,10 +283,12 @@ int main()
     buildCube(cube_verts, cube_idx);
 
     auto ground_mesh = lux::rdesc::Mesh{
-        std::move(ground_verts), std::move(ground_idx),
+        std::move(ground_verts),
+        std::move(ground_idx),
         lux::math::AABB(Eigen::Vector3f(-5.f, 0.f, -5.f), Eigen::Vector3f(5.f, 0.f, 5.f))};
     auto cube_mesh = lux::rdesc::Mesh{
-        std::move(cube_verts), std::move(cube_idx),
+        std::move(cube_verts),
+        std::move(cube_idx),
         lux::math::AABB(Eigen::Vector3f(-0.5f, -0.5f, -0.5f), Eigen::Vector3f(0.5f, 0.5f, 0.5f))};
 
     // ── Precompute camera matrices ──────────────────────────────────────
@@ -273,10 +301,10 @@ int main()
 
     // ── Channel + sync + window ─────────────────────────────────────────
 
-    auto channel         = RenderFrameChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
-    auto upload_channel  = RenderUploadChannel<>::create();
-    auto sync             = std::make_shared<RenderChannelSync>();
+    auto upload_channel = RenderUploadChannel<>::create();
+    auto sync = std::make_shared<RenderChannelSync>();
 
     auto surface_exts = getVulkanExtensions();
     lux::window::LuxWindow window(1280, 720, "Game Loop Test");
@@ -286,35 +314,31 @@ int main()
     std::atomic<bool> server_ready{false};
     std::atomic<bool> server_failed{false};
 
-    std::thread server_thread(
-        [&]{
-            GeneralRenderServer server(
-                channel,
-                control_channel,
-                upload_channel,
-                sync
-            );
+    std::thread server_thread([&] {
+        GeneralRenderServer server(channel, control_channel, upload_channel, sync);
 
-            ServerConfig cfg;
-            cfg.instance_extensions = surface_exts;
-            if (auto r = server.init(std::move(cfg)); !r)
-            {
-                std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
-                server_failed.store(true, std::memory_order_release);
-                server_ready.store(true, std::memory_order_release);
-                return;
-            }
-            if (auto r = server.attachToWindow(window); !r)
-            {
-                std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
-                server_failed.store(true, std::memory_order_release);
-                server_ready.store(true, std::memory_order_release);
-                return;
-            }
+        ServerConfig cfg;
+        cfg.instance_extensions = surface_exts;
+        if (auto r = server.init(std::move(cfg)); !r)
+        {
+            std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
+            server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
-
-            while (server.tick()){} 
+            return;
         }
+        if (auto r = server.attachToWindow(window); !r)
+        {
+            std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
+            server_failed.store(true, std::memory_order_release);
+            server_ready.store(true, std::memory_order_release);
+            return;
+        }
+        server_ready.store(true, std::memory_order_release);
+
+        while (server.tick())
+        {
+        }
+    }
     );
 
     while (!server_ready.load(std::memory_order_acquire))
@@ -348,7 +372,8 @@ int main()
     RenderRequest<ViewCreatedReply> view_req;
 
     // RegisterFeatures
-    RenderRequest<FeatureTypeRegisteredReply> fwd_reg_req, shadow_reg_req, mesh_shadow_reg_req, light_reg_req, material_reg_req, mesh_stack_reg_req, view_cam_reg_req;
+    RenderRequest<FeatureTypeRegisteredReply> fwd_reg_req, shadow_reg_req, mesh_shadow_reg_req, light_reg_req,
+        material_reg_req, mesh_stack_reg_req, view_cam_reg_req;
 
     // ViewCamera feature op ids — resolved from view_cam_reg_req once the
     // registration reply lands, then used by ViewCameraProxy for the per-view
@@ -374,7 +399,8 @@ int main()
     MaterialOperationIds material_ops{};
 
     // AddFeatures
-    RenderRequest<FeatureAddedReply> fwd_feat_req, shadow_feat_req, mesh_shadow_feat_req, light_feat_req, material_feat_req, mesh_stack_feat_req, view_cam_feat_req;
+    RenderRequest<FeatureAddedReply> fwd_feat_req, shadow_feat_req, mesh_shadow_feat_req, light_feat_req,
+        material_feat_req, mesh_stack_feat_req, view_cam_feat_req;
 
     // UploadMaterials
     RenderRequest<MaterialUploadedReply> ground_mat_req, cube_mat_req;
@@ -405,31 +431,26 @@ int main()
             switch (phase)
             {
             // ────────────────────────────────────────────────────────────
-            case Phase::CreateScene:
-            {
+            case Phase::CreateScene: {
                 scene_req = control.createScene("GameScene");
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::ActivateScene:
-            {
+            case Phase::ActivateScene: {
                 active_req = control.setActiveScene(scene_req.tryResult()->get().scene_id, true);
-                view_req = control.addView(
-                    scene_req.tryResult()->get().scene_id, {1280, 720}, "MainView");
+                view_req = control.addView(scene_req.tryResult()->get().scene_id, {1280, 720}, "MainView");
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::BindSwapchain:
-            {
+            case Phase::BindSwapchain: {
                 control.bindSwapchain(scene_req.tryResult()->get().scene_id, view_req.tryResult()->get().view);
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::RegisterFeatures:
-            {
+            case Phase::RegisterFeatures: {
                 // StandardViewCameraFeature owns the per-view 3D camera data; it
                 // MUST attach before every camera consumer (shadow / forward), so
                 // register it ahead of the rest — owner-first.
@@ -446,22 +467,25 @@ int main()
                 break;
             }
             // ────────────────────────────────────────────────────────────
-            case Phase::AddShadowFeatures:
-            {
+            case Phase::AddShadowFeatures: {
                 // StandardViewCameraFeature owns the per-view 3D camera data that
                 // shadow/forward consume. It MUST attach before every camera
                 // consumer — owner-first. No comm config — empty struct param.
                 lux::render::ViewCameraCommTag view_cam_cfg{};
                 view_cam_feat_req = control.addFeature(
                     scene_req.tryResult()->get().scene_id,
-                    view_cam_reg_req.tryResult()->get().feature_type_id, view_cam_cfg);
+                    view_cam_reg_req.tryResult()->get().feature_type_id,
+                    view_cam_cfg
+                );
 
                 // Light feature MUST attach before ShadowMapFeature: the shadow
                 // feature caches a raw LightResources* at attach time.
                 lux::render::LightCommTag light_cfg{};
                 light_feat_req = control.addFeature(
                     scene_req.tryResult()->get().scene_id,
-                    light_reg_req.tryResult()->get().feature_type_id, light_cfg);
+                    light_reg_req.tryResult()->get().feature_type_id,
+                    light_cfg
+                );
 
                 // StandardMaterialFeature owns the global material stack
                 // (builtin shading models + MaterialResources). It MUST attach before
@@ -470,7 +494,9 @@ int main()
                 lux::render::MaterialCommTag material_cfg{};
                 material_feat_req = control.addFeature(
                     scene_req.tryResult()->get().scene_id,
-                    material_reg_req.tryResult()->get().feature_type_id, material_cfg);
+                    material_reg_req.tryResult()->get().feature_type_id,
+                    material_cfg
+                );
 
                 // StandardMeshStackFeature owns the standard 3D mesh-stack scene
                 // resources (no longer built in RenderScene's ctor). It MUST attach
@@ -479,7 +505,9 @@ int main()
                 lux::render::MeshStackCommTag mesh_stack_cfg{};
                 mesh_stack_feat_req = control.addFeature(
                     scene_req.tryResult()->get().scene_id,
-                    mesh_stack_reg_req.tryResult()->get().feature_type_id, mesh_stack_cfg);
+                    mesh_stack_reg_req.tryResult()->get().feature_type_id,
+                    mesh_stack_cfg
+                );
 
                 ShadowMapCommConfig scc{};
                 scc.atlas_page_resolution = 2048;
@@ -487,54 +515,62 @@ int main()
                 scc.max_shadow_slices = 64;
                 shadow_feat_req = control.addFeature(
                     scene_req.tryResult()->get().scene_id,
-                    shadow_reg_req.tryResult()->get().feature_type_id, scc);
+                    shadow_reg_req.tryResult()->get().feature_type_id,
+                    scc
+                );
 
                 MeshShadowCommConfig mscc{};
                 mscc.comm_config_version = kMeshShadowCommConfigVersion;
                 mscc.descriptor_layout_version = kMeshShadowDescriptorLayoutVersion;
                 mesh_shadow_feat_req = control.addFeature(
                     scene_req.tryResult()->get().scene_id,
-                    mesh_shadow_reg_req.tryResult()->get().feature_type_id, mscc);
+                    mesh_shadow_reg_req.tryResult()->get().feature_type_id,
+                    mscc
+                );
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::AddForwardFeature:
-            {
+            case Phase::AddForwardFeature: {
                 ForwardMeshCommConfig cc{};
                 cc.comm_config_version = kForwardMeshCommConfigVersion;
                 cc.descriptor_layout_version = kForwardMeshDescriptorLayoutVersion;
                 fwd_feat_req = control.addFeature(
                     scene_req.tryResult()->get().scene_id,
-                    fwd_reg_req.tryResult()->get().feature_type_id, cc);
+                    fwd_reg_req.tryResult()->get().feature_type_id,
+                    cc
+                );
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::UploadMaterials:
-            {
+            case Phase::UploadMaterials: {
                 // rdesc::Material was retired: each surface is now an Unlit GRAPH
                 // material compiled for the Forward pass. Distinct baked colours =>
                 // distinct frags => distinct per-material PSOs (R1). The compile +
                 // upload are driven synchronously here so the persistent
                 // ground_mat_req / cube_mat_req hold the upload replies the phase
                 // transition validates (status == 0), exactly as before.
-                const auto compileForwardColor =
-                    [&](float r, float g, float b) -> ShaderHandle
-                {
+                const auto compileForwardColor = [&](float r, float g, float b) -> ShaderHandle {
                     auto cb = lux::mgtest::compileGraphPass(
                         lux::mgtest::makeColorGraph(
-                            r, g, b,
+                            r,
+                            g,
+                            b,
                             lux::rdesc::EMaterialShadingModel::Unlit,
-                            /*metallic=*/0.f, /*roughness=*/0.6f,
+                            /*metallic=*/0.f,
+                            /*roughness=*/0.6f,
                             /*world_normal_input=*/false,
-                            /*emissive_scale=*/0.f),
-                        lux::rdesc::EMaterialPass::Forward);
-                    if (!cb) {
+                            /*emissive_scale=*/0.f
+                        ),
+                        lux::rdesc::EMaterialPass::Forward
+                    );
+                    if (!cb)
+                    {
                         std::cerr << "graph -> SPIR-V failed: " << cb.error() << "\n";
                         return ShaderHandle{};
                     }
-                    std::vector<uint32_t>  spv  = std::move(cb->spirv);
+                    std::vector<uint32_t> spv = std::move(cb->spirv);
                     std::vector<std::byte> info = std::move(cb->info_bytes);
                     const auto bytes = std::span<const std::byte>{
                         reinterpret_cast<const std::byte*>(spv.data()),
@@ -543,10 +579,7 @@ int main()
                     // begins a fresh frame — so a frame stays open for the
                     // uploadGraphMaterial calls + the loop's trailing submitFrame.
                     auto comp = control.syncCall(
-                        control.compileShader(
-                            bytes,
-                            std::span<const std::byte>{
-                                info.data(), info.size()})
+                        control.compileShader(bytes, std::span<const std::byte>{info.data(), info.size()})
                     );
                     if (!comp)
                         return ShaderHandle{};
@@ -554,29 +587,36 @@ int main()
                 };
 
                 const ShaderHandle ground_frag = compileForwardColor(0.2f, 0.6f, 0.2f);
-                const ShaderHandle cube_frag    = compileForwardColor(0.85f, 0.45f, 0.1f);
+                const ShaderHandle cube_frag = compileForwardColor(0.85f, 0.45f, 0.1f);
 
                 GraphMaterialData ground_gd{};
                 ground_mat_req = acceptedUploadOrFailure(uploadGraphMaterial(
                     MaterialUploadClient(upload_client.client(), material_ops),
-                    ground_gd, ShaderHandle{}, ground_frag));
+                    ground_gd,
+                    ShaderHandle{},
+                    ground_frag)
+                );
 
                 GraphMaterialData cube_gd{};
                 cube_mat_req = acceptedUploadOrFailure(uploadGraphMaterial(
                     MaterialUploadClient(upload_client.client(), material_ops),
-                    cube_gd, ShaderHandle{}, cube_frag));
+                    cube_gd,
+                    ShaderHandle{},
+                    cube_frag)
+                );
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::UploadMeshes:
-            {
+            case Phase::UploadMeshes: {
                 ground_mesh_req = acceptedUploadOrFailure(lux::render::uploadMesh(
                     lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops),
-                    ground_mesh));
+                    ground_mesh)
+                );
                 cube_mesh_req = acceptedUploadOrFailure(lux::render::uploadMesh(
                     lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops),
-                    cube_mesh));
+                    cube_mesh)
+                );
                 break;
             }
 
@@ -586,31 +626,43 @@ int main()
                 break;
 
             // ────────────────────────────────────────────────────────────
-            case Phase::CreateInstances:
-            {
+            case Phase::CreateInstances: {
                 float identity[16];
                 setIdentity(identity);
-                ground_inst_req = addTransientMeshInstance(MeshStackProxy(session, mesh_stack_ops),
+                ground_inst_req = addTransientMeshInstance(
+                    MeshStackProxy(session, mesh_stack_ops),
                     scene_req.tryResult()->get().scene_id,
                     ground_mesh_req.tryResult()->get().handle,
                     ground_mat_req.tryResult()->get().handle,
-                    identity);
+                    identity
+                );
 
                 float cube_xform[16];
                 setTranslation(cube_xform, 0.f, 0.5f, 0.f);
-                cube_inst_req = addTransientMeshInstance(MeshStackProxy(session, mesh_stack_ops),
+                cube_inst_req = addTransientMeshInstance(
+                    MeshStackProxy(session, mesh_stack_ops),
                     scene_req.tryResult()->get().scene_id,
                     cube_mesh_req.tryResult()->get().handle,
                     cube_mat_req.tryResult()->get().handle,
-                    cube_xform);
+                    cube_xform
+                );
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::CreateLight:
-            {
-                MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_req.tryResult()->get().scene_id, .view = view_req.tryResult()->get().view, .object = ground_inst_req.tryResult()->get().object});
-                MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_req.tryResult()->get().scene_id, .view = view_req.tryResult()->get().view, .object = cube_inst_req.tryResult()->get().object});
+            case Phase::CreateLight: {
+                MeshStackProxy(session, mesh_stack_ops)
+                    .makeInstanceVisibleForView(
+                        {.scene_id = scene_req.tryResult()->get().scene_id,
+                         .view = view_req.tryResult()->get().view,
+                         .object = ground_inst_req.tryResult()->get().object}
+                    );
+                MeshStackProxy(session, mesh_stack_ops)
+                    .makeInstanceVisibleForView(
+                        {.scene_id = scene_req.tryResult()->get().scene_id,
+                         .view = view_req.tryResult()->get().view,
+                         .object = cube_inst_req.tryResult()->get().object}
+                    );
 
                 DirectionalLightDesc dl{};
                 float dx = -0.5f, dy = -1.f, dz = -0.3f;
@@ -625,13 +677,16 @@ int main()
                 dl.cascade_count = 4;
                 dl.cascade_splits = {0.1f, 0.25f, 0.5f, 1.0f};
 
-                light_req = lightCreate(LightProxy(session, light_ops), scene_req.tryResult()->get().scene_id, LightDescriptor{dl});
+                light_req = lightCreate(
+                    LightProxy(session, light_ops),
+                    scene_req.tryResult()->get().scene_id,
+                    LightDescriptor{dl}
+                );
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
-            case Phase::Render:
-            {
+            case Phase::Render: {
                 auto now = std::chrono::steady_clock::now();
                 float elapsed = std::chrono::duration<float>(now - start_time).count();
                 float angle = elapsed * rotation_speed;
@@ -649,12 +704,21 @@ int main()
                 cube_transform[13] = 0.5f;
                 cube_transform[15] = 1.f;
 
-                updateTransientMeshTransform(MeshStackProxy(session, mesh_stack_ops), scene_req.tryResult()->get().scene_id, cube_inst_req.tryResult()->get().object, cube_transform);
+                updateTransientMeshTransform(
+                    MeshStackProxy(session, mesh_stack_ops),
+                    scene_req.tryResult()->get().scene_id,
+                    cube_inst_req.tryResult()->get().object,
+                    cube_transform
+                );
 
-                viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops),
-                    scene_req.tryResult()->get().scene_id, view_req.tryResult()->get().view,
-                    V.data(), P.data(),
-                    eye.data());
+                viewCameraUpdateTransient(
+                    ViewCameraProxy(session, view_cam_ops),
+                    scene_req.tryResult()->get().scene_id,
+                    view_req.tryResult()->get().view,
+                    V.data(),
+                    P.data(),
+                    eye.data()
+                );
                 break;
             }
             }
@@ -681,8 +745,14 @@ int main()
                 check(active_req.tryResult()->get().code == 0, "SetActiveScene — code == 0");
                 check(view_req.isReady(), "AddView — reply received");
                 check(view_req.tryResult()->get().view.isValid(), "AddView — handle valid");
-                if (!scene_req.isReady() || !view_req.isReady() ||
-                    !view_req.tryResult()->get().view.isValid() || active_req.tryResult()->get().code != 0)
+                const bool is_scene_missing = !scene_req.isReady();
+                const bool is_view_missing = !view_req.isReady();
+                const bool is_view_invalid = !is_view_missing && !view_req.tryResult()->get().view.isValid();
+                const bool is_active_request_failed = !is_scene_missing && !is_view_missing && !is_view_invalid &&
+                    active_req.tryResult()->get().code != 0;
+                const bool is_setup_invalid = is_scene_missing || is_view_missing || is_view_invalid ||
+                    is_active_request_failed;
+                if (is_setup_invalid)
                 {
                     std::cerr << "Critical setup failed; aborting.\n";
                     phase = Phase::Done;
@@ -706,25 +776,39 @@ int main()
                 check(light_reg_req.isReady(), "RegisterFeatureType Light — OK");
                 check(view_cam_reg_req.isReady(), "RegisterFeatureType StandardViewCamera — OK");
                 view_cam_ops = ViewCameraOperationIds::fromOps(
-                    view_cam_reg_req.tryResult()->get().ops, view_cam_reg_req.tryResult()->get().op_count);
+                    view_cam_reg_req.tryResult()->get().ops,
+                    view_cam_reg_req.tryResult()->get().op_count
+                );
                 light_ops = LightOperationIds::fromOps(
-                    light_reg_req.tryResult()->get().ops, light_reg_req.tryResult()->get().op_count);
+                    light_reg_req.tryResult()->get().ops,
+                    light_reg_req.tryResult()->get().op_count
+                );
                 mesh_stack_ops = MeshStackOperationIds::fromOps(
-                    mesh_stack_reg_req.tryResult()->get().ops, mesh_stack_reg_req.tryResult()->get().op_count);
+                    mesh_stack_reg_req.tryResult()->get().ops,
+                    mesh_stack_reg_req.tryResult()->get().op_count
+                );
                 material_ops = MaterialOperationIds::fromOps(
-                    material_reg_req.tryResult()->get().ops, material_reg_req.tryResult()->get().op_count);
+                    material_reg_req.tryResult()->get().ops,
+                    material_reg_req.tryResult()->get().op_count
+                );
                 phase = Phase::AddShadowFeatures;
                 break;
 
             case Phase::AddShadowFeatures:
                 check(view_cam_feat_req.isReady(), "AddFeature StandardViewCamera — OK");
-                check(view_cam_feat_req.tryResult()->get().feature.isValid(), "AddFeature StandardViewCamera — valid handle");
+                check(
+                    view_cam_feat_req.tryResult()->get().feature.isValid(),
+                    "AddFeature StandardViewCamera — valid handle"
+                );
                 check(light_feat_req.isReady(), "AddFeature Light — OK");
                 check(light_feat_req.tryResult()->get().feature.isValid(), "AddFeature Light — valid handle");
                 check(shadow_feat_req.isReady(), "AddFeature ShadowMap — OK");
                 check(shadow_feat_req.tryResult()->get().feature.isValid(), "AddFeature ShadowMap — valid handle");
                 check(mesh_shadow_feat_req.isReady(), "AddFeature MeshShadow — OK");
-                check(mesh_shadow_feat_req.tryResult()->get().feature.isValid(), "AddFeature MeshShadow — valid handle");
+                check(
+                    mesh_shadow_feat_req.tryResult()->get().feature.isValid(),
+                    "AddFeature MeshShadow — valid handle"
+                );
                 phase = Phase::AddForwardFeature;
                 break;
 
@@ -735,10 +819,14 @@ int main()
                 break;
 
             case Phase::UploadMaterials:
-                check(ground_mat_req.isReady() && ground_mat_req.tryResult()->get().status == 0,
-                      "UploadMaterial ground — OK");
-                check(cube_mat_req.isReady() && cube_mat_req.tryResult()->get().status == 0,
-                      "UploadMaterial cube — OK");
+                check(
+                    ground_mat_req.isReady() && ground_mat_req.tryResult()->get().status == 0,
+                    "UploadMaterial ground — OK"
+                );
+                check(
+                    cube_mat_req.isReady() && cube_mat_req.tryResult()->get().status == 0,
+                    "UploadMaterial cube — OK"
+                );
                 phase = Phase::UploadMeshes;
                 break;
 
@@ -749,26 +837,28 @@ int main()
             case Phase::WaitMeshUpload:
                 if (ground_mesh_req.isReady() && cube_mesh_req.isReady())
                 {
-                    check(ground_mesh_req.tryResult()->get().status == 0 &&
-                              cube_mesh_req.tryResult()->get().status == 0,
-                          "UploadMesh ground + cube — deferred reply OK");
+                    check(
+                        ground_mesh_req.tryResult()->get().status == 0 && cube_mesh_req.tryResult()->get().status == 0,
+                        "UploadMesh ground + cube — deferred reply OK"
+                    );
                     phase = Phase::CreateInstances;
                 }
                 break;
 
             case Phase::CreateInstances:
-                check(ground_inst_req.isReady() &&
-                          static_cast<bool>(ground_inst_req.tryResult()->get().object),
-                      "AddMeshInstance ground — valid object");
-                check(cube_inst_req.isReady() &&
-                          static_cast<bool>(cube_inst_req.tryResult()->get().object),
-                      "AddMeshInstance cube — valid object");
+                check(
+                    ground_inst_req.isReady() && static_cast<bool>(ground_inst_req.tryResult()->get().object),
+                    "AddMeshInstance ground — valid object"
+                );
+                check(
+                    cube_inst_req.isReady() && static_cast<bool>(cube_inst_req.tryResult()->get().object),
+                    "AddMeshInstance cube — valid object"
+                );
                 phase = Phase::CreateLight;
                 break;
 
             case Phase::CreateLight:
-                check(light_req.isReady() && light_req.tryResult()->get().status == 0,
-                      "CreateLight directional — OK");
+                check(light_req.isReady() && light_req.tryResult()->get().status == 0, "CreateLight directional — OK");
                 start_time = std::chrono::steady_clock::now();
                 phase = Phase::Render;
                 break;

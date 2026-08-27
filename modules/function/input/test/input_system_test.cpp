@@ -3,7 +3,8 @@
 /// Builds synthetic InputSnapshot frames and exercises the full ActionMapper pipeline.
 ///
 /// Covers:
-///   - ActionId runtime allocation via InputActionRegistry (SparseSet-backed)try (SparseSet-backed)try (SparseSet-backed)
+///   - ActionId runtime allocation via InputActionRegistry (SparseSet-backed)try (SparseSet-backed)try
+///   (SparseSet-backed)
 ///   - InputValue factories, accessors, accumulateValue (untyped + typed)
 ///   - InputModifier application chain
 ///   - TriggerEvaluator: Down, Pressed, Released, Hold, HoldAndRelease, Tap, Pulse, ChordAction
@@ -40,9 +41,9 @@
 // Suppress deprecation warnings — this test intentionally exercises deprecated API
 // (accumulateValue 2-arg and the old scalar ActionMapper API).
 #if defined(_MSC_VER)
-#   pragma warning(disable : 4996)
+#pragma warning(disable : 4996)
 #elif defined(__GNUC__) || defined(__clang__)
-#   pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
 using namespace lux::input;
@@ -72,14 +73,15 @@ static_assert(static_cast<int>(ETouchPhase::CANCELED) == 4);
 //  Test action IDs                                                          //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-namespace Actions {
-    ActionId Jump     = InvalidActionId;
-    ActionId Move     = InvalidActionId;
-    ActionId Look     = InvalidActionId;
-    ActionId Fire     = InvalidActionId;
-    ActionId Aim      = InvalidActionId;
-    ActionId Sprint   = InvalidActionId;
-    ActionId Crouch   = InvalidActionId;
+namespace Actions
+{
+    ActionId Jump = InvalidActionId;
+    ActionId Move = InvalidActionId;
+    ActionId Look = InvalidActionId;
+    ActionId Fire = InvalidActionId;
+    ActionId Aim = InvalidActionId;
+    ActionId Sprint = InvalidActionId;
+    ActionId Crouch = InvalidActionId;
     ActionId Interact = InvalidActionId;
 }
 
@@ -88,10 +90,15 @@ namespace Actions {
 // ═══════════════════════════════════════════════════════════════════════════ //
 
 static constexpr float kEps = 1e-5f;
-static bool near(float a, float b) { return std::fabs(a - b) < kEps; }
+static bool
+near(float a, float b)
+{
+    return std::fabs(a - b) < kEps;
+}
 
 /// Create a blank InputSnapshot with no keys/mouse pressed.
-static InputSnapshot makeBlankSnapshot(float dt = 1.f / 60.f)
+static InputSnapshot
+makeBlankSnapshot(float dt = 1.f / 60.f)
 {
     InputSnapshot s{};
     s.sample_dt = dt;
@@ -99,7 +106,8 @@ static InputSnapshot makeBlankSnapshot(float dt = 1.f / 60.f)
 }
 
 /// Press a key: just_pressed + held.
-static void pressKey(InputSnapshot& s, EKey k)
+static void
+pressKey(InputSnapshot& s, EKey k)
 {
     auto i = static_cast<size_t>(static_cast<int>(k));
     s.keys_just_pressed.set(i);
@@ -107,14 +115,16 @@ static void pressKey(InputSnapshot& s, EKey k)
 }
 
 /// Hold a key (already pressed in previous frame): held only, no edge.
-static void holdKey(InputSnapshot& s, EKey k)
+static void
+holdKey(InputSnapshot& s, EKey k)
 {
     auto i = static_cast<size_t>(static_cast<int>(k));
     s.keys_held.set(i);
 }
 
 /// Release a key: just_released, clear held.
-static void releaseKey(InputSnapshot& s, EKey k)
+static void
+releaseKey(InputSnapshot& s, EKey k)
 {
     auto i = static_cast<size_t>(static_cast<int>(k));
     s.keys_just_released.set(i);
@@ -122,41 +132,46 @@ static void releaseKey(InputSnapshot& s, EKey k)
 }
 
 /// Press a mouse button.
-static void pressMouse(InputSnapshot& s, EMouseButton btn)
+static void
+pressMouse(InputSnapshot& s, EMouseButton btn)
 {
     auto i = static_cast<int>(btn);
     s.mouse_just_pressed |= (1u << i);
-    s.mouse_held         |= (1u << i);
+    s.mouse_held |= (1u << i);
 }
 
 /// Hold a mouse button.
-static void holdMouse(InputSnapshot& s, EMouseButton btn)
+static void
+holdMouse(InputSnapshot& s, EMouseButton btn)
 {
     auto i = static_cast<int>(btn);
     s.mouse_held |= (1u << i);
 }
 
 /// Release a mouse button.
-static void releaseMouse(InputSnapshot& s, EMouseButton btn)
+static void
+releaseMouse(InputSnapshot& s, EMouseButton btn)
 {
     auto i = static_cast<int>(btn);
     s.mouse_just_released |= (1u << i);
-    s.mouse_held          &= ~(1u << i);
+    s.mouse_held &= ~(1u << i);
 }
 
 static int tests_passed = 0;
 
-#define TEST_SECTION(name)                              \
-    do {                                                \
-        std::printf("  [PASS] %s\n", name);             \
-        ++tests_passed;                                 \
-    } while(0)
+#define TEST_SECTION(name)                                                                                             \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        std::printf("  [PASS] %s\n", name);                                                                            \
+        ++tests_passed;                                                                                                \
+    } while (0)
 
 // ═══════════════════════════════════════════════════════════════════════════ //
 //  1. ActionId                                                              //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_action_id()
+static void
+test_action_id()
 {
     // ActionId is a runtime-allocated integer. InvalidActionId == 0.
     static_assert(InvalidActionId == 0, "InvalidActionId must be zero");
@@ -186,7 +201,8 @@ static void test_action_id()
 //  2. InputValue                                                            //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_input_value()
+static void
+test_input_value()
 {
     // Bool factory + accessor
     {
@@ -276,7 +292,8 @@ static void test_input_value()
 //  3. InputModifier                                                         //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_input_modifier()
+static void
+test_input_modifier()
 {
     // Scale
     {
@@ -338,7 +355,8 @@ static void test_input_modifier()
 //  4. TriggerEvaluator — individual triggers                                //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_trigger_evaluator()
+static void
+test_trigger_evaluator()
 {
     const float dt = 1.f / 60.f;
 
@@ -390,13 +408,15 @@ static void test_trigger_evaluator()
         TriggerRuntimeState rt{};
 
         // 3 frames of holding (3 * 1/60 ≈ 0.05s) — still Ongoing
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 3; ++i)
+        {
             auto r = evaluateTrigger(desc, rt, InputValue::makeAxis1D(1.f), dt);
             assert(r == ETriggerState::ONGOING);
         }
 
         // Hold for enough frames to exceed 0.1s
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < 10; ++i)
+        {
             evaluateTrigger(desc, rt, InputValue::makeAxis1D(1.f), dt);
         }
         // By now elapsed > 0.1s total
@@ -430,7 +450,8 @@ static void test_trigger_evaluator()
         TriggerRuntimeState rt{};
 
         int trigger_count = 0;
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < 10; ++i)
+        {
             auto r = evaluateTrigger(desc, rt, InputValue::makeAxis1D(1.f), dt);
             if (r == ETriggerState::TRIGGERED)
                 ++trigger_count;
@@ -464,7 +485,8 @@ static void test_trigger_evaluator()
 //  5. TriggerGroup — Explicit / Implicit / Blocker composition              //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_trigger_group()
+static void
+test_trigger_group()
 {
     const float dt = 1.f / 60.f;
     auto val = InputValue::makeAxis1D(1.f);
@@ -490,7 +512,7 @@ static void test_trigger_group()
     {
         std::vector<TriggerDesc> descs = {
             {ETriggerKind::DOWN, ETriggerLogicType::EXPLICIT, 0.5f},
-            {ETriggerKind::DOWN, ETriggerLogicType::BLOCKER,  0.5f},
+            {ETriggerKind::DOWN, ETriggerLogicType::BLOCKER, 0.5f},
         };
         std::vector<TriggerRuntimeState> rts;
         auto r = evaluateTriggerGroup(descs, rts, val, dt);
@@ -522,7 +544,8 @@ static void test_trigger_group()
 //  6. BindingIdAllocator — global uniqueness                                //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_binding_id_allocator()
+static void
+test_binding_id_allocator()
 {
     BindingId a = BindingIdAllocator::next();
     BindingId b = BindingIdAllocator::next();
@@ -539,34 +562,34 @@ static void test_binding_id_allocator()
 //  7. ActionMap builder + cross-map BindingId uniqueness                    //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_action_map_builder()
+static void
+test_action_map_builder()
 {
     // Allocate valid action IDs for this test via a temporary registry.
     InputActionRegistry temp_reg;
-    Actions::Jump   = temp_reg.registerAction({0, "jump",   EInputValueType::BOOL});
-    Actions::Move   = temp_reg.registerAction({0, "move",   EInputValueType::AXIS_2D});
-    Actions::Fire   = temp_reg.registerAction({0, "fire",   EInputValueType::BOOL});
-    Actions::Look   = temp_reg.registerAction({0, "look",   EInputValueType::AXIS_2D});
+    Actions::Jump = temp_reg.registerAction({0, "jump", EInputValueType::BOOL});
+    Actions::Move = temp_reg.registerAction({0, "move", EInputValueType::AXIS_2D});
+    Actions::Fire = temp_reg.registerAction({0, "fire", EInputValueType::BOOL});
+    Actions::Look = temp_reg.registerAction({0, "look", EInputValueType::AXIS_2D});
     Actions::Crouch = temp_reg.registerAction({0, "crouch", EInputValueType::BOOL});
 
     ActionMap map;
 
     map.bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true))
-       .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f, 1.f))
-       .bindKey(Actions::Move, EKey::KEY_S, InputValue::makeAxis2D(0.f, -1.f))
-       .bindKey(Actions::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f, 0.f))
-       .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f, 0.f))
-       .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT)
-       .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_X,
-                      InputValue::makeAxis2D(1.f, 0.f))
-       .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_Y,
-                      InputValue::makeAxis2D(0.f, 1.f));
+        .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f, 1.f))
+        .bindKey(Actions::Move, EKey::KEY_S, InputValue::makeAxis2D(0.f, -1.f))
+        .bindKey(Actions::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f, 0.f))
+        .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f, 0.f))
+        .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT)
+        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_X, InputValue::makeAxis2D(1.f, 0.f))
+        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_Y, InputValue::makeAxis2D(0.f, 1.f));
 
     assert(map.bindings().size() == 8);
 
     // All binding IDs should be unique.
     std::vector<BindingId> ids;
-    for (auto& b : map.bindings()) {
+    for (auto& b : map.bindings())
+    {
         assert(b.binding_id != InvalidBindingId);
         ids.push_back(b.binding_id);
     }
@@ -585,7 +608,8 @@ static void test_action_map_builder()
     map.unbindAll(Actions::Move);
     int move_count = 0;
     for (auto& b : map.bindings())
-        if (b.action == Actions::Move) ++move_count;
+        if (b.action == Actions::Move)
+            ++move_count;
     assert(move_count == 0);
     assert(map.bindings().size() == 4); // Jump + Fire + Look×2
 
@@ -600,7 +624,8 @@ static void test_action_map_builder()
 //  8. InputActionRegistry                                                   //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_action_registry()
+static void
+test_action_registry()
 {
     InputActionRegistry reg;
 
@@ -639,7 +664,8 @@ static void test_action_registry()
 //  9. InputContext + InputContextStack                                      //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_context_and_stack()
+static void
+test_context_and_stack()
 {
     InputContext gameplay("gameplay", false, false, 0);
     InputContext ui("ui", true, true, 10);
@@ -688,7 +714,8 @@ static void test_context_and_stack()
 //  10. ActionMapper — basic key press → triggered                           //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_basic_key()
+static void
+test_mapper_basic_key()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -696,8 +723,7 @@ static void test_mapper_basic_key()
     Actions::Jump = reg.registerAction({0, "jump", EInputValueType::BOOL});
 
     InputContext ctx("gameplay");
-    ctx.actionMap()
-        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
+    ctx.actionMap().bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -743,7 +769,8 @@ static void test_mapper_basic_key()
 //  11. ActionMapper — WASD → Axis2D accumulation                            //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_wasd_accumulation()
+static void
+test_mapper_wasd_accumulation()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -752,10 +779,10 @@ static void test_mapper_wasd_accumulation()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f,  1.f))
+        .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f, 1.f))
         .bindKey(Actions::Move, EKey::KEY_S, InputValue::makeAxis2D(0.f, -1.f))
         .bindKey(Actions::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f, 0.f))
-        .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D( 1.f, 0.f));
+        .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f, 0.f));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -798,7 +825,8 @@ static void test_mapper_wasd_accumulation()
 //  12. ActionMapper — mouse button                                          //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_mouse_button()
+static void
+test_mapper_mouse_button()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -806,9 +834,7 @@ static void test_mapper_mouse_button()
     Actions::Fire = reg.registerAction({0, "fire", EInputValueType::BOOL});
 
     InputContext ctx("gameplay");
-    ctx.actionMap()
-        .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT,
-                         InputValue::makeBool(true));
+    ctx.actionMap().bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -837,7 +863,8 @@ static void test_mapper_mouse_button()
 //  13. ActionMapper — mouse axis                                            //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_mouse_axis()
+static void
+test_mapper_mouse_axis()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -846,10 +873,8 @@ static void test_mapper_mouse_axis()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_X,
-                       InputValue::makeAxis2D(1.f, 0.f))
-        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_Y,
-                       InputValue::makeAxis2D(0.f, 1.f));
+        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_X, InputValue::makeAxis2D(1.f, 0.f))
+        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_Y, InputValue::makeAxis2D(0.f, 1.f));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -870,7 +895,8 @@ static void test_mapper_mouse_axis()
 //  14. ActionMapper — UI capture blocks input                               //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_ui_capture()
+static void
+test_mapper_ui_capture()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -881,8 +907,7 @@ static void test_mapper_ui_capture()
     InputContext ctx("gameplay");
     ctx.actionMap()
         .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true))
-        .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT,
-                         InputValue::makeBool(true));
+        .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -892,8 +917,7 @@ static void test_mapper_ui_capture()
         auto snap = makeBlankSnapshot();
         pressKey(snap, EKey::KEY_SPACE);
         snap.keyboard_captured_by_ui = true;
-        mapper.update(snap, stack, snap.sample_dt, !snap.keyboard_captured_by_ui,
-                      !snap.mouse_captured_by_ui);
+        mapper.update(snap, stack, snap.sample_dt, !snap.keyboard_captured_by_ui, !snap.mouse_captured_by_ui);
         assert(!mapper.triggered(Actions::Jump));
     }
 
@@ -902,8 +926,7 @@ static void test_mapper_ui_capture()
         auto snap = makeBlankSnapshot();
         pressMouse(snap, EMouseButton::MOUSE_BUTTON_LEFT);
         snap.mouse_captured_by_ui = true;
-        mapper.update(snap, stack, snap.sample_dt, !snap.keyboard_captured_by_ui,
-                      !snap.mouse_captured_by_ui);
+        mapper.update(snap, stack, snap.sample_dt, !snap.keyboard_captured_by_ui, !snap.mouse_captured_by_ui);
         assert(!mapper.triggered(Actions::Fire));
     }
 
@@ -914,7 +937,8 @@ static void test_mapper_ui_capture()
 //  15. ActionMapper — context consume & priority                            //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_context_consume()
+static void
+test_mapper_context_consume()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -924,13 +948,11 @@ static void test_mapper_context_consume()
 
     // High priority UI context consumes keyboard
     InputContext ui_ctx("ui", /*consumes_kb=*/true, /*consumes_mouse=*/false, /*prio=*/10);
-    ui_ctx.actionMap()
-        .bindKey(Actions::Interact, EKey::KEY_SPACE, InputValue::makeBool(true));
+    ui_ctx.actionMap().bindKey(Actions::Interact, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     // Low priority gameplay context also binds Space
     InputContext gameplay_ctx("gameplay", false, false, 0);
-    gameplay_ctx.actionMap()
-        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
+    gameplay_ctx.actionMap().bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&gameplay_ctx);
@@ -952,7 +974,8 @@ static void test_mapper_context_consume()
 //  16. ActionMapper — disabled context is skipped                           //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_disabled_context()
+static void
+test_mapper_disabled_context()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -960,8 +983,7 @@ static void test_mapper_disabled_context()
     Actions::Jump = reg.registerAction({0, "jump", EInputValueType::BOOL});
 
     InputContext ctx("gameplay");
-    ctx.actionMap()
-        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
+    ctx.actionMap().bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -991,7 +1013,8 @@ static void test_mapper_disabled_context()
 //  17. ActionMapper — injection API                                         //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_injection()
+static void
+test_mapper_injection()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1037,10 +1060,7 @@ static void test_mapper_injection()
         assert(mapper.active(Actions::Move));
     }
 
-    mapper.injectTriggered(
-        Actions::Jump,
-        InputValue::makeAxis1D(1.f)
-    );
+    mapper.injectTriggered(Actions::Jump, InputValue::makeAxis1D(1.f));
     {
         auto snap = makeBlankSnapshot();
         mapper.update(snap, stack, snap.sample_dt);
@@ -1054,7 +1074,8 @@ static void test_mapper_injection()
 //  18. ActionMapper — action-level modifier (Normalize2D)                   //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_action_modifier()
+static void
+test_mapper_action_modifier()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1067,8 +1088,8 @@ static void test_mapper_action_modifier()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f,  1.f))
-        .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f,  0.f));
+        .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f, 1.f))
+        .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f, 0.f));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -1091,7 +1112,8 @@ static void test_mapper_action_modifier()
 //  19. ActionMapper — action-level trigger (Hold)                           //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_action_trigger()
+static void
+test_mapper_action_trigger()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1103,9 +1125,7 @@ static void test_mapper_action_trigger()
     Actions::Aim = reg.registerAction(aim_desc);
 
     InputContext ctx("gameplay");
-    ctx.actionMap()
-        .bindMouseButton(Actions::Aim, EMouseButton::MOUSE_BUTTON_RIGHT,
-                         InputValue::makeBool(true));
+    ctx.actionMap().bindMouseButton(Actions::Aim, EMouseButton::MOUSE_BUTTON_RIGHT, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -1122,7 +1142,8 @@ static void test_mapper_action_trigger()
     }
 
     // Frames 2-5: hold — still Ongoing
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 4; ++i)
+    {
         auto snap = makeBlankSnapshot(dt);
         holdMouse(snap, EMouseButton::MOUSE_BUTTON_RIGHT);
         mapper.update(snap, stack, dt);
@@ -1130,7 +1151,8 @@ static void test_mapper_action_trigger()
     assert(!mapper.triggered(Actions::Aim));
 
     // Keep holding until hold_time exceeded (0.1s ≈ 6 frames at 60fps)
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 5; ++i)
+    {
         auto snap = makeBlankSnapshot(dt);
         holdMouse(snap, EMouseButton::MOUSE_BUTTON_RIGHT);
         mapper.update(snap, stack, dt);
@@ -1145,7 +1167,8 @@ static void test_mapper_action_trigger()
 //  20. ActionMapper — binding-level trigger (Pressed edge)                  //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_binding_trigger()
+static void
+test_mapper_binding_trigger()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1154,12 +1177,8 @@ static void test_mapper_binding_trigger()
 
     InputContext ctx("gameplay");
     // Binding-level Pressed trigger: only fires on the rising edge
-    std::vector<TriggerDesc> pressed_trigger = {
-        {ETriggerKind::PRESSED, ETriggerLogicType::EXPLICIT, 0.5f}
-    };
-    ctx.actionMap()
-        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true),
-                 {}, pressed_trigger);
+    std::vector<TriggerDesc> pressed_trigger = {{ETriggerKind::PRESSED, ETriggerLogicType::EXPLICIT, 0.5f}};
+    ctx.actionMap().bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true), {}, pressed_trigger);
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -1203,7 +1222,8 @@ static void test_mapper_binding_trigger()
 //  21. ActionMapper — multi-frame held_seconds tracking                     //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_held_seconds()
+static void
+test_mapper_held_seconds()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1211,8 +1231,7 @@ static void test_mapper_held_seconds()
     Actions::Sprint = reg.registerAction({0, "sprint", EInputValueType::BOOL});
 
     InputContext ctx("gameplay");
-    ctx.actionMap()
-        .bindKey(Actions::Sprint, EKey::KEY_LEFT_SHIFT, InputValue::makeBool(true));
+    ctx.actionMap().bindKey(Actions::Sprint, EKey::KEY_LEFT_SHIFT, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -1225,7 +1244,8 @@ static void test_mapper_held_seconds()
         pressKey(snap, EKey::KEY_LEFT_SHIFT);
         mapper.update(snap, stack, dt);
     }
-    for (int i = 0; i < 9; ++i) {
+    for (int i = 0; i < 9; ++i)
+    {
         auto snap = makeBlankSnapshot(dt);
         holdKey(snap, EKey::KEY_LEFT_SHIFT);
         mapper.update(snap, stack, dt);
@@ -1255,7 +1275,8 @@ static void test_mapper_held_seconds()
 //  22. IActionDispatcher                                                    //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_action_dispatcher()
+static void
+test_action_dispatcher()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1293,7 +1314,8 @@ static void test_action_dispatcher()
 //  23. ActionMapper — binding with modifiers (NegateY + Scale)              //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_binding_modifiers()
+static void
+test_mapper_binding_modifiers()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1304,10 +1326,8 @@ static void test_mapper_binding_modifiers()
     // bindMouseAxis with binding_modifiers: NegateY on vertical axis
     std::vector<ModifierSpec> y_mods = {{EModifierKind::NEGATE_Y}};
     ctx.actionMap()
-        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_X,
-                       InputValue::makeAxis2D(1.f, 0.f))
-        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_Y,
-                       InputValue::makeAxis2D(0.f, 1.f), 1.f, y_mods);
+        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_X, InputValue::makeAxis2D(1.f, 0.f))
+        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_Y, InputValue::makeAxis2D(0.f, 1.f), 1.f, y_mods);
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -1328,7 +1348,8 @@ static void test_mapper_binding_modifiers()
 //  24. ActionMapper — scroll wheel axis                                     //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_scroll_axis()
+static void
+test_mapper_scroll_axis()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1337,9 +1358,7 @@ static void test_mapper_scroll_axis()
     ActionId Zoom = reg.registerAction({0, "zoom", EInputValueType::AXIS_1D});
 
     InputContext ctx("gameplay");
-    ctx.actionMap()
-        .bindMouseAxis(Zoom, MouseAxisInput::EAxis::SCROLL_Y,
-                       InputValue::makeAxis1D(1.f));
+    ctx.actionMap().bindMouseAxis(Zoom, MouseAxisInput::EAxis::SCROLL_Y, InputValue::makeAxis1D(1.f));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -1358,7 +1377,8 @@ static void test_mapper_scroll_axis()
 //  25. ActionMapper — multiple contexts, same action, lower blocked         //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void test_mapper_multi_context_mouse_consume()
+static void
+test_mapper_multi_context_mouse_consume()
 {
     ActionMapper mapper;
     auto& reg = mapper.actionRegistry();
@@ -1367,14 +1387,10 @@ static void test_mapper_multi_context_mouse_consume()
     ActionId GameShoot = reg.registerAction({0, "game_shoot", EInputValueType::BOOL});
 
     InputContext ui_ctx("ui", false, true, 10); // consumes mouse
-    ui_ctx.actionMap()
-        .bindMouseButton(UIClick, EMouseButton::MOUSE_BUTTON_LEFT,
-                         InputValue::makeBool(true));
+    ui_ctx.actionMap().bindMouseButton(UIClick, EMouseButton::MOUSE_BUTTON_LEFT, InputValue::makeBool(true));
 
     InputContext game_ctx("game", false, false, 0);
-    game_ctx.actionMap()
-        .bindMouseButton(GameShoot, EMouseButton::MOUSE_BUTTON_LEFT,
-                         InputValue::makeBool(true));
+    game_ctx.actionMap().bindMouseButton(GameShoot, EMouseButton::MOUSE_BUTTON_LEFT, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&game_ctx);
@@ -1390,20 +1406,15 @@ static void test_mapper_multi_context_mouse_consume()
     TEST_SECTION("ActionMapper multi-context mouse consume");
 }
 
-static void test_input_ownership_and_synthetic_evaluation()
+static void
+test_input_ownership_and_synthetic_evaluation()
 {
     Input input;
     assert(&input.actionRegistry() == &input.mapper().actionRegistry());
 
-    const ActionId action = input.actionRegistry().registerAction(
-        {0, "input.synthetic", EInputValueType::BOOL}
-    );
+    const ActionId action = input.actionRegistry().registerAction({0, "input.synthetic", EInputValueType::BOOL});
     InputContext context("synthetic");
-    context.actionMap().bindKey(
-        action,
-        EKey::KEY_SPACE,
-        InputValue::makeBool(true)
-    );
+    context.actionMap().bindKey(action, EKey::KEY_SPACE, InputValue::makeBool(true));
     input.contexts().push(&context);
 
     auto snapshot = makeBlankSnapshot();
@@ -1424,7 +1435,8 @@ static void test_input_ownership_and_synthetic_evaluation()
 //  Main                                                                     //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-int main()
+int
+main()
 {
     std::printf("====== Input System Test ======\n");
 

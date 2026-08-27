@@ -19,7 +19,16 @@ namespace lux::render
     // (There used to be an `aligned16vec2` here. It corresponded to no std430
     //  rule — vec2 aligns to 8 — and its single user, AreaLightGPU::size, was
     //  laid out 8 bytes off from the shader's AreaLightGPU from that field on.)
-    struct alignas(8)  aligned8vec2  { float x, y; };
-    struct alignas(16) aligned16vec3 { float x, y, z; };
-    struct alignas(16) aligned16vec4 { float x, y, z, w; };
+    struct alignas(8) aligned8vec2
+    {
+        float x, y;
+    };
+    struct alignas(16) aligned16vec3
+    {
+        float x, y, z;
+    };
+    struct alignas(16) aligned16vec4
+    {
+        float x, y, z, w;
+    };
 }

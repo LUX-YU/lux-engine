@@ -22,29 +22,24 @@ namespace lux::render
     inline constexpr std::uint32_t kInstancePageTableAxisBits = 9u;
     inline constexpr std::uint32_t kInstancePageTableAxisSize = 512u;
 
-    [[nodiscard]] inline constexpr std::uint32_t instancePageOffset(
-        std::uint32_t slot) noexcept
+    [[nodiscard]] inline constexpr std::uint32_t instancePageOffset(std::uint32_t slot) noexcept
     {
         return slot & (kInstanceSlotsPerPage - 1u);
     }
 
-    [[nodiscard]] inline constexpr std::uint32_t instancePageIndex(
-        std::uint32_t slot) noexcept
+    [[nodiscard]] inline constexpr std::uint32_t instancePageIndex(std::uint32_t slot) noexcept
     {
         return slot >> kInstancePageOffsetBits;
     }
 
-    [[nodiscard]] inline constexpr std::uint32_t instanceRootIndex(
-        std::uint32_t slot) noexcept
+    [[nodiscard]] inline constexpr std::uint32_t instanceRootIndex(std::uint32_t slot) noexcept
     {
         return instancePageIndex(slot) >> kInstancePageTableAxisBits;
     }
 
-    [[nodiscard]] inline constexpr std::uint32_t instanceLeafIndex(
-        std::uint32_t slot) noexcept
+    [[nodiscard]] inline constexpr std::uint32_t instanceLeafIndex(std::uint32_t slot) noexcept
     {
-        return instancePageIndex(slot) &
-            (kInstancePageTableAxisSize - 1u);
+        return instancePageIndex(slot) & (kInstancePageTableAxisSize - 1u);
     }
 
     struct alignas(8) GpuInstancePageAddresses final
@@ -64,14 +59,11 @@ namespace lux::render
         SparseInstancePageTable() = default;
         ~SparseInstancePageTable();
         SparseInstancePageTable(const SparseInstancePageTable&) = delete;
-        SparseInstancePageTable& operator=(
-            const SparseInstancePageTable&) = delete;
+        SparseInstancePageTable& operator=(const SparseInstancePageTable&) = delete;
 
         [[nodiscard]] bool init(DeviceContext* device_context);
         void shutdown();
-        [[nodiscard]] bool publish(
-            std::uint32_t page_index,
-            const GpuInstancePageAddresses& addresses);
+        [[nodiscard]] bool publish(std::uint32_t page_index, const GpuInstancePageAddresses& addresses);
         [[nodiscard]] VkBuffer rootBuffer() const noexcept
         {
             return root_buffer_;
@@ -120,42 +112,32 @@ namespace lux::render
 
         SparseInstanceStreamStorage() = default;
         ~SparseInstanceStreamStorage();
-        SparseInstanceStreamStorage(
-            const SparseInstanceStreamStorage&) = delete;
-        SparseInstanceStreamStorage& operator=(
-            const SparseInstanceStreamStorage&) = delete;
+        SparseInstanceStreamStorage(const SparseInstanceStreamStorage&) = delete;
+        SparseInstanceStreamStorage& operator=(const SparseInstanceStreamStorage&) = delete;
 
-        [[nodiscard]] bool init(
-            DeviceContext* device_context,
-            std::uint32_t stride,
-            std::uint32_t initial_capacity,
-            bool sparse_bda);
+        [[nodiscard]] bool
+        init(DeviceContext* device_context, std::uint32_t stride, std::uint32_t initial_capacity, bool sparse_bda);
         void shutdown();
         [[nodiscard]] bool reserve(std::uint32_t new_capacity);
         void rollbackPages(std::uint32_t page_count);
 
         [[nodiscard]] std::byte* at(std::uint32_t index) noexcept;
-        [[nodiscard]] const std::byte* at(
-            std::uint32_t index) const noexcept;
+        [[nodiscard]] const std::byte* at(std::uint32_t index) const noexcept;
         void markDirty(std::uint32_t index);
         [[nodiscard]] bool hasDirtyPages() const noexcept
         {
             return !dirty_upload_pages_.empty();
         }
-        [[nodiscard]] VkDeviceSize collectUploadChunks(
-            std::uint32_t count,
-            bool full_upload,
-            std::vector<UploadChunk>& chunks);
+        [[nodiscard]] VkDeviceSize
+        collectUploadChunks(std::uint32_t count, bool full_upload, std::vector<UploadChunk>& chunks);
         void clearDirtyState();
 
         [[nodiscard]] VkBuffer buffer() const noexcept
         {
             return sparse_bda_ ? VK_NULL_HANDLE : flat_buffer_;
         }
-        [[nodiscard]] VkBuffer pageBuffer(
-            std::uint32_t page_index) const noexcept;
-        [[nodiscard]] VkDeviceAddress pageAddress(
-            std::uint32_t page_index) const noexcept;
+        [[nodiscard]] VkBuffer pageBuffer(std::uint32_t page_index) const noexcept;
+        [[nodiscard]] VkDeviceAddress pageAddress(std::uint32_t page_index) const noexcept;
         [[nodiscard]] std::uint32_t pageCount() const noexcept
         {
             return static_cast<std::uint32_t>(gpu_pages_.size());
@@ -164,7 +146,10 @@ namespace lux::render
         {
             return capacity_;
         }
-        [[nodiscard]] bool sparse() const noexcept { return sparse_bda_; }
+        [[nodiscard]] bool sparse() const noexcept
+        {
+            return sparse_bda_;
+        }
         void setDeferredQueue(DeferredDestroyQueue* queue) noexcept
         {
             deferred_queue_ = queue;
@@ -180,10 +165,7 @@ namespace lux::render
 
         [[nodiscard]] bool createGpuPage(GpuPage& page);
         [[nodiscard]] bool createFlatBuffer(std::uint32_t capacity);
-        void destroyBuffer(
-            VkBuffer buffer,
-            VmaAllocation allocation,
-            bool published);
+        void destroyBuffer(VkBuffer buffer, VmaAllocation allocation, bool published);
 
         static constexpr std::uint32_t kUploadSlotsPerPage = 512u;
         DeviceContext* device_context_{nullptr};
@@ -199,24 +181,19 @@ namespace lux::render
         std::vector<std::uint8_t> dirty_upload_flags_;
     };
 
-    template <class T>
-    class SparseInstanceStream final
+    template <class T> class SparseInstanceStream final
     {
     public:
         using UploadChunk = SparseInstanceStreamStorage::UploadChunk;
 
-        [[nodiscard]] bool init(
-            DeviceContext* device_context,
-            std::uint32_t capacity,
-            bool sparse_bda)
+        [[nodiscard]] bool init(DeviceContext* device_context, std::uint32_t capacity, bool sparse_bda)
         {
-            return storage_.init(
-                device_context,
-                sizeof(T),
-                capacity,
-                sparse_bda);
+            return storage_.init(device_context, sizeof(T), capacity, sparse_bda);
         }
-        void shutdown() { storage_.shutdown(); }
+        void shutdown()
+        {
+            storage_.shutdown();
+        }
         [[nodiscard]] bool reserve(std::uint32_t capacity)
         {
             return storage_.reserve(capacity);
@@ -233,25 +210,28 @@ namespace lux::render
         {
             return *reinterpret_cast<const T*>(storage_.at(index));
         }
-        void markDirty(std::uint32_t index) { storage_.markDirty(index); }
+        void markDirty(std::uint32_t index)
+        {
+            storage_.markDirty(index);
+        }
         [[nodiscard]] bool hasDirtyPages() const noexcept
         {
             return storage_.hasDirtyPages();
         }
-        [[nodiscard]] VkDeviceSize collectUploadChunks(
-            std::uint32_t count,
-            bool full_upload,
-            std::vector<UploadChunk>& chunks)
+        [[nodiscard]] VkDeviceSize
+        collectUploadChunks(std::uint32_t count, bool full_upload, std::vector<UploadChunk>& chunks)
         {
             return storage_.collectUploadChunks(count, full_upload, chunks);
         }
-        void clearDirtyState() { storage_.clearDirtyState(); }
+        void clearDirtyState()
+        {
+            storage_.clearDirtyState();
+        }
         [[nodiscard]] VkBuffer buffer() const noexcept
         {
             return storage_.buffer();
         }
-        [[nodiscard]] VkDeviceAddress pageAddress(
-            std::uint32_t page_index) const noexcept
+        [[nodiscard]] VkDeviceAddress pageAddress(std::uint32_t page_index) const noexcept
         {
             return storage_.pageAddress(page_index);
         }
@@ -276,31 +256,28 @@ namespace lux::render
         SparseInstanceStreamStorage storage_;
     };
 
-    template <class T>
-    class StableInstanceCpuPages final
+    template <class T> class StableInstanceCpuPages final
     {
     public:
         [[nodiscard]] bool reserve(std::uint32_t capacity)
         {
-            const auto required_pages = capacity == 0u
-                ? 0u
-                : (capacity - 1u) / kInstanceSlotsPerPage + 1u;
+            const auto required_pages = capacity == 0u ? 0u : (capacity - 1u) / kInstanceSlotsPerPage + 1u;
             pages_.reserve(required_pages);
             while (pages_.size() < required_pages)
-                pages_.push_back(
-                    std::make_unique<T[]>(kInstanceSlotsPerPage));
+                pages_.push_back(std::make_unique<T[]>(kInstanceSlotsPerPage));
             return true;
         }
-        void clear() { pages_.clear(); }
+        void clear()
+        {
+            pages_.clear();
+        }
         [[nodiscard]] T& at(std::uint32_t index) noexcept
         {
-            return pages_[index >> kInstancePageOffsetBits]
-                [index & (kInstanceSlotsPerPage - 1u)];
+            return pages_[index >> kInstancePageOffsetBits][index & (kInstanceSlotsPerPage - 1u)];
         }
         [[nodiscard]] const T& at(std::uint32_t index) const noexcept
         {
-            return pages_[index >> kInstancePageOffsetBits]
-                [index & (kInstanceSlotsPerPage - 1u)];
+            return pages_[index >> kInstancePageOffsetBits][index & (kInstanceSlotsPerPage - 1u)];
         }
 
     private:

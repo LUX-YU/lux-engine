@@ -14,22 +14,22 @@
  * the feature's OWN resource type — the engine never names an internal type here.
  */
 
-#include <lux/engine/render/gpu/ExternalInterop.hpp>    // ExportableBuffer / ExportableTimelineSemaphore(L1,按值返回需完整定义)
+#include <lux/engine/render/gpu/ExternalInterop.hpp> // ExportableBuffer / ExportableTimelineSemaphore(L1,按值返回需完整定义)
 #include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string_view>
 #include <vector>
 
-#include <lux/engine/render/core/vk_fwd.hpp>                          // VkDevice/VkShaderModule/VkPipelineLayout/VkDescriptorSetLayout
-#include <lux/engine/function/render/client/core/PipelineHandle.hpp>                  // Graphics/ComputePipelineHandle
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>                  // ShaderHandle
-#include <lux/engine/function/render/client/core/EngineSetSlot.hpp>                   // EDescriptorSetSlot
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>             // EBuiltinShader
-#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>       // ResourceRegistry
-#include <lux/engine/render/core/FrameRetireScheduler.hpp>            // FrameRetireScheduler
-#include <lux/engine/render/core/PreparedPipelineStages.hpp>          // preparePipelineStages 的结果
-#include <lux/engine/function/render/client/core/Errors.hpp>                          // Expected<ShaderHandle>
+#include <lux/engine/render/core/vk_fwd.hpp> // VkDevice/VkShaderModule/VkPipelineLayout/VkDescriptorSetLayout
+#include <lux/engine/function/render/client/core/PipelineHandle.hpp>      // Graphics/ComputePipelineHandle
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>      // ShaderHandle
+#include <lux/engine/function/render/client/core/EngineSetSlot.hpp>       // EDescriptorSetSlot
+#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp> // EBuiltinShader
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>           // ResourceRegistry
+#include <lux/engine/render/core/FrameRetireScheduler.hpp>                // FrameRetireScheduler
+#include <lux/engine/render/core/PreparedPipelineStages.hpp>              // preparePipelineStages 的结果
+#include <lux/engine/function/render/client/core/Errors.hpp>              // Expected<ShaderHandle>
 #include <lux/engine/function/visibility.h>
 
 // VMA handles — same fwd-typedefs the engine uses (core/VmaFwd.hpp), replicated
@@ -39,13 +39,16 @@ using VmaAllocator = VmaAllocator_T*;
 struct VmaAllocation_T;
 using VmaAllocation = VmaAllocation_T*;
 
-namespace lux::rdesc { struct ShaderInfo; }
+namespace lux::rdesc
+{
+    struct ShaderInfo;
+}
 
 namespace lux::render
 {
-    class RenderContext;            // held subject (forwarded to; defined in an internal header)
-    class DeferredDestroyQueue;     // returned by-reference; defined in an internal header
-    struct GraphicsPipelineTemplate;// taken by-reference; engine pipeline description
+    class RenderContext;             // held subject (forwarded to; defined in an internal header)
+    class DeferredDestroyQueue;      // returned by-reference; defined in an internal header
+    struct GraphicsPipelineTemplate; // taken by-reference; engine pipeline description
 
     /// Result of createExportableBuffer — a VMA-BYPASSING dedicated allocation
     /// (vkAllocateMemory + VkExportMemoryAllocateInfo + vkBindBufferMemory) whose
@@ -65,29 +68,31 @@ namespace lux::render
     public:
         /// Wrap a subject. The facade is a non-owning view; @p ctx must outlive it
         /// (it always does — the owning scene outlives every feature it serves).
-        explicit RenderContextView(RenderContext& ctx) noexcept : ctx_(&ctx) {}
+        explicit RenderContextView(RenderContext& ctx) noexcept : ctx_(&ctx)
+        {
+        }
 
         // ── Vulkan infrastructure ───────────────────────────────────────
-        [[nodiscard]] VkDevice     device()         const noexcept;
-        [[nodiscard]] VmaAllocator vmaAllocator()   const noexcept;
-        [[nodiscard]] uint32_t     framesInFlight() const noexcept;
+        [[nodiscard]] VkDevice device() const noexcept;
+        [[nodiscard]] VmaAllocator vmaAllocator() const noexcept;
+        [[nodiscard]] uint32_t framesInFlight() const noexcept;
 
         // ── Global resource registry ────────────────────────────────────
         // Returns the public base; find<T>/emplace<T> instantiate on the caller's T.
-        [[nodiscard]] ResourceRegistry&       globalRegistry() noexcept;
+        [[nodiscard]] ResourceRegistry& globalRegistry() noexcept;
         [[nodiscard]] const ResourceRegistry& globalRegistry() const noexcept;
 
         // ── Shaders (the engine's ShaderResources stays hidden) ─────────
         /// 解析一个内置着色器(configured 有效则原样返回)。解析不出模块时返回错误并
         /// 指出是哪一个 —— 不再交回一个无效句柄让调用方在取模块时才崩。
-        [[nodiscard]] Expected<ShaderHandle> createBuiltinShaderModule(
-            EBuiltinShader builtin, ShaderHandle configured = {});
+        [[nodiscard]] Expected<ShaderHandle>
+        createBuiltinShaderModule(EBuiltinShader builtin, ShaderHandle configured = {});
 
         /// 一个待回填的着色器句柄槽:目标有效则保留,无效则填入内置解析结果。
         struct BuiltinShaderSlot
         {
             EBuiltinShader builtin{};
-            ShaderHandle*  target{nullptr};
+            ShaderHandle* target{nullptr};
         };
 
         /// 批量回填一组槽位 —— feature 的 Config 通常有一串 shader 字段,客户端只覆盖
@@ -98,7 +103,7 @@ namespace lux::render
         struct PipelineStageDesc
         {
             EBuiltinShader builtin{};
-            ShaderHandle   configured{};
+            ShaderHandle configured{};
         };
 
         /// 解析并切换一条管线的**全部 stage**,一次拿到模块与反射。
@@ -107,7 +112,8 @@ namespace lux::render
         /// 一次调用里做完,任一失败即整体报错。因为所有内部记录变动都发生在调用之内,
         /// 返回的模块与反射在此之后必然有效 —— 调用方写不出「先取指针再切换」那个顺序。
         [[nodiscard]] Expected<PreparedPipelineStages> preparePipelineStages(std::span<const PipelineStageDesc> stages);
-        [[nodiscard]] ShaderHandle   createShaderModule(std::span<const std::byte> spirv, const lux::rdesc::ShaderInfo& info);
+        [[nodiscard]] ShaderHandle
+        createShaderModule(std::span<const std::byte> spirv, const lux::rdesc::ShaderInfo& info);
         [[nodiscard]] VkShaderModule shaderModule(ShaderHandle handle) const;
         [[nodiscard]] const lux::rdesc::ShaderInfo* shaderInfo(ShaderHandle handle) const;
 
@@ -117,21 +123,21 @@ namespace lux::render
 
         // ── Pipeline layout + pipeline registration (Expected unwrapped here) ──
         [[nodiscard]] VkPipelineLayout buildStandardGraphicsLayout(
-            uint32_t                                       descriptor_set_count,
+            uint32_t descriptor_set_count,
             std::span<const lux::rdesc::ShaderInfo* const> shader_infos,
-            std::string_view                               debug_name
+            std::string_view debug_name
         );
 
         [[nodiscard]] GraphicsPipelineHandle registerGraphics(
-            const GraphicsPipelineTemplate&                  description,
+            const GraphicsPipelineTemplate& description,
             std::span<const lux::rdesc::ShaderInfo* const> shader_infos = {}
         );
 
-        [[nodiscard]] ComputePipelineHandle  registerCompute(VkShaderModule shader, VkPipelineLayout layout);
+        [[nodiscard]] ComputePipelineHandle registerCompute(VkShaderModule shader, VkPipelineLayout layout);
 
         // ── Feature-owned GPU-resource lifecycle plumbing ───────────────
         [[nodiscard]] DeferredDestroyQueue& deferredDestroyQueue() noexcept;
-        [[nodiscard]] FrameRetireScheduler& retireScheduler()      noexcept;
+        [[nodiscard]] FrameRetireScheduler& retireScheduler() noexcept;
 
         // ── Retire feature-owned GPU resources (FIF-safe deferred destroy) ──
         // Forward to the deferred-destroy queue so a feature can release its own
@@ -149,9 +155,9 @@ namespace lux::render
         // writer) with the engine's reads, then hand the exported handles out of
         // process-or-thread via its own (downstream) query op. The engine knows
         // nothing of what the buffer holds.
-        [[nodiscard]] bool     supportsExternalMemory() noexcept;
+        [[nodiscard]] bool supportsExternalMemory() noexcept;
         /// Copies VK_UUID_SIZE (16) bytes into out[16] so an external API matches its device.
-        void                   deviceUUID(uint8_t out[16]) noexcept;
+        void deviceUUID(uint8_t out[16]) noexcept;
         /// Forwards to PhysicalDevice::findMemoryTypeIndex; UINT32_MAX on miss.
         [[nodiscard]] uint32_t findMemoryTypeIndex(uint32_t type_filter, uint32_t property_flags) noexcept;
 
@@ -160,10 +166,7 @@ namespace lux::render
         /// keep this header vulkan.h-free; 0 for storage-only). Unsupported is a
         /// successful empty value; Vulkan failures retain their exact VkResult.
         /// See ExportableBuffer for ownership.
-        [[nodiscard]] Expected<ExportableBuffer> createExportableBuffer(
-            uint64_t size,
-            uint32_t usage_flags
-        );
+        [[nodiscard]] Expected<ExportableBuffer> createExportableBuffer(uint64_t size, uint32_t usage_flags);
 
         /// Exportable TIMELINE semaphore (initial value 0). Pair TWO of these for the
         /// producer/consumer ping-pong: the external producer signals one when its
@@ -172,8 +175,7 @@ namespace lux::render
         /// producer waits on it before reusing the buffer). Strictly monotonic values.
         /// Unsupported is a successful empty value; Vulkan creation/export failures
         /// retain their exact VkResult in Expected.
-        [[nodiscard]] Expected<ExportableTimelineSemaphore>
-        createExportableTimelineSemaphore();
+        [[nodiscard]] Expected<ExportableTimelineSemaphore> createExportableTimelineSemaphore();
 
         /// Retire raw (non-VMA) interop handles (FIF-safe deferred destroy), for the
         /// VkBuffer / VkDeviceMemory / VkSemaphore returned by the two creators above.
@@ -184,7 +186,7 @@ namespace lux::render
         void retireSemaphore(VkSemaphore semaphore);
 
     private:
-        RenderContext* ctx_;   // the subject this facade forwards to (never null)
+        RenderContext* ctx_; // the subject this facade forwards to (never null)
     };
 
 } // namespace lux::render

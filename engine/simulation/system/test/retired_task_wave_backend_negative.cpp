@@ -2,15 +2,13 @@
 
 #include <span>
 
-void wave(
-    void*,
-    std::span<const lux::task::TaskExecutionItem>,
-    void*
-) noexcept
+void
+wave(void*, std::span<const lux::task::TaskExecutionItem>, void*) noexcept
 {
 }
 
-int main()
+int
+main()
 {
     lux::task::TaskExecutionBackendRef backend{nullptr, &wave};
 }

@@ -28,12 +28,18 @@ namespace lux::render
         explicit DepthPrepassFeature(Config cfg);
         ~DepthPrepassFeature() override = default;
 
-        std::string_view name() const override { return "DepthPrepass"; }
+        std::string_view name() const override
+        {
+            return "DepthPrepass";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         void addPasses(RGBuilder& builder) override;
 
-        GraphicsPipelineHandle pipelineHandle() const noexcept { return pipeline_handle_; }
+        GraphicsPipelineHandle pipelineHandle() const noexcept
+        {
+            return pipeline_handle_;
+        }
 
     private:
         Config cfg_{};

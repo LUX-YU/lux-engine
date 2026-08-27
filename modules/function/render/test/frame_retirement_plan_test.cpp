@@ -19,8 +19,7 @@ namespace
 
     VkSemaphoreSubmitInfo signal(VkSemaphore handle, std::uint64_t value)
     {
-        VkSemaphoreSubmitInfo result{
-            VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        VkSemaphoreSubmitInfo result{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         result.semaphore = handle;
         result.value = value;
         result.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -28,19 +27,14 @@ namespace
     }
 }
 
-int main()
+int
+main()
 {
     using namespace lux::render;
 
-    RGQueueSubmission graphics{
-        .queue_type = ERGQueueType::GRAPHICS,
-        .cmd = command(1u)};
-    RGQueueSubmission compute{
-        .queue_type = ERGQueueType::COMPUTE,
-        .cmd = command(2u)};
-    RGQueueSubmission transfer{
-        .queue_type = ERGQueueType::TRANSFER,
-        .cmd = command(3u)};
+    RGQueueSubmission graphics{.queue_type = ERGQueueType::GRAPHICS, .cmd = command(1u)};
+    RGQueueSubmission compute{.queue_type = ERGQueueType::COMPUTE, .cmd = command(2u)};
+    RGQueueSubmission transfer{.queue_type = ERGQueueType::TRANSFER, .cmd = command(3u)};
     const auto timeline = semaphore(11u);
     compute.signal_semaphores.push_back(signal(timeline, 7u));
     transfer.signal_semaphores.push_back(signal(timeline, 9u));
@@ -76,10 +70,7 @@ int main()
     assert(!unjoined.wait_transfer_idle);
 
     const std::array graphics_only{&graphics};
-    const auto simple = analyzeFrameRetirement(
-        graphics_only,
-        false,
-        waits);
+    const auto simple = analyzeFrameRetirement(graphics_only, false, waits);
     assert(simple.fence_on_last_submission);
     assert(waits.empty());
     return 0;

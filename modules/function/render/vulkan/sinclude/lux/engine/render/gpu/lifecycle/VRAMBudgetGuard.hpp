@@ -16,9 +16,7 @@ namespace lux::render
 
         [[nodiscard]] float usageRatio() const noexcept
         {
-            return total_budget > 0
-                       ? static_cast<float>(total_usage) / static_cast<float>(total_budget)
-                       : 0.0f;
+            return total_budget > 0 ? static_cast<float>(total_usage) / static_cast<float>(total_budget) : 0.0f;
         }
 
         [[nodiscard]] bool nearFull(float threshold = 0.85f) const noexcept

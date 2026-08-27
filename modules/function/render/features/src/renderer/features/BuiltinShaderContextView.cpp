@@ -8,21 +8,12 @@
 
 namespace lux::render
 {
-    Expected<ShaderHandle> RenderContextView::createBuiltinShaderModule(
-        EBuiltinShader builtin,
-        ShaderHandle configured
-    )
+    Expected<ShaderHandle> RenderContextView::createBuiltinShaderModule(EBuiltinShader builtin, ShaderHandle configured)
     {
-        return resolveShaderStage(
-            ctx_->globalRegistry().must<ShaderResources>(),
-            configured,
-            builtin
-        );
+        return resolveShaderStage(ctx_->globalRegistry().must<ShaderResources>(), configured, builtin);
     }
 
-    Expected<PreparedPipelineStages> RenderContextView::preparePipelineStages(
-        std::span<const PipelineStageDesc> stages
-    )
+    Expected<PreparedPipelineStages> RenderContextView::preparePipelineStages(std::span<const PipelineStageDesc> stages)
     {
         auto& shaders = ctx_->globalRegistry().must<ShaderResources>();
 
@@ -30,11 +21,7 @@ namespace lux::render
         resolved.reserve(stages.size());
         for (const PipelineStageDesc& stage : stages)
         {
-            auto handle = resolveShaderStage(
-                shaders,
-                stage.configured,
-                stage.builtin
-            );
+            auto handle = resolveShaderStage(shaders, stage.configured, stage.builtin);
             if (!handle)
                 return lux::cxx::unexpected(handle.error());
             resolved.push_back(*handle);
@@ -42,20 +29,14 @@ namespace lux::render
         return shaders.preparePipelineStages(resolved);
     }
 
-    Expected<void> RenderContextView::createBuiltinShaderModules(
-        std::span<const BuiltinShaderSlot> slots
-    )
+    Expected<void> RenderContextView::createBuiltinShaderModules(std::span<const BuiltinShaderSlot> slots)
     {
         auto& shaders = ctx_->globalRegistry().must<ShaderResources>();
         for (const BuiltinShaderSlot& slot : slots)
         {
             if (slot.target == nullptr)
                 continue;
-            auto handle = resolveShaderStage(
-                shaders,
-                *slot.target,
-                slot.builtin
-            );
+            auto handle = resolveShaderStage(shaders, *slot.target, slot.builtin);
             if (!handle)
                 return lux::cxx::unexpected(handle.error());
             *slot.target = *handle;

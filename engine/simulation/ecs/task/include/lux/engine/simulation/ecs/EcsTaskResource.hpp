@@ -11,9 +11,7 @@ namespace lux::simulation::ecs
 {
     namespace detail
     {
-        [[nodiscard]] consteval std::uint64_t ecsTaskDomainHash(
-            std::string_view text
-        ) noexcept
+        [[nodiscard]] consteval std::uint64_t ecsTaskDomainHash(std::string_view text) noexcept
         {
             std::uint64_t value = 14695981039346656037ULL;
             for (const char ch : text)
@@ -25,14 +23,10 @@ namespace lux::simulation::ecs
         }
     }
 
-    inline constexpr std::uint64_t ComponentTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.component");
-    inline constexpr std::uint64_t ExternalTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.external");
-    inline constexpr std::uint64_t EcsStructureTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.structure");
-    inline constexpr std::uint64_t EcsCommandsTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.commands");
+    inline constexpr std::uint64_t ComponentTaskDomain = detail::ecsTaskDomainHash("lux.ecs.component");
+    inline constexpr std::uint64_t ExternalTaskDomain = detail::ecsTaskDomainHash("lux.ecs.external");
+    inline constexpr std::uint64_t EcsStructureTaskDomain = detail::ecsTaskDomainHash("lux.ecs.structure");
+    inline constexpr std::uint64_t EcsCommandsTaskDomain = detail::ecsTaskDomainHash("lux.ecs.commands");
 
     static_assert(ComponentTaskDomain != ExternalTaskDomain);
     static_assert(ComponentTaskDomain != EcsStructureTaskDomain);
@@ -41,37 +35,27 @@ namespace lux::simulation::ecs
     static_assert(ExternalTaskDomain != EcsCommandsTaskDomain);
     static_assert(EcsStructureTaskDomain != EcsCommandsTaskDomain);
 
-    [[nodiscard]] constexpr task::TaskResourceKey componentTaskResource(
-        std::uint64_t storage
-    ) noexcept
+    [[nodiscard]] constexpr task::TaskResourceKey componentTaskResource(std::uint64_t storage) noexcept
     {
         return {ComponentTaskDomain, storage};
     }
 
-    [[nodiscard]] constexpr task::TaskResourceKey externalTaskResource(
-        std::uint64_t type_hash
-    ) noexcept
+    [[nodiscard]] constexpr task::TaskResourceKey externalTaskResource(std::uint64_t type_hash) noexcept
     {
         return {ExternalTaskDomain, type_hash};
     }
 
-    template <class Resource>
-    [[nodiscard]] constexpr task::TaskResourceKey
-    externalTaskResource() noexcept
+    template <class Resource> [[nodiscard]] constexpr task::TaskResourceKey externalTaskResource() noexcept
     {
-        return externalTaskResource(
-            lux::cxx::typeToken<Resource>().hash()
-        );
+        return externalTaskResource(lux::cxx::typeToken<Resource>().hash());
     }
 
-    [[nodiscard]] constexpr task::TaskResourceKey
-    ecsStructureTaskResource() noexcept
+    [[nodiscard]] constexpr task::TaskResourceKey ecsStructureTaskResource() noexcept
     {
         return {EcsStructureTaskDomain, 1U};
     }
 
-    [[nodiscard]] constexpr task::TaskResourceKey
-    ecsCommandsTaskResource() noexcept
+    [[nodiscard]] constexpr task::TaskResourceKey ecsCommandsTaskResource() noexcept
     {
         return {EcsCommandsTaskDomain, 1U};
     }

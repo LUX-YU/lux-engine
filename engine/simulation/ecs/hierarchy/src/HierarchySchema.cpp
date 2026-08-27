@@ -11,8 +11,7 @@ namespace lux::simulation::ecs
         return generated::hierarchyComponentSchemas();
     }
 
-    ComponentSnapshotContribution
-    hierarchyComponentSnapshotContribution() noexcept
+    ComponentSnapshotContribution hierarchyComponentSnapshotContribution() noexcept
     {
         return generated::hierarchyComponentSnapshotContribution();
     }

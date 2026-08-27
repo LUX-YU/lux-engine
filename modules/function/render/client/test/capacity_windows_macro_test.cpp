@@ -5,7 +5,8 @@
 // was parsed through another include path.
 #define DeviceCapabilities DeviceCapabilitiesW
 
-int main()
+int
+main()
 {
     lux::render::CapacityDeviceFacts facts{};
     return facts.buffer_device_address ? 1 : 0;

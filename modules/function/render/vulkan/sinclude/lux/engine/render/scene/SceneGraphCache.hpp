@@ -22,8 +22,8 @@
  */
 
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
-#include <lux/engine/function/render/graph/RGForwardDecls.hpp>   // RGResourceHandle
-#include <lux/engine/function/render/client/core/RenderErrorEvent.hpp>   // kNoScene
+#include <lux/engine/function/render/graph/RGForwardDecls.hpp>         // RGResourceHandle
+#include <lux/engine/function/render/client/core/RenderErrorEvent.hpp> // kNoScene
 #include <lux/engine/render/core/GraphInvalidation.hpp>
 
 #include <cstdint>
@@ -79,29 +79,36 @@ namespace lux::render
 
         /// 所属场景的槽位下标,由 RenderScene::setSceneId 回填 —— 图编译诊断经
         /// 自发上报通道出去时要说清是**哪个**场景的图。
-        void setSceneIndex(std::uint32_t index) noexcept { scene_index_ = index; }
+        void setSceneIndex(std::uint32_t index) noexcept
+        {
+            scene_index_ = index;
+        }
 
-        SceneGraphCache(const SceneGraphCache&)            = delete;
+        SceneGraphCache(const SceneGraphCache&) = delete;
         SceneGraphCache& operator=(const SceneGraphCache&) = delete;
-        SceneGraphCache(SceneGraphCache&&)                 = delete;
-        SceneGraphCache& operator=(SceneGraphCache&&)      = delete;
+        SceneGraphCache(SceneGraphCache&&) = delete;
+        SceneGraphCache& operator=(SceneGraphCache&&) = delete;
 
         // ── 访问器(RenderScene 一行转发,故 Renderer/comm 零改动) ──────
-        [[nodiscard]] SceneGraphState&       state()       noexcept { return state_; }
-        [[nodiscard]] const SceneGraphState& state() const noexcept { return state_; }
+        [[nodiscard]] SceneGraphState& state() noexcept
+        {
+            return state_;
+        }
+        [[nodiscard]] const SceneGraphState& state() const noexcept
+        {
+            return state_;
+        }
         [[nodiscard]] RGVulkanResourceAllocator& allocator() noexcept;
-        [[nodiscard]] RGVulkanRecorder&          recorder()  noexcept;
+        [[nodiscard]] RGVulkanRecorder& recorder() noexcept;
 
         /// 标记为失效,下一帧重编。
         void invalidate(EGraphInvalidationReason reason) noexcept;
 
-        [[nodiscard]] const SceneGraphTelemetry& telemetry() const
-            noexcept
+        [[nodiscard]] const SceneGraphTelemetry& telemetry() const noexcept
         {
             return telemetry_;
         }
-        [[nodiscard]] const std::deque<SceneGraphCompileSample>&
-        compileHistory() const noexcept
+        [[nodiscard]] const std::deque<SceneGraphCompileSample>& compileHistory() const noexcept
         {
             return compile_history_;
         }
@@ -122,12 +129,14 @@ namespace lux::render
          */
         using PassContribution = std::function<void(RGBuilder&)>;
 
-        void compile(const RenderTargetLayout&  layout,
-                     std::uint32_t              required_target_slots,
-                     const PassContribution&    contribute_passes,
-                     std::span<View* const>     all_views,
-                     SceneDomainDescriptorSets* domain_sets,
-                     std::uint64_t              frame_serial);
+        void compile(
+            const RenderTargetLayout& layout,
+            std::uint32_t required_target_slots,
+            const PassContribution& contribute_passes,
+            std::span<View* const> all_views,
+            SceneDomainDescriptorSets* domain_sets,
+            std::uint64_t frame_serial
+        );
 
         // ── 退休 ────────────────────────────────────────────────────────
         /// 退休一份按 @p source_graph 分配的每视图资源(Renderer 在换图/改尺寸时调用)。
@@ -151,8 +160,7 @@ namespace lux::render
 
     private:
         /// 收走所有视图的 RGResourceState 进退休队列,配上它们所属的图描述。
-        void retireAllViewResources(std::span<View* const> views,
-                                    const RGGraphDescription* source_graph) noexcept;
+        void retireAllViewResources(std::span<View* const> views, const RGGraphDescription* source_graph) noexcept;
 
         struct RetiredGraph
         {
@@ -171,15 +179,15 @@ namespace lux::render
         };
 
         RenderContext& ctx_;
-        std::string    debug_name_;
-        std::uint32_t  scene_index_{RenderErrorEvent::kNoScene};
+        std::string debug_name_;
+        std::uint32_t scene_index_{RenderErrorEvent::kNoScene};
         std::unique_ptr<RGVulkanResourceAllocator> allocator_;
-        std::unique_ptr<RGVulkanRecorder>          recorder_;
-        SceneGraphState                            state_;
-        std::deque<RetiredGraph>                   retired_graphs_;
-        std::deque<RetiredViewResources>           retired_view_resources_;
-        SceneGraphTelemetry                        telemetry_{};
-        std::deque<SceneGraphCompileSample>         compile_history_;
+        std::unique_ptr<RGVulkanRecorder> recorder_;
+        SceneGraphState state_;
+        std::deque<RetiredGraph> retired_graphs_;
+        std::deque<RetiredViewResources> retired_view_resources_;
+        SceneGraphTelemetry telemetry_{};
+        std::deque<SceneGraphCompileSample> compile_history_;
     };
 
 } // namespace lux::render

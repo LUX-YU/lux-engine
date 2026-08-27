@@ -19,19 +19,16 @@ namespace lux::render
         Failed,
     };
 
-    [[nodiscard]] constexpr bool isUploadLifecycleTerminal(
-        EUploadLifecycleState state) noexcept
+    [[nodiscard]] constexpr bool isUploadLifecycleTerminal(EUploadLifecycleState state) noexcept
     {
-        return state == EUploadLifecycleState::Ready ||
-            state == EUploadLifecycleState::Failed;
+        return state == EUploadLifecycleState::Ready || state == EUploadLifecycleState::Failed;
     }
 
     /// Legal edges of the render-owner state machine. Failure is terminal
     /// from every live state; success is legal only after the low-level copy
     /// has completed, optionally followed by graphics-queue finalization.
-    [[nodiscard]] constexpr bool isValidUploadLifecycleTransition(
-        EUploadLifecycleState from,
-        EUploadLifecycleState to) noexcept
+    [[nodiscard]] constexpr bool
+    isValidUploadLifecycleTransition(EUploadLifecycleState from, EUploadLifecycleState to) noexcept
     {
         if (isUploadLifecycleTerminal(from))
             return false;
@@ -47,8 +44,7 @@ namespace lux::render
         case EUploadLifecycleState::TransferQueued:
             return to == EUploadLifecycleState::RecordedOrTransferComplete;
         case EUploadLifecycleState::RecordedOrTransferComplete:
-            return to == EUploadLifecycleState::GraphicsFinalizeSubmitted ||
-                   to == EUploadLifecycleState::Ready;
+            return to == EUploadLifecycleState::GraphicsFinalizeSubmitted || to == EUploadLifecycleState::Ready;
         case EUploadLifecycleState::GraphicsFinalizeSubmitted:
             return to == EUploadLifecycleState::Ready;
         case EUploadLifecycleState::Ready:
@@ -73,8 +69,7 @@ namespace lux::render
 
         [[nodiscard]] bool clean() const noexcept
         {
-            return active == 0 &&
-                accepted == terminal_ready + terminal_failed;
+            return active == 0 && accepted == terminal_ready + terminal_failed;
         }
     };
 } // namespace lux::render

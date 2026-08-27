@@ -60,22 +60,24 @@
 
 using namespace lux::render;
 
-#define CHECK(cond)                                                              \
-    do {                                                                         \
-        if (!(cond)) {                                                           \
-            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            return 1;                                                            \
-        }                                                                        \
+#define CHECK(cond)                                                                                                    \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (!(cond))                                                                                                   \
+        {                                                                                                              \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                                       \
+            return 1;                                                                                                  \
+        }                                                                                                              \
     } while (0)
 
 namespace
 {
 
     constexpr std::uint32_t W = 64, H = 64;
-    constexpr int kCycles          = 100;
-    constexpr int kFramesPerCycle  = 3;   // render with the scene alive
-    constexpr int kDrainPerCycle   = 4;   // > frames_in_flight → retirement collects under load
-    constexpr int kFinalDrain      = 8;
+    constexpr int kCycles = 100;
+    constexpr int kFramesPerCycle = 3; // render with the scene alive
+    constexpr int kDrainPerCycle = 4;  // > frames_in_flight → retirement collects under load
+    constexpr int kFinalDrain = 8;
 
     double msSince(std::chrono::steady_clock::time_point t0)
     {
@@ -83,7 +85,8 @@ namespace
     }
 }
 
-int main(int argc, char** argv)
+int
+main(int argc, char** argv)
 {
     std::setbuf(stdout, nullptr);
 
@@ -97,29 +100,38 @@ int main(int argc, char** argv)
     //                  descriptor-budget gate below mean something before any
     //                  phone exists. Registered as a second ctest entry so both
     //                  tiers are covered.
-    int  cycles     = kCycles;
+    int cycles = kCycles;
     bool do_destroy = true;
-    bool mobile     = false;
+    bool mobile = false;
     for (int i = 1; i < argc; ++i)
     {
-        if (std::sscanf(argv[i], "--cycles=%d", &cycles) == 1) continue;
-        if (std::strcmp(argv[i], "--no-destroy") == 0) do_destroy = false;
-        if (std::strcmp(argv[i], "--mobile") == 0)     mobile     = true;
+        if (std::sscanf(argv[i], "--cycles=%d", &cycles) == 1)
+            continue;
+        if (std::strcmp(argv[i], "--no-destroy") == 0)
+            do_destroy = false;
+        if (std::strcmp(argv[i], "--mobile") == 0)
+            mobile = true;
     }
 
     std::printf("=== scene_cycle_stress_test (editor feature set, validation asserted) ===\n");
-    std::printf("cycles=%d destroy=%d tier=%s\n", cycles, int(do_destroy),
-                mobile ? "Mobile" : "Desktop");
+    std::printf("cycles=%d destroy=%d tier=%s\n", cycles, int(do_destroy), mobile ? "Mobile" : "Desktop");
 
     static std::atomic<int> validation_errors{0};
 
     {
         lux::rendertest::DeviceRenderFixture fx(
-            W, H, "scene_cycle_stress",
-            { .enable_validation = true, .validation_errors = &validation_errors,
-              .preferred_level = mobile ? lux::render::EFeatureLevel::Mobile
-                                        : lux::render::EFeatureLevel::Desktop });
-        if (!fx.ok()) { std::puts("No Vulkan device / validation layer. Skipping."); return 0; }
+            W,
+            H,
+            "scene_cycle_stress",
+            {.enable_validation = true,
+             .validation_errors = &validation_errors,
+             .preferred_level = mobile ? lux::render::EFeatureLevel::Mobile : lux::render::EFeatureLevel::Desktop}
+        );
+        if (!fx.ok())
+        {
+            std::puts("No Vulkan device / validation layer. Skipping.");
+            return 0;
+        }
 
         // Assert the tier we ASKED for is the tier we GOT. A passing run proves
         // nothing on its own: the resolved level only gates feature admission
@@ -128,11 +140,11 @@ int main(int argc, char** argv)
         // silently stayed on Desktop would look exactly like a successful one.
         {
             lux::render::DeviceCaps caps{};
-            const auto     cr       = fx.awaitControl(fx.control().queryDeviceCaps(caps));
+            const auto cr = fx.awaitControl(fx.control().queryDeviceCaps(caps));
             const uint32_t expected = static_cast<uint32_t>(
-                mobile ? lux::render::EFeatureLevel::Mobile : lux::render::EFeatureLevel::Desktop);
-            std::printf("resolved feature_level=%u (0=Mobile 1=MobileHigh 2=Desktop)\n",
-                        cr.feature_level);
+                mobile ? lux::render::EFeatureLevel::Mobile : lux::render::EFeatureLevel::Desktop
+            );
+            std::printf("resolved feature_level=%u (0=Mobile 1=MobileHigh 2=Desktop)\n", cr.feature_level);
             if (cr.feature_level != expected)
             {
                 std::fprintf(stderr, "FAIL: asked for tier %u, got %u\n", expected, cr.feature_level);
@@ -149,71 +161,74 @@ int main(int argc, char** argv)
 
         // Configs mirror the standard feature plan's editor set 1:1.
         ShadowMapCommConfig shmap_cfg{};
-        shmap_cfg.enable_directional_csm              = 1u;
+        shmap_cfg.enable_directional_csm = 1u;
         shmap_cfg.non_directional_shadow_max_distance = 0.0f;
 
         MeshShadowCommConfig mshsw_cfg{};
-        mshsw_cfg.comm_config_version       = kMeshShadowCommConfigVersion;
+        mshsw_cfg.comm_config_version = kMeshShadowCommConfigVersion;
         mshsw_cfg.descriptor_layout_version = kMeshShadowDescriptorLayoutVersion;
 
         DeferredGBufferCommConfig gbuf_cfg{};
-        gbuf_cfg.comm_config_version       = kDeferredGBufferCommConfigVersion;
+        gbuf_cfg.comm_config_version = kDeferredGBufferCommConfigVersion;
         gbuf_cfg.descriptor_layout_version = kDeferredGBufferDescriptorLayoutVersion;
-        gbuf_cfg.extension_flags          |= EGpuDrivenMeshExt::HZB;
+        gbuf_cfg.extension_flags |= EGpuDrivenMeshExt::HZB;
 
         DeferredLightingCommConfig lit_cfg{};
         // 压测钉住 SAMPLED 路径(独立 pass,与 local_read 合并作用域互补的
         // 覆盖面);cluster 参数走 comm 默认。
-        lit_cfg.read_mode        = ELightingReadMode::SAMPLED;
+        lit_cfg.read_mode = ELightingReadMode::SAMPLED;
         lit_cfg.enable_clustered = 1;
 
-        SkyboxCommConfig  sky_cfg{};
-        TonemapCommConfig tm_cfg{ .tone_map_op = ETonemapOperator::ACES_FILMIC, .exposure = 1.0f, .gamma = 2.2f };
-        Grid3DCommConfig    grid_cfg{};
+        SkyboxCommConfig sky_cfg{};
+        TonemapCommConfig tm_cfg{.tone_map_op = ETonemapOperator::ACES_FILMIC, .exposure = 1.0f, .gamma = 2.2f};
+        Grid3DCommConfig grid_cfg{};
         LineListTransientCommConfig line_cfg{};
-        HighlightCommConfig         hl_cfg{};
+        HighlightCommConfig hl_cfg{};
 
         // (type id, add-feature thunk) — attach ORDER matches the orchestrator.
-        struct Attach { const char* name; std::uint32_t type_id;
-                        std::function<RenderRequest<FeatureAddedReply>(RenderSceneId)> add; };
+        struct Attach
+        {
+            const char* name;
+            std::uint32_t type_id;
+            std::function<RenderRequest<FeatureAddedReply>(RenderSceneId)> add;
+        };
         auto& s = fx.control();
         std::vector<Attach> attach;
         const auto mk = [&](const char* name, const FeatureFactory& f, auto cfg) {
             const auto id = reg(f);
             CHECK(id != 0);
-            attach.push_back({ name, id,
-                [&s, id, cfg](RenderSceneId scene) { return s.addFeature(scene, id, cfg); } });
+            attach.push_back({name, id, [&s, id, cfg](RenderSceneId scene) { return s.addFeature(scene, id, cfg); }});
             return 0;
         };
         CHECK(0 == mk("StandardViewCamera", kViewCameraFeatureFactory, lux::render::ViewCameraCommTag{}));
-        CHECK(0 == mk("Light",              kLightFeatureFactory,              lux::render::LightCommTag{}));
-        CHECK(0 == mk("StandardMaterial",   kMaterialFeatureFactory,   lux::render::MaterialCommTag{}));
-        CHECK(0 == mk("StandardMeshStack",  kMeshStackFeatureFactory,  lux::render::MeshStackCommTag{}));
-        CHECK(0 == mk("Skinning",           kSkinningFeatureFactory,           lux::render::SkinningCommConfig{}));
-        CHECK(0 == mk("ShadowMap",          kShadowMapFeatureFactory,          shmap_cfg));
-        CHECK(0 == mk("MeshShadow",         kMeshShadowFeatureFactory,         mshsw_cfg));
-        CHECK(0 == mk("DeferredGBuffer",    kDeferredGBufferFeatureFactory,    gbuf_cfg));
-        CHECK(0 == mk("DeferredLighting",   kDeferredLightingFeatureFactory,   lit_cfg));
-        CHECK(0 == mk("Skybox",             kSkyboxFeatureFactory,             sky_cfg));
-        CHECK(0 == mk("LinearDepth",        kLinearDepthFeatureFactory,        LinearDepthCommConfig{}));
-        CHECK(0 == mk("Fog",                kFogFeatureFactory,                FogCommConfig{}));
-        CHECK(0 == mk("Water",              kWaterFeatureFactory,              WaterCommConfig{}));
-        CHECK(0 == mk("Tonemap",            kTonemapFeatureFactory,            tm_cfg));
-        CHECK(0 == mk("Grid3DPass",         kGrid3DFeatureFactory,             grid_cfg));
-        CHECK(0 == mk("LineListTransient",  kLineListFeatureFactory,           line_cfg));
-        CHECK(0 == mk("Hzb",                kHzbFeatureFactory,                lux::render::HzbCommTag{}));
-        CHECK(0 == mk("Highlight",          kHighlightFeatureFactory,          hl_cfg));
-        CHECK(0 == mk("SpatialCull",        kSpatialCullFeatureFactory,        lux::render::SpatialCullCommConfig{}));
+        CHECK(0 == mk("Light", kLightFeatureFactory, lux::render::LightCommTag{}));
+        CHECK(0 == mk("StandardMaterial", kMaterialFeatureFactory, lux::render::MaterialCommTag{}));
+        CHECK(0 == mk("StandardMeshStack", kMeshStackFeatureFactory, lux::render::MeshStackCommTag{}));
+        CHECK(0 == mk("Skinning", kSkinningFeatureFactory, lux::render::SkinningCommConfig{}));
+        CHECK(0 == mk("ShadowMap", kShadowMapFeatureFactory, shmap_cfg));
+        CHECK(0 == mk("MeshShadow", kMeshShadowFeatureFactory, mshsw_cfg));
+        CHECK(0 == mk("DeferredGBuffer", kDeferredGBufferFeatureFactory, gbuf_cfg));
+        CHECK(0 == mk("DeferredLighting", kDeferredLightingFeatureFactory, lit_cfg));
+        CHECK(0 == mk("Skybox", kSkyboxFeatureFactory, sky_cfg));
+        CHECK(0 == mk("LinearDepth", kLinearDepthFeatureFactory, LinearDepthCommConfig{}));
+        CHECK(0 == mk("Fog", kFogFeatureFactory, FogCommConfig{}));
+        CHECK(0 == mk("Water", kWaterFeatureFactory, WaterCommConfig{}));
+        CHECK(0 == mk("Tonemap", kTonemapFeatureFactory, tm_cfg));
+        CHECK(0 == mk("Grid3DPass", kGrid3DFeatureFactory, grid_cfg));
+        CHECK(0 == mk("LineListTransient", kLineListFeatureFactory, line_cfg));
+        CHECK(0 == mk("Hzb", kHzbFeatureFactory, lux::render::HzbCommTag{}));
+        CHECK(0 == mk("Highlight", kHighlightFeatureFactory, hl_cfg));
+        CHECK(0 == mk("SpatialCull", kSpatialCullFeatureFactory, lux::render::SpatialCullCommConfig{}));
         // R5-1 着色输入槽通路:LinearDepth 产出 → Ssao 消费并发布 b11。
-        CHECK(0 == mk("Ssao",               kSsaoFeatureFactory,               lux::render::SsaoCommTag{}));
-        CHECK(0 == mk("Canvas2D",           kCanvas2DFeatureFactory,           lux::render::Canvas2DCommConfig{}));
+        CHECK(0 == mk("Ssao", kSsaoFeatureFactory, lux::render::SsaoCommTag{}));
+        CHECK(0 == mk("Canvas2D", kCanvas2DFeatureFactory, lux::render::Canvas2DCommConfig{}));
         std::printf("registered %zu feature types\n", attach.size());
 
-        const auto cam_reg  = fx.awaitControl(fx.control().registerFeatureType(kViewCameraFeatureFactory));
-        const auto cam_ops  = ViewCameraOperationIds::fromOps(cam_reg.ops, cam_reg.op_count);
-        const float view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-        const float proj[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-        const float eye[3]   = {0,0,-3};
+        const auto cam_reg = fx.awaitControl(fx.control().registerFeatureType(kViewCameraFeatureFactory));
+        const auto cam_ops = ViewCameraOperationIds::fromOps(cam_reg.ops, cam_reg.op_count);
+        const float view[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+        const float proj[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+        const float eye[3] = {0, 0, -3};
 
         // ── The cycle loop ──
         const auto t0 = std::chrono::steady_clock::now();
@@ -227,10 +242,7 @@ int main(int argc, char** argv)
                 const auto r = fx.awaitControl(a.add(sv.scene_id));
                 if (!r.feature.isValid())
                 {
-                    const auto message = lux::render::formatRenderError(
-                        lux::render::renderErrorRegistry(),
-                        r.error
-                    );
+                    const auto message = lux::render::formatRenderError(lux::render::renderErrorRegistry(), r.error);
                     std::fprintf(
                         stderr,
                         "FAIL cycle %d: addFeature(%s) rejected: %s\n",
@@ -243,7 +255,14 @@ int main(int argc, char** argv)
             }
             for (int f = 0; f < kFramesPerCycle; ++f)
             {
-                viewCameraUpdateTransient(ViewCameraProxy(fx.session(), cam_ops), sv.scene_id, sv.view, view, proj, eye);
+                viewCameraUpdateTransient(
+                    ViewCameraProxy(fx.session(), cam_ops),
+                    sv.scene_id,
+                    sv.view,
+                    view,
+                    proj,
+                    eye
+                );
                 fx.flush();
             }
 
@@ -254,25 +273,16 @@ int main(int argc, char** argv)
                 // plane exposes an immutable JSON snapshot.
                 fx.flush(4);
                 std::string timing(128u * 1024u, '\0');
-                const auto reply = fx.awaitControl(
-                    fx.control().queryGpuTiming(
-                        sv.scene_id,
-                        timing.data(),
-                        timing.size()
-                    ));
-                const std::string_view json{
-                    timing.data(),
-                    std::min<std::size_t>(reply.written, timing.size())
-                };
+                const auto reply =
+                    fx.awaitControl(fx.control().queryGpuTiming(sv.scene_id, timing.data(), timing.size()));
+                const std::string_view json{timing.data(), std::min<std::size_t>(reply.written, timing.size())};
                 CHECK(reply.status == 0u);
                 CHECK(json.find("\"version\":2") != std::string_view::npos);
                 CHECK(json.find("\"views\":[{") != std::string_view::npos);
                 CHECK(json.find("\"available\":") != std::string_view::npos);
-                if (json.find("\"available\":true") !=
-                    std::string_view::npos)
+                if (json.find("\"available\":true") != std::string_view::npos)
                 {
-                    CHECK(json.find("\"passes\":[{") !=
-                        std::string_view::npos);
+                    CHECK(json.find("\"passes\":[{") != std::string_view::npos);
                 }
             }
 
@@ -302,25 +312,28 @@ int main(int argc, char** argv)
             if (cycle == 0)
             {
                 std::string buf(512 * 1024, '\0');
-                const auto  rep = fx.awaitControl(fx.control().dumpRenderGraph(sv.scene_id, buf.data(), buf.size()));
-                const std::string_view dump{buf.data(),
-                                            std::min<std::size_t>(rep.written, buf.size())};
+                const auto rep = fx.awaitControl(fx.control().dumpRenderGraph(sv.scene_id, buf.data(), buf.size()));
+                const std::string_view dump{buf.data(), std::min<std::size_t>(rep.written, buf.size())};
                 // Prove the gate can actually fail before trusting it to pass:
                 // an empty or truncated dump makes the find() below vacuous, so
                 // a broken dump path would read as "budget fine" forever.
                 // Anchor on the section header the check depends on.
                 if (dump.find("最宽管线 set 数") == std::string_view::npos)
                 {
-                    std::fprintf(stderr,
+                    std::fprintf(
+                        stderr,
                         "FAIL: graph dump missing the layout-plan section "
                         "(needed=%u written=%u status=%d) — the budget gate below "
-                        "would pass vacuously.\n", rep.needed, rep.written, rep.status);
+                        "would pass vacuously.\n",
+                        rep.needed,
+                        rep.written,
+                        rep.status
+                    );
                     return 1;
                 }
                 if (dump.find("超预算") != std::string_view::npos)
                 {
-                    std::fprintf(stderr,
-                        "FAIL: a pipeline exceeds the portable descriptor-set budget.\n");
+                    std::fprintf(stderr, "FAIL: a pipeline exceeds the portable descriptor-set budget.\n");
                     // Only on failure — the full dump is ~1200 lines.
                     std::fwrite(dump.data(), 1, dump.size(), stderr);
                     return 1;
@@ -330,18 +343,22 @@ int main(int argc, char** argv)
             if (do_destroy)
             {
                 (void)fx.control().destroyScene(sv.scene_id);
-                fx.flush(kDrainPerCycle);   // let fif-deferred shutdownFull reclaim under load
+                fx.flush(kDrainPerCycle); // let fif-deferred shutdownFull reclaim under load
             }
 
             if (cycle % 10 == 9 || cycle + 1 == cycles)
-                std::printf("  cycle %3d/%d  (%.1f ms avg, validation errors so far: %d)\n",
-                            cycle + 1, cycles, msSince(t0) / (cycle + 1),
-                            validation_errors.load(std::memory_order_relaxed));
+                std::printf(
+                    "  cycle %3d/%d  (%.1f ms avg, validation errors so far: %d)\n",
+                    cycle + 1,
+                    cycles,
+                    msSince(t0) / (cycle + 1),
+                    validation_errors.load(std::memory_order_relaxed)
+                );
         }
 
-        fx.flush(kFinalDrain);          // settle the tail before device teardown
+        fx.flush(kFinalDrain); // settle the tail before device teardown
         std::printf("total: %.1f ms for %d cycles\n", msSince(t0), cycles);
-    }   // ← fixture dies here: instance/device destroy emits leak reports, counted above
+    } // ← fixture dies here: instance/device destroy emits leak reports, counted above
 
     const int errs = validation_errors.load(std::memory_order_relaxed);
     std::printf("validation errors (incl. destroy-time leak reports): %d\n", errs);

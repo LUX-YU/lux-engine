@@ -20,8 +20,7 @@ namespace lux::render
         /// Generation zero is never live. Wrapping a slot from UINT32_MAX to
         /// zero permanently retires it instead of making an ancient handle
         /// valid again.
-        [[nodiscard]] static constexpr std::uint32_t nextGeneration(
-            std::uint32_t generation) noexcept
+        [[nodiscard]] static constexpr std::uint32_t nextGeneration(std::uint32_t generation) noexcept
         {
             return generation + 1u;
         }
@@ -39,12 +38,9 @@ namespace lux::render
 
         [[nodiscard]] bool isAlive(InstanceSlot slot) const noexcept;
         [[nodiscard]] bool isAlive(RenderObjectHandle handle) const noexcept;
-        [[nodiscard]] std::uint32_t generation(
-            InstanceSlot slot) const noexcept;
-        [[nodiscard]] InstanceSlot resolveSlot(
-            RenderObjectHandle handle) const noexcept;
-        [[nodiscard]] RenderObjectHandle handleForSlot(
-            InstanceSlot slot) const noexcept;
+        [[nodiscard]] std::uint32_t generation(InstanceSlot slot) const noexcept;
+        [[nodiscard]] InstanceSlot resolveSlot(RenderObjectHandle handle) const noexcept;
+        [[nodiscard]] RenderObjectHandle handleForSlot(InstanceSlot slot) const noexcept;
 
         [[nodiscard]] std::uint32_t slotCount() const noexcept
         {
@@ -63,20 +59,15 @@ namespace lux::render
             return retired_count_;
         }
 
-        [[nodiscard]] std::span<const std::uint32_t> denseAliveSlots()
-            const noexcept
+        [[nodiscard]] std::span<const std::uint32_t> denseAliveSlots() const noexcept
         {
             return dense_alive_slots_;
         }
-        [[nodiscard]] std::uint32_t densePosition(
-            InstanceSlot slot) const noexcept
+        [[nodiscard]] std::uint32_t densePosition(InstanceSlot slot) const noexcept
         {
-            return slot.index < slot_dense_pos_.size()
-                ? slot_dense_pos_[slot.index]
-                : kInvalidDensePos;
+            return slot.index < slot_dense_pos_.size() ? slot_dense_pos_[slot.index] : kInvalidDensePos;
         }
-        [[nodiscard]] std::span<const std::uint32_t> generations()
-            const noexcept
+        [[nodiscard]] std::span<const std::uint32_t> generations() const noexcept
         {
             return generations_;
         }

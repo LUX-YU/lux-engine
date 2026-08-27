@@ -14,17 +14,21 @@ namespace lux::math
      */
     struct AABB
     {
-        Eigen::Vector3f min{  std::numeric_limits<float>::max(),
-                              std::numeric_limits<float>::max(),
-                              std::numeric_limits<float>::max() };
-        Eigen::Vector3f max{ -std::numeric_limits<float>::max(),
-                             -std::numeric_limits<float>::max(),
-                             -std::numeric_limits<float>::max() };
+        Eigen::Vector3f min{
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max()};
+        Eigen::Vector3f max{
+            -std::numeric_limits<float>::max(),
+            -std::numeric_limits<float>::max(),
+            -std::numeric_limits<float>::max()};
 
         // ----- Constructors -----
 
         AABB() = default;
-        AABB(const Eigen::Vector3f& mn, const Eigen::Vector3f& mx) : min(mn), max(mx) {}
+        AABB(const Eigen::Vector3f& mn, const Eigen::Vector3f& mx) : min(mn), max(mx)
+        {
+        }
 
         // ----- Queries -----
 
@@ -33,22 +37,29 @@ namespace lux::math
             return min.x() <= max.x() && min.y() <= max.y() && min.z() <= max.z();
         }
 
-        [[nodiscard]] Eigen::Vector3f center() const { return (min + max) * 0.5f; }
-        [[nodiscard]] Eigen::Vector3f extents() const { return max - min; }
-        [[nodiscard]] Eigen::Vector3f halfExtents() const { return (max - min) * 0.5f; }
+        [[nodiscard]] Eigen::Vector3f center() const
+        {
+            return (min + max) * 0.5f;
+        }
+        [[nodiscard]] Eigen::Vector3f extents() const
+        {
+            return max - min;
+        }
+        [[nodiscard]] Eigen::Vector3f halfExtents() const
+        {
+            return (max - min) * 0.5f;
+        }
 
         /// Check whether a point lies inside (or on the boundary of) this AABB.
         [[nodiscard]] bool contains(const Eigen::Vector3f& p) const
         {
-            return (p.array() >= min.array()).all() &&
-                   (p.array() <= max.array()).all();
+            return (p.array() >= min.array()).all() && (p.array() <= max.array()).all();
         }
 
         /// Check whether this AABB overlaps another AABB.
         [[nodiscard]] bool intersects(const AABB& other) const
         {
-            return (max.array() >= other.min.array()).all() &&
-                   (min.array() <= other.max.array()).all();
+            return (max.array() >= other.min.array()).all() && (min.array() <= other.max.array()).all();
         }
 
         /// Check whether this AABB intersects a sphere.
@@ -75,8 +86,7 @@ namespace lux::math
         }
 
         /// Build from an array of 3D points.
-        template<typename Iter>
-        static AABB fromPoints(Iter begin, Iter end)
+        template <typename Iter> static AABB fromPoints(Iter begin, Iter end)
         {
             AABB box;
             for (auto it = begin; it != end; ++it)

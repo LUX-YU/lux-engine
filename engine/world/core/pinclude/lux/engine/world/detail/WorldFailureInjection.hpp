@@ -16,11 +16,7 @@ namespace lux::world::detail
         PARTITION_BUILD_SIZE_OVERFLOW,
     };
 
-    LUX_ENGINE_WORLD_PUBLIC void failNextWorldOperationForTest(
-        EWorldFailurePoint point
-    ) noexcept;
+    LUX_ENGINE_WORLD_PUBLIC void failNextWorldOperationForTest(EWorldFailurePoint point) noexcept;
 
-    [[nodiscard]] bool consumeWorldFailureForTest(
-        EWorldFailurePoint point
-    ) noexcept;
+    [[nodiscard]] bool consumeWorldFailureForTest(EWorldFailurePoint point) noexcept;
 }

@@ -35,18 +35,20 @@
 
 using namespace lux::render;
 
-#define CHECK(cond)                                                              \
-    do {                                                                         \
-        if (!(cond)) {                                                           \
-            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            return 1;                                                            \
-        }                                                                        \
+#define CHECK(cond)                                                                                                    \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (!(cond))                                                                                                   \
+        {                                                                                                              \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                                       \
+            return 1;                                                                                                  \
+        }                                                                                                              \
     } while (0)
 
 namespace
 {
-    constexpr uint32_t kPageRes    = 4096;
-    constexpr uint32_t kPageCount  = 4;
+    constexpr uint32_t kPageRes = 4096;
+    constexpr uint32_t kPageCount = 4;
     constexpr uint32_t kSliceBudget = 128;
 
     /// identity -> the tile it was placed in (layer/x/y/resolution).
@@ -57,21 +59,22 @@ namespace
     Placement placeAll(std::vector<ShadowCasterRequest> requests)
     {
         ShadowAtlasPacker packer(kPageRes, kPageCount);
-        const auto ordered = orderCastersForPlacement(std::move(requests), packer,
-                                                      kSliceBudget, /*already_used=*/0);
+        const auto ordered = orderCastersForPlacement(std::move(requests), packer, kSliceBudget, /*already_used=*/0);
         Placement out;
         for (const auto& r : ordered)
         {
             if (r.tile_count == 6u)
             {
                 std::array<ShadowTileAllocation, 6> tiles{};
-                if (!allocateCubeWithFallback(packer, r.resolution, tiles)) continue;
-                out[r.identity] = tiles[0];          // base face pins the whole cube
+                if (!allocateCubeWithFallback(packer, r.resolution, tiles))
+                    continue;
+                out[r.identity] = tiles[0]; // base face pins the whole cube
             }
             else
             {
                 ShadowTileAllocation tile{};
-                if (!allocateTileWithFallback(packer, r.resolution, tile)) continue;
+                if (!allocateTileWithFallback(packer, r.resolution, tile))
+                    continue;
                 out[r.identity] = tile;
             }
         }
@@ -95,7 +98,8 @@ namespace
     }
 }
 
-int main()
+int
+main()
 {
     std::setbuf(stdout, nullptr);
     std::puts("=== shadow_atlas_placement_test ===");
@@ -106,7 +110,8 @@ int main()
     // walks through). Every one must produce the identical identity -> tile map.
     {
         auto base = makeRingOfPointLights(6, 2048);
-        for (uint32_t i = 0; i < 6; ++i) base[i].score = 100.0f - static_cast<float>(i);
+        for (uint32_t i = 0; i < 6; ++i)
+            base[i].score = 100.0f - static_cast<float>(i);
         const Placement reference = placeAll(base);
         CHECK(reference.size() == 6);
 
@@ -117,7 +122,8 @@ int main()
         {
             std::shuffle(scores.begin(), scores.end(), rng);
             auto shuffled = makeRingOfPointLights(6, 2048);
-            for (uint32_t i = 0; i < 6; ++i) shuffled[i].score = scores[i];
+            for (uint32_t i = 0; i < 6; ++i)
+                shuffled[i].score = scores[i];
 
             const Placement got = placeAll(shuffled);
             CHECK(got.size() == reference.size());
@@ -127,11 +133,20 @@ int main()
                 CHECK(it != got.end());
                 if (!sameTile(it->second, tile))
                 {
-                    std::fprintf(stderr,
+                    std::fprintf(
+                        stderr,
                         "FAIL trial %d: light %llu moved (%u,%u,%u,res %u) -> (%u,%u,%u,res %u)\n",
-                        trial, static_cast<unsigned long long>(identity),
-                        tile.layer, tile.x, tile.y, tile.resolution,
-                        it->second.layer, it->second.x, it->second.y, it->second.resolution);
+                        trial,
+                        static_cast<unsigned long long>(identity),
+                        tile.layer,
+                        tile.x,
+                        tile.y,
+                        tile.resolution,
+                        it->second.layer,
+                        it->second.x,
+                        it->second.y,
+                        it->second.resolution
+                    );
                     return 1;
                 }
             }
@@ -149,12 +164,12 @@ int main()
         const uint32_t kCount = 8;
         auto requests = makeRingOfPointLights(kCount, 2048);
         for (uint32_t i = 0; i < kCount; ++i)
-            requests[i].score = static_cast<float>(i);        // id 7 scores highest
+            requests[i].score = static_cast<float>(i); // id 7 scores highest
 
         ShadowAtlasPacker packer(kPageRes, kPageCount);
         const auto ordered = orderCastersForPlacement(requests, packer, kSliceBudget, 0);
         CHECK(!ordered.empty());
-        CHECK(ordered.size() < kCount);                        // genuinely under pressure
+        CHECK(ordered.size() < kCount); // genuinely under pressure
 
         // Survivors must be a suffix of the id range (the top scorers), and the
         // returned order must be ascending by identity (placement order).
@@ -166,13 +181,14 @@ int main()
             lowest_surviving_score = std::min(lowest_surviving_score, r.score);
         for (const auto& r : requests)
         {
-            const bool survived = std::any_of(ordered.begin(), ordered.end(),
-                [&](const ShadowCasterRequest& s) { return s.identity == r.identity; });
+            const bool survived = std::any_of(ordered.begin(), ordered.end(), [&](const ShadowCasterRequest& s) {
+                return s.identity == r.identity;
+            }
+            );
             if (!survived)
-                CHECK(r.score <= lowest_surviving_score);      // only lower scorers dropped
+                CHECK(r.score <= lowest_surviving_score); // only lower scorers dropped
         }
-        std::printf("  [ok] %zu/%u survived a full atlas, and they are the top scorers\n",
-                    ordered.size(), kCount);
+        std::printf("  [ok] %zu/%u survived a full atlas, and they are the top scorers\n", ordered.size(), kCount);
     }
 
     // ── 3. Spot and point identities never collide ─────────────────────────
@@ -182,7 +198,7 @@ int main()
     {
         std::vector<ShadowCasterRequest> mixed = {
             {/*spot  slot 0*/ (0ull << 32) | 0u, 10.0f, 1u, 1024},
-            {/*point slot 0*/ (1ull << 32) | 0u,  5.0f, 6u, 1024},
+            {/*point slot 0*/ (1ull << 32) | 0u, 5.0f, 6u, 1024},
         };
         const Placement got = placeAll(mixed);
         CHECK(got.size() == 2);
@@ -197,11 +213,12 @@ int main()
     // remaining SET — re-running with the same set reproduces it exactly.
     {
         auto five = makeRingOfPointLights(6, 2048);
-        five.erase(five.begin() + 2);                          // light 2 drops out
-        for (uint32_t i = 0; i < five.size(); ++i) five[i].score = static_cast<float>(i);
+        five.erase(five.begin() + 2); // light 2 drops out
+        for (uint32_t i = 0; i < five.size(); ++i)
+            five[i].score = static_cast<float>(i);
         const Placement a = placeAll(five);
 
-        std::reverse(five.begin(), five.end());                 // same set, other order
+        std::reverse(five.begin(), five.end()); // same set, other order
         const Placement b = placeAll(five);
         CHECK(a.size() == b.size());
         for (const auto& [identity, tile] : a)
@@ -220,8 +237,8 @@ int main()
     {
         std::mt19937 rng(777);
         std::uniform_int_distribution<uint32_t> res_pick(0, 2);
-        std::uniform_int_distribution<int>      kind_pick(0, 1);
-        std::uniform_real_distribution<float>   score_pick(0.1f, 100.0f);
+        std::uniform_int_distribution<int> kind_pick(0, 1);
+        std::uniform_real_distribution<float> score_pick(0.1f, 100.0f);
         constexpr uint32_t kResChoices[3] = {1024, 2048, 4096};
 
         for (int trial = 0; trial < 500; ++trial)
@@ -232,9 +249,12 @@ int main()
             for (uint32_t i = 0; i < n; ++i)
             {
                 const bool spot = kind_pick(rng) == 0;
-                reqs.push_back({(static_cast<uint64_t>(spot ? 0 : 1) << 32) | i,
-                                score_pick(rng), spot ? 1u : 6u,
-                                kResChoices[res_pick(rng)]});
+                reqs.push_back(
+                    {(static_cast<uint64_t>(spot ? 0 : 1) << 32) | i,
+                     score_pick(rng),
+                     spot ? 1u : 6u,
+                     kResChoices[res_pick(rng)]}
+                );
             }
             ShadowAtlasPacker packer(kPageRes, kPageCount);
             const auto ordered = orderCastersForPlacement(reqs, packer, kSliceBudget, 0);
@@ -254,10 +274,14 @@ int main()
                 }
                 if (!fit)
                 {
-                    std::fprintf(stderr,
+                    std::fprintf(
+                        stderr,
                         "FAIL trial %d: ordered set failed the REAL allocation "
-                        "(identity %llu, res %u)\n", trial,
-                        static_cast<unsigned long long>(r.identity), r.resolution);
+                        "(identity %llu, res %u)\n",
+                        trial,
+                        static_cast<unsigned long long>(r.identity),
+                        r.resolution
+                    );
                     return 1;
                 }
                 used += std::max(r.tile_count, 1u);
@@ -280,34 +304,39 @@ int main()
         const uint32_t kCount = 8;
         auto first = makeRingOfPointLights(kCount, 2048);
         for (uint32_t i = 0; i < kCount; ++i)
-            first[i].score = static_cast<float>(i + 1);         // 1..8
+            first[i].score = static_cast<float>(i + 1); // 1..8
         ShadowAtlasPacker packer(kPageRes, kPageCount);
         const auto gen1 = orderCastersForPlacement(first, packer, kSliceBudget, 0);
         CHECK(!gen1.empty());
-        CHECK(gen1.size() < kCount);                            // under real pressure
+        CHECK(gen1.size() < kCount); // under real pressure
 
         std::vector<uint64_t> sticky;
-        for (const auto& r : gen1) sticky.push_back(r.identity);
+        for (const auto& r : gen1)
+            sticky.push_back(r.identity);
         std::sort(sticky.begin(), sticky.end());
-        const auto isHolder = [&](uint64_t id)
-        { return std::binary_search(sticky.begin(), sticky.end(), id); };
+        const auto isHolder = [&](uint64_t id) { return std::binary_search(sticky.begin(), sticky.end(), id); };
 
         // Weakest holder + strongest loser, by the ORIGINAL scores.
         size_t weak_holder = SIZE_MAX, strong_loser = SIZE_MAX;
         for (size_t i = 0; i < first.size(); ++i)
         {
             if (isHolder(first[i].identity))
-            { if (weak_holder == SIZE_MAX || first[i].score < first[weak_holder].score) weak_holder = i; }
+            {
+                if (weak_holder == SIZE_MAX || first[i].score < first[weak_holder].score)
+                    weak_holder = i;
+            }
             else
-            { if (strong_loser == SIZE_MAX || first[i].score > first[strong_loser].score) strong_loser = i; }
+            {
+                if (strong_loser == SIZE_MAX || first[i].score > first[strong_loser].score)
+                    strong_loser = i;
+            }
         }
         CHECK(weak_holder != SIZE_MAX && strong_loser != SIZE_MAX);
 
         // In-band flip: the loser edges past the weakest holder on raw score,
         // but stays under holder_score * kStickyScoreBoost — the set must hold.
         auto second = first;
-        second[strong_loser].score =
-            second[weak_holder].score * (kStickyScoreBoost - 0.1f);
+        second[strong_loser].score = second[weak_holder].score * (kStickyScoreBoost - 0.1f);
         CHECK(second[strong_loser].score > second[weak_holder].score);
         const auto gen2 = orderCastersForPlacement(second, packer, kSliceBudget, 0, sticky);
         CHECK(gen2.size() == gen1.size());
@@ -317,16 +346,18 @@ int main()
         // Out-of-band: the newcomer clears the band — it MUST get in
         // (hysteresis is a damper, not permanent tenure).
         auto third = first;
-        third[strong_loser].score =
-            third[weak_holder].score * kStickyScoreBoost + 1.0f;
+        third[strong_loser].score = third[weak_holder].score * kStickyScoreBoost + 1.0f;
         const auto gen3 = orderCastersForPlacement(third, packer, kSliceBudget, 0, sticky);
-        const bool newcomer_in = std::any_of(gen3.begin(), gen3.end(),
-            [&](const ShadowCasterRequest& r) { return r.identity == third[strong_loser].identity; });
+        const bool newcomer_in = std::any_of(gen3.begin(), gen3.end(), [&](const ShadowCasterRequest& r) {
+            return r.identity == third[strong_loser].identity;
+        }
+        );
         CHECK(newcomer_in);
-        if (gen3.size() == gen1.size())   // seats conserved -> someone made way
-            CHECK(std::none_of(gen3.begin(), gen3.end(),
-                [&](const ShadowCasterRequest& r)
-                { return r.identity == third[weak_holder].identity; }));
+        if (gen3.size() == gen1.size()) // seats conserved -> someone made way
+            CHECK(std::none_of(gen3.begin(), gen3.end(), [&](const ShadowCasterRequest& r) {
+                return r.identity == third[weak_holder].identity;
+            })
+            );
         std::puts("  [ok] sticky hysteresis: in-band flips damped, out-of-band flips honoured");
     }
 

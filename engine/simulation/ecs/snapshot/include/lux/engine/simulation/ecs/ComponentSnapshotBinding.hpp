@@ -21,10 +21,7 @@ namespace lux::simulation::ecs
     {
         struct ComponentSnapshotSetAccess;
 
-        using CloneComponentStorageFn = void (*)(
-            const Registry&,
-            Registry&
-        );
+        using CloneComponentStorageFn = void (*)(const Registry&, Registry&);
 
 #if defined(LUX_SIMULATION_ECS_SNAPSHOT_TESTING)
         struct ComponentSnapshotTestStats final
@@ -44,33 +41,28 @@ namespace lux::simulation::ecs
 
     class ComponentSnapshotBinding final
     {
-      public:
+    public:
         [[nodiscard]] constexpr const ComponentSchema& schema() const noexcept
         {
             return *schema_;
         }
 
-      private:
-        template <class Component>
-        static void cloneStorage(const Registry& source, Registry& target)
+    private:
+        template <class Component> static void cloneStorage(const Registry& source, Registry& target)
         {
 #if defined(LUX_SIMULATION_ECS_SNAPSHOT_TESTING)
             ++detail::ComponentSnapshotTestStats::clone_calls;
             ++detail::ComponentSnapshotTestStats::storage_lookups;
 #endif
-            const auto* source_storage =
-                source.template storage<Component>();
+            const auto* source_storage = source.template storage<Component>();
             if (source_storage == nullptr || source_storage->empty())
                 return;
 
-            auto& target_storage =
-                target.template storage<Component>();
+            auto& target_storage = target.template storage<Component>();
             target_storage.reserve(source_storage->size());
             auto entities = source_storage->each();
             using Iterator = decltype(entities.begin());
-            const detail::StorageEntityIterator<Iterator> first(
-                entities.begin()
-            );
+            const detail::StorageEntityIterator<Iterator> first(entities.begin());
             const detail::StorageEntityIterator<Iterator> last(entities.end());
             if constexpr (std::is_empty_v<Component>)
             {
@@ -78,11 +70,7 @@ namespace lux::simulation::ecs
             }
             else
             {
-                target_storage.insert(
-                    first,
-                    last,
-                    source_storage->begin()
-                );
+                target_storage.insert(first, last, source_storage->begin());
             }
         }
 
@@ -95,9 +83,7 @@ namespace lux::simulation::ecs
         }
 
         template <class Component>
-        friend constexpr ComponentSnapshotBinding bindComponentSnapshot(
-            const ComponentSchema&
-        ) noexcept;
+        friend constexpr ComponentSnapshotBinding bindComponentSnapshot(const ComponentSchema&) noexcept;
         friend class ComponentSnapshotSet;
         friend class EcsSnapshot;
         friend struct detail::ComponentSnapshotSetAccess;
@@ -109,15 +95,10 @@ namespace lux::simulation::ecs
     namespace detail
     {
         template <class... Binding>
-            requires (std::same_as<
-                std::remove_cvref_t<Binding>,
-                ComponentSnapshotBinding> && ...)
-        [[nodiscard]] constexpr auto componentSnapshotBindings(
-            Binding&&... binding
-        ) noexcept
+            requires(std::same_as<std::remove_cvref_t<Binding>, ComponentSnapshotBinding> && ...)
+        [[nodiscard]] constexpr auto componentSnapshotBindings(Binding&&... binding) noexcept
         {
-            return std::array<ComponentSnapshotBinding, sizeof...(Binding)>{
-                std::forward<Binding>(binding)...};
+            return std::array<ComponentSnapshotBinding, sizeof...(Binding)>{std::forward<Binding>(binding)...};
         }
     } // namespace detail
 
@@ -128,14 +109,9 @@ namespace lux::simulation::ecs
     };
 
     template <class Component>
-    [[nodiscard]] constexpr ComponentSnapshotBinding bindComponentSnapshot(
-        const ComponentSchema& schema
-    ) noexcept
+    [[nodiscard]] constexpr ComponentSnapshotBinding bindComponentSnapshot(const ComponentSchema& schema) noexcept
     {
         static_assert(std::copy_constructible<Component>);
-        return ComponentSnapshotBinding{
-            schema,
-            &ComponentSnapshotBinding::cloneStorage<Component>
-        };
+        return ComponentSnapshotBinding{schema, &ComponentSnapshotBinding::cloneStorage<Component>};
     }
 } // namespace lux::simulation::ecs

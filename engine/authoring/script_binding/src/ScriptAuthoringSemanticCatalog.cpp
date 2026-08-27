@@ -12,13 +12,9 @@ namespace lux::authoring
 {
     namespace
     {
-        [[nodiscard]] std::string passName(
-            lux::script::EScriptPassMode pass
-        )
+        [[nodiscard]] std::string passName(lux::script::EScriptPassMode pass)
         {
-            return pass == lux::script::EScriptPassMode::CONST_REF
-                ? "CONST_REF"
-                : "VALUE";
+            return pass == lux::script::EScriptPassMode::CONST_REF ? "CONST_REF" : "VALUE";
         }
 
         [[nodiscard]] ScriptAuthoringSemanticEntry entry(
@@ -44,39 +40,30 @@ namespace lux::authoring
                 return_allowed};
         }
 
-        [[nodiscard]] bool validHexId(
-            std::string_view text,
-            std::uint64_t expected
-        ) noexcept
+        [[nodiscard]] bool validHexId(std::string_view text, std::uint64_t expected) noexcept
         {
             if (text.size() != 18U || text[0] != '0' || text[1] != 'x')
                 return false;
             std::uint64_t parsed{};
-            const auto result = std::from_chars(
-                text.data() + 2U,
-                text.data() + text.size(),
-                parsed,
-                16
-            );
-            return result.ec == std::errc{} &&
-                result.ptr == text.data() + text.size() && parsed == expected;
+            const auto result = std::from_chars(text.data() + 2U, text.data() + text.size(), parsed, 16);
+            return result.ec == std::errc{} && result.ptr == text.data() + text.size() && parsed == expected;
         }
     }
 
-    lux::cxx::expected<
-        ScriptAuthoringSemanticEntry,
-        EScriptAuthoringSemanticCatalogError>
+    lux::cxx::expected<ScriptAuthoringSemanticEntry, EScriptAuthoringSemanticCatalogError>
     makeScriptAuthoringRecordEntry(
         std::string_view canonical_name,
         std::uint32_t size,
         std::uint32_t alignment
     ) noexcept
     {
-        if (canonical_name.empty() || size == 0U || alignment == 0U ||
-            (alignment & (alignment - 1U)) != 0U)
+        const bool is_missing_name = canonical_name.empty();
+        const bool is_invalid_size = size == 0U;
+        const bool is_invalid_alignment = alignment == 0U || (alignment & (alignment - 1U)) != 0U;
+        const bool is_invalid_entry = is_missing_name || is_invalid_size || is_invalid_alignment;
+        if (is_invalid_entry)
         {
-            return lux::cxx::unexpected(
-                EScriptAuthoringSemanticCatalogError::INVALID_ENTRY);
+            return lux::cxx::unexpected(EScriptAuthoringSemanticCatalogError::INVALID_ENTRY);
         }
         try
         {
@@ -92,56 +79,45 @@ namespace lux::authoring
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                EScriptAuthoringSemanticCatalogError::ALLOCATION_FAILURE);
+            return lux::cxx::unexpected(EScriptAuthoringSemanticCatalogError::ALLOCATION_FAILURE);
         }
     }
 
     lux::cxx::expected<void, EScriptAuthoringSemanticCatalogError>
-    ScriptAuthoringSemanticCatalog::add(
-        ScriptAuthoringSemanticEntry value
-    ) noexcept
+    ScriptAuthoringSemanticCatalog::add(ScriptAuthoringSemanticEntry value) noexcept
     {
-        if (value.canonical_name.empty() || value.type_id == 0U ||
-            value.type_id != lux::script::scriptSemanticTypeId(
-                value.canonical_name) ||
-            !validHexId(value.type_id_hex, value.type_id) ||
-            value.abi_kind == LUX_SCRIPT_VK_VOID ||
-            value.abi_kind > LUX_SCRIPT_VK_STRUCT_REF ||
-            value.size == 0U || value.alignment == 0U ||
-            (value.alignment & (value.alignment - 1U)) != 0U ||
-            value.allowed_parameter_passes.empty() ||
+        const bool is_invalid_identity =
+            value.canonical_name.empty() || value.type_id == 0U ||
+            value.type_id != lux::script::scriptSemanticTypeId(value.canonical_name) ||
+            !validHexId(value.type_id_hex, value.type_id);
+        const bool is_invalid_abi_kind = value.abi_kind == LUX_SCRIPT_VK_VOID ||
+            value.abi_kind > LUX_SCRIPT_VK_STRUCT_REF;
+        const bool is_invalid_storage = value.size == 0U;
+        const bool is_invalid_alignment = value.alignment == 0U ||
+            (value.alignment & (value.alignment - 1U)) != 0U;
+        const bool is_invalid_parameter_pass = value.allowed_parameter_passes.empty() ||
             std::find(
                 value.allowed_parameter_passes.begin(),
                 value.allowed_parameter_passes.end(),
-                value.default_parameter_pass) ==
-                value.allowed_parameter_passes.end())
+                value.default_parameter_pass) == value.allowed_parameter_passes.end();
+        const bool is_invalid_entry = is_invalid_identity || is_invalid_abi_kind ||
+            is_invalid_storage || is_invalid_alignment || is_invalid_parameter_pass;
+
+        if (is_invalid_entry)
         {
-            return lux::cxx::unexpected(
-                EScriptAuthoringSemanticCatalogError::INVALID_ENTRY);
+            return lux::cxx::unexpected(EScriptAuthoringSemanticCatalogError::INVALID_ENTRY);
         }
         const auto found = std::lower_bound(
             entries_.begin(),
             entries_.end(),
             value.canonical_name,
-            [](const auto& left, std::string_view right) noexcept
-            {
-                return left.canonical_name < right;
-            }
+            [](const auto& left, std::string_view right) noexcept { return left.canonical_name < right; }
         );
-        if (found != entries_.end() &&
-            found->canonical_name == value.canonical_name)
+        if (found != entries_.end() && found->canonical_name == value.canonical_name)
         {
-            return *found == value
-                ? lux::cxx::expected<
-                    void,
-                    EScriptAuthoringSemanticCatalogError>{}
-                : lux::cxx::expected<
-                    void,
-                    EScriptAuthoringSemanticCatalogError>{
-                    lux::cxx::unexpected(
-                        EScriptAuthoringSemanticCatalogError::
-                            IDENTITY_CONFLICT)};
+            return *found == value ? lux::cxx::expected<void, EScriptAuthoringSemanticCatalogError>{}
+                                   : lux::cxx::expected<void, EScriptAuthoringSemanticCatalogError>{
+                                         lux::cxx::unexpected(EScriptAuthoringSemanticCatalogError::IDENTITY_CONFLICT)};
         }
         try
         {
@@ -150,40 +126,30 @@ namespace lux::authoring
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                EScriptAuthoringSemanticCatalogError::ALLOCATION_FAILURE);
+            return lux::cxx::unexpected(EScriptAuthoringSemanticCatalogError::ALLOCATION_FAILURE);
         }
     }
 
-    std::span<const ScriptAuthoringSemanticEntry>
-    ScriptAuthoringSemanticCatalog::entries() const noexcept
+    std::span<const ScriptAuthoringSemanticEntry> ScriptAuthoringSemanticCatalog::entries() const noexcept
     {
         return entries_;
     }
 
-    const ScriptAuthoringSemanticEntry* ScriptAuthoringSemanticCatalog::find(
-        std::string_view canonical_name
-    ) const noexcept
+    const ScriptAuthoringSemanticEntry*
+    ScriptAuthoringSemanticCatalog::find(std::string_view canonical_name) const noexcept
     {
         const auto found = std::lower_bound(
             entries_.begin(),
             entries_.end(),
             canonical_name,
-            [](const auto& left, std::string_view right) noexcept
-            {
-                return left.canonical_name < right;
-            }
+            [](const auto& left, std::string_view right) noexcept { return left.canonical_name < right; }
         );
-        return found != entries_.end() &&
-                found->canonical_name == canonical_name
-            ? std::addressof(*found)
-            : nullptr;
+        return found != entries_.end() && found->canonical_name == canonical_name ? std::addressof(*found) : nullptr;
     }
 
     std::string ScriptAuthoringSemanticCatalog::canonicalJson() const
     {
-        std::string result{
-            "{\"schema\":\"lux-script-semantics\",\"version\":1,\"types\":["};
+        std::string result{"{\"schema\":\"lux-script-semantics\",\"version\":1,\"types\":["};
         for (std::size_t index{}; index < entries_.size(); ++index)
         {
             if (index != 0U)
@@ -195,15 +161,11 @@ namespace lux::authoring
                 value.abi_kind,
                 value.alignment
             );
-            for (std::size_t pass{};
-                 pass < value.allowed_parameter_passes.size(); ++pass)
+            for (std::size_t pass{}; pass < value.allowed_parameter_passes.size(); ++pass)
             {
                 if (pass != 0U)
                     result.push_back(',');
-                result += std::format(
-                    "\"{}\"",
-                    passName(value.allowed_parameter_passes[pass])
-                );
+                result += std::format("\"{}\"", passName(value.allowed_parameter_passes[pass]));
             }
             result += std::format(
                 "],\"canonical_name\":\"{}\","
@@ -221,41 +183,35 @@ namespace lux::authoring
         return result;
     }
 
-    lux::cxx::expected<
-        ScriptAuthoringSemanticCatalog,
-        EScriptAuthoringSemanticCatalogError>
+    lux::cxx::expected<ScriptAuthoringSemanticCatalog, EScriptAuthoringSemanticCatalogError>
     makeBaseScriptAuthoringSemanticCatalog() noexcept
     {
         try
         {
             ScriptAuthoringSemanticCatalog result;
-            for (const auto& layout :
-                 lux::script::ScriptBuiltinSemanticLayouts)
+            for (const auto& layout : lux::script::ScriptBuiltinSemanticLayouts)
             {
                 auto added = result.add(entry(
                     layout.canonical_name,
                     layout.abi_kind,
                     layout.size,
                     layout.alignment,
-                    {
-                        lux::script::EScriptPassMode::VALUE,
-                        lux::script::EScriptPassMode::CONST_REF},
+                    {lux::script::EScriptPassMode::VALUE, lux::script::EScriptPassMode::CONST_REF},
                     lux::script::EScriptPassMode::VALUE,
-                    true
-                ));
+                    true)
+                );
                 if (!added)
                     return lux::cxx::unexpected(added.error());
             }
             auto step = result.add(entry(
-                lux::script::ScriptSemanticTypeTraits<
-                    lux::simulation::SimulationStepInfo>::CanonicalName,
+                lux::script::ScriptSemanticTypeTraits<lux::simulation::SimulationStepInfo>::CanonicalName,
                 LUX_SCRIPT_VK_STRUCT_REF,
                 sizeof(lux::simulation::SimulationStepInfo),
                 alignof(lux::simulation::SimulationStepInfo),
                 {lux::script::EScriptPassMode::CONST_REF},
                 lux::script::EScriptPassMode::CONST_REF,
-                false
-            ));
+                false)
+            );
             if (!step)
                 return lux::cxx::unexpected(step.error());
             auto stop = result.add(entry(
@@ -265,16 +221,15 @@ namespace lux::authoring
                 alignof(lux::simulation::EBehaviorStopReason),
                 {lux::script::EScriptPassMode::VALUE},
                 lux::script::EScriptPassMode::VALUE,
-                false
-            ));
+                false)
+            );
             if (!stop)
                 return lux::cxx::unexpected(stop.error());
             return result;
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                EScriptAuthoringSemanticCatalogError::ALLOCATION_FAILURE);
+            return lux::cxx::unexpected(EScriptAuthoringSemanticCatalogError::ALLOCATION_FAILURE);
         }
     }
 }

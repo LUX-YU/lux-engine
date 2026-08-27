@@ -32,9 +32,8 @@ namespace lux::simulation::ecs
 
     class LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC Transform2DSystem final
     {
-      public:
-        inline static constexpr std::array Capabilities{
-            std::string_view{"transform.2d"}};
+    public:
+        inline static constexpr std::array Capabilities{std::string_view{"transform.2d"}};
         inline static constexpr auto Access = makeSystemAccessSpec<
             ComponentRead<Transform2D>,
             ComponentWrite<WorldTransform2D>,
@@ -45,21 +44,13 @@ namespace lux::simulation::ecs
             .version = 1,
             .capabilities = Capabilities};
 
-        Transform2DSystem(
-            Registry& registry,
-            HierarchyIndex& hierarchy,
-            const HierarchyDeltaBatch& hierarchy_deltas
-        );
+        Transform2DSystem(Registry& registry, HierarchyIndex& hierarchy, const HierarchyDeltaBatch& hierarchy_deltas);
         ~Transform2DSystem() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(
-            std::size_t entity_capacity
-        ) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> update(
-            EcsCommandWriter& commands
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(std::size_t entity_capacity) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> update(EcsCommandWriter& commands) noexcept;
 
-      private:
+    private:
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
         struct Impl;
@@ -69,9 +60,8 @@ namespace lux::simulation::ecs
 
     class LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC Transform3DSystem final
     {
-      public:
-        inline static constexpr std::array Capabilities{
-            std::string_view{"transform.3d"}};
+    public:
+        inline static constexpr std::array Capabilities{std::string_view{"transform.3d"}};
         inline static constexpr auto Access = makeSystemAccessSpec<
             ComponentRead<Transform3D>,
             ComponentWrite<WorldTransform3D>,
@@ -82,21 +72,13 @@ namespace lux::simulation::ecs
             .version = 1,
             .capabilities = Capabilities};
 
-        Transform3DSystem(
-            Registry& registry,
-            HierarchyIndex& hierarchy,
-            const HierarchyDeltaBatch& hierarchy_deltas
-        );
+        Transform3DSystem(Registry& registry, HierarchyIndex& hierarchy, const HierarchyDeltaBatch& hierarchy_deltas);
         ~Transform3DSystem() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(
-            std::size_t entity_capacity
-        ) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> update(
-            EcsCommandWriter& commands
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(std::size_t entity_capacity) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> update(EcsCommandWriter& commands) noexcept;
 
-      private:
+    private:
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
         struct Impl;

@@ -23,15 +23,22 @@ namespace lux::asset
     bool VirtualPath::isLegalChar(char c) noexcept
     {
         const auto b = static_cast<unsigned char>(c);
-        if (b < 0x20 || b == 0x7F)   // control characters
+        if (b < 0x20 || b == 0x7F) // control characters
             return false;
-        if (b >= 0x80)               // UTF-8 continuation / lead bytes pass
+        if (b >= 0x80) // UTF-8 continuation / lead bytes pass
             return true;
         switch (c)
         {
-        case '/': case '\\': case '.': case ':':
-        case '"': case '|':  case '?': case '*':
-        case '<': case '>':
+        case '/':
+        case '\\':
+        case '.':
+        case ':':
+        case '"':
+        case '|':
+        case '?':
+        case '*':
+        case '<':
+        case '>':
             return false;
         default:
             return true;
@@ -42,12 +49,10 @@ namespace lux::asset
     {
         if (root.size() < 2 || root.front() != '/')
             return false;
-        return !validateRelative(root.substr(1)).has_value()
-            && root.find('/', 1) == std::string_view::npos;
+        return !validateRelative(root.substr(1)).has_value() && root.find('/', 1) == std::string_view::npos;
     }
 
-    std::optional<EVirtualPathError>
-    VirtualPath::validateRelative(std::string_view rel) noexcept
+    std::optional<EVirtualPathError> VirtualPath::validateRelative(std::string_view rel) noexcept
     {
         if (rel.empty())
             return EVirtualPathError::EMPTY;
@@ -61,18 +66,16 @@ namespace lux::asset
         {
             const std::size_t slash = rel.find('/', pos);
             const std::string_view seg =
-                rel.substr(pos, slash == std::string_view::npos ? std::string_view::npos
-                                                                : slash - pos);
+                rel.substr(pos, slash == std::string_view::npos ? std::string_view::npos : slash - pos);
             if (auto err = validateSegment(seg))
-                return err;                       // covers "a//b" and trailing '/'
+                return err; // covers "a//b" and trailing '/'
             if (slash == std::string_view::npos)
                 return std::nullopt;
             pos = slash + 1;
         }
     }
 
-    lux::cxx::expected<VirtualPath, EVirtualPathError>
-    VirtualPath::parse(std::string_view text)
+    lux::cxx::expected<VirtualPath, EVirtualPathError> VirtualPath::parse(std::string_view text)
     {
         if (text.empty())
             return lux::cxx::unexpected(EVirtualPathError::EMPTY);
@@ -86,8 +89,7 @@ namespace lux::asset
         // Root segment.
         const std::size_t root_end = body.find('/');
         const std::string_view root_seg =
-            body.substr(0, root_end == std::string_view::npos ? std::string_view::npos
-                                                              : root_end);
+            body.substr(0, root_end == std::string_view::npos ? std::string_view::npos : root_end);
         if (auto err = validateSegment(root_seg))
             return lux::cxx::unexpected(*err);
         if (root_end == std::string_view::npos)
@@ -103,7 +105,7 @@ namespace lux::asset
             return lux::cxx::unexpected(*err);
 
         VirtualPath out;
-        out.path_     = std::string{ text };
+        out.path_ = std::string{text};
         out.root_len_ = root_seg.size();
         const std::size_t last_slash = text.rfind('/');
         out.name_pos_ = last_slash + 1;

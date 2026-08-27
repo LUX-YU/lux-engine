@@ -23,11 +23,9 @@
 
 namespace lux::classic_mesh
 {
-    inline constexpr std::string_view kClassicMeshBatchContentTypeName =
-        "lux.render.geometry.classic_mesh.batch";
+    inline constexpr std::string_view kClassicMeshBatchContentTypeName = "lux.render.geometry.classic_mesh.batch";
     inline constexpr std::uint32_t kClassicMeshBatchSchemaVersion = 1u;
-    inline constexpr std::uint32_t kClassicMeshBatchBlobMagic =
-        0x4243584cu; // LXCB
+    inline constexpr std::uint32_t kClassicMeshBatchBlobMagic = 0x4243584cu; // LXCB
 
     enum class EClassicMeshInstanceFlag : std::uint32_t
     {
@@ -40,8 +38,7 @@ namespace lux::classic_mesh
     inline constexpr std::uint32_t kClassicMeshInstanceKnownFlags =
         static_cast<std::uint32_t>(EClassicMeshInstanceFlag::VISIBLE) |
         static_cast<std::uint32_t>(EClassicMeshInstanceFlag::CAST_SHADOW) |
-        static_cast<std::uint32_t>(
-            EClassicMeshInstanceFlag::RECEIVE_SHADOW);
+        static_cast<std::uint32_t>(EClassicMeshInstanceFlag::RECEIVE_SHADOW);
 
     struct ClassicMeshBatchInstanceV1 final
     {
@@ -57,23 +54,17 @@ namespace lux::classic_mesh
         std::uint32_t rgba8{0xffffffffu};
         std::uint32_t flags{
             static_cast<std::uint32_t>(EClassicMeshInstanceFlag::VISIBLE) |
-            static_cast<std::uint32_t>(
-                EClassicMeshInstanceFlag::CAST_SHADOW) |
-            static_cast<std::uint32_t>(
-                EClassicMeshInstanceFlag::RECEIVE_SHADOW)};
+            static_cast<std::uint32_t>(EClassicMeshInstanceFlag::CAST_SHADOW) |
+            static_cast<std::uint32_t>(EClassicMeshInstanceFlag::RECEIVE_SHADOW)};
 
-        friend bool operator==(
-            const ClassicMeshBatchInstanceV1&,
-            const ClassicMeshBatchInstanceV1&) = default;
+        friend bool operator==(const ClassicMeshBatchInstanceV1&, const ClassicMeshBatchInstanceV1&) = default;
     };
 
     struct ClassicMeshBatchBlobV1 final
     {
         std::vector<ClassicMeshBatchInstanceV1> instances;
 
-        friend bool operator==(
-            const ClassicMeshBatchBlobV1&,
-            const ClassicMeshBatchBlobV1&) = default;
+        friend bool operator==(const ClassicMeshBatchBlobV1&, const ClassicMeshBatchBlobV1&) = default;
     };
 
     struct ClassicMeshBatchCodecLimits final
@@ -98,30 +89,27 @@ namespace lux::classic_mesh
 
     struct ClassicMeshBatchCodecFailure final
     {
-        EClassicMeshBatchCodecError error{
-            EClassicMeshBatchCodecError::INVALID_ARGUMENT
-        };
+        EClassicMeshBatchCodecError error{EClassicMeshBatchCodecError::INVALID_ARGUMENT};
         std::string detail;
     };
 
-    template <typename T>
-    using ClassicMeshBatchExp = lux::cxx::expected<T, ClassicMeshBatchCodecFailure>;
+    template <typename T> using ClassicMeshBatchExp = lux::cxx::expected<T, ClassicMeshBatchCodecFailure>;
 
-    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_STANDARD_CONTENT_PUBLIC
-    ClassicMeshBatchExp<void>
+    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_STANDARD_CONTENT_PUBLIC ClassicMeshBatchExp<void>
     validateClassicMeshBatchBlob(
         const ClassicMeshBatchBlobV1& blob,
-        const ClassicMeshBatchCodecLimits& limits = {}) noexcept;
+        const ClassicMeshBatchCodecLimits& limits = {}
+    ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_STANDARD_CONTENT_PUBLIC
-    ClassicMeshBatchExp<std::vector<std::byte>>
+    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_STANDARD_CONTENT_PUBLIC ClassicMeshBatchExp<std::vector<std::byte>>
     encodeClassicMeshBatchBlob(
         const ClassicMeshBatchBlobV1& blob,
-        const ClassicMeshBatchCodecLimits& limits = {}) noexcept;
+        const ClassicMeshBatchCodecLimits& limits = {}
+    ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_STANDARD_CONTENT_PUBLIC
-    ClassicMeshBatchExp<ClassicMeshBatchBlobV1>
+    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_STANDARD_CONTENT_PUBLIC ClassicMeshBatchExp<ClassicMeshBatchBlobV1>
     decodeClassicMeshBatchBlob(
         std::span<const std::byte> bytes,
-        const ClassicMeshBatchCodecLimits& limits = {}) noexcept;
+        const ClassicMeshBatchCodecLimits& limits = {}
+    ) noexcept;
 } // namespace lux::classic_mesh

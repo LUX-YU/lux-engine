@@ -6,7 +6,7 @@
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/memory/ArenaAllocator.hpp>
 #include <lux/engine/render/gpu/memory/ChainedArenaAllocator.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp>  // A-5: lightweight leaf (no gapi/vk/vk.hpp)
+#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // A-5: lightweight leaf (no gapi/vk/vk.hpp)
 #include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
 
 #include <lux/engine/function/render/client/core/Errors.hpp>
@@ -15,7 +15,10 @@
 #include <lux/engine/render/resources/mesh/MeshCpuData.hpp>
 #include <lux/engine/render/resources/mesh/StableRecordPages.hpp>
 #include <lux/engine/function/render/Capacity.hpp>
-namespace lux::render { class TransferScheduler; }
+namespace lux::render
+{
+    class TransferScheduler;
+}
 #include <vector>
 #include <array>
 #include <span>
@@ -33,27 +36,37 @@ namespace lux::render
 {
     constexpr inline VertexLayoutId invalid_layout_id = kInvalidVertexLayoutId;
 
-    enum class EIndexType : uint8_t { None = 0, UInt16, UInt32 };
+    enum class EIndexType : uint8_t
+    {
+        None = 0,
+        UInt16,
+        UInt32
+    };
 
     /// Max discrete LOD levels per mesh (LOD0 + up to 3 simplified). Caps the
     /// per-mesh LOD arrays here and the per-instance lod_mdc[] routing table.
     inline constexpr uint32_t kMaxMeshLod = 4;
 
-    struct BufferRange {
-        VkDeviceSize offset{ 0 };
-        VkDeviceSize size{ 0 };
-        bool isValid() const { return size > 0; }
+    struct BufferRange
+    {
+        VkDeviceSize offset{0};
+        VkDeviceSize size{0};
+        bool isValid() const
+        {
+            return size > 0;
+        }
     };
 
     // -------- GPU-Driven Segment Table Entry --------
-    struct alignas(16) MeshInfoGpu {
-        uint32_t index_first;    // Starting index in global IBO (index buffer)
-        uint32_t index_count;    // Number of indices to draw in this segment
-        int32_t  base_vertex;    // Starting vertex in global VBO (vertex buffer)
+    struct alignas(16) MeshInfoGpu
+    {
+        uint32_t index_first; // Starting index in global IBO (index buffer)
+        uint32_t index_count; // Number of indices to draw in this segment
+        int32_t base_vertex;  // Starting vertex in global VBO (vertex buffer)
 
         // Data reserved for culling
-        float    bounds_min[3];
-        float    bounds_max[3];
+        float bounds_min[3];
+        float bounds_max[3];
     };
     static_assert(sizeof(MeshInfoGpu) % 16 == 0, "MeshInfoGpu must be 16B-aligned");
 
@@ -68,64 +81,66 @@ namespace lux::render
      * Render-thread private: only MeshRenderContributor, GPUDrivenContributor,
      * and markReady() access these fields.
      */
-    struct MeshGpuRecord {
-        VertexLayoutId      layout_id{0};
-        uint32_t            vertex_stride{0};
-        BufferRange         vertex_buffer_range{};
-        BufferRange         index_buffer_range{};
-        EIndexType          index_type{EIndexType::UInt32};
-        uint32_t            index_count{0};
+    struct MeshGpuRecord
+    {
+        VertexLayoutId layout_id{0};
+        uint32_t vertex_stride{0};
+        BufferRange vertex_buffer_range{};
+        BufferRange index_buffer_range{};
+        EIndexType index_type{EIndexType::UInt32};
+        uint32_t index_count{0};
         // Discrete-LOD index sub-ranges within the (concatenated) IBO. lod_count>=1;
         // [0]=LOD0 (== the whole mesh when single-LOD). Built in create/allocateOnly.
         // ⚠ lod_index_first 是 **ibo_segment 段内** 的索引下标(同 MeshSectionRecord
         //   .first_index 的单位),不是跨段全局下标 —— 只有配上 ibo_segment 才能定位
         //   到具体缓冲。见 calcIndexStartInSegment。
-        uint8_t                            lod_count{1};
-        std::array<uint32_t, kMaxMeshLod>  lod_index_first{};
-        std::array<uint32_t, kMaxMeshLod>  lod_index_count{};
-        uint16_t            vbo_segment{0};  ///< ChainedArena segment index for VBO
-        uint16_t            ibo_segment{0};  ///< ChainedArena segment index for IBO
+        uint8_t lod_count{1};
+        std::array<uint32_t, kMaxMeshLod> lod_index_first{};
+        std::array<uint32_t, kMaxMeshLod> lod_index_count{};
+        uint16_t vbo_segment{0};                               ///< ChainedArena segment index for VBO
+        uint16_t ibo_segment{0};                               ///< ChainedArena segment index for IBO
         VmaVirtualAllocation vbo_alloc_handle{VK_NULL_HANDLE}; ///< VMA virtual handle for VBO free
         VmaVirtualAllocation ibo_alloc_handle{VK_NULL_HANDLE}; ///< VMA virtual handle for IBO free
-        SlotHandle          segment_slot{};  ///< Segment table entry for deferred ready update
+        SlotHandle segment_slot{};                             ///< Segment table entry for deferred ready update
         /// Written true once by markReady(), read by the render contributors.
         /// A plain bool: everything that touches a MeshGpuRecord runs on the
         /// server/render thread. (It used to be std::atomic<bool>, which forced
         /// the hand-written move ops below to exist at all — the upload worker
         /// threads never see this struct; they get a raw VkBuffer + offset and
         /// hand completions back for the render thread to apply.)
-        bool                ready{false};
+        bool ready{false};
 
-        MeshGpuRecord()                                    = default;
-        MeshGpuRecord(MeshGpuRecord&&) noexcept            = default;
+        MeshGpuRecord() = default;
+        MeshGpuRecord(MeshGpuRecord&&) noexcept = default;
         MeshGpuRecord& operator=(MeshGpuRecord&&) noexcept = default;
-        MeshGpuRecord(const MeshGpuRecord&)                = delete;
-        MeshGpuRecord& operator=(const MeshGpuRecord&)     = delete;
+        MeshGpuRecord(const MeshGpuRecord&) = delete;
+        MeshGpuRecord& operator=(const MeshGpuRecord&) = delete;
     };
 
-    struct MeshCreateInfo {
-        VertexLayoutId              layout_id{ 0 };
-        uint32_t                    vertex_stride{ 0 };
-        std::span<const std::byte>  vertex_buffer{};
-        std::span<const std::byte>  index_buffer{};   // concatenated [LOD0 .. LODn]
-        EIndexType                  index_type{ EIndexType::None };
-        std::optional<math::AABB>   bounds{};
+    struct MeshCreateInfo
+    {
+        VertexLayoutId layout_id{0};
+        uint32_t vertex_stride{0};
+        std::span<const std::byte> vertex_buffer{};
+        std::span<const std::byte> index_buffer{}; // concatenated [LOD0 .. LODn]
+        EIndexType index_type{EIndexType::None};
+        std::optional<math::AABB> bounds{};
         // Per-LOD index counts within `index_buffer` (LOD0 first; sum == total).
         // Empty ⇒ single-LOD mesh (the whole index_buffer is LOD0).
-        std::span<const uint32_t>   lod_index_counts{};
+        std::span<const uint32_t> lod_index_counts{};
     };
 
     /// Result of allocateOnly(): handle + arena ranges for the worker thread.
-    struct MeshAllocResult {
-        MeshHandle  handle{};
+    struct MeshAllocResult
+    {
+        MeshHandle handle{};
         BufferRange vbo_range{};
         BufferRange ibo_range{};
-        uint16_t    vbo_segment{0};
-        uint16_t    ibo_segment{0};
+        uint16_t vbo_segment{0};
+        uint16_t ibo_segment{0};
     };
 
-    class LUX_FUNCTION_PUBLIC MeshResources final
-        : public GPUResourceBase<MeshResources, EGPUResourceType::Mesh>
+    class LUX_FUNCTION_PUBLIC MeshResources final : public GPUResourceBase<MeshResources, EGPUResourceType::Mesh>
     {
     public:
         struct ArenaTelemetry final
@@ -141,27 +156,26 @@ namespace lux::render
         struct InitInfo
         {
             DeviceContext* device;
-            VkDeviceSize                   vertex_arena_bytes{ 64ull * 1024 * 1024 };
-            VkDeviceSize                   index_arena_bytes{ 32ull * 1024 * 1024 };
-            bool                           enable_device_address{ true };
+            VkDeviceSize vertex_arena_bytes{64ull * 1024 * 1024};
+            VkDeviceSize index_arena_bytes{32ull * 1024 * 1024};
+            bool enable_device_address{true};
             /// Must match the swap-chain frames-in-flight count so deferred
             /// staging-buffer deletion uses the correct ring slot.
-            uint32_t                       frames_in_flight{ 2 };
+            uint32_t frames_in_flight{2};
             /// CapacityPlan admission ceiling. Record address stability is
             /// provided independently by 4096-record pages.
-            uint32_t                       mesh_max_count{ 65536 };
+            uint32_t mesh_max_count{65536};
             /// Combined VBO+IBO committed-capacity admission ceiling.
-            std::uint64_t                  geometry_capacity_bytes{
-                512ull * 1024u * 1024u};
+            std::uint64_t geometry_capacity_bytes{512ull * 1024u * 1024u};
 
             // Segment table SSBO initial config (static 1 slice)
-            SSBOInitConfig                 segments_ssbo_cfg{
-                nullptr,  /*device_context*/
-                nullptr,  /*deferred_queue*/
-                16384,    /*initial_dense_capacity*/
-                1,        /*slices*/
-                false,    /*allow_shader_write*/
-                false     /*clear_on_remove*/
+            SSBOInitConfig segments_ssbo_cfg{
+                nullptr, /*device_context*/
+                nullptr, /*deferred_queue*/
+                16384,   /*initial_dense_capacity*/
+                1,       /*slices*/
+                false,   /*allow_shader_write*/
+                false    /*clear_on_remove*/
             };
         };
 
@@ -190,8 +204,13 @@ namespace lux::render
         // ---------- Async acquire barriers (render thread) ----------
 
         /// Queue a buffer acquire barrier for QFOT (called during completion drain).
-        void pushAcquireBarrier(VkBuffer buf, VkDeviceSize offset, VkDeviceSize size,
-                                uint32_t src_queue_family, uint32_t dst_queue_family);
+        void pushAcquireBarrier(
+            VkBuffer buf,
+            VkDeviceSize offset,
+            VkDeviceSize size,
+            uint32_t src_queue_family,
+            uint32_t dst_queue_family
+        );
 
         /// Record all pending acquire barriers into @p cmd, then clear the list.
         void recordAcquireBarriers(VkCommandBuffer cmd);
@@ -209,19 +228,20 @@ namespace lux::render
         // ---------- StagingOnly fallback (iGPU, render thread) ----------
 
         /// Staging copy to be recorded by the render thread (StagingOnly mode).
-        struct PendingStagingCopy {
-            VkBuffer     stg_buf;
-            VkBuffer     vbo_dst;
+        struct PendingStagingCopy
+        {
+            VkBuffer stg_buf;
+            VkBuffer vbo_dst;
             VkDeviceSize vbo_stg_offset;
             VkDeviceSize vbo_dst_offset;
             VkDeviceSize vbo_size;
-            VkBuffer     ibo_dst;        ///< VK_NULL_HANDLE if no IBO
+            VkBuffer ibo_dst; ///< VK_NULL_HANDLE if no IBO
             VkDeviceSize ibo_stg_offset;
             VkDeviceSize ibo_dst_offset;
             VkDeviceSize ibo_size;
-            uint32_t     mesh_index;
-            uint16_t      vbo_segment;    ///< VBO buffer segment index
-            uint16_t      ibo_segment;    ///< IBO buffer segment index
+            uint32_t mesh_index;
+            uint16_t vbo_segment; ///< VBO buffer segment index
+            uint16_t ibo_segment; ///< IBO buffer segment index
         };
 
         /// Queue a staging copy (called in tick() when timeline_value == 0).
@@ -255,8 +275,7 @@ namespace lux::render
         /// Check whether a mesh's GPU data is ready for rendering.
         [[nodiscard]] bool isReady(uint32_t mesh_index) const noexcept
         {
-            return mesh_index < gpu_records_.size()
-                && gpu_records_[mesh_index].ready;
+            return mesh_index < gpu_records_.size() && gpu_records_[mesh_index].ready;
         }
 
         // ---------- Destroy / Query ----------
@@ -265,8 +284,8 @@ namespace lux::render
         /// release performs the ordinary fence-deferred arena retirement.
         [[nodiscard]] bool retainForInstance(MeshHandle h) noexcept;
         void releaseFromInstance(MeshHandle h) noexcept;
-        bool            destroy(MeshHandle h);
-        bool            alive(MeshHandle h) const;
+        bool destroy(MeshHandle h);
+        bool alive(MeshHandle h) const;
 
         Expected<VertexLayoutId> layoutId(MeshHandle h) const;
 
@@ -293,34 +312,67 @@ namespace lux::render
         /// Get the per-mesh BVH (for precise picking).  Returns nullptr if not built.
         [[nodiscard]] const math::MeshBVH* getMeshBVH(MeshHandle h) const noexcept
         {
-            if (!alive(h)) return nullptr;
+            if (!alive(h))
+                return nullptr;
             return cpu_records_[h.index].bvh.get();
         }
 
         // VBO/IBO — segment-aware accessors
         /// Return the VkBuffer for a specific VBO segment (0 = original buffer).
-        VkBuffer        vertexBuffer(uint16_t segment = 0) const { return segment < vbo_buffers_.size() ? vbo_buffers_[segment] : VK_NULL_HANDLE; }
+        VkBuffer vertexBuffer(uint16_t segment = 0) const
+        {
+            return segment < vbo_buffers_.size() ? vbo_buffers_[segment] : VK_NULL_HANDLE;
+        }
         /// Return the VkBuffer for a specific IBO segment (0 = original buffer).
-        VkBuffer        indexBuffer(uint16_t segment = 0)  const { return segment < ibo_buffers_.size() ? ibo_buffers_[segment] : VK_NULL_HANDLE; }
+        VkBuffer indexBuffer(uint16_t segment = 0) const
+        {
+            return segment < ibo_buffers_.size() ? ibo_buffers_[segment] : VK_NULL_HANDLE;
+        }
         /// Convenience: return VBO for a given mesh handle.
-        VkBuffer        vertexBufferForMesh(MeshHandle h) const { return alive(h) ? vertexBuffer(gpu_records_[h.index].vbo_segment) : VK_NULL_HANDLE; }
+        VkBuffer vertexBufferForMesh(MeshHandle h) const
+        {
+            return alive(h) ? vertexBuffer(gpu_records_[h.index].vbo_segment) : VK_NULL_HANDLE;
+        }
         /// Convenience: return IBO for a given mesh handle.
-        VkBuffer        indexBufferForMesh(MeshHandle h) const  { return alive(h) ? indexBuffer(gpu_records_[h.index].ibo_segment) : VK_NULL_HANDLE; }
+        VkBuffer indexBufferForMesh(MeshHandle h) const
+        {
+            return alive(h) ? indexBuffer(gpu_records_[h.index].ibo_segment) : VK_NULL_HANDLE;
+        }
         /// Number of VBO segments currently allocated.
-        uint16_t        vboSegmentCount() const { return static_cast<uint16_t>(vbo_buffers_.size()); }
+        uint16_t vboSegmentCount() const
+        {
+            return static_cast<uint16_t>(vbo_buffers_.size());
+        }
         /// Number of IBO segments currently allocated.
-        uint16_t        iboSegmentCount() const { return static_cast<uint16_t>(ibo_buffers_.size()); }
+        uint16_t iboSegmentCount() const
+        {
+            return static_cast<uint16_t>(ibo_buffers_.size());
+        }
         [[nodiscard]] std::uint64_t iboTopologySerial() const noexcept
         {
             return ibo_topology_serial_;
         }
-        BufferRange     vertexRange(MeshHandle h) const { return alive(h) ? gpu_records_[h.index].vertex_buffer_range : BufferRange{}; }
-        BufferRange     indexRange(MeshHandle h)  const { return alive(h) ? gpu_records_[h.index].index_buffer_range : BufferRange{}; }
-        uint32_t        vertexStride(MeshHandle h)const { return alive(h) ? gpu_records_[h.index].vertex_stride : 0u; }
-		uint32_t        indexCount(MeshHandle h)  const { return alive(h) ? gpu_records_[h.index].index_count : 0u; }
-        EIndexType      indexType(MeshHandle h)   const { return alive(h) ? gpu_records_[h.index].index_type : EIndexType::None; }
-        [[nodiscard]] const std::optional<lux::render::CapacityShortfall>&
-        lastCapacityShortfall() const noexcept
+        BufferRange vertexRange(MeshHandle h) const
+        {
+            return alive(h) ? gpu_records_[h.index].vertex_buffer_range : BufferRange{};
+        }
+        BufferRange indexRange(MeshHandle h) const
+        {
+            return alive(h) ? gpu_records_[h.index].index_buffer_range : BufferRange{};
+        }
+        uint32_t vertexStride(MeshHandle h) const
+        {
+            return alive(h) ? gpu_records_[h.index].vertex_stride : 0u;
+        }
+        uint32_t indexCount(MeshHandle h) const
+        {
+            return alive(h) ? gpu_records_[h.index].index_count : 0u;
+        }
+        EIndexType indexType(MeshHandle h) const
+        {
+            return alive(h) ? gpu_records_[h.index].index_type : EIndexType::None;
+        }
+        [[nodiscard]] const std::optional<lux::render::CapacityShortfall>& lastCapacityShortfall() const noexcept
         {
             return last_capacity_shortfall_;
         }
@@ -328,9 +380,10 @@ namespace lux::render
         // ---------- Arena access (upload thread) ----------
 
         /// Allocation result including segment index.
-        struct SegmentedRange {
+        struct SegmentedRange
+        {
             BufferRange range{};
-            uint16_t    segment{0};
+            uint16_t segment{0};
             VmaVirtualAllocation alloc_handle{VK_NULL_HANDLE};
         };
 
@@ -350,7 +403,7 @@ namespace lux::render
             auto alloc = vbo_arena_.allocate(bytes, alignment);
             if (!alloc.valid())
                 return renderFailure<err::memory::OutOfMemory>();
-            return SegmentedRange{ BufferRange{ alloc.offset, alloc.size }, alloc.segment_index, alloc.handle };
+            return SegmentedRange{BufferRange{alloc.offset, alloc.size}, alloc.segment_index, alloc.handle};
         }
 
         /**
@@ -362,18 +415,17 @@ namespace lux::render
             auto alloc = ibo_arena_.allocate(bytes, alignment);
             if (!alloc.valid())
                 return renderFailure<err::memory::OutOfMemory>();
-            return SegmentedRange{ BufferRange{ alloc.offset, alloc.size }, alloc.segment_index, alloc.handle };
+            return SegmentedRange{BufferRange{alloc.offset, alloc.size}, alloc.segment_index, alloc.handle};
         }
 
         /**
          * @brief Return a VBO region to the chained arena for reuse.
          * Thread-safety: same as allocateVBORange.
          */
-        void freeVBORange(const BufferRange& range, uint16_t segment,
-                          VmaVirtualAllocation handle)
+        void freeVBORange(const BufferRange& range, uint16_t segment, VmaVirtualAllocation handle)
         {
             if (range.isValid())
-                vbo_arena_.free({ segment, range.offset, range.size, handle });
+                vbo_arena_.free({segment, range.offset, range.size, handle});
         }
 
         /**
@@ -383,17 +435,29 @@ namespace lux::render
         void freeIBORange(const BufferRange& range, uint16_t segment, VmaVirtualAllocation handle)
         {
             if (range.isValid())
-                ibo_arena_.free({ segment, range.offset, range.size, handle });
+                ibo_arena_.free({segment, range.offset, range.size, handle});
         }
 
         // Segment table SSBO
-        VkBuffer        segmentsBuffer() const { return segments_ssbo_.buffer(); }
-        uint32_t        segmentsBaseForSlice(uint32_t slice) const { return segments_ssbo_.baseIndexForSlice(slice); }
-        void            writeSegmentsDescriptor(VkDescriptorSet set, uint32_t binding) const { segments_ssbo_.writeDescriptor(set, binding); }
+        VkBuffer segmentsBuffer() const
+        {
+            return segments_ssbo_.buffer();
+        }
+        uint32_t segmentsBaseForSlice(uint32_t slice) const
+        {
+            return segments_ssbo_.baseIndexForSlice(slice);
+        }
+        void writeSegmentsDescriptor(VkDescriptorSet set, uint32_t binding) const
+        {
+            segments_ssbo_.writeDescriptor(set, binding);
+        }
 
         // ========== IGPUResource Interface Implementation ==========
 
-        bool isInitialized() const { return initialized_; }
+        bool isInitialized() const
+        {
+            return initialized_;
+        }
 
         [[nodiscard]] ArenaTelemetry vboTelemetry() const noexcept
         {
@@ -412,8 +476,7 @@ namespace lux::render
         }
 
     private:
-        [[nodiscard]] static ArenaTelemetry arenaTelemetry(
-            const ChainedArenaAllocator& arena) noexcept
+        [[nodiscard]] static ArenaTelemetry arenaTelemetry(const ChainedArenaAllocator& arena) noexcept
         {
             const auto capacity = arena.totalCapacity();
             const auto used = arena.totalUsedBytes();
@@ -428,19 +491,24 @@ namespace lux::render
         }
 
         // —— Tools —— //
-        static VkDeviceSize align256(VkDeviceSize x) { return (x + 255) & ~255ull; }
+        static VkDeviceSize align256(VkDeviceSize x)
+        {
+            return (x + 255) & ~255ull;
+        }
 
         // DESIGN-04: ChainedArenaAllocator-based sub-allocation with free+coalescing
         Expected<SegmentedRange>
         suballoc(ChainedArenaAllocator& arena, std::span<const std::byte> data, uint64_t alignment = 256);
 
         /// Allocate a new GPU buffer segment and add it to the vector / chained arena.
-        bool addBufferSegment(VkDeviceSize bytes, VkBufferUsageFlags usage,
-                              std::vector<VkBuffer>& bufs, std::vector<VmaAllocation>& allocs,
-                              ChainedArenaAllocator& arena);
-        void rollbackUnpublishedSegments(
-            std::uint16_t vbo_segment_count,
-            std::uint16_t ibo_segment_count) noexcept;
+        bool addBufferSegment(
+            VkDeviceSize bytes,
+            VkBufferUsageFlags usage,
+            std::vector<VkBuffer>& bufs,
+            std::vector<VmaAllocation>& allocs,
+            ChainedArenaAllocator& arena
+        );
+        void rollbackUnpublishedSegments(std::uint16_t vbo_segment_count, std::uint16_t ibo_segment_count) noexcept;
 
         /// Legacy helper kept for init() — creates the first segment.
         bool createArena(VkDeviceSize bytes, VkBufferUsageFlags usage, VkBuffer& out, VmaAllocation& out_alloc);
@@ -462,7 +530,8 @@ namespace lux::render
             std::uint64_t effective,
             std::uint64_t bytes,
             std::uint64_t available_bytes,
-            lux::render::CapacityPlanReason reason) noexcept;
+            lux::render::CapacityPlanReason reason
+        ) noexcept;
         bool destroyNow(MeshHandle h);
 
         /// 把 IBO 字节范围换算成索引下标(可用作 VkDrawIndexedIndirectCommand::firstIndex)。
@@ -481,38 +550,36 @@ namespace lux::render
         }
 
     private:
-        DeviceContext*                       device_ctx_{ nullptr };
+        DeviceContext* device_ctx_{nullptr};
 
         // Per-segment VBO/IBO GPU buffers (index 0 = initial segment)
-        std::vector<VkBuffer>                vbo_buffers_;
-        std::vector<VmaAllocation>           vbo_allocs_;
-        std::vector<VkBuffer>                ibo_buffers_;
-        std::vector<VmaAllocation>           ibo_allocs_;
+        std::vector<VkBuffer> vbo_buffers_;
+        std::vector<VmaAllocation> vbo_allocs_;
+        std::vector<VkBuffer> ibo_buffers_;
+        std::vector<VmaAllocation> ibo_allocs_;
 
-        VkDeviceSize                         vbo_segment_cap_{ 0 };  ///< Capacity of each new VBO segment
-        VkDeviceSize                         ibo_segment_cap_{ 0 };  ///< Capacity of each new IBO segment
-        VkBufferUsageFlags                   vbo_usage_flags_{ 0 };  ///< Usage flags for VBO buffer creation
-        VkBufferUsageFlags                   ibo_usage_flags_{ 0 };  ///< Usage flags for IBO buffer creation
+        VkDeviceSize vbo_segment_cap_{0};       ///< Capacity of each new VBO segment
+        VkDeviceSize ibo_segment_cap_{0};       ///< Capacity of each new IBO segment
+        VkBufferUsageFlags vbo_usage_flags_{0}; ///< Usage flags for VBO buffer creation
+        VkBufferUsageFlags ibo_usage_flags_{0}; ///< Usage flags for IBO buffer creation
         // DESIGN-04: Free-list chained arena allocators replace single arenas
-        ChainedArenaAllocator                vbo_arena_;
-        ChainedArenaAllocator                ibo_arena_;
-        std::uint64_t                        ibo_topology_serial_{0u};
-        std::uint64_t                        geometry_capacity_bytes_{0u};
-        std::optional<lux::render::CapacityShortfall>
-                                                last_capacity_shortfall_;
+        ChainedArenaAllocator vbo_arena_;
+        ChainedArenaAllocator ibo_arena_;
+        std::uint64_t ibo_topology_serial_{0u};
+        std::uint64_t geometry_capacity_bytes_{0u};
+        std::optional<lux::render::CapacityShortfall> last_capacity_shortfall_;
 
-        // Segment table SSBO (geometry segment info; material related fields filled by upper layer later or use default on GPU side)
-        SlicedSSBO<MeshInfoGpu>              segments_ssbo_;
+        // Segment table SSBO (geometry segment info; material related fields filled by upper layer later or use default
+        // on GPU side)
+        SlicedSSBO<MeshInfoGpu> segments_ssbo_;
 
         static constexpr std::size_t kMeshRecordsPerPage = 4096u;
-        StableRecordPages<MeshCpuRecord, kMeshRecordsPerPage>
-                                                cpu_records_;
-        StableRecordPages<MeshGpuRecord, kMeshRecordsPerPage>
-                                                gpu_records_;
-        std::vector<uint32_t>                gens_;
-        std::vector<uint32_t>                free_;
-        std::vector<uint32_t>                instance_refcounts_;
-        std::vector<uint8_t>                 destroy_requested_;
+        StableRecordPages<MeshCpuRecord, kMeshRecordsPerPage> cpu_records_;
+        StableRecordPages<MeshGpuRecord, kMeshRecordsPerPage> gpu_records_;
+        std::vector<uint32_t> gens_;
+        std::vector<uint32_t> free_;
+        std::vector<uint32_t> instance_refcounts_;
+        std::vector<uint8_t> destroy_requested_;
         // (这里曾有一个 std::atomic<uint32_t> slot_count_,注释说"游戏线程 release
         //  写、渲染线程 acquire 读",用来避开 push_back 改 vector 大小与 .size()
         //  并发读的竞争。那个游戏线程不存在:这些记录只在 server/render 线程上被
@@ -521,7 +588,7 @@ namespace lux::render
         /// CapacityPlan admission ceiling. It is not an implementation ceiling:
         /// cpu_records_/gpu_records_ grow by stable 4096-record pages, so adding a
         /// page cannot invalidate pointers into any earlier page.
-        uint32_t                             mesh_max_count_ = 0;
+        uint32_t mesh_max_count_ = 0;
 
         /// A VBO/IBO arena range awaiting frames-in-flight retirement. destroy()
         /// must NOT return the range to the arena immediately: a destroy-then-
@@ -529,26 +596,27 @@ namespace lux::render
         /// async transfer-queue write would corrupt vertices that in-flight
         /// graphics frames are still drawing. Freed in retireFrameStagingBuffers()
         /// once the slot's fence has been waited.
-        struct RetiredArenaRange {
-            bool                 is_vbo{true};
-            uint16_t             segment{0};
-            BufferRange          range{};
+        struct RetiredArenaRange
+        {
+            bool is_vbo{true};
+            uint16_t segment{0};
+            BufferRange range{};
             VmaVirtualAllocation handle{nullptr};
         };
-        std::vector<std::vector<RetiredArenaRange>>       retired_ranges_;
+        std::vector<std::vector<RetiredArenaRange>> retired_ranges_;
 
         /// 段表槽的延迟归还。理由与 RetiredArenaRange 完全相同:立刻还回去,
         /// destroy→create 会复用同一个槽并覆写它的 GPU 条目,而 N-1/N-2 帧
         /// 可能仍按旧 segment_slot 读段表。走同一个 FIF 环、同一处 drain。
         ///(此前这里根本没有归还 —— 段表槽只分配不回收,每轮 create/destroy
         /// 永久多占一个,是单向泄漏。)
-        std::vector<std::vector<SlotHandle>>             retired_segment_slots_;
+        std::vector<std::vector<SlotHandle>> retired_segment_slots_;
 
         /// Pending acquire barriers for QFOT (render-thread only, drained per frame).
-        std::vector<VkBufferMemoryBarrier2>               pending_acquire_barriers_;
+        std::vector<VkBufferMemoryBarrier2> pending_acquire_barriers_;
 
         /// Pending staging copies for StagingOnly fallback (render-thread only).
-        std::vector<PendingStagingCopy>                   pending_staging_copies_;
+        std::vector<PendingStagingCopy> pending_staging_copies_;
 
         uint32_t current_fi_{0};
     };

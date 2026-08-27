@@ -21,29 +21,20 @@ namespace lux::world
             return !name.empty() && hash == lux::cxx::Fnv1a64::hash(name);
         }
 
-        friend bool operator==(
-            const WorldDataSchemaId&,
-            const WorldDataSchemaId&
-        ) noexcept = default;
+        friend bool operator==(const WorldDataSchemaId&, const WorldDataSchemaId&) noexcept = default;
     };
 
     struct WorldDataSchemaIdLess final
     {
-        [[nodiscard]] bool operator()(
-            const WorldDataSchemaId& left,
-            const WorldDataSchemaId& right
-        ) const noexcept
+        [[nodiscard]] bool operator()(const WorldDataSchemaId& left, const WorldDataSchemaId& right) const noexcept
         {
-            return left.hash < right.hash ||
-                (left.hash == right.hash && left.name < right.name);
+            return left.hash < right.hash || (left.hash == right.hash && left.name < right.name);
         }
     };
 
     struct WorldDataSchemaIdHash final
     {
-        [[nodiscard]] std::size_t operator()(
-            const WorldDataSchemaId& value
-        ) const noexcept
+        [[nodiscard]] std::size_t operator()(const WorldDataSchemaId& value) const noexcept
         {
             std::size_t result = static_cast<std::size_t>(value.hash);
             if constexpr (sizeof(std::size_t) < sizeof(std::uint64_t))
@@ -52,7 +43,5 @@ namespace lux::world
         }
     };
 
-    [[nodiscard]] LUX_ENGINE_WORLD_PUBLIC WorldDataSchemaId worldDataSchemaId(
-        std::string_view name
-    );
+    [[nodiscard]] LUX_ENGINE_WORLD_PUBLIC WorldDataSchemaId worldDataSchemaId(std::string_view name);
 }

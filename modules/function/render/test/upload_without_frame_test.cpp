@@ -6,10 +6,10 @@
 #include <utility>
 #include <vector>
 
-int main()
+int
+main()
 {
-    lux::rendertest::DeviceRenderFixture fixture(
-        32, 32, "upload_without_frame_test");
+    lux::rendertest::DeviceRenderFixture fixture(32, 32, "upload_without_frame_test");
     if (!fixture.ok())
     {
         std::printf("SKIP: Vulkan device unavailable\n");
@@ -18,9 +18,7 @@ int main()
 
     constexpr std::int32_t kWidth = 8;
     constexpr std::int32_t kHeight = 8;
-    std::vector<std::byte> pixels(
-        static_cast<std::size_t>(kWidth * kHeight * 4),
-        std::byte{0x7f});
+    std::vector<std::byte> pixels(static_cast<std::size_t>(kWidth * kHeight * 4), std::byte{0x7f});
 
     auto submitted = fixture.upload().tryCreateTexture2D(
         lux::cxx::SharedBytes<>::copyOf(pixels),
@@ -28,11 +26,11 @@ int main()
         kHeight,
         4,
         lux::render::EPixelFormat::RGBA8_UNORM,
-        true);
+        true
+    );
     if (!submitted)
     {
-        std::fprintf(stderr, "upload admission failed: %u\n",
-            static_cast<unsigned>(submitted.error()));
+        std::fprintf(stderr, "upload admission failed: %u\n", static_cast<unsigned>(submitted.error()));
         return 1;
     }
 
@@ -46,9 +44,7 @@ int main()
     const auto reply = fixture.awaitUpload(std::move(*submitted));
     if (reply.status != 0 || reply.handle.isNull())
     {
-        std::fprintf(stderr,
-            "upload did not reach READY without a frame (status=%u)\n",
-            reply.status);
+        std::fprintf(stderr, "upload did not reach READY without a frame (status=%u)\n", reply.status);
         return 2;
     }
 

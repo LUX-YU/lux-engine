@@ -15,11 +15,12 @@
 namespace lux::render
 {
     SpatialCullFeature::SpatialCullFeature(Config cfg)
-        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
-        , params_{cfg.cell_size, cfg.cull_distance}
-    {}
+        : RenderFeature(RenderFeature::Config{std::move(cfg.name)}), params_{cfg.cell_size, cfg.cull_distance}
+    {
+    }
 
-    lux::render::Expected<void> SpatialCullFeature::initAndAttachTo(RenderScene& sc){
+    lux::render::Expected<void> SpatialCullFeature::initAndAttachTo(RenderScene& sc)
+    {
         // Feature owns its scene resource (PointCloud/Trajectory pattern): emplace
         // the SpatialCullGrid here, NOT in the general RenderScene constructor.
         // ensure<>:本 feature 自建自有,句柄存成员,onFrameBegin 不再每帧重查。
@@ -27,11 +28,11 @@ namespace lux::render
         auto& ctx = renderContext();
 
         SpatialCullGrid::InitInfo gi{};
-        gi.device_context   = &ctx.deviceContext();
-        gi.deferred_queue   = &ctx.deferredDestroyQueue();
+        gi.device_context = &ctx.deviceContext();
+        gi.deferred_queue = &ctx.deferredDestroyQueue();
         gi.frames_in_flight = ctx.framesInFlight();
-        gi.cell_size        = params_.cell_size;
-        gi.cull_distance    = params_.cull_distance;
+        gi.cell_size = params_.cell_size;
+        gi.cull_distance = params_.cull_distance;
 
         // ensure<T>(init_args) — the registry constructs + inits and publishes
         // only on success, so grid_ is never a half-built instance.
@@ -58,14 +59,13 @@ namespace lux::render
         // grid_ 是自建的,attach 后恒非空。inst / cam 记忆化:两者都归别的 feature
         // 所有且本 feature 未声明 requires=,缺失是合法运行态,所以判空保留、
         // 只把每帧的哈希查找收敛成一次。
-        auto& reg  = renderScene().sceneRegistry();
+        auto& reg = renderScene().sceneRegistry();
         // RenderCluster's candidate source is the authoritative coarse filter.
         // Do not rebuild the legacy per-slot distance mask in that mode: besides
         // intersecting two unrelated distance policies, doing so scans every alive
         // instance once per frame and turns an otherwise window-bounded world back
         // into O(total resident slots).  A zero address means "no secondary mask".
-        if (const auto* candidates = reg.find<MeshCullCandidateSource>();
-            candidates != nullptr && candidates->active())
+        if (const auto* candidates = reg.find<MeshCullCandidateSource>(); candidates != nullptr && candidates->active())
         {
             renderScene().setInstanceCullMaskAddress(0ull);
             return;
@@ -73,21 +73,21 @@ namespace lux::render
         if (inst_cache_ == nullptr)
             inst_cache_ = reg.find<InstanceResources>();
         auto* inst = inst_cache_;
-        auto* cam  = resolveViewCameraOnce(cam_cache_, reg);
+        auto* cam = resolveViewCameraOnce(cam_cache_, reg);
         if (inst == nullptr)
             return;
 
         // Cull sources = the active views' world camera positions. Pull them
         // through the scene's general view accessor (no domain knowledge here).
         camera_scratch_.clear();
-        renderScene().forEachActiveView([this, cam](View& v)
-        {
+        renderScene().forEachActiveView([this, cam](View& v) {
             const auto* cam_fd = cam ? cam->find(v.handle.index) : nullptr;
             if (!cam_fd)
                 return;
             const auto& p = cam_fd->camera_transform.position;
             camera_scratch_.push_back({p.x(), p.y(), p.z()});
-        });
+        }
+        );
 
         // Classify cells + upload the per-slot mask for THIS frame, then publish its
         // GPU address into the scene's domain-neutral primitive. The mesh cull reads

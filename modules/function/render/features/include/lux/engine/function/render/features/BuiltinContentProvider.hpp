@@ -23,6 +23,6 @@ namespace lux::render
     };
 
     [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC
-    lux::cxx::expected<BuiltinShaderContent, EBuiltinContentError>
-    builtinShaderContent(EBuiltinShader shader) noexcept;
+        lux::cxx::expected<BuiltinShaderContent, EBuiltinContentError>
+        builtinShaderContent(EBuiltinShader shader) noexcept;
 } // namespace lux::render

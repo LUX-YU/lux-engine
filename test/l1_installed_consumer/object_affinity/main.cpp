@@ -10,22 +10,27 @@ namespace
 {
     class ObjectSystem final : public lux::object::Object<ObjectSystem>
     {
-      public:
-        inline static constexpr auto Access =
-            lux::simulation::makeSystemAccessSpec<>();
+    public:
+        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
         inline static constexpr lux::simulation::SystemDescription Description{
             .canonical_name = "lux.consumer.l1-object-affinity",
             .version = 1};
 
-        explicit ObjectSystem(std::uint32_t& count) noexcept : count_(&count) {}
-        void update() noexcept { ++*count_; }
+        explicit ObjectSystem(std::uint32_t& count) noexcept : count_(&count)
+        {
+        }
+        void update() noexcept
+        {
+            ++*count_;
+        }
 
-      private:
+    private:
         std::uint32_t* count_{};
     };
 }
 
-int main()
+int
+main()
 {
     lux::simulation::SystemRegistry systems;
     std::uint32_t count{};
@@ -39,11 +44,7 @@ int main()
     lux::task::TaskGraphBuilder builder;
     if (!builder.add(
             lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
-            [system = std::move(*retained)]() noexcept
-            {
-                system->update();
-            }
-        ))
+            [system = std::move(*retained)]() noexcept { system->update(); }))
     {
         return 3;
     }

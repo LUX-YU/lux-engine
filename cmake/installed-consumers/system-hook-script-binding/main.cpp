@@ -20,22 +20,10 @@ namespace
     using namespace lux::simulation;
 
     inline constexpr std::array kHooks{
-        makeSystemHookPoint<void(float)>(
-            "value-a",
-            ESystemHookCardinality::MULTI
-        ),
-        makeSystemHookPoint<void(float)>(
-            "value-b",
-            ESystemHookCardinality::MULTI
-        )};
+        makeSystemHookPoint<void(float)>("value-a", ESystemHookCardinality::MULTI),
+        makeSystemHookPoint<void(float)>("value-b", ESystemHookCardinality::MULTI)};
     inline constexpr std::array kEvents{
-        makeSystemEvent<std::int32_t>(
-            "pulse",
-            kHooks[0],
-            ESystemEventTarget::ENTITY_TARGETED,
-            "lux.i32",
-            1U
-        )};
+        makeSystemEvent<std::int32_t>("pulse", kHooks[0], ESystemEventTarget::ENTITY_TARGETED, "lux.i32", 1U)};
     inline constexpr SystemDescription kSystem{
         .canonical_name = "consumer.system",
         .version = 1U,
@@ -48,11 +36,7 @@ namespace
         lux::asset::ScriptAssetContent content;
     };
 
-    bool resolveAsset(
-        void* opaque,
-        const lux::asset::AssetId& id,
-        ResolvedScriptAsset& result
-    ) noexcept
+    bool resolveAsset(void* opaque, const lux::asset::AssetId& id, ResolvedScriptAsset& result) noexcept
     {
         auto& asset = *static_cast<Asset*>(opaque);
         if (asset.id != id)
@@ -61,18 +45,12 @@ namespace
         return true;
     }
 
-    bool resolveRecord(
-        void*,
-        const lux::meta::RefType& type,
-        lux::script::ScriptSemanticLayout& result
-    ) noexcept
+    bool resolveRecord(void*, const lux::meta::RefType& type, lux::script::ScriptSemanticLayout& result) noexcept
     {
         if (type.hash != lux::cxx::type_hash<EBehaviorStopReason>())
             return false;
         result = {
-            lux::script::scriptSemanticTypeId(
-                BehaviorStopReasonCanonicalName
-            ),
+            lux::script::scriptSemanticTypeId(BehaviorStopReasonCanonicalName),
             BehaviorStopReasonCanonicalName,
             LUX_SCRIPT_VK_UINT32,
             sizeof(EBehaviorStopReason),
@@ -80,10 +58,7 @@ namespace
         return true;
     }
 
-    ScriptBindingDescription lifecycle(
-        lux::script::ScriptSymbolId symbol,
-        EBehaviorLifecyclePoint point
-    )
+    ScriptBindingDescription lifecycle(lux::script::ScriptSymbolId symbol, EBehaviorLifecyclePoint point)
     {
         return {symbol, BehaviorLifecycleBindingTarget{point}};
     }
@@ -97,7 +72,8 @@ namespace
     }
 }
 
-int main()
+int
+main()
 {
     using namespace lux::simulation;
     using installed_consumer::ConsumerBehavior;
@@ -105,9 +81,7 @@ int main()
     lux::meta::ReflectionRegistry::initRegistry();
     {
         auto& reflection = lux::meta::ReflectionRegistry::instance();
-        const auto* reflected = reflection.findClass(
-            "installed_consumer::ConsumerBehavior"
-        );
+        const auto* reflected = reflection.findClass("installed_consumer::ConsumerBehavior");
         assert(reflected && reflected->methods.size() == 5U);
         std::array<const lux::meta::RefMethod*, 5U> methods{};
         for (std::size_t index{}; index < methods.size(); ++index)
@@ -121,8 +95,7 @@ int main()
         );
         assert(projected);
 
-        auto find_symbol = [&](std::string_view name)
-        {
+        auto find_symbol = [&](std::string_view name) {
             for (const auto& function : projected->description().exports)
             {
                 if (function.name == name)
@@ -140,99 +113,58 @@ int main()
         asset.content.description = projected->description();
 
         const auto script_codec = lux::asset::scriptAssetCodecDescriptor({});
-        const auto encoded_script = script_codec.encode(
-            std::addressof(asset.content),
-            lux::asset::AssetEncodeContext{unlimited()}
-        );
+        const auto encoded_script =
+            script_codec.encode(std::addressof(asset.content), lux::asset::AssetEncodeContext{unlimited()});
         assert(encoded_script && (*encoded_script)[4] == std::byte{2U});
-        const auto decoded_script = script_codec.decode(
-            *encoded_script,
-            lux::asset::AssetDecodeContext{unlimited()}
-        );
+        const auto decoded_script = script_codec.decode(*encoded_script, lux::asset::AssetDecodeContext{unlimited()});
         assert(decoded_script);
-        asset.content = *std::static_pointer_cast<
-            const lux::asset::ScriptAssetContent>(decoded_script->payload);
-        assert(asset.content.description.module_name ==
-            projected->description().module_name);
-        assert(asset.content.description.model ==
-            projected->description().model);
-        assert(asset.content.description.body ==
-            projected->description().body);
-        assert(asset.content.description.exports ==
-            projected->description().exports);
+        asset.content = *std::static_pointer_cast<const lux::asset::ScriptAssetContent>(decoded_script->payload);
+        assert(asset.content.description.module_name == projected->description().module_name);
+        assert(asset.content.description.model == projected->description().model);
+        assert(asset.content.description.body == projected->description().body);
+        assert(asset.content.description.exports == projected->description().exports);
 
         ScriptMountDescription mount{
             ScriptMountId{9U},
             asset.id,
             {
-                lifecycle(
-                    find_symbol("construct"),
-                    EBehaviorLifecyclePoint::CONSTRUCT
-                ),
-                lifecycle(
-                    find_symbol("start"),
-                    EBehaviorLifecyclePoint::START
-                ),
-                lifecycle(
-                    find_symbol("stop"),
-                    EBehaviorLifecyclePoint::STOP
-                ),
-                {value_symbol, SystemHookBindingTarget{
-                    systemTypeId(kSystem.canonical_name),
-                    "consumer",
-                    "value-a"}},
-                {value_symbol, SystemHookBindingTarget{
-                    systemTypeId(kSystem.canonical_name),
-                    "consumer",
-                    "value-b"}},
-                {event_symbol, SystemEventBindingTarget{
-                    systemTypeId(kSystem.canonical_name),
-                    "consumer",
-                    "pulse"}},
+                lifecycle(find_symbol("construct"), EBehaviorLifecyclePoint::CONSTRUCT),
+                lifecycle(find_symbol("start"), EBehaviorLifecyclePoint::START),
+                lifecycle(find_symbol("stop"), EBehaviorLifecyclePoint::STOP),
+                {value_symbol, SystemHookBindingTarget{systemTypeId(kSystem.canonical_name), "consumer", "value-a"}},
+                {value_symbol, SystemHookBindingTarget{systemTypeId(kSystem.canonical_name), "consumer", "value-b"}},
+                {event_symbol, SystemEventBindingTarget{systemTypeId(kSystem.canonical_name), "consumer", "pulse"}},
             }};
 
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem("consumer", kSystem));
         auto description = std::move(builder).build();
         assert(description);
-        for (std::size_t binding_index{};
-             binding_index < mount.bindings.size(); ++binding_index)
+        for (std::size_t binding_index{}; binding_index < mount.bindings.size(); ++binding_index)
         {
             const auto& binding = mount.bindings[binding_index];
             const auto found = std::find_if(
                 asset.content.description.exports.begin(),
                 asset.content.description.exports.end(),
-                [&](const auto& function) noexcept
-                {
-                    return function.symbol_id == binding.function;
-                }
+                [&](const auto& function) noexcept { return function.symbol_id == binding.function; }
             );
             assert(found != asset.content.description.exports.end());
-            assert(evaluateScriptBindingCompatibility(
+            assert(
+                evaluateScriptBindingCompatibility(
                     *description,
                     asset.content.description.model,
                     *found,
-                    binding.target
-                ) == EScriptBindingCompatibility::COMPATIBLE);
+                    binding.target) == EScriptBindingCompatibility::COMPATIBLE);
         }
         const auto simulation_codec = simulationAssetCodecDescriptor({});
-        const auto encoded_simulation = simulation_codec.encode(
-            std::addressof(*description),
-            lux::asset::AssetEncodeContext{unlimited()}
-        );
-        assert(encoded_simulation &&
-            (*encoded_simulation)[4] == std::byte{4U});
-        assert(simulation_codec.decode(
-            *encoded_simulation,
-            lux::asset::AssetDecodeContext{unlimited()}
-        ));
+        const auto encoded_simulation =
+            simulation_codec.encode(std::addressof(*description), lux::asset::AssetEncodeContext{unlimited()});
+        assert(encoded_simulation && (*encoded_simulation)[4] == std::byte{4U});
+        assert(simulation_codec.decode(*encoded_simulation, lux::asset::AssetDecodeContext{unlimited()}));
 
         ecs::Registry registry;
         const auto entity = registry.create();
-        registry.emplace<ScriptComponent>(
-            entity,
-            ScriptComponent{{mount}}
-        );
+        registry.emplace<ScriptComponent>(entity, ScriptComponent{{mount}});
         const std::array descriptors{std::addressof(*projected)};
         CppStaticScriptBindingBackend backend{descriptors, 1U};
         assert(backend);
@@ -253,38 +185,18 @@ int main()
         assert(session.preparedMethodCount() == 5U);
 
         float value{2.5F};
-        lux_script_value_slot value_slot{
-            LUX_SCRIPT_VK_FLOAT,
-            {},
-            sizeof(value),
-            lux::script::scriptSemanticTypeId("lux.f32"),
-            &value};
-        lux_script_call_frame value_frame{
-            &value_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
-        assert(session.dispatchHook(
-            session.hookSlot("consumer", "value-a"),
-            value_frame
-        ).calls == 1U);
-        assert(session.dispatchHook(
-            session.hookSlot("consumer", "value-b"),
-            value_frame
-        ).calls == 1U);
+        lux_script_value_slot
+            value_slot{LUX_SCRIPT_VK_FLOAT, {}, sizeof(value), lux::script::scriptSemanticTypeId("lux.f32"), &value};
+        lux_script_call_frame value_frame{&value_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
+        assert(session.dispatchHook(session.hookSlot("consumer", "value-a"), value_frame).calls == 1U);
+        assert(session.dispatchHook(session.hookSlot("consumer", "value-b"), value_frame).calls == 1U);
         assert(installed_consumer::observed_value == 5.0F);
 
         std::int32_t pulse{17};
-        lux_script_value_slot event_slot{
-            LUX_SCRIPT_VK_INT32,
-            {},
-            sizeof(pulse),
-            lux::script::scriptSemanticTypeId("lux.i32"),
-            &pulse};
-        lux_script_call_frame event_frame{
-            &event_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
-        assert(session.dispatchEvent(
-            session.eventSlot("consumer", "pulse"),
-            entity,
-            event_frame
-        ).calls == 1U);
+        lux_script_value_slot
+            event_slot{LUX_SCRIPT_VK_INT32, {}, sizeof(pulse), lux::script::scriptSemanticTypeId("lux.i32"), &pulse};
+        lux_script_call_frame event_frame{&event_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
+        assert(session.dispatchEvent(session.eventSlot("consumer", "pulse"), entity, event_frame).calls == 1U);
         assert(installed_consumer::observed_event == pulse);
         assert(session.shutdown());
         assert(installed_consumer::stops == 1U);

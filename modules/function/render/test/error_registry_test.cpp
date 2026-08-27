@@ -23,12 +23,14 @@
 
 using namespace lux::render;
 
-#define CHECK(cond)                                                              \
-    do {                                                                         \
-        if (!(cond)) {                                                           \
-            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            return 1;                                                            \
-        }                                                                        \
+#define CHECK(cond)                                                                                                    \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (!(cond))                                                                                                   \
+        {                                                                                                              \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                                       \
+            return 1;                                                                                                  \
+        }                                                                                                              \
     } while (0)
 
 namespace
@@ -36,22 +38,23 @@ namespace
     /// 测试专用的两个「动态 feature 错误类型」,模拟 register_ops_fn 里的注册。
     struct ProbeAlpha
     {
-        static constexpr const char* name     = "test.probe_alpha";
-        static constexpr const char* message  = "alpha 拿到 {0} 与 {1}";
-        static constexpr ERecovery   recovery = ERecovery::Retryable;
-        static constexpr ErrorArgs   args{EErrorArg::Uint, EErrorArg::Hex};
+        static constexpr const char* name = "test.probe_alpha";
+        static constexpr const char* message = "alpha 拿到 {0} 与 {1}";
+        static constexpr ERecovery recovery = ERecovery::Retryable;
+        static constexpr ErrorArgs args{EErrorArg::Uint, EErrorArg::Hex};
     };
 
     struct ProbeBeta
     {
-        static constexpr const char* name     = "test.probe_beta";
-        static constexpr const char* message  = "beta 无实参";
-        static constexpr ERecovery   recovery = ERecovery::Bug;
-        static constexpr ErrorArgs   args{};
+        static constexpr const char* name = "test.probe_beta";
+        static constexpr const char* message = "beta 无实参";
+        static constexpr ERecovery recovery = ERecovery::Bug;
+        static constexpr ErrorArgs args{};
     };
 } // namespace
 
-int main()
+int
+main()
 {
     RenderErrorRegistry registry;
 
@@ -65,7 +68,7 @@ int main()
         CHECK(by_name == registry.errorType<err::memory::OutOfMemory>());
 
         CHECK(!registry.findByName("nonexistent.error").isValid());
-        CHECK(registry.size() == engine_count);   // 查询不会顺手登记
+        CHECK(registry.size() == engine_count); // 查询不会顺手登记
         std::puts("  [ok] 构造后引擎错误类型表已完整,按名字可解析");
     }
 
@@ -73,7 +76,7 @@ int main()
     {
         const std::size_t before = registry.size();
 
-        const ErrorTypeId first  = registry.errorType<ProbeAlpha>();
+        const ErrorTypeId first = registry.errorType<ProbeAlpha>();
         const ErrorTypeId second = registry.errorType<ProbeAlpha>();
         CHECK(first.isValid());
         CHECK(first == second);
@@ -106,13 +109,13 @@ int main()
 
     // ── 不变量 3:格式化后没有残留占位符 ──────────────────────────────────
     {
-        const ErrorTypeId id  = registry.errorType<ProbeAlpha>();
+        const ErrorTypeId id = registry.errorType<ProbeAlpha>();
         const std::string out = formatRenderError(registry, makeError(id, 42u, 0xC0DEu));
 
         CHECK(out.find("test.probe_alpha") != std::string::npos);
         CHECK(out.find("42") != std::string::npos);
         CHECK(out.find("0xC0DE") != std::string::npos);
-        CHECK(out.find('{') == std::string::npos);   // 占位符全部被替换
+        CHECK(out.find('{') == std::string::npos); // 占位符全部被替换
         std::puts("  [ok] 实参按声明的语义展开,模板无残留");
     }
 
@@ -122,8 +125,7 @@ int main()
         CHECK(!formatRenderError(registry, RenderError{}).empty());
 
         registry.forget<ProbeBeta>();
-        const std::string unknown =
-            formatRenderError(registry, makeError(registry.findByName("test.probe_beta")));
+        const std::string unknown = formatRenderError(registry, makeError(registry.findByName("test.probe_beta")));
         CHECK(!unknown.empty());
         std::puts("  [ok] 成功值与已失效 id 的格式化都不崩");
     }
@@ -133,22 +135,22 @@ int main()
     // 这是「错误里不搬字符串,只搬共享表索引」那条机制的验收点:产生侧只放一个
     // 数,消费侧照 EErrorArg 查表拿名字。
     {
-        const std::string vk = formatRenderError(
-            registry, renderError<err::device::VulkanCallFailed>(encodeVkResult(-2)));
+        const std::string vk =
+            formatRenderError(registry, renderError<err::device::VulkanCallFailed>(encodeVkResult(-2)));
         CHECK(vk.find("VK_ERROR_OUT_OF_DEVICE_MEMORY") != std::string::npos);
 
         const std::string builtin = formatRenderError(
             registry,
-            renderError<err::shader::BuiltinUnavailable>(
-                static_cast<std::uint32_t>(EBuiltinShader::TONEMAP_VERT)));
+            renderError<err::shader::BuiltinUnavailable>(static_cast<std::uint32_t>(EBuiltinShader::TONEMAP_VERT))
+        );
         CHECK(builtin.find("TONEMAP_VERT") != std::string::npos);
 
         // 契约资源槽:产生侧只放一个下标,消费侧查同一份引擎契约表拿名字,并顺带带出
         // 它的规范位置 —— 于是「本该在哪」不必随错误过线。
         const std::uint32_t uviews = lux::rdesc::logicalResourceIndex("uViews");
         CHECK(uviews != lux::rdesc::kInvalidLogicalResourceIndex);
-        const std::string contract = formatRenderError(
-            registry, renderError<err::pipeline::BindingTypeMismatch>(uviews));
+        const std::string contract =
+            formatRenderError(registry, renderError<err::pipeline::BindingTypeMismatch>(uviews));
         CHECK(contract.find("uViews") != std::string::npos);
         CHECK(contract.find("契约 set") != std::string::npos);
 
@@ -156,7 +158,8 @@ int main()
         const std::string domain = formatRenderError(
             registry,
             renderError<err::pipeline::DomainLayoutNotInitialised>(
-                static_cast<std::uint32_t>(lux::rdesc::EBindFrequency::FEATURE)));
+                static_cast<std::uint32_t>(lux::rdesc::EBindFrequency::FEATURE))
+        );
         CHECK(domain.find("FEATURE") != std::string::npos);
 
         std::puts("  [ok] VkResult / EBuiltinShader / 契约资源 / 绑定域 实参展开成名字");
@@ -166,8 +169,8 @@ int main()
     {
         const std::string out = formatRenderError(
             registry,
-            renderError<err::pipeline::BindingTypeMismatch>(
-                lux::rdesc::kInvalidLogicalResourceIndex));
+            renderError<err::pipeline::BindingTypeMismatch>(lux::rdesc::kInvalidLogicalResourceIndex)
+        );
         CHECK(out.find("不在契约里") != std::string::npos);
         std::puts("  [ok] 越界的契约索引自证为「不在契约里」");
     }
@@ -178,7 +181,7 @@ int main()
     // 即使调用方误填了一个数,消息里也不会出现任何被当作 VkResult 解释的内容 ——
     // 「声明了才展开」是这套机制不撒谎的根据。
     {
-        const ErrorTypeId id  = registry.errorType<err::device::VulkanObjectCreationFailed>();
+        const ErrorTypeId id = registry.errorType<err::device::VulkanObjectCreationFailed>();
         const std::string out = formatRenderError(registry, makeError(id, encodeVkResult(-2)));
         CHECK(out.find("VK_") == std::string::npos);
         std::puts("  [ok] 未声明的实参槽不参与展开");

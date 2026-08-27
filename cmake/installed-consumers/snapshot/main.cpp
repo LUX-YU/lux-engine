@@ -1,7 +1,8 @@
 #include <lux/engine/simulation/ecs/ComponentSnapshotSet.hpp>
 #include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
 
-int main()
+int
+main()
 {
     lux::simulation::ecs::ComponentSnapshotSet components;
     lux::simulation::ecs::EcsSnapshot snapshot;

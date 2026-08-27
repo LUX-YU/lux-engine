@@ -38,24 +38,20 @@ namespace lux::async
     using SubmitResult = lux::cxx::expected<void, ESubmitError>;
 
     template <class T>
-    concept Operation = requires
-    {
+    concept Operation = requires {
         typename T::Value;
         typename T::Error;
     } && std::is_nothrow_move_constructible_v<T>;
 
-    template <class DomainError>
-    class OperationFailure final
+    template <class DomainError> class OperationFailure final
     {
     public:
-        [[nodiscard]] static OperationFailure runtime(
-            ESubmitError error) noexcept
+        [[nodiscard]] static OperationFailure runtime(ESubmitError error) noexcept
         {
             return OperationFailure(error);
         }
 
-        [[nodiscard]] static OperationFailure domain(
-            DomainError error) noexcept
+        [[nodiscard]] static OperationFailure domain(DomainError error) noexcept
         {
             return OperationFailure(std::move(error));
         }
@@ -81,32 +77,28 @@ namespace lux::async
         }
 
     private:
-        explicit OperationFailure(ESubmitError error) noexcept
-            : value_(error)
-        {}
+        explicit OperationFailure(ESubmitError error) noexcept : value_(error)
+        {
+        }
 
-        explicit OperationFailure(DomainError error) noexcept
-            : value_(std::in_place_index<1>, std::move(error))
-        {}
+        explicit OperationFailure(DomainError error) noexcept : value_(std::in_place_index<1>, std::move(error))
+        {
+        }
 
         std::variant<ESubmitError, DomainError> value_;
     };
 
     template <Operation T>
-    using OperationOutcome = lux::cxx::expected<
-        typename T::Value,
-        OperationFailure<typename T::Error>>;
+    using OperationOutcome = lux::cxx::expected<typename T::Value, OperationFailure<typename T::Error>>;
 
-    template <Operation T>
-    [[nodiscard]] constexpr lux::cxx::TypeToken operationType() noexcept
+    template <Operation T> [[nodiscard]] constexpr lux::cxx::TypeToken operationType() noexcept
     {
         return lux::cxx::typeToken<T>();
     }
 
     namespace detail
     {
-        template <Operation T>
-        class OperationEndpoint
+        template <Operation T> class OperationEndpoint
         {
         public:
             using Outcome = OperationOutcome<T>;
@@ -120,12 +112,12 @@ namespace lux::async
                 T operation,
                 void* completion_state,
                 void (*complete)(void*, Outcome&&) noexcept,
-                SubmitOptions options) noexcept = 0;
+                SubmitOptions options
+            ) noexcept = 0;
         };
     }
 
-    template <Operation T>
-    class OperationPort final
+    template <Operation T> class OperationPort final
     {
     public:
         using Endpoint = detail::OperationEndpoint<T>;
@@ -135,27 +127,20 @@ namespace lux::async
 
         /// Endpoint construction is the single implementation seam. The
         /// pointed-to object owns all scheduling and queue policy.
-        explicit OperationPort(std::shared_ptr<Endpoint> endpoint) noexcept
-            : endpoint_(std::move(endpoint))
-        {}
+        explicit OperationPort(std::shared_ptr<Endpoint> endpoint) noexcept : endpoint_(std::move(endpoint))
+        {
+        }
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
             return static_cast<bool>(endpoint_);
         }
 
-        [[nodiscard]] SubmitResult tryNotify(
-            T operation,
-            SubmitOptions options = {}) const noexcept
+        [[nodiscard]] SubmitResult tryNotify(T operation, SubmitOptions options = {}) const noexcept
             requires std::is_void_v<typename T::Value>
         {
             static std::byte completion_anchor;
-            return submit(
-                std::move(operation),
-                &completion_anchor,
-                +[](void*, Outcome&&) noexcept {},
-                options
-            );
+            return submit(std::move(operation), &completion_anchor, +[](void*, Outcome&&) noexcept {}, options);
         }
 
         /// Low-level completion seam used by sender adapters. Callers must
@@ -164,21 +149,16 @@ namespace lux::async
             T operation,
             void* completion_state,
             void (*complete)(void*, Outcome&&) noexcept,
-            SubmitOptions options = {}) const noexcept
+            SubmitOptions options = {}
+        ) const noexcept
         {
             if (!endpoint_)
             {
                 const auto error = ESubmitError::UNKNOWN_OPERATION;
-                complete(
-                    completion_state,
-                    lux::cxx::unexpected(
-                        OperationFailure<typename T::Error>::runtime(error))
-                );
+                complete(completion_state, lux::cxx::unexpected(OperationFailure<typename T::Error>::runtime(error)));
                 return lux::cxx::unexpected(error);
             }
-            return endpoint_->submit(
-                std::move(operation), completion_state, complete, options
-            );
+            return endpoint_->submit(std::move(operation), completion_state, complete, options);
         }
 
     private:

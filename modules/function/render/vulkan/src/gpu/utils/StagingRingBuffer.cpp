@@ -7,12 +7,12 @@
 
 namespace lux::render
 {
-    bool StagingRingBuffer::init(VmaAllocator allocator, VkDeviceSize capacity,
-                                   uint32_t frames_in_flight)
+    bool StagingRingBuffer::init(VmaAllocator allocator, VkDeviceSize capacity, uint32_t frames_in_flight)
     {
         destroy();
 
-        if (frames_in_flight == 0) frames_in_flight = 1;
+        if (frames_in_flight == 0)
+            frames_in_flight = 1;
 
         VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bci.size = capacity;
@@ -35,7 +35,7 @@ namespace lux::render
         capacity_ = capacity;
         frames_in_flight_ = frames_in_flight;
         partition_start_ = 0;
-        partition_end_   = capacity / frames_in_flight;
+        partition_end_ = capacity / frames_in_flight;
         head_ = 0;
         return true;
     }
@@ -45,8 +45,10 @@ namespace lux::render
         destroy();
     }
 
-    StagingRingBuffer::StagingRingBuffer(StagingRingBuffer &&o) noexcept
-        : allocator_(o.allocator_), buffer_(o.buffer_), allocation_(o.allocation_), base_ptr_(o.base_ptr_), capacity_(o.capacity_), head_(o.head_), partition_start_(o.partition_start_), partition_end_(o.partition_end_), frames_in_flight_(o.frames_in_flight_)
+    StagingRingBuffer::StagingRingBuffer(StagingRingBuffer&& o) noexcept
+        : allocator_(o.allocator_), buffer_(o.buffer_), allocation_(o.allocation_), base_ptr_(o.base_ptr_),
+          capacity_(o.capacity_), head_(o.head_), partition_start_(o.partition_start_),
+          partition_end_(o.partition_end_), frames_in_flight_(o.frames_in_flight_)
     {
         o.allocator_ = nullptr;
         o.buffer_ = VK_NULL_HANDLE;
@@ -59,7 +61,7 @@ namespace lux::render
         o.frames_in_flight_ = 1;
     }
 
-    StagingRingBuffer &StagingRingBuffer::operator=(StagingRingBuffer &&o) noexcept
+    StagingRingBuffer& StagingRingBuffer::operator=(StagingRingBuffer&& o) noexcept
     {
         if (this != &o)
         {
@@ -96,7 +98,7 @@ namespace lux::render
         if (aligned_head + bytes > partition_end_)
             return {}; // overflow — caller falls back to dedicated alloc
 
-        void *ptr = static_cast<std::byte *>(base_ptr_) + aligned_head;
+        void* ptr = static_cast<std::byte*>(base_ptr_) + aligned_head;
         head_ = aligned_head + bytes;
         return {buffer_, aligned_head, ptr};
     }
@@ -111,7 +113,7 @@ namespace lux::render
         const VkDeviceSize part_size = capacity_ / frames_in_flight_;
         const uint32_t slot = frame_slot % frames_in_flight_;
         partition_start_ = part_size * slot;
-        partition_end_   = partition_start_ + part_size;
+        partition_end_ = partition_start_ + part_size;
         head_ = partition_start_;
     }
 

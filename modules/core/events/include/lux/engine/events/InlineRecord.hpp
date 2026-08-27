@@ -23,19 +23,28 @@
 
 namespace lux::events
 {
-    template <std::size_t Capacity>
-    class InlineRecord
+    template <std::size_t Capacity> class InlineRecord
     {
-        static_assert(Capacity > 0 && Capacity <= 0xFFFF,
-                      "size field is u16; keep records small — this is an "
-                      "inline-args buffer, not a data pipe");
+        static_assert(
+            Capacity > 0 && Capacity <= 0xFFFF,
+            "size field is u16; keep records small — this is an "
+            "inline-args buffer, not a data pipe");
 
     public:
         static constexpr std::size_t kCapacity = Capacity;
 
-        [[nodiscard]] std::size_t      size() const noexcept { return size_; }
-        [[nodiscard]] bool             truncated() const noexcept { return truncated_; }
-        [[nodiscard]] const std::byte* data() const noexcept { return bytes_; }
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            return size_;
+        }
+        [[nodiscard]] bool truncated() const noexcept
+        {
+            return truncated_;
+        }
+        [[nodiscard]] const std::byte* data() const noexcept
+        {
+            return bytes_;
+        }
 
         /// 平凡拷贝类型:整块 memcpy。放不下 → 置截断标记并拒收(false)。
         template <class T>
@@ -70,7 +79,7 @@ namespace lux::events
             std::size_t n = s.size();
             if (n > avail - sizeof(std::uint16_t))
             {
-                n          = avail - sizeof(std::uint16_t);
+                n = avail - sizeof(std::uint16_t);
                 truncated_ = true;
             }
             const auto len = static_cast<std::uint16_t>(n);
@@ -83,8 +92,8 @@ namespace lux::events
 
     private:
         std::uint16_t size_{0};
-        bool          truncated_{false};
-        std::byte     bytes_[Capacity];
+        bool truncated_{false};
+        std::byte bytes_[Capacity];
     };
 
     /// 顺序读回:与写入同序。unpack 失败(记录被截断)返回 false,
@@ -92,14 +101,12 @@ namespace lux::events
     class InlineRecordReader
     {
     public:
-        InlineRecordReader(const std::byte* data, std::size_t size) noexcept
-            : p_(data), end_(data + size)
+        InlineRecordReader(const std::byte* data, std::size_t size) noexcept : p_(data), end_(data + size)
         {
         }
 
         template <std::size_t N>
-        explicit InlineRecordReader(const InlineRecord<N>& r) noexcept
-            : InlineRecordReader(r.data(), r.size())
+        explicit InlineRecordReader(const InlineRecord<N>& r) noexcept : InlineRecordReader(r.data(), r.size())
         {
         }
 

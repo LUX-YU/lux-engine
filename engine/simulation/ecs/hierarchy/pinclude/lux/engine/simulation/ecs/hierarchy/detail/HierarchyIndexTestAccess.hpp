@@ -6,9 +6,7 @@ namespace lux::simulation::ecs::detail
 {
     struct HierarchyIndexTestAccess final
     {
-        [[nodiscard]] static std::size_t visitedNodes(
-            const HierarchyIndex& hierarchy
-        ) noexcept
+        [[nodiscard]] static std::size_t visitedNodes(const HierarchyIndex& hierarchy) noexcept
         {
             return hierarchy.visitedNodesLastUpdate();
         }

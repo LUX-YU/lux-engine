@@ -35,7 +35,6 @@ namespace lux::render
         COUNT
     };
 
-    inline constexpr uint32_t kShadingInputSlotCount =
-        static_cast<uint32_t>(EShadingInputSlot::COUNT);
+    inline constexpr uint32_t kShadingInputSlotCount = static_cast<uint32_t>(EShadingInputSlot::COUNT);
 
 } // namespace lux::render

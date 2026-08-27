@@ -31,13 +31,12 @@ namespace lux::simulation
             lux::cxx::TypeToken type;
             std::shared_ptr<const void> code_lifetime;
             void* object{};
-            void (*destroy)(void*) noexcept{};
+            void (*destroy)(void*) noexcept {};
         };
     }
 
     /** Strong lifetime lease suitable for capture by a TaskGraph callable. */
-    template <class Type>
-    class SystemLease final
+    template <class Type> class SystemLease final
     {
     public:
         SystemLease() noexcept = default;
@@ -68,11 +67,7 @@ namespace lux::simulation
         }
 
     private:
-        SystemLease(
-            SystemId id,
-            std::shared_ptr<detail::SystemRecord> record,
-            Type* object
-        ) noexcept
+        SystemLease(SystemId id, std::shared_ptr<detail::SystemRecord> record, Type* object) noexcept
             : id_(id), record_(std::move(record)), object_(object)
         {
         }
@@ -101,19 +96,14 @@ namespace lux::simulation
         SystemRegistry& operator=(const SystemRegistry&) = delete;
 
         template <System Type, class... Args>
-        [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure> emplace(
-            Args&&... args
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure> emplace(Args&&... args) noexcept
         {
             return emplaceWithLifetime<Type>({}, std::forward<Args>(args)...);
         }
 
         template <System Type, class... Args>
         [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure>
-        emplaceWithLifetime(
-            std::shared_ptr<const void> code_lifetime,
-            Args&&... args
-        ) noexcept
+        emplaceWithLifetime(std::shared_ptr<const void> code_lifetime, Args&&... args) noexcept
         {
             try
             {
@@ -122,29 +112,21 @@ namespace lux::simulation
                 record->type = lux::cxx::typeToken<Type>();
                 record->code_lifetime = std::move(code_lifetime);
                 record->object = object.release();
-                record->destroy = [](void* value) noexcept
-                {
-                    delete static_cast<Type*>(value);
-                };
+                record->destroy = [](void* value) noexcept { delete static_cast<Type*>(value); };
                 return add(std::move(record));
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(SystemFailure{
-                    .code = ESystemError::ALLOCATION_FAILURE
-                });
+                return lux::cxx::unexpected(SystemFailure{.code = ESystemError::ALLOCATION_FAILURE});
             }
             catch (...)
             {
-                return lux::cxx::unexpected(SystemFailure{
-                    .code = ESystemError::CONSTRUCTION_FAILURE
-                });
+                return lux::cxx::unexpected(SystemFailure{.code = ESystemError::CONSTRUCTION_FAILURE});
             }
         }
 
         template <System Type>
-        [[nodiscard]] lux::cxx::expected<SystemLease<Type>, SystemFailure>
-        retain(SystemId id) const noexcept
+        [[nodiscard]] lux::cxx::expected<SystemLease<Type>, SystemFailure> retain(SystemId id) const noexcept
         {
             auto record = retainRecord(id);
             if (!record)
@@ -153,23 +135,13 @@ namespace lux::simulation
             const auto expected_type = lux::cxx::typeToken<Type>();
             if ((*record)->type.hash() != expected_type.hash())
             {
-                return lux::cxx::unexpected(SystemFailure{
-                    .code = ESystemError::INVALID_SYSTEM,
-                    .system = id
-                });
+                return lux::cxx::unexpected(SystemFailure{.code = ESystemError::INVALID_SYSTEM, .system = id});
             }
             if ((*record)->type.name() != expected_type.name())
             {
-                return lux::cxx::unexpected(SystemFailure{
-                    .code = ESystemError::TYPE_COLLISION,
-                    .system = id
-                });
+                return lux::cxx::unexpected(SystemFailure{.code = ESystemError::TYPE_COLLISION, .system = id});
             }
-            return SystemLease<Type>(
-                id,
-                *record,
-                static_cast<Type*>((*record)->object)
-            );
+            return SystemLease<Type>(id, *record, static_cast<Type*>((*record)->object));
         }
 
         [[nodiscard]] SystemRegistryId id() const noexcept;
@@ -187,13 +159,10 @@ namespace lux::simulation
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
-        [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure> add(
-            std::shared_ptr<detail::SystemRecord> record
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure>
+        add(std::shared_ptr<detail::SystemRecord> record) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            std::shared_ptr<detail::SystemRecord>,
-            SystemFailure
-        > retainRecord(SystemId id) const noexcept;
+        [[nodiscard]] lux::cxx::expected<std::shared_ptr<detail::SystemRecord>, SystemFailure>
+        retainRecord(SystemId id) const noexcept;
     };
 }

@@ -24,23 +24,23 @@ namespace lux::render
      */
     enum class EShaderFeature : uint32_t
     {
-        NONE           = 0,
-        HAS_NORMAL_MAP = 1u << 0,   ///< Normal mapping enabled
-        HAS_SKINNING   = 1u << 1,   ///< Skeletal animation
-        HAS_EMISSION   = 1u << 2,   ///< Emissive channel
-        ALPHA_CUTOUT   = 1u << 3,   ///< Alpha test / cutout
-        DOUBLE_SIDED   = 1u << 4,   ///< Two-sided rendering (no backface cull)
-        POINT_CLOUD    = 1u << 5,   ///< Point cloud rendering mode
-        WIREFRAME      = 1u << 6,   ///< Wireframe overlay
-        HAS_AO_MAP     = 1u << 7,   ///< Ambient occlusion map
-        HAS_METALLIC_MAP = 1u << 8, ///< Metallic/roughness map
-        VERTEX_COLOR   = 1u << 9,   ///< Per-vertex color attribute
-        INSTANCED      = 1u << 10,  ///< GPU instancing path
-        SHADOW_CASTER  = 1u << 11,  ///< Shadow map caster variant
-        DEPTH_ONLY     = 1u << 12,  ///< Depth pre-pass (no color writes)
-        HAS_RAMP_MAP   = 1u << 13,  ///< Toon/ramp lookup texture (Stylized)
-        HAS_CLEARCOAT  = 1u << 14,  ///< Clearcoat layer enabled
-        HAS_SHEEN      = 1u << 15,  ///< Sheen layer enabled
+        NONE = 0,
+        HAS_NORMAL_MAP = 1u << 0,     ///< Normal mapping enabled
+        HAS_SKINNING = 1u << 1,       ///< Skeletal animation
+        HAS_EMISSION = 1u << 2,       ///< Emissive channel
+        ALPHA_CUTOUT = 1u << 3,       ///< Alpha test / cutout
+        DOUBLE_SIDED = 1u << 4,       ///< Two-sided rendering (no backface cull)
+        POINT_CLOUD = 1u << 5,        ///< Point cloud rendering mode
+        WIREFRAME = 1u << 6,          ///< Wireframe overlay
+        HAS_AO_MAP = 1u << 7,         ///< Ambient occlusion map
+        HAS_METALLIC_MAP = 1u << 8,   ///< Metallic/roughness map
+        VERTEX_COLOR = 1u << 9,       ///< Per-vertex color attribute
+        INSTANCED = 1u << 10,         ///< GPU instancing path
+        SHADOW_CASTER = 1u << 11,     ///< Shadow map caster variant
+        DEPTH_ONLY = 1u << 12,        ///< Depth pre-pass (no color writes)
+        HAS_RAMP_MAP = 1u << 13,      ///< Toon/ramp lookup texture (Stylized)
+        HAS_CLEARCOAT = 1u << 14,     ///< Clearcoat layer enabled
+        HAS_SHEEN = 1u << 15,         ///< Sheen layer enabled
         HAS_FRESNEL_LAYER = 1u << 16, ///< Fresnel layer enabled
         // bits 17..31 reserved for future features
     };
@@ -97,8 +97,8 @@ namespace lux::render
      */
     struct ShaderPermutationKey
     {
-        uint64_t          base_shader_id{ 0 }; ///< FNV-1a hash of the base shader path/name
-        ShaderFeatureMask features{ 0 };        ///< Active feature combination
+        uint64_t base_shader_id{0};    ///< FNV-1a hash of the base shader path/name
+        ShaderFeatureMask features{0}; ///< Active feature combination
 
         bool operator==(const ShaderPermutationKey&) const = default;
     };

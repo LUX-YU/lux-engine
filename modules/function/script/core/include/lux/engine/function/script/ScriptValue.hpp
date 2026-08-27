@@ -19,45 +19,35 @@ namespace lux::script
     /** Read-only view of an argument slot. */
     struct ConstValueView
     {
-        ValueKind     kind;
-        ScriptTypeId  type_id;
-        const void*   data;
+        ValueKind kind;
+        ScriptTypeId type_id;
+        const void* data;
         std::uint32_t size;
     };
 
     /** Mutable view of a return slot. */
     struct ValueView
     {
-        ValueKind     kind;
-        ScriptTypeId  type_id;
-        void*         data;
+        ValueKind kind;
+        ScriptTypeId type_id;
+        void* data;
         std::uint32_t size;
     };
 
     inline ConstValueView make_const_view(const lux_script_value_slot& s) noexcept
     {
-        return ConstValueView{
-            static_cast<ValueKind>(s.kind),
-            s.type_id,
-            s.data,
-            s.size};
+        return ConstValueView{static_cast<ValueKind>(s.kind), s.type_id, s.data, s.size};
     }
 
     inline ValueView make_view(lux_script_value_slot& s) noexcept
     {
-        return ValueView{
-            static_cast<ValueKind>(s.kind),
-            s.type_id,
-            s.data,
-            s.size};
+        return ValueView{static_cast<ValueKind>(s.kind), s.type_id, s.data, s.size};
     }
 
     /** Best-effort typed read; caller is responsible for kind/size matching. */
-    template <typename T>
-    inline T read(const ConstValueView& v) noexcept
+    template <typename T> inline T read(const ConstValueView& v) noexcept
     {
-        static_assert(std::is_trivially_copyable_v<T>,
-                      "lux::script::read<T> requires trivially copyable T");
+        static_assert(std::is_trivially_copyable_v<T>, "lux::script::read<T> requires trivially copyable T");
         T out{};
         if (v.data && v.size >= sizeof(T))
         {

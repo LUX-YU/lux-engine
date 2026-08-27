@@ -21,8 +21,7 @@ namespace lux::render
     {
     public:
         static constexpr std::uint32_t kPickTokenBits = 19u;
-        static constexpr std::uint32_t kMaximumPickToken =
-            (1u << kPickTokenBits) - 1u;
+        static constexpr std::uint32_t kMaximumPickToken = (1u << kPickTokenBits) - 1u;
         enum class EVisibilityState : std::uint8_t
         {
             HIDDEN,
@@ -84,14 +83,13 @@ namespace lux::render
         };
         static_assert(sizeof(GpuCullInstance) == 8u);
 
-        [[nodiscard]] bool accepts(
-            RenderClusterWireId id,
-            std::uint64_t revision) const noexcept;
+        [[nodiscard]] bool accepts(RenderClusterWireId id, std::uint64_t revision) const noexcept;
         [[nodiscard]] bool validatesUpsert(
             const UploadRenderClusterPayload& header,
             std::span<const RenderClusterWireInstance> instances,
             std::size_t object_count,
-            std::size_t pick_token_count) const;
+            std::size_t pick_token_count
+        ) const;
         RenderClusterResources() = default;
         ~RenderClusterResources();
 
@@ -99,18 +97,17 @@ namespace lux::render
             const UploadRenderClusterPayload& header,
             std::span<const RenderClusterWireInstance> instances,
             std::vector<RenderObjectHandle> objects = {},
-            std::vector<std::uint32_t> pick_tokens = {});
-        [[nodiscard]] bool remove(
-            RenderClusterWireId id,
-            std::uint64_t revision) noexcept;
+            std::vector<std::uint32_t> pick_tokens = {}
+        );
+        [[nodiscard]] bool remove(RenderClusterWireId id, std::uint64_t revision) noexcept;
         [[nodiscard]] const Cluster* find(RenderClusterWireId id) const;
         [[nodiscard]] std::vector<VisibilityChange> reconcileHierarchy(
             RenderClusterWireId family_parent,
             bool prefer_children = true,
             float scene_time = 0.0f,
-            float transition_duration_seconds = 0.0f);
-        [[nodiscard]] bool prefersChildren(
-            RenderClusterWireId family_parent) const noexcept;
+            float transition_duration_seconds = 0.0f
+        );
+        [[nodiscard]] bool prefersChildren(RenderClusterWireId family_parent) const noexcept;
         [[nodiscard]] std::size_t transitionCount() const noexcept;
         [[nodiscard]] float transitionDurationSeconds() const noexcept
         {
@@ -124,49 +121,36 @@ namespace lux::render
         {
             return hlod_exit_error_pixels_;
         }
-        [[nodiscard]] static std::uint32_t transitionSeed(
-            std::uint64_t stable_pick_id,
-            RenderClusterWireId cluster,
-            std::size_t instance_index) noexcept;
-        [[nodiscard]] std::vector<RenderClusterWireId>
-        hierarchyParents() const;
-        void forEachObject(
-            const std::function<void(RenderObjectHandle)>& visitor) const;
-        void forEachVisibleObject(
-            const std::function<void(RenderObjectHandle)>& visitor) const;
-        void forEachVisiblePickObject(
-            const std::function<void(
-                RenderObjectHandle,
-                std::uint32_t)>& visitor) const;
+        [[nodiscard]] static std::uint32_t
+        transitionSeed(std::uint64_t stable_pick_id, RenderClusterWireId cluster, std::size_t instance_index) noexcept;
+        [[nodiscard]] std::vector<RenderClusterWireId> hierarchyParents() const;
+        void forEachObject(const std::function<void(RenderObjectHandle)>& visitor) const;
+        void forEachVisibleObject(const std::function<void(RenderObjectHandle)>& visitor) const;
+        void forEachVisiblePickObject(const std::function<void(RenderObjectHandle, std::uint32_t)>& visitor) const;
 
         [[nodiscard]] std::uint32_t allocatePickToken(std::uint64_t stable_pick_id);
         void cancelPickToken(std::uint32_t token) noexcept;
-        [[nodiscard]] std::optional<std::uint64_t> resolvePickToken(
-            std::uint32_t token) const noexcept;
+        [[nodiscard]] std::optional<std::uint64_t> resolvePickToken(std::uint32_t token) const noexcept;
 
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept;
 
         [[nodiscard]] bool initializePicking(
             DeviceContext& device,
             DeferredDestroyQueue& deferred_destroy,
-            std::uint32_t frames_in_flight);
+            std::uint32_t frames_in_flight
+        );
         void shutdownPicking() noexcept;
         void onPickingFrameBegin(std::uint32_t frame_index) noexcept;
-        void requestPick(const RequestRenderClusterPickPayload& request)
-            noexcept;
+        void requestPick(const RequestRenderClusterPickPayload& request) noexcept;
         [[nodiscard]] std::optional<RequestRenderClusterPickPayload>
         pickRequestForView(std::uint32_t view_index) const noexcept;
-        void markPickSubmitted(
-            std::uint32_t frame_index,
-            const RequestRenderClusterPickPayload& request) noexcept;
+        void markPickSubmitted(std::uint32_t frame_index, const RequestRenderClusterPickPayload& request) noexcept;
         void failPick(
             const RequestRenderClusterPickPayload& request,
-            ERenderPickStatus status = ERenderPickStatus::FAILED) noexcept;
-        [[nodiscard]] RenderClusterPickReply pickResult(
-            std::uint64_t request_generation) const noexcept;
+            ERenderPickStatus status = ERenderPickStatus::FAILED
+        ) noexcept;
+        [[nodiscard]] RenderClusterPickReply pickResult(std::uint64_t request_generation) const noexcept;
         [[nodiscard]] std::uint32_t pickBufferCount() const noexcept;
         [[nodiscard]] VkBuffer pickBuffer(std::uint32_t index) const noexcept;
 
@@ -174,34 +158,28 @@ namespace lux::render
             DeviceContext& device,
             DeferredDestroyQueue& deferred_destroy,
             std::uint32_t frames_in_flight,
-            std::uint32_t initial_capacity);
+            std::uint32_t initial_capacity
+        );
         void shutdownGpuCulling() noexcept;
         /// Rebuild the fence-safe input slice for this frame. capacity_changed
         /// tells the feature to invalidate the graph because transient candidate
         /// buffers are sized from the same capacity.
-        [[nodiscard]] bool prepareGpuCulling(
-            std::uint32_t frame_index,
-            const InstanceResources& instances,
-            bool& capacity_changed);
+        [[nodiscard]] bool
+        prepareGpuCulling(std::uint32_t frame_index, const InstanceResources& instances, bool& capacity_changed);
         [[nodiscard]] std::uint32_t gpuCullBufferCount() const noexcept;
-        [[nodiscard]] VkBuffer gpuCullClusterBuffer(
-            std::uint32_t index) const noexcept;
-        [[nodiscard]] VkBuffer gpuCullInstanceBuffer(
-            std::uint32_t index) const noexcept;
-        [[nodiscard]] VkBuffer gpuCandidateDispatchBuffer(
-            std::uint32_t index) const noexcept;
+        [[nodiscard]] VkBuffer gpuCullClusterBuffer(std::uint32_t index) const noexcept;
+        [[nodiscard]] VkBuffer gpuCullInstanceBuffer(std::uint32_t index) const noexcept;
+        [[nodiscard]] VkBuffer gpuCandidateDispatchBuffer(std::uint32_t index) const noexcept;
         void markGpuCandidateSubmitted(std::uint32_t frame_index) noexcept;
         [[nodiscard]] std::uint32_t latestGpuCandidateCount() const noexcept
         {
             return latest_gpu_candidate_count_;
         }
-        [[nodiscard]] std::uint32_t latestGpuCandidateRequestedCount()
-            const noexcept
+        [[nodiscard]] std::uint32_t latestGpuCandidateRequestedCount() const noexcept
         {
             return latest_gpu_candidate_requested_count_;
         }
-        [[nodiscard]] std::uint32_t latestGpuCandidateOverflowCount()
-            const noexcept
+        [[nodiscard]] std::uint32_t latestGpuCandidateOverflowCount() const noexcept
         {
             return latest_gpu_candidate_overflow_count_;
         }
@@ -215,13 +193,10 @@ namespace lux::render
         }
         [[nodiscard]] bool hasValidGpuCandidateDispatch() const noexcept
         {
-            return has_gpu_candidate_count_ &&
-                gpu_candidate_dispatch_valid_;
+            return has_gpu_candidate_count_ && gpu_candidate_dispatch_valid_;
         }
-        [[nodiscard]] std::uint32_t gpuCullClusterCount(
-            std::uint32_t frame_index) const noexcept;
-        [[nodiscard]] std::uint32_t gpuCullInstanceCount(
-            std::uint32_t frame_index) const noexcept;
+        [[nodiscard]] std::uint32_t gpuCullClusterCount(std::uint32_t frame_index) const noexcept;
+        [[nodiscard]] std::uint32_t gpuCullInstanceCount(std::uint32_t frame_index) const noexcept;
         [[nodiscard]] std::uint32_t gpuCullCapacity() const noexcept
         {
             return gpu_cull_capacity_;
@@ -288,20 +263,15 @@ namespace lux::render
             bool candidate_submitted{false};
         };
 
-        [[nodiscard]] bool allocateGpuCullFrames(
-            std::uint32_t frames_in_flight,
-            std::uint32_t capacity);
-        void retireGpuCullFrames(
-            std::vector<GpuCullFrame>& frames) noexcept;
+        [[nodiscard]] bool allocateGpuCullFrames(std::uint32_t frames_in_flight, std::uint32_t capacity);
+        void retireGpuCullFrames(std::vector<GpuCullFrame>& frames) noexcept;
         [[nodiscard]] bool rebuildGpuCullCanonical(const InstanceResources& instances);
 
         std::unordered_map<std::string, Cluster> clusters_;
         std::unordered_map<std::string, std::uint64_t> latest_revision_;
-        std::unordered_map<std::string, std::unordered_set<std::string>>
-            parent_members_;
+        std::unordered_map<std::string, std::unordered_set<std::string>> parent_members_;
         std::unordered_set<std::string> hierarchy_parents_;
-        std::unordered_map<std::string, bool>
-            hierarchy_prefer_children_;
+        std::unordered_map<std::string, bool> hierarchy_prefer_children_;
         DeviceContext* pick_device_{nullptr};
         DeferredDestroyQueue* deferred_destroy_{nullptr};
         std::vector<PickGpuSlot> pick_gpu_slots_;

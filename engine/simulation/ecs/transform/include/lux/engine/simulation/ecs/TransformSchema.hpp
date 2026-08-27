@@ -8,10 +8,9 @@
 
 namespace lux::simulation::ecs
 {
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC
-    std::span<const ComponentSchema> transformComponentSchemas() noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC std::span<const ComponentSchema>
+    transformComponentSchemas() noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC
-    ComponentSnapshotContribution
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC ComponentSnapshotContribution
     transformComponentSnapshotContribution() noexcept;
 } // namespace lux::simulation::ecs

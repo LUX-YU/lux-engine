@@ -39,8 +39,8 @@ namespace lux::render
                 entries_.emplace_back();
             }
 
-            auto &owner_entries = owner_index_[owner_token];
-            Entry &entry = entries_[id];
+            auto& owner_entries = owner_index_[owner_token];
+            Entry& entry = entries_[id];
             entry.retire_serial = retire_serial;
             entry.owner_token = owner_token;
             entry.callback = std::move(cb);
@@ -65,7 +65,7 @@ namespace lux::render
             {
                 if (id >= entries_.size())
                     continue;
-                Entry &entry = entries_[id];
+                Entry& entry = entries_[id];
                 if (!entry.active)
                     continue;
                 releaseEntry(id, /*owner_already_removed=*/true);
@@ -81,8 +81,7 @@ namespace lux::render
             while (!retire_order_.empty())
             {
                 const uint32_t id = retire_order_.front();
-                if (id < entries_.size() && entries_[id].active &&
-                    entries_[id].retire_serial > completed_serial)
+                if (id < entries_.size() && entries_[id].active && entries_[id].retire_serial > completed_serial)
                     break;
 
                 retire_order_.pop_front();
@@ -101,7 +100,7 @@ namespace lux::render
         {
             for (uint32_t id = 0; id < entries_.size(); ++id)
             {
-                Entry &entry = entries_[id];
+                Entry& entry = entries_[id];
                 if (!entry.active)
                     continue;
 
@@ -114,7 +113,10 @@ namespace lux::render
             retire_order_.clear();
         }
 
-        [[nodiscard]] size_t pendingCount() const noexcept { return pending_count_; }
+        [[nodiscard]] size_t pendingCount() const noexcept
+        {
+            return pending_count_;
+        }
 
     private:
         struct Entry
@@ -128,7 +130,7 @@ namespace lux::render
 
         void releaseEntry(uint32_t id, bool owner_already_removed)
         {
-            Entry &entry = entries_[id];
+            Entry& entry = entries_[id];
             if (!entry.active)
                 return;
 
@@ -146,12 +148,12 @@ namespace lux::render
 
         void detachFromOwnerIndex(uint32_t id)
         {
-            Entry &entry = entries_[id];
+            Entry& entry = entries_[id];
             auto owner_it = owner_index_.find(entry.owner_token);
             if (owner_it == owner_index_.end())
                 return;
 
-            auto &ids = owner_it->second;
+            auto& ids = owner_it->second;
             const size_t pos = entry.owner_pos;
 
             if (pos < ids.size() && ids[pos] == id)
@@ -181,17 +183,17 @@ namespace lux::render
                 owner_index_.erase(owner_it);
         }
 
-        std::vector<Entry>                                      entries_;
-        std::vector<uint32_t>                                   free_entries_;
+        std::vector<Entry> entries_;
+        std::vector<uint32_t> free_entries_;
         // FIFO of entry ids in non-decreasing retire_serial (frame-monotone).
         // Replaces a std::map<serial, vector<id>> used purely as a monotone
         // drain-from-front queue — the deque reuses its blocks (no per-new-serial
         // tree node / inner-vector allocation) and is O(1) push-back/pop-front.
         // owner_index_ stays a hash map: it serves random erase-by-owner (purge),
         // which has no ordering and is correctly an unordered_map. (P-5)
-        std::deque<uint32_t>                                    retire_order_;
-        std::unordered_map<OwnerToken, std::vector<uint32_t>>   owner_index_;
-        size_t                                                  pending_count_{0};
+        std::deque<uint32_t> retire_order_;
+        std::unordered_map<OwnerToken, std::vector<uint32_t>> owner_index_;
+        size_t pending_count_{0};
     };
 
 } // namespace lux::render

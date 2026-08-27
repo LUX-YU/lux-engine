@@ -18,10 +18,10 @@
  * 线程:与 RenderScene 一致 —— 仅渲染线程。
  */
 
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>   // lux::math::Extent2u
+#include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/function/visibility.h>
-#include <lux/cxx/container/BasicSparseSet.hpp>     // SlotKeyAutoSparseSet
+#include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet
 
 #include <cstdint>
 #include <deque>
@@ -37,7 +37,7 @@ namespace lux::render
     struct ViewCreateInfo
     {
         lux::math::Extent2u initial_extent{};
-        const char *debug_name{"View"};
+        const char* debug_name{"View"};
     };
 
     class LUX_FUNCTION_PUBLIC SceneViewSet
@@ -53,15 +53,18 @@ namespace lux::render
         /// `unique_ptr`,在**构造体内**建立(它的构造需要 debug_name_,而后者按声明序
         /// 在它之后初始化)。所以本对象构造时它还不存在,只能建好之后接上。
         /// RenderScene 的构造体内紧跟着 make_unique 调用本方法。
-        void setGraphCache(SceneGraphCache& cache) noexcept { graph_cache_ = &cache; }
+        void setGraphCache(SceneGraphCache& cache) noexcept
+        {
+            graph_cache_ = &cache;
+        }
 
-        SceneViewSet(const SceneViewSet&)            = delete;
+        SceneViewSet(const SceneViewSet&) = delete;
         SceneViewSet& operator=(const SceneViewSet&) = delete;
-        SceneViewSet(SceneViewSet&&)                 = delete;
-        SceneViewSet& operator=(SceneViewSet&&)      = delete;
+        SceneViewSet(SceneViewSet&&) = delete;
+        SceneViewSet& operator=(SceneViewSet&&) = delete;
 
         // ── 查询 ────────────────────────────────────────────────────────
-        [[nodiscard]] View*       get(ViewHandle handle) noexcept;
+        [[nodiscard]] View* get(ViewHandle handle) noexcept;
         [[nodiscard]] const View* get(ViewHandle handle) const noexcept;
         [[nodiscard]] std::size_t activeCount() const noexcept;
 
@@ -103,7 +106,10 @@ namespace lux::render
         /// 只是静默泄漏。图缓存改成构造后接上的成员之后,析构就能自己收尾了。
         void shutdown();
 
-        void markCacheDirty() noexcept { cache_dirty_ = true; }
+        void markCacheDirty() noexcept
+        {
+            cache_dirty_ = true;
+        }
 
     private:
         void rebuildActiveCacheIfNeeded() const;
@@ -115,16 +121,16 @@ namespace lux::render
         struct PendingDestroy
         {
             ViewHandle view_id;
-            uint64_t   destroy_frame{0};
+            uint64_t destroy_frame{0};
         };
 
         using ViewSet = lux::cxx::SlotKeyAutoSparseSet<ViewHandle, std::unique_ptr<View>>;
 
-        ResourceRegistry&    registry_;
+        ResourceRegistry& registry_;
         /// 非拥有。由 setGraphCache 在 RenderScene 构造体内接上;RenderScene 里
         /// graph_cache_ 声明在 view_set_ **之前**,所以逆序析构时它还活着。
-        SceneGraphCache*     graph_cache_{nullptr};
-        ViewSet                   views_;
+        SceneGraphCache* graph_cache_{nullptr};
+        ViewSet views_;
         std::deque<PendingDestroy> pending_destroys_;
 
         mutable std::vector<View*> active_dense_{};
@@ -132,7 +138,7 @@ namespace lux::render
         /// cache_dirty_ 是安全的:视图增删会同时影响两者,而状态变化只多刷一次
         /// all_dense_,是无害的多余工作。
         mutable std::vector<View*> all_dense_{};
-        mutable bool               cache_dirty_{true};
+        mutable bool cache_dirty_{true};
     };
 
 } // namespace lux::render

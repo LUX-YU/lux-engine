@@ -19,10 +19,15 @@ namespace lux::render
 {
     struct LUX_TYPE_INFO(runtime) SpatialCullParams
     {
-        LUX_MEMBER(display_name=Cell Size, min=8.0, max=4096.0, tooltip=Spatial cell edge length in world units)
+        LUX_MEMBER(display_name = Cell Size, min = 8.0, max = 4096.0, tooltip = Spatial cell edge length in world units)
         float cell_size = 128.0f;
 
-        LUX_MEMBER(display_name=Cull Distance, min=16.0, max=16384.0, tooltip=Cells farther than this from every active camera go dormant)
+        LUX_MEMBER(
+            display_name = Cull Distance,
+            min = 16.0,
+            max = 16384.0,
+            tooltip = Cells farther than this from every active camera go dormant
+        )
         float cull_distance = 512.0f;
     };
 

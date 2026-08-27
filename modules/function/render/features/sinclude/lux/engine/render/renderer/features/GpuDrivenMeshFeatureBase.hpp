@@ -20,12 +20,12 @@
 #include <lux/engine/render/gpu/pipeline/ShaderPermutation.hpp>
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp>   // VertexLayoutId
+#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // VertexLayoutId
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>      // EShadingModel
 #include <lux/engine/render/graph/RGPassTypes.hpp>
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
-#include <lux/engine/function/render/graph/RGEnums.hpp>            // phaseBit / ECoreRenderPhase
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>   // EPassDomain / PassMask
+#include <lux/engine/function/render/graph/RGEnums.hpp>                           // phaseBit / ECoreRenderPhase
+#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp> // EPassDomain / PassMask
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/gapi/vk/Pipeline.hpp>
 
@@ -54,14 +54,16 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC GpuDrivenMeshFeatureBase : public RenderFeature
     {
     public:
-
         /// Direct access to the three-stream instance storage.
-        InstanceResources *instanceStorage() noexcept { return instance_res_; }
+        InstanceResources* instanceStorage() noexcept
+        {
+            return instance_res_;
+        }
 
         // =====================================================================
         //  RenderFeature lifecycle (common implementations)
         // =====================================================================
-        void onFrameBegin(const FeatureFrameContext &ctx) override;
+        void onFrameBegin(const FeatureFrameContext& ctx) override;
         void populateFrameContext(RGFrameContext& frame_ctx) override;
 
     protected:
@@ -91,19 +93,20 @@ namespace lux::render
             RGBuilder& builder,
             std::string_view pass_name,
             std::string_view after_pass,
-            RGTransientDSHandle cull_tds);
+            RGTransientDSHandle cull_tds
+        );
 
         /// The per-feature knobs of the shared cull+compact construction — the
         /// only things that differ between the Forward and Deferred view paths.
         struct CullCompactParams
         {
-            std::string_view prefix;             ///< RG debug-name prefix ("Fwd" / "DeferredGBuf")
-            ECoreRenderPhase phase;              ///< drives the cull kernel pass_mask
-            EPassDomain      domain;             ///< drives the cull kernel geometry_mask
-            std::string_view cull_pass_name;     ///< e.g. "ForwardMeshForwardCull"
-            std::string_view compact_pass_name;  ///< e.g. "ForwardMeshForwardCompact"
-            uint32_t         descriptor_layout_version{0};
-            GpuDrivenMeshExtFlags         extension_flags{};
+            std::string_view prefix;            ///< RG debug-name prefix ("Fwd" / "DeferredGBuf")
+            ECoreRenderPhase phase;             ///< drives the cull kernel pass_mask
+            EPassDomain domain;                 ///< drives the cull kernel geometry_mask
+            std::string_view cull_pass_name;    ///< e.g. "ForwardMeshForwardCull"
+            std::string_view compact_pass_name; ///< e.g. "ForwardMeshForwardCompact"
+            uint32_t descriptor_layout_version{0};
+            GpuDrivenMeshExtFlags extension_flags{};
             //(原有 condition / condition_tag 两个字段已删:整链跳过现在由调用方
             // 用 RGBuilder::conditionChain 开一个作用域,本函数建的 pass 经
             // builder.addPass 出来即自动入链,不必再逐个把条件传进来。)
@@ -119,8 +122,7 @@ namespace lux::render
         /// MeshShadowFeature keeps its own shadow-specific variant.
         void addCullAndCompactPasses(RGBuilder& builder, const CullCompactParams& p);
 
-        using InstanceBufferGetter =
-            VkBuffer (InstanceResources::*)() const noexcept;
+        using InstanceBufferGetter = VkBuffer (InstanceResources::*)() const noexcept;
 
         /// Import one stable InstanceResources buffer with the common storage
         /// contract. View, shadow, highlight and feedback paths must describe
@@ -131,7 +133,8 @@ namespace lux::render
             VkDeviceSize size,
             std::uint32_t stride,
             std::uint32_t element_count,
-            InstanceBufferGetter getter);
+            InstanceBufferGetter getter
+        );
 
         /// Import every currently allocated classic-mesh IBO segment. The
         /// returned span remains stable through this graph compile and is copied
@@ -148,8 +151,7 @@ namespace lux::render
         /// 生产者,故统一用固定资源名 —— importBuffer 按名复用,首个调用者建、
         /// 其余复用同一条。
         ///
-        [[nodiscard]] std::span<const RGResourceHandle>
-        importSharedIndexBuffers(RGBuilder& builder);
+        [[nodiscard]] std::span<const RGResourceHandle> importSharedIndexBuffers(RGBuilder& builder);
 
         // ── MDC-based buffer sizing (the only path; bucket count is dynamic,
         //    bounded by mdcCount(), NOT a fixed kMaxBuckets grid) ──
@@ -212,8 +214,7 @@ namespace lux::render
 
             /// Register a per-bucket PSO override (R1). Grows the override vector as
             /// needed; @p two_sided selects the DOUBLE_SIDED (no-cull) tier.
-            void registerBucketPipeline(uint32_t bucket_id, bool two_sided,
-                                        GraphicsPipelineHandle handle)
+            void registerBucketPipeline(uint32_t bucket_id, bool two_sided, GraphicsPipelineHandle handle)
             {
                 auto& v = two_sided ? bucket_nocull : bucket_normal;
                 if (bucket_id >= v.size())
@@ -226,23 +227,19 @@ namespace lux::render
             /// bootstrap (the no-cull variant when DOUBLE_SIDED). Falls back to
             /// family 0 so an empty bucket never resolves an invalid handle (it has
             /// no visible instances, so its pipeline is never actually drawn with).
-            GraphicsPipelineHandle pick(uint32_t bucket_id,
-                                        const VariantBucketDesc& bucket) const noexcept
+            GraphicsPipelineHandle pick(uint32_t bucket_id, const VariantBucketDesc& bucket) const noexcept
             {
-                const bool two_sided =
-                    hasFeature(bucket.feature_mask, EShaderFeature::DOUBLE_SIDED);
+                const bool two_sided = hasFeature(bucket.feature_mask, EShaderFeature::DOUBLE_SIDED);
 
                 // Tier 1: per-bucket override.
-                const std::vector<GraphicsPipelineHandle>& ov =
-                    two_sided ? bucket_nocull : bucket_normal;
+                const std::vector<GraphicsPipelineHandle>& ov = two_sided ? bucket_nocull : bucket_normal;
                 if (bucket_id < ov.size() && ov[bucket_id].valid())
                     return ov[bucket_id];
 
                 // Tier 2: family bootstrap.
                 const FamilyPipelineArray& arr = two_sided ? bootstrap_nocull : bootstrap_normal;
                 const uint32_t family_index = static_cast<uint32_t>(bucket.family);
-                GraphicsPipelineHandle h =
-                    (family_index < arr.size()) ? arr[family_index] : arr[0];
+                GraphicsPipelineHandle h = (family_index < arr.size()) ? arr[family_index] : arr[0];
                 if (!h.valid())
                     h = arr[0];
                 return h;
@@ -252,8 +249,7 @@ namespace lux::render
         /// Collect material variant buckets from `mat_res`, defaulting to one
         /// bucket per family (feature_mask=0) when none have been registered yet.
         /// Mirrors the prior inline behaviour of ForwardMesh and DeferredGBuffer.
-        static std::vector<MaterialResources::VariantBucketDesc>
-        collectVariantBuckets(MaterialResources* mat_res)
+        static std::vector<MaterialResources::VariantBucketDesc> collectVariantBuckets(MaterialResources* mat_res)
         {
             std::vector<MaterialResources::VariantBucketDesc> buckets;
             if (mat_res != nullptr)
@@ -269,9 +265,10 @@ namespace lux::render
                 for (uint32_t fi = 0; fi < kLightingTechniqueCount; ++fi)
                 {
                     buckets.push_back(MaterialResources::VariantBucketDesc{
-                        .family       = static_cast<ELightingTechnique>(fi),
+                        .family = static_cast<ELightingTechnique>(fi),
                         .feature_mask = 0u,
-                    });
+                    }
+                    );
                 }
             }
             return buckets;
@@ -291,19 +288,26 @@ namespace lux::render
         /// switching decision back out into each feature.
         static ShaderHandle resolveFragmentForFamily(
             EShadingModel sm,
-            ShaderHandle  fs_unlit,
-            ShaderHandle  fs_pbr,
-            ShaderHandle  fs_stylized,
-            ShaderHandle  fs_graph) noexcept
+            ShaderHandle fs_unlit,
+            ShaderHandle fs_pbr,
+            ShaderHandle fs_stylized,
+            ShaderHandle fs_graph
+        ) noexcept
         {
             switch (sm)
             {
-            case EShadingModel::UNLIT:                return fs_unlit;
-            case EShadingModel::LEGACY_LIT_BASE:      return fs_unlit; // aliases Unlit (S15)
-            case EShadingModel::PbrMetallicRoughness: return fs_pbr;
-            case EShadingModel::STYLIZED:             return fs_stylized;
-            case EShadingModel::GRAPH:                return fs_graph;
-            default:                                  return ShaderHandle{};
+            case EShadingModel::UNLIT:
+                return fs_unlit;
+            case EShadingModel::LEGACY_LIT_BASE:
+                return fs_unlit; // aliases Unlit (S15)
+            case EShadingModel::PbrMetallicRoughness:
+                return fs_pbr;
+            case EShadingModel::STYLIZED:
+                return fs_stylized;
+            case EShadingModel::GRAPH:
+                return fs_graph;
+            default:
+                return ShaderHandle{};
             }
         }
 
@@ -329,11 +333,12 @@ namespace lux::render
         /// the _vp vertex shader reads vertices via set 7, so no vertex
         /// attributes are bound — only the vertex-pool layout spec is appended.
         [[nodiscard]] Expected<void> registerFamilyPipelines(
-            const GraphicsPipelineTemplate&                    base_template,
-            ShaderHandle                                       vertex_shader,
-            VertexLayoutRegistry&                              vlr,
-            VertexLayoutId                                     vp_read_layout,
-            const std::function<ShaderHandle(EShadingModel)>&  resolve_fragment);
+            const GraphicsPipelineTemplate& base_template,
+            ShaderHandle vertex_shader,
+            VertexLayoutRegistry& vlr,
+            VertexLayoutId vp_read_layout,
+            const std::function<ShaderHandle(EShadingModel)>& resolve_fragment
+        );
 
         /// For each Graph-family variant bucket carrying a baked per-material frag
         /// shader (R1), build (cached) that bucket's OWN graphics pipeline from the
@@ -359,13 +364,13 @@ namespace lux::render
         // registerFamilyPipelines 期存下的构建输入,好让 addPasses 用图材质运行期提交的
         // 片元着色器建它自己的管线(与家族 bootstrap 同一份模板 / _vp / 布局)。模板按
         // 指针持有,以免把它的完整定义拉进本头;缓存把图着色器句柄映到已建好的 PSO。
-        std::unique_ptr<GraphicsPipelineTemplate>            graph_pso_template_;
+        std::unique_ptr<GraphicsPipelineTemplate> graph_pso_template_;
         // The _vp ShaderInfo is held BY VALUE (not a ShaderObject*): the pointer
         // would dangle once a later compileShader grows + reallocates the
         // ShaderResources storage. The vp module lives in graph_pso_template_.
-        lux::rdesc::ShaderInfo                               graph_pso_vp_info_;
-        VertexLayoutRegistry*                                graph_pso_vlr_{ nullptr };
-        VertexLayoutId                                       graph_pso_vp_layout_{};
+        lux::rdesc::ShaderInfo graph_pso_vp_info_;
+        VertexLayoutRegistry* graph_pso_vlr_{nullptr};
+        VertexLayoutId graph_pso_vp_layout_{};
 
         // Exact composite identity key for the per-material graph PSO cache: the
         // frag shader handle (index+gen) plus the double_sided render-state bit.
@@ -378,15 +383,15 @@ namespace lux::render
         {
             uint32_t shader_index{};
             uint32_t shader_gen{};
-            bool     double_sided{};
+            bool double_sided{};
             bool operator==(const GraphPsoKey&) const noexcept = default;
         };
         struct GraphPsoKeyHash
         {
             std::size_t operator()(const GraphPsoKey& k) const noexcept
             {
-                std::size_t h = std::hash<std::uint64_t>{}(
-                    (static_cast<std::uint64_t>(k.shader_index) << 32) | k.shader_gen);
+                std::size_t h =
+                    std::hash<std::uint64_t>{}((static_cast<std::uint64_t>(k.shader_index) << 32) | k.shader_gen);
                 h ^= std::hash<bool>{}(k.double_sided) + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
                 return h;
             }
@@ -394,7 +399,7 @@ namespace lux::render
         std::unordered_map<GraphPsoKey, GraphicsPipelineHandle, GraphPsoKeyHash> graph_pso_cache_;
 
         // --- Three-stream instance storage (borrowed from SceneRegistry) ---
-        InstanceResources *instance_res_{nullptr};
+        InstanceResources* instance_res_{nullptr};
 
         // --- Cull resources ---
         VkDevice device_{VK_NULL_HANDLE};
@@ -408,7 +413,7 @@ namespace lux::render
         RGResourceHandle draw_indirect_rg_{};
         RGResourceHandle draw_count_rg_{};
         RGResourceHandle visible_instance_rg_{};
-        RGResourceHandle mdc_info_rg_{};  ///< Per-MDC GPU info buffer (binding 7)
+        RGResourceHandle mdc_info_rg_{}; ///< Per-MDC GPU info buffer (binding 7)
         std::vector<RGResourceHandle> imported_index_buffers_rg_;
 
         VmaAllocator vma_{VK_NULL_HANDLE};

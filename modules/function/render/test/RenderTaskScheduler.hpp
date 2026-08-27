@@ -17,7 +17,7 @@
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
-#include "RenderTask.hpp"   // relocated beside this header (test-only)
+#include "RenderTask.hpp" // relocated beside this header (test-only)
 
 #include <cassert>
 #include <coroutine>
@@ -29,9 +29,7 @@ namespace lux::render
     /// Test-coroutine adapter. Production keeps the structured backpressure
     /// result and retries at a main-thread safe point; these probes run below
     /// saturation and convert rejection into a settled failure request.
-    template <class Reply>
-    [[nodiscard]] RenderRequest<Reply> requireUploadAccepted(
-        UploadSubmitResult<Reply> submitted)
+    template <class Reply> [[nodiscard]] RenderRequest<Reply> requireUploadAccepted(UploadSubmitResult<Reply> submitted)
     {
         if (!submitted)
             return RenderRequestFactory<Reply>::makeImmediateFailure({});
@@ -41,8 +39,9 @@ namespace lux::render
     class RenderTaskScheduler
     {
     public:
-        explicit RenderTaskScheduler(RenderFrameSession& session)
-            : session_(session) {}
+        explicit RenderTaskScheduler(RenderFrameSession& session) : session_(session)
+        {
+        }
 
         RenderTaskScheduler(
             RenderFrameSession& frame,
@@ -58,8 +57,7 @@ namespace lux::render
         /// @param task      The coroutine to drive.
         /// @param on_frame  Called each frame after submitFrame + pumpReplies.
         ///                  Return false to abort the loop (e.g. window close).
-        template <typename PerFrameFn>
-        void run(RenderTask<void> task, PerFrameFn&& on_frame)
+        template <typename PerFrameFn> void run(RenderTask<void> task, PerFrameFn&& on_frame)
         {
             // Install the deferred-resume slot so reply callbacks stash
             // coroutine handles instead of resuming them directly.

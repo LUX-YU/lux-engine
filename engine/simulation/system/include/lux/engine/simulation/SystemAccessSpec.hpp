@@ -31,26 +31,22 @@ namespace lux::simulation
         ESystemAccessMode mode{ESystemAccessMode::READ};
     };
 
-    template <class Component>
-    struct ComponentRead final
+    template <class Component> struct ComponentRead final
     {
         using component_type = Component;
     };
 
-    template <class Component>
-    struct ComponentWrite final
+    template <class Component> struct ComponentWrite final
     {
         using component_type = Component;
     };
 
-    template <class External>
-    struct ExternalRead final
+    template <class External> struct ExternalRead final
     {
         using external_type = External;
     };
 
-    template <class External>
-    struct ExternalWrite final
+    template <class External> struct ExternalWrite final
     {
         using external_type = External;
     };
@@ -63,112 +59,88 @@ namespace lux::simulation
 
     namespace detail
     {
-        template <class Access>
-        struct ComponentSystemAccessTraits;
+        template <class Access> struct ComponentSystemAccessTraits;
 
-        template <class Component>
-        struct ComponentSystemAccessTraits<ComponentRead<Component>> final
+        template <class Component> struct ComponentSystemAccessTraits<ComponentRead<Component>> final
         {
             using ComponentType = Component;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::READ;
         };
 
-        template <class Component>
-        struct ComponentSystemAccessTraits<ComponentWrite<Component>> final
+        template <class Component> struct ComponentSystemAccessTraits<ComponentWrite<Component>> final
         {
             using ComponentType = Component;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::WRITE;
         };
 
         template <class Access>
-        concept ComponentSystemAccess = requires
-        {
-            typename ComponentSystemAccessTraits<Access>::ComponentType;
-        };
+        concept ComponentSystemAccess = requires { typename ComponentSystemAccessTraits<Access>::ComponentType; };
 
-        template <class Access>
-        struct ExternalSystemAccessTraits;
+        template <class Access> struct ExternalSystemAccessTraits;
 
-        template <class External>
-        struct ExternalSystemAccessTraits<ExternalRead<External>> final
+        template <class External> struct ExternalSystemAccessTraits<ExternalRead<External>> final
         {
             using ExternalType = External;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::READ;
         };
 
-        template <class External>
-        struct ExternalSystemAccessTraits<ExternalWrite<External>> final
+        template <class External> struct ExternalSystemAccessTraits<ExternalWrite<External>> final
         {
             using ExternalType = External;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::WRITE;
         };
 
         template <class Access>
-        concept ExternalSystemAccess = requires
-        {
-            typename ExternalSystemAccessTraits<Access>::ExternalType;
-        };
+        concept ExternalSystemAccess = requires { typename ExternalSystemAccessTraits<Access>::ExternalType; };
 
         template <class Access>
-        inline constexpr bool kSystemAccessElement =
-            ComponentSystemAccess<Access> ||
-            ExternalSystemAccess<Access>;
+        inline constexpr bool kSystemAccessElement = ComponentSystemAccess<Access> || ExternalSystemAccess<Access>;
 
         template <class... Access>
-        inline constexpr std::size_t kComponentAccessCount =
-            (std::size_t{ComponentSystemAccess<Access>} + ... + 0U);
+        inline constexpr std::size_t kComponentAccessCount = (std::size_t{ComponentSystemAccess<Access>} + ... + 0U);
 
         template <class... Access>
-        inline constexpr std::size_t kExternalAccessCount =
-            (std::size_t{ExternalSystemAccess<Access>} + ... + 0U);
+        inline constexpr std::size_t kExternalAccessCount = (std::size_t{ExternalSystemAccess<Access>} + ... + 0U);
 
-        template <class... Access>
-        [[nodiscard]] consteval auto systemComponentAccesses() noexcept
+        template <class... Access> [[nodiscard]] consteval auto systemComponentAccesses() noexcept
         {
-            std::array<SystemComponentAccess, kComponentAccessCount<Access...>>
-                result{};
+            std::array<SystemComponentAccess, kComponentAccessCount<Access...>> result{};
             std::size_t index{};
-            ([&]
-            {
-                if constexpr (ComponentSystemAccess<Access>)
-                {
-                    using Component =
-                        typename ComponentSystemAccessTraits<Access>::ComponentType;
-                    result[index++] = SystemComponentAccess{
-                        lux::cxx::typeToken<Component>(),
-                        entt::type_hash<Component>::value(),
-                        ComponentSystemAccessTraits<Access>::kMode
-                    };
-                }
-            }(), ...);
+            (
+                [&] {
+                    if constexpr (ComponentSystemAccess<Access>)
+                    {
+                        using Component = typename ComponentSystemAccessTraits<Access>::ComponentType;
+                        result[index++] = SystemComponentAccess{
+                            lux::cxx::typeToken<Component>(),
+                            entt::type_hash<Component>::value(),
+                            ComponentSystemAccessTraits<Access>::kMode};
+                    }
+                }(),
+                ...);
             return result;
         }
 
-        template <class... Access>
-        [[nodiscard]] consteval auto systemExternalAccesses() noexcept
+        template <class... Access> [[nodiscard]] consteval auto systemExternalAccesses() noexcept
         {
-            std::array<SystemExternalAccess, kExternalAccessCount<Access...>>
-                result{};
+            std::array<SystemExternalAccess, kExternalAccessCount<Access...>> result{};
             std::size_t index{};
-            ([&]
-            {
-                if constexpr (ExternalSystemAccess<Access>)
-                {
-                    using External = typename
-                        ExternalSystemAccessTraits<Access>::ExternalType;
-                    result[index++] = SystemExternalAccess{
-                        lux::cxx::typeToken<External>(),
-                        ExternalSystemAccessTraits<Access>::kMode
-                    };
-                }
-            }(), ...);
+            (
+                [&] {
+                    if constexpr (ExternalSystemAccess<Access>)
+                    {
+                        using External = typename ExternalSystemAccessTraits<Access>::ExternalType;
+                        result[index++] = SystemExternalAccess{
+                            lux::cxx::typeToken<External>(),
+                            ExternalSystemAccessTraits<Access>::kMode};
+                    }
+                }(),
+                ...);
             return result;
         }
 
         template <class Value, std::size_t Size>
-        [[nodiscard]] consteval bool uniqueSystemAccesses(
-            const std::array<Value, Size>& values
-        ) noexcept
+        [[nodiscard]] consteval bool uniqueSystemAccesses(const std::array<Value, Size>& values) noexcept
         {
             for (std::size_t current{}; current < values.size(); ++current)
             {
@@ -183,16 +155,14 @@ namespace lux::simulation
     }
 
     template <class... Access>
-        requires (detail::kSystemAccessElement<Access> && ...)
+        requires(detail::kSystemAccessElement<Access> && ...)
     class StaticSystemAccessDescriptor final
     {
-      private:
-        inline static constexpr auto kComponents =
-            detail::systemComponentAccesses<Access...>();
-        inline static constexpr auto kExternal =
-            detail::systemExternalAccesses<Access...>();
+    private:
+        inline static constexpr auto kComponents = detail::systemComponentAccesses<Access...>();
+        inline static constexpr auto kExternal = detail::systemExternalAccesses<Access...>();
 
-      public:
+    public:
         static_assert(detail::uniqueSystemAccesses(kComponents));
         static_assert(detail::uniqueSystemAccesses(kExternal));
 
@@ -204,20 +174,17 @@ namespace lux::simulation
 
     namespace detail
     {
-        template <class Type>
-        inline constexpr bool kTrustedSystemAccessDescriptor = false;
+        template <class Type> inline constexpr bool kTrustedSystemAccessDescriptor = false;
 
         template <class... Access>
-        inline constexpr bool kTrustedSystemAccessDescriptor<
-            StaticSystemAccessDescriptor<Access...>> = true;
+        inline constexpr bool kTrustedSystemAccessDescriptor<StaticSystemAccessDescriptor<Access...>> = true;
 
         template <class Type>
-        concept TrustedSystemAccessDescriptor =
-            kTrustedSystemAccessDescriptor<std::remove_cvref_t<Type>>;
+        concept TrustedSystemAccessDescriptor = kTrustedSystemAccessDescriptor<std::remove_cvref_t<Type>>;
     }
 
     template <class... Access>
-        requires (detail::kSystemAccessElement<Access> && ...)
+        requires(detail::kSystemAccessElement<Access> && ...)
     [[nodiscard]] consteval auto makeSystemAccessSpec() noexcept
     {
         return StaticSystemAccessDescriptor<Access...>{};

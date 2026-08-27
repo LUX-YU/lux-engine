@@ -8,8 +8,7 @@
 
 namespace lux::simulation
 {
-    inline constexpr std::string_view ScriptComponentCanonicalName{
-        "lux.simulation.ScriptComponent"};
+    inline constexpr std::string_view ScriptComponentCanonicalName{"lux.simulation.ScriptComponent"};
     inline constexpr std::uint32_t ScriptComponentSchemaVersion{2U};
 
     struct ScriptComponent final
@@ -21,9 +20,6 @@ namespace lux::simulation
             return validScriptMountList(mounts);
         }
 
-        friend bool operator==(
-            const ScriptComponent&,
-            const ScriptComponent&
-        ) noexcept = default;
+        friend bool operator==(const ScriptComponent&, const ScriptComponent&) noexcept = default;
     };
 }

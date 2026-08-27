@@ -32,13 +32,13 @@ namespace
     static_assert(std::is_trivially_copyable_v<OldAssetHeaderV1>);
 }
 
-int main()
+int
+main()
 {
     using namespace lux::asset;
     constexpr CookedAssetImageLimits generous_limits{1024u * 1024u};
     constexpr std::array info{std::byte{0x11}, std::byte{0x22}};
-    constexpr std::array data{
-        std::byte{0x31}, std::byte{0x32}, std::byte{0x33}, std::byte{0x34}};
+    constexpr std::array data{std::byte{0x31}, std::byte{0x32}, std::byte{0x33}, std::byte{0x34}};
     OldAssetHeaderV1 header{};
     header.magic = 0x01309143u;
     header.version = kCookedAssetVersionV1;
@@ -54,11 +54,7 @@ int main()
     std::vector<std::byte> old_fixture(sizeof(header) + info.size() + data.size());
     std::memcpy(old_fixture.data(), &header, sizeof(header));
     std::memcpy(old_fixture.data() + sizeof(header), info.data(), info.size());
-    std::memcpy(
-        old_fixture.data() + sizeof(header) + info.size(),
-        data.data(),
-        data.size()
-    );
+    std::memcpy(old_fixture.data() + sizeof(header) + info.size(), data.data(), data.size());
 
     const auto decoded = inspectCookedAssetImage(old_fixture, generous_limits);
     assert(decoded);
@@ -76,17 +72,10 @@ int main()
 
     auto corrupt = old_fixture;
     std::uint64_t impossible = corrupt.size() + 1u;
-    std::memcpy(
-        corrupt.data() + offsetof(OldAssetHeaderV1, data_offset),
-        &impossible,
-        sizeof(impossible)
-    );
+    std::memcpy(corrupt.data() + offsetof(OldAssetHeaderV1, data_offset), &impossible, sizeof(impossible));
     assert(!inspectCookedAssetImage(corrupt, generous_limits));
 
-    const auto limited = inspectCookedAssetImage(
-        old_fixture,
-        CookedAssetImageLimits{old_fixture.size() - 1u}
-    );
+    const auto limited = inspectCookedAssetImage(old_fixture, CookedAssetImageLimits{old_fixture.size() - 1u});
     assert(!limited);
     assert(limited.error() == ECookedAssetImageError::LIMIT_EXCEEDED);
 }

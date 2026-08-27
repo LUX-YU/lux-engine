@@ -34,12 +34,12 @@ namespace lux::render
 
     enum EPassBit : uint16_t
     {
-        eBasePass      = 1u << 0,
-        eShadow        = 1u << 1,
-        eGBuffer       = 1u << 2,
-        eDepthPrepass  = 1u << 3,
-        eEmissive      = 1u << 4,
-        eTransparent   = 1u << 5,
+        eBasePass = 1u << 0,
+        eShadow = 1u << 1,
+        eGBuffer = 1u << 2,
+        eDepthPrepass = 1u << 3,
+        eEmissive = 1u << 4,
+        eTransparent = 1u << 5,
     };
 
     using PassMask = uint16_t;
@@ -79,9 +79,9 @@ namespace lux::render
     //    bit 3  kInstanceFlagHighlight          (HighlightOperation.hpp)
     //    bit 4  kInstanceFlagStreamingFeedback  (StreamingFeedbackOperation.hpp)
     //    bit 4+ 空闲
-    inline constexpr uint32_t kInstanceFlagCastShadow    = 1u << 0;
+    inline constexpr uint32_t kInstanceFlagCastShadow = 1u << 0;
     inline constexpr uint32_t kInstanceFlagReceiveShadow = 1u << 1;
-    inline constexpr uint32_t kInstanceFlagVisible       = 1u << 2;
+    inline constexpr uint32_t kInstanceFlagVisible = 1u << 2;
     /// feature 位起点:bit 0-2 归核心,feature 位从此起。
     inline constexpr uint32_t kInstanceFlagFirstFeatureBit = 3u;
     //
@@ -93,8 +93,14 @@ namespace lux::render
         uint32_t index{~0u};
         uint32_t gen{0};
 
-        [[nodiscard]] static constexpr RenderObjectHandle invalid() noexcept { return {}; }
-        [[nodiscard]] explicit constexpr operator bool() const noexcept { return index != ~0u; }
+        [[nodiscard]] static constexpr RenderObjectHandle invalid() noexcept
+        {
+            return {};
+        }
+        [[nodiscard]] explicit constexpr operator bool() const noexcept
+        {
+            return index != ~0u;
+        }
         friend auto operator<=>(RenderObjectHandle, RenderObjectHandle) = default;
     };
 

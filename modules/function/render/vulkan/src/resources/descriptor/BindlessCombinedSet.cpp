@@ -1,6 +1,6 @@
 #include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
-#include <lux/engine/render/gpu/utils/FormatMap.hpp>   // vkFormatMipBytes (update validation)
+#include <lux/engine/render/gpu/utils/FormatMap.hpp> // vkFormatMipBytes (update validation)
 #include <vk_mem_alloc.h>
 
 #include <mutex>
@@ -42,18 +42,25 @@ namespace lux::render
             switch (fmt)
             {
             case VK_FORMAT_R8G8B8A8_SRGB:
-            case VK_FORMAT_R8G8B8A8_UNORM:      return 4;
-            case VK_FORMAT_R16G16B16A16_SFLOAT: return 8;
-            case VK_FORMAT_R8G8_UNORM:          return 2;
-            case VK_FORMAT_R8_UNORM:            return 1;
-            case VK_FORMAT_R16_UINT:            return 2;
-            case VK_FORMAT_R16_UNORM:           return 2;
-            default:                            return 0;
+            case VK_FORMAT_R8G8B8A8_UNORM:
+                return 4;
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+                return 8;
+            case VK_FORMAT_R8G8_UNORM:
+                return 2;
+            case VK_FORMAT_R8_UNORM:
+                return 1;
+            case VK_FORMAT_R16_UINT:
+                return 2;
+            case VK_FORMAT_R16_UNORM:
+                return 2;
+            default:
+                return 0;
             }
         }
     }
 
-    bool BindlessCombinedSet::init(const BCInitInfo &ci)
+    bool BindlessCombinedSet::init(const BCInitInfo& ci)
     {
         assert(ci.resource_context && ci.descriptor_set_layout);
         rc_ = ci.resource_context;
@@ -95,9 +102,9 @@ namespace lux::render
         if (ci.external_pool && ci.external_set)
         {
             // External set mode: caller manages pool + set lifetime
-            desc_pool_      = ci.external_pool;
+            desc_pool_ = ci.external_pool;
             descriptor_set_ = ci.external_set;
-            owns_pool_      = false;
+            owns_pool_ = false;
             // In external mode, capacity is fixed at initial (no reallocation)
             cur_cap_ = layout_max_cap_;
         }
@@ -122,32 +129,31 @@ namespace lux::render
         // device, making null descriptor writes invalid.
         {
             VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-            ici.imageType     = VK_IMAGE_TYPE_2D;
-            ici.extent        = {1, 1, 1};
-            ici.mipLevels     = 1;
-            ici.arrayLayers   = 1;
-            ici.format        = VK_FORMAT_R8G8B8A8_UNORM;
-            ici.tiling        = VK_IMAGE_TILING_OPTIMAL;
+            ici.imageType = VK_IMAGE_TYPE_2D;
+            ici.extent = {1, 1, 1};
+            ici.mipLevels = 1;
+            ici.arrayLayers = 1;
+            ici.format = VK_FORMAT_R8G8B8A8_UNORM;
+            ici.tiling = VK_IMAGE_TILING_OPTIMAL;
             ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            ici.usage         = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-            ici.samples       = VK_SAMPLE_COUNT_1_BIT;
-            ici.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+            ici.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            ici.samples = VK_SAMPLE_COUNT_1_BIT;
+            ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
             VmaAllocationCreateInfo aci{};
             aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-            VK_CHECK(vmaCreateImage(rc_->vmaAllocator(), &ici, &aci,
-                                    &fallback_image_, &fallback_alloc_, nullptr));
+            VK_CHECK(vmaCreateImage(rc_->vmaAllocator(), &ici, &aci, &fallback_image_, &fallback_alloc_, nullptr));
 
             VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-            vci.image    = fallback_image_;
+            vci.image = fallback_image_;
             vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            vci.format   = VK_FORMAT_R8G8B8A8_UNORM;
+            vci.format = VK_FORMAT_R8G8B8A8_UNORM;
             vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
             VK_CHECK(vkCreateImageView(rc_->logicalDevice(), &vci, nullptr, &fallback_view_));
 
             VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-            sci.magFilter    = VK_FILTER_NEAREST;
-            sci.minFilter    = VK_FILTER_NEAREST;
+            sci.magFilter = VK_FILTER_NEAREST;
+            sci.minFilter = VK_FILTER_NEAREST;
             sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
             sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
             sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -158,9 +164,13 @@ namespace lux::render
             if (cb_res)
             {
                 VkCommandBuffer cb = cb_res.value();
-                barrierImage(cb, fallback_image_, VK_IMAGE_ASPECT_COLOR_BIT,
-                             VK_IMAGE_LAYOUT_UNDEFINED,
-                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                barrierImage(
+                    cb,
+                    fallback_image_,
+                    VK_IMAGE_ASPECT_COLOR_BIT,
+                    VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
                 (void)endOneTime(cb);
             }
         }
@@ -193,12 +203,11 @@ namespace lux::render
         }
         deferred_staging_.clear();
 
-        auto &device = rc_->logicalDevice();
+        auto& device = rc_->logicalDevice();
 
         for (uint32_t i = 0; i < slots_.size(); ++i)
             if (alive_[i])
                 destroyCombined(slots_[i]);
-
 
         if (owns_pool_)
         {
@@ -249,11 +258,12 @@ namespace lux::render
     }
 
     SlotHandle BindlessCombinedSet::addTexture(
-        const rdesc::Texture &tex,
-        const VkSamplerCreateInfo *opt_sampler_ci,
+        const rdesc::Texture& tex,
+        const VkSamplerCreateInfo* opt_sampler_ci,
         VkFormat fmt,
         std::optional<bool> gen_mips,
-        std::optional<bool> srgb_override)
+        std::optional<bool> srgb_override
+    )
     {
         if (!ensureRoom())
             return SlotHandle{};
@@ -266,14 +276,9 @@ namespace lux::render
         s.format = pickFormat(c, fmt, srgb_override.value_or(srgb_for_color_));
 
         TextureCopyPlan copy_plan{};
-        const uint32_t provided_mips = std::clamp<uint32_t>(
-            tex.mipCount(),
-            1u,
-            rdesc::kTextureMaxMipCount);
+        const uint32_t provided_mips = std::clamp<uint32_t>(tex.mipCount(), 1u, rdesc::kTextureMaxMipCount);
         const bool has_provided_mips = provided_mips > 1;
-        const bool do_mips = gen_mips.value_or(gen_mips_)
-                          && !isBlockCompressedVkFormat(s.format)
-                          && !has_provided_mips;
+        const bool do_mips = gen_mips.value_or(gen_mips_) && !isBlockCompressedVkFormat(s.format) && !has_provided_mips;
         s.mip_levels = do_mips ? calcMipLevels(w, h) : provided_mips;
 
         if (has_provided_mips)
@@ -320,21 +325,30 @@ namespace lux::render
     }
 
     SlotHandle BindlessCombinedSet::addPersistentTexture(
-        uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat fmt,
-        const VkSamplerCreateInfo* opt_sampler_ci)
+        uint32_t width,
+        uint32_t height,
+        uint32_t mip_levels,
+        VkFormat fmt,
+        const VkSamplerCreateInfo* opt_sampler_ci
+    )
     {
-        assert(view_type_ == VK_IMAGE_VIEW_TYPE_2D &&
-               "addPersistentTexture() targets the 2D bindless set");
-        if (width == 0 || height == 0 || mip_levels == 0 || fmt == VK_FORMAT_UNDEFINED)
+        assert(view_type_ == VK_IMAGE_VIEW_TYPE_2D && "addPersistentTexture() targets the 2D bindless set");
+        const bool is_missing_width = width == 0;
+        const bool is_missing_height = height == 0;
+        const bool is_missing_mips = mip_levels == 0;
+        const bool is_undefined_format = fmt == VK_FORMAT_UNDEFINED;
+        const bool is_invalid_descriptor = is_missing_width || is_missing_height || is_missing_mips ||
+            is_undefined_format;
+        if (is_invalid_descriptor)
             return SlotHandle{};
         if (!ensureRoom())
             return SlotHandle{};
 
         CombinedSlot s{};
-        s.width        = static_cast<int>(width);
-        s.height       = static_cast<int>(height);
-        s.format       = fmt;
-        s.mip_levels   = std::min<uint32_t>(mip_levels, calcMipLevels(width, height));
+        s.width = static_cast<int>(width);
+        s.height = static_cast<int>(height);
+        s.format = fmt;
+        s.mip_levels = std::min<uint32_t>(mip_levels, calcMipLevels(width, height));
         s.array_layers = 1;
         createImageGPU(s);
         createImageView(s);
@@ -358,20 +372,26 @@ namespace lux::render
         VkDeviceSize total = 0;
         for (uint32_t m = 0; m < plan.count; ++m)
         {
-            const uint32_t mw = std::max(1u, width  >> m);
+            const uint32_t mw = std::max(1u, width >> m);
             const uint32_t mh = std::max(1u, height >> m);
             plan.regions[m].buffer_offset = total;
-            plan.regions[m].mip_level     = m;
-            plan.regions[m].width         = mw;
-            plan.regions[m].height        = mh;
+            plan.regions[m].mip_level = m;
+            plan.regions[m].width = mw;
+            plan.regions[m].height = mh;
             total += static_cast<VkDeviceSize>(mw) * mh * texel;
         }
-        const std::vector<std::byte> zeros(static_cast<size_t>(total));   // value-init = 0
+        const std::vector<std::byte> zeros(static_cast<size_t>(total)); // value-init = 0
         StagingBuf staging = createStaging(total, zeros.data());
         pending_uploads_.push_back(PendingUpload{
-            staging, idx, /*do_mips=*/false, /*is_cube=*/false, 0, plan,
+            staging,
+            idx,
+            /*do_mips=*/false,
+            /*is_cube=*/false,
+            0,
+            plan,
             VK_IMAGE_LAYOUT_UNDEFINED,
-        });
+        }
+        );
         return {idx, gen_[idx]};
     }
 
@@ -379,7 +399,8 @@ namespace lux::render
         const SlotHandle& h,
         std::span<const RegionUpdate> regions,
         std::span<const std::byte> pixels,
-        uint32_t texel_bytes)
+        uint32_t texel_bytes
+    )
     {
         if (!isTextureAlive(h) || regions.empty() || texel_bytes == 0)
             return false;
@@ -392,8 +413,8 @@ namespace lux::render
         std::size_t next = 0;
         while (next < regions.size())
         {
-            const uint32_t count = static_cast<uint32_t>(std::min<std::size_t>(
-                regions.size() - next, rdesc::kTextureMaxMipCount));
+            const uint32_t count =
+                static_cast<uint32_t>(std::min<std::size_t>(regions.size() - next, rdesc::kTextureMaxMipCount));
 
             TextureCopyPlan plan{};
             plan.count = count;
@@ -402,12 +423,12 @@ namespace lux::render
             {
                 const RegionUpdate& r = regions[next + i];
                 plan.regions[i].buffer_offset = total;
-                plan.regions[i].mip_level     = r.mip;
-                plan.regions[i].width         = r.width;
-                plan.regions[i].height        = r.height;
-                plan.regions[i].x             = r.x;
-                plan.regions[i].y             = r.y;
-                plan.regions[i].array_layer   = r.array_layer;
+                plan.regions[i].mip_level = r.mip;
+                plan.regions[i].width = r.width;
+                plan.regions[i].height = r.height;
+                plan.regions[i].x = r.x;
+                plan.regions[i].y = r.y;
+                plan.regions[i].array_layer = r.array_layer;
                 total += static_cast<VkDeviceSize>(r.width) * r.height * texel_bytes;
             }
 
@@ -418,20 +439,29 @@ namespace lux::render
                 const RegionUpdate& r = regions[next + i];
                 const std::size_t tight = static_cast<std::size_t>(r.width) * texel_bytes;
                 const std::size_t pitch = r.row_pitch_bytes ? r.row_pitch_bytes : tight;
-                const std::byte*  src   = pixels.data() + r.data_offset;
+                const std::byte* src = pixels.data() + r.data_offset;
                 for (uint32_t row = 0; row < r.height; ++row)
                 {
-                    std::memcpy(packed.data() + static_cast<size_t>(out),
-                                src + static_cast<std::size_t>(row) * pitch, tight);
+                    std::memcpy(
+                        packed.data() + static_cast<size_t>(out),
+                        src + static_cast<std::size_t>(row) * pitch,
+                        tight
+                    );
                     out += static_cast<VkDeviceSize>(tight);
                 }
             }
 
             StagingBuf staging = createStaging(total, packed.data());
             pending_uploads_.push_back(PendingUpload{
-                staging, idx, /*do_mips=*/false, /*is_cube=*/false, 0, plan,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,   // persistent textures are always initialized
-            });
+                staging,
+                idx,
+                /*do_mips=*/false,
+                /*is_cube=*/false,
+                0,
+                plan,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // persistent textures are always initialized
+            }
+            );
             next += count;
         }
         return true;
@@ -439,11 +469,11 @@ namespace lux::render
 
     SlotHandle BindlessCombinedSet::addCubeTexture(
         const rdesc::Texture faces[6],
-        const VkSamplerCreateInfo *opt_sampler_ci,
-        VkFormat fmt)
+        const VkSamplerCreateInfo* opt_sampler_ci,
+        VkFormat fmt
+    )
     {
-        assert(view_type_ == VK_IMAGE_VIEW_TYPE_CUBE &&
-               "addCubeTexture() requires a cube-view BindlessCombinedSet");
+        assert(view_type_ == VK_IMAGE_VIEW_TYPE_CUBE && "addCubeTexture() requires a cube-view BindlessCombinedSet");
         if (!ensureRoom())
             return SlotHandle{};
 
@@ -451,16 +481,16 @@ namespace lux::render
         assert(w > 0 && h > 0 && w == h && (c == 1 || c == 2 || c == 3 || c == 4));
 
         CombinedSlot s{};
-        s.width  = w;
+        s.width = w;
         s.height = h;
         s.format = pickFormat(c, fmt);
-        s.mip_levels   = 1;    // cubemap mipmaps not yet supported
+        s.mip_levels = 1; // cubemap mipmaps not yet supported
         s.array_layers = 6;
 
         createImageGPU(s);
 
         // Combine all 6 faces into a single contiguous staging buffer
-        const VkDeviceSize face_size  = faces[0].size();
+        const VkDeviceSize face_size = faces[0].size();
         const VkDeviceSize total_size = face_size * 6;
         std::vector<uint8_t> combined(total_size);
         for (int i = 0; i < 6; ++i)
@@ -487,14 +517,17 @@ namespace lux::render
 
     void BindlessCombinedSet::flushUploads()
     {
-        if (pending_uploads_.empty()) return;
+        if (pending_uploads_.empty())
+            return;
 
         auto cb_result = beginOneTime();
-        if (!cb_result) return;
+        if (!cb_result)
+            return;
         VkCommandBuffer cb = cb_result.value();
         recordPendingUploads(cb);
         auto end_result = endOneTime(cb);
-        if (!end_result) return;
+        if (!end_result)
+            return;
         // One-shot path: submission fence wait guarantees staging safety.
         for (auto& s : one_shot_staging_)
             destroyStaging(s);
@@ -503,13 +536,16 @@ namespace lux::render
 
     void BindlessCombinedSet::flushUploads(VkCommandBuffer cb, uint32_t fi)
     {
-        if (pending_uploads_.empty()) return;
+        if (pending_uploads_.empty())
+            return;
         recordPendingUploads(cb);
         // Per-frame path: move collected staging into the frame-slot array.
         auto& slot = deferred_staging_[fi % frames_in_flight_];
-        slot.insert(slot.end(),
-                    std::make_move_iterator(one_shot_staging_.begin()),
-                    std::make_move_iterator(one_shot_staging_.end()));
+        slot.insert(
+            slot.end(),
+            std::make_move_iterator(one_shot_staging_.begin()),
+            std::make_move_iterator(one_shot_staging_.end())
+        );
         one_shot_staging_.clear();
     }
 
@@ -560,16 +596,15 @@ namespace lux::render
                     for (uint32_t face = 0; face < s.array_layers; ++face)
                     {
                         ImageCopyRequest req{};
-                        req.src        = p.staging.buf;
+                        req.src = p.staging.buf;
                         req.src_offset = static_cast<VkDeviceSize>(face) * p.face_stride;
-                        req.dst        = s.image;
+                        req.dst = s.image;
                         req.old_layout = p.old_layout;
                         req.new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        req.subresource = { image_aspect_, 0, face, 1 };
-                        req.offset     = {0, 0, 0};
-                        req.extent     = { static_cast<uint32_t>(s.width),
-                                           static_cast<uint32_t>(s.height), 1 };
-                        req.domain     = EBufferDomain::Sampled_FS;
+                        req.subresource = {image_aspect_, 0, face, 1};
+                        req.offset = {0, 0, 0};
+                        req.extent = {static_cast<uint32_t>(s.width), static_cast<uint32_t>(s.height), 1};
+                        req.domain = EBufferDomain::Sampled_FS;
                         scheduler.submitImageCopy(req);
                     }
                 }
@@ -581,8 +616,8 @@ namespace lux::render
                     {
                         fallback.count = 1;
                         fallback.regions[0].buffer_offset = 0;
-                        fallback.regions[0].mip_level     = 0;
-                        fallback.regions[0].width  = static_cast<uint32_t>(std::max(1, s.width));
+                        fallback.regions[0].mip_level = 0;
+                        fallback.regions[0].width = static_cast<uint32_t>(std::max(1, s.width));
                         fallback.regions[0].height = static_cast<uint32_t>(std::max(1, s.height));
                         plan = &fallback;
                     }
@@ -590,28 +625,23 @@ namespace lux::render
                     // No mip clamp on count — see recordTextureUploadInternal:
                     // region updates carry many mip-0 rects; clamping dropped
                     // all but the first on 1-mip textures (stale-trail bug).
-                    const uint32_t copy_count  = plan->count;
-                    const bool runtime_mips    = p.do_mips && s.mip_levels > 1 && copy_count == 1;
+                    const uint32_t copy_count = plan->count;
+                    const bool runtime_mips = p.do_mips && s.mip_levels > 1 && copy_count == 1;
 
                     for (uint32_t i = 0; i < copy_count; ++i)
                     {
                         const auto& cr = plan->regions[i];
                         ImageCopyRequest req{};
-                        req.src        = p.staging.buf;
+                        req.src = p.staging.buf;
                         req.src_offset = cr.buffer_offset;
-                        req.dst        = s.image;
+                        req.dst = s.image;
                         req.old_layout = p.old_layout;
-                        req.new_layout = runtime_mips
-                                             ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                                             : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        req.subresource = { image_aspect_,
-                                            std::min(cr.mip_level, s.mip_levels - 1),
-                                            cr.array_layer, 1 };
-                        req.offset     = { static_cast<int32_t>(cr.x),
-                                           static_cast<int32_t>(cr.y), 0 };
-                        req.extent     = { std::max(1u, cr.width),
-                                           std::max(1u, cr.height), 1 };
-                        req.domain     = EBufferDomain::Sampled_FS;
+                        req.new_layout = runtime_mips ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+                                                      : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        req.subresource = {image_aspect_, std::min(cr.mip_level, s.mip_levels - 1), cr.array_layer, 1};
+                        req.offset = {static_cast<int32_t>(cr.x), static_cast<int32_t>(cr.y), 0};
+                        req.extent = {std::max(1u, cr.width), std::max(1u, cr.height), 1};
+                        req.domain = EBufferDomain::Sampled_FS;
                         scheduler.submitImageCopy(req);
                     }
 
@@ -638,54 +668,47 @@ namespace lux::render
                     for (uint32_t face = 0; face < s.array_layers; ++face)
                     {
                         ImageCopyRequest req{};
-                        req.src        = e.stg_buf;
+                        req.src = e.stg_buf;
                         req.src_offset = static_cast<VkDeviceSize>(face) * e.face_stride;
-                        req.dst        = s.image;
+                        req.dst = s.image;
                         req.old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
                         req.new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        req.subresource = { image_aspect_, 0, face, 1 };
-                        req.offset     = {0, 0, 0};
-                        req.extent     = { static_cast<uint32_t>(s.width),
-                                           static_cast<uint32_t>(s.height), 1 };
-                        req.domain     = EBufferDomain::Sampled_FS;
+                        req.subresource = {image_aspect_, 0, face, 1};
+                        req.offset = {0, 0, 0};
+                        req.extent = {static_cast<uint32_t>(s.width), static_cast<uint32_t>(s.height), 1};
+                        req.domain = EBufferDomain::Sampled_FS;
                         scheduler.submitImageCopy(req);
                     }
                 }
                 else
                 {
                     TextureCopyPlan copy_plan{};
-                    copy_plan.count = std::clamp<uint32_t>(
-                        e.mip_copy_count, 1u, rdesc::kTextureMaxMipCount);
+                    copy_plan.count = std::clamp<uint32_t>(e.mip_copy_count, 1u, rdesc::kTextureMaxMipCount);
                     for (uint32_t i = 0; i < copy_plan.count; ++i)
                     {
                         copy_plan.regions[i].buffer_offset = e.mip_copies[i].buffer_offset;
-                        copy_plan.regions[i].mip_level     = e.mip_copies[i].mip_level;
-                        copy_plan.regions[i].width         = e.mip_copies[i].width;
-                        copy_plan.regions[i].height        = e.mip_copies[i].height;
+                        copy_plan.regions[i].mip_level = e.mip_copies[i].mip_level;
+                        copy_plan.regions[i].width = e.mip_copies[i].width;
+                        copy_plan.regions[i].height = e.mip_copies[i].height;
                     }
 
-                    const uint32_t copy_count  = std::min(copy_plan.count, s.mip_levels);
-                    const bool runtime_mips    = e.do_mips && s.mip_levels > 1 && copy_count == 1;
+                    const uint32_t copy_count = std::min(copy_plan.count, s.mip_levels);
+                    const bool runtime_mips = e.do_mips && s.mip_levels > 1 && copy_count == 1;
 
                     for (uint32_t i = 0; i < copy_count; ++i)
                     {
                         const auto& cr = copy_plan.regions[i];
                         ImageCopyRequest req{};
-                        req.src        = e.stg_buf;
+                        req.src = e.stg_buf;
                         req.src_offset = cr.buffer_offset;
-                        req.dst        = s.image;
+                        req.dst = s.image;
                         req.old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-                        req.new_layout = runtime_mips
-                                             ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                                             : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        req.subresource = { image_aspect_,
-                                            std::min(cr.mip_level, s.mip_levels - 1),
-                                            cr.array_layer, 1 };
-                        req.offset     = { static_cast<int32_t>(cr.x),
-                                           static_cast<int32_t>(cr.y), 0 };
-                        req.extent     = { std::max(1u, cr.width),
-                                           std::max(1u, cr.height), 1 };
-                        req.domain     = EBufferDomain::Sampled_FS;
+                        req.new_layout = runtime_mips ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+                                                      : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        req.subresource = {image_aspect_, std::min(cr.mip_level, s.mip_levels - 1), cr.array_layer, 1};
+                        req.offset = {static_cast<int32_t>(cr.x), static_cast<int32_t>(cr.y), 0};
+                        req.extent = {std::max(1u, cr.width), std::max(1u, cr.height), 1};
+                        req.domain = EBufferDomain::Sampled_FS;
                         scheduler.submitImageCopy(req);
                     }
 
@@ -702,13 +725,13 @@ namespace lux::render
             for (const auto& b : pending_acquire_barriers_)
             {
                 QFOTAcquireRequest req{};
-                req.kind       = QFOTAcquireRequest::Kind::Image;
-                req.image      = b.image;
+                req.kind = QFOTAcquireRequest::Kind::Image;
+                req.image = b.image;
                 req.img_layout = b.oldLayout;
-                req.img_range  = b.subresourceRange;
+                req.img_range = b.subresourceRange;
                 req.src_family = b.srcQueueFamilyIndex;
                 req.dst_family = b.dstQueueFamilyIndex;
-                req.domain     = EBufferDomain::Sampled_FS;
+                req.domain = EBufferDomain::Sampled_FS;
                 scheduler.submitQFOTAcquire(req);
             }
             pending_acquire_barriers_.clear();
@@ -720,7 +743,7 @@ namespace lux::render
         recordDeferredMipGens(cmd);
     }
 
-    bool BindlessCombinedSet::removeTexture(const SlotHandle &h)
+    bool BindlessCombinedSet::removeTexture(const SlotHandle& h)
     {
         if (!isTextureAlive(h))
             return false;
@@ -742,7 +765,7 @@ namespace lux::render
         if (deferred_queue_)
             pending_recycle_.emplace_back(idx, deferred_queue_->currentSerial());
         else
-            free_.push_back(idx);  // standalone/tests (waitIdle): immediate reuse is safe
+            free_.push_back(idx); // standalone/tests (waitIdle): immediate reuse is safe
 
         return true;
     }
@@ -752,16 +775,17 @@ namespace lux::render
     // =========================================================================
 
     void BindlessCombinedSet::finalizeTexture(
-        SlotHandle                  h,
-        const uint8_t*              pixels,
-        std::size_t                 size,
-        int32_t                     w,
-        int32_t                     h_dim,
-        int32_t                     c,
-        VkFormat                    fmt_hint,
-        const VkSamplerCreateInfo&  sci,
-        bool                        do_mips,
-        bool                        srgb)
+        SlotHandle h,
+        const uint8_t* pixels,
+        std::size_t size,
+        int32_t w,
+        int32_t h_dim,
+        int32_t c,
+        VkFormat fmt_hint,
+        const VkSamplerCreateInfo& sci,
+        bool do_mips,
+        bool srgb
+    )
     {
         assert(rc_ && "BindlessCombinedSet not initialised");
         assert(h.isValid() && h.index < layout_max_cap_);
@@ -769,12 +793,11 @@ namespace lux::render
         const uint32_t idx = h.index;
 
         CombinedSlot s{};
-        s.width       = w;
-        s.height      = h_dim;
-        s.format      = pickFormat(c, fmt_hint, srgb);
+        s.width = w;
+        s.height = h_dim;
+        s.format = pickFormat(c, fmt_hint, srgb);
         const bool effective_mips = do_mips && !isBlockCompressedVkFormat(s.format);
-        s.mip_levels  = effective_mips ? calcMipLevels(static_cast<uint32_t>(w),
-                             static_cast<uint32_t>(h_dim)) : 1u;
+        s.mip_levels = effective_mips ? calcMipLevels(static_cast<uint32_t>(w), static_cast<uint32_t>(h_dim)) : 1u;
         s.array_layers = 1;
 
         createImageGPU(s);
@@ -783,7 +806,7 @@ namespace lux::render
 
         slots_[idx] = s;
         alive_[idx] = 1;
-        writeCombinedDescriptor(idx, s.view, s.sampler);  // UPDATE_AFTER_BIND
+        writeCombinedDescriptor(idx, s.view, s.sampler); // UPDATE_AFTER_BIND
 
         StagingBuf staging = createStaging(static_cast<VkDeviceSize>(size), pixels);
         TextureCopyPlan copy_plan{};
@@ -796,15 +819,16 @@ namespace lux::render
     }
 
     void BindlessCombinedSet::finalizeCubeTexture(
-        SlotHandle                  h,
-        const uint8_t*              combined_pixels,
-        std::size_t                 total_size,
-        int32_t                     w,
-        int32_t                     h_dim,
-        int32_t                     c,
-        VkFormat                    fmt_hint,
-        const VkSamplerCreateInfo&  sci,
-        VkDeviceSize                face_stride)
+        SlotHandle h,
+        const uint8_t* combined_pixels,
+        std::size_t total_size,
+        int32_t w,
+        int32_t h_dim,
+        int32_t c,
+        VkFormat fmt_hint,
+        const VkSamplerCreateInfo& sci,
+        VkDeviceSize face_stride
+    )
     {
         assert(rc_ && "BindlessCombinedSet not initialised");
         assert(h.isValid() && h.index < layout_max_cap_);
@@ -813,10 +837,10 @@ namespace lux::render
         const uint32_t idx = h.index;
 
         CombinedSlot s{};
-        s.width        = w;
-        s.height       = h_dim;
-        s.format       = pickFormat(c, fmt_hint, false);
-        s.mip_levels   = 1;   // no auto mips for cube maps
+        s.width = w;
+        s.height = h_dim;
+        s.format = pickFormat(c, fmt_hint, false);
+        s.mip_levels = 1; // no auto mips for cube maps
         s.array_layers = 6;
 
         createImageGPU(s);
@@ -834,7 +858,8 @@ namespace lux::render
     bool BindlessCombinedSet::updateTextureMips(
         const SlotHandle& h,
         std::span<const TextureUpdateMip> mips,
-        bool generate_mips)
+        bool generate_mips
+    )
     {
         if (!isTextureAlive(h) || mips.empty())
             return false;
@@ -844,24 +869,19 @@ namespace lux::render
         if (s.array_layers != 1)
             return false;
 
-        const uint32_t copy_count = std::clamp<uint32_t>(
-            static_cast<uint32_t>(mips.size()),
-            1u,
-            rdesc::kTextureMaxMipCount);
+        const uint32_t copy_count =
+            std::clamp<uint32_t>(static_cast<uint32_t>(mips.size()), 1u, rdesc::kTextureMaxMipCount);
         if (copy_count > s.mip_levels)
             return false;
 
         const auto& base = mips[0];
         if (base.width == 0 || base.height == 0)
             return false;
-        if (static_cast<int32_t>(base.width) != s.width ||
-            static_cast<int32_t>(base.height) != s.height)
+        if (static_cast<int32_t>(base.width) != s.width || static_cast<int32_t>(base.height) != s.height)
             return false;
 
-        const bool do_runtime_mips = generate_mips
-                                  && copy_count == 1
-                                  && s.mip_levels > 1
-                                  && !isBlockCompressedVkFormat(s.format);
+        const bool do_runtime_mips =
+            generate_mips && copy_count == 1 && s.mip_levels > 1 && !isBlockCompressedVkFormat(s.format);
 
         TextureCopyPlan copy_plan{};
         copy_plan.count = copy_count;
@@ -872,7 +892,12 @@ namespace lux::render
         for (uint32_t i = 0; i < copy_count; ++i)
         {
             const auto& mip = mips[i];
-            if (mip.data == nullptr || mip.bytes == 0 || mip.width == 0 || mip.height == 0)
+            const bool is_missing_data = mip.data == nullptr;
+            const bool is_empty_data = mip.bytes == 0;
+            const bool is_missing_width = mip.width == 0;
+            const bool is_missing_height = mip.height == 0;
+            const bool is_invalid_data = is_missing_data || is_empty_data || is_missing_width || is_missing_height;
+            if (is_invalid_data)
                 return false;
             // each mip must match the EXISTING slot's mip-chain extent
             // (max(1, base>>i)) and hold EXACTLY the format-computed byte count. Otherwise
@@ -881,8 +906,13 @@ namespace lux::render
             const uint32_t ew = (sw >> i) ? (sw >> i) : 1u;
             const uint32_t eh = (sh >> i) ? (sh >> i) : 1u;
             const std::uint64_t need = vkFormatMipBytes(s.format, ew, eh);
-            if (mip.width != ew || mip.height != eh ||
-                need == 0 || static_cast<std::uint64_t>(mip.bytes) != need)
+            const bool is_invalid_width = mip.width != ew;
+            const bool is_invalid_height = mip.height != eh;
+            const bool is_invalid_format_size = need == 0;
+            const bool is_invalid_byte_count = static_cast<std::uint64_t>(mip.bytes) != need;
+            const bool is_invalid_mip = is_invalid_width || is_invalid_height || is_invalid_format_size ||
+                is_invalid_byte_count;
+            if (is_invalid_mip)
                 return false;
 
             copy_plan.regions[i].buffer_offset = total_bytes;
@@ -899,10 +929,7 @@ namespace lux::render
         for (uint32_t i = 0; i < copy_count; ++i)
         {
             const auto& mip = mips[i];
-            std::memcpy(
-                packed.data() + static_cast<size_t>(offset),
-                mip.data,
-                mip.bytes);
+            std::memcpy(packed.data() + static_cast<size_t>(offset), mip.data, mip.bytes);
             offset += static_cast<VkDeviceSize>(mip.bytes);
         }
 
@@ -915,13 +942,12 @@ namespace lux::render
             0,
             copy_plan,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        });
+        }
+        );
         return true;
     }
 
-    bool BindlessCombinedSet::updateCubeFaces(
-        const SlotHandle& h,
-        const std::array<TextureUpdateFace, 6>& faces)
+    bool BindlessCombinedSet::updateCubeFaces(const SlotHandle& h, const std::array<TextureUpdateFace, 6>& faces)
     {
         if (!isTextureAlive(h))
             return false;
@@ -935,7 +961,8 @@ namespace lux::render
         // format and face extent — the old check only ensured the six faces AGREE, which
         // let a wrong-but-consistent size through and could OOB the per-face copy.
         const VkDeviceSize expected_face = static_cast<VkDeviceSize>(
-            vkFormatMipBytes(s.format, static_cast<uint32_t>(s.width), static_cast<uint32_t>(s.height)));
+            vkFormatMipBytes(s.format, static_cast<uint32_t>(s.width), static_cast<uint32_t>(s.height))
+        );
         if (expected_face == 0)
             return false;
         for (const auto& face : faces)
@@ -952,10 +979,7 @@ namespace lux::render
         VkDeviceSize offset = 0;
         for (const auto& face : faces)
         {
-            std::memcpy(
-                packed.data() + static_cast<size_t>(offset),
-                face.data,
-                face.bytes);
+            std::memcpy(packed.data() + static_cast<size_t>(offset), face.data, face.bytes);
             offset += static_cast<VkDeviceSize>(face.bytes);
         }
 
@@ -968,7 +992,8 @@ namespace lux::render
             face_stride,
             {},
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        });
+        }
+        );
         return true;
     }
 
@@ -981,46 +1006,48 @@ namespace lux::render
         alive_[idx] = 1;
         // Write null / fallback descriptor so shaders see valid texels.
         writeCombinedDescriptorNull(idx);
-        return { idx, gen_[idx] };
+        return {idx, gen_[idx]};
     }
 
     // ---------- finalizeTransferredTexture ----------
     void BindlessCombinedSet::finalizeTransferredTexture(
-        uint32_t      slot_idx,
-        VkImage       image,
+        uint32_t slot_idx,
+        VkImage image,
         VmaAllocation alloc,
-        VkImageView   view,
-        VkSampler     sampler,
-        VkFormat      format,
-        uint32_t      mip_levels,
-        uint32_t      array_layers,
-        int32_t       w,
-        int32_t       h)
+        VkImageView view,
+        VkSampler sampler,
+        VkFormat format,
+        uint32_t mip_levels,
+        uint32_t array_layers,
+        int32_t w,
+        int32_t h
+    )
     {
         CombinedSlot& s = slots_[slot_idx];
-        s.image        = image;
-        s.alloc        = alloc;
-        s.view         = view;
-        s.sampler      = sampler;
-        s.format       = format;
-        s.mip_levels   = mip_levels;
+        s.image = image;
+        s.alloc = alloc;
+        s.view = view;
+        s.sampler = sampler;
+        s.format = format;
+        s.mip_levels = mip_levels;
         s.array_layers = array_layers;
-        s.width        = w;
-        s.height       = h;
+        s.width = w;
+        s.height = h;
         writeCombinedDescriptor(slot_idx, view, sampler);
     }
 
     void BindlessCombinedSet::replaceTransferredTexture(
-        uint32_t      slot_idx,
-        VkImage       image,
+        uint32_t slot_idx,
+        VkImage image,
         VmaAllocation alloc,
-        VkImageView   view,
-        VkSampler     sampler,
-        VkFormat      format,
-        uint32_t      mip_levels,
-        uint32_t      array_layers,
-        int32_t       w,
-        int32_t       h)
+        VkImageView view,
+        VkSampler sampler,
+        VkFormat format,
+        uint32_t mip_levels,
+        uint32_t array_layers,
+        int32_t w,
+        int32_t h
+    )
     {
         assert(slot_idx < cur_cap_ && alive_[slot_idx]);
         CombinedSlot previous = std::move(slots_[slot_idx]);
@@ -1044,7 +1071,8 @@ namespace lux::render
 
     void BindlessCombinedSet::reserve(uint32_t need)
     {
-        if (need <= cur_cap_) return;
+        if (need <= cur_cap_)
+            return;
         uint32_t new_cap = std::min(nextCap(cur_cap_, need), layout_max_cap_);
 
         assert(new_cap <= layout_max_cap_ && "Need to rebuild layout with larger descriptorCount");
@@ -1088,7 +1116,7 @@ namespace lux::render
 
     void BindlessCombinedSet::buildPool()
     {
-        auto &device = rc_->logicalDevice();
+        auto& device = rc_->logicalDevice();
 
         VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, layout_max_cap_ * (kMaxFramesInFlight + 2u)};
         VkDescriptorPoolCreateInfo pci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -1101,7 +1129,7 @@ namespace lux::render
 
     void BindlessCombinedSet::allocateSet(uint32_t varCount)
     {
-        auto &device = rc_->logicalDevice();
+        auto& device = rc_->logicalDevice();
 
         VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
@@ -1119,7 +1147,7 @@ namespace lux::render
 
     void BindlessCombinedSet::reallocateSetAndCopy(uint32_t newCount)
     {
-        auto &device = rc_->logicalDevice();
+        auto& device = rc_->logicalDevice();
 
         VkDescriptorSet newSet = VK_NULL_HANDLE;
         {
@@ -1178,14 +1206,14 @@ namespace lux::render
         descriptor_set_ = newSet;
     }
 
-
     bool BindlessCombinedSet::ensureRoom()
     {
         if (!free_.empty())
             return true;
         if (count_ < cur_cap_)
             return true;
-        if (!owns_pool_) {
+        if (!owns_pool_)
+        {
             // External pool mode: cannot reallocate. Caller must handle.
             return false;
         }
@@ -1213,8 +1241,8 @@ namespace lux::render
     void BindlessCombinedSet::writeCombinedDescriptorNull(uint32_t idx)
     {
         VkDescriptorImageInfo di{};
-        di.sampler     = fallback_sampler_;
-        di.imageView   = fallback_view_;
+        di.sampler = fallback_sampler_;
+        di.imageView = fallback_view_;
         di.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w.dstSet = descriptor_set_;
@@ -1226,7 +1254,7 @@ namespace lux::render
         vkUpdateDescriptorSets(rc_->logicalDevice(), 1, &w, 0, nullptr);
     }
 
-    void BindlessCombinedSet::createImageGPU(CombinedSlot &s)
+    void BindlessCombinedSet::createImageGPU(CombinedSlot& s)
     {
         VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         ici.imageType = VK_IMAGE_TYPE_2D;
@@ -1248,7 +1276,7 @@ namespace lux::render
         VK_CHECK(vmaCreateImage(rc_->vmaAllocator(), &ici, &aci, &s.image, &s.alloc, nullptr));
     }
 
-    void BindlessCombinedSet::createImageView(CombinedSlot &s)
+    void BindlessCombinedSet::createImageView(CombinedSlot& s)
     {
         VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         vci.image = s.image;
@@ -1258,9 +1286,9 @@ namespace lux::render
         VK_CHECK(vkCreateImageView(rc_->logicalDevice(), &vci, nullptr, &s.view));
     }
 
-    void BindlessCombinedSet::destroyCombined(CombinedSlot &s)
+    void BindlessCombinedSet::destroyCombined(CombinedSlot& s)
     {
-        auto &dev = rc_->logicalDevice();
+        auto& dev = rc_->logicalDevice();
         if (s.sampler)
         {
             vkDestroySampler(dev, s.sampler, nullptr);
@@ -1279,7 +1307,7 @@ namespace lux::render
         }
     }
 
-    void BindlessCombinedSet::retireCombinedDeferred(CombinedSlot &s)
+    void BindlessCombinedSet::retireCombinedDeferred(CombinedSlot& s)
     {
         if (!deferred_queue_)
         {
@@ -1295,9 +1323,9 @@ namespace lux::render
         if (s.image)
             deferred_queue_->retireImage(s.image, s.alloc);
         s.sampler = VK_NULL_HANDLE;
-        s.view    = VK_NULL_HANDLE;
-        s.image   = VK_NULL_HANDLE;
-        s.alloc   = VK_NULL_HANDLE;
+        s.view = VK_NULL_HANDLE;
+        s.image = VK_NULL_HANDLE;
+        s.alloc = VK_NULL_HANDLE;
     }
 
     void BindlessCombinedSet::recycleCompletedSlots(uint64_t completed_serial)
@@ -1315,7 +1343,7 @@ namespace lux::render
         pending_recycle_.resize(keep);
     }
 
-    BindlessCombinedSet::StagingBuf BindlessCombinedSet::createStaging(VkDeviceSize size, const void *data)
+    BindlessCombinedSet::StagingBuf BindlessCombinedSet::createStaging(VkDeviceSize size, const void* data)
     {
         StagingBuf b{};
         b.size = size;
@@ -1334,7 +1362,7 @@ namespace lux::render
         return b;
     }
 
-    void BindlessCombinedSet::destroyStaging(StagingBuf &b)
+    void BindlessCombinedSet::destroyStaging(StagingBuf& b)
     {
         if (b.buf)
             vmaDestroyBuffer(rc_->vmaAllocator(), b.buf, b.alloc);
@@ -1367,14 +1395,8 @@ namespace lux::render
         si.pCommandBuffers = &cb;
         VkResult submit_res{VK_ERROR_UNKNOWN};
         {
-            const std::scoped_lock queue_lock(
-                rc_->deviceContext().graphicsQueueMutex());
-            submit_res = vkQueueSubmit(
-                rc_->graphicsQueue(),
-                1,
-                &si,
-                fence
-            );
+            const std::scoped_lock queue_lock(rc_->deviceContext().graphicsQueueMutex());
+            submit_res = vkQueueSubmit(rc_->graphicsQueue(), 1, &si, fence);
         }
         if (submit_res != VK_SUCCESS)
         {
@@ -1391,9 +1413,16 @@ namespace lux::render
         return {};
     }
 
-    void BindlessCombinedSet::barrierImage(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect,
-                             VkImageLayout oldL, VkImageLayout newL,
-                             uint32_t base, uint32_t levels, uint32_t layer_count)
+    void BindlessCombinedSet::barrierImage(
+        VkCommandBuffer cb,
+        VkImage img,
+        VkImageAspectFlags aspect,
+        VkImageLayout oldL,
+        VkImageLayout newL,
+        uint32_t base,
+        uint32_t levels,
+        uint32_t layer_count
+    )
     {
         VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
         b.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -1410,15 +1439,20 @@ namespace lux::render
         vkCmdPipelineBarrier2(cb, &dep);
     }
 
-    void BindlessCombinedSet::genMipsLinear(
-        VkCommandBuffer cb,
-        CombinedSlot &s,
-        VkImageLayout untouched_old_layout)
+    void BindlessCombinedSet::genMipsLinear(VkCommandBuffer cb, CombinedSlot& s, VkImageLayout untouched_old_layout)
     {
         int32_t w = s.width, h = s.height;
         for (uint32_t i = 1; i < s.mip_levels; ++i)
         {
-            barrierImage(cb, s.image, image_aspect_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, i - 1, 1);
+            barrierImage(
+                cb,
+                s.image,
+                image_aspect_,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                i - 1,
+                1
+            );
             int32_t nw = std::max(1, w / 2), nh = std::max(1, h / 2);
 
             VkImageBlit bl{};
@@ -1430,22 +1464,52 @@ namespace lux::render
             bl.dstOffsets[1] = {nw, nh, 1};
 
             barrierImage(cb, s.image, image_aspect_, untouched_old_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, i, 1);
-            vkCmdBlitImage(cb, s.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, s.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bl, VK_FILTER_LINEAR);
+            vkCmdBlitImage(
+                cb,
+                s.image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                s.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &bl,
+                VK_FILTER_LINEAR
+            );
 
             w = nw;
             h = nh;
         }
-        
-        if (s.mip_levels > 1) {
-            barrierImage(cb, s.image, image_aspect_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, s.mip_levels - 1);
+
+        if (s.mip_levels > 1)
+        {
+            barrierImage(
+                cb,
+                s.image,
+                image_aspect_,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                0,
+                s.mip_levels - 1
+            );
         }
-        barrierImage(cb, s.image, image_aspect_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, s.mip_levels - 1, 1);
+        barrierImage(
+            cb,
+            s.image,
+            image_aspect_,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            s.mip_levels - 1,
+            1
+        );
     }
 
-    void BindlessCombinedSet::recordTextureUploadInternal(VkCommandBuffer cb, BindlessCombinedSet::CombinedSlot &s,
-                                                            BindlessCombinedSet::StagingBuf &staging, bool do_mips,
-                                                            const BindlessCombinedSet::TextureCopyPlan* copy_plan,
-                                                            VkImageLayout old_layout)
+    void BindlessCombinedSet::recordTextureUploadInternal(
+        VkCommandBuffer cb,
+        BindlessCombinedSet::CombinedSlot& s,
+        BindlessCombinedSet::StagingBuf& staging,
+        bool do_mips,
+        const BindlessCombinedSet::TextureCopyPlan* copy_plan,
+        VkImageLayout old_layout
+    )
     {
         TextureCopyPlan fallback{};
         if (!copy_plan || copy_plan->count == 0)
@@ -1469,8 +1533,15 @@ namespace lux::render
         const bool runtime_mips = do_mips && s.mip_levels > 1 && copy_count == 1;
         const uint32_t transition_levels = runtime_mips ? 1u : s.mip_levels;
 
-        barrierImage(cb, s.image, image_aspect_, old_layout,
-                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, transition_levels);
+        barrierImage(
+            cb,
+            s.image,
+            image_aspect_,
+            old_layout,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            0,
+            transition_levels
+        );
 
         std::vector<VkBufferImageCopy> copies;
         copies.reserve(copy_count);
@@ -1482,90 +1553,113 @@ namespace lux::render
             r.imageSubresource = {
                 image_aspect_,
                 std::min(cr.mip_level, s.mip_levels - 1),
-                cr.array_layer,   // 0 for full-mip uploads; region updates target a layer
-                1
-            };
+                cr.array_layer, // 0 for full-mip uploads; region updates target a layer
+                1};
             r.imageOffset = {
-                static_cast<int32_t>(cr.x),   // 0 for full-mip uploads
+                static_cast<int32_t>(cr.x), // 0 for full-mip uploads
                 static_cast<int32_t>(cr.y),
-                0
-            };
-            r.imageExtent = {
-                std::max(1u, cr.width),
-                std::max(1u, cr.height),
-                1
-            };
+                0};
+            r.imageExtent = {std::max(1u, cr.width), std::max(1u, cr.height), 1};
             copies.push_back(r);
         }
-        vkCmdCopyBufferToImage(cb, staging.buf, s.image,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                               static_cast<uint32_t>(copies.size()),
-                               copies.data());
+        vkCmdCopyBufferToImage(
+            cb,
+            staging.buf,
+            s.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            static_cast<uint32_t>(copies.size()),
+            copies.data()
+        );
 
         if (runtime_mips)
             genMipsLinear(cb, s, old_layout);
         else
-            barrierImage(cb, s.image, image_aspect_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, s.mip_levels);
+            barrierImage(
+                cb,
+                s.image,
+                image_aspect_,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                0,
+                s.mip_levels
+            );
     }
 
-    void BindlessCombinedSet::recordCubeTextureUpload(VkCommandBuffer cb, CombinedSlot &s,
-                                                       StagingBuf &staging, VkDeviceSize face_stride,
-                                                       VkImageLayout old_layout)
+    void BindlessCombinedSet::recordCubeTextureUpload(
+        VkCommandBuffer cb,
+        CombinedSlot& s,
+        StagingBuf& staging,
+        VkDeviceSize face_stride,
+        VkImageLayout old_layout
+    )
     {
         // Transition all 6 layers to TRANSFER_DST
-        barrierImage(cb, s.image, image_aspect_,
-                     old_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                     0, s.mip_levels, s.array_layers);
+        barrierImage(
+            cb,
+            s.image,
+            image_aspect_,
+            old_layout,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            0,
+            s.mip_levels,
+            s.array_layers
+        );
 
         // Copy 6 faces from staging buffer (contiguous, one per layer)
         std::array<VkBufferImageCopy, 6> regions{};
         for (uint32_t face = 0; face < 6; ++face)
         {
-            regions[face].bufferOffset        = face * face_stride;
-            regions[face].imageSubresource    = {image_aspect_, 0, face, 1};
-            regions[face].imageExtent         = {(uint32_t)s.width, (uint32_t)s.height, 1};
+            regions[face].bufferOffset = face * face_stride;
+            regions[face].imageSubresource = {image_aspect_, 0, face, 1};
+            regions[face].imageExtent = {(uint32_t)s.width, (uint32_t)s.height, 1};
         }
-        vkCmdCopyBufferToImage(cb, staging.buf, s.image,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                               6, regions.data());
+        vkCmdCopyBufferToImage(cb, staging.buf, s.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, regions.data());
 
         // Transition to SHADER_READ_ONLY
-        barrierImage(cb, s.image, image_aspect_,
-                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                     0, s.mip_levels, s.array_layers);
+        barrierImage(
+            cb,
+            s.image,
+            image_aspect_,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            0,
+            s.mip_levels,
+            s.array_layers
+        );
     }
 
     // ---------- Async image acquire barriers ----------
 
     void BindlessCombinedSet::pushImageAcquireBarrier(
-        VkImage      image,
-        uint32_t     mip_levels,
-        uint32_t     array_layers,
+        VkImage image,
+        uint32_t mip_levels,
+        uint32_t array_layers,
         VkImageLayout layout,
-        uint32_t     src_queue_family,
-        uint32_t     dst_queue_family)
+        uint32_t src_queue_family,
+        uint32_t dst_queue_family
+    )
     {
         VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-        b.srcStageMask        = VK_PIPELINE_STAGE_2_NONE;
-        b.srcAccessMask       = VK_ACCESS_2_NONE;
-        b.dstStageMask        = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        b.dstAccessMask       = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-        b.oldLayout           = layout;
-        b.newLayout           = layout;
+        b.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
+        b.srcAccessMask = VK_ACCESS_2_NONE;
+        b.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        b.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+        b.oldLayout = layout;
+        b.newLayout = layout;
         b.srcQueueFamilyIndex = src_queue_family;
         b.dstQueueFamilyIndex = dst_queue_family;
-        b.image               = image;
-        b.subresourceRange    = {image_aspect_, 0, mip_levels, 0, array_layers};
+        b.image = image;
+        b.subresourceRange = {image_aspect_, 0, mip_levels, 0, array_layers};
         pending_acquire_barriers_.push_back(b);
     }
 
     void BindlessCombinedSet::recordAcquireBarriers(VkCommandBuffer cmd)
     {
-        if (pending_acquire_barriers_.empty()) return;
+        if (pending_acquire_barriers_.empty())
+            return;
         VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dep.imageMemoryBarrierCount = static_cast<uint32_t>(pending_acquire_barriers_.size());
-        dep.pImageMemoryBarriers    = pending_acquire_barriers_.data();
+        dep.pImageMemoryBarriers = pending_acquire_barriers_.data();
         vkCmdPipelineBarrier2(cmd, &dep);
         pending_acquire_barriers_.clear();
     }
@@ -1579,23 +1673,22 @@ namespace lux::render
 
     void BindlessCombinedSet::recordStagingTextureCopies(VkCommandBuffer cmd)
     {
-        if (pending_staging_textures_.empty()) return;
+        if (pending_staging_textures_.empty())
+            return;
 
         for (auto& e : pending_staging_textures_)
         {
             auto& s = slots_[e.slot_index];
             StagingBuf stg{};
-            stg.buf  = e.stg_buf;
+            stg.buf = e.stg_buf;
             stg.size = e.stg_size;
 
             if (e.is_cube)
                 recordCubeTextureUpload(cmd, s, stg, e.face_stride, VK_IMAGE_LAYOUT_UNDEFINED);
-            else {
+            else
+            {
                 TextureCopyPlan copy_plan{};
-                copy_plan.count = std::clamp<uint32_t>(
-                    e.mip_copy_count,
-                    1u,
-                    rdesc::kTextureMaxMipCount);
+                copy_plan.count = std::clamp<uint32_t>(e.mip_copy_count, 1u, rdesc::kTextureMaxMipCount);
                 for (uint32_t i = 0; i < copy_plan.count; ++i)
                 {
                     copy_plan.regions[i].buffer_offset = e.mip_copies[i].buffer_offset;
@@ -1615,9 +1708,13 @@ namespace lux::render
         if (s.mip_levels > 1)
             genMipsLinear(cmd, s);
         else
-            barrierImage(cmd, s.image, image_aspect_,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            barrierImage(
+                cmd,
+                s.image,
+                image_aspect_,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            );
     }
 
     void BindlessCombinedSet::pushDeferredMipGen(uint32_t slot_index)
@@ -1627,7 +1724,8 @@ namespace lux::render
 
     void BindlessCombinedSet::recordDeferredMipGens(VkCommandBuffer cmd)
     {
-        if (pending_mip_gen_slots_.empty()) return;
+        if (pending_mip_gen_slots_.empty())
+            return;
         for (uint32_t idx : pending_mip_gen_slots_)
             recordMipGenForSlot(cmd, idx);
         pending_mip_gen_slots_.clear();

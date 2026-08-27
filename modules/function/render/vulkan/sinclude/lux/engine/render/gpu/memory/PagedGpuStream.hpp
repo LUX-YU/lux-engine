@@ -11,8 +11,7 @@
 namespace lux::render
 {
 
-    template <typename T>
-    class PagedGpuStream
+    template <typename T> class PagedGpuStream
     {
     public:
         static constexpr uint32_t kUploadPageSize = 512u;
@@ -24,15 +23,12 @@ namespace lux::render
             VkDeviceSize size{0};
         };
 
-        void init(DeviceContext* device_context, uint32_t capacity,
-                  VkBufferUsageFlags extra_usage = 0)
+        void init(DeviceContext* device_context, uint32_t capacity, VkBufferUsageFlags extra_usage = 0)
         {
             GpuBufferCreateInfo ci{};
             ci.device_context = device_context;
             ci.initial_capacity = capacity;
-            ci.buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                | extra_usage;
+            ci.buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | extra_usage;
             gpu_buf_.init(ci);
 
             cpu_data_.resize(capacity);
@@ -47,11 +43,23 @@ namespace lux::render
             page_flags_.clear();
         }
 
-        [[nodiscard]] T& at(uint32_t index) noexcept { return cpu_data_[index]; }
-        [[nodiscard]] const T& at(uint32_t index) const noexcept { return cpu_data_[index]; }
+        [[nodiscard]] T& at(uint32_t index) noexcept
+        {
+            return cpu_data_[index];
+        }
+        [[nodiscard]] const T& at(uint32_t index) const noexcept
+        {
+            return cpu_data_[index];
+        }
 
-        [[nodiscard]] std::vector<T>& cpuData() noexcept { return cpu_data_; }
-        [[nodiscard]] const std::vector<T>& cpuData() const noexcept { return cpu_data_; }
+        [[nodiscard]] std::vector<T>& cpuData() noexcept
+        {
+            return cpu_data_;
+        }
+        [[nodiscard]] const std::vector<T>& cpuData() const noexcept
+        {
+            return cpu_data_;
+        }
 
         void markDirty(uint32_t index)
         {
@@ -64,7 +72,10 @@ namespace lux::render
             }
         }
 
-        [[nodiscard]] bool hasDirtyPages() const noexcept { return !dirty_pages_.empty(); }
+        [[nodiscard]] bool hasDirtyPages() const noexcept
+        {
+            return !dirty_pages_.empty();
+        }
 
         [[nodiscard]] bool reserve(uint32_t new_capacity)
         {
@@ -101,10 +112,8 @@ namespace lux::render
             clearDirtyState();
         }
 
-        [[nodiscard]] VkDeviceSize collectUploadChunks(
-            uint32_t count,
-            bool full_upload,
-            std::vector<UploadChunk>& chunks)
+        [[nodiscard]] VkDeviceSize
+        collectUploadChunks(uint32_t count, bool full_upload, std::vector<UploadChunk>& chunks)
         {
             const auto* cpu_bytes = reinterpret_cast<const uint8_t*>(cpu_data_.data());
             const VkDeviceSize element_stride = static_cast<VkDeviceSize>(sizeof(T));
@@ -122,7 +131,8 @@ namespace lux::render
                     .src = cpu_bytes,
                     .dst_offset = 0u,
                     .size = byte_count,
-                });
+                }
+                );
                 return byte_count;
             }
 
@@ -166,7 +176,8 @@ namespace lux::render
                     .src = cpu_bytes + byte_offset,
                     .dst_offset = static_cast<VkDeviceSize>(byte_offset),
                     .size = bytes,
-                });
+                }
+                );
                 total_bytes += bytes;
             }
 
@@ -183,8 +194,14 @@ namespace lux::render
             dirty_pages_.clear();
         }
 
-        [[nodiscard]] VkBuffer buffer() const noexcept { return gpu_buf_.buffer(); }
-        [[nodiscard]] uint32_t capacity() const noexcept { return gpu_buf_.capacity(); }
+        [[nodiscard]] VkBuffer buffer() const noexcept
+        {
+            return gpu_buf_.buffer();
+        }
+        [[nodiscard]] uint32_t capacity() const noexcept
+        {
+            return gpu_buf_.capacity();
+        }
 
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept
         {
@@ -215,8 +232,7 @@ namespace lux::render
         GpuBuffer<T, EGpuBufferType::GPU_ONLY, false> gpu_buf_;
         std::vector<uint32_t> dirty_pages_;
         std::vector<uint8_t> page_flags_;
-        std::vector<Run> runs_scratch_;  ///< per-call reused; see Run above
+        std::vector<Run> runs_scratch_; ///< per-call reused; see Run above
     };
 
 } // namespace lux::render
-

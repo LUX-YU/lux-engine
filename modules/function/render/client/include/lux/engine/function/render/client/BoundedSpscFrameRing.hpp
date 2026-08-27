@@ -65,18 +65,16 @@ namespace lux::cxx
      * @tparam T         Persistent frame payload type.
      * @tparam SlotCount Number of persistent slots in the ring. Must be >= 3.
      */
-    template <typename T, std::size_t SlotCount = 3>
-    class BoundedSpscFrameRing
+    template <typename T, std::size_t SlotCount = 3> class BoundedSpscFrameRing
     {
-        static_assert(SlotCount >= 3,
-            "BoundedSpscFrameRing<T, SlotCount> requires SlotCount >= 3.");
-        static_assert(std::is_default_constructible_v<T>,
+        static_assert(SlotCount >= 3, "BoundedSpscFrameRing<T, SlotCount> requires SlotCount >= 3.");
+        static_assert(
+            std::is_default_constructible_v<T>,
             "BoundedSpscFrameRing<T, SlotCount> requires T to be default constructible.");
 
     private:
 #if defined(__cpp_lib_hardware_interference_size)
-        static constexpr std::size_t cacheLineSize =
-            std::hardware_destructive_interference_size;
+        static constexpr std::size_t cacheLineSize = std::hardware_destructive_interference_size;
 #else
         static constexpr std::size_t cacheLineSize = 64;
 #endif
@@ -93,8 +91,8 @@ namespace lux::cxx
          */
         struct alignas(cacheLineSize) SharedState
         {
-            std::atomic<std::uint64_t> publishedSequence{ 0 };
-            std::atomic<std::uint64_t> consumedSequence{ 0 };
+            std::atomic<std::uint64_t> publishedSequence{0};
+            std::atomic<std::uint64_t> consumedSequence{0};
         };
 
         /**
@@ -116,8 +114,8 @@ namespace lux::cxx
          */
         struct alignas(cacheLineSize) ProducerState
         {
-            std::uint64_t nextWriteSequence{ 1 };
-            bool          hasWriteSlot{ true };
+            std::uint64_t nextWriteSequence{1};
+            bool hasWriteSlot{true};
         };
 
         /**
@@ -128,7 +126,7 @@ namespace lux::cxx
          */
         struct alignas(cacheLineSize) ConsumerState
         {
-            std::uint64_t currentReadSequence{ 0 };
+            std::uint64_t currentReadSequence{0};
         };
 
     public:
@@ -196,14 +194,15 @@ namespace lux::cxx
          */
         [[nodiscard]] T* tryBeginWrite() noexcept
         {
-            if (producerState_.hasWriteSlot) {
+            if (producerState_.hasWriteSlot)
+            {
                 return &slots_[toIndex(producerState_.nextWriteSequence)];
             }
 
-            const std::uint64_t consumed =
-                sharedState_.consumedSequence.load(std::memory_order_acquire);
+            const std::uint64_t consumed = sharedState_.consumedSequence.load(std::memory_order_acquire);
 
-            if (!isSequenceWritable(producerState_.nextWriteSequence, consumed)) {
+            if (!isSequenceWritable(producerState_.nextWriteSequence, consumed))
+            {
                 return nullptr;
             }
 
@@ -238,23 +237,21 @@ namespace lux::cxx
          */
         [[nodiscard]] bool publishWrite() noexcept
         {
-            if (!producerState_.hasWriteSlot) {
+            if (!producerState_.hasWriteSlot)
+            {
                 return false;
             }
 
-            const std::uint64_t consumed =
-                sharedState_.consumedSequence.load(std::memory_order_acquire);
+            const std::uint64_t consumed = sharedState_.consumedSequence.load(std::memory_order_acquire);
 
-            const std::uint64_t pendingAfterPublish =
-                producerState_.nextWriteSequence - consumed;
+            const std::uint64_t pendingAfterPublish = producerState_.nextWriteSequence - consumed;
 
-            if (pendingAfterPublish > maxPendingFrames_) {
+            if (pendingAfterPublish > maxPendingFrames_)
+            {
                 return false;
             }
 
-            sharedState_.publishedSequence.store(
-                producerState_.nextWriteSequence,
-                std::memory_order_release);
+            sharedState_.publishedSequence.store(producerState_.nextWriteSequence, std::memory_order_release);
 
             ++producerState_.nextWriteSequence;
             producerState_.hasWriteSlot = false;
@@ -313,11 +310,11 @@ namespace lux::cxx
          */
         [[nodiscard]] bool tryAcquireRead() noexcept
         {
-            const std::uint64_t published =
-                sharedState_.publishedSequence.load(std::memory_order_acquire);
+            const std::uint64_t published = sharedState_.publishedSequence.load(std::memory_order_acquire);
 
             const std::uint64_t next = consumerState_.currentReadSequence + 1;
-            if (next > published) {
+            if (next > published)
+            {
                 return false;
             }
 
@@ -366,8 +363,7 @@ namespace lux::cxx
          */
         [[nodiscard]] bool hasPendingFrame() const noexcept
         {
-            const std::uint64_t published =
-                sharedState_.publishedSequence.load(std::memory_order_acquire);
+            const std::uint64_t published = sharedState_.publishedSequence.load(std::memory_order_acquire);
             return published > consumerState_.currentReadSequence;
         }
 
@@ -380,10 +376,8 @@ namespace lux::cxx
          */
         [[nodiscard]] std::size_t pendingFrames() const noexcept
         {
-            const std::uint64_t published =
-                sharedState_.publishedSequence.load(std::memory_order_acquire);
-            const std::uint64_t consumed =
-                sharedState_.consumedSequence.load(std::memory_order_acquire);
+            const std::uint64_t published = sharedState_.publishedSequence.load(std::memory_order_acquire);
+            const std::uint64_t consumed = sharedState_.consumedSequence.load(std::memory_order_acquire);
             return static_cast<std::size_t>(published - consumed);
         }
 
@@ -399,8 +393,7 @@ namespace lux::cxx
          */
         [[nodiscard]] std::size_t framesAhead() const noexcept
         {
-            const std::uint64_t consumed =
-                sharedState_.consumedSequence.load(std::memory_order_acquire);
+            const std::uint64_t consumed = sharedState_.consumedSequence.load(std::memory_order_acquire);
             return static_cast<std::size_t>(producerState_.nextWriteSequence - consumed);
         }
 
@@ -410,10 +403,10 @@ namespace lux::cxx
             return static_cast<std::size_t>(sequence % SlotCount);
         }
 
-        [[nodiscard]] static constexpr std::uint64_t normalizeMaxPendingFrames(
-            std::size_t requested) noexcept
+        [[nodiscard]] static constexpr std::uint64_t normalizeMaxPendingFrames(std::size_t requested) noexcept
         {
-            if (requested == 0) {
+            if (requested == 0)
+            {
                 return 1;
             }
 
@@ -421,9 +414,8 @@ namespace lux::cxx
             return static_cast<std::uint64_t>(requested > maxAllowed ? maxAllowed : requested);
         }
 
-        [[nodiscard]] static constexpr bool isSequenceWritable(
-            std::uint64_t candidateWriteSequence,
-            std::uint64_t consumedSequence) noexcept
+        [[nodiscard]] static constexpr bool
+        isSequenceWritable(std::uint64_t candidateWriteSequence, std::uint64_t consumedSequence) noexcept
         {
             return (candidateWriteSequence - consumedSequence) < SlotCount;
         }

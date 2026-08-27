@@ -19,14 +19,11 @@ namespace lux::simulation
         std::span<const SystemEventDescription> events;
     };
 
-    [[nodiscard]] constexpr bool validSystemDescription(
-        const SystemDescription& description
-    ) noexcept
+    [[nodiscard]] constexpr bool validSystemDescription(const SystemDescription& description) noexcept
     {
         if (description.canonical_name.empty() || description.version == 0U)
             return false;
-        if (description.configuration_schema_name.empty() !=
-            (description.configuration_schema_version == 0U))
+        if (description.configuration_schema_name.empty() != (description.configuration_schema_version == 0U))
         {
             return false;
         }
@@ -36,8 +33,7 @@ namespace lux::simulation
                 return false;
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (description.capabilities[index] ==
-                    description.capabilities[previous])
+                if (description.capabilities[index] == description.capabilities[previous])
                 {
                     return false;
                 }
@@ -46,18 +42,18 @@ namespace lux::simulation
         for (std::size_t index{}; index < description.hooks.size(); ++index)
         {
             const auto& hook = description.hooks[index];
-            if (hook.name.empty() || hook.signature.returns.size() > 1U ||
-                (hook.cardinality == ESystemHookCardinality::MULTI &&
-                 !hook.signature.returns.empty()))
+            const bool is_invalid_identity = hook.name.empty();
+            const bool has_too_many_returns = hook.signature.returns.size() > 1U;
+            const bool is_invalid_multi_return = hook.cardinality == ESystemHookCardinality::MULTI &&
+                !hook.signature.returns.empty();
+            const bool is_invalid_hook = is_invalid_identity || has_too_many_returns || is_invalid_multi_return;
+            if (is_invalid_hook)
             {
                 return false;
             }
-            const auto valid_type = [](const auto& type) constexpr noexcept
-            {
+            const auto valid_type = [](const auto& type) constexpr noexcept {
                 return type.type_id != 0U && !type.canonical_name.empty() &&
-                    type.type_id == lux::script::scriptSemanticTypeId(
-                        type.canonical_name
-                    );
+                       type.type_id == lux::script::scriptSemanticTypeId(type.canonical_name);
             };
             for (const auto& parameter : hook.signature.parameters)
             {
@@ -66,8 +62,7 @@ namespace lux::simulation
             }
             for (const auto& result : hook.signature.returns)
             {
-                if (!valid_type(result) ||
-                    result.pass != lux::script::EScriptPassMode::VALUE)
+                if (!valid_type(result) || result.pass != lux::script::EScriptPassMode::VALUE)
                 {
                     return false;
                 }
@@ -83,13 +78,11 @@ namespace lux::simulation
         for (std::size_t index{}; index < description.events.size(); ++index)
         {
             const auto& event = description.events[index];
-            if (event.name.empty() || event.dispatch_hook.empty() ||
-                !event.payload_cpp_type.isValid())
+            if (event.name.empty() || event.dispatch_hook.empty() || !event.payload_cpp_type.isValid())
             {
                 return false;
             }
-            if (event.payload_schema_name.empty() !=
-                (event.payload_schema_version == 0U))
+            if (event.payload_schema_name.empty() != (event.payload_schema_version == 0U))
             {
                 return false;
             }

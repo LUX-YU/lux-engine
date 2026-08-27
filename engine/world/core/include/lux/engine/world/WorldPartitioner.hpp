@@ -52,17 +52,15 @@ namespace lux::world
     /** Mutable, query-free, cold-build derived partition state. */
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionWorkspace
     {
-      public:
+    public:
         WorldPartitionWorkspace() noexcept;
         virtual ~WorldPartitionWorkspace();
 
-        [[nodiscard]] virtual const WorldPartitionerDescriptor&
-        descriptor() const noexcept = 0;
+        [[nodiscard]] virtual const WorldPartitionerDescriptor& descriptor() const noexcept = 0;
 
         [[nodiscard]] EWorldPartitionWorkspaceState state() const noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
-        rebuild(const WorldDescription& world) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure> rebuild(const WorldDescription& world) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
         objectAdded(WorldObjectSnapshotView object) noexcept;
@@ -70,15 +68,12 @@ namespace lux::world
         [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
         objectChanged(WorldObjectSnapshotView object) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
-        objectRemoved(WorldObjectId object) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure> objectRemoved(WorldObjectId object) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            WorldPartitionBuildProduct,
-            WorldPartitionFailure>
+        [[nodiscard]] lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure>
         freeze(const WorldDescription& world) const noexcept;
 
-      protected:
+    protected:
         [[nodiscard]] virtual lux::cxx::expected<void, WorldPartitionFailure>
         doRebuild(const WorldDescription& world) noexcept = 0;
 
@@ -91,35 +86,27 @@ namespace lux::world
         [[nodiscard]] virtual lux::cxx::expected<void, WorldPartitionFailure>
         doObjectRemoved(WorldObjectId object) noexcept = 0;
 
-        [[nodiscard]] virtual lux::cxx::expected<
-            WorldPartitionBuildProduct,
-            WorldPartitionFailure>
+        [[nodiscard]] virtual lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure>
         doFreeze(const WorldDescription& world) const noexcept = 0;
 
-      private:
-        EWorldPartitionWorkspaceState state_{
-            EWorldPartitionWorkspaceState::STALE};
+    private:
+        EWorldPartitionWorkspaceState state_{EWorldPartitionWorkspaceState::STALE};
     };
 
     /** Cold-path policy/factory supplied by an upper-layer interpreter. */
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitioner
     {
-      public:
+    public:
         WorldPartitioner() noexcept;
         virtual ~WorldPartitioner();
 
-        [[nodiscard]] virtual WorldPartitionerDescriptor
-        descriptor() const noexcept = 0;
+        [[nodiscard]] virtual WorldPartitionerDescriptor descriptor() const noexcept = 0;
 
-        [[nodiscard]] lux::cxx::expected<
-            std::unique_ptr<WorldPartitionWorkspace>,
-            WorldPartitionFailure>
+        [[nodiscard]] lux::cxx::expected<std::unique_ptr<WorldPartitionWorkspace>, WorldPartitionFailure>
         createWorkspace(const WorldDescription& world) const noexcept;
 
-      protected:
-        [[nodiscard]] virtual lux::cxx::expected<
-            std::unique_ptr<WorldPartitionWorkspace>,
-            WorldPartitionFailure>
+    protected:
+        [[nodiscard]] virtual lux::cxx::expected<std::unique_ptr<WorldPartitionWorkspace>, WorldPartitionFailure>
         createWorkspaceImplementation() const noexcept = 0;
     };
 } // namespace lux::world

@@ -24,10 +24,16 @@ namespace lux::render
 
         explicit Grid3DPassFeature(Config cfg);
 
-        std::string_view name() const override { return "Grid3DPass"; }
+        std::string_view name() const override
+        {
+            return "Grid3DPass";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
-        GraphicsPipelineHandle gridHandle() const noexcept { return grid_handle_; }
+        GraphicsPipelineHandle gridHandle() const noexcept
+        {
+            return grid_handle_;
+        }
 
         void addPasses(RGBuilder& builder) override;
 
@@ -41,13 +47,16 @@ namespace lux::render
         /// (此前另有一个 onSyncSetGrid3DParams(SetGrid3DParamsCmd) 走同一个
         ///  pending_ —— 那是 sync-command 机制的残留,自始至终零调用,连同
         ///  Grid3DSyncCommands.hpp 一起退休。兄弟 Grid2D 根本没有这套东西。)
-        void setGrid3DParams(const Grid3DParams& params) { pending_grid_params_ = params; }
+        void setGrid3DParams(const Grid3DParams& params)
+        {
+            pending_grid_params_ = params;
+        }
 
     private:
-        Config                      cfg_{};
-        GraphicsPipelineHandle      grid_handle_{kInvalidPipelineHandle};
-        Grid3DParams                  grid_params_{};
-        std::optional<Grid3DParams>   pending_grid_params_;
+        Config cfg_{};
+        GraphicsPipelineHandle grid_handle_{kInvalidPipelineHandle};
+        Grid3DParams grid_params_{};
+        std::optional<Grid3DParams> pending_grid_params_;
     };
 
 } // namespace lux::render

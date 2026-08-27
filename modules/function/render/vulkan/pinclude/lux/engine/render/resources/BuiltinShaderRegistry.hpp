@@ -2,7 +2,8 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp> // EBuiltinShader enum + LUX_BUILTIN_SHADER_LIST X-macro (public)
+#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
+// EBuiltinShader enum + LUX_BUILTIN_SHADER_LIST X-macro (public)
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -91,7 +92,7 @@
 #include "shadow_shadow_evsm_caster_frag_embed.hpp"
 #include "shadow_shadow_evsm_blur_h_comp_embed.hpp"
 #include "shadow_shadow_evsm_blur_v_comp_embed.hpp"
-#include "skinning_skin_compute_comp_embed.hpp"      // GPU pre-skinning kernel
+#include "skinning_skin_compute_comp_embed.hpp" // GPU pre-skinning kernel
 // ── Skybox ──
 #include "skybox_skybox_vert_embed.hpp"
 #include "skybox_skybox_cubemap_frag_embed.hpp"
@@ -129,9 +130,7 @@
 
 namespace lux::render
 {
-    [[nodiscard]] inline EBuiltinShader instanceStorageVariant(
-        EBuiltinShader shader,
-        bool sparse_pages) noexcept
+    [[nodiscard]] inline EBuiltinShader instanceStorageVariant(EBuiltinShader shader, bool sparse_pages) noexcept
     {
         if (!sparse_pages)
             return shader;
@@ -163,7 +162,6 @@ namespace lux::render
         std::span<const std::byte> info;
     };
 
-
     /// Returns the embedded data for a built-in shader.
     inline BuiltinShaderData getBuiltinShader(EBuiltinShader key)
     {
@@ -174,10 +172,9 @@ namespace lux::render
 
         switch (key)
         {
-#define LUX_BUILTIN_X(name, prefix)                                                  \
-        case EBuiltinShader::name:                                                   \
-            return {as_bytes(prefix##_spirv, prefix##_spirv_size),                   \
-                    as_bytes(prefix##_info,  prefix##_info_size)};
+#define LUX_BUILTIN_X(name, prefix)                                                                                    \
+    case EBuiltinShader::name:                                                                                         \
+        return {as_bytes(prefix##_spirv, prefix##_spirv_size), as_bytes(prefix##_info, prefix##_info_size)};
             LUX_BUILTIN_SHADER_LIST(LUX_BUILTIN_X)
 #undef LUX_BUILTIN_X
         default:
@@ -191,17 +188,13 @@ namespace lux::render
     /// 解析不出模块时返回 shader.builtin_unavailable 并带上是**哪一个** —— 而不是像
     /// 从前那样静默交回无效句柄。那条静默路径是一整串崩溃的起点:无效句柄一路传到
     /// `*shaders.get(h)` 才炸,现场离病根很远。
-    [[nodiscard]] inline Expected<ShaderHandle> resolveShaderStage(
-        ShaderResources& shaders,
-        ShaderHandle     configured,
-        EBuiltinShader   builtin)
+    [[nodiscard]] inline Expected<ShaderHandle>
+    resolveShaderStage(ShaderResources& shaders, ShaderHandle configured, EBuiltinShader builtin)
     {
         if (configured.isValid())
             return configured;
 
-        builtin = instanceStorageVariant(
-            builtin,
-            shaders.sparseInstancePages());
+        builtin = instanceStorageVariant(builtin, shaders.sparseInstancePages());
         const auto builtin_arg = static_cast<std::uint32_t>(builtin);
 
         const BuiltinShaderData data = getBuiltinShader(builtin);
@@ -222,13 +215,13 @@ namespace lux::render
     struct ShaderStageSlot
     {
         EBuiltinShader builtin{};
-        ShaderHandle*  target{nullptr};
+        ShaderHandle* target{nullptr};
     };
 
     /// 批量回填一组句柄槽(典型场景:feature 的 Config 里有一串 shader 字段,客户端
     /// 只覆盖了其中几个)。任一槽解析失败即整体报错,不会留下半填状态。
-    [[nodiscard]] inline Expected<void> resolveShaderStages(
-        ShaderResources& shaders, std::span<const ShaderStageSlot> slots)
+    [[nodiscard]] inline Expected<void>
+    resolveShaderStages(ShaderResources& shaders, std::span<const ShaderStageSlot> slots)
     {
         for (const ShaderStageSlot& slot : slots)
         {
@@ -245,16 +238,16 @@ namespace lux::render
     /// 一个 stage 的请求:内置着色器 id,加上调用方可能已经显式配置的覆盖句柄。
     struct PipelineStageRequest
     {
-        EBuiltinShader builtin{};      ///< configured 无效时用它解析
-        ShaderHandle   configured{};   ///< 调用方给的覆盖句柄;有效则原样使用
+        EBuiltinShader builtin{};  ///< configured 无效时用它解析
+        ShaderHandle configured{}; ///< 调用方给的覆盖句柄;有效则原样使用
     };
 
     /// 解析并切换一条管线的全部 stage —— feature 侧一次调用拿到全部模块与反射。
     ///
     /// 它把「解析内置着色器」和「批量域合并切换」串成一步,于是 feature 里再也不需要
     /// 逐 stage 写 ensure → merge → get 三段,也就不再有写错顺序的余地。
-    [[nodiscard]] inline Expected<PreparedPipelineStages> preparePipelineStages(
-        ShaderResources& shaders, std::span<const PipelineStageRequest> requests)
+    [[nodiscard]] inline Expected<PreparedPipelineStages>
+    preparePipelineStages(ShaderResources& shaders, std::span<const PipelineStageRequest> requests)
     {
         std::vector<ShaderHandle> resolved;
         resolved.reserve(requests.size());

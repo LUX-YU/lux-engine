@@ -22,7 +22,7 @@
 // ============================================================================
 
 #include <lux/engine/description/Texture.hpp>       // ETextureColorSpace
-#include <lux/engine/description/MaterialEnums.hpp>  // EAlphaMode
+#include <lux/engine/description/MaterialEnums.hpp> // EAlphaMode
 
 #include <Eigen/Core>
 
@@ -36,8 +36,8 @@ namespace lux::rdesc
     /// converter (it samples the slot); color_space records the import intent.
     struct ImportedTextureRef
     {
-        std::uint32_t      texture_index{ 0 };
-        ETextureColorSpace color_space{ ETextureColorSpace::SRGB };
+        std::uint32_t texture_index{0};
+        ETextureColorSpace color_space{ETextureColorSpace::SRGB};
     };
 
     /// Flat PBR-superset material extracted from a source asset (glTF / fbx / ...).
@@ -47,14 +47,14 @@ namespace lux::rdesc
     struct ImportedMaterialDesc
     {
         // ---- factors ----
-        Eigen::Vector3f base_color{ 1.f, 1.f, 1.f };
-        float           opacity{ 1.f };
-        float           metallic{ 1.f };
-        float           roughness{ 1.f };
-        float           normal_scale{ 1.f };
-        float           occlusion_strength{ 1.f };
-        Eigen::Vector3f emissive{ 0.f, 0.f, 0.f };
-        float           emissive_intensity{ 1.f };
+        Eigen::Vector3f base_color{1.f, 1.f, 1.f};
+        float opacity{1.f};
+        float metallic{1.f};
+        float roughness{1.f};
+        float normal_scale{1.f};
+        float occlusion_strength{1.f};
+        Eigen::Vector3f emissive{0.f, 0.f, 0.f};
+        float emissive_intensity{1.f};
 
         // ---- texture slots (each optional; index into the model's per-material UUIDs) ----
         std::optional<ImportedTextureRef> base_color_tex;
@@ -64,14 +64,14 @@ namespace lux::rdesc
         std::optional<ImportedTextureRef> emissive_tex;
 
         // ---- render state ----
-        EAlphaMode alpha_mode{ EAlphaMode::Opaque };
-        float      alpha_cutoff{ 0.5f };
-        bool       double_sided{ false };
+        EAlphaMode alpha_mode{EAlphaMode::Opaque};
+        float alpha_cutoff{0.5f};
+        bool double_sided{false};
 
         // Filled from the non-PBR (Phong) importer branch: the converter then uses
         // metallic=0 / roughness=0.5 constants (mirrors the rdesc LegacyLit->PBR
         // collapse) rather than the carried metallic/roughness.
-        bool is_legacy{ false };
+        bool is_legacy{false};
     };
 
 } // namespace lux::rdesc

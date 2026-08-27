@@ -26,8 +26,7 @@ namespace lux::asset
             std::uint64_t source_mtime{};
         };
 
-        template <class Info>
-        struct WireHeader final
+        template <class Info> struct WireHeader final
         {
             std::uint32_t magic{};
             std::uint32_t version{};
@@ -48,29 +47,19 @@ namespace lux::asset
         static_assert(std::is_trivially_copyable_v<WireHeaderV1>);
         static_assert(std::is_trivially_copyable_v<WireHeaderV2>);
 
-        [[nodiscard]] bool validRange(
-            std::uint64_t offset,
-            std::uint64_t size,
-            std::size_t total
-        ) noexcept
+        [[nodiscard]] bool validRange(std::uint64_t offset, std::uint64_t size, std::size_t total) noexcept
         {
             return offset <= total && size <= total - offset;
         }
 
-        [[nodiscard]] bool validAuxiliaryPayloads(
-            std::span<const std::byte> bytes
-        ) noexcept
+        [[nodiscard]] bool validAuxiliaryPayloads(std::span<const std::byte> bytes) noexcept
         {
             while (!bytes.empty())
             {
                 if (bytes.size() < 16u)
                     return false;
                 std::uint64_t payload_size{};
-                std::memcpy(
-                    &payload_size,
-                    bytes.data() + sizeof(std::uint64_t),
-                    sizeof(payload_size)
-                );
+                std::memcpy(&payload_size, bytes.data() + sizeof(std::uint64_t), sizeof(payload_size));
                 if (payload_size > bytes.size() - 16u)
                     return false;
                 bytes = bytes.subspan(16u + static_cast<std::size_t>(payload_size));
@@ -79,9 +68,7 @@ namespace lux::asset
         }
 
         template <class Header>
-        [[nodiscard]] lux::cxx::expected<
-            CookedAssetImageView,
-            ECookedAssetImageError>
+        [[nodiscard]] lux::cxx::expected<CookedAssetImageView, ECookedAssetImageError>
         inspectVersion(std::span<const std::byte> image) noexcept
         {
             if (image.size() < sizeof(Header))
@@ -89,10 +76,15 @@ namespace lux::asset
 
             Header header{};
             std::memcpy(&header, image.data(), sizeof(header));
-            if (header.info_offset != sizeof(Header) ||
-                !validRange(header.info_offset, header.info_size, image.size()) ||
-                !validRange(header.data_offset, header.data_size, image.size()) ||
-                header.data_offset < header.info_offset + header.info_size)
+            const bool is_invalid_info_offset = header.info_offset != sizeof(Header) ||
+                !validRange(header.info_offset, header.info_size, image.size());
+            const bool is_invalid_data_range =
+                !validRange(header.data_offset, header.data_size, image.size());
+            const bool is_invalid_data_order =
+                header.data_offset < header.info_offset + header.info_size;
+            const bool is_invalid_layout = is_invalid_info_offset || is_invalid_data_range ||
+                is_invalid_data_order;
+            if (is_invalid_layout)
             {
                 return lux::cxx::unexpected(ECookedAssetImageError::INVALID_LAYOUT);
             }
@@ -118,24 +110,15 @@ namespace lux::asset
                 header.magic,
                 header.version,
                 metadata,
-                image.subspan(
-                    static_cast<std::size_t>(header.info_offset),
-                    static_cast<std::size_t>(header.info_size)
-                ),
-                image.subspan(
-                    static_cast<std::size_t>(header.data_offset),
-                    static_cast<std::size_t>(header.data_size)
-                ),
+                image.subspan(static_cast<std::size_t>(header.info_offset), static_cast<std::size_t>(header.info_size)),
+                image.subspan(static_cast<std::size_t>(header.data_offset), static_cast<std::size_t>(header.data_size)),
                 auxiliary,
             };
         }
     } // namespace
 
     lux::cxx::expected<CookedAssetImageView, ECookedAssetImageError>
-    inspectCookedAssetImage(
-        std::span<const std::byte> image,
-        const CookedAssetImageLimits& limits
-    ) noexcept
+    inspectCookedAssetImage(std::span<const std::byte> image, const CookedAssetImageLimits& limits) noexcept
     {
         if (image.size() > limits.max_image_bytes)
             return lux::cxx::unexpected(ECookedAssetImageError::LIMIT_EXCEEDED);
@@ -143,11 +126,7 @@ namespace lux::asset
             return lux::cxx::unexpected(ECookedAssetImageError::TRUNCATED);
 
         std::uint32_t version{};
-        std::memcpy(
-            &version,
-            image.data() + sizeof(std::uint32_t),
-            sizeof(version)
-        );
+        std::memcpy(&version, image.data() + sizeof(std::uint32_t), sizeof(version));
         if (version == kCookedAssetVersionV1)
             return inspectVersion<WireHeaderV1>(image);
         if (version == kCookedAssetVersionV2)

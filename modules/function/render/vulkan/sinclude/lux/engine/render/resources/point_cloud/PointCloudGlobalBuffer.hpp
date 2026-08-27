@@ -33,45 +33,56 @@ namespace lux::render
 {
     class TransferScheduler;
 
-/**
- * @brief 多模式点云特性共用的统一 GPU 点缓冲。
- *
- * @code
- *   PointCloudGlobalBuffer buf;
- *   buf.init(allocator, 4'000'000);   // 预留 4M 个点位
- *
- *   // 叶子变脏时(渲染线程):
- *   buf.ensureSlotCapacity(cid, leaf.alive_count, scheduler);
- *   buf.upload(cid, packed_verts, scheduler);
- * @endcode
- */
-class LUX_FUNCTION_PUBLIC PointCloudGlobalBuffer final
-    : public SlotArenaBuffer<GpuPointVertex>
-{
-    using Base = SlotArenaBuffer<GpuPointVertex>;
+    /**
+     * @brief 多模式点云特性共用的统一 GPU 点缓冲。
+     *
+     * @code
+     *   PointCloudGlobalBuffer buf;
+     *   buf.init(allocator, 4'000'000);   // 预留 4M 个点位
+     *
+     *   // 叶子变脏时(渲染线程):
+     *   buf.ensureSlotCapacity(cid, leaf.alive_count, scheduler);
+     *   buf.upload(cid, packed_verts, scheduler);
+     * @endcode
+     */
+    class LUX_FUNCTION_PUBLIC PointCloudGlobalBuffer final : public SlotArenaBuffer<GpuPointVertex>
+    {
+        using Base = SlotArenaBuffer<GpuPointVertex>;
 
-public:
-    static constexpr uint32_t kInvalidChunkId = Base::kInvalidId;
+    public:
+        static constexpr uint32_t kInvalidChunkId = Base::kInvalidId;
 
-    /// @param max_points 缓冲的总点容量。
-    bool init(VmaAllocator allocator, uint32_t max_points) { return Base::init(allocator, max_points); }
+        /// @param max_points 缓冲的总点容量。
+        bool init(VmaAllocator allocator, uint32_t max_points)
+        {
+            return Base::init(allocator, max_points);
+        }
 
-    /// 确保 @p chunk_id 至少有 @p capacity 个点的槽位。
-    ///
-    /// 与轨迹侧的同名方法**语义不同**:这里扩容会把 point_count 归零、**不搬**
-    /// 旧数据(点云是整块 replace 的,扩容后紧跟一次全量 upload),轨迹那边要保留。
-    /// 差异正是它没能进基类的原因。
-    ///
-    /// 容量不足时可能触发整缓冲扩容;扩容拷贝以 priority=-1 提交,由调度器的
-    /// 中段屏障负责 TRANSFER→TRANSFER 同步。
-    bool ensureSlotCapacity(uint32_t chunk_id, uint32_t capacity, TransferScheduler& scheduler);
+        /// 确保 @p chunk_id 至少有 @p capacity 个点的槽位。
+        ///
+        /// 与轨迹侧的同名方法**语义不同**:这里扩容会把 point_count 归零、**不搬**
+        /// 旧数据(点云是整块 replace 的,扩容后紧跟一次全量 upload),轨迹那边要保留。
+        /// 差异正是它没能进基类的原因。
+        ///
+        /// 容量不足时可能触发整缓冲扩容;扩容拷贝以 priority=-1 提交,由调度器的
+        /// 中段屏障负责 TRANSFER→TRANSFER 同步。
+        bool ensureSlotCapacity(uint32_t chunk_id, uint32_t capacity, TransferScheduler& scheduler);
 
-    // ── 领域命名转发 ────────────────────────────────────────────────────
-    /// 只更新存活点数,不产生 GPU 拷贝(alive 标志变了但无需重传的元数据路径)。
-    void setPointCount(uint32_t chunk_id, uint32_t point_count) noexcept { setCount(chunk_id, point_count); }
+        // ── 领域命名转发 ────────────────────────────────────────────────────
+        /// 只更新存活点数,不产生 GPU 拷贝(alive 标志变了但无需重传的元数据路径)。
+        void setPointCount(uint32_t chunk_id, uint32_t point_count) noexcept
+        {
+            setCount(chunk_id, point_count);
+        }
 
-    [[nodiscard]] uint32_t maxPoints()  const noexcept { return maxElements(); }
-    [[nodiscard]] uint32_t usedPoints() const noexcept { return usedElements(); }
-};
+        [[nodiscard]] uint32_t maxPoints() const noexcept
+        {
+            return maxElements();
+        }
+        [[nodiscard]] uint32_t usedPoints() const noexcept
+        {
+            return usedElements();
+        }
+    };
 
 } // namespace lux::render

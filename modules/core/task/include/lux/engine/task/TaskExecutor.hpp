@@ -22,12 +22,8 @@ namespace lux::task
     {
         TaskExecutorConfig() = delete;
 
-        constexpr TaskExecutorConfig(
-            std::uint32_t workers,
-            std::size_t task_capacity
-        ) noexcept
-            : worker_count(workers),
-              initial_task_capacity(task_capacity)
+        constexpr TaskExecutorConfig(std::uint32_t workers, std::size_t task_capacity) noexcept
+            : worker_count(workers), initial_task_capacity(task_capacity)
         {
         }
 
@@ -69,12 +65,10 @@ namespace lux::task
         [[nodiscard]] std::size_t taskCapacity() const noexcept;
 
         /** Cold-path preallocation. execute() also grows automatically if needed. */
-        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure>
-        reserve(std::size_t task_capacity) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure> reserve(std::size_t task_capacity) noexcept;
 
         /** Synchronous completion. The calling thread owns CALLER_THREAD tasks. */
-        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure>
-        execute(const TaskGraph& graph) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure> execute(const TaskGraph& graph) noexcept;
 
     private:
         struct Impl;

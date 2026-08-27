@@ -8,7 +8,8 @@
 #include <thread>
 #include <vector>
 
-int main()
+int
+main()
 {
     using namespace lux::task;
 
@@ -25,18 +26,12 @@ int main()
     {
         std::atomic_int value{};
         TaskGraphBuilder builder;
-        auto a = builder.add([&]() noexcept
-        {
-            value.store(1, std::memory_order_release);
-        });
+        auto a = builder.add([&]() noexcept { value.store(1, std::memory_order_release); });
         assert(a);
-        auto b = builder.add(
-            dependsOn(*a),
-            [&]() noexcept
-            {
-                assert(value.load(std::memory_order_acquire) == 1);
-                value.store(2, std::memory_order_release);
-            }
+        auto b = builder.add(dependsOn(*a), [&]() noexcept {
+            assert(value.load(std::memory_order_acquire) == 1);
+            value.store(2, std::memory_order_release);
+        }
         );
         assert(b);
         auto graph = std::move(builder).build();
@@ -51,17 +46,9 @@ int main()
         constexpr TaskResourceKey resource{0x1111U, 7U};
         std::atomic_int value{};
         TaskGraphBuilder builder;
-        auto writer = builder.add(
-            write(resource),
-            [&]() noexcept { value.store(42, std::memory_order_release); }
-        );
-        auto reader = builder.add(
-            read(resource),
-            [&]() noexcept
-            {
-                assert(value.load(std::memory_order_acquire) == 42);
-            }
-        );
+        auto writer = builder.add(write(resource), [&]() noexcept { value.store(42, std::memory_order_release); });
+        auto reader =
+            builder.add(read(resource), [&]() noexcept { assert(value.load(std::memory_order_acquire) == 42); });
         assert(writer && reader);
         auto graph = std::move(builder).build();
         assert(graph);
@@ -77,21 +64,18 @@ int main()
         std::atomic_bool c_ran{};
 
         TaskGraphBuilder builder;
-        auto a = builder.add([&]() noexcept
-        {
+        auto a = builder.add([&]() noexcept {
             while (!release_a.load(std::memory_order_acquire))
                 std::this_thread::yield();
-        });
+        }
+        );
         auto b = builder.add([]() noexcept {});
         assert(a && b);
 
-        auto c = builder.add(
-            dependsOn(*b),
-            [&]() noexcept
-            {
-                c_ran.store(true, std::memory_order_release);
-                release_a.store(true, std::memory_order_release);
-            }
+        auto c = builder.add(dependsOn(*b), [&]() noexcept {
+            c_ran.store(true, std::memory_order_release);
+            release_a.store(true, std::memory_order_release);
+        }
         );
         auto d = builder.add(dependsOn(*a), []() noexcept {});
         assert(c && d);
@@ -108,15 +92,9 @@ int main()
         const auto caller = std::this_thread::get_id();
         std::atomic_bool correct_thread{};
         TaskGraphBuilder builder;
-        auto task = builder.add(
-            on(ETaskAffinity::CALLER_THREAD),
-            [&]() noexcept
-            {
-                correct_thread.store(
-                    std::this_thread::get_id() == caller,
-                    std::memory_order_release
-                );
-            }
+        auto task = builder.add(on(ETaskAffinity::CALLER_THREAD), [&]() noexcept {
+            correct_thread.store(std::this_thread::get_id() == caller, std::memory_order_release);
+        }
         );
         assert(task);
         auto graph = std::move(builder).build();
@@ -142,10 +120,7 @@ int main()
         auto lifetime = std::make_shared<int>(7);
         std::weak_ptr<const void> weak = lifetime;
         TaskGraphBuilder builder;
-        auto task = builder.add(
-            keepAlive(lifetime),
-            []() noexcept {}
-        );
+        auto task = builder.add(keepAlive(lifetime), []() noexcept {});
         assert(task);
         auto graph_result = std::move(builder).build();
         assert(graph_result);
@@ -165,12 +140,7 @@ int main()
         TaskGraphBuilder builder;
         for (std::size_t index{}; index < kTasks; ++index)
         {
-            auto task = builder.add(
-                [&calls]() noexcept
-                {
-                    calls.fetch_add(1U, std::memory_order_relaxed);
-                }
-            );
+            auto task = builder.add([&calls]() noexcept { calls.fetch_add(1U, std::memory_order_relaxed); });
             assert(task);
         }
         auto graph = std::move(builder).build();
@@ -192,12 +162,9 @@ int main()
         leaves.reserve(kWidth);
         for (std::size_t index{}; index < kWidth; ++index)
         {
-            auto leaf = builder.add(
-                dependsOn(*root),
-                [&fan_out_calls]() noexcept
-                {
-                    fan_out_calls.fetch_add(1U, std::memory_order_relaxed);
-                }
+            auto leaf = builder.add(dependsOn(*root), [&fan_out_calls]() noexcept {
+                fan_out_calls.fetch_add(1U, std::memory_order_relaxed);
+            }
             );
             assert(leaf);
             leaves.push_back(*leaf);
@@ -212,10 +179,7 @@ int main()
             dependsOn(leaves[5]),
             dependsOn(leaves[6]),
             dependsOn(leaves[7]),
-            [&fan_out_calls]() noexcept
-            {
-                assert(fan_out_calls.load(std::memory_order_acquire) >= 8U);
-            }
+            [&fan_out_calls]() noexcept { assert(fan_out_calls.load(std::memory_order_acquire) >= 8U); }
         );
         assert(terminal);
         auto graph = std::move(builder).build();
@@ -234,21 +198,13 @@ int main()
         constexpr std::size_t kChain = 256U;
         std::atomic_size_t calls{};
         TaskGraphBuilder builder;
-        auto previous = builder.add(
-            [&calls]() noexcept
-            {
-                calls.fetch_add(1U, std::memory_order_relaxed);
-            }
-        );
+        auto previous = builder.add([&calls]() noexcept { calls.fetch_add(1U, std::memory_order_relaxed); });
         assert(previous);
         for (std::size_t index = 1U; index < kChain; ++index)
         {
-            previous = builder.add(
-                dependsOn(*previous),
-                [&calls]() noexcept
-                {
-                    calls.fetch_add(1U, std::memory_order_relaxed);
-                }
+            previous = builder.add(dependsOn(*previous), [&calls]() noexcept {
+                calls.fetch_add(1U, std::memory_order_relaxed);
+            }
             );
             assert(previous);
         }

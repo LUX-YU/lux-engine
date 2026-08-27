@@ -3,5 +3,7 @@
 
 namespace lux::script::detail
 {
-    LUX_FUNCTION_PUBLIC void scriptCoreLinkAnchor() noexcept {}
+    LUX_FUNCTION_PUBLIC void scriptCoreLinkAnchor() noexcept
+    {
+    }
 }

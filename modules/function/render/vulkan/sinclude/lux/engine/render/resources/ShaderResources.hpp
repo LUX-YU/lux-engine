@@ -17,7 +17,7 @@
 #include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
-#include <lux/engine/function/render/client/core/Errors.hpp>                // Expected / renderFailure
+#include <lux/engine/function/render/client/core/Errors.hpp> // Expected / renderFailure
 #include <lux/engine/render/core/PreparedPipelineStages.hpp> // preparePipelineStages 的结果
 #include <lux/engine/function/visibility.h>
 
@@ -27,12 +27,14 @@
 #include <unordered_map>
 #include <vector>
 
-namespace lux::rdesc { class Shader; }
+namespace lux::rdesc
+{
+    class Shader;
+}
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC ShaderResources final
-        : public GPUResourceBase<ShaderResources, EGPUResourceType::Shader>
+    class LUX_FUNCTION_PUBLIC ShaderResources final : public GPUResourceBase<ShaderResources, EGPUResourceType::Shader>
     {
     public:
         struct InitInfo
@@ -44,10 +46,10 @@ namespace lux::render
         ShaderResources() = default;
         ~ShaderResources();
 
-        ShaderResources(const ShaderResources&)            = delete;
+        ShaderResources(const ShaderResources&) = delete;
         ShaderResources& operator=(const ShaderResources&) = delete;
-        ShaderResources(ShaderResources&&)                 = default;
-        ShaderResources& operator=(ShaderResources&&)      = default;
+        ShaderResources(ShaderResources&&) = default;
+        ShaderResources& operator=(ShaderResources&&) = default;
 
         /// CANNOT FAIL — and that is why it returns void rather than bool.
         /// The body records the VkDevice and clears the bookkeeping containers;
@@ -64,16 +66,10 @@ namespace lux::render
 
         /// Compile SPIR-V into a VkShaderModule and register it.
         /// Returns a valid ShaderHandle on success, invalid on failure.
-        [[nodiscard]] ShaderHandle add(
-            const lux::rdesc::Shader& spirv,
-            const lux::rdesc::ShaderInfo& info
-        );
+        [[nodiscard]] ShaderHandle add(const lux::rdesc::Shader& spirv, const lux::rdesc::ShaderInfo& info);
 
         /// Compile SPIR-V from a byte span (avoids heap allocation of Shader).
-        [[nodiscard]] ShaderHandle add(
-            std::span<const std::byte> spirv_bytes,
-            const lux::rdesc::ShaderInfo& info
-        );
+        [[nodiscard]] ShaderHandle add(std::span<const std::byte> spirv_bytes, const lux::rdesc::ShaderInfo& info);
 
         /// Register a pre-built ShaderObject. Returns a valid ShaderHandle.
         [[nodiscard]] ShaderHandle add(ShaderObject obj);
@@ -104,9 +100,8 @@ namespace lux::render
         ///
         /// 补丁结果走与普通 add() 相同的去重路径:多条管线把同一个着色器打成相同字节
         /// 时,只会有一个 VkShaderModule。
-        [[nodiscard]] Expected<ShaderHandle> addMergedLayoutVariant(
-            ShaderHandle source,
-            const lux::rdesc::ShaderInfo& info);
+        [[nodiscard]] Expected<ShaderHandle>
+        addMergedLayoutVariant(ShaderHandle source, const lux::rdesc::ShaderInfo& info);
 
         /// 把一条管线的**全部 stage** 一次切换到域合并布局,并取回它们的模块与反射。
         ///
@@ -143,16 +138,16 @@ namespace lux::render
         struct SpirvCacheRec
         {
             std::vector<std::byte> bytes;
-            uint32_t               slot{0};
+            uint32_t slot{0};
         };
 
-        VkDevice                    device_{VK_NULL_HANDLE};
-        bool                        sparse_instance_pages_{false};
-        std::vector<ShaderObject>   records_;
-        std::vector<uint32_t>       gens_;       ///< generation counter per slot
-        std::vector<uint32_t>       refcount_;   ///< owners per slot (parallel to records_); 0 = dead
-        std::vector<std::size_t>    slot_hash_;  ///< SPIR-V hash per slot (0 = not from a deduped SPIR-V add)
-        std::vector<uint32_t>       free_;       ///< reusable slot indices
+        VkDevice device_{VK_NULL_HANDLE};
+        bool sparse_instance_pages_{false};
+        std::vector<ShaderObject> records_;
+        std::vector<uint32_t> gens_;         ///< generation counter per slot
+        std::vector<uint32_t> refcount_;     ///< owners per slot (parallel to records_); 0 = dead
+        std::vector<std::size_t> slot_hash_; ///< SPIR-V hash per slot (0 = not from a deduped SPIR-V add)
+        std::vector<uint32_t> free_;         ///< reusable slot indices
         std::unordered_map<std::size_t, std::vector<SpirvCacheRec>> spirv_cache_; ///< SPIR-V hash → slots
     };
 

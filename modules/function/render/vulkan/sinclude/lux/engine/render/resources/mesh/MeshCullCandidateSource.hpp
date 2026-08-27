@@ -31,17 +31,13 @@ namespace lux::render
     class MeshCullCandidateSource final
     {
     public:
-        static constexpr std::string_view kCandidateSlotsResource =
-            "MeshCullCandidateSlots";
-        static constexpr std::string_view kDispatchArgsResource =
-            "MeshCullCandidateDispatchArgs";
+        static constexpr std::string_view kCandidateSlotsResource = "MeshCullCandidateSlots";
+        static constexpr std::string_view kDispatchArgsResource = "MeshCullCandidateDispatchArgs";
         // The graph resources above may be produced by a contribution whose
         // passes are declared after their consumers.  Consumers depend on this
         // domain-neutral pass contract instead of naming RenderCluster.
-        static constexpr std::string_view kProducerPass =
-            "RenderClusterCandidateFinalize";
-        static constexpr std::uint32_t kDispatchArgsOffset =
-            offsetof(CandidateDispatchState, dispatch_group_count_x);
+        static constexpr std::string_view kProducerPass = "RenderClusterCandidateFinalize";
+        static constexpr std::uint32_t kDispatchArgsOffset = offsetof(CandidateDispatchState, dispatch_group_count_x);
 
         void publish(std::uint32_t capacity) noexcept
         {
@@ -55,7 +51,10 @@ namespace lux::render
             capacity_ = 0u;
         }
 
-        [[nodiscard]] bool active() const noexcept { return active_; }
+        [[nodiscard]] bool active() const noexcept
+        {
+            return active_;
+        }
         [[nodiscard]] std::uint32_t capacity() const noexcept
         {
             return capacity_;

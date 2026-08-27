@@ -10,8 +10,7 @@
 
 namespace lux::render
 {
-    SceneViewSet::SceneViewSet(ResourceRegistry& registry) noexcept
-        : registry_(registry)
+    SceneViewSet::SceneViewSet(ResourceRegistry& registry) noexcept : registry_(registry)
     {
     }
 
@@ -45,7 +44,8 @@ namespace lux::render
 
     void SceneViewSet::rebuildActiveCacheIfNeeded() const
     {
-        if (!cache_dirty_) return;
+        if (!cache_dirty_)
+            return;
         active_dense_.clear();
         active_dense_.reserve(views_.size());
         all_dense_.clear();
@@ -116,13 +116,13 @@ namespace lux::render
     {
         auto view = std::make_unique<View>();
         view->current_extent = info.initial_extent;
-        view->debug_name     = info.debug_name ? info.debug_name : "View";
+        view->debug_name = info.debug_name ? info.debug_name : "View";
 
         // SlotKeyAutoSparseSet::insert assigns a generational ViewHandle.
         ViewHandle handle = views_.insert(std::move(view));
-        auto* new_view    = views_.at(handle).get();
-        new_view->handle  = handle;
-        new_view->state   = ViewState::Active;
+        auto* new_view = views_.at(handle).get();
+        new_view->handle = handle;
+        new_view->state = ViewState::Active;
 
         initViewUBO(*new_view);
         markCacheDirty();
@@ -163,7 +163,7 @@ namespace lux::render
         for (auto& pd : pending_destroys_)
         {
             if (pd.destroy_frame == 0)
-                pd.destroy_frame = frame_id;   // 首见打戳 = 其最后一次 GPU 使用的上界
+                pd.destroy_frame = frame_id; // 首见打戳 = 其最后一次 GPU 使用的上界
         }
 
         while (!pending_destroys_.empty())
@@ -193,7 +193,8 @@ namespace lux::render
     {
         for (auto& v : views_.values())
         {
-            if (!v) continue;
+            if (!v)
+                continue;
             releaseViewGraphResources(*v);
             destroyViewUBO(*v);
         }

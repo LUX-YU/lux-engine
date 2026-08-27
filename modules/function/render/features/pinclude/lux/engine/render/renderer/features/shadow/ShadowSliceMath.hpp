@@ -35,10 +35,10 @@ namespace lux::render
     /// One packed shadow tile in the atlas (page layer + UV rect + resolution).
     struct ShadowTileAllocation
     {
-        uint32_t        layer{0};
-        uint32_t        x{0};
-        uint32_t        y{0};
-        uint32_t        resolution{1};
+        uint32_t layer{0};
+        uint32_t x{0};
+        uint32_t y{0};
+        uint32_t resolution{1};
         Eigen::Vector2f uv_scale{1.0f, 1.0f};
         Eigen::Vector2f uv_bias{0.0f, 0.0f};
     };
@@ -49,9 +49,9 @@ namespace lux::render
     {
         const float resolution = static_cast<float>(std::max(tile.resolution, 1u));
 
-        slice.texel_size     = 1.0f / resolution;
+        slice.texel_size = 1.0f / resolution;
         slice.atlas_uv_scale = tile.uv_scale;
-        slice.atlas_uv_bias  = tile.uv_bias;
+        slice.atlas_uv_bias = tile.uv_bias;
 
         // Keep a one-texel inset so +/-1 PCF taps stay inside the tile interior.
         const Eigen::Vector2f guard = tile.uv_scale * slice.texel_size;
@@ -72,7 +72,7 @@ namespace lux::render
 
         slice.atlas_inner_uv_min = inner_min;
         slice.atlas_inner_uv_max = inner_max;
-        slice.atlas_layer        = tile.layer;
+        slice.atlas_layer = tile.layer;
     }
 
     /// Build a perspective shadow slice — a spot light, or one point-light cube
@@ -87,14 +87,15 @@ namespace lux::render
     /// @param shadow_bias    The light's raw shadow bias (scaled into bias/slope_bias).
     /// @param tile           The packed atlas tile this slice renders into.
     inline ShadowSliceGPU makePerspectiveLightSlice(
-        const Eigen::Vector3f&      pos,
-        const Eigen::Vector3f&      fwd,
-        const Eigen::Vector3f&      up_seed,
-        float                       near_z,
-        float                       far_z,
-        float                       proj_xy_scale,
-        float                       shadow_bias,
-        const ShadowTileAllocation& tile)
+        const Eigen::Vector3f& pos,
+        const Eigen::Vector3f& fwd,
+        const Eigen::Vector3f& up_seed,
+        float near_z,
+        float far_z,
+        float proj_xy_scale,
+        float shadow_bias,
+        const ShadowTileAllocation& tile
+    )
     {
         Eigen::Matrix4f proj = Eigen::Matrix4f::Zero();
         proj(0, 0) = proj_xy_scale;
@@ -104,7 +105,7 @@ namespace lux::render
         proj(3, 2) = 1.f;
 
         const Eigen::Vector3f right = fwd.cross(up_seed).normalized();
-        const Eigen::Vector3f up    = right.cross(fwd).normalized();
+        const Eigen::Vector3f up = right.cross(fwd).normalized();
 
         Eigen::Matrix4f view_m = Eigen::Matrix4f::Identity();
         view_m.block<1, 3>(0, 0) = right.transpose();
@@ -120,8 +121,8 @@ namespace lux::render
         // receiver perpendicular to the light (e.g. the floor directly under a
         // downward-facing light) collapses slope_bias to ~0, leaving only the
         // constant term, so they need the extra headroom to avoid acne.
-        slice.bias        = shadow_bias * 1024.0f;
-        slice.slope_bias  = std::max(shadow_bias * 800.0f, 1e-5f);
+        slice.bias = shadow_bias * 1024.0f;
+        slice.slope_bias = std::max(shadow_bias * 800.0f, 1e-5f);
         // 透视切片(下面 depth_is_perspective=1)上**不使用**该字段:着色器的
         // 透视分支用 `2·texel_size·|clip.w|` 现算世界 texel 尺寸
         //(shadow_pcf.glsl 的 world_texel 三元式)。**它不是废弃字段** ——
@@ -131,7 +132,7 @@ namespace lux::render
         // Perspective slice: EVSM must linearize the hyperbolic NDC z via these
         // clip planes before warping (see ShadowSliceGPU comment).
         slice.shadow_near = near_z;
-        slice.shadow_far  = far_z;
+        slice.shadow_far = far_z;
         slice.depth_is_perspective = 1u;
         assignAtlasTileMetadata(slice, tile);
         return slice;
@@ -146,17 +147,21 @@ namespace lux::render
 
     [[nodiscard]] inline uint32_t roundUpPow2(uint32_t v) noexcept
     {
-        if (v <= 1u) return 1u;
+        if (v <= 1u)
+            return 1u;
         --v;
-        v |= v >> 1u;  v |= v >> 2u;  v |= v >> 4u;
-        v |= v >> 8u;  v |= v >> 16u;
+        v |= v >> 1u;
+        v |= v >> 2u;
+        v |= v >> 4u;
+        v |= v >> 8u;
+        v |= v >> 16u;
         return v + 1u;
     }
 
-    [[nodiscard]] inline uint32_t normalizeShadowTileResolution(
-        uint32_t requested_resolution, uint32_t page_resolution) noexcept
+    [[nodiscard]] inline uint32_t
+    normalizeShadowTileResolution(uint32_t requested_resolution, uint32_t page_resolution) noexcept
     {
-        const uint32_t req  = std::max(requested_resolution, 1u);
+        const uint32_t req = std::max(requested_resolution, 1u);
         const uint32_t page = std::max(page_resolution, 1u);
         return std::min(roundUpPow2(req), page);
     }
@@ -167,21 +172,23 @@ namespace lux::render
         uint32_t requested_resolution,
         uint32_t page_resolution,
         uint32_t page_count,
-        uint32_t required_tiles) noexcept
+        uint32_t required_tiles
+    ) noexcept
     {
-        const uint32_t page_res   = std::max(page_resolution, 1u);
-        const uint32_t pages      = std::max(page_count, 1u);
+        const uint32_t page_res = std::max(page_resolution, 1u);
+        const uint32_t pages = std::max(page_count, 1u);
         const uint32_t need_tiles = std::max(required_tiles, 1u);
 
         uint32_t resolution = normalizeShadowTileResolution(requested_resolution, page_res);
         while (true)
         {
             const uint32_t tiles_per_axis = std::max(page_res / std::max(resolution, 1u), 1u);
-            const uint64_t capacity = static_cast<uint64_t>(tiles_per_axis)
-                                    * static_cast<uint64_t>(tiles_per_axis)
-                                    * static_cast<uint64_t>(pages);
-            if (capacity >= need_tiles) return resolution;
-            if (resolution <= 1u)       return 1u;
+            const uint64_t capacity = static_cast<uint64_t>(tiles_per_axis) * static_cast<uint64_t>(tiles_per_axis) *
+                                      static_cast<uint64_t>(pages);
+            if (capacity >= need_tiles)
+                return resolution;
+            if (resolution <= 1u)
+                return 1u;
             resolution >>= 1u;
         }
     }
@@ -196,12 +203,14 @@ namespace lux::render
     {
     public:
         ShadowAtlasPacker(uint32_t page_resolution, uint32_t page_count)
-            : page_resolution_(std::max(page_resolution, 1u))
-            , pages_(page_count)
+            : page_resolution_(std::max(page_resolution, 1u)), pages_(page_count)
         {
         }
 
-        [[nodiscard]] uint32_t pageResolution() const noexcept { return page_resolution_; }
+        [[nodiscard]] uint32_t pageResolution() const noexcept
+        {
+            return page_resolution_;
+        }
 
         [[nodiscard]] bool allocate(uint32_t requested_resolution, ShadowTileAllocation& out)
         {
@@ -213,46 +222,55 @@ namespace lux::render
                 auto& page = pages_[layer];
                 uint32_t x = page.cursor_x, y = page.cursor_y, row_h = page.row_h;
 
-                if (x + tile_res > page_resolution_) { x = 0; y += row_h; row_h = 0; }
-                if (y + tile_res > page_resolution_) continue;
+                if (x + tile_res > page_resolution_)
+                {
+                    x = 0;
+                    y += row_h;
+                    row_h = 0;
+                }
+                if (y + tile_res > page_resolution_)
+                    continue;
 
                 page.cursor_x = x + tile_res;
                 page.cursor_y = y;
-                page.row_h    = std::max(row_h, tile_res);
+                page.row_h = std::max(row_h, tile_res);
 
-                out.layer      = layer;
-                out.x          = x;
-                out.y          = y;
+                out.layer = layer;
+                out.x = x;
+                out.y = y;
                 out.resolution = tile_res;
                 const float inv_page = 1.0f / static_cast<float>(page_resolution_);
-                out.uv_scale = Eigen::Vector2f(static_cast<float>(tile_res) * inv_page,
-                                               static_cast<float>(tile_res) * inv_page);
-                out.uv_bias  = Eigen::Vector2f(static_cast<float>(x) * inv_page,
-                                               static_cast<float>(y) * inv_page);
+                out.uv_scale =
+                    Eigen::Vector2f(static_cast<float>(tile_res) * inv_page, static_cast<float>(tile_res) * inv_page);
+                out.uv_bias = Eigen::Vector2f(static_cast<float>(x) * inv_page, static_cast<float>(y) * inv_page);
                 return true;
             }
             return false;
         }
 
     private:
-        struct PageState { uint32_t cursor_x{0}, cursor_y{0}, row_h{0}; };
-        uint32_t               page_resolution_{1};
+        struct PageState
+        {
+            uint32_t cursor_x{0}, cursor_y{0}, row_h{0};
+        };
+        uint32_t page_resolution_{1};
         std::vector<PageState> pages_{};
     };
 
     /// Allocate one tile, halving the request until it fits or hits the floor.
-    [[nodiscard]] inline bool allocateTileWithFallback(
-        ShadowAtlasPacker& packer, uint32_t requested_resolution, ShadowTileAllocation& out_tile)
+    [[nodiscard]] inline bool
+    allocateTileWithFallback(ShadowAtlasPacker& packer, uint32_t requested_resolution, ShadowTileAllocation& out_tile)
     {
         const uint32_t page_resolution = packer.pageResolution();
-        const uint32_t min_resolution  =
-            normalizeShadowTileResolution(kMinShadowTileResolution, page_resolution);
+        const uint32_t min_resolution = normalizeShadowTileResolution(kMinShadowTileResolution, page_resolution);
 
         uint32_t resolution = normalizeShadowTileResolution(requested_resolution, page_resolution);
         while (true)
         {
-            if (packer.allocate(resolution, out_tile)) return true;
-            if (resolution <= min_resolution)          break;
+            if (packer.allocate(resolution, out_tile))
+                return true;
+            if (resolution <= min_resolution)
+                break;
             resolution = std::max(min_resolution, resolution >> 1u);
         }
         return false;
@@ -261,12 +279,13 @@ namespace lux::render
     /// Allocate six equal tiles (one cube map) atomically: a partial cube is
     /// useless, so each attempt runs against a copy and is only committed whole.
     [[nodiscard]] inline bool allocateCubeWithFallback(
-        ShadowAtlasPacker& packer, uint32_t requested_resolution,
-        std::array<ShadowTileAllocation, 6>& out_tiles)
+        ShadowAtlasPacker& packer,
+        uint32_t requested_resolution,
+        std::array<ShadowTileAllocation, 6>& out_tiles
+    )
     {
         const uint32_t page_resolution = packer.pageResolution();
-        const uint32_t min_resolution  =
-            normalizeShadowTileResolution(kMinShadowTileResolution, page_resolution);
+        const uint32_t min_resolution = normalizeShadowTileResolution(kMinShadowTileResolution, page_resolution);
 
         uint32_t resolution = normalizeShadowTileResolution(requested_resolution, page_resolution);
         while (true)
@@ -275,10 +294,19 @@ namespace lux::render
             bool allocated = true;
             for (uint32_t face = 0; face < 6; ++face)
             {
-                if (!attempt.allocate(resolution, out_tiles[face])) { allocated = false; break; }
+                if (!attempt.allocate(resolution, out_tiles[face]))
+                {
+                    allocated = false;
+                    break;
+                }
             }
-            if (allocated) { packer = std::move(attempt); return true; }
-            if (resolution <= min_resolution) break;
+            if (allocated)
+            {
+                packer = std::move(attempt);
+                return true;
+            }
+            if (resolution <= min_resolution)
+                break;
             resolution = std::max(min_resolution, resolution >> 1u);
         }
         return false;
@@ -295,7 +323,7 @@ namespace lux::render
     struct ShadowCasterRequest
     {
         uint64_t identity{0};
-        float    score{0.0f};
+        float score{0.0f};
         uint32_t tile_count{1};
         uint32_t resolution{1};
     };
@@ -335,23 +363,24 @@ namespace lux::render
     /// @returns the surviving requests, in placement order.
     [[nodiscard]] inline std::vector<ShadowCasterRequest> orderCastersForPlacement(
         std::vector<ShadowCasterRequest> requests,
-        const ShadowAtlasPacker&         packer,
-        uint32_t                         slice_budget,
-        uint32_t                         slices_already_used,
-        const std::vector<uint64_t>&     sticky_identities = {})
+        const ShadowAtlasPacker& packer,
+        uint32_t slice_budget,
+        uint32_t slices_already_used,
+        const std::vector<uint64_t>& sticky_identities = {}
+    )
     {
         const auto effectiveScore = [&](const ShadowCasterRequest& r) {
-            return std::binary_search(sticky_identities.begin(),
-                                      sticky_identities.end(), r.identity)
+            return std::binary_search(sticky_identities.begin(), sticky_identities.end(), r.identity)
                        ? r.score * kStickyScoreBoost
                        : r.score;
         };
-        std::sort(requests.begin(), requests.end(),
-                  [&](const ShadowCasterRequest& a, const ShadowCasterRequest& b) {
-                      const float ea = effectiveScore(a), eb = effectiveScore(b);
-                      if (ea != eb) return ea > eb;
-                      return a.identity < b.identity;   // total order — no ties left to chance
-                  });
+        std::sort(requests.begin(), requests.end(), [&](const ShadowCasterRequest& a, const ShadowCasterRequest& b) {
+            const float ea = effectiveScore(a), eb = effectiveScore(b);
+            if (ea != eb)
+                return ea > eb;
+            return a.identity < b.identity; // total order — no ties left to chance
+        }
+        );
 
         const auto tryAllocate = [](ShadowAtlasPacker& p, const ShadowCasterRequest& r) {
             if (std::max(r.tile_count, 1u) == 6u)
@@ -364,15 +393,17 @@ namespace lux::render
         };
 
         // ① MEMBERSHIP(有效分数降序;survivors 因此天然按分数降序存放)。
-        ShadowAtlasPacker                probe = packer;
-        uint32_t                         used  = slices_already_used;
+        ShadowAtlasPacker probe = packer;
+        uint32_t used = slices_already_used;
         std::vector<ShadowCasterRequest> survivors;
         survivors.reserve(requests.size());
         for (const ShadowCasterRequest& r : requests)
         {
             const uint32_t need = std::max(r.tile_count, 1u);
-            if (used + need > slice_budget) continue;
-            if (!tryAllocate(probe, r)) continue;
+            if (used + need > slice_budget)
+                continue;
+            if (!tryAllocate(probe, r))
+                continue;
             used += need;
             survivors.push_back(r);
         }
@@ -384,21 +415,25 @@ namespace lux::render
         while (!survivors.empty())
         {
             ordered = survivors;
-            std::sort(ordered.begin(), ordered.end(),
-                      [](const ShadowCasterRequest& a, const ShadowCasterRequest& b) {
-                          return a.identity < b.identity;
-                      });
-            ShadowAtlasPacker verify      = packer;
-            uint32_t          verify_used = slices_already_used;
-            bool              all_fit     = true;
+            std::sort(ordered.begin(), ordered.end(), [](const ShadowCasterRequest& a, const ShadowCasterRequest& b) {
+                return a.identity < b.identity;
+            }
+            );
+            ShadowAtlasPacker verify = packer;
+            uint32_t verify_used = slices_already_used;
+            bool all_fit = true;
             for (const ShadowCasterRequest& r : ordered)
             {
                 const uint32_t need = std::max(r.tile_count, 1u);
                 if (verify_used + need > slice_budget || !tryAllocate(verify, r))
-                { all_fit = false; break; }
+                {
+                    all_fit = false;
+                    break;
+                }
                 verify_used += need;
             }
-            if (all_fit) return ordered;
+            if (all_fit)
+                return ordered;
             survivors.pop_back();
         }
         return {};

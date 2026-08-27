@@ -10,9 +10,7 @@ namespace lux::simulation::ecs
 {
     namespace
     {
-        [[nodiscard]] Eigen::Affine2f localMatrix(
-            const Transform2D& value
-        ) noexcept
+        [[nodiscard]] Eigen::Affine2f localMatrix(const Transform2D& value) noexcept
         {
             Eigen::Affine2f result = Eigen::Affine2f::Identity();
             result.translate(value.translation);
@@ -21,9 +19,7 @@ namespace lux::simulation::ecs
             return result;
         }
 
-        [[nodiscard]] Eigen::Affine3f localMatrix(
-            const Transform3D& value
-        ) noexcept
+        [[nodiscard]] Eigen::Affine3f localMatrix(const Transform3D& value) noexcept
         {
             Eigen::Affine3f result = Eigen::Affine3f::Identity();
             result.translate(value.translation);
@@ -32,37 +28,26 @@ namespace lux::simulation::ecs
             return result;
         }
 
-        template <class Matrix>
-        struct TraversalEntry final
+        template <class Matrix> struct TraversalEntry final
         {
             Entity entity{NullEntity};
             Matrix parent_world{Matrix::Identity()};
             bool parent_contributes{};
         };
 
-        template <class Local, class Derived, class Matrix>
-        class TransformState
+        template <class Local, class Derived, class Matrix> class TransformState
         {
-          public:
-            TransformState(
-                Registry& registry,
-                HierarchyIndex& hierarchy,
-                const HierarchyDeltaBatch& hierarchy_deltas
-            )
-                : registry_(std::addressof(registry)),
-                  hierarchy_(std::addressof(hierarchy)),
+        public:
+            TransformState(Registry& registry, HierarchyIndex& hierarchy, const HierarchyDeltaBatch& hierarchy_deltas)
+                : registry_(std::addressof(registry)), hierarchy_(std::addressof(hierarchy)),
                   hierarchy_deltas_(std::addressof(hierarchy_deltas)),
-                  constructed_(registry.on_construct<Local>().template connect<
-                      &TransformState::onLocalChanged>(*this)),
-                  updated_(registry.on_update<Local>().template connect<
-                      &TransformState::onLocalChanged>(*this)),
-                  destroyed_(registry.on_destroy<Local>().template connect<
-                      &TransformState::onLocalDestroyed>(*this))
+                  constructed_(registry.on_construct<Local>().template connect<&TransformState::onLocalChanged>(*this)),
+                  updated_(registry.on_update<Local>().template connect<&TransformState::onLocalChanged>(*this)),
+                  destroyed_(registry.on_destroy<Local>().template connect<&TransformState::onLocalDestroyed>(*this))
             {
             }
 
-            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
-            prepare(std::size_t entity_capacity) noexcept
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(std::size_t entity_capacity) noexcept
             {
                 try
                 {
@@ -82,39 +67,29 @@ namespace lux::simulation::ecs
                 }
                 catch (const std::bad_alloc&)
                 {
-                    return lux::cxx::unexpected(
-                        ETransformUpdateError::ALLOCATION_FAILURE
-                    );
+                    return lux::cxx::unexpected(ETransformUpdateError::ALLOCATION_FAILURE);
                 }
             }
 
-            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
-            update(EcsCommandWriter& commands) noexcept
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> update(EcsCommandWriter& commands) noexcept
             {
                 visited_nodes_ = 0U;
                 if (!prepared_)
                 {
-                    return lux::cxx::unexpected(
-                        ETransformUpdateError::CAPACITY_EXCEEDED
-                    );
+                    return lux::cxx::unexpected(ETransformUpdateError::CAPACITY_EXCEEDED);
                 }
                 if (!hierarchy_->synchronized())
                 {
                     force_resync_ = true;
-                    return lux::cxx::unexpected(
-                        ETransformUpdateError::INVALID_HIERARCHY
-                    );
+                    return lux::cxx::unexpected(ETransformUpdateError::INVALID_HIERARCHY);
                 }
                 if (!commands)
                 {
                     force_resync_ = true;
-                    return lux::cxx::unexpected(
-                        ETransformUpdateError::COMMAND_RECORDING_FAILED
-                    );
+                    return lux::cxx::unexpected(ETransformUpdateError::COMMAND_RECORDING_FAILED);
                 }
 
-                const bool rebuild = force_resync_ || overflowed_ ||
-                    !hierarchy_deltas_->exact();
+                const bool rebuild = force_resync_ || overflowed_ || !hierarchy_deltas_->exact();
                 force_resync_ = false;
                 overflowed_ = false;
 
@@ -128,23 +103,18 @@ namespace lux::simulation::ecs
                     }
                     for (const Entity entity : registry_->view<const Derived>())
                     {
-                        if (!registry_->all_of<Local>(entity) &&
-                            !commands.template remove<Derived>(entity))
+                        if (!registry_->all_of<Local>(entity) && !commands.template remove<Derived>(entity))
                         {
                             force_resync_ = true;
-                            return lux::cxx::unexpected(
-                                ETransformUpdateError::COMMAND_RECORDING_FAILED
-                            );
+                            return lux::cxx::unexpected(ETransformUpdateError::COMMAND_RECORDING_FAILED);
                         }
                     }
                 }
                 else
                 {
-                    for (const HierarchyDelta delta :
-                         hierarchy_deltas_->values())
+                    for (const HierarchyDelta delta : hierarchy_deltas_->values())
                     {
-                        if (registry_->valid(delta.entity) &&
-                            !appendDirty(delta.entity))
+                        if (registry_->valid(delta.entity) && !appendDirty(delta.entity))
                         {
                             return capacityFailure();
                         }
@@ -154,18 +124,11 @@ namespace lux::simulation::ecs
                 if (dirty_.empty())
                     return {};
 
-                std::sort(
-                    dirty_.begin(),
-                    dirty_.end(),
-                    [](Entity left, Entity right) noexcept
-                    {
-                        return entityBits(left) < entityBits(right);
-                    }
+                std::sort(dirty_.begin(), dirty_.end(), [](Entity left, Entity right) noexcept {
+                    return entityBits(left) < entityBits(right);
+                }
                 );
-                dirty_.erase(
-                    std::unique(dirty_.begin(), dirty_.end()),
-                    dirty_.end()
-                );
+                dirty_.erase(std::unique(dirty_.begin(), dirty_.end()), dirty_.end());
                 collectRoots();
                 for (const Entity root : roots_)
                 {
@@ -189,12 +152,11 @@ namespace lux::simulation::ecs
 
             [[nodiscard]] std::size_t retainedDenseBytes() const noexcept
             {
-                return (dirty_.capacity() + roots_.capacity() +
-                        ancestors_.capacity()) * sizeof(Entity) +
-                    traversal_.capacity() * sizeof(TraversalEntry<Matrix>);
+                return (dirty_.capacity() + roots_.capacity() + ancestors_.capacity()) * sizeof(Entity) +
+                       traversal_.capacity() * sizeof(TraversalEntry<Matrix>);
             }
 
-          private:
+        private:
             void onLocalChanged(Registry&, Entity entity) noexcept
             {
                 (void)appendDirty(entity);
@@ -217,27 +179,19 @@ namespace lux::simulation::ecs
                 return true;
             }
 
-            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
-            capacityFailure() noexcept
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> capacityFailure() noexcept
             {
                 force_resync_ = true;
                 overflowed_ = true;
                 dirty_.clear();
-                return lux::cxx::unexpected(
-                    ETransformUpdateError::CAPACITY_EXCEEDED
-                );
+                return lux::cxx::unexpected(ETransformUpdateError::CAPACITY_EXCEEDED);
             }
 
             [[nodiscard]] bool isDirty(Entity entity) const noexcept
             {
-                return std::binary_search(
-                    dirty_.begin(),
-                    dirty_.end(),
-                    entity,
-                    [](Entity left, Entity right) noexcept
-                    {
-                        return entityBits(left) < entityBits(right);
-                    }
+                return std::binary_search(dirty_.begin(), dirty_.end(), entity, [](Entity left, Entity right) noexcept {
+                    return entityBits(left) < entityBits(right);
+                }
                 );
             }
 
@@ -262,15 +216,13 @@ namespace lux::simulation::ecs
                 }
             }
 
-            [[nodiscard]] lux::cxx::expected<TraversalEntry<Matrix>,
-                                             ETransformUpdateError>
+            [[nodiscard]] lux::cxx::expected<TraversalEntry<Matrix>, ETransformUpdateError>
             rootEntry(Entity root, EcsCommandWriter& commands) noexcept
             {
                 TraversalEntry<Matrix> result;
                 result.entity = root;
                 Entity current = hierarchy_->parent(root);
-                if (current == NullEntity || !registry_->valid(current) ||
-                    !registry_->all_of<Local>(current))
+                if (current == NullEntity || !registry_->valid(current) || !registry_->all_of<Local>(current))
                 {
                     return result;
                 }
@@ -283,24 +235,19 @@ namespace lux::simulation::ecs
                 }
 
                 ancestors_.clear();
-                while (current != NullEntity && registry_->valid(current) &&
-                       registry_->all_of<Local>(current))
+                while (current != NullEntity && registry_->valid(current) && registry_->all_of<Local>(current))
                 {
                     if (ancestors_.size() >= capacity_)
                     {
-                        return lux::cxx::unexpected(
-                            ETransformUpdateError::CAPACITY_EXCEEDED
-                        );
+                        return lux::cxx::unexpected(ETransformUpdateError::CAPACITY_EXCEEDED);
                     }
                     ancestors_.push_back(current);
                     const Entity parent = hierarchy_->parent(current);
-                    if (parent == NullEntity || !registry_->valid(parent) ||
-                        !registry_->all_of<Local>(parent))
+                    if (parent == NullEntity || !registry_->valid(parent) || !registry_->all_of<Local>(parent))
                     {
                         break;
                     }
-                    if (const auto* derived =
-                            registry_->try_get<Derived>(parent))
+                    if (const auto* derived = registry_->try_get<Derived>(parent))
                     {
                         result.parent_world = derived->value;
                         result.parent_contributes = true;
@@ -309,13 +256,11 @@ namespace lux::simulation::ecs
                     current = parent;
                 }
 
-                for (auto iterator = ancestors_.rbegin();
-                     iterator != ancestors_.rend(); ++iterator)
+                for (auto iterator = ancestors_.rbegin(); iterator != ancestors_.rend(); ++iterator)
                 {
                     const auto& local = registry_->get<const Local>(*iterator);
-                    const Matrix value = result.parent_contributes
-                        ? result.parent_world * localMatrix(local)
-                        : localMatrix(local);
+                    const Matrix value =
+                        result.parent_contributes ? result.parent_world * localMatrix(local) : localMatrix(local);
                     auto published = publish(commands, *iterator, value);
                     if (!published)
                         return lux::cxx::unexpected(published.error());
@@ -327,31 +272,16 @@ namespace lux::simulation::ecs
             }
 
             [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
-            publish(
-                EcsCommandWriter& commands,
-                Entity entity,
-                const Matrix& value
-            ) noexcept
+            publish(EcsCommandWriter& commands, Entity entity, const Matrix& value) noexcept
             {
                 if (registry_->all_of<Derived>(entity))
                 {
-                    registry_->patch<Derived>(
-                        entity,
-                        [&value](Derived& target) noexcept
-                        {
-                            target.value = value;
-                        }
-                    );
+                    registry_->patch<Derived>(entity, [&value](Derived& target) noexcept { target.value = value; });
                     return {};
                 }
-                if (!commands.template emplace<Derived>(
-                        entity,
-                        Derived{value}
-                    ))
+                if (!commands.template emplace<Derived>(entity, Derived{value}))
                 {
-                    return lux::cxx::unexpected(
-                        ETransformUpdateError::COMMAND_RECORDING_FAILED
-                    );
+                    return lux::cxx::unexpected(ETransformUpdateError::COMMAND_RECORDING_FAILED);
                 }
                 return {};
             }
@@ -373,46 +303,31 @@ namespace lux::simulation::ecs
 
                     Matrix world = Matrix::Identity();
                     bool contributes{};
-                    if (const auto* local =
-                            registry_->try_get<const Local>(current.entity))
+                    if (const auto* local = registry_->try_get<const Local>(current.entity))
                     {
-                        world = current.parent_contributes
-                            ? current.parent_world * localMatrix(*local)
-                            : localMatrix(*local);
+                        world = current.parent_contributes ? current.parent_world * localMatrix(*local)
+                                                           : localMatrix(*local);
                         contributes = true;
-                        auto published = publish(
-                            commands,
-                            current.entity,
-                            world
-                        );
+                        auto published = publish(commands, current.entity, world);
                         if (!published)
                             return published;
                     }
-                    else if (registry_->all_of<Derived>(current.entity) &&
-                             !commands.template remove<Derived>(
-                                 current.entity
-                             ))
+                    else if (
+                        registry_->all_of<Derived>(current.entity) &&
+                        !commands.template remove<Derived>(current.entity)
+                    )
                     {
-                        return lux::cxx::unexpected(
-                            ETransformUpdateError::COMMAND_RECORDING_FAILED
-                        );
+                        return lux::cxx::unexpected(ETransformUpdateError::COMMAND_RECORDING_FAILED);
                     }
                     ++visited_nodes_;
 
-                    for (const Entity child : hierarchy_->children(
-                             current.entity
-                         ))
+                    for (const Entity child : hierarchy_->children(current.entity))
                     {
                         if (traversal_.size() >= capacity_)
                         {
-                            return lux::cxx::unexpected(
-                                ETransformUpdateError::CAPACITY_EXCEEDED
-                            );
+                            return lux::cxx::unexpected(ETransformUpdateError::CAPACITY_EXCEEDED);
                         }
-                        traversal_.push_back(TraversalEntry<Matrix>{
-                            child,
-                            world,
-                            contributes});
+                        traversal_.push_back(TraversalEntry<Matrix>{child, world, contributes});
                     }
                 }
                 return {};
@@ -436,14 +351,12 @@ namespace lux::simulation::ecs
         };
     }
 
-    struct Transform2DSystem::Impl final
-        : TransformState<Transform2D, WorldTransform2D, Eigen::Affine2f>
+    struct Transform2DSystem::Impl final : TransformState<Transform2D, WorldTransform2D, Eigen::Affine2f>
     {
         using TransformState::TransformState;
     };
 
-    struct Transform3DSystem::Impl final
-        : TransformState<Transform3D, WorldTransform3D, Eigen::Affine3f>
+    struct Transform3DSystem::Impl final : TransformState<Transform3D, WorldTransform3D, Eigen::Affine3f>
     {
         using TransformState::TransformState;
     };
@@ -453,26 +366,18 @@ namespace lux::simulation::ecs
         HierarchyIndex& hierarchy,
         const HierarchyDeltaBatch& hierarchy_deltas
     )
-        : impl_(std::make_unique<Impl>(
-              registry,
-              hierarchy,
-              hierarchy_deltas
-          ))
+        : impl_(std::make_unique<Impl>(registry, hierarchy, hierarchy_deltas))
     {
     }
 
     Transform2DSystem::~Transform2DSystem() noexcept = default;
 
-    lux::cxx::expected<void, ETransformUpdateError> Transform2DSystem::prepare(
-        std::size_t entity_capacity
-    ) noexcept
+    lux::cxx::expected<void, ETransformUpdateError> Transform2DSystem::prepare(std::size_t entity_capacity) noexcept
     {
         return impl_->prepare(entity_capacity);
     }
 
-    lux::cxx::expected<void, ETransformUpdateError> Transform2DSystem::update(
-        EcsCommandWriter& commands
-    ) noexcept
+    lux::cxx::expected<void, ETransformUpdateError> Transform2DSystem::update(EcsCommandWriter& commands) noexcept
     {
         return impl_->update(commands);
     }
@@ -492,26 +397,18 @@ namespace lux::simulation::ecs
         HierarchyIndex& hierarchy,
         const HierarchyDeltaBatch& hierarchy_deltas
     )
-        : impl_(std::make_unique<Impl>(
-              registry,
-              hierarchy,
-              hierarchy_deltas
-          ))
+        : impl_(std::make_unique<Impl>(registry, hierarchy, hierarchy_deltas))
     {
     }
 
     Transform3DSystem::~Transform3DSystem() noexcept = default;
 
-    lux::cxx::expected<void, ETransformUpdateError> Transform3DSystem::prepare(
-        std::size_t entity_capacity
-    ) noexcept
+    lux::cxx::expected<void, ETransformUpdateError> Transform3DSystem::prepare(std::size_t entity_capacity) noexcept
     {
         return impl_->prepare(entity_capacity);
     }
 
-    lux::cxx::expected<void, ETransformUpdateError> Transform3DSystem::update(
-        EcsCommandWriter& commands
-    ) noexcept
+    lux::cxx::expected<void, ETransformUpdateError> Transform3DSystem::update(EcsCommandWriter& commands) noexcept
     {
         return impl_->update(commands);
     }

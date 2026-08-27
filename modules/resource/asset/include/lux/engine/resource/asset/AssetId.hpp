@@ -14,13 +14,13 @@ namespace lux::asset
     public:
         AssetId() = default;
 
-        explicit AssetId(uuids::uuid value) noexcept
-            : value_(value)
-        {}
+        explicit AssetId(uuids::uuid value) noexcept : value_(value)
+        {
+        }
 
-        explicit AssetId(const std::array<std::uint8_t, 16>& bytes) noexcept
-            : value_(bytes)
-        {}
+        explicit AssetId(const std::array<std::uint8_t, 16>& bytes) noexcept : value_(bytes)
+        {
+        }
 
         [[nodiscard]] bool isNull() const noexcept
         {
@@ -51,8 +51,7 @@ namespace lux::asset
     inline const AssetId NullAssetId{};
 } // namespace lux::asset
 
-template <>
-struct std::hash<lux::asset::AssetId>
+template <> struct std::hash<lux::asset::AssetId>
 {
     std::size_t operator()(const lux::asset::AssetId& value) const noexcept
     {

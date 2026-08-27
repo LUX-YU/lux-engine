@@ -20,14 +20,14 @@ namespace lux::object
         class MessageEnvelope;
         struct ObjectMessageQueueState;
 
-        [[nodiscard]] LUX_CORE_PUBLIC EPostStatus post(const ObjectDispatcherRef &dispatcher,
-                                                       MessageEnvelope &&message) noexcept;
+        [[nodiscard]] LUX_CORE_PUBLIC EPostStatus
+        post(const ObjectDispatcherRef& dispatcher, MessageEnvelope&& message) noexcept;
     } // namespace detail
 
     /** Copyable queue capability that stays closed-safe after its provider dies. */
     class LUX_CORE_PUBLIC ObjectDispatcherRef final
     {
-      public:
+    public:
         ObjectDispatcherRef() noexcept = default;
 
         [[nodiscard]] bool isCurrent() const noexcept;
@@ -35,14 +35,12 @@ namespace lux::object
         {
             return state_ != nullptr;
         }
-        [[nodiscard]] bool operator==(const ObjectDispatcherRef &) const noexcept = default;
+        [[nodiscard]] bool operator==(const ObjectDispatcherRef&) const noexcept = default;
 
-      private:
+    private:
         friend class ObjectMessageQueue;
-        friend detail::EPostStatus detail::post(const ObjectDispatcherRef &,
-                                                detail::MessageEnvelope &&) noexcept;
-        explicit ObjectDispatcherRef(
-            std::shared_ptr<detail::ObjectMessageQueueState> state) noexcept
+        friend detail::EPostStatus detail::post(const ObjectDispatcherRef&, detail::MessageEnvelope&&) noexcept;
+        explicit ObjectDispatcherRef(std::shared_ptr<detail::ObjectMessageQueueState> state) noexcept
             : state_(std::move(state))
         {
         }
@@ -53,18 +51,18 @@ namespace lux::object
     /** Concrete queue provider owned by a session, event loop, or test harness. */
     class LUX_CORE_PUBLIC ObjectMessageQueue final
     {
-      public:
+    public:
         ObjectMessageQueue();
         ~ObjectMessageQueue();
 
-        ObjectMessageQueue(const ObjectMessageQueue &) = delete;
-        ObjectMessageQueue &operator=(const ObjectMessageQueue &) = delete;
+        ObjectMessageQueue(const ObjectMessageQueue&) = delete;
+        ObjectMessageQueue& operator=(const ObjectMessageQueue&) = delete;
 
         [[nodiscard]] ObjectDispatcherRef dispatcherRef() const noexcept;
         [[nodiscard]] std::size_t dispatchPending();
         void close() noexcept;
 
-      private:
+    private:
         std::shared_ptr<detail::ObjectMessageQueueState> state_;
     };
 } // namespace lux::object

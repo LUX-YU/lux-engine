@@ -48,7 +48,7 @@ namespace lux::input
         {
             InputValue out;
             out.type = EInputValueType::BOOL;
-            out.v.x  = b ? 1.0f : 0.0f;
+            out.v.x = b ? 1.0f : 0.0f;
             return out;
         }
 
@@ -56,7 +56,7 @@ namespace lux::input
         {
             InputValue out;
             out.type = EInputValueType::AXIS_1D;
-            out.v.x  = x;
+            out.v.x = x;
             return out;
         }
 
@@ -64,8 +64,8 @@ namespace lux::input
         {
             InputValue out;
             out.type = EInputValueType::AXIS_2D;
-            out.v.x  = x;
-            out.v.y  = y;
+            out.v.x = x;
+            out.v.y = y;
             return out;
         }
 
@@ -73,9 +73,9 @@ namespace lux::input
         {
             InputValue out;
             out.type = EInputValueType::AXIS_3D;
-            out.v.x  = x;
-            out.v.y  = y;
-            out.v.z  = z;
+            out.v.x = x;
+            out.v.y = y;
+            out.v.z = z;
             return out;
         }
 
@@ -83,20 +83,36 @@ namespace lux::input
         {
             switch (t)
             {
-            case EInputValueType::BOOL:   return makeBool(false);
-            case EInputValueType::AXIS_1D: return makeAxis1D(0.0f);
-            case EInputValueType::AXIS_2D: return makeAxis2D(0.0f, 0.0f);
-            case EInputValueType::AXIS_3D: return makeAxis3D(0.0f, 0.0f, 0.0f);
+            case EInputValueType::BOOL:
+                return makeBool(false);
+            case EInputValueType::AXIS_1D:
+                return makeAxis1D(0.0f);
+            case EInputValueType::AXIS_2D:
+                return makeAxis2D(0.0f, 0.0f);
+            case EInputValueType::AXIS_3D:
+                return makeAxis3D(0.0f, 0.0f, 0.0f);
             }
             return makeBool(false);
         }
 
         // ── Accessors ───────────────────────────────────────────────── //
 
-        [[nodiscard]] bool   asBool() const noexcept { return std::fabs(v.x) > 1e-6f; }
-        [[nodiscard]] float  as1D()   const noexcept { return v.x; }
-        [[nodiscard]] Float2 as2D()   const noexcept { return {v.x, v.y}; }
-        [[nodiscard]] Float3 as3D()   const noexcept { return v; }
+        [[nodiscard]] bool asBool() const noexcept
+        {
+            return std::fabs(v.x) > 1e-6f;
+        }
+        [[nodiscard]] float as1D() const noexcept
+        {
+            return v.x;
+        }
+        [[nodiscard]] Float2 as2D() const noexcept
+        {
+            return {v.x, v.y};
+        }
+        [[nodiscard]] Float3 as3D() const noexcept
+        {
+            return v;
+        }
 
         [[nodiscard]] bool nearlyZero(float eps = 1e-6f) const noexcept
         {
@@ -120,9 +136,7 @@ namespace lux::input
     /// target type so that a Bool-zero default doesn't discard axis values.
     /// The accumulator is initialized to the correct target type so that a
     /// Bool-zero default doesn't discard axis contributions.
-    inline InputValue accumulateValue(const InputValue& a,
-                                     const InputValue& b,
-                                     EInputValueType target_type)
+    inline InputValue accumulateValue(const InputValue& a, const InputValue& b, EInputValueType target_type)
     {
         // If accumulator is still the default-constructed zero, initialize it
         // to the target type's zero before accumulating.
@@ -131,7 +145,8 @@ namespace lux::input
             lhs = InputValue::zeroOf(target_type);
 
         // Type mismatch: keep accumulated value.
-        if (lhs.type != b.type) return lhs;
+        if (lhs.type != b.type)
+            return lhs;
 
         InputValue out = lhs;
         switch (lhs.type)

@@ -26,60 +26,94 @@ namespace lux::input
     class InputContext
     {
     public:
-        explicit InputContext(std::string name,
-                              bool consumes_keyboard = false,
-                              bool consumes_mouse    = false,
-                              int  priority          = 0)
-            : name_(std::move(name))
-            , consumes_keyboard_(consumes_keyboard)
-            , consumes_mouse_(consumes_mouse)
-            , priority_(priority)
-        {}
+        explicit InputContext(
+            std::string name,
+            bool consumes_keyboard = false,
+            bool consumes_mouse = false,
+            int priority = 0
+        )
+            : name_(std::move(name)), consumes_keyboard_(consumes_keyboard), consumes_mouse_(consumes_mouse),
+              priority_(priority)
+        {
+        }
 
         // ------------------------------------------------------------------ //
         //  Identity                                                           //
         // ------------------------------------------------------------------ //
 
-        [[nodiscard]] const std::string& name() const noexcept { return name_; }
+        [[nodiscard]] const std::string& name() const noexcept
+        {
+            return name_;
+        }
 
         // ------------------------------------------------------------------ //
         //  Enabled flag (disabled contexts are skipped during evaluation)     //
         // ------------------------------------------------------------------ //
 
-        [[nodiscard]] bool enabled()        const noexcept { return enabled_;  }
-        void               setEnabled(bool v)     noexcept { enabled_ = v;     }
+        [[nodiscard]] bool enabled() const noexcept
+        {
+            return enabled_;
+        }
+        void setEnabled(bool v) noexcept
+        {
+            enabled_ = v;
+        }
 
         // ------------------------------------------------------------------ //
         //  Priority (higher value = evaluated first)                          //
         // ------------------------------------------------------------------ //
 
-        [[nodiscard]] int  priority()          const noexcept { return priority_; }
-        void               setPriority(int p)        noexcept { priority_ = p;   }
+        [[nodiscard]] int priority() const noexcept
+        {
+            return priority_;
+        }
+        void setPriority(int p) noexcept
+        {
+            priority_ = p;
+        }
 
         // ------------------------------------------------------------------ //
         //  ActionMap access                                                   //
         // ------------------------------------------------------------------ //
 
-        [[nodiscard]] ActionMap&       actionMap()       noexcept { return action_map_; }
-        [[nodiscard]] const ActionMap& actionMap() const noexcept { return action_map_; }
+        [[nodiscard]] ActionMap& actionMap() noexcept
+        {
+            return action_map_;
+        }
+        [[nodiscard]] const ActionMap& actionMap() const noexcept
+        {
+            return action_map_;
+        }
 
         // ------------------------------------------------------------------ //
         //  Consume flags                                                      //
         // ------------------------------------------------------------------ //
 
-        [[nodiscard]] bool consumesKeyboard() const noexcept { return consumes_keyboard_; }
-        [[nodiscard]] bool consumesMouse()    const noexcept { return consumes_mouse_;    }
+        [[nodiscard]] bool consumesKeyboard() const noexcept
+        {
+            return consumes_keyboard_;
+        }
+        [[nodiscard]] bool consumesMouse() const noexcept
+        {
+            return consumes_mouse_;
+        }
 
-        void setConsumesKeyboard(bool v) noexcept { consumes_keyboard_ = v; }
-        void setConsumesMouse   (bool v) noexcept { consumes_mouse_    = v; }
+        void setConsumesKeyboard(bool v) noexcept
+        {
+            consumes_keyboard_ = v;
+        }
+        void setConsumesMouse(bool v) noexcept
+        {
+            consumes_mouse_ = v;
+        }
 
     private:
         std::string name_;
-        ActionMap   action_map_;
-        bool        enabled_           = true;
-        bool        consumes_keyboard_ = false;
-        bool        consumes_mouse_    = false;
-        int         priority_          = 0;
+        ActionMap action_map_;
+        bool enabled_ = true;
+        bool consumes_keyboard_ = false;
+        bool consumes_mouse_ = false;
+        int priority_ = 0;
     };
 
 } // namespace lux::input

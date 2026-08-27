@@ -2,7 +2,8 @@
 
 #include <utility>
 
-int main()
+int
+main()
 {
     lux::world::WorldDescriptionBuilder builder;
     auto world = std::move(builder).build();

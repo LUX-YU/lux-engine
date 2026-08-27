@@ -52,9 +52,7 @@ namespace lux::render
         /// @param bindless_pool_id  Index assigned by VertexPoolRegistry
         ///                            on registration. Stored so handleForMesh
         ///                            can fill it into VertexSourceHandle.
-        StaticVertexSource(MeshResources& meshes,
-                           std::uint16_t   vbo_segment,
-                           VertexLayoutId  layout_id) noexcept;
+        StaticVertexSource(MeshResources& meshes, std::uint16_t vbo_segment, VertexLayoutId layout_id) noexcept;
 
         ~StaticVertexSource() override;
 
@@ -65,10 +63,19 @@ namespace lux::render
             return EVertexSourceKind::StaticPool;
         }
 
-        [[nodiscard]] VkBuffer        buffer() const noexcept override;
-        [[nodiscard]] VertexLayoutId  layout() const noexcept override { return layout_id_; }
-        [[nodiscard]] std::uint32_t   bindlessPoolId() const noexcept override { return pool_id_; }
-        void                          setBindlessPoolId(std::uint32_t id) noexcept override { pool_id_ = id; }
+        [[nodiscard]] VkBuffer buffer() const noexcept override;
+        [[nodiscard]] VertexLayoutId layout() const noexcept override
+        {
+            return layout_id_;
+        }
+        [[nodiscard]] std::uint32_t bindlessPoolId() const noexcept override
+        {
+            return pool_id_;
+        }
+        void setBindlessPoolId(std::uint32_t id) noexcept override
+        {
+            pool_id_ = id;
+        }
 
         // (曾有 allocate / free 两个 override:前者无条件返回无效句柄、后者是空函数
         //  体——两个都不兑现基类声明的语义。随基类上那两个纯虚一并删除,见
@@ -88,10 +95,10 @@ namespace lux::render
         [[nodiscard]] VertexSourceHandle handleForMesh(MeshHandle mesh) const noexcept;
 
     private:
-        MeshResources*  meshes_;
-        std::uint16_t   vbo_segment_;
-        VertexLayoutId  layout_id_;
-        std::uint32_t   pool_id_;
+        MeshResources* meshes_;
+        std::uint16_t vbo_segment_;
+        VertexLayoutId layout_id_;
+        std::uint32_t pool_id_;
     };
 
 } // namespace lux::render

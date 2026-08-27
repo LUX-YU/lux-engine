@@ -30,9 +30,7 @@ namespace
         using namespace lux::simulation::ecs;
         Registry registry;
         EcsCommandBuffer commands;
-        constexpr std::array capacities{
-            EcsCommandProducerCapacity{4U, 256U},
-            EcsCommandProducerCapacity{4U, 256U}};
+        constexpr std::array capacities{EcsCommandProducerCapacity{4U, 256U}, EcsCommandProducerCapacity{4U, 256U}};
         assert(commands.prepare(capacities));
 
         DeferredEntity first;
@@ -64,8 +62,7 @@ namespace
         using namespace lux::simulation::ecs;
         Registry registry;
         EcsCommandBuffer commands;
-        constexpr std::array capacities{
-            EcsCommandProducerCapacity{1U, 64U}};
+        constexpr std::array capacities{EcsCommandProducerCapacity{1U, 64U}};
         assert(commands.prepare(capacities));
         {
             auto writer = commands.begin(0U);
@@ -85,8 +82,7 @@ namespace
         using namespace lux::simulation::ecs;
         Registry registry;
         EcsCommandBuffer commands;
-        constexpr std::array capacities{
-            EcsCommandProducerCapacity{2U, 64U}};
+        constexpr std::array capacities{EcsCommandProducerCapacity{2U, 64U}};
         assert(commands.prepare(capacities));
         DeferredEntity entity;
         {
@@ -109,16 +105,12 @@ namespace
         using namespace lux::simulation::ecs;
         Registry registry;
         EcsCommandBuffer commands;
-        constexpr std::array capacities{
-            EcsCommandProducerCapacity{2U, 128U}};
+        constexpr std::array capacities{EcsCommandProducerCapacity{2U, 128U}};
         assert(commands.prepare(capacities));
         {
             auto writer = commands.begin(0U);
             assert(writer);
-            assert(writer->emplace<Velocity>(
-                static_cast<Entity>(9000U),
-                Velocity{4}
-            ));
+            assert(writer->emplace<Velocity>(static_cast<Entity>(9000U), Velocity{4}));
         }
         auto applied = applyEcsCommands(registry, commands);
         assert(!applied);
@@ -133,14 +125,12 @@ namespace
         }
         applied = applyEcsCommands(registry, commands);
         assert(!applied);
-        assert(
-            applied.error().code ==
-            EEcsCommandError::COMPONENT_CONSTRUCTION_FAILURE
-        );
+        assert(applied.error().code == EEcsCommandError::COMPONENT_CONSTRUCTION_FAILURE);
     }
 }
 
-int main()
+int
+main()
 {
     using lux::simulation::ecs::Entity;
     static_assert(sizeof(Entity) == sizeof(std::uint64_t));

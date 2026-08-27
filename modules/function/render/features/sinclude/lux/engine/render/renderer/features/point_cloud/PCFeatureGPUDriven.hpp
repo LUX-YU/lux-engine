@@ -30,13 +30,13 @@ namespace lux::render
     public:
         struct Config
         {
-            ShaderHandle     compute_shader{};     ///< pointcloud_culling.comp
-            ShaderHandle     vertex_shader{};      ///< pointcloud_simple.vert
-            ShaderHandle     fragment_shader{};    ///< pointcloud_simple.frag
-            float        initial_point_size{3.0f};
-            uint32_t     max_nodes{65536};
-            std::string  color_target{"SceneColor"};
-            std::string  depth_target{"SceneDepth"};
+            ShaderHandle compute_shader{};  ///< pointcloud_culling.comp
+            ShaderHandle vertex_shader{};   ///< pointcloud_simple.vert
+            ShaderHandle fragment_shader{}; ///< pointcloud_simple.frag
+            float initial_point_size{3.0f};
+            uint32_t max_nodes{65536};
+            std::string color_target{"SceneColor"};
+            std::string depth_target{"SceneDepth"};
         };
 
         explicit PCFeatureGPUDriven(Config cfg);
@@ -46,7 +46,10 @@ namespace lux::render
             return EPointCloudMode::GPU_DRIVEN;
         }
 
-        [[nodiscard]] std::string_view name() const override { return "PointCloudGPUDriven"; }
+        [[nodiscard]] std::string_view name() const override
+        {
+            return "PointCloudGPUDriven";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         void addPasses(RGBuilder& builder) override;
@@ -57,7 +60,7 @@ namespace lux::render
         }
 
     private:
-        float              point_size_{3.0f};
+        float point_size_{3.0f};
         Config cfg_{};
     };
 

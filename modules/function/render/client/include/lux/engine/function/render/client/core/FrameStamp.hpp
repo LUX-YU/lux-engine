@@ -4,7 +4,9 @@
 namespace lux::render
 {
     /// Strong-typed FIF slot index — prevents accidental mixing with serial.
-    enum class FrameSlot : uint32_t{};
+    enum class FrameSlot : uint32_t
+    {
+    };
 
     /// Immutable per-tick frame identity produced by FrameClock.
     struct FrameStamp
@@ -28,7 +30,9 @@ namespace lux::render
         // at the RenderContext ctor (the single authoritative gate), but a 0 here would
         // make beginTick's `serial % frames_in_flight_` a division by zero, so guard the
         // clock's own invariant defensively rather than trust every constructor caller.
-        explicit FrameClock(uint32_t fif) : frames_in_flight_(fif ? fif : 1u) {}
+        explicit FrameClock(uint32_t fif) : frames_in_flight_(fif ? fif : 1u)
+        {
+        }
 
         /// Produce the stamp for the current tick and advance.
         FrameStamp beginTick(uint32_t image_index)
@@ -46,12 +50,13 @@ namespace lux::render
         /// After waiting fence[slot], frames older by FIF are guaranteed done.
         [[nodiscard]] uint64_t completedSerial(uint64_t current_serial) const noexcept
         {
-            return (current_serial > frames_in_flight_)
-                       ? current_serial - frames_in_flight_
-                       : 0;
+            return (current_serial > frames_in_flight_) ? current_serial - frames_in_flight_ : 0;
         }
 
-        [[nodiscard]] uint32_t framesInFlight() const noexcept { return frames_in_flight_; }
+        [[nodiscard]] uint32_t framesInFlight() const noexcept
+        {
+            return frames_in_flight_;
+        }
 
     private:
         uint64_t next_serial_{1};

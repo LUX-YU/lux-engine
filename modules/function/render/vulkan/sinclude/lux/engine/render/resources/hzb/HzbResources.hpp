@@ -48,7 +48,7 @@
  * 栅栏证实的完成水位放行 —— 就地销毁曾是 VUID-vkDestroyImageView-imageView-01026
  * / VUID-vkDestroyImage-image-01000 的来源。
  */
-#include <lux/engine/render/gpu/VmaFwd.hpp>     // VmaAllocator / VmaAllocation fwd
+#include <lux/engine/render/gpu/VmaFwd.hpp> // VmaAllocator / VmaAllocation fwd
 #include <lux/engine/function/visibility.h>
 
 #include <lux/cxx/container/BasicSparseSet.hpp>
@@ -69,12 +69,12 @@ namespace lux::render
         /// Publish-time wiring. Deliberately extent-free — see the file header.
         struct InitInfo
         {
-            VkDevice     device{VK_NULL_HANDLE};
+            VkDevice device{VK_NULL_HANDLE};
             VmaAllocator allocator{VK_NULL_HANDLE};
             // Stage C read side (optional — omit for build-only use, e.g. the test):
             SceneDescriptorArena* arena{nullptr};              ///< allocates the per-slot read DS
             VkDescriptorSetLayout read_layout{VK_NULL_HANDLE}; ///< set 1 {COMBINED_IMAGE_SAMPLER, UNIFORM_BUFFER}
-            VkSampler             sampler{VK_NULL_HANDLE};     ///< nearest+clamp, for HZB sampling
+            VkSampler sampler{VK_NULL_HANDLE};                 ///< nearest+clamp, for HZB sampling
             /// 退役队列。**在飞帧场景下不是可选项** —— evictView() 由
             /// RenderScene::removeView 的视图销毁钩子驱动,而那条路径**不**等待
             /// GPU 空闲(它自己的每视图 GPU 槽同样是延迟回收的,见
@@ -90,15 +90,15 @@ namespace lux::render
         // origin is retained as page + local. std140 total = 112B.
         struct ViewParams
         {
-            float view_proj[16];   ///< projection * rotation-only view
-            float params[4];       ///< (hzb_width, hzb_height, mip_count, _pad)
+            float view_proj[16]; ///< projection * rotation-only view
+            float params[4];     ///< (hzb_width, hzb_height, mip_count, _pad)
             std::int32_t origin_page[4]{};
             float origin_local_page_size[4]{0.0f, 0.0f, 0.0f, 1024.0f};
         };
 
         HzbResources() = default;
         ~HzbResources();
-        HzbResources(const HzbResources&)            = delete;
+        HzbResources(const HzbResources&) = delete;
         HzbResources& operator=(const HzbResources&) = delete;
 
         /// Publish-time bring-up: records the device-level wiring. Allocates NO
@@ -107,7 +107,10 @@ namespace lux::render
         void destroy();
 
         /// Device-level readiness (init() ran). Says nothing about any view.
-        [[nodiscard]] bool initialized() const noexcept { return device_ != VK_NULL_HANDLE; }
+        [[nodiscard]] bool initialized() const noexcept
+        {
+            return device_ != VK_NULL_HANDLE;
+        }
 
         // ── Per-view lifecycle ───────────────────────────────────────────────
         /// Create (or re-create at a new extent) this view's TWO mip-chain
@@ -127,14 +130,17 @@ namespace lux::render
         // ── Ping-pong selection (per view) ───────────────────────────────────
         /// Set the current (build/write) slot from the absolute frame parity.
         void setCurrent(uint32_t view_id, uint32_t parity) noexcept;
-        [[nodiscard]] uint32_t curIndex(uint32_t view_id)  const noexcept;  ///< build writes here
-        [[nodiscard]] uint32_t prevIndex(uint32_t view_id) const noexcept;  ///< cull reads here (last frame)
+        [[nodiscard]] uint32_t curIndex(uint32_t view_id) const noexcept;  ///< build writes here
+        [[nodiscard]] uint32_t prevIndex(uint32_t view_id) const noexcept; ///< cull reads here (last frame)
 
         // ── Per-view geometry (both slots of a view are the same size) ───────
         [[nodiscard]] uint32_t mipCount(uint32_t view_id) const noexcept;
-        [[nodiscard]] uint32_t width(uint32_t view_id)    const noexcept;
-        [[nodiscard]] uint32_t height(uint32_t view_id)   const noexcept;
-        [[nodiscard]] static constexpr VkFormat format() noexcept { return VK_FORMAT_R32_SFLOAT; }
+        [[nodiscard]] uint32_t width(uint32_t view_id) const noexcept;
+        [[nodiscard]] uint32_t height(uint32_t view_id) const noexcept;
+        [[nodiscard]] static constexpr VkFormat format() noexcept
+        {
+            return VK_FORMAT_R32_SFLOAT;
+        }
 
         // ── Build orchestration (downsample.comp) ────────────────────────────
         // Push constant for the build kernel (must match downsample.comp HzbPC).
@@ -147,24 +153,28 @@ namespace lux::render
         /// with {binding0 = SAMPLED src view (mip k-1, unused at level 0),
         /// binding1 = STORAGE dst view (mip k)}. All views use
         /// VK_IMAGE_LAYOUT_GENERAL. @p mip_sets must hold mipCount(view_id) sets.
-        void writeBuildDescriptors(VkDevice device,
-                                   uint32_t view_id,
-                                   uint32_t slot,
-                                   const VkDescriptorSet* mip_sets,
-                                   uint32_t mip_set_count) const;
+        void writeBuildDescriptors(
+            VkDevice device,
+            uint32_t view_id,
+            uint32_t slot,
+            const VkDescriptorSet* mip_sets,
+            uint32_t mip_set_count
+        ) const;
 
         /// Record the whole pyramid build into @p view_id's slot @p slot: per mip,
         /// barrier → bind set 0 → dispatch downsample.comp. Leaves every mip in
         /// GENERAL. The set-1 depth descriptor + pipeline are bound by the caller
         /// unless passed here (the RenderGraph path binds both → VK_NULL_HANDLE).
-        void recordBuild(VkCommandBuffer cmd,
-                         VkPipelineLayout layout,
-                         uint32_t view_id,
-                         uint32_t slot,
-                         const VkDescriptorSet* mip_sets,
-                         uint32_t mip_set_count,
-                         VkPipeline pipeline = VK_NULL_HANDLE,
-                         VkDescriptorSet depth_set = VK_NULL_HANDLE) const;
+        void recordBuild(
+            VkCommandBuffer cmd,
+            VkPipelineLayout layout,
+            uint32_t view_id,
+            uint32_t slot,
+            const VkDescriptorSet* mip_sets,
+            uint32_t mip_set_count,
+            VkPipeline pipeline = VK_NULL_HANDLE,
+            VkDescriptorSet depth_set = VK_NULL_HANDLE
+        ) const;
 
         /// First-use / post-resize: transition BOTH of this view's slots'
         /// whole mip chains UNDEFINED→GENERAL so the cull pass can SAMPLE the
@@ -183,8 +193,7 @@ namespace lux::render
         /// Returns VK_NULL_HANDLE for a view with no pyramid yet — the recorder
         /// then simply skips the bind, and the cull shader's `params.z < 1`
         /// guard keeps everything visible.
-        static VkDescriptorSet resolveHzbReadDS(const void* self, uint32_t frame_slot,
-                                                uint32_t view_id) noexcept;
+        static VkDescriptorSet resolveHzbReadDS(const void* self, uint32_t frame_slot, uint32_t view_id) noexcept;
 
         /// Upload this frame's camera params into @p view_id's slot @p slot UBO.
         void writeViewParams(uint32_t view_id, uint32_t slot, const ViewParams& vp) noexcept;
@@ -192,30 +201,36 @@ namespace lux::render
     private:
         struct Slot
         {
-            VkImage                  image{VK_NULL_HANDLE};
-            VmaAllocation            alloc{VK_NULL_HANDLE};
-            VkImageView              full_view{VK_NULL_HANDLE};
+            VkImage image{VK_NULL_HANDLE};
+            VmaAllocation alloc{VK_NULL_HANDLE};
+            VkImageView full_view{VK_NULL_HANDLE};
             std::vector<VkImageView> mip_views;
             // Read side (set 1):
-            VkDescriptorSet          read_ds{VK_NULL_HANDLE};   ///< arena-owned (not freed here)
-            VkBuffer                 ubo{VK_NULL_HANDLE};
-            VmaAllocation            ubo_alloc{VK_NULL_HANDLE};
-            void*                    ubo_mapped{nullptr};
+            VkDescriptorSet read_ds{VK_NULL_HANDLE}; ///< arena-owned (not freed here)
+            VkBuffer ubo{VK_NULL_HANDLE};
+            VmaAllocation ubo_alloc{VK_NULL_HANDLE};
+            void* ubo_mapped{nullptr};
         };
 
         /// One view's pyramid pair + the geometry both slots share.
         struct ViewSlots
         {
-            Slot     slots[2];
+            Slot slots[2];
             uint32_t cur{0};
             uint32_t mip_count{0};
             uint32_t width{0};
             uint32_t height{0};
 
             [[nodiscard]] uint32_t mipWidth(uint32_t level) const noexcept
-            { const uint32_t w = width  >> level; return w ? w : 1u; }
+            {
+                const uint32_t w = width >> level;
+                return w ? w : 1u;
+            }
             [[nodiscard]] uint32_t mipHeight(uint32_t level) const noexcept
-            { const uint32_t h = height >> level; return h ? h : 1u; }
+            {
+                const uint32_t h = height >> level;
+                return h ? h : 1u;
+            }
         };
 
         bool initSlot(Slot& s, const ViewSlots& geom);
@@ -226,12 +241,12 @@ namespace lux::render
         lux::cxx::BasicSparseSet<uint32_t, ViewSlots> views_;
 
         // Device-level wiring, recorded once by init().
-        VkDevice              device_{VK_NULL_HANDLE};
-        VmaAllocator          allocator_{VK_NULL_HANDLE};
+        VkDevice device_{VK_NULL_HANDLE};
+        VmaAllocator allocator_{VK_NULL_HANDLE};
         DeferredDestroyQueue* destroy_queue_{nullptr};
         SceneDescriptorArena* arena_{nullptr};
         VkDescriptorSetLayout read_layout_{VK_NULL_HANDLE};
-        VkSampler             sampler_{VK_NULL_HANDLE};
+        VkSampler sampler_{VK_NULL_HANDLE};
     };
 
 } // namespace lux::render

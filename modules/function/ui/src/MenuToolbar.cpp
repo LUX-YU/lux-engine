@@ -8,7 +8,7 @@ namespace lux::ui
 {
     namespace
     {
-        void drawMenuItem(const MenuItem &item, CommandRouter &router)
+        void drawMenuItem(const MenuItem& item, CommandRouter& router)
         {
             if (item.kind() == EMenuItemKind::SEPARATOR)
             {
@@ -19,7 +19,7 @@ namespace lux::ui
             {
                 if (!ImGui::BeginMenu(item.label().data()))
                     return;
-                for (const auto &child : item.children())
+                for (const auto& child : item.children())
                     drawMenuItem(child, router);
                 ImGui::EndMenu();
                 return;
@@ -38,16 +38,16 @@ namespace lux::ui
         }
     } // namespace
 
-    void drawMenu(std::span<const MenuItem> items, CommandRouter &router)
+    void drawMenu(std::span<const MenuItem> items, CommandRouter& router)
     {
-        for (const auto &item : items)
+        for (const auto& item : items)
             drawMenuItem(item, router);
     }
 
-    void drawToolbar(std::span<const ToolbarItem> items, CommandRouter &router)
+    void drawToolbar(std::span<const ToolbarItem> items, CommandRouter& router)
     {
         bool first = true;
-        for (const auto &item : items)
+        for (const auto& item : items)
         {
             if (!first)
                 ImGui::SameLine();

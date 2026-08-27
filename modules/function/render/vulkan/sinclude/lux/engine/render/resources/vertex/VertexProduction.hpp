@@ -45,17 +45,16 @@ namespace lux::render
     /// to a stable RG buffer name via vertexProductRgName().
     enum class EVertexProductKind : std::uint8_t
     {
-        Skinning = 0,  ///< SkinningFeature — linear-blend skinned vertices
-        Morph    = 1,  ///< (reserved) morph-target blending
-        Cloth    = 2,  ///< (reserved) GPU cloth simulation
+        Skinning = 0, ///< SkinningFeature — linear-blend skinned vertices
+        Morph = 1,    ///< (reserved) morph-target blending
+        Cloth = 2,    ///< (reserved) GPU cloth simulation
     };
 
     /// Stable RG buffer name a producer of @p kind imports (importBuffer) and
     /// consumers reference (referenceBuffer). Enum-driven so a typo is a compile
     /// error rather than the old stringly-typed "SkinnedVertexPool" magic
     /// literal. Returns a static string literal; never nullptr.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC const char*
-    vertexProductRgName(EVertexProductKind kind) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC const char* vertexProductRgName(EVertexProductKind kind) noexcept;
 
     /// One published producer. Carries only the kind + its stable RG name
     /// (== vertexProductRgName(kind)); intentionally NOT a per-compile
@@ -64,7 +63,7 @@ namespace lux::render
     struct VertexProductionRecord
     {
         EVertexProductKind kind{};
-        const char*        rg_buffer_name{nullptr};  ///< == vertexProductRgName(kind)
+        const char* rg_buffer_name{nullptr}; ///< == vertexProductRgName(kind)
     };
 
     /// Per-scene registry of compute-vertex producers. Owned by RenderScene's
@@ -76,7 +75,7 @@ namespace lux::render
     public:
         VertexProductionRegistry() = default;
 
-        VertexProductionRegistry(const VertexProductionRegistry&)            = delete;
+        VertexProductionRegistry(const VertexProductionRegistry&) = delete;
         VertexProductionRegistry& operator=(const VertexProductionRegistry&) = delete;
 
         /// Register a producer of @p kind. Idempotent: re-publishing the same
@@ -94,7 +93,10 @@ namespace lux::render
             return records_;
         }
 
-        [[nodiscard]] bool empty() const noexcept { return records_.empty(); }
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return records_.empty();
+        }
 
     private:
         std::vector<VertexProductionRecord> records_;

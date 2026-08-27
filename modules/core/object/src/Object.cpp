@@ -27,8 +27,8 @@ namespace lux::object::detail
 
         class NotifyScope final
         {
-          public:
-            explicit NotifyScope(ObjectState &state) noexcept : state_(&state)
+        public:
+            explicit NotifyScope(ObjectState& state) noexcept : state_(&state)
             {
                 ++state_->active_notify_depth;
             }
@@ -38,35 +38,38 @@ namespace lux::object::detail
                 state_->finishNotify();
             }
 
-          private:
-            ObjectState *state_;
+        private:
+            ObjectState* state_;
         };
     } // namespace
 
-    void intrusive_ptr_add_ref(ObjectState *state) noexcept
+    void intrusive_ptr_add_ref(ObjectState* state) noexcept
     {
         state->refs.fetch_add(1, std::memory_order_relaxed);
     }
 
-    void intrusive_ptr_release(ObjectState *state) noexcept
+    void intrusive_ptr_release(ObjectState* state) noexcept
     {
         if (state->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
             delete state;
     }
 
-    void intrusive_ptr_add_ref(ConnectionControl *control) noexcept
+    void intrusive_ptr_add_ref(ConnectionControl* control) noexcept
     {
         control->refs.fetch_add(1, std::memory_order_relaxed);
     }
 
-    void intrusive_ptr_release(ConnectionControl *control) noexcept
+    void intrusive_ptr_release(ConnectionControl* control) noexcept
     {
         if (control->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
             delete control;
     }
 
-    ObjectState::ObjectState(LuxObject *value, ObjectDispatcherRef dispatcher_value,
-                             std::thread::id affinity_value) noexcept
+    ObjectState::ObjectState(
+        LuxObject* value,
+        ObjectDispatcherRef dispatcher_value,
+        std::thread::id affinity_value
+    ) noexcept
         : object(value), dispatcher(std::move(dispatcher_value)), affinity(affinity_value)
     {
     }
@@ -78,10 +81,10 @@ namespace lux::object::detail
         assert(incoming.empty());
     }
 
-    void ObjectState::append(SignalBucket &bucket, ConnectionControl &control, EDelivery delivery)
+    void ObjectState::append(SignalBucket& bucket, ConnectionControl& control, EDelivery delivery)
     {
         control.delivery = delivery;
-        auto *value = std::addressof(control);
+        auto* value = std::addressof(control);
         if (active_notify_depth != 0)
         {
             control.lane = EListenerLane::PENDING;
@@ -121,8 +124,12 @@ namespace lux::object::detail
     }
 
     lux::cxx::intrusive_ptr<ConnectionControl> ObjectState::install(
-        const SignalDescriptor &signal, lux::cxx::intrusive_ptr<ObjectState> receiver_value,
-        ObjectInvokeThunk invoke_value, EDelivery delivery, std::shared_ptr<void> context_value)
+        const SignalDescriptor& signal,
+        lux::cxx::intrusive_ptr<ObjectState> receiver_value,
+        ObjectInvokeThunk invoke_value,
+        EDelivery delivery,
+        std::shared_ptr<void> context_value
+    )
     {
         ensureSignalCapacity((std::max)(signal.lineage_size_, signal.dense_index_ + 1u));
 
@@ -148,7 +155,7 @@ namespace lux::object::detail
         return control;
     }
 
-    void ObjectState::notify(const SignalDescriptor &signal, const void *payload)
+    void ObjectState::notify(const SignalDescriptor& signal, const void* payload)
     {
         if (signal.dense_index_ >= buckets.size())
             return;
@@ -158,10 +165,10 @@ namespace lux::object::detail
         const auto direct_count = buckets[signal_index].direct.size();
         for (std::size_t index = 0; index < direct_count; ++index)
         {
-            auto *control = buckets[signal_index].direct[index];
+            auto* control = buckets[signal_index].direct[index];
             if (!control->connected.load(std::memory_order_acquire))
                 continue;
-            LuxObject *receiver_object = nullptr;
+            LuxObject* receiver_object = nullptr;
             if (control->receiver)
             {
                 receiver_object = control->receiver->object.load(std::memory_order_acquire);
@@ -177,7 +184,7 @@ namespace lux::object::detail
         const auto queued_count = buckets[signal_index].queued.size();
         for (std::size_t index = 0; index < queued_count; ++index)
         {
-            auto *control = buckets[signal_index].queued[index];
+            auto* control = buckets[signal_index].queued[index];
             if (!control->connected.load(std::memory_order_acquire))
                 continue;
             if (!control->receiver || !control->receiver->object.load(std::memory_order_acquire))
@@ -187,8 +194,7 @@ namespace lux::object::detail
             }
             if (!signal.queued_message_factory_)
                 std::abort();
-            auto message = signal.queued_message_factory_(
-                lux::cxx::intrusive_ptr<ConnectionControl>{control}, payload);
+            auto message = signal.queued_message_factory_(lux::cxx::intrusive_ptr<ConnectionControl>{control}, payload);
             if (post(control->receiver->dispatcher, std::move(message)) == EPostStatus::CLOSED)
             {
                 requestDisconnect(control);
@@ -196,7 +202,7 @@ namespace lux::object::detail
         }
     }
 
-    void ObjectState::requestDisconnect(ConnectionControl *control) noexcept
+    void ObjectState::requestDisconnect(ConnectionControl* control) noexcept
     {
         if (!control)
             return;
@@ -213,20 +219,20 @@ namespace lux::object::detail
 
         auto keep_alive = lux::cxx::intrusive_ptr<ObjectState>{this};
         auto keep_control = lux::cxx::intrusive_ptr<ConnectionControl>{control};
-        auto message =
-            makeMessage([state = std::move(keep_alive), control = std::move(keep_control)] {
-                state->removeConnection(control.get());
-            });
+        auto message = makeMessage([state = std::move(keep_alive), control = std::move(keep_control)] {
+            state->removeConnection(control.get());
+        }
+        );
         if (post(dispatcher, std::move(message)) == EPostStatus::CLOSED)
             failObjectContract();
     }
 
-    void ObjectState::removePhysical(ConnectionControl &control) noexcept
+    void ObjectState::removePhysical(ConnectionControl& control) noexcept
     {
         if (control.signal_index >= buckets.size())
             return;
-        auto &bucket = buckets[control.signal_index];
-        auto remove_at = [&control](auto &lane) {
+        auto& bucket = buckets[control.signal_index];
+        auto remove_at = [&control](auto& lane) {
             if (control.position >= lane.size())
                 return;
             const auto last = lane.size() - 1;
@@ -265,13 +271,12 @@ namespace lux::object::detail
         }
     }
 
-    void ObjectState::removeConnection(ConnectionControl *control_value) noexcept
+    void ObjectState::removeConnection(ConnectionControl* control_value) noexcept
     {
         if (std::this_thread::get_id() != affinity || !control_value)
             return;
         const auto owner_position = control_value->owner_position;
-        if (owner_position >= owned_connections.size() ||
-            owned_connections[owner_position].get() != control_value)
+        if (owner_position >= owned_connections.size() || owned_connections[owner_position].get() != control_value)
         {
             return;
         }
@@ -306,12 +311,12 @@ namespace lux::object::detail
             removeConnection(pending_removals[index]);
         pending_removals.clear();
 
-        for (auto &bucket : buckets)
+        for (auto& bucket : buckets)
         {
             const auto pending_count = bucket.pending.size();
             for (std::size_t index = 0; index < pending_count; ++index)
             {
-                auto *control = bucket.pending[index];
+                auto* control = bucket.pending[index];
                 if (!control->connected.load(std::memory_order_acquire))
                     continue;
                 append(bucket, *control, control->delivery);
@@ -328,8 +333,10 @@ namespace lux::object::detail
             maintainAfterNotify();
     }
 
-    void ObjectState::addIncoming(lux::cxx::intrusive_ptr<ObjectState> sender,
-                                  lux::cxx::intrusive_ptr<ConnectionControl> control)
+    void ObjectState::addIncoming(
+        lux::cxx::intrusive_ptr<ObjectState> sender,
+        lux::cxx::intrusive_ptr<ConnectionControl> control
+    )
     {
         std::scoped_lock lock{incoming_mutex};
 #if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
@@ -341,13 +348,13 @@ namespace lux::object::detail
 #endif
     }
 
-    void ObjectState::removeIncoming(const ObjectState *sender,
-                                     const ConnectionControl *control) noexcept
+    void ObjectState::removeIncoming(const ObjectState* sender, const ConnectionControl* control) noexcept
     {
         std::scoped_lock lock{incoming_mutex};
-        std::erase_if(incoming, [sender, control](const IncomingLink &link) {
+        std::erase_if(incoming, [sender, control](const IncomingLink& link) {
             return link.sender.get() == sender && link.control.get() == control;
-        });
+        }
+        );
     }
 
     void ObjectState::closeOwner() noexcept
@@ -362,12 +369,12 @@ namespace lux::object::detail
             incoming_copy = std::move(incoming);
             incoming.clear();
         }
-        for (auto &link : incoming_copy)
+        for (auto& link : incoming_copy)
         {
             link.sender->requestDisconnect(link.control.get());
         }
 
-        for (auto &control : owned_connections)
+        for (auto& control : owned_connections)
         {
             control->connected.store(false, std::memory_order_release);
             if (control->receiver)
@@ -378,19 +385,19 @@ namespace lux::object::detail
         buckets.clear();
     }
 
-    void invokeQueuedConnection(ConnectionControl *control, const void *payload) noexcept
+    void invokeQueuedConnection(ConnectionControl* control, const void* payload) noexcept
     {
         if (!control || !control->connected.load(std::memory_order_acquire) || !control->receiver)
         {
             return;
         }
-        auto *receiver = control->receiver->object.load(std::memory_order_acquire);
+        auto* receiver = control->receiver->object.load(std::memory_order_acquire);
         if (!receiver)
             return;
         control->invoke(receiver, payload, control->context.get());
     }
 
-    bool sendEventErased(LuxObject &target, EventView &event) noexcept
+    bool sendEventErased(LuxObject& target, EventView& event) noexcept
     {
 #if !defined(NDEBUG) || defined(LUX_OBJECT_CONTRACT_CHECKS)
         target.assertAffinity();
@@ -400,8 +407,13 @@ namespace lux::object::detail
     }
 
     lux::cxx::expected<Connection, EObserveError> observeDynamicErased(
-        LuxObject &sender, const SignalDescriptor &signal, LuxObject &receiver,
-        ObjectInvokeThunk invoke, std::shared_ptr<void> context, EDelivery delivery)
+        LuxObject& sender,
+        const SignalDescriptor& signal,
+        LuxObject& receiver,
+        ObjectInvokeThunk invoke,
+        std::shared_ptr<void> context,
+        EDelivery delivery
+    )
     {
         sender.assertAffinity();
         return sender.observeIndexed(signal, receiver, invoke, delivery, std::move(context));
@@ -422,7 +434,7 @@ namespace lux::object
 #if !defined(NDEBUG) || defined(LUX_OBJECT_CONTRACT_CHECKS)
         assertAffinity();
 #endif
-        auto *state = state_.exchange(nullptr, std::memory_order_acq_rel);
+        auto* state = state_.exchange(nullptr, std::memory_order_acq_rel);
         if (!state)
             return;
         state->closeOwner();
@@ -452,14 +464,12 @@ namespace lux::object
 
     lux::cxx::intrusive_ptr<detail::ObjectState> LuxObject::ensureState() const
     {
-        auto *state = state_.load(std::memory_order_acquire);
+        auto* state = state_.load(std::memory_order_acquire);
         if (!state)
         {
-            auto *candidate =
-                new detail::ObjectState{const_cast<LuxObject *>(this), dispatcher_, affinity_};
+            auto* candidate = new detail::ObjectState{const_cast<LuxObject*>(this), dispatcher_, affinity_};
             detail::intrusive_ptr_add_ref(candidate); // object ownership
-            if (!state_.compare_exchange_strong(state, candidate, std::memory_order_release,
-                                                std::memory_order_acquire))
+            if (!state_.compare_exchange_strong(state, candidate, std::memory_order_release, std::memory_order_acquire))
             {
                 candidate->object.store(nullptr, std::memory_order_release);
                 detail::intrusive_ptr_release(candidate);
@@ -485,19 +495,19 @@ namespace lux::object
 
     std::uint64_t LuxObject::storageGrowthCountForTest() const noexcept
     {
-        const auto *state = state_.load(std::memory_order_acquire);
+        const auto* state = state_.load(std::memory_order_acquire);
         return state ? state->storage_growth_count : 0;
     }
 
     std::size_t LuxObject::ownedConnectionCountForTest() const noexcept
     {
-        const auto *state = state_.load(std::memory_order_acquire);
+        const auto* state = state_.load(std::memory_order_acquire);
         return state ? state->owned_connections.size() : 0;
     }
 
     std::size_t LuxObject::incomingConnectionCountForTest() const noexcept
     {
-        auto *state = state_.load(std::memory_order_acquire);
+        auto* state = state_.load(std::memory_order_acquire);
         if (!state)
             return 0;
         std::scoped_lock lock{state->incoming_mutex};
@@ -506,8 +516,12 @@ namespace lux::object
 #endif
 
     lux::cxx::expected<Connection, EObserveError> LuxObject::observeIndexed(
-        const detail::SignalDescriptor &signal, LuxObject &receiver,
-        detail::ObjectInvokeThunk invoke, EDelivery delivery, std::shared_ptr<void> context)
+        const detail::SignalDescriptor& signal,
+        LuxObject& receiver,
+        detail::ObjectInvokeThunk invoke,
+        EDelivery delivery,
+        std::shared_ptr<void> context
+    )
     {
         auto resolved = delivery;
         if (resolved == EDelivery::AUTO)
@@ -536,33 +550,31 @@ namespace lux::object
         auto receiver_state = receiver.ensureState();
         if (!receiver_state->object.load(std::memory_order_acquire))
             return lux::cxx::unexpected(EObserveError::OBJECT_CLOSED);
-        auto control = sender_state->install(signal, std::move(receiver_state), invoke, resolved,
-                                             std::move(context));
+        auto control = sender_state->install(signal, std::move(receiver_state), invoke, resolved, std::move(context));
         return Connection{std::move(sender_state), std::move(control)};
     }
 
-    Connection LuxObject::observeStaticIndexed(const detail::SignalDescriptor &signal,
-                                               detail::ObjectInvokeThunk invoke)
+    Connection LuxObject::observeStaticIndexed(const detail::SignalDescriptor& signal, detail::ObjectInvokeThunk invoke)
     {
         auto sender_state = ensureState();
         auto control = sender_state->install(signal, {}, invoke, EDelivery::DIRECT, {});
         return Connection{std::move(sender_state), std::move(control)};
     }
 
-    Connection LuxObject::observeCallableIndexed(const detail::SignalDescriptor &signal,
-                                                 detail::ObjectInvokeThunk invoke,
-                                                 std::shared_ptr<void> context)
+    Connection LuxObject::observeCallableIndexed(
+        const detail::SignalDescriptor& signal,
+        detail::ObjectInvokeThunk invoke,
+        std::shared_ptr<void> context
+    )
     {
         auto sender_state = ensureState();
-        auto control =
-            sender_state->install(signal, {}, invoke, EDelivery::DIRECT, std::move(context));
+        auto control = sender_state->install(signal, {}, invoke, EDelivery::DIRECT, std::move(context));
         return Connection{std::move(sender_state), std::move(control)};
     }
 
-    void LuxObject::notifyIndexed(const detail::SignalDescriptor &signal,
-                                  const void *payload) noexcept
+    void LuxObject::notifyIndexed(const detail::SignalDescriptor& signal, const void* payload) noexcept
     {
-        auto *state = state_.load(std::memory_order_relaxed);
+        auto* state = state_.load(std::memory_order_relaxed);
         if (!state)
             return;
         state->notify(signal, payload);

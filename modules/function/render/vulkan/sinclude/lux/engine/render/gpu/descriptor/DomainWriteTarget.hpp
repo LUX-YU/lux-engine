@@ -40,14 +40,12 @@ namespace lux::render
         /// 而那意味着这个资源的描述符从未被写过 —— 绑定它是未定义行为,却没有任何一层
         /// 会报错。所以这里返回错误而不是就地报警:装配路径的调用方能决定是整体失败,
         /// 还是先修上游的域 set 分配。
-        [[nodiscard]] Expected<void> set(std::span<const VkDescriptorSet> sets,
-                                         uint32_t binding_offset) noexcept
+        [[nodiscard]] Expected<void> set(std::span<const VkDescriptorSet> sets, uint32_t binding_offset) noexcept
         {
             sets_.assign(sets.begin(), sets.end());
             binding_offset_ = binding_offset;
 
-            const bool usable = std::ranges::any_of(
-                sets_, [](VkDescriptorSet s) { return s != VK_NULL_HANDLE; });
+            const bool usable = std::ranges::any_of(sets_, [](VkDescriptorSet s) { return s != VK_NULL_HANDLE; });
             if (!usable)
                 return renderFailure<err::descriptor::DomainWriteTargetEmpty>();
             return {};
@@ -70,11 +68,14 @@ namespace lux::render
             return static_cast<uint32_t>(sets_.size());
         }
 
-        [[nodiscard]] bool empty() const noexcept { return sets_.empty(); }
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return sets_.empty();
+        }
 
     private:
         std::vector<VkDescriptorSet> sets_;
-        uint32_t                     binding_offset_{0};
+        uint32_t binding_offset_{0};
     };
 
 } // namespace lux::render

@@ -13,8 +13,7 @@ namespace lux::render
     // Defined in RenderServer.cpp
     RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
 
-    void handleGrid2DSetParams(GeneralRenderServer::Dispatcher::Ctx& ctx,
-                               const Grid2DSetParamsPayload& p)
+    void handleGrid2DSetParams(GeneralRenderServer::Dispatcher::Ctx& ctx, const Grid2DSetParamsPayload& p)
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
         if (sc)

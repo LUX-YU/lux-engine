@@ -1,5 +1,6 @@
 #include <lux/engine/object/ObjectFwd.hpp>
 
-int main()
+int
+main()
 {
 }

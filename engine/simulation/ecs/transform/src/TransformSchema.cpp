@@ -12,8 +12,7 @@ namespace lux::simulation::ecs
         return generated::transformComponentSchemas();
     }
 
-    ComponentSnapshotContribution
-    transformComponentSnapshotContribution() noexcept
+    ComponentSnapshotContribution transformComponentSnapshotContribution() noexcept
     {
         return generated::transformComponentSnapshotContribution();
     }

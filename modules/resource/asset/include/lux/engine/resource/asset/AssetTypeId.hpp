@@ -12,13 +12,11 @@ namespace lux::asset
     public:
         constexpr AssetTypeId() = default;
 
-        explicit constexpr AssetTypeId(std::uint64_t value) noexcept
-            : value_(value)
-        {}
+        explicit constexpr AssetTypeId(std::uint64_t value) noexcept : value_(value)
+        {
+        }
 
-        [[nodiscard]] static constexpr AssetTypeId fromName(
-            std::string_view name
-        ) noexcept
+        [[nodiscard]] static constexpr AssetTypeId fromName(std::string_view name) noexcept
         {
             std::uint64_t hash = 14695981039346656037ull;
             for (const unsigned char value : name)
@@ -39,15 +37,9 @@ namespace lux::asset
             return value_ != 0u;
         }
 
-        friend constexpr bool operator==(
-            AssetTypeId,
-            AssetTypeId
-        ) noexcept = default;
+        friend constexpr bool operator==(AssetTypeId, AssetTypeId) noexcept = default;
 
-        friend constexpr bool operator<(
-            AssetTypeId left,
-            AssetTypeId right
-        ) noexcept
+        friend constexpr bool operator<(AssetTypeId left, AssetTypeId right) noexcept
         {
             return left.value_ < right.value_;
         }
@@ -57,8 +49,7 @@ namespace lux::asset
     };
 } // namespace lux::asset
 
-template <>
-struct std::hash<lux::asset::AssetTypeId>
+template <> struct std::hash<lux::asset::AssetTypeId>
 {
     std::size_t operator()(lux::asset::AssetTypeId value) const noexcept
     {

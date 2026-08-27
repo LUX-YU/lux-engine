@@ -15,27 +15,26 @@ namespace
 {
     class ReentrantPane final : public lux::object::Object<ReentrantPane, lux::ui::Pane>
     {
-      public:
+    public:
         ReentrantPane(lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id)
-            : Object(std::move(dispatcher), std::move(id), lux::ui::PaneTypeId{"reentrant.pane"},
-                     "Reentrant Pane")
+            : Object(std::move(dispatcher), std::move(id), lux::ui::PaneTypeId{"reentrant.pane"}, "Reentrant Pane")
         {
         }
 
-        lux::ui::PaneRegistration *reset_during_draw{nullptr};
-        lux::ui::UISession *registration_session{nullptr};
-        ReentrantPane *pane_to_register{nullptr};
-        lux::ui::PaneRegistration *late_registration{nullptr};
+        lux::ui::PaneRegistration* reset_during_draw{nullptr};
+        lux::ui::UISession* registration_session{nullptr};
+        ReentrantPane* pane_to_register{nullptr};
+        lux::ui::PaneRegistration* late_registration{nullptr};
         bool hide_during_draw{false};
         int draw_count{0};
 
-      protected:
-        void draw(lux::ui::PaneDrawContext &) override
+    protected:
+        void draw(lux::ui::PaneDrawContext&) override
         {
             ++draw_count;
             if (reset_during_draw)
             {
-                auto *registration = std::exchange(reset_during_draw, nullptr);
+                auto* registration = std::exchange(reset_during_draw, nullptr);
                 registration->reset();
             }
             if (registration_session && pane_to_register && late_registration)
@@ -56,7 +55,7 @@ namespace
         }
     };
 
-    void drawFrame(lux::ui::UISession &session)
+    void drawFrame(lux::ui::UISession& session)
     {
         session.beginFrame({640.0F, 360.0F}, 1.0F / 60.0F);
         session.drawPanes();
@@ -65,7 +64,7 @@ namespace
 
     class CommandReceiver final : public lux::object::Object<CommandReceiver>
     {
-      public:
+    public:
         void invoke() noexcept
         {
             ++invoke_count;
@@ -91,11 +90,11 @@ namespace
             for (int index = 0; index < 32; ++index)
             {
                 auto command = router->defineCommand(
-                    {lux::ui::UiCommandId{"generated." + std::to_string(next_generated++)},
-                     "Generated"});
+                    {lux::ui::UiCommandId{"generated." + std::to_string(next_generated++)}, "Generated"}
+                );
                 assert(command);
-                auto registration = router->bindGlobal<&CommandReceiver::noop>(
-                    *command, const_cast<CommandReceiver &>(*this));
+                auto registration =
+                    router->bindGlobal<&CommandReceiver::noop>(*command, const_cast<CommandReceiver&>(*this));
                 assert(registration);
                 generated_registrations.push_back(std::move(*registration));
             }
@@ -103,8 +102,8 @@ namespace
             return true;
         }
 
-        lux::ui::CommandRouter *router{nullptr};
-        lux::ui::CommandRegistration *registration_to_reset{nullptr};
+        lux::ui::CommandRouter* router{nullptr};
+        lux::ui::CommandRegistration* registration_to_reset{nullptr};
         mutable std::vector<lux::ui::CommandRegistration> generated_registrations;
         mutable int next_generated{0};
         int invoke_count{0};
@@ -113,7 +112,7 @@ namespace
 
     class SelfDestroyingReceiver final : public lux::object::Object<SelfDestroyingReceiver>
     {
-      public:
+    public:
         void invoke() noexcept
         {
             invoked = true;
@@ -121,18 +120,19 @@ namespace
 
         [[nodiscard]] bool destroyDuringEnabled() const noexcept
         {
-            auto *owner_value = owner;
+            auto* owner_value = owner;
             owner = nullptr;
             owner_value->reset();
             return true;
         }
 
-        mutable std::unique_ptr<SelfDestroyingReceiver> *owner{nullptr};
+        mutable std::unique_ptr<SelfDestroyingReceiver>* owner{nullptr};
         bool invoked{false};
     };
 } // namespace
 
-int main()
+int
+main()
 {
     {
         lux::ui::UISession session;
@@ -172,7 +172,8 @@ int main()
         auto registration = session.registerPane(pane);
         assert(registration);
         auto connection = pane.observeScoped<lux::ui::Pane::visibilityChanged>(
-            [&](const lux::ui::PaneVisibilityChanged &) noexcept { registration->reset(); });
+            [&](const lux::ui::PaneVisibilityChanged&) noexcept { registration->reset(); }
+        );
         static_cast<void>(connection);
         pane.hide_during_draw = true;
         drawFrame(session);
@@ -189,18 +190,19 @@ int main()
         auto second_registration = session.registerPane(second);
         assert(first_registration && second_registration);
         drawFrame(session);
-        auto *target = session.focusedPane() == &first ? &second : &first;
-        auto *target_registration = target == &first ? std::addressof(*first_registration)
-                                                     : std::addressof(*second_registration);
+        auto* target = session.focusedPane() == &first ? &second : &first;
+        auto* target_registration =
+            target == &first ? std::addressof(*first_registration) : std::addressof(*second_registration);
         bool focused_seen = false;
-        auto connection = target->observeScoped<lux::ui::Pane::focusChanged>(
-            [&](const lux::ui::PaneFocusChanged &change) noexcept {
+        auto connection =
+            target->observeScoped<lux::ui::Pane::focusChanged>([&](const lux::ui::PaneFocusChanged& change) noexcept {
                 if (change.focused)
                 {
                     focused_seen = true;
                     target_registration->reset();
                 }
-            });
+            }
+            );
         static_cast<void>(connection);
         assert(session.requestFocus(target->id().view()));
         for (int frame = 0; frame < 3 && !focused_seen; ++frame)
@@ -215,8 +217,7 @@ int main()
         lux::ui::UISession session;
         lux::ui::PaneRegistration stale_registration;
         {
-            auto pane = std::make_unique<ReentrantPane>(session.dispatcherRef(),
-                                                        lux::ui::PaneId{"replaceable"});
+            auto pane = std::make_unique<ReentrantPane>(session.dispatcherRef(), lux::ui::PaneId{"replaceable"});
             auto registration = session.registerPane(*pane);
             assert(registration);
             stale_registration = std::move(*registration);
@@ -236,44 +237,42 @@ int main()
         int first_calls = 0;
         int replacement_calls = 0;
         auto registered = session.registerFactory(lux::ui::PaneFactory{
-            lux::ui::PaneTypeId{"replaceable.factory"}, "First",
-            [&](lux::object::ObjectDispatcherRef dispatcher,
-                lux::ui::PaneId id) -> std::unique_ptr<lux::ui::Pane> {
+            lux::ui::PaneTypeId{"replaceable.factory"},
+            "First",
+            [&](lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id) -> std::unique_ptr<lux::ui::Pane> {
                 ++first_calls;
                 first_factory.reset();
                 auto replacement = session.registerFactory(lux::ui::PaneFactory{
-                    lux::ui::PaneTypeId{"replaceable.factory"}, "Replacement",
+                    lux::ui::PaneTypeId{"replaceable.factory"},
+                    "Replacement",
                     [&](lux::object::ObjectDispatcherRef next_dispatcher,
                         lux::ui::PaneId next_id) -> std::unique_ptr<lux::ui::Pane> {
                         ++replacement_calls;
-                        return std::make_unique<ReentrantPane>(std::move(next_dispatcher),
-                                                               std::move(next_id));
-                    }});
+                        return std::make_unique<ReentrantPane>(std::move(next_dispatcher), std::move(next_id));
+                    }}
+                );
                 assert(replacement);
                 replacement_factory = std::move(*replacement);
                 return std::make_unique<ReentrantPane>(std::move(dispatcher), std::move(id));
-            }});
+            }}
+        );
         assert(registered);
         first_factory = std::move(*registered);
-        assert(session.createPane(lux::ui::PaneTypeIdView{"replaceable.factory"},
-                                  lux::ui::PaneId{"factory.first"}));
+        assert(session.createPane(lux::ui::PaneTypeIdView{"replaceable.factory"}, lux::ui::PaneId{"factory.first"}));
         assert(first_calls == 1 && replacement_calls == 0);
-        assert(session.createPane(lux::ui::PaneTypeIdView{"replaceable.factory"},
-                                  lux::ui::PaneId{"factory.second"}));
+        assert(session.createPane(lux::ui::PaneTypeIdView{"replaceable.factory"}, lux::ui::PaneId{"factory.second"}));
         assert(first_calls == 1 && replacement_calls == 1);
     }
 
     {
         lux::ui::UISession session;
-        auto pane = std::make_unique<ReentrantPane>(session.dispatcherRef(),
-                                                    lux::ui::PaneId{"deferred.destroy"});
+        auto pane = std::make_unique<ReentrantPane>(session.dispatcherRef(), lux::ui::PaneId{"deferred.destroy"});
         auto registration = session.registerPane(*pane);
         assert(registration);
         bool destroy_requested = false;
         auto visibility = pane->observeScoped<lux::ui::Pane::visibilityChanged>(
-            [&](const lux::ui::PaneVisibilityChanged &change) noexcept {
-                destroy_requested = !change.visible;
-            });
+            [&](const lux::ui::PaneVisibilityChanged& change) noexcept { destroy_requested = !change.visible; }
+        );
         pane->setVisible(false);
         assert(destroy_requested);
         pane.reset();
@@ -286,24 +285,25 @@ int main()
         CommandReceiver receiver;
         receiver.router = &router;
 
-        auto state_command =
-            router.defineCommand({lux::ui::UiCommandId{"state.reentrant"}, "State"});
+        auto state_command = router.defineCommand({lux::ui::UiCommandId{"state.reentrant"}, "State"});
         assert(state_command);
         auto state_registration =
-            router.bindGlobal<&CommandReceiver::invoke, &CommandReceiver::enabledAndReset,
-                              &CommandReceiver::checked>(*state_command, receiver);
+            router.bindGlobal<&CommandReceiver::invoke, &CommandReceiver::enabledAndReset, &CommandReceiver::checked>(
+                *state_command,
+                receiver
+            );
         assert(state_registration);
         receiver.registration_to_reset = std::addressof(*state_registration);
         const auto state = router.state(*state_command);
         assert(state.found && state.enabled && state.checked);
         assert(receiver.checked_count == 1);
 
-        auto invoke_command =
-            router.defineCommand({lux::ui::UiCommandId{"invoke.reentrant"}, "Invoke"});
+        auto invoke_command = router.defineCommand({lux::ui::UiCommandId{"invoke.reentrant"}, "Invoke"});
         assert(invoke_command);
-        auto invoke_registration =
-            router.bindGlobal<&CommandReceiver::invoke, &CommandReceiver::enabledAndReallocate>(
-                *invoke_command, receiver);
+        auto invoke_registration = router.bindGlobal<&CommandReceiver::invoke, &CommandReceiver::enabledAndReallocate>(
+            *invoke_command,
+            receiver
+        );
         assert(invoke_registration);
         receiver.registration_to_reset = std::addressof(*invoke_registration);
         assert(router.invoke(*invoke_command) == lux::ui::ECommandDispatchResult::EXECUTED);
@@ -313,12 +313,11 @@ int main()
         {
             std::string temporary_name = "temporary.context";
             temporary_views = {lux::ui::UiContextIdView{temporary_name}, lux::ui::kGlobalContext};
-            lux::ui::detail::CommandRouterDiagnosticsAccess::updateRoute(router, nullptr,
-                                                                         temporary_views);
+            lux::ui::detail::CommandRouterDiagnosticsAccess::updateRoute(router, nullptr, temporary_views);
         }
-        assert(lux::ui::detail::CommandRouterDiagnosticsAccess::activeContexts(router)
-                   .front()
-                   .name() == "temporary.context");
+        assert(
+            lux::ui::detail::CommandRouterDiagnosticsAccess::activeContexts(router).front().name() ==
+            "temporary.context");
     }
 
     {
@@ -328,8 +327,10 @@ int main()
         auto receiver = std::make_unique<SelfDestroyingReceiver>();
         receiver->owner = &receiver;
         auto registration =
-            router.bindGlobal<&SelfDestroyingReceiver::invoke,
-                              &SelfDestroyingReceiver::destroyDuringEnabled>(*command, *receiver);
+            router.bindGlobal<&SelfDestroyingReceiver::invoke, &SelfDestroyingReceiver::destroyDuringEnabled>(
+                *command,
+                *receiver
+            );
         assert(registration);
         assert(router.invoke(*command) == lux::ui::ECommandDispatchResult::NOT_FOUND);
         assert(!receiver);

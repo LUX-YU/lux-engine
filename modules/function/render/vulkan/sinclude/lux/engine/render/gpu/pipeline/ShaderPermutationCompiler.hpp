@@ -49,16 +49,16 @@ namespace lux::render
         struct SpecializationData
         {
             std::vector<VkSpecializationMapEntry> entries;
-            std::vector<VkBool32>                 values;
-            VkSpecializationInfo                  info{};
+            std::vector<VkBool32> values;
+            VkSpecializationInfo info{};
 
             /// @brief Update the info pointers (call after moves / copies of entries/values)
             void finalize()
             {
                 info.mapEntryCount = static_cast<uint32_t>(entries.size());
-                info.pMapEntries   = entries.data();
-                info.dataSize      = values.size() * sizeof(VkBool32);
-                info.pData         = values.data();
+                info.pMapEntries = entries.data();
+                info.dataSize = values.size() * sizeof(VkBool32);
+                info.pData = values.data();
             }
         };
 
@@ -72,8 +72,8 @@ namespace lux::render
             {
                 VkSpecializationMapEntry entry{};
                 entry.constantID = i;
-                entry.offset     = static_cast<uint32_t>(i * sizeof(VkBool32));
-                entry.size       = sizeof(VkBool32);
+                entry.offset = static_cast<uint32_t>(i * sizeof(VkBool32));
+                entry.size = sizeof(VkBool32);
                 sd.entries.push_back(entry);
 
                 sd.values.push_back((features & (1u << i)) ? VK_TRUE : VK_FALSE);

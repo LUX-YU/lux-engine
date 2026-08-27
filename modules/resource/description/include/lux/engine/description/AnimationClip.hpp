@@ -27,13 +27,13 @@ namespace lux::rdesc
      */
     struct BoneTrack
     {
-        int32_t                          bone_index;    ///< Index into target Skeleton::bones
-        std::vector<float>               times_t;       ///< Translation key times (seconds)
-        std::vector<Eigen::Vector3f>     translations;  ///< Translation key values
-        std::vector<float>               times_r;       ///< Rotation key times (seconds)
-        std::vector<Eigen::Quaternionf>  rotations;     ///< Rotation key values (unit quaternions)
-        std::vector<float>               times_s;       ///< Scale key times (seconds)
-        std::vector<Eigen::Vector3f>     scales;        ///< Scale key values
+        int32_t bone_index;                        ///< Index into target Skeleton::bones
+        std::vector<float> times_t;                ///< Translation key times (seconds)
+        std::vector<Eigen::Vector3f> translations; ///< Translation key values
+        std::vector<float> times_r;                ///< Rotation key times (seconds)
+        std::vector<Eigen::Quaternionf> rotations; ///< Rotation key values (unit quaternions)
+        std::vector<float> times_s;                ///< Scale key times (seconds)
+        std::vector<Eigen::Vector3f> scales;       ///< Scale key values
     };
 
     /**
@@ -49,10 +49,10 @@ namespace lux::rdesc
      */
     struct AnimationClip
     {
-        std::string             name;      ///< Clip name (e.g. "walk", "jump_loop")
-        float                   duration;  ///< Clip length in seconds
-        bool                    loop;      ///< Loop vs. clamp at end
-        std::vector<BoneTrack>  tracks;    ///< Per-animated-bone keyframe tracks
+        std::string name;              ///< Clip name (e.g. "walk", "jump_loop")
+        float duration;                ///< Clip length in seconds
+        bool loop;                     ///< Loop vs. clamp at end
+        std::vector<BoneTrack> tracks; ///< Per-animated-bone keyframe tracks
     };
 
     /**

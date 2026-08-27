@@ -20,13 +20,13 @@ namespace lux::render
      */
     struct CameraView
     {
-        Eigen::Matrix4f view          = Eigen::Matrix4f::Identity();
-        Eigen::Matrix4f proj          = Eigen::Matrix4f::Identity();
-        Eigen::Matrix4f view_proj     = Eigen::Matrix4f::Identity();
-        Eigen::Matrix4f inv_view      = Eigen::Matrix4f::Identity();
-        Eigen::Matrix4f inv_proj      = Eigen::Matrix4f::Identity();
+        Eigen::Matrix4f view = Eigen::Matrix4f::Identity();
+        Eigen::Matrix4f proj = Eigen::Matrix4f::Identity();
+        Eigen::Matrix4f view_proj = Eigen::Matrix4f::Identity();
+        Eigen::Matrix4f inv_view = Eigen::Matrix4f::Identity();
+        Eigen::Matrix4f inv_proj = Eigen::Matrix4f::Identity();
         Eigen::Matrix4f inv_view_proj = Eigen::Matrix4f::Identity();
-        Eigen::Matrix4f prev_view_proj= Eigen::Matrix4f::Identity();
+        Eigen::Matrix4f prev_view_proj = Eigen::Matrix4f::Identity();
     };
 
     // =========================================================================
@@ -40,9 +40,9 @@ namespace lux::render
      */
     struct EntityTransform
     {
-        Eigen::Vector3f    position{0.0f, 0.0f, 0.0f};
+        Eigen::Vector3f position{0.0f, 0.0f, 0.0f};
         Eigen::Quaternionf rotation{1.0f, 0.0f, 0.0f, 0.0f};
-        Eigen::Vector3f    scale{1.0f, 1.0f, 1.0f};
+        Eigen::Vector3f scale{1.0f, 1.0f, 1.0f};
     };
 
 } // namespace lux::render

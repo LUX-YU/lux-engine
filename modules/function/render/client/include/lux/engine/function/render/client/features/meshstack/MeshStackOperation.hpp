@@ -24,17 +24,18 @@
 //  body into the feature is Stage C (the max bundle).
 // ============================================================================
 
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>   // kInstanceFlag* / EGeometryKind / PassMask
-#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>          // RMeshHandle 等跨线程句柄
+#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
+// kInstanceFlag* / EGeometryKind / PassMask
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>        // RMeshHandle 等跨线程句柄
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>      // TypeId / CommandTraits 主模板
-#include <lux/engine/function/render/client/core/RenderSceneId.hpp>                 // RenderSceneId
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // TypeId / CommandTraits 主模板
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp>       // RenderSceneId
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
-#include <lux/engine/function/render/client/core/FeatureHandle.hpp>                 // ViewHandle
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp>     // VertexLayoutId / kInvalidVertexLayoutId
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>     // ViewHandle
+#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // VertexLayoutId / kInvalidVertexLayoutId
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
-#include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp>  // DestroyResourcePayload
-#include <lux/engine/function/render/client/protocol/FeatureOps.hpp>  // EOpKind / FeatureOpIds / reply_type_id_of_v
+#include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp> // DestroyResourcePayload
+#include <lux/engine/function/render/client/protocol/FeatureOps.hpp> // EOpKind / FeatureOpIds / reply_type_id_of_v
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -42,7 +43,10 @@
 #include <span>
 #include <type_traits>
 
-namespace lux::rdesc { struct Mesh; }   // uploadMesh deep-copies a Mesh descriptor
+namespace lux::rdesc
+{
+    struct Mesh;
+} // uploadMesh deep-copies a Mesh descriptor
 
 namespace lux::render
 {
@@ -56,33 +60,32 @@ namespace lux::render
     //  Instance command payloads (moved out of core RenderProtocol.hpp — the
     //  core protocol no longer names mesh instances).
     // =========================================================================
-    struct LUX_OP(lane=frame, kind=stream, name=AddMeshInstance, method=addMeshInstance,
-                  reply=MeshInstanceSlotReply)
-    AddMeshInstancePayload
+    struct LUX_OP(
+        lane = frame,
+        kind = stream,
+        name = AddMeshInstance,
+        method = addMeshInstance,
+        reply = MeshInstanceSlotReply) AddMeshInstancePayload
     {
-        RenderSceneId       scene_id{};
-        RMeshHandle         mesh{};
-        RMaterialHandle     material{};
+        RenderSceneId scene_id{};
+        RMeshHandle mesh{};
+        RMaterialHandle material{};
         RenderSpatialTransform3D transform{};
-        uint32_t flags{
-            kInstanceFlagCastShadow |
-            kInstanceFlagReceiveShadow |
-            kInstanceFlagVisible
-        };
-        EGeometryKind       geometry_kind{EGeometryKind::StaticMesh};
-        PassMask            pass_mask{kPassMaskOpaqueDefault};
-        uint32_t            user_meta_index{~0u};
+        uint32_t flags{kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible};
+        EGeometryKind geometry_kind{EGeometryKind::StaticMesh};
+        PassMask pass_mask{kPassMaskOpaqueDefault};
+        uint32_t user_meta_index{~0u};
         /// Non-zero only for persistent World actors. The render thread starts
         /// the fade on the creation edge so the first visible frame cannot pop.
-        std::uint32_t       transition_milliseconds{0u};
-        std::uint32_t       transition_seed{0u};
+        std::uint32_t transition_milliseconds{0u};
+        std::uint32_t transition_seed{0u};
     };
     static_assert(std::is_trivially_copyable_v<AddMeshInstancePayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=RemoveMeshInstance, method=removeMeshInstance)
-    RemoveMeshInstancePayload
+    struct LUX_OP(lane = frame, kind = stream, name = RemoveMeshInstance, method = removeMeshInstance)
+        RemoveMeshInstancePayload
     {
-        RenderSceneId      scene_id{};
+        RenderSceneId scene_id{};
         RenderObjectHandle object{};
     };
     static_assert(std::is_trivially_copyable_v<RemoveMeshInstancePayload>);
@@ -91,17 +94,15 @@ namespace lux::render
     /// owner for a bounded fade-out. Transparent instances are deliberately
     /// hard-cut by the server. The object handle is generation checked, and
     /// the render owner keeps its Mesh/Material resources alive until expiry.
-    struct LUX_OP(lane=frame, kind=stream, name=RetireMeshInstance,
-                  method=retireMeshInstance)
-    RetireMeshInstancePayload
+    struct LUX_OP(lane = frame, kind = stream, name = RetireMeshInstance, method = retireMeshInstance)
+        RetireMeshInstancePayload
     {
-        RenderSceneId      scene_id{};
+        RenderSceneId scene_id{};
         RenderObjectHandle object{};
-        std::uint32_t      transition_milliseconds{350u};
-        std::uint32_t      transition_seed{1u};
+        std::uint32_t transition_milliseconds{350u};
+        std::uint32_t transition_seed{1u};
     };
-    static_assert(std::is_trivially_copyable_v<
-        RetireMeshInstancePayload>);
+    static_assert(std::is_trivially_copyable_v<RetireMeshInstancePayload>);
 
     struct MeshStackStatsReply final
     {
@@ -125,57 +126,61 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<MeshStackStatsReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=MeshStackStats,
-                  method=stats, reply=MeshStackStatsReply, opcode=command)
-    MeshStackStatsPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = MeshStackStats,
+        method = stats,
+        reply = MeshStackStatsReply,
+        opcode = command) MeshStackStatsPayload final
     {
         RenderSceneId scene_id{};
     };
     static_assert(std::is_trivially_copyable_v<MeshStackStatsPayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=MakeInstanceVisibleForView, method=makeInstanceVisibleForView)
-    MakeInstanceVisibleForViewPayload
+    struct LUX_OP(lane = frame, kind = stream, name = MakeInstanceVisibleForView, method = makeInstanceVisibleForView)
+        MakeInstanceVisibleForViewPayload
     {
-        RenderSceneId      scene_id{};
-        ViewHandle         view{};
+        RenderSceneId scene_id{};
+        ViewHandle view{};
         RenderObjectHandle object{};
     };
     static_assert(std::is_trivially_copyable_v<MakeInstanceVisibleForViewPayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=HideInstanceFromView, method=hideInstanceFromView)
-    HideInstanceFromViewPayload
+    struct LUX_OP(lane = frame, kind = stream, name = HideInstanceFromView, method = hideInstanceFromView)
+        HideInstanceFromViewPayload
     {
-        RenderSceneId      scene_id{};
-        ViewHandle         view{};
+        RenderSceneId scene_id{};
+        ViewHandle view{};
         RenderObjectHandle object{};
     };
     static_assert(std::is_trivially_copyable_v<HideInstanceFromViewPayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=UpdateInstanceFlags, method=updateInstanceFlags)
-    UpdateInstanceFlagsPayload
+    struct LUX_OP(lane = frame, kind = stream, name = UpdateInstanceFlags, method = updateInstanceFlags)
+        UpdateInstanceFlagsPayload
     {
-        RenderSceneId      scene_id{};
+        RenderSceneId scene_id{};
         RenderObjectHandle object{};
-        uint32_t           flags{0};
+        uint32_t flags{0};
     };
     static_assert(std::is_trivially_copyable_v<UpdateInstanceFlagsPayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=UpdateInstanceRenderState, method=updateInstanceRenderState)
-    UpdateInstanceRenderStatePayload
+    struct LUX_OP(lane = frame, kind = stream, name = UpdateInstanceRenderState, method = updateInstanceRenderState)
+        UpdateInstanceRenderStatePayload
     {
-        RenderSceneId      scene_id{};
+        RenderSceneId scene_id{};
         RenderObjectHandle object{};
-        EGeometryKind      geometry_kind{EGeometryKind::StaticMesh};
-        PassMask           pass_mask{kPassMaskOpaqueDefault};
+        EGeometryKind geometry_kind{EGeometryKind::StaticMesh};
+        PassMask pass_mask{kPassMaskOpaqueDefault};
     };
     static_assert(std::is_trivially_copyable_v<UpdateInstanceRenderStatePayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=UpdateInstanceUserMeta, method=updateInstanceUserMeta)
-    UpdateInstanceUserMetaPayload
+    struct LUX_OP(lane = frame, kind = stream, name = UpdateInstanceUserMeta, method = updateInstanceUserMeta)
+        UpdateInstanceUserMetaPayload
     {
-        RenderSceneId      scene_id{};
+        RenderSceneId scene_id{};
         RenderObjectHandle object{};
-        uint32_t           user_meta_index{~0u};
+        uint32_t user_meta_index{~0u};
     };
     static_assert(std::is_trivially_copyable_v<UpdateInstanceUserMetaPayload>);
 
@@ -185,10 +190,9 @@ namespace lux::render
     /// main + preview worlds) interleaved on the ring never cross. The bulk mechanism
     /// carries no batch header (pushBulk = TypeId + span), so scene_id rides each
     /// entry; batches are typically single-scene (often one entry per instance).
-    struct LUX_OP(lane=frame, kind=bulk, name=TransformBatch, method=updateTransforms)
-    TransformWriteEntry
+    struct LUX_OP(lane = frame, kind = bulk, name = TransformBatch, method = updateTransforms) TransformWriteEntry
     {
-        RenderSceneId      scene_id{};
+        RenderSceneId scene_id{};
         RenderObjectHandle object{};
         RenderSpatialTransform3D transform{};
     };
@@ -203,20 +207,19 @@ namespace lux::render
     /// CapacityExhausted is transient; Unknown / InvalidConfiguration are permanent.
     enum class MeshInstanceCreateStatus : std::uint32_t
     {
-        Unknown              = 0,   // default — generic dispatch/protocol failure (server never set it)
-        Ok                   = 1,   // created; object valid
-        InvalidConfiguration = 2,   // scene / mesh-stack feature absent — permanent (retry futile until fixed)
-        CapacityExhausted    = 3,   // instance / section slot exhausted — transient (may succeed later)
+        Unknown = 0,              // default — generic dispatch/protocol failure (server never set it)
+        Ok = 1,                   // created; object valid
+        InvalidConfiguration = 2, // scene / mesh-stack feature absent — permanent (retry futile until fixed)
+        CapacityExhausted = 3,    // instance / section slot exhausted — transient (may succeed later)
     };
 
     /// Reply for the create (addMeshInstance) op — the new instance handle + outcome.
     struct MeshInstanceSlotReply
     {
-        RenderObjectHandle       object{};
+        RenderObjectHandle object{};
         MeshInstanceCreateStatus status{MeshInstanceCreateStatus::Unknown};
     };
     static_assert(std::is_trivially_copyable_v<MeshInstanceSlotReply>);
-
 
     // =========================================================================
     //  Mesh DATA upload/destroy payloads (moved out of core resources/ops/
@@ -227,20 +230,24 @@ namespace lux::render
     //  emitted by the SHARED async-upload worker (mesh + texture transfers), so this op
     //  reuses the core ReplyMeshUploaded id (there is no synchronous handler-side reply).
     // =========================================================================
-    struct LUX_OP(lane=upload, kind=resource, name=UploadMesh, method=uploadMesh,
-                  reply=MeshUploadedReply, reply_id=type_ids::ReplyMeshUploaded,
-                  manual_client=true)
-    UploadMeshPayload
+    struct LUX_OP(
+        lane = upload,
+        kind = resource,
+        name = UploadMesh,
+        method = uploadMesh,
+        reply = MeshUploadedReply,
+        reply_id = type_ids::ReplyMeshUploaded,
+        manual_client = true) UploadMeshPayload
     {
-        VertexLayoutId  layout_id{kInvalidVertexLayoutId};
-        ExternalDataRef mesh_desc{};   // shared-owned const rdesc::Mesh (the async worker pins it)
+        VertexLayoutId layout_id{kInvalidVertexLayoutId};
+        ExternalDataRef mesh_desc{}; // shared-owned const rdesc::Mesh (the async worker pins it)
     };
     static_assert(std::is_trivially_copyable_v<UploadMeshPayload>);
 
     /// Destroy 载荷:平铺自有结构(原为 DestroyResourcePayload<RMeshHandle> 别名
     /// —— 注解挂不上 using;字段与线上布局逐字节同旧)。
-    struct LUX_OP(lane=control, kind=stream, name=DestroyMesh, method=destroyMesh, opcode=resource)
-    DestroyMeshPayload
+    struct LUX_OP(lane = control, kind = stream, name = DestroyMesh, method = destroyMesh, opcode = resource)
+        DestroyMeshPayload
     {
         RMeshHandle handle{};
     };
@@ -250,16 +257,19 @@ namespace lux::render
     /// requires=material:MaterialResources::init 需要内建 shading-model 表先在
     /// (StandardMaterialFeature attach 时 ensure)——语义必需,但代码里没有
     /// fail-fast 兜底,此前只靠 attach 目录的位置注释撑着。
-    struct LUX_COMM_CONFIG(prefix=MeshStack, id=lux.render.mesh_stack.v1, display=StandardMeshStack,
-                           requires=lux.render.material.v1,
-                           feature=StandardMeshStackFeature,
-                           feature_header=lux/engine/render/renderer/features/meshstack/StandardMeshStackFeature.hpp)
-    MeshStackCommTag
+    struct LUX_COMM_CONFIG(
+        prefix = MeshStack,
+        id = lux.render.mesh_stack.v1,
+        display = StandardMeshStack,
+        requires = lux.render.material.v1,
+        feature = StandardMeshStackFeature,
+        feature_header = lux / engine / render / renderer / features / meshstack /
+                         StandardMeshStackFeature.hpp) MeshStackCommTag
     {
     };
     static_assert(std::is_trivially_copyable_v<MeshStackCommTag>);
 
-    class MeshStackProxy;   // 生成于 comm/genops/MeshStackOperation.ops.hpp
+    class MeshStackProxy; // 生成于 comm/genops/MeshStackOperation.ops.hpp
     class MeshStackControlClient;
     class MeshStackUploadClient;
 
@@ -267,48 +277,60 @@ namespace lux::render
     //    addMeshInstance:多参默认值+矩阵拷贝;uploadMesh:Mesh 深拷进共享缓冲
     //    (ExternalDataRef 非借用);updateTransform(s):单条打包/scene 盖章。
     [[nodiscard]] LUX_FUNCTION_PUBLIC RenderRequest<MeshInstanceSlotReply> addMeshInstance(
-        MeshStackProxy proxy, RenderSceneId scene_id,
-        RMeshHandle mesh, RMaterialHandle material,
+        MeshStackProxy proxy,
+        RenderSceneId scene_id,
+        RMeshHandle mesh,
+        RMaterialHandle material,
         const RenderSpatialTransform3D& transform,
         std::uint32_t flags = kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible,
         EGeometryKind geometry_kind = EGeometryKind::StaticMesh,
         PassMask pass_mask = kPassMaskOpaqueDefault,
         std::uint32_t user_meta_index = ~0u,
         std::uint32_t transition_milliseconds = 0u,
-        std::uint32_t transition_seed = 0u);
+        std::uint32_t transition_seed = 0u
+    );
 
     LUX_FUNCTION_PUBLIC void updateTransform(
-        MeshStackProxy proxy, RenderSceneId scene_id, RenderObjectHandle object,
-        const RenderSpatialTransform3D& transform);
+        MeshStackProxy proxy,
+        RenderSceneId scene_id,
+        RenderObjectHandle object,
+        const RenderSpatialTransform3D& transform
+    );
 
     /// Explicit page-zero adapters for transient preview/test scenes.  They do
     /// not participate in persistent World coordinate conversion.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC RenderRequest<MeshInstanceSlotReply>
-    addTransientMeshInstance(
-        MeshStackProxy proxy, RenderSceneId scene_id,
-        RMeshHandle mesh, RMaterialHandle material,
+    [[nodiscard]] LUX_FUNCTION_PUBLIC RenderRequest<MeshInstanceSlotReply> addTransientMeshInstance(
+        MeshStackProxy proxy,
+        RenderSceneId scene_id,
+        RMeshHandle mesh,
+        RMaterialHandle material,
         const float transform[16],
         std::uint32_t flags = kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible,
         EGeometryKind geometry_kind = EGeometryKind::StaticMesh,
         PassMask pass_mask = kPassMaskOpaqueDefault,
-        std::uint32_t user_meta_index = ~0u);
+        std::uint32_t user_meta_index = ~0u
+    );
 
     LUX_FUNCTION_PUBLIC void updateTransientMeshTransform(
-        MeshStackProxy proxy, RenderSceneId scene_id, RenderObjectHandle object,
-        const float transform[16]);
+        MeshStackProxy proxy,
+        RenderSceneId scene_id,
+        RenderObjectHandle object,
+        const float transform[16]
+    );
 
     /// scene 盖章批量(可变 span:server 对 scene_id 为空的条目静默跳过,
     /// 本重载让单场景批次不可能写漏)。
-    LUX_FUNCTION_PUBLIC void updateTransforms(
-        MeshStackProxy proxy, RenderSceneId scene_id, std::span<TransformWriteEntry> entries);
+    LUX_FUNCTION_PUBLIC void
+    updateTransforms(MeshStackProxy proxy, RenderSceneId scene_id, std::span<TransformWriteEntry> entries);
 
     /// 逐条自带 scene_id 的异构批次(转发生成面;与盖章重载同名成对)。
-    LUX_FUNCTION_PUBLIC void updateTransforms(
-        MeshStackProxy proxy, std::span<const TransformWriteEntry> entries);
+    LUX_FUNCTION_PUBLIC void updateTransforms(MeshStackProxy proxy, std::span<const TransformWriteEntry> entries);
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<
-        RenderRequest<MeshUploadedReply>, ERenderUploadSubmitError> uploadMesh(
-        MeshStackUploadClient client, const lux::rdesc::Mesh& mesh,
-        VertexLayoutId layout_id = kDefaultVertexLayoutId);
+    [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<RenderRequest<MeshUploadedReply>, ERenderUploadSubmitError>
+    uploadMesh(
+        MeshStackUploadClient client,
+        const lux::rdesc::Mesh& mesh,
+        VertexLayoutId layout_id = kDefaultVertexLayoutId
+    );
 
 } // namespace lux::render

@@ -24,17 +24,17 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RGBuilder
     {
     public:
-        RGBuilder();                                       // defn in .cpp (Impl complete there)
+        RGBuilder(); // defn in .cpp (Impl complete there)
         ~RGBuilder();
         RGBuilder(RGBuilder&&) noexcept;
         RGBuilder& operator=(RGBuilder&&) noexcept;
-        RGBuilder(const RGBuilder&)            = delete;    // pimpl: move-only (verified no in-tree copy)
+        RGBuilder(const RGBuilder&) = delete; // pimpl: move-only (verified no in-tree copy)
         RGBuilder& operator=(const RGBuilder&) = delete;
 
         // Internal-only escape hatch for the in-tree compiler/recorder + tests.
         // Returns the in-progress description by ref; RGGraphDescription is a
         // project-internal type, so this never reaches the install-public surface.
-        [[nodiscard]] RGGraphDescription&       graphInternal() noexcept;
+        [[nodiscard]] RGGraphDescription& graphInternal() noexcept;
         [[nodiscard]] const RGGraphDescription& graphInternal() const noexcept;
 
         // Clear builder
@@ -45,7 +45,7 @@ namespace lux::render
         // -----------------------------------------------------------------
         // Create transient texture (automatically allocated and managed by RG)
         [[nodiscard]] RGResourceHandle createTexture(std::string_view name, const RGTextureDescription& desc);
-        
+
         // Create transient buffer
         [[nodiscard]] RGResourceHandle createBuffer(std::string_view name, const RGBufferDescription& desc);
 
@@ -59,39 +59,40 @@ namespace lux::render
         /// frame's copy). RG owns the copies + per-frame selection; passes express
         /// the cross-frame read as build.write(current()) + reader.read(previous()).
         /// For HZB / TAA / temporal resources.
-        [[nodiscard]] RGRingResourceHandle createPingPong(std::string_view name,
-                                       const RGTextureDescription& desc,
-                                       uint32_t ring_size = 2);
+        [[nodiscard]] RGRingResourceHandle
+        createPingPong(std::string_view name, const RGTextureDescription& desc, uint32_t ring_size = 2);
 
         /// PING_PONG buffer variant — N rotating copies of a buffer (e.g. CPU-written
         /// companion data that must stay paired with a ping-pong texture by frame
         /// parity). Same current()/previous() semantics as createPingPong.
-        [[nodiscard]] RGRingResourceHandle createPingPongBuffer(std::string_view name,
-                                       const RGBufferDescription& desc,
-                                       uint32_t ring_size = 2);
+        [[nodiscard]] RGRingResourceHandle
+        createPingPongBuffer(std::string_view name, const RGBufferDescription& desc, uint32_t ring_size = 2);
 
         // Import external texture (e.g., Swapchain Backbuffer)
         // Allow specifying the expected state of the resource at the end of the Graph (final_layout)
-        [[nodiscard]] RGResourceHandle importTexture(std::string_view name, 
-                                       const RGTextureDescription& desc, 
-                                       const RGImportedResourceInfo& import_info);
+        [[nodiscard]] RGResourceHandle importTexture(
+            std::string_view name,
+            const RGTextureDescription& desc,
+            const RGImportedResourceInfo& import_info
+        );
 
         /// Import a slotted texture: same as importTexture() but also registers
         /// the resource in the slot table so the recorder can inject per-frame
         /// VkImage/VkImageView handles via RGFrameContext::imported_slots.
-        [[nodiscard]] RGResourceHandle importSlottedTexture(TargetSlot slot,
-                                       std::string_view name,
-                                       const RGTextureDescription& desc,
-                                       RGImportedResourceInfo import_info);
+        [[nodiscard]] RGResourceHandle importSlottedTexture(
+            TargetSlot slot,
+            std::string_view name,
+            const RGTextureDescription& desc,
+            RGImportedResourceInfo import_info
+        );
 
         // Import external buffer (e.g., persistent SSBOs, indirect draw buffers)
         /// Repeated calls with the same name return the existing handle (the later
         /// desc/getter is discarded) — same contract as trackExternalBuffer. This
         /// lets several independently-enabled features share ONE globally-owned
         /// buffer without agreeing on who imports it: first caller wins, rest reuse.
-        [[nodiscard]] RGResourceHandle importBuffer(std::string_view name,
-                                       const RGBufferDescription& desc,
-                                       const RGImportedBufferInfo& import_info);
+        [[nodiscard]] RGResourceHandle
+        importBuffer(std::string_view name, const RGBufferDescription& desc, const RGImportedBufferInfo& import_info);
 
         // -----------------------------------------------------------------
         // External (feature-owned) resource tracking
@@ -112,8 +113,10 @@ namespace lux::render
         /// Returns a valid handle immediately. At compile time, the compiler resolves it
         /// to the actual TRANSIENT/IMPORTED resource with the same name.
         /// If no matching resource is found, passes using this handle are pruned by dead-pass elimination.
-        [[nodiscard]] RGResourceHandle referenceTexture(std::string_view name, ERGReference ref = ERGReference::Optional);
-        [[nodiscard]] RGResourceHandle referenceBuffer(std::string_view name, ERGReference ref = ERGReference::Optional);
+        [[nodiscard]] RGResourceHandle
+        referenceTexture(std::string_view name, ERGReference ref = ERGReference::Optional);
+        [[nodiscard]] RGResourceHandle
+        referenceBuffer(std::string_view name, ERGReference ref = ERGReference::Optional);
 
         /// Lookup-only probe: the handle if a texture with this name is already
         /// declared, invalid otherwise — NO forward placeholder is created.
@@ -126,7 +129,8 @@ namespace lux::render
         /// ERGReference::Required → a missing producer fails compilation fast;
         /// Optional → the reader is pruned (consumer degrades). Decouples consumer
         /// from producer: no #include, no concrete type, just a name + contract.
-        [[nodiscard]] RGRingResourceHandle referencePingPong(std::string_view name, ERGReference ref = ERGReference::Optional);
+        [[nodiscard]] RGRingResourceHandle
+        referencePingPong(std::string_view name, ERGReference ref = ERGReference::Optional);
 
         // -----------------------------------------------------------------
         // Resource query methods
@@ -182,19 +186,23 @@ namespace lux::render
             ~ConditionChainScope();
             ConditionChainScope(ConditionChainScope&&) noexcept;
             ConditionChainScope& operator=(ConditionChainScope&&) noexcept;
-            ConditionChainScope(const ConditionChainScope&)            = delete;
+            ConditionChainScope(const ConditionChainScope&) = delete;
             ConditionChainScope& operator=(const ConditionChainScope&) = delete;
 
             /// 本链的标签。绝大多数调用方用不到 —— 它存在是为了让少数需要把链
             /// 传进辅助函数的地方(如 addCullAndCompactPasses)仍能显式对齐。
-            [[nodiscard]] std::uint64_t tag() const noexcept { return tag_; }
+            [[nodiscard]] std::uint64_t tag() const noexcept
+            {
+                return tag_;
+            }
 
         private:
             friend class RGBuilder;
-            ConditionChainScope(RGBuilder& owner, std::uint64_t tag) noexcept
-                : owner_(&owner), tag_(tag) {}
+            ConditionChainScope(RGBuilder& owner, std::uint64_t tag) noexcept : owner_(&owner), tag_(tag)
+            {
+            }
 
-            RGBuilder*    owner_{nullptr};
+            RGBuilder* owner_{nullptr};
             std::uint64_t tag_{0};
         };
 
@@ -203,21 +211,19 @@ namespace lux::render
         // Build final RGGraphDescription
         // Requires calling on rvalue to avoid copy:
         //   RGGraphDescription graph = std::move(builder).build();
-        [[nodiscard]] RGGraphDescription build() &&;   // defn in .cpp
+        [[nodiscard]] RGGraphDescription build() &&; // defn in .cpp
 
         // -----------------------------------------------------------------
         // Transient descriptor set creation
         // -----------------------------------------------------------------
         /// Register a transient descriptor set description in the graph.
         /// Returns an opaque handle used by RGPassBuilder::bindTransientDS().
-        [[nodiscard]] RGTransientDSHandle createTransientDS(
-            std::string_view              name,
-            VkDescriptorSetLayout         layout,
-            std::vector<RGDescriptorWrite> writes);
+        [[nodiscard]] RGTransientDSHandle
+        createTransientDS(std::string_view name, VkDescriptorSetLayout layout, std::vector<RGDescriptorWrite> writes);
 
     private:
-        struct Impl;                      // defined in RGBuilder.cpp
-        std::unique_ptr<Impl> impl_;      // hides RGGraphDescription + name->index map (was by-value members)
+        struct Impl;                 // defined in RGBuilder.cpp
+        std::unique_ptr<Impl> impl_; // hides RGGraphDescription + name->index map (was by-value members)
     };
 
     // =====================================================================
@@ -226,12 +232,13 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RGPassBuilder
     {
         friend class RGBuilder;
+
     public:
         RGPassBuilder(const RGPassBuilder&) = default;
         RGPassBuilder& operator=(const RGPassBuilder&) = default;
 
-		RGPassBuilder(RGPassBuilder&&) = default;
-		RGPassBuilder& operator=(RGPassBuilder&&) = default;
+        RGPassBuilder(RGPassBuilder&&) = default;
+        RGPassBuilder& operator=(RGPassBuilder&&) = default;
 
         // Set the per-variant shader feature masks (index matches pipeline variant:
         // 0 = setPipeline(), 1..N = addPipeline()). Clears any prior contents.
@@ -243,8 +250,10 @@ namespace lux::render
         // Texture access declaration (only declares dependency, does not create resource)
         // -----------------------------------------------------------------
         RGPassBuilder& read(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::SAMPLED);
-        RGPassBuilder& write(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::COLOR_ATTACHMENT);
-        RGPassBuilder& readWrite(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::UNORDERED_ACCESS);
+        RGPassBuilder&
+        write(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::COLOR_ATTACHMENT);
+        RGPassBuilder&
+        readWrite(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::UNORDERED_ACCESS);
 
         /// Declare an input-attachment read (subpass input for Path B / tile-based GPUs).
         /// @param handle          Texture written by a prior subpass in the same render pass.
@@ -263,7 +272,7 @@ namespace lux::render
         // -----------------------------------------------------------------
         RGPassBuilder& setPipeline(GraphicsPipelineHandle pipeline);
         RGPassBuilder& addPipeline(GraphicsPipelineHandle pipeline);
-        RGPassBuilder& setComputePipeline(ComputePipelineHandle pipeline);  ///< For COMPUTE passes.
+        RGPassBuilder& setComputePipeline(ComputePipelineHandle pipeline); ///< For COMPUTE passes.
         /// Explicit ordering: this pass must execute after the named pass.
         /// This controls WAW iteration order in the dependency analyzer.
         RGPassBuilder& after(std::string_view pass_name);
@@ -343,7 +352,8 @@ namespace lux::render
             EDSBindMode mode,
             RGResourceHandle declared_consume = {},
             ERGResourceType consume_type = ERGResourceType::BUFFER,
-            lux::render::ETextureRole consume_tex_role = lux::render::ETextureRole::SAMPLED);
+            lux::render::ETextureRole consume_tex_role = lux::render::ETextureRole::SAMPLED
+        );
 
         // ── Bind an engine set by LOGICAL IDENTITY (recommended; the raw-slot-number
         //    overloads above are being retired) ──
@@ -381,7 +391,8 @@ namespace lux::render
             EDescriptorSetSlot logical,
             RGResourceHandle declared_consume = {},
             ERGResourceType consume_type = ERGResourceType::BUFFER,
-            lux::render::ETextureRole consume_tex_role = lux::render::ETextureRole::SAMPLED);
+            lux::render::ETextureRole consume_tex_role = lux::render::ETextureRole::SAMPLED
+        );
 
         /// 引擎集的**句柄式**绑定。机制退休后只剩一种合法用法:BINDLESS 域的
         /// 全局纹理表(它没有独立的域实例,全局表自己就是)。FEATURE/GLOBAL 域
@@ -390,14 +401,15 @@ namespace lux::render
         RGPassBuilder& bindSceneDS(EDescriptorSetSlot logical = EDescriptorSetSlot::Scene);
 
     private:
-        RGPassBuilder(RGGraphDescription& graph, uint32_t pass_index) noexcept
-            : graph_{ &graph }, pass_index_{ pass_index }{}
+        RGPassBuilder(RGGraphDescription& graph, uint32_t pass_index) noexcept : graph_{&graph}, pass_index_{pass_index}
+        {
+        }
 
         // Internal accessor replacing the former public description().
         [[nodiscard]] RGPassDescription& pass() noexcept;
 
-        RGGraphDescription* graph_{ nullptr };
-        uint32_t            pass_index_{ std::numeric_limits<uint32_t>::max() };
+        RGGraphDescription* graph_{nullptr};
+        uint32_t pass_index_{std::numeric_limits<uint32_t>::max()};
     };
 
 } // namespace lux::render

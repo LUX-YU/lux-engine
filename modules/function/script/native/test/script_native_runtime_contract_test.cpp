@@ -9,9 +9,7 @@
 
 namespace
 {
-    [[nodiscard]] std::vector<std::byte> readFile(
-        const std::filesystem::path& path
-    )
+    [[nodiscard]] std::vector<std::byte> readFile(const std::filesystem::path& path)
     {
         std::ifstream input(path, std::ios::binary);
         assert(input);
@@ -20,26 +18,22 @@ namespace
         assert(size >= 0);
         input.seekg(0, std::ios::beg);
         std::vector<std::byte> bytes(static_cast<std::size_t>(size));
-        input.read(
-            reinterpret_cast<char*>(bytes.data()),
-            static_cast<std::streamsize>(bytes.size())
-        );
+        input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         assert(input || input.eof());
         return bytes;
     }
 }
 
-int main()
+int
+main()
 {
     using lux::script::EScriptError;
 
     const std::filesystem::path fixture = LUX_SCRIPT_NATIVE_FIXTURE;
     const std::filesystem::path bad_abi_fixture = LUX_SCRIPT_NATIVE_BAD_ABI_FIXTURE;
     const std::filesystem::path bad_entry_fixture = LUX_SCRIPT_NATIVE_BAD_ENTRY_FIXTURE;
-    const std::filesystem::path missing_entry_fixture =
-        LUX_SCRIPT_NATIVE_MISSING_ENTRY_FIXTURE;
-    const std::filesystem::path bind_failure_fixture =
-        LUX_SCRIPT_NATIVE_BIND_FAILURE_FIXTURE;
+    const std::filesystem::path missing_entry_fixture = LUX_SCRIPT_NATIVE_MISSING_ENTRY_FIXTURE;
+    const std::filesystem::path bind_failure_fixture = LUX_SCRIPT_NATIVE_BIND_FAILURE_FIXTURE;
 
     auto loaded = lux::script::loadNativeModule(fixture);
     assert(loaded);
@@ -62,10 +56,7 @@ int main()
     assert(function->invoke(&failing_raw) != 0);
 
     const auto bytes = readFile(fixture);
-    auto memory_loaded = lux::script::loadNativeModule(
-        bytes,
-        "native_fixture_memory"
-    );
+    auto memory_loaded = lux::script::loadNativeModule(bytes, "native_fixture_memory");
     assert(memory_loaded);
     assert(memory_loaded.value().findFunction("Increment") != nullptr);
 
@@ -85,9 +76,7 @@ int main()
     assert(!bind_failure);
     assert(bind_failure.error().code == EScriptError::HOST_BIND_FAILED);
 
-    auto missing = lux::script::loadNativeModule(
-        fixture.parent_path() / "missing_script.dll"
-    );
+    auto missing = lux::script::loadNativeModule(fixture.parent_path() / "missing_script.dll");
     assert(!missing);
     assert(missing.error().code == EScriptError::IO_ERROR);
 

@@ -24,18 +24,17 @@ namespace lux::render
             return layouts_.at(id);
         }
 
-        bool hasLayout(VertexLayoutId id) const 
-        { 
+        bool hasLayout(VertexLayoutId id) const
+        {
             return layouts_.contains(id);
         }
-        
+
         bool removeLayout(VertexLayoutId id)
         {
             return layouts_.erase(id);
         }
 
     private:
-
         using LayoutMap = lux::cxx::SparseSet<VertexLayoutId, VertexLayout>;
         LayoutMap layouts_;
     };

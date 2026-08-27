@@ -8,7 +8,10 @@
 // PUBLIC header so render-module callers don't transitively pull in the asset
 // description hierarchy just to name texture handles. The full include lives
 // in RenderTypes.cpp where toPixelFormat is implemented.
-namespace lux::rdesc { enum class ETexturePixelFormat : uint32_t; }
+namespace lux::rdesc
+{
+    enum class ETexturePixelFormat : uint32_t;
+}
 
 namespace lux::render
 {
@@ -51,8 +54,8 @@ namespace lux::render
     /// @brief Platform-agnostic scissor rectangle (replaces VkRect2D in public API).
     struct ScissorRect
     {
-        int32_t  x{0};
-        int32_t  y{0};
+        int32_t x{0};
+        int32_t y{0};
         uint32_t width{0};
         uint32_t height{0};
     };
@@ -72,12 +75,12 @@ namespace lux::render
     enum class ETextureFormatHint : uint32_t
     {
         Auto = 0,
-        RGBA8,       // R8G8B8A8_UNORM
-        SRGBA8,      // R8G8B8A8_SRGB
-        BGRA8,       // B8G8R8A8_UNORM
-        SBGRA8,      // B8G8R8A8_SRGB
-        RGBA16F,     // R16G16B16A16_SFLOAT
-        RGBA32F,     // R32G32B32A32_SFLOAT
+        RGBA8,   // R8G8B8A8_UNORM
+        SRGBA8,  // R8G8B8A8_SRGB
+        BGRA8,   // B8G8R8A8_UNORM
+        SBGRA8,  // B8G8R8A8_SRGB
+        RGBA16F, // R16G16B16A16_SFLOAT
+        RGBA32F, // R32G32B32A32_SFLOAT
     };
 
     /// @brief Render-agnostic sampler description.
@@ -85,43 +88,72 @@ namespace lux::render
     /// vk_convert::toVk().
     struct SamplerDesc
     {
-        enum class Filter      : uint8_t { Nearest, Linear };
-        enum class MipmapMode  : uint8_t { Nearest, Linear };
-        enum class AddressMode : uint8_t { Repeat, MirroredRepeat, ClampToEdge, ClampToBorder };
+        enum class Filter : uint8_t
+        {
+            Nearest,
+            Linear
+        };
+        enum class MipmapMode : uint8_t
+        {
+            Nearest,
+            Linear
+        };
+        enum class AddressMode : uint8_t
+        {
+            Repeat,
+            MirroredRepeat,
+            ClampToEdge,
+            ClampToBorder
+        };
         /// Depth-comparison predicate. Only consulted when compare_enable is set.
-        enum class CompareOp   : uint8_t { Never, Less, Equal, LessOrEqual, Greater,
-                                           NotEqual, GreaterOrEqual, Always };
+        enum class CompareOp : uint8_t
+        {
+            Never,
+            Less,
+            Equal,
+            LessOrEqual,
+            Greater,
+            NotEqual,
+            GreaterOrEqual,
+            Always
+        };
         /// Value sampled outside the image when an address mode is ClampToBorder.
         /// The Float/Int split follows the sampled image's format class; picking
         /// the wrong one is a validation error, not a silent mismatch.
-        enum class BorderColor : uint8_t { TransparentBlackFloat, TransparentBlackInt,
-                                          OpaqueBlackFloat,      OpaqueBlackInt,
-                                          OpaqueWhiteFloat,      OpaqueWhiteInt };
+        enum class BorderColor : uint8_t
+        {
+            TransparentBlackFloat,
+            TransparentBlackInt,
+            OpaqueBlackFloat,
+            OpaqueBlackInt,
+            OpaqueWhiteFloat,
+            OpaqueWhiteInt
+        };
 
-        Filter      mag_filter{Filter::Linear};
-        Filter      min_filter{Filter::Linear};
-        MipmapMode  mipmap_mode{MipmapMode::Linear};
+        Filter mag_filter{Filter::Linear};
+        Filter min_filter{Filter::Linear};
+        MipmapMode mipmap_mode{MipmapMode::Linear};
         AddressMode address_u{AddressMode::Repeat};
         AddressMode address_v{AddressMode::Repeat};
         AddressMode address_w{AddressMode::Repeat};
-        float       max_anisotropy{1.0f};
-        bool        anisotropy_enable{false};
-        bool        compare_enable{false};
+        float max_anisotropy{1.0f};
+        bool anisotropy_enable{false};
+        bool compare_enable{false};
         /// Ignored unless compare_enable. Defaulting to Never means a desc that
         /// only flips compare_enable rejects every sample — which is exactly what
         /// this field used to do implicitly, before it existed: the conversion
         /// left compareOp zero-initialised and nothing could reach it. Shadow
         /// sampling through the cache was therefore impossible, and the three
         /// resource-side call sites hand-rolled their samplers instead.
-        CompareOp   compare_op{CompareOp::Never};
+        CompareOp compare_op{CompareOp::Never};
         /// Ignored unless some address mode is ClampToBorder. Was hard-wired to
         /// OpaqueBlackInt in the conversion, which made the ClampToBorder enum
         /// value unusable for anything wanting a white border.
         BorderColor border_color{BorderColor::OpaqueBlackInt};
-        bool        unnormalized_coordinates{false};
-        float       min_lod{0.0f};
-        float       max_lod{1000.0f};
-        float       mip_lod_bias{0.0f};
+        bool unnormalized_coordinates{false};
+        float min_lod{0.0f};
+        float max_lod{1000.0f};
+        float mip_lod_bias{0.0f};
 
         /// 值相等(DescriptorService 的采样器缓存以本结构为去重键)。
         friend bool operator==(const SamplerDesc&, const SamplerDesc&) = default;
@@ -158,9 +190,9 @@ namespace lux::render
         {
             SamplerDesc d = linearClamp();
             d.address_u = d.address_v = d.address_w = AddressMode::ClampToBorder;
-            d.border_color   = BorderColor::OpaqueWhiteFloat;
+            d.border_color = BorderColor::OpaqueWhiteFloat;
             d.compare_enable = true;
-            d.compare_op     = CompareOp::LessOrEqual;
+            d.compare_op = CompareOp::LessOrEqual;
             return d;
         }
     };
@@ -230,11 +262,11 @@ namespace lux::render
         BC3_SRGB,
         BC5_UNORM,
         BC7_SRGB,
-        R16_UINT,       ///< single-channel 16-bit id plane (pixel-field material-id mirror, F2-09)
-        R16_UNORM,      ///< single-channel 16-bit UNORM: integer ids round-trip EXACTLY through a
-                        ///< float sampler (texelFetch + round(v*65535)) — the pixel-field mirror's
-                        ///< actual format, so the global bindless set-2 (float sampler2D[]) needs
-                        ///< no usampler binding (F2-09 decision, 2026-07-06)
+        R16_UINT,  ///< single-channel 16-bit id plane (pixel-field material-id mirror, F2-09)
+        R16_UNORM, ///< single-channel 16-bit UNORM: integer ids round-trip EXACTLY through a
+                   ///< float sampler (texelFetch + round(v*65535)) — the pixel-field mirror's
+                   ///< actual format, so the global bindless set-2 (float sampler2D[]) needs
+                   ///< no usampler binding (F2-09 decision, 2026-07-06)
     };
 
     /// Block layout of an EPixelFormat. Uncompressed formats are 1×1 "blocks" of
@@ -249,28 +281,39 @@ namespace lux::render
     ///
     struct PixelFormatBlockInfo
     {
-        std::uint32_t block_bytes{0};   ///< bytes per block (per texel when 1×1)
-        std::uint32_t block_width{1};   ///< 1 (uncompressed) or 4 (BC)
-        std::uint32_t block_height{1};  ///< 1 (uncompressed) or 4 (BC)
-        bool          supported{false}; ///< false → unknown/unsupported: reject, don't size
+        std::uint32_t block_bytes{0};  ///< bytes per block (per texel when 1×1)
+        std::uint32_t block_width{1};  ///< 1 (uncompressed) or 4 (BC)
+        std::uint32_t block_height{1}; ///< 1 (uncompressed) or 4 (BC)
+        bool supported{false};         ///< false → unknown/unsupported: reject, don't size
     };
 
     [[nodiscard]] constexpr PixelFormatBlockInfo pixelFormatBlockInfo(EPixelFormat f) noexcept
     {
         switch (f)
         {
-        case EPixelFormat::R8_UNORM:      return {1, 1, 1, true};
-        case EPixelFormat::RG8_UNORM:     return {2, 1, 1, true};
-        case EPixelFormat::R16_UINT:      return {2, 1, 1, true};
-        case EPixelFormat::R16_UNORM:     return {2, 1, 1, true};
-        case EPixelFormat::RGBA8_SRGB:    return {4, 1, 1, true};
-        case EPixelFormat::RGBA8_UNORM:   return {4, 1, 1, true};
-        case EPixelFormat::RGBA16_SFLOAT: return {8, 1, 1, true};
+        case EPixelFormat::R8_UNORM:
+            return {1, 1, 1, true};
+        case EPixelFormat::RG8_UNORM:
+            return {2, 1, 1, true};
+        case EPixelFormat::R16_UINT:
+            return {2, 1, 1, true};
+        case EPixelFormat::R16_UNORM:
+            return {2, 1, 1, true};
+        case EPixelFormat::RGBA8_SRGB:
+            return {4, 1, 1, true};
+        case EPixelFormat::RGBA8_UNORM:
+            return {4, 1, 1, true};
+        case EPixelFormat::RGBA16_SFLOAT:
+            return {8, 1, 1, true};
         // BC blocks are 4×4 texels: BC1 = 8 bytes/block, BC3/BC5/BC7 = 16.
-        case EPixelFormat::BC1_SRGB:      return {8,  4, 4, true};
-        case EPixelFormat::BC3_SRGB:      return {16, 4, 4, true};
-        case EPixelFormat::BC5_UNORM:     return {16, 4, 4, true};
-        case EPixelFormat::BC7_SRGB:      return {16, 4, 4, true};
+        case EPixelFormat::BC1_SRGB:
+            return {8, 4, 4, true};
+        case EPixelFormat::BC3_SRGB:
+            return {16, 4, 4, true};
+        case EPixelFormat::BC5_UNORM:
+            return {16, 4, 4, true};
+        case EPixelFormat::BC7_SRGB:
+            return {16, 4, 4, true};
         }
         return {}; // out-of-range enumerator → supported == false
     }
@@ -278,13 +321,12 @@ namespace lux::render
     /// Tightly-packed byte size of one (w×h) mip level in format `f`, block-aligned
     /// (BC rounds each axis up to the 4-texel block). Returns 0 for a zero extent
     /// or an unsupported format — callers MUST treat 0 as "invalid", never a size.
-    [[nodiscard]] constexpr std::uint64_t
-    pixelFormatMipBytes(EPixelFormat f, std::uint32_t w, std::uint32_t h) noexcept
+    [[nodiscard]] constexpr std::uint64_t pixelFormatMipBytes(EPixelFormat f, std::uint32_t w, std::uint32_t h) noexcept
     {
         const PixelFormatBlockInfo bi = pixelFormatBlockInfo(f);
         if (!bi.supported || w == 0 || h == 0)
             return 0;
-        const std::uint64_t bx = (static_cast<std::uint64_t>(w) + bi.block_width  - 1) / bi.block_width;
+        const std::uint64_t bx = (static_cast<std::uint64_t>(w) + bi.block_width - 1) / bi.block_width;
         const std::uint64_t by = (static_cast<std::uint64_t>(h) + bi.block_height - 1) / bi.block_height;
         // bx,by ≤ 2^32-1, so bx*by < 2^64 (no wrap); only the final ×block_bytes can
         // overflow for an extreme (protocol-supplied) extent. Return 0 (invalid) rather
@@ -301,8 +343,7 @@ namespace lux::render
     /// (ETC2 / ASTC variants); callers should mark the texture known-bad and
     /// skip dispatch. Centralized here so gameplay / test code no longer needs
     /// to know render's internal enum.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC bool toPixelFormat(
-        lux::rdesc::ETexturePixelFormat src,
-        EPixelFormat& dst) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC bool
+    toPixelFormat(lux::rdesc::ETexturePixelFormat src, EPixelFormat& dst) noexcept;
 
 } // namespace lux::render

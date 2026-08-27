@@ -14,19 +14,17 @@ namespace
     using namespace lux::navigation;
     using namespace lux::navigation::detour3d;
 
-    [[nodiscard]] NavigationRegion3DDescription squareRegion(
-        NavigationRegionId region,
-        double minimum_x,
-        double minimum_z)
+    [[nodiscard]] NavigationRegion3DDescription
+    squareRegion(NavigationRegionId region, double minimum_x, double minimum_z)
     {
         NavigationRegion3DDescription result;
         result.region = region;
-        result.areas.push_back({{{minimum_x, 20.0, minimum_z},
-                                 {minimum_x + 64.0, 20.0, minimum_z},
-                                 {minimum_x + 64.0,
-                                  20.0,
-                                  minimum_z + 64.0},
-                                 {minimum_x, 20.0, minimum_z + 64.0}}});
+        result.areas.push_back(
+            {{{minimum_x, 20.0, minimum_z},
+              {minimum_x + 64.0, 20.0, minimum_z},
+              {minimum_x + 64.0, 20.0, minimum_z + 64.0},
+              {minimum_x, 20.0, minimum_z + 64.0}}}
+        );
         return result;
     }
 
@@ -54,7 +52,8 @@ namespace
     }
 } // namespace
 
-int main()
+int
+main()
 {
     using namespace lux::navigation;
     using namespace lux::navigation::detour3d;
@@ -65,9 +64,7 @@ int main()
 
     using PrepareResult = decltype(prepareNavigationRegion3D(*encoded, 9u));
     std::optional<PrepareResult> worker_result;
-    std::thread worker(
-        [&]
-        { worker_result.emplace(prepareNavigationRegion3D(*encoded, 9u)); });
+    std::thread worker([&] { worker_result.emplace(prepareNavigationRegion3D(*encoded, 9u)); });
     worker.join();
     assert(worker_result && *worker_result);
     assert((*worker_result)->region() == description.region);
@@ -89,8 +86,7 @@ int main()
     request.destination_region = description.region;
     const auto pending = backend->query(request);
     assert(pending.status == ENavigationPathStatus::PENDING);
-    assert(pending.missing_regions ==
-           std::vector<NavigationRegionId>{description.region});
+    assert(pending.missing_regions == std::vector<NavigationRegionId>{description.region});
 
     stage(*lease);
     const auto generation_before_publish = backend->snapshot().generation;
@@ -124,8 +120,7 @@ int main()
     // time and absence becomes LOCATION_NOT_FOUND.
     auto known_prepared = prepareNavigationRegion3D(*encoded, 11u);
     assert(known_prepared);
-    auto known_lease_result =
-        backend->adoptPrepared(std::move(*known_prepared));
+    auto known_lease_result = backend->adoptPrepared(std::move(*known_prepared));
     assert(known_lease_result);
     auto known_lease = std::move(*known_lease_result);
     NavigationPathRequest inferred_request = request;
@@ -133,8 +128,7 @@ int main()
     inferred_request.destination_region.reset();
     const auto known_pending = backend->query(inferred_request);
     assert(known_pending.status == ENavigationPathStatus::PENDING);
-    assert(known_pending.missing_regions ==
-           std::vector<NavigationRegionId>{description.region});
+    assert(known_pending.missing_regions == std::vector<NavigationRegionId>{description.region});
     known_lease->reset();
     assert(backend->snapshot().retiring_regions == 1u);
     const auto owner_retirement = backend->advanceRetirementOne();
@@ -148,8 +142,7 @@ int main()
     // before hide (COMPLETE) or after it (actionable PENDING).
     auto concurrent_prepared = prepareNavigationRegion3D(*encoded, 13u);
     assert(concurrent_prepared);
-    auto concurrent_result =
-        backend->adoptPrepared(std::move(*concurrent_prepared));
+    auto concurrent_result = backend->adoptPrepared(std::move(*concurrent_prepared));
     assert(concurrent_result);
     auto concurrent_lease = std::move(*concurrent_result);
     stage(*concurrent_lease);
@@ -161,12 +154,11 @@ int main()
     query_threads.reserve(kQueryThreads);
     for (std::size_t index = 0u; index < kQueryThreads; ++index)
     {
-        query_threads.emplace_back(
-            [&, index]
-            {
-                start_queries.arrive_and_wait();
-                statuses[index] = backend->query(request).status;
-            });
+        query_threads.emplace_back([&, index] {
+            start_queries.arrive_and_wait();
+            statuses[index] = backend->query(request).status;
+        }
+        );
     }
     start_queries.arrive_and_wait();
     assert(concurrent_lease->hide());
@@ -174,8 +166,7 @@ int main()
         query_thread.join();
     for (const auto status : statuses)
     {
-        assert(status == ENavigationPathStatus::COMPLETE ||
-               status == ENavigationPathStatus::PENDING);
+        assert(status == ENavigationPathStatus::COMPLETE || status == ENavigationPathStatus::PENDING);
     }
     retire(*concurrent_lease);
 
@@ -209,12 +200,9 @@ int main()
     auto second_prepared = prepareNavigationRegion3D(*second_blob, 21u);
     auto third_prepared = prepareNavigationRegion3D(*third_blob, 22u);
     assert(first_prepared && second_prepared && third_prepared);
-    auto second_lease_result =
-        backend->adoptPrepared(std::move(*second_prepared));
-    auto first_lease_result =
-        backend->adoptPrepared(std::move(*first_prepared));
-    auto third_lease_result =
-        backend->adoptPrepared(std::move(*third_prepared));
+    auto second_lease_result = backend->adoptPrepared(std::move(*second_prepared));
+    auto first_lease_result = backend->adoptPrepared(std::move(*first_prepared));
+    auto third_lease_result = backend->adoptPrepared(std::move(*third_prepared));
     assert(first_lease_result && second_lease_result && third_lease_result);
     auto first_lease = std::move(*first_lease_result);
     auto second_lease = std::move(*second_lease_result);
@@ -229,8 +217,7 @@ int main()
     cross.destination_region = second.region;
     const auto cross_pending = backend->query(cross);
     assert(cross_pending.status == ENavigationPathStatus::PENDING);
-    assert(cross_pending.missing_regions ==
-           std::vector<NavigationRegionId>{second.region});
+    assert(cross_pending.missing_regions == std::vector<NavigationRegionId>{second.region});
 
     stage(*second_lease);
     const auto cross_generation = backend->snapshot().generation;
@@ -249,13 +236,11 @@ int main()
     stitched.destination = {188.0, 20.0, 32.0};
     stitched.destination_region = third.region;
     stitched.maximum_path_points = 32u;
-    assert(backend->query(stitched).status ==
-           ENavigationPathStatus::COMPLETE);
+    assert(backend->query(stitched).status == ENavigationPathStatus::COMPLETE);
     assert(second_lease->hide());
     const auto missing_middle = backend->query(stitched);
     assert(missing_middle.status == ENavigationPathStatus::PENDING);
-    assert(missing_middle.missing_regions ==
-           std::vector<NavigationRegionId>{second.region});
+    assert(missing_middle.missing_regions == std::vector<NavigationRegionId>{second.region});
     retire(*second_lease);
     retire(*first_lease);
     retire(*third_lease);
@@ -272,10 +257,9 @@ int main()
         {
             const auto x0 = 500'000.0 + static_cast<double>(x) * 2.0;
             const auto z0 = 250'000.0 + static_cast<double>(z) * 2.0;
-            grid.areas.push_back({{{x0, 3.0, z0},
-                                   {x0 + 2.0, 3.0, z0},
-                                   {x0 + 2.0, 3.0, z0 + 2.0},
-                                   {x0, 3.0, z0 + 2.0}}});
+            grid.areas.push_back(
+                {{{x0, 3.0, z0}, {x0 + 2.0, 3.0, z0}, {x0 + 2.0, 3.0, z0 + 2.0}, {x0, 3.0, z0 + 2.0}}}
+            );
         }
     }
     const auto grid_encoded = encodeNavigationRegion3D(grid);
@@ -293,8 +277,7 @@ int main()
         const auto step = grid_lease->advancePreparationOne();
         assert(step && step->work_items == 1u);
         ++staged_steps;
-        assert(backend->snapshot().staged_granules ==
-               16u - staged_steps);
+        assert(backend->snapshot().staged_granules == 16u - staged_steps);
     }
     assert(staged_steps == 16u);
     assert(grid_lease->publish());
@@ -307,8 +290,7 @@ int main()
         const auto step = grid_lease->advanceRetirementOne();
         assert(step && step->work_items == 1u);
         ++retired_steps;
-        assert(backend->snapshot().retiring_granules ==
-               16u - retired_steps);
+        assert(backend->snapshot().retiring_granules == 16u - retired_steps);
     }
     assert(retired_steps == 16u);
     assert(backend->snapshot().owned_bytes == 0u);

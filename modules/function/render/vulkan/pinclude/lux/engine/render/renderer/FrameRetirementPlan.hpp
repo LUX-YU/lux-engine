@@ -21,7 +21,8 @@ namespace lux::render
     [[nodiscard]] inline FrameRetirementPlan analyzeFrameRetirement(
         std::span<const RGQueueSubmission* const> submissions,
         bool presenting,
-        std::vector<VkSemaphoreSubmitInfo>& retire_waits)
+        std::vector<VkSemaphoreSubmitInfo>& retire_waits
+    )
     {
         FrameRetirementPlan result{};
         retire_waits.clear();
@@ -33,25 +34,20 @@ namespace lux::render
             if (submission == nullptr || submission->cmd == VK_NULL_HANDLE)
                 continue;
             has_signal_values |= !submission->signal_semaphores.empty();
-            has_non_graphics |=
-                submission->queue_type != ERGQueueType::GRAPHICS;
+            has_non_graphics |= submission->queue_type != ERGQueueType::GRAPHICS;
             if (submission->signal_semaphores.empty())
             {
-                result.wait_compute_idle |=
-                    submission->queue_type == ERGQueueType::COMPUTE;
-                result.wait_transfer_idle |=
-                    submission->queue_type == ERGQueueType::TRANSFER;
+                result.wait_compute_idle |= submission->queue_type == ERGQueueType::COMPUTE;
+                result.wait_transfer_idle |= submission->queue_type == ERGQueueType::TRANSFER;
             }
 
             for (const auto& signal : submission->signal_semaphores)
             {
-                const auto found = std::find_if(
-                    retire_waits.begin(),
-                    retire_waits.end(),
-                    [&](const VkSemaphoreSubmitInfo& wait)
-                    {
+                const auto found =
+                    std::find_if(retire_waits.begin(), retire_waits.end(), [&](const VkSemaphoreSubmitInfo& wait) {
                         return wait.semaphore == signal.semaphore;
-                    });
+                    }
+                    );
                 if (found == retire_waits.end())
                 {
                     retire_waits.push_back(signal);
@@ -64,8 +60,7 @@ namespace lux::render
             }
         }
 
-        result.fence_on_last_submission =
-            !has_signal_values && !presenting && !has_non_graphics;
+        result.fence_on_last_submission = !has_signal_values && !presenting && !has_non_graphics;
         return result;
     }
 } // namespace lux::render

@@ -25,14 +25,13 @@ namespace lux::render
     // =========================================================================
     //  Default shader name constants for SkyboxFeature
     // =========================================================================
-    inline constexpr std::string_view kSkyboxVertShaderName         = "skybox.vert";
-    inline constexpr std::string_view kSkyboxCubemapFragShaderName  = "skybox_cubemap.frag";
+    inline constexpr std::string_view kSkyboxVertShaderName = "skybox.vert";
+    inline constexpr std::string_view kSkyboxCubemapFragShaderName = "skybox_cubemap.frag";
     inline constexpr std::string_view kSkyboxEquirectFragShaderName = "skybox_equirect.frag";
 
     /// Comm-layer config for SkyboxFeature.
-    struct LUX_COMM_CONFIG(prefix=Skybox, id=lux.render.skybox.v1, display=Skybox,
-                           custom_create=true)
-    SkyboxCommConfig
+    struct LUX_COMM_CONFIG(prefix = Skybox, id = lux.render.skybox.v1, display = Skybox, custom_create = true)
+        SkyboxCommConfig
     {
         ShaderHandle vertex_shader{};
         ShaderHandle cubemap_fragment{};
@@ -41,8 +40,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<SkyboxCommConfig>);
 
     /// Set an equirectangular (2D) texture as the skybox.
-    struct LUX_OP(lane=frame, kind=stream, name=SkyboxSetEquirect, method=setEquirect)
-    SkyboxSetEquirectPayload
+    struct LUX_OP(lane = frame, kind = stream, name = SkyboxSetEquirect, method = setEquirect) SkyboxSetEquirectPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
@@ -53,8 +51,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<SkyboxSetEquirectPayload>);
 
     /// Set a cubemap texture as the skybox.
-    struct LUX_OP(lane=frame, kind=stream, name=SkyboxSetCubemap, method=setCubemap)
-    SkyboxSetCubemapPayload
+    struct LUX_OP(lane = frame, kind = stream, name = SkyboxSetCubemap, method = setCubemap) SkyboxSetCubemapPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
@@ -77,14 +74,17 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<SkyboxStatsReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=SkyboxStats,
-                  method=stats, reply=SkyboxStatsReply, opcode=command)
-    SkyboxStatsPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = SkyboxStats,
+        method = stats,
+        reply = SkyboxStatsReply,
+        opcode = command) SkyboxStatsPayload final
     {
         RenderSceneId scene_id{};
     };
     static_assert(std::is_trivially_copyable_v<SkyboxStatsPayload>);
-
 
     /// 本特性产出的 render-graph pass 名(跨 feature 引用请用常量)。
     /// Grid3D 画在天空盒之后。

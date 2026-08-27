@@ -35,8 +35,8 @@ namespace lux::log
     enum class ELevel : std::uint8_t
     {
         Trace = 0,
-        Info  = 1,
-        Warn  = 2,
+        Info = 1,
+        Warn = 2,
         Error = 3,
     };
 
@@ -55,17 +55,17 @@ namespace lux::log
     /// 字面量,decode 是静态函数指针;跨线程/延迟携带安全。
     struct LogRecord
     {
-        const char*   format;      ///< 格式串字面量(fmt 风格)
-        const char*   category;    ///< 静态模块 tag("render"/"asset"/…)
-        DecodeFn      decode;      ///< 重建 format_args 的解码器
-        std::uint64_t seq;         ///< 全局原子自增(跨线程稳定排序键)
-        std::int64_t  ts_ns;       ///< steady_clock ns
+        const char* format;   ///< 格式串字面量(fmt 风格)
+        const char* category; ///< 静态模块 tag("render"/"asset"/…)
+        DecodeFn decode;      ///< 重建 format_args 的解码器
+        std::uint64_t seq;    ///< 全局原子自增(跨线程稳定排序键)
+        std::int64_t ts_ns;   ///< steady_clock ns
         std::uint32_t tid;
         std::uint32_t format_len;
         std::uint16_t arg_bytes;
-        ELevel        level;
-        bool          truncated;   ///< 参数区放不下,尾部实参不完整
-        std::byte     args[kLogArgCapacity];
+        ELevel level;
+        bool truncated; ///< 参数区放不下,尾部实参不完整
+        std::byte args[kLogArgCapacity];
     };
 
     namespace detail
@@ -74,12 +74,10 @@ namespace lux::log
         //    其余编译期拒绝(调用点显式转换:.string() / static_cast / …)。──
 
         template <class D>
-        inline constexpr bool is_string_like =
-            std::is_same_v<D, std::string> || std::is_same_v<D, std::string_view> ||
-            std::is_same_v<D, const char*> || std::is_same_v<D, char*>;
+        inline constexpr bool is_string_like = std::is_same_v<D, std::string> || std::is_same_v<D, std::string_view> ||
+                                               std::is_same_v<D, const char*> || std::is_same_v<D, char*>;
 
-        template <class D>
-        [[nodiscard]] inline std::string_view asStringView(const D& v) noexcept
+        template <class D> [[nodiscard]] inline std::string_view asStringView(const D& v) noexcept
         {
             if constexpr (std::is_same_v<D, const char*> || std::is_same_v<D, char*>)
                 return v ? std::string_view(v) : std::string_view();
@@ -109,7 +107,7 @@ namespace lux::log
             std::size_t n = s.size();
             if (n > avail - sizeof(std::uint16_t))
             {
-                n           = avail - sizeof(std::uint16_t);
+                n = avail - sizeof(std::uint16_t);
                 r.truncated = true;
             }
             const auto len = static_cast<std::uint16_t>(n);
@@ -119,27 +117,24 @@ namespace lux::log
             r.arg_bytes += static_cast<std::uint16_t>(sizeof(len) + n);
         }
 
-        template <class D>
-        void packOne(LogRecord& r, const D& v) noexcept
+        template <class D> void packOne(LogRecord& r, const D& v) noexcept
         {
             if constexpr (is_string_like<D>)
                 packString(r, asStringView(v));
             else if constexpr (std::is_trivially_copyable_v<D>)
                 packBytes(r, &v, sizeof(D));
             else
-                static_assert(is_string_like<D>,
-                              "unsupported log argument type — pass it "
-                              "pre-formatted (.string(), static_cast, ...)");
+                static_assert(
+                    is_string_like<D>,
+                    "unsupported log argument type — pass it "
+                    "pre-formatted (.string(), static_cast, ...)");
         }
 
         /// 解码后的存储形态:字符串族一律 string_view(指进记录字节区,记录
         /// 在解码期间存活);其余原型还原。
-        template <class D>
-        using ArgStorage = std::conditional_t<is_string_like<D>, std::string_view, D>;
+        template <class D> using ArgStorage = std::conditional_t<is_string_like<D>, std::string_view, D>;
 
-        template <class D>
-        [[nodiscard]] ArgStorage<D> unpackOne(const LogRecord& r,
-                                              std::size_t&     off) noexcept
+        template <class D> [[nodiscard]] ArgStorage<D> unpackOne(const LogRecord& r, std::size_t& off) noexcept
         {
             if constexpr (is_string_like<D>)
             {
@@ -156,8 +151,7 @@ namespace lux::log
                     off = r.arg_bytes;
                     return {};
                 }
-                const std::string_view v(
-                    reinterpret_cast<const char*>(r.args + off), len);
+                const std::string_view v(reinterpret_cast<const char*>(r.args + off), len);
                 off += len;
                 return v;
             }
@@ -176,8 +170,7 @@ namespace lux::log
         }
 
         /// 每个调用点实例化一份:pack 写入序 == decode 读回序,由同一模板钉死。
-        template <class... Ds>
-        struct Codec
+        template <class... Ds> struct Codec
         {
             static void pack(LogRecord& r, const Ds&... vs) noexcept
             {
@@ -189,17 +182,15 @@ namespace lux::log
                 std::size_t off = 0;
                 // 花括号列表初始化保证从左到右求值(与 pack 的折叠序一致)。
                 std::tuple<ArgStorage<Ds>...> vals{unpackOne<Ds>(r, off)...};
-                std::apply(
-                    [&](auto&... vs)
-                    { emit(r, std::make_format_args(vs...), user); },
-                    vals);
+                std::apply([&](auto&... vs) { emit(r, std::make_format_args(vs...), user); }, vals);
             }
         };
 
-        template <>
-        struct Codec<>
+        template <> struct Codec<>
         {
-            static void pack(LogRecord&) noexcept {}
+            static void pack(LogRecord&) noexcept
+            {
+            }
             static void decode(const LogRecord& r, EmitArgsFn emit, void* user)
             {
                 // format_args 无默认构造(MSVC):零实参也经 make_format_args。

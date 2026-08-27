@@ -26,11 +26,7 @@ using namespace lux::render;
 // accidentally exercise the wrong path.
 static_assert(!std::is_constructible_v<FrameDriver, ResourceContext&, std::uint32_t>);
 static_assert(!std::is_constructible_v<lux::gapi::vk::Fence, VkDevice>);
-static_assert(!std::is_constructible_v<
-    lux::gapi::vk::CommandBuffer,
-    VkDevice,
-    VkCommandPool
->);
+static_assert(!std::is_constructible_v<lux::gapi::vk::CommandBuffer, VkDevice, VkCommandPool>);
 static_assert(std::is_move_constructible_v<lux::gapi::vk::Fence>);
 static_assert(!std::is_move_assignable_v<lux::gapi::vk::Fence>);
 static_assert(std::is_move_constructible_v<lux::gapi::vk::CommandBuffer>);
@@ -38,55 +34,33 @@ static_assert(!std::is_move_assignable_v<lux::gapi::vk::CommandBuffer>);
 static_assert(!std::is_constructible_v<lux::gapi::vk::Semaphore, VkDevice>);
 static_assert(std::is_move_constructible_v<lux::gapi::vk::Semaphore>);
 static_assert(std::is_move_assignable_v<lux::gapi::vk::Semaphore>);
-static_assert(!std::is_constructible_v<
-    RenderContext,
-    ResourceContext&,
-    RenderContext::CreateInfo
->);
-static_assert(std::is_same_v<
-    decltype(RenderContext::create(
-        std::declval<ResourceContext&>(),
-        std::declval<RenderContext::CreateInfo>()
-    )),
-    Expected<std::shared_ptr<RenderContext>>
->);
-static_assert(std::is_same_v<
-    decltype(std::declval<RenderContext&>().createExportableBuffer(1, 0)),
-    Expected<ExportableBuffer>
->);
-static_assert(std::is_same_v<
-    decltype(std::declval<lux::gapi::vk::LogicalDevice&>().waitIdle()),
-    VkResult
->);
-static_assert(std::is_same_v<
-    decltype(std::declval<lux::gapi::vk::Fence&>().reset(std::declval<VkDevice>())),
-    VkResult
->);
-static_assert(std::is_same_v<
-    decltype(std::declval<lux::gapi::vk::CommandBuffer&>().reset()),
-    VkResult
->);
-static_assert(std::is_same_v<
-    decltype(std::declval<lux::gapi::vk::CommandBuffer&>().begin()),
-    VkResult
->);
-static_assert(std::is_same_v<
-    decltype(std::declval<lux::gapi::vk::CommandBuffer&>().end()),
-    VkResult
->);
+static_assert(!std::is_constructible_v<RenderContext, ResourceContext&, RenderContext::CreateInfo>);
+static_assert(
+    std::is_same_v<
+        decltype(RenderContext::create(std::declval<ResourceContext&>(), std::declval<RenderContext::CreateInfo>())),
+        Expected<std::shared_ptr<RenderContext>>>);
+static_assert(
+    std::is_same_v<decltype(std::declval<RenderContext&>().createExportableBuffer(1, 0)), Expected<ExportableBuffer>>);
+static_assert(std::is_same_v<decltype(std::declval<lux::gapi::vk::LogicalDevice&>().waitIdle()), VkResult>);
+static_assert(
+    std::is_same_v<decltype(std::declval<lux::gapi::vk::Fence&>().reset(std::declval<VkDevice>())), VkResult>);
+static_assert(std::is_same_v<decltype(std::declval<lux::gapi::vk::CommandBuffer&>().reset()), VkResult>);
+static_assert(std::is_same_v<decltype(std::declval<lux::gapi::vk::CommandBuffer&>().begin()), VkResult>);
+static_assert(std::is_same_v<decltype(std::declval<lux::gapi::vk::CommandBuffer&>().end()), VkResult>);
 
-#define CHECK(cond)                                                              \
-    do {                                                                         \
-        if (!(cond)) {                                                           \
-            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            return false;                                                        \
-        }                                                                        \
+#define CHECK(cond)                                                                                                    \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (!(cond))                                                                                                   \
+        {                                                                                                              \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                                       \
+            return false;                                                                                              \
+        }                                                                                                              \
     } while (0)
 
 namespace
 {
-    template<typename Handle>
-    [[nodiscard]] Handle fakeHandle(std::uintptr_t value) noexcept
+    template <typename Handle> [[nodiscard]] Handle fakeHandle(std::uintptr_t value) noexcept
     {
         if constexpr (std::is_pointer_v<Handle>)
             return reinterpret_cast<Handle>(value);
@@ -94,8 +68,7 @@ namespace
             return static_cast<Handle>(value);
     }
 
-    template<typename Handle>
-    [[nodiscard]] std::uintptr_t handleValue(Handle handle) noexcept
+    template <typename Handle> [[nodiscard]] std::uintptr_t handleValue(Handle handle) noexcept
     {
         if constexpr (std::is_pointer_v<Handle>)
             return reinterpret_cast<std::uintptr_t>(handle);
@@ -121,7 +94,7 @@ namespace
 
     struct CleanupCall final
     {
-        ECleanup       kind{};
+        ECleanup kind{};
         std::uintptr_t handle{0};
     };
 
@@ -155,12 +128,8 @@ namespace
     constexpr std::uintptr_t kCommandBufferBase = 0x2000;
     constexpr std::uintptr_t kSemaphoreBase = 0x3000;
 
-    VKAPI_ATTR VkResult VKAPI_CALL fakeCreateFence(
-        VkDevice,
-        const VkFenceCreateInfo* info,
-        const VkAllocationCallbacks*,
-        VkFence* out_fence
-    )
+    VKAPI_ATTR VkResult VKAPI_CALL
+    fakeCreateFence(VkDevice, const VkFenceCreateInfo* info, const VkAllocationCallbacks*, VkFence* out_fence)
     {
         const std::uint32_t call = g_fake.fence_calls++;
         if (call == g_fake.fail_fence_at)
@@ -173,11 +142,7 @@ namespace
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR void VKAPI_CALL fakeDestroyFence(
-        VkDevice,
-        VkFence fence,
-        const VkAllocationCallbacks*
-    )
+    VKAPI_ATTR void VKAPI_CALL fakeDestroyFence(VkDevice, VkFence fence, const VkAllocationCallbacks*)
     {
         g_fake.cleanup[g_fake.cleanup_count++] = CleanupCall{
             ECleanup::DESTROY_FENCE,
@@ -185,18 +150,14 @@ namespace
         };
     }
 
-    VKAPI_ATTR VkResult VKAPI_CALL fakeAllocateCommandBuffers(
-        VkDevice,
-        const VkCommandBufferAllocateInfo* info,
-        VkCommandBuffer* out_command_buffer
-    )
+    VKAPI_ATTR VkResult VKAPI_CALL
+    fakeAllocateCommandBuffers(VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* out_command_buffer)
     {
         const std::uint32_t call = g_fake.command_buffer_calls++;
         if (call == g_fake.fail_command_buffer_at)
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
 
-        if (info == nullptr || info->commandBufferCount != 1
-            || info->level != VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+        if (info == nullptr || info->commandBufferCount != 1 || info->level != VK_COMMAND_BUFFER_LEVEL_PRIMARY)
         {
             return VK_ERROR_INITIALIZATION_FAILED;
         }
@@ -205,12 +166,8 @@ namespace
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR void VKAPI_CALL fakeFreeCommandBuffers(
-        VkDevice,
-        VkCommandPool,
-        std::uint32_t count,
-        const VkCommandBuffer* command_buffers
-    )
+    VKAPI_ATTR void VKAPI_CALL
+    fakeFreeCommandBuffers(VkDevice, VkCommandPool, std::uint32_t count, const VkCommandBuffer* command_buffers)
     {
         if (count != 1)
             return;
@@ -241,11 +198,7 @@ namespace
         return VK_SUCCESS;
     }
 
-    VKAPI_ATTR void VKAPI_CALL fakeDestroySemaphore(
-        VkDevice,
-        VkSemaphore semaphore,
-        const VkAllocationCallbacks*
-    )
+    VKAPI_ATTR void VKAPI_CALL fakeDestroySemaphore(VkDevice, VkSemaphore semaphore, const VkAllocationCallbacks*)
     {
         g_fake.cleanup[g_fake.cleanup_count++] = CleanupCall{
             ECleanup::DESTROY_SEMAPHORE,
@@ -253,44 +206,31 @@ namespace
         };
     }
 
-    VkResult fakeWaitFrameFence(
-        lux::gapi::vk::Fence&,
-        VkDevice
-    ) noexcept
+    VkResult fakeWaitFrameFence(lux::gapi::vk::Fence&, VkDevice) noexcept
     {
         g_fake.frame_calls[g_fake.frame_call_count++] = EFrameCall::WAIT_FENCE;
         return g_fake.wait_result;
     }
 
-    VkResult fakeResetFrameFence(
-        lux::gapi::vk::Fence&,
-        VkDevice
-    ) noexcept
+    VkResult fakeResetFrameFence(lux::gapi::vk::Fence&, VkDevice) noexcept
     {
         g_fake.frame_calls[g_fake.frame_call_count++] = EFrameCall::RESET_FENCE;
         return g_fake.reset_fence_result;
     }
 
-    VkResult fakeResetFrameCommandBuffer(
-        lux::gapi::vk::CommandBuffer&
-    ) noexcept
+    VkResult fakeResetFrameCommandBuffer(lux::gapi::vk::CommandBuffer&) noexcept
     {
         g_fake.frame_calls[g_fake.frame_call_count++] = EFrameCall::RESET_COMMAND_BUFFER;
         return g_fake.reset_command_buffer_result;
     }
 
-    VkResult fakeBeginFrameCommandBuffer(
-        lux::gapi::vk::CommandBuffer&,
-        VkCommandBufferUsageFlags
-    ) noexcept
+    VkResult fakeBeginFrameCommandBuffer(lux::gapi::vk::CommandBuffer&, VkCommandBufferUsageFlags) noexcept
     {
         g_fake.frame_calls[g_fake.frame_call_count++] = EFrameCall::BEGIN_COMMAND_BUFFER;
         return g_fake.begin_command_buffer_result;
     }
 
-    VkResult fakeEndFrameCommandBuffer(
-        lux::gapi::vk::CommandBuffer&
-    ) noexcept
+    VkResult fakeEndFrameCommandBuffer(lux::gapi::vk::CommandBuffer&) noexcept
     {
         g_fake.frame_calls[g_fake.frame_call_count++] = EFrameCall::END_COMMAND_BUFFER;
         return g_fake.end_command_buffer_result;
@@ -346,12 +286,7 @@ namespace
         g_fake = FakeVulkan{};
         auto& fake = g_fake;
 
-        auto zero = detail::FrameDriverCreateCandidate::create(
-            fakeDevice(),
-            fakeCommandPool(),
-            0,
-            fakeOps()
-        );
+        auto zero = detail::FrameDriverCreateCandidate::create(fakeDevice(), fakeCommandPool(), 0, fakeOps());
         CHECK(!zero);
         CHECK(isError<err::device::InvalidFramesInFlight>(zero.error()));
         CHECK(zero.error().args[0] == 0);
@@ -395,12 +330,7 @@ namespace
         auto& fake = g_fake;
         fake.fail_fence_at = 1;
 
-        auto result = detail::FrameDriverCreateCandidate::create(
-            fakeDevice(),
-            fakeCommandPool(),
-            3,
-            fakeOps()
-        );
+        auto result = detail::FrameDriverCreateCandidate::create(fakeDevice(), fakeCommandPool(), 3, fakeOps());
         CHECK(!result);
         CHECK(isError<err::device::VulkanCallFailed>(result.error()));
         CHECK(result.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
@@ -420,12 +350,7 @@ namespace
         auto& fake = g_fake;
         fake.fail_command_buffer_at = 1;
 
-        auto result = detail::FrameDriverCreateCandidate::create(
-            fakeDevice(),
-            fakeCommandPool(),
-            3,
-            fakeOps()
-        );
+        auto result = detail::FrameDriverCreateCandidate::create(fakeDevice(), fakeCommandPool(), 3, fakeOps());
         CHECK(!result);
         CHECK(isError<err::device::VulkanCallFailed>(result.error()));
         CHECK(fake.fence_calls == 2);
@@ -489,12 +414,8 @@ namespace
     bool semaphoreCandidateRejectsInvalidOps()
     {
         g_fake = FakeVulkan{};
-        auto result = detail::PresentSemaphoreCreateCandidate::create(
-            fakeDevice(),
-            3,
-            2,
-            detail::PresentSemaphoreCreateOps{}
-        );
+        auto result =
+            detail::PresentSemaphoreCreateCandidate::create(fakeDevice(), 3, 2, detail::PresentSemaphoreCreateOps{});
         CHECK(!result);
         CHECK(isError<err::internal::InvalidArgument>(result.error()));
         CHECK(g_fake.semaphore_calls == 0);
@@ -510,16 +431,10 @@ namespace
         // succeeds and the second present semaphore fails.
         fake.fail_semaphore_at = 4;
 
-        auto result = detail::PresentSemaphoreCreateCandidate::create(
-            fakeDevice(),
-            3,
-            3,
-            fakeSemaphoreOps()
-        );
+        auto result = detail::PresentSemaphoreCreateCandidate::create(fakeDevice(), 3, 3, fakeSemaphoreOps());
         CHECK(!result);
         CHECK(isError<err::device::VulkanCallFailed>(result.error()));
-        CHECK(result.error().args[0]
-              == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        CHECK(result.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
         CHECK(fake.semaphore_calls == 5);
         CHECK(fake.cleanup_count == 4);
         for (std::uint32_t i = 0; i < fake.cleanup_count; ++i)
@@ -536,12 +451,7 @@ namespace
         auto& fake = g_fake;
         fake.null_semaphore_at = 2;
 
-        auto result = detail::PresentSemaphoreCreateCandidate::create(
-            fakeDevice(),
-            3,
-            1,
-            fakeSemaphoreOps()
-        );
+        auto result = detail::PresentSemaphoreCreateCandidate::create(fakeDevice(), 3, 1, fakeSemaphoreOps());
         CHECK(!result);
         CHECK(isError<err::device::VulkanObjectCreationFailed>(result.error()));
         CHECK(fake.semaphore_calls == 3);
@@ -556,12 +466,7 @@ namespace
         g_fake = FakeVulkan{};
         auto& fake = g_fake;
         {
-            auto result = detail::PresentSemaphoreCreateCandidate::create(
-                fakeDevice(),
-                3,
-                2,
-                fakeSemaphoreOps()
-            );
+            auto result = detail::PresentSemaphoreCreateCandidate::create(fakeDevice(), 3, 2, fakeSemaphoreOps());
             CHECK(result);
         }
         CHECK(fake.cleanup_count == 5);
@@ -573,12 +478,7 @@ namespace
 
         g_fake = FakeVulkan{};
         {
-            auto result = detail::PresentSemaphoreCreateCandidate::create(
-                fakeDevice(),
-                3,
-                2,
-                fakeSemaphoreOps()
-            );
+            auto result = detail::PresentSemaphoreCreateCandidate::create(fakeDevice(), 3, 2, fakeSemaphoreOps());
             CHECK(result);
             CHECK(result->acquireCount() == 3);
             CHECK(result->presentCount() == 2);
@@ -593,26 +493,17 @@ namespace
 
     bool swapchainStatusClassificationPreservesVkResult()
     {
-        auto ready = detail::classifySwapchainAcquireResult(
-            VK_SUCCESS,
-            false
-        );
+        auto ready = detail::classifySwapchainAcquireResult(VK_SUCCESS, false);
         CHECK(ready);
         CHECK(ready->image_available);
         CHECK(!ready->mark_rebuild);
 
-        auto suboptimal = detail::classifySwapchainAcquireResult(
-            VK_SUBOPTIMAL_KHR,
-            false
-        );
+        auto suboptimal = detail::classifySwapchainAcquireResult(VK_SUBOPTIMAL_KHR, false);
         CHECK(suboptimal);
         CHECK(suboptimal->image_available);
         CHECK(suboptimal->mark_rebuild);
 
-        auto scaled = detail::classifySwapchainAcquireResult(
-            VK_SUBOPTIMAL_KHR,
-            true
-        );
+        auto scaled = detail::classifySwapchainAcquireResult(VK_SUBOPTIMAL_KHR, true);
         CHECK(scaled);
         CHECK(scaled->image_available);
         CHECK(!scaled->mark_rebuild);
@@ -622,45 +513,28 @@ namespace
         CHECK(!timeout->image_available);
         CHECK(!timeout->mark_rebuild);
 
-        auto out_of_date = detail::classifySwapchainAcquireResult(
-            VK_ERROR_OUT_OF_DATE_KHR,
-            false
-        );
+        auto out_of_date = detail::classifySwapchainAcquireResult(VK_ERROR_OUT_OF_DATE_KHR, false);
         CHECK(out_of_date);
         CHECK(!out_of_date->image_available);
         CHECK(out_of_date->mark_rebuild);
 
-        auto acquire_lost = detail::classifySwapchainAcquireResult(
-            VK_ERROR_DEVICE_LOST,
-            false
-        );
+        auto acquire_lost = detail::classifySwapchainAcquireResult(VK_ERROR_DEVICE_LOST, false);
         CHECK(!acquire_lost);
         CHECK(isError<err::device::VulkanCallFailed>(acquire_lost.error()));
-        CHECK(acquire_lost.error().args[0]
-              == encodeVkResult(VK_ERROR_DEVICE_LOST));
+        CHECK(acquire_lost.error().args[0] == encodeVkResult(VK_ERROR_DEVICE_LOST));
 
-        auto present_out_of_date = detail::classifySwapchainPresentResult(
-            VK_ERROR_OUT_OF_DATE_KHR,
-            false
-        );
+        auto present_out_of_date = detail::classifySwapchainPresentResult(VK_ERROR_OUT_OF_DATE_KHR, false);
         CHECK(present_out_of_date);
         CHECK(present_out_of_date->mark_rebuild);
 
-        auto present_scaled = detail::classifySwapchainPresentResult(
-            VK_SUBOPTIMAL_KHR,
-            true
-        );
+        auto present_scaled = detail::classifySwapchainPresentResult(VK_SUBOPTIMAL_KHR, true);
         CHECK(present_scaled);
         CHECK(!present_scaled->mark_rebuild);
 
-        auto present_lost = detail::classifySwapchainPresentResult(
-            VK_ERROR_DEVICE_LOST,
-            false
-        );
+        auto present_lost = detail::classifySwapchainPresentResult(VK_ERROR_DEVICE_LOST, false);
         CHECK(!present_lost);
         CHECK(isError<err::device::VulkanCallFailed>(present_lost.error()));
-        CHECK(present_lost.error().args[0]
-              == encodeVkResult(VK_ERROR_DEVICE_LOST));
+        CHECK(present_lost.error().args[0] == encodeVkResult(VK_ERROR_DEVICE_LOST));
         return true;
     }
 
@@ -673,38 +547,25 @@ namespace
         CHECK(!closed);
         CHECK(isError<err::internal::InvalidArgument>(closed.error()));
 
-        auto invalid = detail::waitPresentQueueIdle(
-            VkQueue{},
-            &fakeQueueWaitIdle
-        );
+        auto invalid = detail::waitPresentQueueIdle(VkQueue{}, &fakeQueueWaitIdle);
         CHECK(!invalid);
         CHECK(isError<err::internal::InvalidArgument>(invalid.error()));
         CHECK(g_fake.queue_wait_calls == 0);
 
-        invalid = detail::waitPresentQueueIdle(
-            fakeHandle<VkQueue>(0x4000),
-            nullptr
-        );
+        invalid = detail::waitPresentQueueIdle(fakeHandle<VkQueue>(0x4000), nullptr);
         CHECK(!invalid);
         CHECK(isError<err::internal::InvalidArgument>(invalid.error()));
         CHECK(g_fake.queue_wait_calls == 0);
 
         g_fake.queue_wait_result = VK_ERROR_DEVICE_LOST;
-        auto failed = detail::waitPresentQueueIdle(
-            fakeHandle<VkQueue>(0x4000),
-            &fakeQueueWaitIdle
-        );
+        auto failed = detail::waitPresentQueueIdle(fakeHandle<VkQueue>(0x4000), &fakeQueueWaitIdle);
         CHECK(!failed);
         CHECK(isError<err::device::VulkanCallFailed>(failed.error()));
-        CHECK(failed.error().args[0]
-              == encodeVkResult(VK_ERROR_DEVICE_LOST));
+        CHECK(failed.error().args[0] == encodeVkResult(VK_ERROR_DEVICE_LOST));
         CHECK(g_fake.queue_wait_calls == 1);
 
         g_fake.queue_wait_result = VK_SUCCESS;
-        auto succeeded = detail::waitPresentQueueIdle(
-            fakeHandle<VkQueue>(0x4000),
-            &fakeQueueWaitIdle
-        );
+        auto succeeded = detail::waitPresentQueueIdle(fakeHandle<VkQueue>(0x4000), &fakeQueueWaitIdle);
         CHECK(succeeded);
         CHECK(g_fake.queue_wait_calls == 2);
         return true;
@@ -717,16 +578,12 @@ namespace
         std::uint32_t present_count = 0;
 
         auto submit_failure = detail::submitFrameThenRecordAndPresent(
-            [&]() -> Expected<void>
-            {
+            [&]() -> Expected<void> {
                 ++submit_count;
-                return renderFailure<err::device::VulkanCallFailed>(
-                    encodeVkResult(VK_ERROR_DEVICE_LOST)
-                );
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_DEVICE_LOST));
             },
             [&]() noexcept { ++record_count; },
-            [&]() -> Expected<void>
-            {
+            [&]() -> Expected<void> {
                 ++present_count;
                 return {};
             }
@@ -741,19 +598,15 @@ namespace
         present_count = 0;
         bool present_observed_record = false;
         auto present_failure = detail::submitFrameThenRecordAndPresent(
-            [&]() -> Expected<void>
-            {
+            [&]() -> Expected<void> {
                 ++submit_count;
                 return {};
             },
             [&]() noexcept { ++record_count; },
-            [&]() -> Expected<void>
-            {
+            [&]() -> Expected<void> {
                 ++present_count;
                 present_observed_record = (record_count == 1);
-                return renderFailure<err::device::VulkanCallFailed>(
-                    encodeVkResult(VK_ERROR_DEVICE_LOST)
-                );
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_DEVICE_LOST));
             }
         );
         CHECK(!present_failure);
@@ -761,8 +614,7 @@ namespace
         CHECK(record_count == 1);
         CHECK(present_count == 1);
         CHECK(present_observed_record);
-        CHECK(present_failure.error().args[0]
-              == encodeVkResult(VK_ERROR_DEVICE_LOST));
+        CHECK(present_failure.error().args[0] == encodeVkResult(VK_ERROR_DEVICE_LOST));
         return true;
     }
 
@@ -775,8 +627,7 @@ namespace
         auto result = detail::waitFrameFence(fence, fakeDevice(), fakeRuntimeOps());
         CHECK(!result);
         CHECK(isError<err::device::FrameLifecycleCallFailed>(result.error()));
-        CHECK(result.error().args[0] == static_cast<std::uint64_t>(
-            detail::EFrameLifecycleCall::SLOT_FENCE_WAIT));
+        CHECK(result.error().args[0] == static_cast<std::uint64_t>(detail::EFrameLifecycleCall::SLOT_FENCE_WAIT));
         CHECK(result.error().args[1] == encodeVkResult(VK_TIMEOUT));
         CHECK(g_fake.frame_call_count == 1);
         CHECK(g_fake.frame_calls[0] == EFrameCall::WAIT_FENCE);
@@ -787,37 +638,24 @@ namespace
     {
         g_fake = FakeVulkan{};
         auto fence = lux::gapi::vk::Fence::adopt(fakeHandle<VkFence>(kFenceBase));
-        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(
-            fakeHandle<VkCommandBuffer>(kCommandBufferBase)
-        );
+        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(fakeHandle<VkCommandBuffer>(kCommandBufferBase));
 
-        auto wait_result = detail::waitFrameFence(
-            fence,
-            fakeDevice(),
-            detail::FrameDriverRuntimeOps{}
-        );
+        auto wait_result = detail::waitFrameFence(fence, fakeDevice(), detail::FrameDriverRuntimeOps{});
         CHECK(!wait_result);
         CHECK(isError<err::internal::InvalidArgument>(wait_result.error()));
 
-        auto begin_result = detail::beginFrameRecording(
-            fence,
-            command_buffer,
-            fakeDevice(),
-            detail::FrameDriverRuntimeOps{}
-        );
+        auto begin_result =
+            detail::beginFrameRecording(fence, command_buffer, fakeDevice(), detail::FrameDriverRuntimeOps{});
         CHECK(!begin_result);
         CHECK(isError<err::internal::InvalidArgument>(begin_result.error()));
 
         std::uint32_t submit_count = 0;
-        auto end_result = detail::endFrameRecordingThen(
-            command_buffer,
-            detail::FrameDriverRuntimeOps{},
-            [&]() -> Expected<void>
-            {
+        auto end_result =
+            detail::endFrameRecordingThen(command_buffer, detail::FrameDriverRuntimeOps{}, [&]() -> Expected<void> {
                 ++submit_count;
                 return {};
             }
-        );
+            );
         CHECK(!end_result);
         CHECK(isError<err::internal::InvalidArgument>(end_result.error()));
         CHECK(submit_count == 0);
@@ -849,23 +687,16 @@ namespace
                 g_fake.begin_command_buffer_result = failures[failed_stage];
 
             auto fence = lux::gapi::vk::Fence::adopt(fakeHandle<VkFence>(kFenceBase));
-            auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(
-                fakeHandle<VkCommandBuffer>(kCommandBufferBase)
-            );
-            auto result = detail::beginFrameRecording(
-                fence,
-                command_buffer,
-                fakeDevice(),
-                fakeRuntimeOps()
-            );
+            auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(fakeHandle<VkCommandBuffer>(kCommandBufferBase));
+            auto result = detail::beginFrameRecording(fence, command_buffer, fakeDevice(), fakeRuntimeOps());
 
             CHECK(!result);
-            CHECK(isError<err::device::FrameLifecycleCallFailed>(
-                result.error()));
-            CHECK(result.error().args[0] == static_cast<std::uint64_t>(
-                detail::EFrameLifecycleCall::FENCE_RESET) + failed_stage);
-            CHECK(result.error().args[1] ==
-                encodeVkResult(failures[failed_stage]));
+            CHECK(isError<err::device::FrameLifecycleCallFailed>(result.error()));
+            CHECK(
+                result.error().args[0] ==
+                static_cast<std::uint64_t>(detail::EFrameLifecycleCall::FENCE_RESET) + failed_stage
+            );
+            CHECK(result.error().args[1] == encodeVkResult(failures[failed_stage]));
             CHECK(g_fake.frame_call_count == failed_stage + 1);
             for (std::uint32_t i = 0; i <= failed_stage; ++i)
                 CHECK(g_fake.frame_calls[i] == expected_calls[i]);
@@ -877,16 +708,9 @@ namespace
     {
         g_fake = FakeVulkan{};
         auto fence = lux::gapi::vk::Fence::adopt(fakeHandle<VkFence>(kFenceBase));
-        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(
-            fakeHandle<VkCommandBuffer>(kCommandBufferBase)
-        );
+        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(fakeHandle<VkCommandBuffer>(kCommandBufferBase));
 
-        auto result = detail::beginFrameRecording(
-            fence,
-            command_buffer,
-            fakeDevice(),
-            fakeRuntimeOps()
-        );
+        auto result = detail::beginFrameRecording(fence, command_buffer, fakeDevice(), fakeRuntimeOps());
         CHECK(result);
         CHECK(g_fake.frame_call_count == 3);
         CHECK(g_fake.frame_calls[0] == EFrameCall::RESET_FENCE);
@@ -899,19 +723,13 @@ namespace
     {
         g_fake = FakeVulkan{};
         g_fake.end_command_buffer_result = VK_ERROR_DEVICE_LOST;
-        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(
-            fakeHandle<VkCommandBuffer>(kCommandBufferBase)
-        );
+        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(fakeHandle<VkCommandBuffer>(kCommandBufferBase));
         std::uint32_t submit_count = 0;
 
-        auto result = detail::endFrameRecordingThen(
-            command_buffer,
-            fakeRuntimeOps(),
-            [&]() -> Expected<void>
-            {
-                ++submit_count;
-                return {};
-            }
+        auto result = detail::endFrameRecordingThen(command_buffer, fakeRuntimeOps(), [&]() -> Expected<void> {
+            ++submit_count;
+            return {};
+        }
         );
 
         CHECK(!result);
@@ -926,19 +744,13 @@ namespace
     bool successfulEndEntersSubmitStageExactlyOnce()
     {
         g_fake = FakeVulkan{};
-        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(
-            fakeHandle<VkCommandBuffer>(kCommandBufferBase)
-        );
+        auto command_buffer = lux::gapi::vk::CommandBuffer::adopt(fakeHandle<VkCommandBuffer>(kCommandBufferBase));
         std::uint32_t submit_count = 0;
 
-        auto result = detail::endFrameRecordingThen(
-            command_buffer,
-            fakeRuntimeOps(),
-            [&]() -> Expected<void>
-            {
-                ++submit_count;
-                return {};
-            }
+        auto result = detail::endFrameRecordingThen(command_buffer, fakeRuntimeOps(), [&]() -> Expected<void> {
+            ++submit_count;
+            return {};
+        }
         );
 
         CHECK(result);
@@ -949,7 +761,8 @@ namespace
     }
 } // namespace
 
-int main()
+int
+main()
 {
     if (!invalidFrameCountFailsBeforeVulkan())
         return 1;

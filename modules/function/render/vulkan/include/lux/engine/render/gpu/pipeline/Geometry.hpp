@@ -3,7 +3,8 @@
 
 namespace lux::render
 {
-    enum class EGeometryType : uint32_t {
+    enum class EGeometryType : uint32_t
+    {
         MESH = 0,
         INSTANCED_MESH,
         POINT_CLOUD,

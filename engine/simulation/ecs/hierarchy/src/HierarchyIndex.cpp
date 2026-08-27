@@ -17,9 +17,7 @@ namespace lux::simulation::ecs
     namespace
     {
         constexpr std::size_t kMaximumParentDepth =
-            static_cast<std::size_t>(
-                entt::entt_traits<Entity>::entity_mask
-            ) + 1U;
+            static_cast<std::size_t>(entt::entt_traits<Entity>::entity_mask) + 1U;
 
         [[nodiscard]] std::size_t entityIndex(Entity entity) noexcept
         {
@@ -33,11 +31,7 @@ namespace lux::simulation::ecs
 
         template <class View>
         [[nodiscard]] lux::cxx::expected<void, EHierarchyError>
-        validateCanonicalParent(
-            const View& view,
-            Entity child,
-            Entity parent
-        ) noexcept
+        validateCanonicalParent(const View& view, Entity child, Entity parent) noexcept
         {
             if (!view.valid(child) || !view.valid(parent))
                 return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
@@ -62,8 +56,7 @@ namespace lux::simulation::ecs
         }
     } // namespace
 
-    lux::cxx::expected<void, EHierarchyError>
-    HierarchyDeltaBatch::prepare(std::size_t capacity) noexcept
+    lux::cxx::expected<void, EHierarchyError> HierarchyDeltaBatch::prepare(std::size_t capacity) noexcept
     {
         try
         {
@@ -170,8 +163,7 @@ namespace lux::simulation::ecs
         void prune(Entity entity) noexcept
         {
             Node* node = find(entity);
-            if (node == nullptr || node->parent != NullEntity ||
-                node->first_child != NullEntity)
+            if (node == nullptr || node->parent != NullEntity || node->first_child != NullEntity)
             {
                 return;
             }
@@ -197,8 +189,7 @@ namespace lux::simulation::ecs
             if (node->next_sibling == NullEntity)
                 parent->last_child = node->previous_sibling;
             else
-                find(node->next_sibling)->previous_sibling =
-                    node->previous_sibling;
+                find(node->next_sibling)->previous_sibling = node->previous_sibling;
             if (parent->first_child == NullEntity)
                 parent->last_child = NullEntity;
             node->parent = NullEntity;
@@ -211,8 +202,7 @@ namespace lux::simulation::ecs
         {
             Node* child_node = find(child);
             Node* parent_node = find(parent);
-            if (child_node == nullptr || parent_node == nullptr ||
-                child_node->parent != NullEntity)
+            if (child_node == nullptr || parent_node == nullptr || child_node->parent != NullEntity)
             {
                 std::terminate();
             }
@@ -241,11 +231,8 @@ namespace lux::simulation::ecs
             return true;
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> applyParent(
-            Entity child,
-            Entity parent,
-            HierarchyDeltaBatch* deltas
-        )
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError>
+        applyParent(Entity child, Entity parent, HierarchyDeltaBatch* deltas)
         {
             if (child == NullEntity || parent == NullEntity)
                 return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
@@ -253,18 +240,13 @@ namespace lux::simulation::ecs
                 return lux::cxx::unexpected(EHierarchyError::SELF_PARENT);
             if (wouldCycle(child, parent))
                 return lux::cxx::unexpected(EHierarchyError::CYCLE);
-            if (entityIndex(child) >= node_capacity ||
-                entityIndex(parent) >= node_capacity)
+            if (entityIndex(child) >= node_capacity || entityIndex(parent) >= node_capacity)
             {
-                return lux::cxx::unexpected(
-                    EHierarchyError::CAPACITY_EXCEEDED
-                );
+                return lux::cxx::unexpected(EHierarchyError::CAPACITY_EXCEEDED);
             }
 
             Node* child_node = find(child);
-            const Entity previous = child_node == nullptr
-                ? NullEntity
-                : child_node->parent;
+            const Entity previous = child_node == nullptr ? NullEntity : child_node->parent;
             if (previous == parent)
                 return {};
             if (prepare(child) == nullptr || prepare(parent) == nullptr)
@@ -278,10 +260,8 @@ namespace lux::simulation::ecs
                     child,
                     previous,
                     parent,
-                    previous == NullEntity
-                        ? EHierarchyDeltaKind::ATTACHED
-                        : EHierarchyDeltaKind::REPARENTED
-                });
+                    previous == NullEntity ? EHierarchyDeltaKind::ATTACHED : EHierarchyDeltaKind::REPARENTED}
+                );
             }
             prune(previous);
             return {};
@@ -294,12 +274,7 @@ namespace lux::simulation::ecs
                 return;
             if (deltas != nullptr)
             {
-                (void)deltas->append(HierarchyDelta{
-                    child,
-                    previous,
-                    NullEntity,
-                    EHierarchyDeltaKind::DETACHED
-                });
+                (void)deltas->append(HierarchyDelta{child, previous, NullEntity, EHierarchyDeltaKind::DETACHED});
             }
             prune(child);
             prune(previous);
@@ -328,10 +303,8 @@ namespace lux::simulation::ecs
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> applyOne(
-            HierarchyMutation mutation,
-            HierarchyDeltaBatch* deltas
-        )
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError>
+        applyOne(HierarchyMutation mutation, HierarchyDeltaBatch* deltas)
         {
             switch (mutation.kind)
             {
@@ -355,19 +328,15 @@ namespace lux::simulation::ecs
         bool synchronized{};
     };
 
-    HierarchyIndex::HierarchyIndex()
-        : impl_(std::make_unique<Impl>())
+    HierarchyIndex::HierarchyIndex() : impl_(std::make_unique<Impl>())
     {
     }
 
     HierarchyIndex::~HierarchyIndex() noexcept = default;
 
-    lux::cxx::expected<void, EHierarchyError> HierarchyIndex::prepare(
-        std::size_t relation_capacity
-    ) noexcept
+    lux::cxx::expected<void, EHierarchyError> HierarchyIndex::prepare(std::size_t relation_capacity) noexcept
     {
-        if (relation_capacity >
-            (std::numeric_limits<std::size_t>::max() - 1U) / 2U)
+        if (relation_capacity > (std::numeric_limits<std::size_t>::max() - 1U) / 2U)
         {
             return lux::cxx::unexpected(EHierarchyError::CAPACITY_EXCEEDED);
         }
@@ -384,10 +353,8 @@ namespace lux::simulation::ecs
         }
     }
 
-    lux::cxx::expected<void, EHierarchyError> HierarchyIndex::apply(
-        std::span<const HierarchyMutation> mutations,
-        HierarchyDeltaBatch& deltas
-    ) noexcept
+    lux::cxx::expected<void, EHierarchyError>
+    HierarchyIndex::apply(std::span<const HierarchyMutation> mutations, HierarchyDeltaBatch& deltas) noexcept
     {
         impl_->visited_nodes_last_update = 0U;
         if (!impl_->synchronized)
@@ -430,9 +397,7 @@ namespace lux::simulation::ecs
                 if (relation.kind != EHierarchyMutationKind::SET_PARENT)
                 {
                     invalidate(EHierarchyError::INVALID_ENTITY);
-                    return lux::cxx::unexpected(
-                        EHierarchyError::INVALID_ENTITY
-                    );
+                    return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
                 }
                 ++impl_->visited_nodes_last_update;
                 auto applied = impl_->applyOne(relation, nullptr);
@@ -502,10 +467,7 @@ namespace lux::simulation::ecs
         return node == nullptr ? NullEntity : node->next_sibling;
     }
 
-    HierarchyChildren::Iterator::Iterator(
-        const HierarchyIndex* hierarchy,
-        Entity entity
-    ) noexcept
+    HierarchyChildren::Iterator::Iterator(const HierarchyIndex* hierarchy, Entity entity) noexcept
         : hierarchy_(hierarchy), entity_(entity)
     {
     }
@@ -515,8 +477,7 @@ namespace lux::simulation::ecs
         return entity_;
     }
 
-    HierarchyChildren::Iterator& HierarchyChildren::Iterator::operator++()
-        noexcept
+    HierarchyChildren::Iterator& HierarchyChildren::Iterator::operator++() noexcept
     {
         if (hierarchy_ == nullptr || entity_ == NullEntity)
             std::terminate();
@@ -524,19 +485,14 @@ namespace lux::simulation::ecs
         return *this;
     }
 
-    HierarchyChildren::Iterator HierarchyChildren::Iterator::operator++(
-        int
-    ) noexcept
+    HierarchyChildren::Iterator HierarchyChildren::Iterator::operator++(int) noexcept
     {
         Iterator result = *this;
         ++*this;
         return result;
     }
 
-    HierarchyChildren::HierarchyChildren(
-        const HierarchyIndex& hierarchy,
-        Entity parent
-    ) noexcept
+    HierarchyChildren::HierarchyChildren(const HierarchyIndex& hierarchy, Entity parent) noexcept
         : hierarchy_(std::addressof(hierarchy)), parent_(parent)
     {
     }
@@ -556,11 +512,7 @@ namespace lux::simulation::ecs
         return hierarchy_->firstChild(parent_) == NullEntity;
     }
 
-    lux::cxx::expected<void, EHierarchyError> reparent(
-        Registry& registry,
-        Entity child,
-        Entity parent
-    ) noexcept
+    lux::cxx::expected<void, EHierarchyError> reparent(Registry& registry, Entity child, Entity parent) noexcept
     {
         if (auto valid = validateCanonicalParent(registry, child, parent); !valid)
             return valid;
@@ -573,10 +525,7 @@ namespace lux::simulation::ecs
                 registry.emplace<Parent>(child, parent);
             else
             {
-                registry.patch<Parent>(child, [parent](Parent& value) noexcept
-                {
-                    value.entity = parent;
-                });
+                registry.patch<Parent>(child, [parent](Parent& value) noexcept { value.entity = parent; });
             }
             return {};
         }
@@ -586,10 +535,7 @@ namespace lux::simulation::ecs
         }
     }
 
-    lux::cxx::expected<void, EHierarchyError> detach(
-        Registry& registry,
-        Entity child
-    ) noexcept
+    lux::cxx::expected<void, EHierarchyError> detach(Registry& registry, Entity child) noexcept
     {
         if (!registry.valid(child))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);

@@ -38,43 +38,43 @@ namespace lux::render
     struct DeviceCaps
     {
         // ── Features enabled on the VkDevice ─────────────────────────────
-        bool synchronization2             = false;
-        bool dynamic_rendering            = false;
+        bool synchronization2 = false;
+        bool dynamic_rendering = false;
         /// runtimeDescriptorArray + partiallyBound + variableDescriptorCount
         /// + sampledImage UPDATE_AFTER_BIND (the bindless bundle — enabled
         /// and disabled as one unit).
-        bool descriptor_indexing          = false;
-        bool storage_buffer_uab           = false; ///< descriptorBindingStorageBufferUpdateAfterBind
-        bool uniform_buffer_uab           = false; ///< descriptorBindingUniformBufferUpdateAfterBind
-        bool draw_indirect_count          = false; ///< GPU-driven indirect-count draws
-        bool shader_output_layer          = false; ///< VS writes gl_Layer (shadow atlas caster)
-        bool buffer_device_address        = false; ///< BDA (cull active-mask, future page tables)
-        bool shader_int64                 = false; ///< required by buffer_reference SPIR-V
-        bool shader_draw_parameters       = false;
-        bool timeline_semaphore           = false;
-        bool sampler_anisotropy           = false;
-        bool multi_draw_indirect          = false;
+        bool descriptor_indexing = false;
+        bool storage_buffer_uab = false;    ///< descriptorBindingStorageBufferUpdateAfterBind
+        bool uniform_buffer_uab = false;    ///< descriptorBindingUniformBufferUpdateAfterBind
+        bool draw_indirect_count = false;   ///< GPU-driven indirect-count draws
+        bool shader_output_layer = false;   ///< VS writes gl_Layer (shadow atlas caster)
+        bool buffer_device_address = false; ///< BDA (cull active-mask, future page tables)
+        bool shader_int64 = false;          ///< required by buffer_reference SPIR-V
+        bool shader_draw_parameters = false;
+        bool timeline_semaphore = false;
+        bool sampler_anisotropy = false;
+        bool multi_draw_indirect = false;
         bool draw_indirect_first_instance = false;
-        bool wide_lines                   = false; ///< editor gizmo/grid line width
-        bool shader_clip_distance         = false;
-        bool null_descriptor              = false; ///< VK_EXT_robustness2 (validation-bug workaround)
-        bool external_memory_interop      = false; ///< CUDA zero-copy platform handle path
+        bool wide_lines = false; ///< editor gizmo/grid line width
+        bool shader_clip_distance = false;
+        bool null_descriptor = false;         ///< VK_EXT_robustness2 (validation-bug workaround)
+        bool external_memory_interop = false; ///< CUDA zero-copy platform handle path
         /// KHR_dynamic_rendering_local_read (Vulkan 1.4 core): input-attachment
         /// style tile-local reads under dynamic rendering — the mobile deferred
         /// G-buffer read path (line-B variant selector, not a tier gate).
         bool dynamic_rendering_local_read = false;
 
         // ── Limits that gate our pipeline architecture ───────────────────
-        uint32_t max_bound_descriptor_sets     = 0; ///< merged layouts need >= 4 (Mali floor)
+        uint32_t max_bound_descriptor_sets = 0;     ///< merged layouts need >= 4 (Mali floor)
         uint32_t max_per_stage_storage_buffers = 0; ///< clustered lighting uses 5-8 (verify on device)
-        uint32_t max_per_stage_sampled_images  = 0;
-        uint32_t max_push_constants_size       = 0;
-        uint32_t max_image_dimension_2d        = 0; ///< shadow atlas page ceiling
-        uint32_t max_image_array_layers        = 0; ///< shadow atlas page count ceiling
-        uint64_t max_storage_buffer_range      = 0;
+        uint32_t max_per_stage_sampled_images = 0;
+        uint32_t max_push_constants_size = 0;
+        uint32_t max_image_dimension_2d = 0; ///< shadow atlas page ceiling
+        uint32_t max_image_array_layers = 0; ///< shadow atlas page count ceiling
+        uint64_t max_storage_buffer_range = 0;
 
         // ── Queue topology ───────────────────────────────────────────────
-        bool has_async_compute      = false;
+        bool has_async_compute = false;
         bool has_dedicated_transfer = false;
 
         /// Vulkan 只保证 4。之前从未查询过(全仓 grep maxColorAttachments 零命中),
@@ -90,7 +90,6 @@ namespace lux::render
         // 新成员一律追加在这一行之上;追加后 bump kDeviceCapsVersion。
     };
 
-    static_assert(std::is_trivially_copyable_v<DeviceCaps>,
-                  "DeviceCaps 直接 memcpy 过 comm 通道,必须可平凡拷贝。");
+    static_assert(std::is_trivially_copyable_v<DeviceCaps>, "DeviceCaps 直接 memcpy 过 comm 通道,必须可平凡拷贝。");
 
 } // namespace lux::render

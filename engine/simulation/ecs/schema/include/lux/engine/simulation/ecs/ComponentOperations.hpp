@@ -17,29 +17,22 @@ namespace lux::simulation::ecs
 
     class ComponentOperations final
     {
-      public:
+    public:
         ComponentOperations() noexcept = default;
 
         [[nodiscard]] bool valid() const noexcept
         {
-            return has_ != nullptr && get_ != nullptr && size_ != nullptr &&
-                erase_ != nullptr && reserve_ != nullptr;
+            return has_ != nullptr && get_ != nullptr && size_ != nullptr && erase_ != nullptr && reserve_ != nullptr;
         }
 
-        [[nodiscard]] bool has(
-            const Registry& registry,
-            Entity entity
-        ) const noexcept
+        [[nodiscard]] bool has(const Registry& registry, Entity entity) const noexcept
         {
             if (has_ == nullptr)
                 std::terminate();
             return has_(registry, entity);
         }
 
-        [[nodiscard]] const void* get(
-            const Registry& registry,
-            Entity entity
-        ) const noexcept
+        [[nodiscard]] const void* get(const Registry& registry, Entity entity) const noexcept
         {
             if (get_ == nullptr)
                 std::terminate();
@@ -67,7 +60,7 @@ namespace lux::simulation::ecs
             reserve_(registry, count);
         }
 
-      private:
+    private:
         using HasFn = bool (*)(const Registry&, Entity) noexcept;
         using GetFn = const void* (*)(const Registry&, Entity) noexcept;
         using SizeFn = std::size_t (*)(const Registry&) noexcept;
@@ -83,35 +76,25 @@ namespace lux::simulation::ecs
 
         friend struct detail::ComponentOperationsAccess;
 
-        template <class Component>
-        friend ComponentOperations componentOperations() noexcept;
+        template <class Component> friend ComponentOperations componentOperations() noexcept;
     };
 
-    template <class Component>
-    [[nodiscard]] ComponentOperations componentOperations() noexcept
+    template <class Component> [[nodiscard]] ComponentOperations componentOperations() noexcept
     {
         ComponentOperations result;
         result.storage_key_ = entt::type_hash<Component>::value();
-        result.has_ = [](const Registry& registry, Entity entity) noexcept
-        {
+        result.has_ = [](const Registry& registry, Entity entity) noexcept {
             return registry.template all_of<Component>(entity);
         };
-        result.get_ = [](const Registry& registry, Entity entity) noexcept -> const void*
-        {
+        result.get_ = [](const Registry& registry, Entity entity) noexcept -> const void* {
             return registry.template try_get<Component>(entity);
         };
-        result.size_ = [](const Registry& registry) noexcept
-        {
-            const auto* storage =
-                registry.template storage<Component>();
+        result.size_ = [](const Registry& registry) noexcept {
+            const auto* storage = registry.template storage<Component>();
             return storage == nullptr ? 0U : storage->size();
         };
-        result.erase_ = [](Registry& registry, Entity entity) noexcept
-        {
-            registry.template remove<Component>(entity);
-        };
-        result.reserve_ = [](Registry& registry, std::size_t count)
-        {
+        result.erase_ = [](Registry& registry, Entity entity) noexcept { registry.template remove<Component>(entity); };
+        result.reserve_ = [](Registry& registry, std::size_t count) {
             registry.template storage<Component>().reserve(count);
         };
         return result;

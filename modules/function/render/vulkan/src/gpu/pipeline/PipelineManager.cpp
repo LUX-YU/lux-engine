@@ -2,7 +2,7 @@
 #include <lux/engine/render/gpu/pipeline/ShaderPermutationCompiler.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>   // toVkDescriptorType / engineShapeBindingFor
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp> // toVkDescriptorType / engineShapeBindingFor
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
@@ -18,21 +18,36 @@
 namespace lux::render
 {
     // Helper: Convert lux::rdesc::EShaderType to VkShaderStageFlags
-    static VkShaderStageFlags getVkShaderStage(rdesc::EShaderType type) {
-        switch (type) {
-            case rdesc::EShaderType::VERTEX: return VK_SHADER_STAGE_VERTEX_BIT;
-            case rdesc::EShaderType::FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
-            case rdesc::EShaderType::GEOMETRY: return VK_SHADER_STAGE_GEOMETRY_BIT;
-            case rdesc::EShaderType::COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
-            case rdesc::EShaderType::TESSELLATION_CTRL: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-            case rdesc::EShaderType::TESSELLATION_EVAL: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-            case rdesc::EShaderType::RAYGEN: return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-            case rdesc::EShaderType::ANY_HIT: return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
-            case rdesc::EShaderType::CLOSEST_HIT: return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-            case rdesc::EShaderType::MISS: return VK_SHADER_STAGE_MISS_BIT_KHR;
-            case rdesc::EShaderType::INTERSECTION: return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
-            case rdesc::EShaderType::CALLABLE: return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
-            default: return 0;
+    static VkShaderStageFlags getVkShaderStage(rdesc::EShaderType type)
+    {
+        switch (type)
+        {
+        case rdesc::EShaderType::VERTEX:
+            return VK_SHADER_STAGE_VERTEX_BIT;
+        case rdesc::EShaderType::FRAGMENT:
+            return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case rdesc::EShaderType::GEOMETRY:
+            return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case rdesc::EShaderType::COMPUTE:
+            return VK_SHADER_STAGE_COMPUTE_BIT;
+        case rdesc::EShaderType::TESSELLATION_CTRL:
+            return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case rdesc::EShaderType::TESSELLATION_EVAL:
+            return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case rdesc::EShaderType::RAYGEN:
+            return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        case rdesc::EShaderType::ANY_HIT:
+            return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+        case rdesc::EShaderType::CLOSEST_HIT:
+            return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+        case rdesc::EShaderType::MISS:
+            return VK_SHADER_STAGE_MISS_BIT_KHR;
+        case rdesc::EShaderType::INTERSECTION:
+            return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+        case rdesc::EShaderType::CALLABLE:
+            return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+        default:
+            return 0;
         }
     }
 
@@ -46,12 +61,13 @@ namespace lux::render
     static PipelineReflectedInfo mergeShaderInfos(std::span<const rdesc::ShaderInfo* const> shaders)
     {
         PipelineReflectedInfo result;
-        bool any_merged       = false;
+        bool any_merged = false;
         bool unmerged_movable = false;
 
         // Temporary storage for Push Constants: offset -> range
         // Used to merge stageFlags for ranges with the same offset
-        struct PCRange {
+        struct PCRange
+        {
             uint32_t size;
             VkShaderStageFlags stages;
         };
@@ -59,7 +75,8 @@ namespace lux::render
 
         for (const auto* shader : shaders)
         {
-            if (!shader) continue;
+            if (!shader)
+                continue;
 
             if (shader->merged_domain_layout)
                 any_merged = true;
@@ -74,14 +91,21 @@ namespace lux::render
             {
                 bool seen = false;
                 for (const auto& [f, t] : result.private_set_remap)
-                    if (f == from) { seen = true; if (t != to) unmerged_movable = true; break; }
+                    if (f == from)
+                    {
+                        seen = true;
+                        if (t != to)
+                            unmerged_movable = true;
+                        break;
+                    }
                 if (!seen)
                     result.private_set_remap.push_back({from, to});
             }
 
             // Deduce the Stage of the current Shader
             VkShaderStageFlags stage_flags = 0;
-            if (!shader->entry_points.empty()) {
+            if (!shader->entry_points.empty())
+            {
                 stage_flags = getVkShaderStage(shader->entry_points[0].stage);
             }
 
@@ -90,38 +114,58 @@ namespace lux::render
             //    across stages has its stageFlags merged, and type/count must
             //    agree (a mismatch between shaders is exactly what triggers
             //    the registration-time error below).
-            for (const auto& set_info : shader->sets) {
+            for (const auto& set_info : shader->sets)
+            {
                 // If this Set appears in any Shader, mark it as active
                 result.active_sets_mask |= (1u << set_info.set);
 
                 ReflectedSet* rset = nullptr;
                 for (auto& existing : result.reflected_sets)
-                    if (existing.set == set_info.set) { rset = &existing; break; }
-                if (!rset) {
+                    if (existing.set == set_info.set)
+                    {
+                        rset = &existing;
+                        break;
+                    }
+                if (!rset)
+                {
                     result.reflected_sets.push_back({set_info.set, {}});
                     rset = &result.reflected_sets.back();
                 }
-                for (const auto& b : set_info.bindings) {
+                for (const auto& b : set_info.bindings)
+                {
                     ReflectedSetBinding* rb = nullptr;
                     for (auto& existing : rset->bindings)
-                        if (existing.binding == b.binding) { rb = &existing; break; }
-                    if (rb) {
+                        if (existing.binding == b.binding)
+                        {
+                            rb = &existing;
+                            break;
+                        }
+                    if (rb)
+                    {
                         rb->stages |= stage_flags;
-                        assert(rb->type == toVkDescriptorType(b.type) &&
-                               "mergeShaderInfos: same (set,binding) with different type across stages");
-                    } else {
-                        rset->bindings.push_back({b.binding, toVkDescriptorType(b.type),
-                                                  std::max(b.count, 1u), stage_flags, b.name});
+                        assert(
+                            rb->type == toVkDescriptorType(b.type) &&
+                            "mergeShaderInfos: same (set,binding) with different type across stages");
+                    }
+                    else
+                    {
+                        rset->bindings.push_back(
+                            {b.binding, toVkDescriptorType(b.type), std::max(b.count, 1u), stage_flags, b.name}
+                        );
                     }
                 }
             }
 
             // 2. Merge Push Constants
-            for (const auto& pc : shader->push_constants) {
+            for (const auto& pc : shader->push_constants)
+            {
                 auto it = pc_map.find(pc.offset);
-                if (it == pc_map.end()) {
-                    pc_map[pc.offset] = { pc.size, stage_flags };
-                } else {
+                if (it == pc_map.end())
+                {
+                    pc_map[pc.offset] = {pc.size, stage_flags};
+                }
+                else
+                {
                     // Simple merge check: if offset is the same, size should be the same (or a union)
                     // And accumulate stageFlags
                     it->second.stages |= stage_flags;
@@ -131,7 +175,8 @@ namespace lux::render
         }
 
         // Convert Push Constants to Vulkan format
-        for (const auto& [offset, range] : pc_map) {
+        for (const auto& [offset, range] : pc_map)
+        {
             VkPushConstantRange vk_range{};
             vk_range.stageFlags = range.stages;
             vk_range.offset = offset;
@@ -212,7 +257,8 @@ namespace lux::render
         const rdesc::ShaderInfo& info,
         std::string debug_name,
         std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values,
-        std::span<const std::pair<uint32_t, VkDescriptorSetLayout>> explicit_set_layouts)
+        std::span<const std::pair<uint32_t, VkDescriptorSetLayout>> explicit_set_layouts
+    )
     {
         PipelineReflectedInfo reflected = mergeShaderInfos(std::array{&info});
 
@@ -228,8 +274,7 @@ namespace lux::render
         if (!layout)
             return lux::cxx::unexpected(layout.error());
 
-        const ComputePipelineHandle handle =
-            registerComputePipeline(shader, *layout, specialization_values);
+        const ComputePipelineHandle handle = registerComputePipeline(shader, *layout, specialization_values);
         // registerComputePipeline appended an empty table / empty reflection
         // for this handle — replace them with what was just built.
         compute_set_layouts_.back() = std::move(set_layouts);
@@ -237,8 +282,7 @@ namespace lux::render
         return handle;
     }
 
-    VkDescriptorSetLayout PipelineManager::computeSetLayout(
-        ComputePipelineHandle handle, uint32_t set) const noexcept
+    VkDescriptorSetLayout PipelineManager::computeSetLayout(ComputePipelineHandle handle, uint32_t set) const noexcept
     {
         if (handle.index >= compute_set_layouts_.size())
             return VK_NULL_HANDLE;
@@ -247,16 +291,17 @@ namespace lux::render
     }
 
     ComputePipelineHandle PipelineManager::registerComputePipeline(
-        VkShaderModule   shader,
+        VkShaderModule shader,
         VkPipelineLayout layout,
-        std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values)
+        std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values
+    )
     {
-        const ComputePipelineHandle handle{ static_cast<uint32_t>(compute_pipelines_.size()) };
+        const ComputePipelineHandle handle{static_cast<uint32_t>(compute_pipelines_.size())};
         compute_set_layouts_.emplace_back();
         compute_reflections_.emplace_back();
 
         std::vector<VkSpecializationMapEntry> spec_entries;
-        std::vector<uint32_t>                 spec_values;
+        std::vector<uint32_t> spec_values;
         spec_entries.reserve(specialization_values.size());
         spec_values.reserve(specialization_values.size());
 
@@ -284,24 +329,24 @@ namespace lux::render
 
         VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
         ci.layout = layout;
-        ci.stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        ci.stage.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
+        ci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
         ci.stage.module = shader;
-        ci.stage.pName  = "main";
+        ci.stage.pName = "main";
         ci.stage.pSpecializationInfo = spec_entries.empty() ? nullptr : &spec_info;
 
         VkPipeline vk_pipeline = VK_NULL_HANDLE;
         const auto create_started = std::chrono::steady_clock::now();
-        const VkResult res = vkCreateComputePipelines(device_ctx_->logicalDevice(), VK_NULL_HANDLE,
-                                                      1, &ci, nullptr, &vk_pipeline);
+        const VkResult res =
+            vkCreateComputePipelines(device_ctx_->logicalDevice(), VK_NULL_HANDLE, 1, &ci, nullptr, &vk_pipeline);
         const auto create_nanoseconds = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - create_started).count());
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - create_started)
+                .count()
+        );
         ++telemetry_.compute_create_calls;
         telemetry_.compute_create_nanoseconds += create_nanoseconds;
-        telemetry_.compute_create_max_nanoseconds = std::max(
-            telemetry_.compute_create_max_nanoseconds,
-            create_nanoseconds);
+        telemetry_.compute_create_max_nanoseconds =
+            std::max(telemetry_.compute_create_max_nanoseconds, create_nanoseconds);
         if (res != VK_SUCCESS)
         {
             ++telemetry_.compute_create_failures;
@@ -312,12 +357,15 @@ namespace lux::render
             // sentinel instead so callers' .valid() guards (and the RG
             // compile-time null check) detect the failure and can retry later.
             if (error_sink_ != nullptr)
-                error_sink_->emit(renderError<err::device::VulkanCallFailed>(encodeVkResult(res)),
-                                  RenderErrorEvent::kNoScene, 0);
+                error_sink_->emit(
+                    renderError<err::device::VulkanCallFailed>(encodeVkResult(res)),
+                    RenderErrorEvent::kNoScene,
+                    0
+                );
             return kInvalidComputePipelineHandle;
         }
 
-        compute_pipelines_.push_back({ vk_pipeline, layout });
+        compute_pipelines_.push_back({vk_pipeline, layout});
         return handle;
     }
 
@@ -339,17 +387,18 @@ namespace lux::render
     // Graphics pipeline templates
     // -------------------------------------------------------------------------
 
-    void PipelineManager::setReflectedLayoutEnv(GeneralDescriptorSetLayout& shared,
-                                                DescriptorService& descriptors,
-                                                PipelineLayoutService& pipeline_layouts) noexcept
+    void PipelineManager::setReflectedLayoutEnv(
+        GeneralDescriptorSetLayout& shared,
+        DescriptorService& descriptors,
+        PipelineLayoutService& pipeline_layouts
+    ) noexcept
     {
-        shared_layouts_          = &shared;
-        descriptor_service_      = &descriptors;
+        shared_layouts_ = &shared;
+        descriptor_service_ = &descriptors;
         pipeline_layout_service_ = &pipeline_layouts;
     }
 
-    VkDescriptorSetLayout PipelineManager::templateSetLayout(
-        GraphicsPipelineHandle handle, uint32_t set) const noexcept
+    VkDescriptorSetLayout PipelineManager::templateSetLayout(GraphicsPipelineHandle handle, uint32_t set) const noexcept
     {
         if (handle.index >= template_set_layouts_.size())
             return VK_NULL_HANDLE;
@@ -357,14 +406,10 @@ namespace lux::render
         return set < layouts.size() ? layouts[set] : VK_NULL_HANDLE;
     }
 
-    ResolvedPrivateSetLayout PipelineManager::templatePrivateSetLayout(
-        GraphicsPipelineHandle handle,
-        uint32_t source_set) const noexcept
+    ResolvedPrivateSetLayout
+    PipelineManager::templatePrivateSetLayout(GraphicsPipelineHandle handle, uint32_t source_set) const noexcept
     {
-        ResolvedPrivateSetLayout result{
-            source_set,
-            source_set,
-            VK_NULL_HANDLE};
+        ResolvedPrivateSetLayout result{source_set, source_set, VK_NULL_HANDLE};
         const auto* reflection = templateReflection(handle);
         if (!reflection)
             return result;
@@ -380,8 +425,7 @@ namespace lux::render
 
         for (const auto& slot : reflection->slots)
         {
-            if (slot.slot == result.runtime_slot &&
-                slot.source == ESlotSource::PipelinePrivate)
+            if (slot.slot == result.runtime_slot && slot.source == ESlotSource::PipelinePrivate)
             {
                 result.layout = slot.layout;
                 break;
@@ -393,7 +437,8 @@ namespace lux::render
     Expected<void> PipelineManager::finalizeTemplateLayout(
         GraphicsPipelineHandle handle,
         VkPipelineLayout layout,
-        std::span<const VkDescriptorSetLayout> set_layouts)
+        std::span<const VkDescriptorSetLayout> set_layouts
+    )
     {
         if (handle.index >= pipeline_templates_.size() || layout == VK_NULL_HANDLE)
             return renderFailure<err::internal::InvalidArgument>();
@@ -406,7 +451,8 @@ namespace lux::render
 
     Expected<bool> PipelineManager::rebuildTemplateLayout(
         GraphicsPipelineHandle handle,
-        std::span<const VkDescriptorSetLayout> set_layouts)
+        std::span<const VkDescriptorSetLayout> set_layouts
+    )
     {
         if (handle.index >= pipeline_templates_.size() || !pipeline_layout_service_)
             return renderFailure<err::internal::InvalidArgument>();
@@ -416,8 +462,7 @@ namespace lux::render
         // invalidate the entire PSO cache and trigger an avalanche of
         // rebuilds).
         const auto& current = template_set_layouts_[handle.index];
-        if (std::equal(current.begin(), current.end(),
-                       set_layouts.begin(), set_layouts.end()))
+        if (std::equal(current.begin(), current.end(), set_layouts.begin(), set_layouts.end()))
             return false;
 
         const auto& refl = template_reflections_[handle.index];
@@ -426,10 +471,11 @@ namespace lux::render
             pc.assign(refl->push_constant_ranges.begin(), refl->push_constant_ranges.end());
 
         auto layout = pipeline_layout_service_->getOrCreate({
-            .set_layouts    = set_layouts,
+            .set_layouts = set_layouts,
             .push_constants = pc,
-            .debug_name     = pipeline_templates_[handle.index].debug_name,
-        });
+            .debug_name = pipeline_templates_[handle.index].debug_name,
+        }
+        );
         if (!layout)
             return lux::cxx::unexpected(layout.error());
 
@@ -446,12 +492,10 @@ namespace lux::render
 
     uint32_t PipelineManager::templateLayoutEpoch(GraphicsPipelineHandle handle) const noexcept
     {
-        return handle.index < template_layout_epochs_.size()
-             ? template_layout_epochs_[handle.index] : 0u;
+        return handle.index < template_layout_epochs_.size() ? template_layout_epochs_[handle.index] : 0u;
     }
 
-    const PipelineReflectedInfo* PipelineManager::templateReflection(
-        GraphicsPipelineHandle handle) const noexcept
+    const PipelineReflectedInfo* PipelineManager::templateReflection(GraphicsPipelineHandle handle) const noexcept
     {
         if (handle.index >= template_reflections_.size())
             return nullptr;
@@ -459,8 +503,7 @@ namespace lux::render
         return r.has_value() ? &*r : nullptr;
     }
 
-    const PipelineReflectedInfo* PipelineManager::computeReflection(
-        ComputePipelineHandle handle) const noexcept
+    const PipelineReflectedInfo* PipelineManager::computeReflection(ComputePipelineHandle handle) const noexcept
     {
         if (handle.index >= compute_reflections_.size())
             return nullptr;
@@ -471,7 +514,8 @@ namespace lux::render
     Expected<VkPipelineLayout> PipelineManager::buildReflectedPipelineLayout(
         PipelineReflectedInfo& reflected,
         const GraphicsPipelineTemplate& description,
-        lux::cxx::SmallVector<VkDescriptorSetLayout, 8>& out_set_layouts)
+        lux::cxx::SmallVector<VkDescriptorSetLayout, 8>& out_set_layouts
+    )
     {
         if (!shared_layouts_ || !descriptor_service_ || !pipeline_layout_service_)
             return renderFailure<err::internal::InvalidArgument>();
@@ -503,8 +547,7 @@ namespace lux::render
         reflected.slots.clear();
         // Record the classification per slot, growing in lockstep with
         // out_set_layouts (the index IS the slot number).
-        const auto noteSlot = [&](uint32_t slot, ESlotSource src, uint32_t logical,
-                                  VkDescriptorSetLayout layout) {
+        const auto noteSlot = [&](uint32_t slot, ESlotSource src, uint32_t logical, VkDescriptorSetLayout layout) {
             reflected.slots.push_back(ReflectedSlot{slot, src, logical, layout});
         };
 
@@ -514,7 +557,11 @@ namespace lux::render
             //    priority (see the comment on explicit_set_layouts).
             VkDescriptorSetLayout explicit_layout = VK_NULL_HANDLE;
             for (const auto& [index, layout] : description.explicit_set_layouts)
-                if (index == s) { explicit_layout = layout; break; }
+                if (index == s)
+                {
+                    explicit_layout = layout;
+                    break;
+                }
             if (explicit_layout != VK_NULL_HANDLE)
             {
                 out_set_layouts.push_back(explicit_layout);
@@ -524,7 +571,11 @@ namespace lux::render
 
             const ReflectedSet* rset = nullptr;
             for (const auto& rs : reflected.reflected_sets)
-                if (rs.set == s) { rset = &rs; break; }
+                if (rs.set == s)
+                {
+                    rset = &rs;
+                    break;
+                }
 
             if (!rset)
             {
@@ -564,29 +615,29 @@ namespace lux::render
                 // semantics".
                 const EDescriptorSetSlot* hinted = nullptr;
                 for (const auto& [slot, index] : description.resource_slot_map)
-                    if (index == s) { hinted = &slot; break; }
+                    if (index == s)
+                    {
+                        hinted = &slot;
+                        break;
+                    }
 
                 const bool merged = reflected.merged_domain_layout;
                 VkDescriptorSetLayout hole_layout = VK_NULL_HANDLE;
                 uint32_t canonical = 0;
                 if (merged)
                 {
-                    canonical = kDescriptorSetCount;   // semantics-free sentinel
+                    canonical = kDescriptorSetCount; // semantics-free sentinel
                     if (s == domainSetSlot(rdesc::EBindFrequency::GLOBAL))
-                        hole_layout = shared_layouts_->getDomainLayout(
-                            rdesc::EBindFrequency::GLOBAL);
+                        hole_layout = shared_layouts_->getDomainLayout(rdesc::EBindFrequency::GLOBAL);
                     else if (s == domainSetSlot(rdesc::EBindFrequency::BINDLESS))
-                        hole_layout = shared_layouts_->getDomainLayout(
-                            rdesc::EBindFrequency::BINDLESS);
+                        hole_layout = shared_layouts_->getDomainLayout(rdesc::EBindFrequency::BINDLESS);
                     else if (s == domainSetSlot(rdesc::EBindFrequency::FEATURE))
-                        hole_layout = shared_layouts_->getDomainLayout(
-                            rdesc::EBindFrequency::FEATURE);
+                        hole_layout = shared_layouts_->getDomainLayout(rdesc::EBindFrequency::FEATURE);
                     else
                         // PASS_LOCAL slots and above: a pure placeholder —
                         // the primary pipeline and its variants both follow
                         // this same rule, so they necessarily agree.
-                        hole_layout = shared_layouts_->getLayout(
-                            std::min(s, kDescriptorSetCount - 1u));
+                        hole_layout = shared_layouts_->getLayout(std::min(s, kDescriptorSetCount - 1u));
                 }
                 else
                 {
@@ -596,8 +647,7 @@ namespace lux::render
                     // 布局才能建 pipeline layout。审计期(ef27b6c)的埋点已
                     // 撤除:它对树外管线是常态,报出来只是噪音。
                     canonical = hinted ? static_cast<uint32_t>(*hinted) : s;
-                    hole_layout = shared_layouts_->getLayout(
-                        std::min(canonical, kDescriptorSetCount - 1u));
+                    hole_layout = shared_layouts_->getLayout(std::min(canonical, kDescriptorSetCount - 1u));
                 }
                 out_set_layouts.push_back(hole_layout);
                 noteSlot(s, ESlotSource::ReflectionHole, canonical, hole_layout);
@@ -616,7 +666,10 @@ namespace lux::render
             const rdesc::LogicalResourceDesc* owned = nullptr;
             for (const auto& b : rset->bindings)
                 if (const auto* e = rdesc::findLogicalResource(b.name); e && e->engine_set)
-                { owned = e; break; }
+                {
+                    owned = e;
+                    break;
+                }
 
             if (owned && reflected.merged_domain_layout)
             {
@@ -633,7 +686,9 @@ namespace lux::render
                 if (s != domainSetSlot(domain))
                     return renderFailure<err::pipeline::DomainSlotMismatch>(
                         rdesc::logicalResourceIndex(owned->name),
-                        static_cast<std::uint32_t>(domain), s);
+                        static_cast<std::uint32_t>(domain),
+                        s
+                    );
 
                 for (const auto& b : rset->bindings)
                 {
@@ -641,18 +696,19 @@ namespace lux::render
                     if (!entry)
                         return renderFailure<err::pipeline::BindingNotInContract>(s, b.binding);
 
-                    const auto     binding_domain = kEngineSetShapes[entry->canonical_set].frequency;
+                    const auto binding_domain = kEngineSetShapes[entry->canonical_set].frequency;
                     const uint32_t want_binding =
                         engineSetDomainOffset(entry->canonical_set) + entry->canonical_binding;
                     if (domainSetSlot(binding_domain) != s || b.binding != want_binding)
                         return renderFailure<err::pipeline::BindingPositionMismatch>(
-                            rdesc::logicalResourceIndex(b.name), s, b.binding);
+                            rdesc::logicalResourceIndex(b.name),
+                            s,
+                            b.binding
+                        );
 
-                    const auto* shape =
-                        engineShapeBindingFor(entry->canonical_set, entry->canonical_binding);
+                    const auto* shape = engineShapeBindingFor(entry->canonical_set, entry->canonical_binding);
                     if (!shape || shape->type != b.type)
-                        return renderFailure<err::pipeline::BindingTypeMismatch>(
-                            rdesc::logicalResourceIndex(b.name));
+                        return renderFailure<err::pipeline::BindingTypeMismatch>(rdesc::logicalResourceIndex(b.name));
                 }
 
                 // Every domain uniformly takes the domain layout + the
@@ -675,8 +731,7 @@ namespace lux::render
                 // compatible.
                 VkDescriptorSetLayout dl = shared_layouts_->getDomainLayout(domain);
                 if (dl == VK_NULL_HANDLE)
-                    return renderFailure<err::pipeline::DomainLayoutNotInitialised>(
-                        static_cast<std::uint32_t>(domain));
+                    return renderFailure<err::pipeline::DomainLayoutNotInitialised>(static_cast<std::uint32_t>(domain));
                 out_set_layouts.push_back(dl);
                 noteSlot(s, ESlotSource::DomainMerged, static_cast<uint32_t>(domain), dl);
                 continue;
@@ -694,7 +749,9 @@ namespace lux::render
                 // 树外管线不受影响:它们不引用引擎契约资源(反射里没有 engine_set 条目
                 // → owned 恒为空),走下面的 FeatureExplicit / PipelinePrivate 路径。
                 return renderFailure<err::pipeline::ContractResourceNotMerged>(
-                    rdesc::logicalResourceIndex(owned->name), s);
+                    rdesc::logicalResourceIndex(owned->name),
+                    s
+                );
             }
 
             // FEATURE/PASS domain: built from reflection (type/count) union
@@ -710,14 +767,17 @@ namespace lux::render
             // fall back to the reflected stage.
             const auto contractStages = [](uint8_t s) -> VkShaderStageFlags {
                 VkShaderStageFlags f = 0;
-                if (s & static_cast<uint8_t>(rdesc::EStageBits::VERTEX))   f |= VK_SHADER_STAGE_VERTEX_BIT;
-                if (s & static_cast<uint8_t>(rdesc::EStageBits::FRAGMENT)) f |= VK_SHADER_STAGE_FRAGMENT_BIT;
-                if (s & static_cast<uint8_t>(rdesc::EStageBits::COMPUTE))  f |= VK_SHADER_STAGE_COMPUTE_BIT;
+                if (s & static_cast<uint8_t>(rdesc::EStageBits::VERTEX))
+                    f |= VK_SHADER_STAGE_VERTEX_BIT;
+                if (s & static_cast<uint8_t>(rdesc::EStageBits::FRAGMENT))
+                    f |= VK_SHADER_STAGE_FRAGMENT_BIT;
+                if (s & static_cast<uint8_t>(rdesc::EStageBits::COMPUTE))
+                    f |= VK_SHADER_STAGE_COMPUTE_BIT;
                 return f;
             };
 
             lux::cxx::SmallVector<VkDescriptorSetLayoutBinding, 8> bindings;
-            lux::cxx::SmallVector<VkDescriptorBindingFlags, 8>     flags;
+            lux::cxx::SmallVector<VkDescriptorBindingFlags, 8> flags;
             bool any_flags = false;
             bool update_after_bind = false;
             for (const auto& b : rset->bindings)
@@ -731,7 +791,10 @@ namespace lux::render
                 {
                     const auto ef = e->binding_flags;
                     if (ef & static_cast<uint8_t>(rdesc::EBindingFlags::UPDATE_AFTER_BIND))
-                    { f |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT; update_after_bind = true; }
+                    {
+                        f |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+                        update_after_bind = true;
+                    }
                     if (ef & static_cast<uint8_t>(rdesc::EBindingFlags::PARTIALLY_BOUND))
                         f |= VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
                     if (ef & static_cast<uint8_t>(rdesc::EBindingFlags::VARIABLE_COUNT))
@@ -751,9 +814,7 @@ namespace lux::render
             for (std::size_t i = 1u; i < bindings.size(); ++i)
             {
                 std::size_t cursor = i;
-                while (cursor > 0u &&
-                       bindings[cursor - 1u].binding >
-                           bindings[cursor].binding)
+                while (cursor > 0u && bindings[cursor - 1u].binding > bindings[cursor].binding)
                 {
                     std::swap(bindings[cursor - 1u], bindings[cursor]);
                     std::swap(flags[cursor - 1u], flags[cursor]);
@@ -762,7 +823,7 @@ namespace lux::render
             }
 
             DescriptorLayoutDesc desc{
-                .bindings   = {bindings.data(), bindings.size()},
+                .bindings = {bindings.data(), bindings.size()},
                 .debug_name = debug_name + ".set" + std::to_string(s),
             };
             if (any_flags)
@@ -776,21 +837,24 @@ namespace lux::render
             noteSlot(s, ESlotSource::PipelinePrivate, s, private_layout);
         }
 
-        std::vector<VkPushConstantRange> pc(reflected.push_constant_ranges.begin(),
-                                            reflected.push_constant_ranges.end());
+        std::vector<VkPushConstantRange> pc(
+            reflected.push_constant_ranges.begin(),
+            reflected.push_constant_ranges.end()
+        );
         return pipeline_layout_service_->getOrCreate({
-            .set_layouts    = {out_set_layouts.data(), out_set_layouts.size()},
+            .set_layouts = {out_set_layouts.data(), out_set_layouts.size()},
             .push_constants = pc,
-            .debug_name     = debug_name,
-        });
+            .debug_name = debug_name,
+        }
+        );
     }
 
     Expected<GraphicsPipelineHandle> PipelineManager::registerGraphicsTemplate(
         const GraphicsPipelineTemplate& description,
-        std::span<const rdesc::ShaderInfo* const> shader_infos)
+        std::span<const rdesc::ShaderInfo* const> shader_infos
+    )
     {
-        const GraphicsPipelineHandle handle{
-            static_cast<uint32_t>(pipeline_templates_.size())};
+        const GraphicsPipelineHandle handle{static_cast<uint32_t>(pipeline_templates_.size())};
 
         GraphicsPipelineTemplate stored_template = description;
         lux::cxx::SmallVector<VkDescriptorSetLayout, 8> built_set_layouts;
@@ -800,7 +864,8 @@ namespace lux::render
         std::optional<PipelineReflectedInfo> kept_reflection;
 
         // 1. Merge Shader information
-        if (!shader_infos.empty()) {
+        if (!shader_infos.empty())
+        {
             PipelineReflectedInfo reflected = mergeShaderInfos(shader_infos);
 
             // If no layout is supplied, build one from reflection + contract
@@ -816,8 +881,7 @@ namespace lux::render
                     for (const auto& r : description.push_constant_ranges)
                         reflected.push_constant_ranges.push_back(r);
                 }
-                auto layout = buildReflectedPipelineLayout(
-                    reflected, description, built_set_layouts);
+                auto layout = buildReflectedPipelineLayout(reflected, description, built_set_layouts);
                 if (!layout)
                     return lux::cxx::unexpected(layout.error());
                 stored_template.pipeline_layout = *layout;
@@ -827,7 +891,8 @@ namespace lux::render
             //    If the caller explicitly set a non-zero mask (e.g. custom
             //    pipeline layouts), respect it instead of overwriting with
             //    the reflected mask.  A zero mask means "auto-detect".
-            if (description.active_sets_mask == 0) {
+            if (description.active_sets_mask == 0)
+            {
                 stored_template.active_sets_mask = reflected.active_sets_mask;
             }
 
@@ -852,8 +917,10 @@ namespace lux::render
             //  declared ds_bindings and doesn't read this. But once the
             //  graph-compile-time Plan starts depending on this identity
             //  information, it needs to already be accurate.)
-            if (stored_template.resource_slot_map.empty()) {
-                for (const auto& slot : reflected.slots) {
+            if (stored_template.resource_slot_map.empty())
+            {
+                for (const auto& slot : reflected.slots)
+                {
                     // Merged domain slot: one slot houses several canonical
                     // sets; member identity is looked up from the reflected
                     // name via the contract, and each is mapped individually
@@ -861,31 +928,42 @@ namespace lux::render
                     // calls for Instance/Light/Material/... all resolve here,
                     // and the binding plan then collapses them into a single
                     // domain-set bind.
-                    if (slot.source == ESlotSource::DomainMerged) {
+                    if (slot.source == ESlotSource::DomainMerged)
+                    {
                         const ReflectedSet* rs = nullptr;
                         for (const auto& cand : reflected.reflected_sets)
-                            if (cand.set == slot.slot) { rs = &cand; break; }
-                        if (!rs) continue;
-                        for (const auto& b : rs->bindings) {
+                            if (cand.set == slot.slot)
+                            {
+                                rs = &cand;
+                                break;
+                            }
+                        if (!rs)
+                            continue;
+                        for (const auto& b : rs->bindings)
+                        {
                             const auto* e = engineOwnedResource(b.name);
                             if (!e || e->canonical_set >= kDescriptorSetCount)
                                 continue;
                             const auto logical = static_cast<EDescriptorSetSlot>(e->canonical_set);
                             bool seen = false;
                             for (const auto& [ls, li] : stored_template.resource_slot_map)
-                                if (ls == logical && li == slot.slot) { seen = true; break; }
+                                if (ls == logical && li == slot.slot)
+                                {
+                                    seen = true;
+                                    break;
+                                }
                             if (!seen)
                                 stored_template.resource_slot_map.push_back({logical, slot.slot});
                         }
                         continue;
                     }
-                    if (slot.source != ESlotSource::EngineShared &&
-                        slot.source != ESlotSource::ReflectionHole)
+                    if (slot.source != ESlotSource::EngineShared && slot.source != ESlotSource::ReflectionHole)
                         continue;
                     if (slot.logical_set >= kDescriptorSetCount)
                         continue;
                     stored_template.resource_slot_map.push_back(
-                        {static_cast<EDescriptorSetSlot>(slot.logical_set), slot.slot});
+                        {static_cast<EDescriptorSetSlot>(slot.logical_set), slot.slot}
+                    );
                 }
             }
 
@@ -941,20 +1019,28 @@ namespace lux::render
         return *render_pass;
     }
 
-    VkPipeline PipelineManager::getOrCreatePipeline(GraphicsPipelineHandle template_handle, const RenderPassKey& render_pass_key, uint32_t subpass_index)
+    VkPipeline PipelineManager::getOrCreatePipeline(
+        GraphicsPipelineHandle template_handle,
+        const RenderPassKey& render_pass_key,
+        uint32_t subpass_index
+    )
     {
         return getOrCreatePipeline(template_handle, render_pass_key, subpass_index, 0);
     }
 
-    VkPipeline PipelineManager::getOrCreatePipeline(GraphicsPipelineHandle template_handle, const RenderPassKey& render_pass_key, uint32_t subpass_index, ShaderFeatureMask features)
+    VkPipeline PipelineManager::getOrCreatePipeline(
+        GraphicsPipelineHandle template_handle,
+        const RenderPassKey& render_pass_key,
+        uint32_t subpass_index,
+        ShaderFeatureMask features
+    )
     {
         assert(template_handle.index < pipeline_templates_.size());
         const GraphicsPipelineTemplate& tmpl = pipeline_templates_[template_handle.index];
 
         auto& variant_masks = template_variant_masks_[template_handle.index];
 
-        const auto ensureTrackedMask = [&](ShaderFeatureMask mask)
-        {
+        const auto ensureTrackedMask = [&](ShaderFeatureMask mask) {
             if (std::find(variant_masks.begin(), variant_masks.end(), mask) == variant_masks.end())
                 variant_masks.push_back(mask);
         };
@@ -970,8 +1056,12 @@ namespace lux::render
                 if (error_sink_ != nullptr)
                     error_sink_->emit(
                         renderError<err::pipeline::VariantBudgetExhausted>(
-                            template_handle.index, kVariantBudgetPerTemplate),
-                        RenderErrorEvent::kNoScene, 0);
+                            template_handle.index,
+                            kVariantBudgetPerTemplate
+                        ),
+                        RenderErrorEvent::kNoScene,
+                        0
+                    );
                 features = 0;
             }
         }
@@ -988,14 +1078,14 @@ namespace lux::render
         PipelineKey key{};
         key.template_handle = template_handle;
         key.render_pass_key = render_pass_key;
-        key.subpass_index   = use_dynamic_rendering_ ? 0 : subpass_index;
-        key.features        = features;
+        key.subpass_index = use_dynamic_rendering_ ? 0 : subpass_index;
+        key.features = features;
         key.specialization_hash = static_cast<uint32_t>(specialization_hash_seed);
         // The layout version is part of the key — once the graph compiler
         // rewrites a template's layout, a PSO built against the old layout
         // must no longer be hit (finalizeTemplateLayout increments the
         // epoch).
-        key.layout_epoch    = templateLayoutEpoch(template_handle);
+        key.layout_epoch = templateLayoutEpoch(template_handle);
 
         auto it = pipeline_cache_.find(key);
         if (it != pipeline_cache_.end())
@@ -1012,19 +1102,15 @@ namespace lux::render
         }
 
         const auto create_started = std::chrono::steady_clock::now();
-        VkPipeline pipeline = create_pipeline_internal(
-            tmpl,
-            render_pass,
-            key.subpass_index,
-            render_pass_key,
-            features).value_or(VK_NULL_HANDLE);
+        VkPipeline pipeline = create_pipeline_internal(tmpl, render_pass, key.subpass_index, render_pass_key, features)
+                                  .value_or(VK_NULL_HANDLE);
         const auto create_nanoseconds = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - create_started).count());
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - create_started)
+                .count()
+        );
         telemetry_.graphics_create_nanoseconds += create_nanoseconds;
-        telemetry_.graphics_create_max_nanoseconds = std::max(
-            telemetry_.graphics_create_max_nanoseconds,
-            create_nanoseconds);
+        telemetry_.graphics_create_max_nanoseconds =
+            std::max(telemetry_.graphics_create_max_nanoseconds, create_nanoseconds);
 
         if (pipeline == VK_NULL_HANDLE)
         {
@@ -1040,16 +1126,18 @@ namespace lux::render
             if (error_sink_ != nullptr)
                 error_sink_->emit(
                     renderError<err::pipeline::GraphicsCreationFailed>(template_handle.index, features),
-                    RenderErrorEvent::kNoScene, 0);
+                    RenderErrorEvent::kNoScene,
+                    0
+                );
             return VK_NULL_HANDLE;
         }
 
         PipelineRecord record{};
-        record.pipeline        = pipeline;
-        record.render_pass     = render_pass;
+        record.pipeline = pipeline;
+        record.render_pass = render_pass;
         record.template_handle = template_handle;
         record.render_pass_key = render_pass_key;
-        record.subpass_index   = key.subpass_index;
+        record.subpass_index = key.subpass_index;
 
         pipeline_cache_.emplace(key, record);
 
@@ -1072,14 +1160,14 @@ namespace lux::render
         for (uint32_t ci = 0; ci < key.color_count; ++ci)
         {
             VkAttachmentDescription desc{};
-            desc.format         = key.color_formats[ci];
-            desc.samples        = samples;
-            desc.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;   // Temporarily all LOAD, can be optimized later based on lifecycle
-            desc.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-            desc.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            desc.format = key.color_formats[ci];
+            desc.samples = samples;
+            desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // Temporarily all LOAD, can be optimized later based on lifecycle
+            desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            desc.initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            desc.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            desc.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            desc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
             attachments.push_back(desc);
         }
@@ -1093,14 +1181,14 @@ namespace lux::render
             depth_attachment_index = static_cast<uint32_t>(attachments.size());
 
             VkAttachmentDescription desc{};
-            desc.format         = key.depth_stencil_format;
-            desc.samples        = samples;
-            desc.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;   // Similarly, can be changed to CLEAR later based on requirements
-            desc.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-            desc.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_LOAD;
+            desc.format = key.depth_stencil_format;
+            desc.samples = samples;
+            desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // Similarly, can be changed to CLEAR later based on requirements
+            desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
             desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-            desc.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            desc.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            desc.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            desc.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
             attachments.push_back(desc);
         }
@@ -1113,7 +1201,7 @@ namespace lux::render
         {
             VkAttachmentReference ref{};
             ref.attachment = i;
-            ref.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             color_refs.push_back(ref);
         }
 
@@ -1121,27 +1209,29 @@ namespace lux::render
         if (has_depth)
         {
             depth_ref.attachment = depth_attachment_index;
-            depth_ref.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         }
 
         VkSubpassDescription subpass_template{};
-        subpass_template.flags                   = 0;
-        subpass_template.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass_template.inputAttachmentCount    = 0;
-        subpass_template.pInputAttachments       = nullptr;
-        subpass_template.colorAttachmentCount    = static_cast<uint32_t>(color_refs.size());
-        subpass_template.pColorAttachments       = color_refs.empty() ? nullptr : color_refs.data();
-        subpass_template.pResolveAttachments     = nullptr;
+        subpass_template.flags = 0;
+        subpass_template.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass_template.inputAttachmentCount = 0;
+        subpass_template.pInputAttachments = nullptr;
+        subpass_template.colorAttachmentCount = static_cast<uint32_t>(color_refs.size());
+        subpass_template.pColorAttachments = color_refs.empty() ? nullptr : color_refs.data();
+        subpass_template.pResolveAttachments = nullptr;
         subpass_template.pDepthStencilAttachment = has_depth ? &depth_ref : nullptr;
         subpass_template.preserveAttachmentCount = 0;
-        subpass_template.pPreserveAttachments    = nullptr;
+        subpass_template.pPreserveAttachments = nullptr;
 
         std::vector<VkSubpassDescription> subpasses(key.subpass_count, subpass_template);
 
         // [FIX] Add simple dependencies between subpasses to match RGVulkanRecorder
         std::vector<VkSubpassDependency> dependencies;
-        if (subpasses.size() > 1) {
-            for(uint32_t k=0; k < static_cast<uint32_t>(subpasses.size()) - 1; ++k) {
+        if (subpasses.size() > 1)
+        {
+            for (uint32_t k = 0; k < static_cast<uint32_t>(subpasses.size()) - 1; ++k)
+            {
                 VkSubpassDependency dep{};
                 dep.srcSubpass = k;
                 dep.dstSubpass = k + 1;
@@ -1156,13 +1246,13 @@ namespace lux::render
         }
 
         VkRenderPassCreateInfo info{};
-        info.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         info.attachmentCount = static_cast<uint32_t>(attachments.size());
-        info.pAttachments    = attachments.empty() ? nullptr : attachments.data();
-        info.subpassCount    = static_cast<uint32_t>(subpasses.size());
-        info.pSubpasses      = subpasses.data();
+        info.pAttachments = attachments.empty() ? nullptr : attachments.data();
+        info.subpassCount = static_cast<uint32_t>(subpasses.size());
+        info.pSubpasses = subpasses.data();
         info.dependencyCount = static_cast<uint32_t>(dependencies.size());
-        info.pDependencies   = dependencies.empty() ? nullptr : dependencies.data();
+        info.pDependencies = dependencies.empty() ? nullptr : dependencies.data();
 
         VkRenderPass render_pass = VK_NULL_HANDLE;
         VkResult res = vkCreateRenderPass(device_ctx_->logicalDevice(), &info, nullptr, &render_pass);
@@ -1172,30 +1262,36 @@ namespace lux::render
         return render_pass;
     }
 
-    Expected<VkPipeline> PipelineManager::create_pipeline_internal(const GraphicsPipelineTemplate& tmpl, VkRenderPass render_pass, uint32_t subpass_index, const RenderPassKey& render_pass_key, ShaderFeatureMask features)
+    Expected<VkPipeline> PipelineManager::create_pipeline_internal(
+        const GraphicsPipelineTemplate& tmpl,
+        VkRenderPass render_pass,
+        uint32_t subpass_index,
+        const RenderPassKey& render_pass_key,
+        ShaderFeatureMask features
+    )
     {
         assert(tmpl.pipeline_layout != VK_NULL_HANDLE);
-        assert(tmpl.vertex_shader   != VK_NULL_HANDLE);
+        assert(tmpl.vertex_shader != VK_NULL_HANDLE);
         assert(tmpl.fragment_shader != VK_NULL_HANDLE);
 
         // 1) Shader stages
         VkPipelineShaderStageCreateInfo vert_stage{};
-        vert_stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        vert_stage.stage  = VK_SHADER_STAGE_VERTEX_BIT;
+        vert_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vert_stage.stage = VK_SHADER_STAGE_VERTEX_BIT;
         vert_stage.module = tmpl.vertex_shader;
-        vert_stage.pName  = tmpl.vertex_entry.c_str();
+        vert_stage.pName = tmpl.vertex_entry.c_str();
 
         VkPipelineShaderStageCreateInfo frag_stage{};
-        frag_stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        frag_stage.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+        frag_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        frag_stage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
         frag_stage.module = tmpl.fragment_shader;
-        frag_stage.pName  = tmpl.fragment_entry.c_str();
+        frag_stage.pName = tmpl.fragment_entry.c_str();
 
         struct StageSpecializationData
         {
             std::vector<VkSpecializationMapEntry> entries;
-            std::vector<uint32_t>                 values;
-            VkSpecializationInfo                  info{};
+            std::vector<uint32_t> values;
+            VkSpecializationInfo info{};
 
             void finalize()
             {
@@ -1262,76 +1358,77 @@ namespace lux::render
             frag_stage.pSpecializationInfo = &frag_spec.info;
         }
 
-        VkPipelineShaderStageCreateInfo stages[2] = { vert_stage, frag_stage };
+        VkPipelineShaderStageCreateInfo stages[2] = {vert_stage, frag_stage};
 
         // 2) Vertex input
         VkPipelineVertexInputStateCreateInfo vertex_input{};
         vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertex_input.vertexBindingDescriptionCount   = static_cast<uint32_t>(tmpl.vertex_bindings.size());
-        vertex_input.pVertexBindingDescriptions      = tmpl.vertex_bindings.empty() ? nullptr : tmpl.vertex_bindings.data();
+        vertex_input.vertexBindingDescriptionCount = static_cast<uint32_t>(tmpl.vertex_bindings.size());
+        vertex_input.pVertexBindingDescriptions = tmpl.vertex_bindings.empty() ? nullptr : tmpl.vertex_bindings.data();
         vertex_input.vertexAttributeDescriptionCount = static_cast<uint32_t>(tmpl.vertex_attributes.size());
-        vertex_input.pVertexAttributeDescriptions    = tmpl.vertex_attributes.empty() ? nullptr : tmpl.vertex_attributes.data();
+        vertex_input.pVertexAttributeDescriptions =
+            tmpl.vertex_attributes.empty() ? nullptr : tmpl.vertex_attributes.data();
 
         // 3) Input assembly
         VkPipelineInputAssemblyStateCreateInfo input_assembly{};
-        input_assembly.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        input_assembly.topology               = tmpl.topology;
+        input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        input_assembly.topology = tmpl.topology;
         input_assembly.primitiveRestartEnable = VK_FALSE;
 
         // 4) Viewport and scissor (usually using dynamic state)
         VkViewport dummy_viewport{};
-        dummy_viewport.x        = 0.0f;
-        dummy_viewport.y        = 0.0f;
-        dummy_viewport.width    = 1.0f;
-        dummy_viewport.height   = 1.0f;
+        dummy_viewport.x = 0.0f;
+        dummy_viewport.y = 0.0f;
+        dummy_viewport.width = 1.0f;
+        dummy_viewport.height = 1.0f;
         dummy_viewport.minDepth = 0.0f;
         dummy_viewport.maxDepth = 1.0f;
 
         VkRect2D dummy_scissor{};
-        dummy_scissor.offset = { 0, 0 };
-        dummy_scissor.extent = { 1, 1 };
+        dummy_scissor.offset = {0, 0};
+        dummy_scissor.extent = {1, 1};
 
         VkPipelineViewportStateCreateInfo viewport_state{};
-        viewport_state.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
         viewport_state.viewportCount = 1;
-        viewport_state.pViewports    = &dummy_viewport;
-        viewport_state.scissorCount  = 1;
-        viewport_state.pScissors     = &dummy_scissor;
+        viewport_state.pViewports = &dummy_viewport;
+        viewport_state.scissorCount = 1;
+        viewport_state.pScissors = &dummy_scissor;
 
         // 5) Rasterization
         VkPipelineRasterizationStateCreateInfo raster{};
-        raster.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        raster.depthClampEnable        = VK_FALSE;
+        raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        raster.depthClampEnable = VK_FALSE;
         raster.rasterizerDiscardEnable = VK_FALSE;
-        raster.polygonMode             = tmpl.polygon_mode;
-        raster.cullMode                = tmpl.cull_mode;
-        raster.frontFace               = tmpl.front_face;
-        raster.depthBiasEnable         = tmpl.depth_bias_enable;
+        raster.polygonMode = tmpl.polygon_mode;
+        raster.cullMode = tmpl.cull_mode;
+        raster.frontFace = tmpl.front_face;
+        raster.depthBiasEnable = tmpl.depth_bias_enable;
         raster.depthBiasConstantFactor = tmpl.depth_bias_constant;
-        raster.depthBiasClamp          = 0.0f;
-        raster.depthBiasSlopeFactor    = tmpl.depth_bias_slope;
-        raster.lineWidth               = tmpl.line_width;
+        raster.depthBiasClamp = 0.0f;
+        raster.depthBiasSlopeFactor = tmpl.depth_bias_slope;
+        raster.lineWidth = tmpl.line_width;
 
         // 6) Multisample
         VkPipelineMultisampleStateCreateInfo multisample{};
-        multisample.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        multisample.rasterizationSamples  = to_vk_sample_count(render_pass_key.samples);
-        multisample.sampleShadingEnable   = VK_FALSE;
-        multisample.minSampleShading      = 1.0f;
-        multisample.pSampleMask           = nullptr;
+        multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisample.rasterizationSamples = to_vk_sample_count(render_pass_key.samples);
+        multisample.sampleShadingEnable = VK_FALSE;
+        multisample.minSampleShading = 1.0f;
+        multisample.pSampleMask = nullptr;
         multisample.alphaToCoverageEnable = VK_FALSE;
-        multisample.alphaToOneEnable      = VK_FALSE;
+        multisample.alphaToOneEnable = VK_FALSE;
 
         // 7) Depth/Stencil
         VkPipelineDepthStencilStateCreateInfo depth_stencil{};
-        depth_stencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depth_stencil.depthTestEnable       = tmpl.depth_test_enable;
-        depth_stencil.depthWriteEnable      = tmpl.depth_write_enable;
-        depth_stencil.depthCompareOp        = tmpl.depth_compare_op;
+        depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depth_stencil.depthTestEnable = tmpl.depth_test_enable;
+        depth_stencil.depthWriteEnable = tmpl.depth_write_enable;
+        depth_stencil.depthCompareOp = tmpl.depth_compare_op;
         depth_stencil.depthBoundsTestEnable = VK_FALSE;
-        depth_stencil.stencilTestEnable     = VK_FALSE;
-        depth_stencil.minDepthBounds        = 0.0f;
-        depth_stencil.maxDepthBounds        = 1.0f;
+        depth_stencil.stencilTestEnable = VK_FALSE;
+        depth_stencil.minDepthBounds = 0.0f;
+        depth_stencil.maxDepthBounds = 1.0f;
 
         // 8) Color blending
         std::vector<VkPipelineColorBlendAttachmentState> blend_attachments;
@@ -1339,34 +1436,34 @@ namespace lux::render
 
         for (auto& a : blend_attachments)
         {
-            a.blendEnable         = tmpl.blend_enable;
-            a.colorWriteMask      = tmpl.color_write_mask;
+            a.blendEnable = tmpl.blend_enable;
+            a.colorWriteMask = tmpl.color_write_mask;
             if (tmpl.blend_enable)
             {
                 a.srcColorBlendFactor = tmpl.src_color_blend_factor;
                 a.dstColorBlendFactor = tmpl.dst_color_blend_factor;
-                a.colorBlendOp        = tmpl.color_blend_op;
+                a.colorBlendOp = tmpl.color_blend_op;
                 a.srcAlphaBlendFactor = tmpl.src_alpha_blend_factor;
                 a.dstAlphaBlendFactor = tmpl.dst_alpha_blend_factor;
-                a.alphaBlendOp        = tmpl.alpha_blend_op;
+                a.alphaBlendOp = tmpl.alpha_blend_op;
             }
             else
             {
                 a.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
                 a.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-                a.colorBlendOp        = VK_BLEND_OP_ADD;
+                a.colorBlendOp = VK_BLEND_OP_ADD;
                 a.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
                 a.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-                a.alphaBlendOp        = VK_BLEND_OP_ADD;
+                a.alphaBlendOp = VK_BLEND_OP_ADD;
             }
         }
 
         VkPipelineColorBlendStateCreateInfo color_blend{};
-        color_blend.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        color_blend.logicOpEnable   = VK_FALSE;
-        color_blend.logicOp         = VK_LOGIC_OP_COPY;
+        color_blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        color_blend.logicOpEnable = VK_FALSE;
+        color_blend.logicOp = VK_LOGIC_OP_COPY;
         color_blend.attachmentCount = static_cast<uint32_t>(blend_attachments.size());
-        color_blend.pAttachments    = blend_attachments.empty() ? nullptr : blend_attachments.data();
+        color_blend.pAttachments = blend_attachments.empty() ? nullptr : blend_attachments.data();
         color_blend.blendConstants[0] = 0.0f;
         color_blend.blendConstants[1] = 0.0f;
         color_blend.blendConstants[2] = 0.0f;
@@ -1382,26 +1479,26 @@ namespace lux::render
             dynamic_states.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
 
         VkPipelineDynamicStateCreateInfo dynamic_state{};
-        dynamic_state.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
         dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
-        dynamic_state.pDynamicStates    = dynamic_states.empty() ? nullptr : dynamic_states.data();
+        dynamic_state.pDynamicStates = dynamic_states.empty() ? nullptr : dynamic_states.data();
 
         // 10) Total pipeline creation info
         VkGraphicsPipelineCreateInfo info{};
-        info.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        info.stageCount          = 2;
-        info.pStages             = stages;
-        info.pVertexInputState   = &vertex_input;
+        info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        info.stageCount = 2;
+        info.pStages = stages;
+        info.pVertexInputState = &vertex_input;
         info.pInputAssemblyState = &input_assembly;
-        info.pViewportState      = &viewport_state;
+        info.pViewportState = &viewport_state;
         info.pRasterizationState = &raster;
-        info.pMultisampleState   = &multisample;
-        info.pDepthStencilState  = &depth_stencil;
-        info.pColorBlendState    = &color_blend;
-        info.pDynamicState       = dynamic_states.empty() ? nullptr : &dynamic_state;
-        info.layout              = tmpl.pipeline_layout;
-        info.basePipelineHandle  = VK_NULL_HANDLE;
-        info.basePipelineIndex   = -1;
+        info.pMultisampleState = &multisample;
+        info.pDepthStencilState = &depth_stencil;
+        info.pColorBlendState = &color_blend;
+        info.pDynamicState = dynamic_states.empty() ? nullptr : &dynamic_state;
+        info.layout = tmpl.pipeline_layout;
+        info.basePipelineHandle = VK_NULL_HANDLE;
+        info.basePipelineIndex = -1;
 
         // Dynamic rendering (Vulkan 1.3): use VkPipelineRenderingCreateInfo instead of VkRenderPass
         VkPipelineRenderingCreateInfo rendering_info{};
@@ -1411,12 +1508,12 @@ namespace lux::render
         VkRenderingInputAttachmentIndexInfo lr_input_info{};
         if (use_dynamic_rendering_)
         {
-            rendering_info.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-            rendering_info.pNext                   = nullptr;
-            rendering_info.viewMask                = 0;
-            rendering_info.colorAttachmentCount    = render_pass_key.color_count;
+            rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+            rendering_info.pNext = nullptr;
+            rendering_info.viewMask = 0;
+            rendering_info.colorAttachmentCount = render_pass_key.color_count;
             rendering_info.pColorAttachmentFormats = render_pass_key.color_formats.data();
-            rendering_info.depthAttachmentFormat   = render_pass_key.depth_stencil_format;
+            rendering_info.depthAttachmentFormat = render_pass_key.depth_stencil_format;
             rendering_info.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
             // The remap arrays are sized for the local-read merged scope. When
@@ -1424,49 +1521,38 @@ namespace lux::render
             // lighting feature fell back to SAMPLED and the g-buffer group kept
             // its own 3 colors), the counts differ — skip the chain entirely;
             // the spec default is the identity mapping, which is correct there.
-            if (!tmpl.lr_color_locations.empty()
-                && tmpl.lr_color_locations.size() == render_pass_key.color_count)
+            if (!tmpl.lr_color_locations.empty() && tmpl.lr_color_locations.size() == render_pass_key.color_count)
             {
                 lr_loc_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_LOCATION_INFO;
-                lr_loc_info.colorAttachmentCount =
-                    static_cast<uint32_t>(tmpl.lr_color_locations.size());
+                lr_loc_info.colorAttachmentCount = static_cast<uint32_t>(tmpl.lr_color_locations.size());
                 lr_loc_info.pColorAttachmentLocations = tmpl.lr_color_locations.data();
                 lr_loc_info.pNext = rendering_info.pNext;
                 rendering_info.pNext = &lr_loc_info;
             }
-            if (!tmpl.lr_input_indices.empty()
-                && tmpl.lr_input_indices.size() == render_pass_key.color_count)
+            if (!tmpl.lr_input_indices.empty() && tmpl.lr_input_indices.size() == render_pass_key.color_count)
             {
                 lr_input_info.sType = VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO;
-                lr_input_info.colorAttachmentCount =
-                    static_cast<uint32_t>(tmpl.lr_input_indices.size());
+                lr_input_info.colorAttachmentCount = static_cast<uint32_t>(tmpl.lr_input_indices.size());
                 lr_input_info.pColorAttachmentInputIndices = tmpl.lr_input_indices.data();
                 lr_input_info.pDepthInputAttachmentIndex =
-                    (tmpl.lr_depth_input_index != VK_ATTACHMENT_UNUSED)
-                        ? &tmpl.lr_depth_input_index : nullptr;
+                    (tmpl.lr_depth_input_index != VK_ATTACHMENT_UNUSED) ? &tmpl.lr_depth_input_index : nullptr;
                 lr_input_info.pNext = rendering_info.pNext;
                 rendering_info.pNext = &lr_input_info;
             }
 
-            info.pNext      = &rendering_info;
+            info.pNext = &rendering_info;
             info.renderPass = VK_NULL_HANDLE;
-            info.subpass    = 0;
+            info.subpass = 0;
         }
         else
         {
             info.renderPass = render_pass;
-            info.subpass    = subpass_index;
+            info.subpass = subpass_index;
         }
 
         VkPipeline pipeline = VK_NULL_HANDLE;
-        VkResult res = vkCreateGraphicsPipelines(
-            device_ctx_->logicalDevice(),
-            VK_NULL_HANDLE,
-            1,
-            &info,
-            nullptr,
-            &pipeline
-        );
+        VkResult res =
+            vkCreateGraphicsPipelines(device_ctx_->logicalDevice(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
         if (res != VK_SUCCESS)
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(res));
 

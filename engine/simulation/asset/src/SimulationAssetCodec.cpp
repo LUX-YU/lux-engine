@@ -27,10 +27,8 @@ namespace lux::simulation
         constexpr std::uint32_t kDirectoryEntryBytes = 24U;
         constexpr std::uint64_t kHeaderBytes = 32U;
         constexpr std::uint64_t kDirectoryOffset = kHeaderBytes;
-        constexpr std::uint64_t kSectionDataOffset =
-            kDirectoryOffset + kSectionCount * kDirectoryEntryBytes;
-        constexpr std::uint32_t kNoString =
-            std::numeric_limits<std::uint32_t>::max();
+        constexpr std::uint64_t kSectionDataOffset = kDirectoryOffset + kSectionCount * kDirectoryEntryBytes;
+        constexpr std::uint32_t kNoString = std::numeric_limits<std::uint32_t>::max();
 
         enum class ESection : std::uint32_t
         {
@@ -72,7 +70,7 @@ namespace lux::simulation
 
         class Bytes final
         {
-          public:
+        public:
             void u8(std::uint8_t value)
             {
                 values.push_back(static_cast<std::byte>(value));
@@ -97,19 +95,14 @@ namespace lux::simulation
 
             void raw(std::string_view source)
             {
-                const auto* first =
-                    reinterpret_cast<const std::byte*>(source.data());
+                const auto* first = reinterpret_cast<const std::byte*>(source.data());
                 values.insert(values.end(), first, first + source.size());
             }
 
             std::vector<std::byte> values;
         };
 
-        [[nodiscard]] bool readU8(
-            std::span<const std::byte> bytes,
-            std::size_t& offset,
-            std::uint8_t& value
-        ) noexcept
+        [[nodiscard]] bool readU8(std::span<const std::byte> bytes, std::size_t& offset, std::uint8_t& value) noexcept
         {
             if (offset >= bytes.size())
                 return false;
@@ -117,11 +110,7 @@ namespace lux::simulation
             return true;
         }
 
-        [[nodiscard]] bool readU32(
-            std::span<const std::byte> bytes,
-            std::size_t& offset,
-            std::uint32_t& value
-        ) noexcept
+        [[nodiscard]] bool readU32(std::span<const std::byte> bytes, std::size_t& offset, std::uint32_t& value) noexcept
         {
             value = 0U;
             for (std::uint32_t shift{}; shift < 32U; shift += 8U)
@@ -134,11 +123,7 @@ namespace lux::simulation
             return true;
         }
 
-        [[nodiscard]] bool readU64(
-            std::span<const std::byte> bytes,
-            std::size_t& offset,
-            std::uint64_t& value
-        ) noexcept
+        [[nodiscard]] bool readU64(std::span<const std::byte> bytes, std::size_t& offset, std::uint64_t& value) noexcept
         {
             value = 0U;
             for (std::uint32_t shift{}; shift < 64U; shift += 8U)
@@ -158,7 +143,7 @@ namespace lux::simulation
 
         class StringTable final
         {
-          public:
+        public:
             void add(std::string_view value)
             {
                 if (!value.empty())
@@ -168,22 +153,17 @@ namespace lux::simulation
             void finish()
             {
                 std::sort(strings_.begin(), strings_.end());
-                strings_.erase(
-                    std::unique(strings_.begin(), strings_.end()),
-                    strings_.end()
-                );
+                strings_.erase(std::unique(strings_.begin(), strings_.end()), strings_.end());
             }
 
             [[nodiscard]] std::uint32_t ordinal(std::string_view value) const
             {
                 if (value.empty())
                     return kNoString;
-                const auto found = std::lower_bound(
-                    strings_.begin(), strings_.end(), value);
+                const auto found = std::lower_bound(strings_.begin(), strings_.end(), value);
                 if (found == strings_.end() || *found != value)
                     throw std::logic_error("LXSD string was not collected");
-                return static_cast<std::uint32_t>(
-                    std::distance(strings_.begin(), found));
+                return static_cast<std::uint32_t>(std::distance(strings_.begin(), found));
             }
 
             [[nodiscard]] Bytes encode() const
@@ -198,7 +178,7 @@ namespace lux::simulation
                 return result;
             }
 
-          private:
+        private:
             std::vector<std::string> strings_;
         };
 
@@ -208,11 +188,8 @@ namespace lux::simulation
             SimulationSystemView system;
         };
 
-        void collectStrings(
-            const SimulationDescription& description,
-            StringTable& strings,
-            std::vector<TypeSource>& types
-        )
+        void
+        collectStrings(const SimulationDescription& description, StringTable& strings, std::vector<TypeSource>& types)
         {
             for (std::size_t index{}; index < description.dataCount(); ++index)
                 strings.add(description.dataAt(index).schema().name);
@@ -221,21 +198,17 @@ namespace lux::simulation
             {
                 const auto system = description.systemAt(index);
                 strings.add(system.instanceName());
-                const auto found = std::find_if(
-                    types.begin(), types.end(),
-                    [&](const auto& value) noexcept
-                    {
-                        return value.type == system.type();
-                    });
+                const auto found = std::find_if(types.begin(), types.end(), [&](const auto& value) noexcept {
+                    return value.type == system.type();
+                }
+                );
                 if (found == types.end())
                     types.push_back({system.type(), system});
             }
-            std::sort(
-                types.begin(), types.end(),
-                [](const auto& left, const auto& right) noexcept
-                {
-                    return SystemTypeIdLess{}(left.type, right.type);
-                });
+            std::sort(types.begin(), types.end(), [](const auto& left, const auto& right) noexcept {
+                return SystemTypeIdLess{}(left.type, right.type);
+            }
+            );
 
             for (const auto& source : types)
             {
@@ -259,27 +232,22 @@ namespace lux::simulation
                     strings.add(system.eventAt(event).payloadSchemaName());
                 }
             }
-            for (std::size_t mount{};
-                 mount < description.globalScriptMountCount(); ++mount)
+            for (std::size_t mount{}; mount < description.globalScriptMountCount(); ++mount)
             {
                 const auto value = description.globalScriptMountAt(mount);
-                for (std::size_t binding{};
-                     binding < value.bindingCount(); ++binding)
+                for (std::size_t binding{}; binding < value.bindingCount(); ++binding)
                 {
                     const auto* item = value.bindingAt(binding);
                     std::visit(
-                        [&](const auto& target)
-                        {
+                        [&](const auto& target) {
                             using Target = std::remove_cvref_t<decltype(target)>;
-                            if constexpr (
-                                std::is_same_v<Target, SystemHookBindingTarget>)
+                            if constexpr (std::is_same_v<Target, SystemHookBindingTarget>)
                             {
                                 strings.add(target.system_type.name);
                                 strings.add(target.system_instance);
                                 strings.add(target.hook);
                             }
-                            else if constexpr (
-                                std::is_same_v<Target, SystemEventBindingTarget>)
+                            else if constexpr (std::is_same_v<Target, SystemEventBindingTarget>)
                             {
                                 strings.add(target.system_type.name);
                                 strings.add(target.system_instance);
@@ -293,19 +261,14 @@ namespace lux::simulation
             strings.finish();
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            std::vector<std::byte>, EAssetCodecError>
-        encodeDescription(
-            const void* payload,
-            const lux::asset::AssetEncodeContext& context
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, EAssetCodecError>
+        encodeDescription(const void* payload, const lux::asset::AssetEncodeContext& context) noexcept
         {
             if (payload == nullptr)
                 return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
             try
             {
-                const auto& description =
-                    *static_cast<const SimulationDescription*>(payload);
+                const auto& description = *static_cast<const SimulationDescription*>(payload);
                 StringTable strings;
                 std::vector<TypeSource> types;
                 collectStrings(description, strings, types);
@@ -338,18 +301,17 @@ namespace lux::simulation
                 for (const auto& type_source : types)
                 {
                     const auto system = type_source.system;
-                    const auto capability_first = static_cast<std::uint32_t>(
-                        capabilities.values.size() / kRecordBytes[4]);
+                    const auto capability_first =
+                        static_cast<std::uint32_t>(capabilities.values.size() / kRecordBytes[4]);
                     for (std::size_t index{}; index < system.capabilityCount(); ++index)
                         capabilities.u32(strings.ordinal(system.capabilityAt(index)));
 
-                    const auto hook_first = static_cast<std::uint32_t>(
-                        hooks.values.size() / kRecordBytes[5]);
+                    const auto hook_first = static_cast<std::uint32_t>(hooks.values.size() / kRecordBytes[5]);
                     for (std::size_t index{}; index < system.hookPointCount(); ++index)
                     {
                         const auto hook = system.hookPointAt(index);
-                        const auto parameter_first = static_cast<std::uint32_t>(
-                            signature_types.values.size() / kRecordBytes[6]);
+                        const auto parameter_first =
+                            static_cast<std::uint32_t>(signature_types.values.size() / kRecordBytes[6]);
                         for (std::size_t item{}; item < hook.parameterCount(); ++item)
                         {
                             const auto type = hook.parameterAt(item);
@@ -357,8 +319,8 @@ namespace lux::simulation
                             signature_types.u32(strings.ordinal(type.canonical_name));
                             signature_types.u32(static_cast<std::uint32_t>(type.pass));
                         }
-                        const auto return_first = static_cast<std::uint32_t>(
-                            signature_types.values.size() / kRecordBytes[6]);
+                        const auto return_first =
+                            static_cast<std::uint32_t>(signature_types.values.size() / kRecordBytes[6]);
                         for (std::size_t item{}; item < hook.returnCount(); ++item)
                         {
                             const auto type = hook.returnAt(item);
@@ -374,13 +336,11 @@ namespace lux::simulation
                         hooks.u32(static_cast<std::uint32_t>(hook.returnCount()));
                     }
 
-                    const auto event_first = static_cast<std::uint32_t>(
-                        events.values.size() / kRecordBytes[7]);
+                    const auto event_first = static_cast<std::uint32_t>(events.values.size() / kRecordBytes[7]);
                     for (std::size_t index{}; index < system.eventCount(); ++index)
                     {
                         const auto event = system.eventAt(index);
-                        const auto dispatch = system.findHookPoint(
-                            event.dispatchHook().name());
+                        const auto dispatch = system.findHookPoint(event.dispatchHook().name());
                         std::uint32_t local_hook{};
                         for (; local_hook < system.hookPointCount(); ++local_hook)
                         {
@@ -399,33 +359,30 @@ namespace lux::simulation
                     system_types.u64(type_source.type.hash);
                     system_types.u32(strings.ordinal(type_source.type.name));
                     system_types.u32(system.version());
-                    system_types.u32(strings.ordinal(
-                        system.configurationSchemaName()));
+                    system_types.u32(strings.ordinal(system.configurationSchemaName()));
                     system_types.u32(system.configurationSchemaVersion());
                     system_types.u64(system.configurationSchemaHash());
                     system_types.u32(capability_first);
-                    system_types.u32(static_cast<std::uint32_t>(
-                        system.capabilityCount()));
+                    system_types.u32(static_cast<std::uint32_t>(system.capabilityCount()));
                     system_types.u32(hook_first);
-                    system_types.u32(static_cast<std::uint32_t>(
-                        system.hookPointCount()));
+                    system_types.u32(static_cast<std::uint32_t>(system.hookPointCount()));
                     system_types.u32(event_first);
-                    system_types.u32(static_cast<std::uint32_t>(
-                        system.eventCount()));
+                    system_types.u32(static_cast<std::uint32_t>(system.eventCount()));
                 }
 
                 for (std::size_t index{}; index < description.systemCount(); ++index)
                 {
                     const auto system = description.systemAt(index);
                     const auto type = std::lower_bound(
-                        types.begin(), types.end(), system.type(),
-                        [](const auto& value, const SystemTypeId& id) noexcept
-                        {
+                        types.begin(),
+                        types.end(),
+                        system.type(),
+                        [](const auto& value, const SystemTypeId& id) noexcept {
                             return SystemTypeIdLess{}(value.type, id);
-                        });
+                        }
+                    );
                     instances.u32(strings.ordinal(system.instanceName()));
-                    instances.u32(static_cast<std::uint32_t>(
-                        std::distance(types.begin(), type)));
+                    instances.u32(static_cast<std::uint32_t>(std::distance(types.begin(), type)));
                     instances.u64(binary_payload.values.size());
                     instances.u64(system.configurationPayload().size());
                     binary_payload.raw(system.configurationPayload());
@@ -434,82 +391,63 @@ namespace lux::simulation
                 for (std::size_t index{}; index < description.dependencyCount(); ++index)
                 {
                     const auto dependency = description.dependencyAt(index);
-                    const auto before = description.findSystem(
-                        dependency.before().instanceName());
-                    const auto after = description.findSystem(
-                        dependency.after().instanceName());
+                    const auto before = description.findSystem(dependency.before().instanceName());
+                    const auto after = description.findSystem(dependency.after().instanceName());
                     std::uint32_t before_ordinal{}, after_ordinal{};
-                    for (std::size_t system{};
-                         system < description.systemCount(); ++system)
+                    for (std::size_t system{}; system < description.systemCount(); ++system)
                     {
-                        if (description.systemAt(system).instanceName() ==
-                            before.instanceName())
+                        if (description.systemAt(system).instanceName() == before.instanceName())
                             before_ordinal = static_cast<std::uint32_t>(system);
-                        if (description.systemAt(system).instanceName() ==
-                            after.instanceName())
+                        if (description.systemAt(system).instanceName() == after.instanceName())
                             after_ordinal = static_cast<std::uint32_t>(system);
                     }
                     dependencies.u32(before_ordinal);
                     dependencies.u32(after_ordinal);
                 }
 
-                for (std::size_t mount{};
-                     mount < description.globalScriptMountCount(); ++mount)
+                for (std::size_t mount{}; mount < description.globalScriptMountCount(); ++mount)
                 {
                     const auto value = description.globalScriptMountAt(mount);
                     mounts.u64(value.id().value);
                     for (const auto byte : value.script().bytes())
                         mounts.u8(static_cast<std::uint8_t>(byte));
-                    mounts.u32(static_cast<std::uint32_t>(
-                        bindings.values.size() / kRecordBytes[10]));
+                    mounts.u32(static_cast<std::uint32_t>(bindings.values.size() / kRecordBytes[10]));
                     mounts.u32(static_cast<std::uint32_t>(value.bindingCount()));
-                    for (std::size_t binding{};
-                         binding < value.bindingCount(); ++binding)
+                    for (std::size_t binding{}; binding < value.bindingCount(); ++binding)
                     {
                         const auto& item = *value.bindingAt(binding);
                         bindings.u64(item.function);
                         std::visit(
-                            [&](const auto& target)
-                            {
+                            [&](const auto& target) {
                                 using Target = std::remove_cvref_t<decltype(target)>;
-                                if constexpr (
-                                    std::is_same_v<Target, SystemHookBindingTarget>)
+                                if constexpr (std::is_same_v<Target, SystemHookBindingTarget>)
                                 {
-                                    bindings.u32(static_cast<std::uint32_t>(
-                                        EBindingTargetWire::HOOK));
+                                    bindings.u32(static_cast<std::uint32_t>(EBindingTargetWire::HOOK));
                                     bindings.u64(target.system_type.hash);
-                                    bindings.u32(strings.ordinal(
-                                        target.system_type.name));
-                                    bindings.u32(strings.ordinal(
-                                        target.system_instance));
+                                    bindings.u32(strings.ordinal(target.system_type.name));
+                                    bindings.u32(strings.ordinal(target.system_instance));
                                     bindings.u32(strings.ordinal(target.hook));
                                     bindings.u32(0U);
                                     bindings.u32(0U);
                                 }
-                                else if constexpr (
-                                    std::is_same_v<Target, SystemEventBindingTarget>)
+                                else if constexpr (std::is_same_v<Target, SystemEventBindingTarget>)
                                 {
-                                    bindings.u32(static_cast<std::uint32_t>(
-                                        EBindingTargetWire::EVENT));
+                                    bindings.u32(static_cast<std::uint32_t>(EBindingTargetWire::EVENT));
                                     bindings.u64(target.system_type.hash);
-                                    bindings.u32(strings.ordinal(
-                                        target.system_type.name));
-                                    bindings.u32(strings.ordinal(
-                                        target.system_instance));
+                                    bindings.u32(strings.ordinal(target.system_type.name));
+                                    bindings.u32(strings.ordinal(target.system_instance));
                                     bindings.u32(strings.ordinal(target.event));
                                     bindings.u32(0U);
                                     bindings.u32(0U);
                                 }
                                 else
                                 {
-                                    bindings.u32(static_cast<std::uint32_t>(
-                                        EBindingTargetWire::LIFECYCLE));
+                                    bindings.u32(static_cast<std::uint32_t>(EBindingTargetWire::LIFECYCLE));
                                     bindings.u64(0U);
                                     bindings.u32(kNoString);
                                     bindings.u32(kNoString);
                                     bindings.u32(kNoString);
-                                    bindings.u32(static_cast<std::uint32_t>(
-                                        target.point));
+                                    bindings.u32(static_cast<std::uint32_t>(target.point));
                                     bindings.u32(0U);
                                 }
                             },
@@ -527,8 +465,7 @@ namespace lux::simulation
                 std::uint64_t total_size{kSectionDataOffset};
                 for (const auto& section : sections)
                 {
-                    if (section.values.size() >
-                        std::numeric_limits<std::uint64_t>::max() - total_size)
+                    if (section.values.size() > std::numeric_limits<std::uint64_t>::max() - total_size)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -547,8 +484,7 @@ namespace lux::simulation
                 }
                 for (const auto& section : sections)
                     output.raw(section.values);
-                if (output.values.size() != total_size ||
-                    output.values.size() > context.limits.max_encoded_bytes)
+                if (output.values.size() != total_size || output.values.size() > context.limits.max_encoded_bytes)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
@@ -586,23 +522,15 @@ namespace lux::simulation
             std::uint32_t event_count{};
         };
 
-        [[nodiscard]] bool rangeValid(
-            std::uint32_t first,
-            std::uint32_t count,
-            std::size_t total
-        ) noexcept
+        [[nodiscard]] bool rangeValid(std::uint32_t first, std::uint32_t count, std::size_t total) noexcept
         {
             return first <= total && count <= total - first;
         }
 
         [[nodiscard]] lux::cxx::expected<DecodedAsset, EAssetCodecError>
-        decodeDescription(
-            std::span<const std::byte> bytes,
-            const lux::asset::AssetDecodeContext& context
-        ) noexcept
+        decodeDescription(std::span<const std::byte> bytes, const lux::asset::AssetDecodeContext& context) noexcept
         {
-            if (bytes.size() > context.limits.max_input_bytes ||
-                bytes.size() < kSectionDataOffset)
+            if (bytes.size() > context.limits.max_input_bytes || bytes.size() < kSectionDataOffset)
             {
                 return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
             }
@@ -611,16 +539,15 @@ namespace lux::simulation
                 std::size_t cursor{};
                 std::uint32_t magic{}, version{}, section_count{}, entry_bytes{};
                 std::uint64_t directory_offset{}, total_size{};
-                if (!readU32(bytes, cursor, magic) ||
-                    !readU32(bytes, cursor, version) ||
-                    !readU32(bytes, cursor, section_count) ||
-                    !readU32(bytes, cursor, entry_bytes) ||
-                    !readU64(bytes, cursor, directory_offset) ||
-                    !readU64(bytes, cursor, total_size) ||
-                    magic != SimulationAssetPrimaryMagic ||
+                const bool has_valid_header =
+                    readU32(bytes, cursor, magic) && readU32(bytes, cursor, version) &&
+                    readU32(bytes, cursor, section_count) && readU32(bytes, cursor, entry_bytes) &&
+                    readU64(bytes, cursor, directory_offset) && readU64(bytes, cursor, total_size);
+                const bool is_invalid_header = !has_valid_header || magic != SimulationAssetPrimaryMagic ||
                     version != kWireVersion || section_count != kSectionCount ||
-                    entry_bytes != kDirectoryEntryBytes ||
-                    directory_offset != kDirectoryOffset || total_size != bytes.size())
+                    entry_bytes != kDirectoryEntryBytes || directory_offset != kDirectoryOffset ||
+                    total_size != bytes.size();
+                if (is_invalid_header)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
@@ -631,21 +558,19 @@ namespace lux::simulation
                 {
                     std::uint32_t kind{}, record_bytes{};
                     std::uint64_t offset{}, size{};
-                    if (!readU32(bytes, cursor, kind) ||
-                        !readU32(bytes, cursor, record_bytes) ||
-                        !readU64(bytes, cursor, offset) ||
-                        !readU64(bytes, cursor, size) ||
-                        kind != index + 1U || record_bytes != kRecordBytes[index] ||
-                        offset != expected_offset || size > bytes.size() - offset ||
-                        (record_bytes != 0U && size % record_bytes != 0U))
+                    const bool has_valid_section =
+                        readU32(bytes, cursor, kind) && readU32(bytes, cursor, record_bytes) &&
+                        readU64(bytes, cursor, offset) && readU64(bytes, cursor, size);
+                    const bool is_invalid_section = !has_valid_section || kind != index + 1U ||
+                        record_bytes != kRecordBytes[index] || offset != expected_offset ||
+                        size > bytes.size() - offset || (record_bytes != 0U && size % record_bytes != 0U);
+                    if (is_invalid_section)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
                     sections[index] = {
                         record_bytes,
-                        bytes.subspan(
-                            static_cast<std::size_t>(offset),
-                            static_cast<std::size_t>(size))};
+                        bytes.subspan(static_cast<std::size_t>(offset), static_cast<std::size_t>(size))};
                     expected_offset += size;
                 }
                 if (expected_offset != total_size)
@@ -655,8 +580,7 @@ namespace lux::simulation
                 for (const auto& section : sections)
                 {
                     if (section.bytes.size() >
-                        context.limits.max_decoded_bytes -
-                        std::min(estimated, context.limits.max_decoded_bytes))
+                        context.limits.max_decoded_bytes - std::min(estimated, context.limits.max_decoded_bytes))
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -668,8 +592,7 @@ namespace lux::simulation
                 std::vector<std::string_view> strings;
                 cursor = 0U;
                 std::uint32_t string_count{};
-                if (!readU32(sections[0].bytes, cursor, string_count) ||
-                    string_count > sections[0].bytes.size())
+                if (!readU32(sections[0].bytes, cursor, string_count) || string_count > sections[0].bytes.size())
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
@@ -677,14 +600,15 @@ namespace lux::simulation
                 for (std::uint32_t index{}; index < string_count; ++index)
                 {
                     std::uint32_t size{};
-                    if (!readU32(sections[0].bytes, cursor, size) ||
-                        size == 0U || size > sections[0].bytes.size() - cursor)
+                    const bool has_valid_string = readU32(sections[0].bytes, cursor, size) && size != 0U &&
+                        size <= sections[0].bytes.size() - cursor;
+                    if (!has_valid_string)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
                     const std::string_view value{
-                        reinterpret_cast<const char*>(
-                            sections[0].bytes.data() + cursor), size};
+                        reinterpret_cast<const char*>(sections[0].bytes.data() + cursor),
+                        size};
                     if (!strings.empty() && strings.back() >= value)
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     strings.push_back(value);
@@ -692,8 +616,7 @@ namespace lux::simulation
                 }
                 if (cursor != sections[0].bytes.size())
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                const auto stringAt = [&](std::uint32_t ordinal) -> std::string_view
-                {
+                const auto stringAt = [&](std::uint32_t ordinal) -> std::string_view {
                     if (ordinal == kNoString)
                         return {};
                     if (ordinal >= strings.size())
@@ -701,12 +624,10 @@ namespace lux::simulation
                     return strings[ordinal];
                 };
 
-                const auto countOf = [&](std::size_t section) noexcept
-                {
+                const auto countOf = [&](std::size_t section) noexcept {
                     return sections[section].record_bytes == 0U
-                        ? std::size_t{}
-                        : sections[section].bytes.size() /
-                            sections[section].record_bytes;
+                               ? std::size_t{}
+                               : sections[section].bytes.size() / sections[section].record_bytes;
                 };
                 const auto capability_count = countOf(4);
                 const auto hook_count = countOf(5);
@@ -721,38 +642,41 @@ namespace lux::simulation
                 for (std::size_t index{}; index < countOf(2); ++index)
                 {
                     TypeWire type;
-                    if (!readU64(sections[2].bytes, cursor, type.hash) ||
-                        !readU32(sections[2].bytes, cursor, type.name) ||
-                        !readU32(sections[2].bytes, cursor, type.version) ||
-                        !readU32(sections[2].bytes, cursor, type.configuration_name) ||
-                        !readU32(sections[2].bytes, cursor, type.configuration_version) ||
-                        !readU64(sections[2].bytes, cursor, type.configuration_hash) ||
-                        !readU32(sections[2].bytes, cursor, type.capability_first) ||
-                        !readU32(sections[2].bytes, cursor, type.capability_count) ||
-                        !readU32(sections[2].bytes, cursor, type.hook_first) ||
-                        !readU32(sections[2].bytes, cursor, type.hook_count) ||
-                        !readU32(sections[2].bytes, cursor, type.event_first) ||
-                        !readU32(sections[2].bytes, cursor, type.event_count) ||
-                        !rangeValid(type.capability_first, type.capability_count,
-                            capability_count) ||
+                    const bool has_valid_type =
+                        readU64(sections[2].bytes, cursor, type.hash) &&
+                        readU32(sections[2].bytes, cursor, type.name) &&
+                        readU32(sections[2].bytes, cursor, type.version) &&
+                        readU32(sections[2].bytes, cursor, type.configuration_name) &&
+                        readU32(sections[2].bytes, cursor, type.configuration_version) &&
+                        readU64(sections[2].bytes, cursor, type.configuration_hash) &&
+                        readU32(sections[2].bytes, cursor, type.capability_first) &&
+                        readU32(sections[2].bytes, cursor, type.capability_count) &&
+                        readU32(sections[2].bytes, cursor, type.hook_first) &&
+                        readU32(sections[2].bytes, cursor, type.hook_count) &&
+                        readU32(sections[2].bytes, cursor, type.event_first) &&
+                        readU32(sections[2].bytes, cursor, type.event_count);
+                    const bool is_invalid_type = !has_valid_type ||
+                        !rangeValid(type.capability_first, type.capability_count, capability_count) ||
                         !rangeValid(type.hook_first, type.hook_count, hook_count) ||
-                        !rangeValid(type.event_first, type.event_count, event_count) ||
-                        type.version == 0U)
+                        !rangeValid(type.event_first, type.event_count, event_count) || type.version == 0U;
+                    if (is_invalid_type)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
                     const auto name = stringAt(type.name);
                     const auto configuration = stringAt(type.configuration_name);
-                    if (name.empty() || systemTypeId(name).hash != type.hash ||
-                        configuration.empty() !=
-                            (type.configuration_version == 0U) ||
-                        (configuration.empty() ? 0U :
-                            lux::cxx::Fnv1a64::hash(configuration)) !=
-                            type.configuration_hash ||
-                        (!types.empty() && SystemTypeIdLess{}(
+                    const bool is_invalid_identity = name.empty() || systemTypeId(name).hash != type.hash;
+                    const bool is_invalid_configuration =
+                        configuration.empty() != (type.configuration_version == 0U) ||
+                        (configuration.empty() ? 0U : lux::cxx::Fnv1a64::hash(configuration)) !=
+                            type.configuration_hash;
+                    const bool is_invalid_order = !types.empty() &&
+                        SystemTypeIdLess{}(
                             SystemTypeId{type.hash, std::string(name)},
-                            SystemTypeId{types.back().hash,
-                                std::string(stringAt(types.back().name))})))
+                            SystemTypeId{types.back().hash, std::string(stringAt(types.back().name))});
+                    const bool is_invalid_description = is_invalid_identity || is_invalid_configuration ||
+                        is_invalid_order;
+                    if (is_invalid_description)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -772,13 +696,15 @@ namespace lux::simulation
                 for (std::size_t index{}; index < instance_count; ++index)
                 {
                     InstanceWire instance;
-                    if (!readU32(sections[3].bytes, cursor, instance.name) ||
-                        !readU32(sections[3].bytes, cursor, instance.type) ||
-                        !readU64(sections[3].bytes, cursor, instance.payload_offset) ||
-                        !readU64(sections[3].bytes, cursor, instance.payload_size) ||
-                        instance.type >= types.size() || stringAt(instance.name).empty() ||
-                        (!instances.empty() &&
-                            stringAt(instances.back().name) >= stringAt(instance.name)))
+                    const bool has_valid_instance =
+                        readU32(sections[3].bytes, cursor, instance.name) &&
+                        readU32(sections[3].bytes, cursor, instance.type) &&
+                        readU64(sections[3].bytes, cursor, instance.payload_offset) &&
+                        readU64(sections[3].bytes, cursor, instance.payload_size);
+                    const bool is_invalid_instance = !has_valid_instance || instance.type >= types.size() ||
+                        stringAt(instance.name).empty() ||
+                        (!instances.empty() && stringAt(instances.back().name) >= stringAt(instance.name));
+                    if (is_invalid_instance)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -792,24 +718,29 @@ namespace lux::simulation
                 {
                     std::uint64_t schema_hash{}, payload_offset{}, payload_size{};
                     std::uint32_t schema_name{}, schema_version{};
-                    if (!readU64(sections[1].bytes, cursor, schema_hash) ||
-                        !readU32(sections[1].bytes, cursor, schema_name) ||
-                        !readU32(sections[1].bytes, cursor, schema_version) ||
-                        !readU64(sections[1].bytes, cursor, payload_offset) ||
-                        !readU64(sections[1].bytes, cursor, payload_size) ||
+                    const bool has_valid_schema =
+                        readU64(sections[1].bytes, cursor, schema_hash) &&
+                        readU32(sections[1].bytes, cursor, schema_name) &&
+                        readU32(sections[1].bytes, cursor, schema_version) &&
+                        readU64(sections[1].bytes, cursor, payload_offset) &&
+                        readU64(sections[1].bytes, cursor, payload_size);
+                    const bool is_invalid_schema = !has_valid_schema ||
                         payload_offset != expected_payload_offset ||
-                        payload_size > sections[11].bytes.size() - payload_offset)
+                        payload_size > sections[11].bytes.size() - payload_offset;
+                    if (is_invalid_schema)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
                     const auto name = stringAt(schema_name);
-                    if (simulationDataSchemaId(name).hash != schema_hash ||
+                    const bool is_invalid_schema_identity = simulationDataSchemaId(name).hash != schema_hash;
+                    const bool is_invalid_schema_data = is_invalid_schema_identity ||
                         !builder.addData(
                             SimulationDataSchemaId{schema_hash, std::string(name)},
                             schema_version,
                             sections[11].bytes.subspan(
                                 static_cast<std::size_t>(payload_offset),
-                                static_cast<std::size_t>(payload_size))))
+                                static_cast<std::size_t>(payload_size)));
+                    if (is_invalid_schema_data)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -818,8 +749,8 @@ namespace lux::simulation
 
                 std::vector<std::vector<std::string_view>> capability_views(types.size());
                 std::vector<std::vector<SystemHookPoint>> hook_views(types.size());
-                std::vector<std::vector<std::vector<lux::script::ScriptSemanticType>>>
-                    parameter_views(types.size()), return_views(types.size());
+                std::vector<std::vector<std::vector<lux::script::ScriptSemanticType>>> parameter_views(types.size()),
+                    return_views(types.size());
                 std::vector<std::vector<SystemEventDescription>> event_views(types.size());
 
                 for (std::size_t type_index{}; type_index < types.size(); ++type_index)
@@ -829,8 +760,7 @@ namespace lux::simulation
                     type_capabilities.reserve(type.capability_count);
                     for (std::uint32_t item{}; item < type.capability_count; ++item)
                     {
-                        std::size_t offset = static_cast<std::size_t>(
-                            type.capability_first + item) * kRecordBytes[4];
+                        std::size_t offset = static_cast<std::size_t>(type.capability_first + item) * kRecordBytes[4];
                         std::uint32_t name{};
                         if (!readU32(sections[4].bytes, offset, name))
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
@@ -845,109 +775,102 @@ namespace lux::simulation
                     type_returns.resize(type.hook_count);
                     for (std::uint32_t item{}; item < type.hook_count; ++item)
                     {
-                        std::size_t offset = static_cast<std::size_t>(
-                            type.hook_first + item) * kRecordBytes[5];
-                        std::uint32_t name{}, cardinality{}, parameter_first{},
-                            parameter_count{}, return_first{}, return_count{};
-                        if (!readU32(sections[5].bytes, offset, name) ||
-                            !readU32(sections[5].bytes, offset, cardinality) ||
-                            !readU32(sections[5].bytes, offset, parameter_first) ||
-                            !readU32(sections[5].bytes, offset, parameter_count) ||
-                            !readU32(sections[5].bytes, offset, return_first) ||
-                            !readU32(sections[5].bytes, offset, return_count) ||
-                            cardinality > static_cast<std::uint32_t>(
-                                ESystemHookCardinality::MULTI) ||
-                            !rangeValid(parameter_first, parameter_count,
-                                signature_count) ||
-                            !rangeValid(return_first, return_count, signature_count))
+                        std::size_t offset = static_cast<std::size_t>(type.hook_first + item) * kRecordBytes[5];
+                        std::uint32_t name{}, cardinality{}, parameter_first{}, parameter_count{}, return_first{},
+                            return_count{};
+                        const bool has_valid_hook =
+                            readU32(sections[5].bytes, offset, name) &&
+                            readU32(sections[5].bytes, offset, cardinality) &&
+                            readU32(sections[5].bytes, offset, parameter_first) &&
+                            readU32(sections[5].bytes, offset, parameter_count) &&
+                            readU32(sections[5].bytes, offset, return_first) &&
+                            readU32(sections[5].bytes, offset, return_count);
+                        const bool is_invalid_hook = !has_valid_hook ||
+                            cardinality > static_cast<std::uint32_t>(ESystemHookCardinality::MULTI) ||
+                            !rangeValid(parameter_first, parameter_count, signature_count) ||
+                            !rangeValid(return_first, return_count, signature_count);
+                        if (is_invalid_hook)
                         {
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         }
-                        const auto readSemanticRange = [&](
-                            std::uint32_t first,
-                            std::uint32_t count,
-                            std::vector<lux::script::ScriptSemanticType>& output)
-                        {
+                        const auto readSemanticRange = [&](std::uint32_t first,
+                                                           std::uint32_t count,
+                                                           std::vector<lux::script::ScriptSemanticType>& output) {
                             output.reserve(count);
                             for (std::uint32_t semantic{}; semantic < count; ++semantic)
                             {
                                 std::size_t semantic_offset =
-                                    static_cast<std::size_t>(first + semantic) *
-                                    kRecordBytes[6];
+                                    static_cast<std::size_t>(first + semantic) * kRecordBytes[6];
                                 std::uint64_t id{};
                                 std::uint32_t type_name{}, pass{};
-                                if (!readU64(sections[6].bytes, semantic_offset, id) ||
-                                    !readU32(sections[6].bytes, semantic_offset,
-                                        type_name) ||
-                                    !readU32(sections[6].bytes, semantic_offset, pass) ||
-                                    pass > static_cast<std::uint32_t>(
-                                        lux::script::EScriptPassMode::CONST_REF))
+                                const bool has_valid_semantic =
+                                    readU64(sections[6].bytes, semantic_offset, id) &&
+                                    readU32(sections[6].bytes, semantic_offset, type_name) &&
+                                    readU32(sections[6].bytes, semantic_offset, pass);
+                                const bool is_invalid_semantic = !has_valid_semantic ||
+                                    pass > static_cast<std::uint32_t>(lux::script::EScriptPassMode::CONST_REF);
+                                if (is_invalid_semantic)
                                 {
                                     return false;
                                 }
                                 const auto canonical_name = stringAt(type_name);
-                                if (id != lux::script::scriptSemanticTypeId(
-                                        canonical_name))
+                                if (id != lux::script::scriptSemanticTypeId(canonical_name))
                                     return false;
-                                output.push_back({
-                                    id, canonical_name,
-                                    static_cast<lux::script::EScriptPassMode>(pass)});
+                                output.push_back({id, canonical_name, static_cast<lux::script::EScriptPassMode>(pass)});
                             }
                             return true;
                         };
-                        if (!readSemanticRange(parameter_first, parameter_count,
-                                type_parameters[item]) ||
-                            !readSemanticRange(return_first, return_count,
-                                type_returns[item]))
+                        const bool are_parameters_valid =
+                            readSemanticRange(parameter_first, parameter_count, type_parameters[item]);
+                        const bool are_returns_valid = are_parameters_valid &&
+                            readSemanticRange(return_first, return_count, type_returns[item]);
+                        if (!are_parameters_valid || !are_returns_valid)
                         {
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         }
-                        type_hooks.push_back({
-                            stringAt(name),
-                            static_cast<ESystemHookCardinality>(cardinality),
-                            {type_parameters[item], type_returns[item]}});
+                        type_hooks.push_back(
+                            {stringAt(name),
+                             static_cast<ESystemHookCardinality>(cardinality),
+                             {type_parameters[item], type_returns[item]}}
+                        );
                     }
 
                     auto& type_events = event_views[type_index];
                     type_events.reserve(type.event_count);
                     for (std::uint32_t item{}; item < type.event_count; ++item)
                     {
-                        std::size_t offset = static_cast<std::size_t>(
-                            type.event_first + item) * kRecordBytes[7];
-                        std::uint32_t name{}, dispatch{}, target{}, payload_name{},
-                            payload_version{}, reserved{};
+                        std::size_t offset = static_cast<std::size_t>(type.event_first + item) * kRecordBytes[7];
+                        std::uint32_t name{}, dispatch{}, target{}, payload_name{}, payload_version{}, reserved{};
                         std::uint64_t payload_hash{};
-                        if (!readU32(sections[7].bytes, offset, name) ||
-                            !readU32(sections[7].bytes, offset, dispatch) ||
-                            !readU32(sections[7].bytes, offset, target) ||
-                            !readU32(sections[7].bytes, offset, payload_name) ||
-                            !readU32(sections[7].bytes, offset, payload_version) ||
-                            !readU32(sections[7].bytes, offset, reserved) ||
-                            !readU64(sections[7].bytes, offset, payload_hash) ||
-                            dispatch < type.hook_first ||
+                        const bool has_valid_event =
+                            readU32(sections[7].bytes, offset, name) &&
+                            readU32(sections[7].bytes, offset, dispatch) &&
+                            readU32(sections[7].bytes, offset, target) &&
+                            readU32(sections[7].bytes, offset, payload_name) &&
+                            readU32(sections[7].bytes, offset, payload_version) &&
+                            readU32(sections[7].bytes, offset, reserved) &&
+                            readU64(sections[7].bytes, offset, payload_hash);
+                        const bool is_invalid_event = !has_valid_event || dispatch < type.hook_first ||
                             dispatch >= type.hook_first + type.hook_count ||
-                            target > static_cast<std::uint32_t>(
-                                ESystemEventTarget::ENTITY_TARGETED) || reserved != 0U)
+                            target > static_cast<std::uint32_t>(ESystemEventTarget::ENTITY_TARGETED) || reserved != 0U;
+                        if (is_invalid_event)
                         {
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         }
                         const auto payload_schema = stringAt(payload_name);
-                        if ((payload_schema.empty() ? 0U :
-                                lux::cxx::Fnv1a64::hash(payload_schema)) !=
-                                payload_hash ||
+                        if ((payload_schema.empty() ? 0U : lux::cxx::Fnv1a64::hash(payload_schema)) != payload_hash ||
                             payload_schema.empty() != (payload_version == 0U))
                         {
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         }
-                        type_events.push_back({
-                            stringAt(name),
-                            type_hooks[dispatch - type.hook_first].name,
-                            static_cast<ESystemEventTarget>(target),
-                            payload_schema,
-                            payload_version,
-                            payload_schema.empty()
-                                ? lux::cxx::typeToken<void>()
-                                : lux::cxx::TypeToken{}});
+                        type_events.push_back(
+                            {stringAt(name),
+                             type_hooks[dispatch - type.hook_first].name,
+                             static_cast<ESystemEventTarget>(target),
+                             payload_schema,
+                             payload_version,
+                             payload_schema.empty() ? lux::cxx::typeToken<void>() : lux::cxx::TypeToken{}}
+                        );
                     }
                 }
 
@@ -955,8 +878,7 @@ namespace lux::simulation
                 {
                     const auto& type = types[instance.type];
                     if (instance.payload_offset != expected_payload_offset ||
-                        instance.payload_size >
-                            sections[11].bytes.size() - instance.payload_offset)
+                        instance.payload_size > sections[11].bytes.size() - instance.payload_offset)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -969,7 +891,8 @@ namespace lux::simulation
                         hook_views[instance.type],
                         event_views[instance.type]};
                     if (!builder.addSystem(
-                            stringAt(instance.name), system,
+                            stringAt(instance.name),
+                            system,
                             sections[11].bytes.subspan(
                                 static_cast<std::size_t>(instance.payload_offset),
                                 static_cast<std::size_t>(instance.payload_size))))
@@ -986,14 +909,14 @@ namespace lux::simulation
                 for (std::size_t index{}; index < countOf(8); ++index)
                 {
                     std::uint32_t before{}, after{};
-                    if (!readU32(sections[8].bytes, cursor, before) ||
-                        !readU32(sections[8].bytes, cursor, after) ||
-                        before >= instances.size() || after >= instances.size() ||
-                        (index != 0U && previous_dependency >=
-                            std::pair{before, after}) ||
-                        !builder.addDependency(
-                            stringAt(instances[before].name),
-                            stringAt(instances[after].name)))
+                    const bool has_valid_dependency = readU32(sections[8].bytes, cursor, before) &&
+                        readU32(sections[8].bytes, cursor, after);
+                    const bool is_invalid_dependency = !has_valid_dependency || before >= instances.size() ||
+                        after >= instances.size() ||
+                        (index != 0U && previous_dependency >= std::pair{before, after});
+                    const bool is_invalid_dependency_link = is_invalid_dependency ||
+                        !builder.addDependency(stringAt(instances[before].name), stringAt(instances[after].name));
+                    if (is_invalid_dependency_link)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -1004,8 +927,7 @@ namespace lux::simulation
                 for (std::size_t index{}; index < countOf(9); ++index)
                 {
                     std::uint64_t mount_id{};
-                    if (!readU64(sections[9].bytes, cursor, mount_id) ||
-                        mount_id == 0U)
+                    if (!readU64(sections[9].bytes, cursor, mount_id) || mount_id == 0U)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -1016,10 +938,12 @@ namespace lux::simulation
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
                     std::uint32_t binding_first{}, mount_binding_count{};
-                    if (!readU32(sections[9].bytes, cursor, binding_first) ||
-                        !readU32(sections[9].bytes, cursor, mount_binding_count) ||
-                        !rangeValid(binding_first, mount_binding_count,
-                            binding_count))
+                    const bool has_valid_mount_bindings =
+                        readU32(sections[9].bytes, cursor, binding_first) &&
+                        readU32(sections[9].bytes, cursor, mount_binding_count);
+                    const bool is_invalid_mount_bindings = !has_valid_mount_bindings ||
+                        !rangeValid(binding_first, mount_binding_count, binding_count);
+                    if (is_invalid_mount_bindings)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -1029,69 +953,64 @@ namespace lux::simulation
                     mount.bindings.reserve(mount_binding_count);
                     for (std::uint32_t item{}; item < mount_binding_count; ++item)
                     {
-                        std::size_t offset = static_cast<std::size_t>(
-                            binding_first + item) * kRecordBytes[10];
+                        std::size_t offset = static_cast<std::size_t>(binding_first + item) * kRecordBytes[10];
                         ScriptBindingDescription binding;
-                        std::uint32_t kind{}, system_type{}, system_instance{}, member{},
-                            lifecycle{}, reserved{};
+                        std::uint32_t kind{}, system_type{}, system_instance{}, member{}, lifecycle{}, reserved{};
                         std::uint64_t system_type_hash{};
-                        if (!readU64(sections[10].bytes, offset, binding.function) ||
-                            !readU32(sections[10].bytes, offset, kind) ||
-                            !readU64(sections[10].bytes, offset, system_type_hash) ||
-                            !readU32(sections[10].bytes, offset, system_type) ||
-                            !readU32(sections[10].bytes, offset, system_instance) ||
-                            !readU32(sections[10].bytes, offset, member) ||
-                            !readU32(sections[10].bytes, offset, lifecycle) ||
-                            !readU32(sections[10].bytes, offset, reserved) ||
-                            kind > static_cast<std::uint32_t>(
-                                EBindingTargetWire::LIFECYCLE) ||
-                            reserved != 0U)
+                        const bool has_valid_binding =
+                            readU64(sections[10].bytes, offset, binding.function) &&
+                            readU32(sections[10].bytes, offset, kind) &&
+                            readU64(sections[10].bytes, offset, system_type_hash) &&
+                            readU32(sections[10].bytes, offset, system_type) &&
+                            readU32(sections[10].bytes, offset, system_instance) &&
+                            readU32(sections[10].bytes, offset, member) &&
+                            readU32(sections[10].bytes, offset, lifecycle) &&
+                            readU32(sections[10].bytes, offset, reserved);
+                        const bool is_invalid_binding = !has_valid_binding ||
+                            kind > static_cast<std::uint32_t>(EBindingTargetWire::LIFECYCLE) || reserved != 0U;
+                        if (is_invalid_binding)
                         {
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         }
                         const auto target_kind = static_cast<EBindingTargetWire>(kind);
-                        if (target_kind == EBindingTargetWire::HOOK ||
-                            target_kind == EBindingTargetWire::EVENT)
+                        if (target_kind == EBindingTargetWire::HOOK || target_kind == EBindingTargetWire::EVENT)
                         {
                             const auto type_name = stringAt(system_type);
                             const auto instance_name = stringAt(system_instance);
                             const auto member_name = stringAt(member);
-                            if (system_type_hash == 0U || type_name.empty() ||
+                            const bool is_invalid_target = system_type_hash == 0U || type_name.empty() ||
                                 member_name.empty() || lifecycle != 0U ||
-                                systemTypeId(type_name).hash != system_type_hash)
+                                systemTypeId(type_name).hash != system_type_hash;
+                            if (is_invalid_target)
                             {
-                                return lux::cxx::unexpected(
-                                    EAssetCodecError::CODEC_FAILURE);
+                                return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                             }
                             if (target_kind == EBindingTargetWire::HOOK)
                             {
                                 binding.target = SystemHookBindingTarget{
-                                    SystemTypeId{system_type_hash,
-                                        std::string(type_name)},
+                                    SystemTypeId{system_type_hash, std::string(type_name)},
                                     std::string(instance_name),
                                     std::string(member_name)};
                             }
                             else
                             {
                                 binding.target = SystemEventBindingTarget{
-                                    SystemTypeId{system_type_hash,
-                                        std::string(type_name)},
+                                    SystemTypeId{system_type_hash, std::string(type_name)},
                                     std::string(instance_name),
                                     std::string(member_name)};
                             }
                         }
                         else
                         {
-                            if (system_type_hash != 0U || system_type != kNoString ||
-                                system_instance != kNoString || member != kNoString ||
-                                lifecycle > static_cast<std::uint32_t>(
-                                    EBehaviorLifecyclePoint::STOP))
+                            const bool is_invalid_lifecycle_target = system_type_hash != 0U ||
+                                system_type != kNoString || system_instance != kNoString || member != kNoString ||
+                                lifecycle > static_cast<std::uint32_t>(EBehaviorLifecyclePoint::STOP);
+                            if (is_invalid_lifecycle_target)
                             {
-                                return lux::cxx::unexpected(
-                                    EAssetCodecError::CODEC_FAILURE);
+                                return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                             }
-                            binding.target = BehaviorLifecycleBindingTarget{
-                                static_cast<EBehaviorLifecyclePoint>(lifecycle)};
+                            binding.target =
+                                BehaviorLifecycleBindingTarget{static_cast<EBehaviorLifecyclePoint>(lifecycle)};
                         }
                         mount.bindings.push_back(std::move(binding));
                     }
@@ -1100,13 +1019,11 @@ namespace lux::simulation
                 }
 
                 auto built = std::move(builder).build();
-                if (!built || built->retainedBytes() >
-                    context.limits.max_decoded_bytes)
+                if (!built || built->retainedBytes() > context.limits.max_decoded_bytes)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
-                auto description = std::make_shared<SimulationDescription>(
-                    std::move(*built));
+                auto description = std::make_shared<SimulationDescription>(std::move(*built));
                 const auto retained = description->retainedBytes();
                 return DecodedAsset{std::move(description), retained};
             }
@@ -1121,9 +1038,7 @@ namespace lux::simulation
         }
     }
 
-    lux::asset::AssetCodecDescriptor simulationAssetCodecDescriptor(
-        std::shared_ptr<const void> code_lifetime
-    )
+    lux::asset::AssetCodecDescriptor simulationAssetCodecDescriptor(std::shared_ptr<const void> code_lifetime)
     {
         return lux::asset::AssetCodecDescriptor{
             lux::asset::AssetTypeId::fromName(SimulationAssetCanonicalName),

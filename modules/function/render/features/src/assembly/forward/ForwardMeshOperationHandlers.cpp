@@ -23,42 +23,41 @@ namespace lux::render
         //  · graph_fragment 可选无内置:空=跳过该族,非空必须可解析
         using FMFill = BuiltinShaderFill<ForwardMeshCommConfig>;
         static constexpr FMFill kShaderFills[] = {
-            { .field = &ForwardMeshCommConfig::forward_cull_shader,
-              .builtin = EBuiltinShader::MESH_CULL_UNIFIED_COMP,
-              .flag_mask = EGpuDrivenMeshExt::HZB,
-              .builtin_alt = EBuiltinShader::MESH_CULL_UNIFIED_COMP_HZB },
-            { .field = &ForwardMeshCommConfig::forward_compact_shader, .builtin = EBuiltinShader::MDC_COMPACT_COMP },
-            { .field = &ForwardMeshCommConfig::forward_vert_shader,    .builtin = EBuiltinShader::FORWARD_MESH_VERT },
-            { .field = &ForwardMeshCommConfig::unlit_fragment,         .builtin = EBuiltinShader::FORWARD_UNLIT_FRAG },
-            { .field = &ForwardMeshCommConfig::pbr_fragment,           .builtin = EBuiltinShader::FORWARD_PBR_FRAG_PCF },
-            { .field = &ForwardMeshCommConfig::stylized_fragment,      .builtin = EBuiltinShader::FORWARD_STYLIZED_FRAG_PCF },
-            { .field = &ForwardMeshCommConfig::graph_fragment,         .fill = false, .optional = true },
+            {.field = &ForwardMeshCommConfig::forward_cull_shader,
+             .builtin = EBuiltinShader::MESH_CULL_UNIFIED_COMP,
+             .flag_mask = EGpuDrivenMeshExt::HZB,
+             .builtin_alt = EBuiltinShader::MESH_CULL_UNIFIED_COMP_HZB},
+            {.field = &ForwardMeshCommConfig::forward_compact_shader, .builtin = EBuiltinShader::MDC_COMPACT_COMP},
+            {.field = &ForwardMeshCommConfig::forward_vert_shader, .builtin = EBuiltinShader::FORWARD_MESH_VERT},
+            {.field = &ForwardMeshCommConfig::unlit_fragment, .builtin = EBuiltinShader::FORWARD_UNLIT_FRAG},
+            {.field = &ForwardMeshCommConfig::pbr_fragment, .builtin = EBuiltinShader::FORWARD_PBR_FRAG_PCF},
+            {.field = &ForwardMeshCommConfig::stylized_fragment, .builtin = EBuiltinShader::FORWARD_STYLIZED_FRAG_PCF},
+            {.field = &ForwardMeshCommConfig::graph_fragment, .fill = false, .optional = true},
         };
         static constexpr MeshCommConfigExpectation kExpectation{
-            .comm_version              = kForwardMeshCommConfigVersion,
+            .comm_version = kForwardMeshCommConfigVersion,
             .descriptor_layout_version = kForwardMeshDescriptorLayoutVersion,
-            .known_ext_flags           = GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} |
-                                         GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::Bindless},
+            .known_ext_flags =
+                GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} | GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::Bindless},
         };
 
         auto& shaders = sc->renderContext().globalRegistry().must<ShaderResources>();
-        auto  prepared =
-            prepareMeshCommConfig(shaders, param, param_size, kExpectation, kShaderFills);
+        auto prepared = prepareMeshCommConfig(shaders, param, param_size, kExpectation, kShaderFills);
         if (!prepared)
             return lux::cxx::unexpected(prepared.error());
 
         const ForwardMeshCommConfig& cc = *prepared;
 
         ForwardMeshFeature::Config cfg{};
-        cfg.forward_cull_shader       = cc.forward_cull_shader;
-        cfg.forward_compact_shader    = cc.forward_compact_shader;
-        cfg.forward_vert_shader       = cc.forward_vert_shader;
-        cfg.unlit_fragment            = cc.unlit_fragment;
-        cfg.pbr_fragment              = cc.pbr_fragment;
-        cfg.stylized_fragment         = cc.stylized_fragment;
-        cfg.graph_fragment            = cc.graph_fragment;   // optional (may be null)
+        cfg.forward_cull_shader = cc.forward_cull_shader;
+        cfg.forward_compact_shader = cc.forward_compact_shader;
+        cfg.forward_vert_shader = cc.forward_vert_shader;
+        cfg.unlit_fragment = cc.unlit_fragment;
+        cfg.pbr_fragment = cc.pbr_fragment;
+        cfg.stylized_fragment = cc.stylized_fragment;
+        cfg.graph_fragment = cc.graph_fragment; // optional (may be null)
         cfg.descriptor_layout_version = cc.descriptor_layout_version;
-        cfg.extension_flags           = cc.extension_flags;
+        cfg.extension_flags = cc.extension_flags;
         return sc->addFeature<ForwardMeshFeature>(cfg);
     }
 

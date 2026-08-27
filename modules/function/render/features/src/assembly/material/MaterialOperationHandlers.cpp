@@ -13,23 +13,24 @@
 //  RenderServer.cpp),不再 include 服务端的私有 Impl 头。
 // ============================================================================
 
-#include <lux/engine/render/comm/server/RenderServer.hpp>         // Dispatcher, Ctx, replyToCurrent, FeatureFactory, resolveExternalData/resolveBlob
-#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>   // typed-op register/unregister
+#include <lux/engine/render/comm/server/RenderServer.hpp>
+// Dispatcher, Ctx, replyToCurrent, FeatureFactory, resolveExternalData/resolveBlob
+#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp> // typed-op register/unregister
 #include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/material/StandardMaterialFeature.hpp>
 #include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 #include <lux/engine/render/resources/material/MaterialResources.hpp> // MaterialResources, MaterialHandle, submitGraph
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp> // getMaterialSetLayout()
-#include <lux/engine/description/MaterialEnums.hpp>               // rdesc::EAlphaMode
+#include <lux/engine/description/MaterialEnums.hpp>                      // rdesc::EAlphaMode
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/render/gpu/RenderContext.hpp>                // lookupRenderContext 的返回类型
+#include <lux/engine/render/gpu/RenderContext.hpp> // lookupRenderContext 的返回类型
 
 #include <cstdint>
 
 namespace lux::render
 {
     using Dispatcher = GeneralRenderServer::Dispatcher;
-    using Ctx        = Dispatcher::Ctx;
+    using Ctx = Dispatcher::Ctx;
 
     //(ensureGlobalMaterialResources 已下沉到 L3 的
     // src/render/resources/material/MaterialResources.cpp —— 理由同
@@ -46,9 +47,14 @@ namespace lux::render
         // 服务端的东西经窄 shim 取(lookupScene / lookupRenderContext)。
 
         RMaterialHandle serverUploadGraphMaterial(
-            void* user_state, const GraphMaterialData& data,
-            ShaderHandle gbuffer_shader, ShaderHandle forward_shader,
-            std::uint64_t shader_key, std::uint32_t alpha_mode, bool double_sided)
+            void* user_state,
+            const GraphMaterialData& data,
+            ShaderHandle gbuffer_shader,
+            ShaderHandle forward_shader,
+            std::uint64_t shader_key,
+            std::uint32_t alpha_mode,
+            bool double_sided
+        )
         {
             auto* rctx = lookupRenderContext(user_state);
             if (!rctx)
@@ -64,19 +70,21 @@ namespace lux::render
                 return RMaterialHandle{};
 
             auto result = mat_res->submitGraph(
-                data, gbuffer_shader, forward_shader, shader_key,
-                static_cast<lux::rdesc::EAlphaMode>(alpha_mode), double_sided);
+                data,
+                gbuffer_shader,
+                forward_shader,
+                shader_key,
+                static_cast<lux::rdesc::EAlphaMode>(alpha_mode),
+                double_sided
+            );
             if (!result)
                 return RMaterialHandle{};
 
             // Any new material invalidates compiled scene graphs (per-material PSO sets).
-            forEachSceneOnServer(
-                user_state,
-                [](RenderScene& scene)
-                {
-                    scene.invalidateGraph(
-                        EGraphInvalidationReason::MATERIAL_LAYOUT);
-                });
+            forEachSceneOnServer(user_state, [](RenderScene& scene) {
+                scene.invalidateGraph(EGraphInvalidationReason::MATERIAL_LAYOUT);
+            }
+            );
 
             auto h = result.value();
             return RMaterialHandle{h.index, h.gen};
@@ -89,8 +97,7 @@ namespace lux::render
                 return;
             if (!ensureGlobalMaterialResources(*rctx))
                 return;
-            if (auto* mat = rctx->globalRegistry().find<MaterialResources>();
-                mat && mat->isInitialized())
+            if (auto* mat = rctx->globalRegistry().find<MaterialResources>(); mat && mat->isInitialized())
                 mat->modifyGraph(MaterialHandle{handle.index, handle.gen}, data);
         }
 
@@ -105,36 +112,38 @@ namespace lux::render
             if (!mat || !mat->isInitialized())
                 return;
             mat->remove(MaterialHandle{handle.index, handle.gen});
-            forEachSceneOnServer(
-                user_state,
-                [](RenderScene& scene)
-                {
-                    scene.invalidateGraph(
-                        EGraphInvalidationReason::MATERIAL_LAYOUT);
-                });
-    } // anonymous namespace (helpers)
-        }
+            forEachSceneOnServer(user_state, [](RenderScene& scene) {
+                scene.invalidateGraph(EGraphInvalidationReason::MATERIAL_LAYOUT);
+            }
+            );
+        } // anonymous namespace (helpers)
+    }
     void handleUploadGraphMaterial(GeneralRenderServer::Dispatcher::Ctx& ctx, const UploadGraphMaterialPayload& p)
-        {
-            auto desc_bytes = resolveExternalData(ctx.program, p.graph_desc);
-            const auto* data = reinterpret_cast<const GraphMaterialData*>(desc_bytes.data());
-            const RMaterialHandle h = serverUploadGraphMaterial(
-                ctx.user_state, *data, p.graph_gbuffer_shader, p.graph_forward_shader,
-                p.shader_key, p.alpha_mode, p.double_sided != 0u);
-            replyToCurrent<UploadGraphMaterialPayload>(ctx,
-                MaterialUploadedReply{h, h.isNull() ? 1u : 0u});
-        }
+    {
+        auto desc_bytes = resolveExternalData(ctx.program, p.graph_desc);
+        const auto* data = reinterpret_cast<const GraphMaterialData*>(desc_bytes.data());
+        const RMaterialHandle h = serverUploadGraphMaterial(
+            ctx.user_state,
+            *data,
+            p.graph_gbuffer_shader,
+            p.graph_forward_shader,
+            p.shader_key,
+            p.alpha_mode,
+            p.double_sided != 0u
+        );
+        replyToCurrent<UploadGraphMaterialPayload>(ctx, MaterialUploadedReply{h, h.isNull() ? 1u : 0u});
+    }
 
     void handleModifyGraphMaterial(GeneralRenderServer::Dispatcher::Ctx& ctx, const ModifyGraphMaterialPayload& p)
-        {
-            auto desc_bytes = resolveBlob(ctx.program, p.graph_desc);
-            const auto* data = reinterpret_cast<const GraphMaterialData*>(desc_bytes.data());
-            serverModifyGraphMaterial(ctx.user_state, p.handle, *data);
-        }
+    {
+        auto desc_bytes = resolveBlob(ctx.program, p.graph_desc);
+        const auto* data = reinterpret_cast<const GraphMaterialData*>(desc_bytes.data());
+        serverModifyGraphMaterial(ctx.user_state, p.handle, *data);
+    }
 
     void handleDestroyMaterial(GeneralRenderServer::Dispatcher::Ctx& ctx, const DestroyMaterialPayload& p)
-        {
-            serverDestroyMaterial(ctx.user_state, p.handle);
-        }
+    {
+        serverDestroyMaterial(ctx.user_state, p.handle);
+    }
 
 } // namespace lux::render

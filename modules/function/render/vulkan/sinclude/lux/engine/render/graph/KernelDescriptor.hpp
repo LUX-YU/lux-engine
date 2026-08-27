@@ -36,7 +36,7 @@ namespace lux::render
     struct RGPassDescription;
     struct KernelReplayContext;
     struct RGFrameContext;
-    class  PipelineManager;
+    class PipelineManager;
 
     // =========================================================================
     // ViewArenaContribution
@@ -47,8 +47,8 @@ namespace lux::render
     /// space increments the relevant fields.
     struct ViewArenaContribution
     {
-        uint32_t frustum_ubo_count{0};   ///< One per MeshCull pass
-        uint32_t shadow_slice_count{0};  ///< Max across all ShadowCull passes
+        uint32_t frustum_ubo_count{0};  ///< One per MeshCull pass
+        uint32_t shadow_slice_count{0}; ///< Max across all ShadowCull passes
     };
 
     // =========================================================================
@@ -66,57 +66,44 @@ namespace lux::render
     {
         /// Emit the body commands for one pass into the ExecutionProgram.
         /// Called once per compiled pass instance of this kernel type.
-        using EmitFn  = void (*)(
-            ProgramEmitter&       emitter,
-            uint32_t               pass_index,
-            const RGCompiledPass&  cpass,
-            const RGCompiledGraph& compiled
-        );
+        using EmitFn = void (*)(
+            ProgramEmitter& emitter,
+            uint32_t pass_index,
+            const RGCompiledPass& cpass,
+            const RGCompiledGraph& compiled);
 
         /// Contribute mesh draw lanes to the MeshBucketLayoutPlan.
         /// Called once per compiled pass instance when building the lane list.
         /// Only needed for kernels that produce indirect draw lanes (e.g. MeshDraw).
-        using MeshFn  = void (*)(
-            uint32_t               pass_index,
-            const RGCompiledPass&  cpass,
-            MeshBucketLayoutPlan&  plan,
-            PipelineManager&       pipeline_manager
-        );
+        using MeshFn = void (*)(
+            uint32_t pass_index,
+            const RGCompiledPass& cpass,
+            MeshBucketLayoutPlan& plan,
+            PipelineManager& pipeline_manager);
 
         /// Contribute to the per-view arena size estimates.
         /// Called once per *graph description* pass (not compiled pass) to
         /// accumulate region requirements into the contribution struct.
-        using ArenaFn = void (*)(
-            const RGPassDescription& pass_desc,
-            ViewArenaContribution&   accum
-        );
+        using ArenaFn = void (*)(const RGPassDescription& pass_desc, ViewArenaContribution& accum);
 
         /// Replay a kernel-specific sub-command at command-buffer recording time.
         /// @param sub_cmd   Kernel-local sub-command index (0-based)
         /// @param data      Pointer to the sub-command payload in command_data
         /// @param data_size Payload byte count
         /// @param ctx       Replay context providing cmd buffer, frame data, physical resources
-        using ReplayFn = void (*)(
-            uint32_t               sub_cmd,
-            const void*            data,
-            uint16_t               data_size,
-            KernelReplayContext&   ctx
-        );
+        using ReplayFn = void (*)(uint32_t sub_cmd, const void* data, uint16_t data_size, KernelReplayContext& ctx);
 
         /// Resolve a kernel-specific DynamicPatch source to a uint32_t value.
         /// Called during command replay for patches with ESource::KernelPatch.
         /// @param source_param  Kernel-defined sub-source ID (low 8 bits of DynamicPatch::source_param)
         /// @param frame_ctx     Current frame context (provides ext_data for feature access)
-        using PatchFn = uint32_t (*)(
-            uint16_t               source_param,
-            const RGFrameContext&  frame_ctx
-        );
+        using PatchFn = uint32_t (*)(uint16_t source_param, const RGFrameContext& frame_ctx);
 
-        EmitFn    emit{nullptr};             ///< Non-null => CompiledNative fast path
-        MeshFn    contribute_mesh{nullptr};  ///< Non-null => lane list contribution
-        ArenaFn   contribute_arena{nullptr}; ///< Non-null => arena size contribution
-        ReplayFn  replay{nullptr};           ///< Non-null => kernel sub-command replay handler
-        PatchFn   resolve_patch{nullptr};    ///< Non-null => kernel DynamicPatch resolution
+        EmitFn emit{nullptr};              ///< Non-null => CompiledNative fast path
+        MeshFn contribute_mesh{nullptr};   ///< Non-null => lane list contribution
+        ArenaFn contribute_arena{nullptr}; ///< Non-null => arena size contribution
+        ReplayFn replay{nullptr};          ///< Non-null => kernel sub-command replay handler
+        PatchFn resolve_patch{nullptr};    ///< Non-null => kernel DynamicPatch resolution
 
         /// §3: Optional extension slot name. When non-null, registerKernel()
         /// auto-allocates a FrameExtensionSlot (deduped by name).
@@ -171,8 +158,7 @@ namespace lux::render
 
         /// Dense iteration over all registered descriptors.
         /// Fn signature: void(KernelTypeId, const KernelDescriptor&)
-        template <typename Fn>
-        void forEach(Fn&& fn) const
+        template <typename Fn> void forEach(Fn&& fn) const
         {
             const auto& ks = descriptors_.keys();
             const auto& vs = descriptors_.values();
@@ -185,10 +171,10 @@ namespace lux::render
         /// 异构查找:键存 std::string,查表直接吃 string_view,不构造临时 string。
         /// `idOf` / `extSlotOf` 标着 noexcept,而临时 string 是可能抛的堆分配 ——
         /// 普通 unordered_map 的写法在 OOM 时会直接 std::terminate 而非传播错误。
-        lux::cxx::heterogeneous_map<KernelTypeId>              name_to_id_;
-        lux::cxx::heterogeneous_map<FrameExtensionSlotId>     ext_name_to_slot_;
-        KernelTypeId                                               next_id_{1};
-        FrameExtensionSlotId                                       next_ext_slot_{1};
+        lux::cxx::heterogeneous_map<KernelTypeId> name_to_id_;
+        lux::cxx::heterogeneous_map<FrameExtensionSlotId> ext_name_to_slot_;
+        KernelTypeId next_id_{1};
+        FrameExtensionSlotId next_ext_slot_{1};
     };
 
     // =========================================================================
@@ -211,52 +197,52 @@ namespace lux::render
      * Three-level macro indirection forces pre-expansion of __COUNTER__
      * before the token-paste operator ## sees it (required for MSVC).
      */
-#define LUX_REGISTER_KERNEL_PASTE(kernel_name, descriptor, uid)              \
-    namespace {                                                               \
-        struct _KernelRegistrar_##uid {                                       \
-            _KernelRegistrar_##uid() {                                        \
-                ::lux::render::KernelRegistry::instance().registerKernel(     \
-                    (kernel_name), (descriptor));                             \
-            }                                                                 \
-        } _kernel_registrar_instance_##uid;                                   \
+#define LUX_REGISTER_KERNEL_PASTE(kernel_name, descriptor, uid)                                                        \
+    namespace                                                                                                          \
+    {                                                                                                                  \
+        struct _KernelRegistrar_##uid                                                                                  \
+        {                                                                                                              \
+            _KernelRegistrar_##uid()                                                                                   \
+            {                                                                                                          \
+                ::lux::render::KernelRegistry::instance().registerKernel((kernel_name), (descriptor));                 \
+            }                                                                                                          \
+        } _kernel_registrar_instance_##uid;                                                                            \
     } // namespace
 
 // Middle level: uid is NOT used with ##, so __COUNTER__ is pre-expanded here
-#define LUX_REGISTER_KERNEL_IMPL(kernel_name, descriptor, uid)               \
-    LUX_REGISTER_KERNEL_PASTE(kernel_name, descriptor, uid)
+#define LUX_REGISTER_KERNEL_IMPL(kernel_name, descriptor, uid) LUX_REGISTER_KERNEL_PASTE(kernel_name, descriptor, uid)
 
-#define LUX_REGISTER_KERNEL(kernel_name, descriptor)                         \
-    LUX_REGISTER_KERNEL_IMPL(kernel_name, descriptor, __COUNTER__)
+#define LUX_REGISTER_KERNEL(kernel_name, descriptor) LUX_REGISTER_KERNEL_IMPL(kernel_name, descriptor, __COUNTER__)
 
-/// Byte size of one VkDrawIndexedIndirectCommand — the stride the GPU-driven
-/// path uses to index an indirect buffer (`indirect_offset = mdc_index * this`).
-///
-/// Lives here because the three users span two layers: the graph compiler (L2)
-/// and the mesh/shadow kernels (L3). All three already include this header, and
-/// it is the lowest one they share — it used to be spelled `= 20` separately in
-/// each of them, with nothing tying the three to each other or to Vulkan.
-///
-/// Not written as `sizeof(VkDrawIndexedIndirectCommand)` because this header
-/// deliberately does not pull <vulkan/vulkan.h>. The equality IS asserted, in
-/// the one TU that has the complete type — see MeshKernels.cpp.
-inline constexpr std::uint32_t kIndirectCommandSize = 20;
+    /// Byte size of one VkDrawIndexedIndirectCommand — the stride the GPU-driven
+    /// path uses to index an indirect buffer (`indirect_offset = mdc_index * this`).
+    ///
+    /// Lives here because the three users span two layers: the graph compiler (L2)
+    /// and the mesh/shadow kernels (L3). All three already include this header, and
+    /// it is the lowest one they share — it used to be spelled `= 20` separately in
+    /// each of them, with nothing tying the three to each other or to Vulkan.
+    ///
+    /// Not written as `sizeof(VkDrawIndexedIndirectCommand)` because this header
+    /// deliberately does not pull <vulkan/vulkan.h>. The equality IS asserted, in
+    /// the one TU that has the complete type — see MeshKernels.cpp.
+    inline constexpr std::uint32_t kIndirectCommandSize = 20;
 
-/// Threads per workgroup for the one-thread-per-element cull and compaction
-/// dispatches — the divisor in every `(count + N - 1) / N` group calculation
-/// the mesh, shadow and utility kernels perform.
-///
-/// It mirrors `layout(local_size_x = 64)` in exactly three shaders:
-///   assets/shaders/forward/mesh_cull_unified.comp      (mesh AND shadow cull —
-///       ShadowKernels dispatches the same module, via MESH_CULL_UNIFIED_COMP)
-///   assets/shaders/forward/mdc_compact.comp
-///   assets/shaders/forward/clear_count_buffers.comp
-/// Change one side and the other must follow; too small a divisor leaves the
-/// tail of the array unprocessed, too large dispatches groups that do nothing.
-///
-/// ⚠️ Other compute shaders also declare 64 — cluster_build/count/fill,
-/// pointcloud_culling, skin_compute. Those are independent choices that happen
-/// to coincide, NOT users of this constant. Do not fold them in: changing this
-/// value must not silently retune dispatches nobody looked at.
-inline constexpr std::uint32_t kCullDispatchWorkgroupSize = 64;
+    /// Threads per workgroup for the one-thread-per-element cull and compaction
+    /// dispatches — the divisor in every `(count + N - 1) / N` group calculation
+    /// the mesh, shadow and utility kernels perform.
+    ///
+    /// It mirrors `layout(local_size_x = 64)` in exactly three shaders:
+    ///   assets/shaders/forward/mesh_cull_unified.comp      (mesh AND shadow cull —
+    ///       ShadowKernels dispatches the same module, via MESH_CULL_UNIFIED_COMP)
+    ///   assets/shaders/forward/mdc_compact.comp
+    ///   assets/shaders/forward/clear_count_buffers.comp
+    /// Change one side and the other must follow; too small a divisor leaves the
+    /// tail of the array unprocessed, too large dispatches groups that do nothing.
+    ///
+    /// ⚠️ Other compute shaders also declare 64 — cluster_build/count/fill,
+    /// pointcloud_culling, skin_compute. Those are independent choices that happen
+    /// to coincide, NOT users of this constant. Do not fold them in: changing this
+    /// value must not silently retune dispatches nobody looked at.
+    inline constexpr std::uint32_t kCullDispatchWorkgroupSize = 64;
 
 } // namespace lux::render

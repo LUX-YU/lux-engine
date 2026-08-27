@@ -2,9 +2,9 @@
 
 namespace lux::events
 {
-    DomainEvents::DomainEvents() noexcept
-        : owner_thread_(std::this_thread::get_id())
-    {}
+    DomainEvents::DomainEvents() noexcept : owner_thread_(std::this_thread::get_id())
+    {
+    }
 
     DomainEvents::~DomainEvents()
     {
@@ -20,10 +20,7 @@ namespace lux::events
     EventPump& DomainEvents::createPump(std::string_view name)
     {
         ownerCheck();
-        return pumps_.emplace_back(
-            EventPump::Badge{},
-            *this,
-            std::string(name));
+        return pumps_.emplace_back(EventPump::Badge{}, *this, std::string(name));
     }
 
     std::vector<ChannelDiag> DomainEvents::diagnostics() const

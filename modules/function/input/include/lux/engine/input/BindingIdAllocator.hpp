@@ -1,5 +1,5 @@
 #pragma once
-#include "InputBindingState.hpp"  // for BindingId
+#include "InputBindingState.hpp" // for BindingId
 #include <lux/engine/function/visibility.h>
 
 namespace lux::input

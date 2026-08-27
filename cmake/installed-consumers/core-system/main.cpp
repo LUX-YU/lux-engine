@@ -8,17 +8,20 @@ namespace
 {
     struct System final
     {
-        inline static constexpr auto Access =
-            lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
         inline static constexpr lux::simulation::SystemDescription Description{
             .canonical_name = "lux.consumer.core-system",
             .version = 1};
-        void update() noexcept { ++updates; }
+        void update() noexcept
+        {
+            ++updates;
+        }
         int updates{};
     };
 }
 
-int main()
+int
+main()
 {
     lux::simulation::SystemRegistry systems;
     const auto id = systems.emplace<System>();
@@ -30,12 +33,7 @@ int main()
 
     lux::task::TaskGraphBuilder builder;
     auto observation = *retained;
-    if (!builder.add(
-            [system = std::move(*retained)]() noexcept
-            {
-                system->update();
-            }
-        ))
+    if (!builder.add([system = std::move(*retained)]() noexcept { system->update(); }))
     {
         return 3;
     }

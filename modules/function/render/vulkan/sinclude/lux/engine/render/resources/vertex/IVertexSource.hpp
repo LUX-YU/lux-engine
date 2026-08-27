@@ -51,9 +51,9 @@ namespace lux::render
     /// shader code (which is uniform across kinds — that's the whole point).
     enum class EVertexSourceKind : std::uint8_t
     {
-        StaticPool      = 0,  ///< Resident; written once at upload time.
-        TransientPool   = 1,  ///< Per-frame; compute writes, render reads.
-        VirtualGeometry = 2,  ///< (Reserved) Nanite-style streamed geometry.
+        StaticPool = 0,      ///< Resident; written once at upload time.
+        TransientPool = 1,   ///< Per-frame; compute writes, render reads.
+        VirtualGeometry = 2, ///< (Reserved) Nanite-style streamed geometry.
     };
 
     /// Reference to a contiguous range of vertices in a registered pool.
@@ -62,9 +62,9 @@ namespace lux::render
     struct VertexSourceHandle
     {
         /// Index into VertexPoolRegistry's bindless array. ~0u = invalid.
-        std::uint32_t pool_id      = ~0u;
+        std::uint32_t pool_id = ~0u;
         /// First vertex (in vertices, not bytes) within the pool's buffer.
-        std::uint32_t vertex_base  = 0;
+        std::uint32_t vertex_base = 0;
         /// Number of vertices the handle refers to.
         std::uint32_t vertex_count = 0;
 
@@ -76,13 +76,12 @@ namespace lux::render
         [[nodiscard]] friend constexpr bool
         operator==(const VertexSourceHandle& a, const VertexSourceHandle& b) noexcept
         {
-            return a.pool_id == b.pool_id
-                && a.vertex_base == b.vertex_base
-                && a.vertex_count == b.vertex_count;
+            return a.pool_id == b.pool_id && a.vertex_base == b.vertex_base && a.vertex_count == b.vertex_count;
         }
     };
-    static_assert(sizeof(VertexSourceHandle) == 12,
-                  "VertexSourceHandle must remain trivially packable for GPU upload.");
+    static_assert(
+        sizeof(VertexSourceHandle) == 12,
+        "VertexSourceHandle must remain trivially packable for GPU upload.");
 
     inline constexpr VertexSourceHandle kInvalidVertexSourceHandle{};
 
@@ -96,13 +95,13 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC IVertexSource
     {
     public:
-        virtual ~IVertexSource();   // anchor in IVertexSource.cpp
+        virtual ~IVertexSource(); // anchor in IVertexSource.cpp
 
-        IVertexSource()                                = default;
-        IVertexSource(const IVertexSource&)            = delete;
+        IVertexSource() = default;
+        IVertexSource(const IVertexSource&) = delete;
         IVertexSource& operator=(const IVertexSource&) = delete;
-        IVertexSource(IVertexSource&&)                 = delete;
-        IVertexSource& operator=(IVertexSource&&)      = delete;
+        IVertexSource(IVertexSource&&) = delete;
+        IVertexSource& operator=(IVertexSource&&) = delete;
 
         /// What kind of source this is. Used by the registry / RG to decide
         /// barrier domains. Not consumed by mesh shaders.

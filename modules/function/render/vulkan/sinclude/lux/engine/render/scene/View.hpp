@@ -6,10 +6,10 @@
  * (init, destroy, tick, resize, …) is driven by RenderScene.
  */
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u + kViewDataStrideBytes
-#include <lux/engine/render/core/FrustumCuller.hpp> // exact-origin ViewCullData stride
+#include <lux/engine/render/core/FrustumCuller.hpp>               // exact-origin ViewCullData stride
 #include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp> // ViewHandle (generational)
-#include <lux/engine/render/gpu/utils/Slot.hpp> // SlotHandle
+#include <lux/engine/render/gpu/utils/Slot.hpp>                     // SlotHandle
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/container/SparseSet.hpp>
 
@@ -42,7 +42,7 @@ namespace lux::render
         ~View();
 
         // ── Identity ────────────────────────────────────────────────────
-        ViewHandle handle{};   ///< generational; .index keys per-view tables
+        ViewHandle handle{}; ///< generational; .index keys per-view tables
         ViewState state{ViewState::Created};
         std::string debug_name;
 
@@ -64,7 +64,7 @@ namespace lux::render
         /// The core does NOT interpret the bytes — only the feature + shaders do.
         /// A camera-less view (no StandardViewCamera op) leaves has_view_data
         /// false → zero per-view 3D traffic.
-        std::array<std::byte, kViewDataStrideBytes>    view_data_staging{};
+        std::array<std::byte, kViewDataStrideBytes> view_data_staging{};
         std::array<std::byte, kViewFrustumStrideBytes> frustum_staging{};
         bool has_view_data{false};
 

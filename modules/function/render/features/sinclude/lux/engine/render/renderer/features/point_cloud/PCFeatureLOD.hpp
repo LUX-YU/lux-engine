@@ -35,15 +35,15 @@ namespace lux::render
     public:
         struct Config
         {
-            ShaderHandle compute_shader{};   ///< pointcloud_culling.comp
-            ShaderHandle vertex_shader{};    ///< pointcloud_lod.vert
-            ShaderHandle fragment_shader{};  ///< pointcloud_simple.frag
-            float        point_size_world{0.05f}; ///< world-space point radius (m)
-            float        min_size{1.0f};          ///< minimum screen pixels
-            float        max_size{20.0f};         ///< maximum screen pixels
-            uint32_t     max_nodes{65536};
-            std::string  color_target{"SceneColor"};
-            std::string  depth_target{"SceneDepth"};
+            ShaderHandle compute_shader{};  ///< pointcloud_culling.comp
+            ShaderHandle vertex_shader{};   ///< pointcloud_lod.vert
+            ShaderHandle fragment_shader{}; ///< pointcloud_simple.frag
+            float point_size_world{0.05f};  ///< world-space point radius (m)
+            float min_size{1.0f};           ///< minimum screen pixels
+            float max_size{20.0f};          ///< maximum screen pixels
+            uint32_t max_nodes{65536};
+            std::string color_target{"SceneColor"};
+            std::string depth_target{"SceneDepth"};
         };
 
         explicit PCFeatureLOD(Config cfg);
@@ -53,7 +53,10 @@ namespace lux::render
             return EPointCloudMode::LOD;
         }
 
-        [[nodiscard]] std::string_view name() const override { return "PointCloudLOD"; }
+        [[nodiscard]] std::string_view name() const override
+        {
+            return "PointCloudLOD";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         void addPasses(RGBuilder& builder) override;
@@ -72,7 +75,7 @@ namespace lux::render
         };
 
         /// Runtime-mutable max_size clamp; world radius and min_size stay at Config.
-        float              max_size_{20.0f};
+        float max_size_{20.0f};
         Config cfg_{};
     };
 

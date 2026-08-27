@@ -12,34 +12,23 @@ namespace lux::render
 {
     namespace
     {
-        lux::cxx::expected<
-            RenderRequest<MaterialUploadedReply>,
-            ERenderUploadSubmitError
-        > submitGraphMaterial(
+        lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> submitGraphMaterial(
             MaterialUploadClient client,
             const GraphMaterialData& data,
             UploadGraphMaterialPayload payload
         )
         {
-            const TypeId operation_id =
-                client.ops().id<UploadGraphMaterialOp>();
+            const TypeId operation_id = client.ops().id<UploadGraphMaterialOp>();
             if (operation_id == kInvalidTypeId)
             {
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID
-                );
+                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             return client.session().trySubmit<MaterialUploadedReply>(
-                [data, payload, operation_id](
-                    RenderUploadClient::Builder& builder
-                ) mutable
-                {
+                [data, payload, operation_id](RenderUploadClient::Builder& builder) mutable {
                     payload.graph_desc = builder.pushOwnedBytesCopy(
                         reinterpret_cast<const std::byte*>(&data),
-                        static_cast<std::uint32_t>(
-                            sizeof(GraphMaterialData)
-                        )
+                        static_cast<std::uint32_t>(sizeof(GraphMaterialData))
                     );
                     builder.pushPreparedResource(operation_id, payload);
                 }
@@ -47,21 +36,13 @@ namespace lux::render
         }
     } // namespace
 
-    lux::cxx::expected<
-        RenderRequest<MaterialUploadedReply>,
-        ERenderUploadSubmitError
-    > uploadGraphMaterial(
-        MaterialUploadClient client,
-        const GraphMaterialData& data
-    )
+    lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
+    uploadGraphMaterial(MaterialUploadClient client, const GraphMaterialData& data)
     {
         return submitGraphMaterial(client, data, {});
     }
 
-    lux::cxx::expected<
-        RenderRequest<MaterialUploadedReply>,
-        ERenderUploadSubmitError
-    > uploadGraphMaterial(
+    lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> uploadGraphMaterial(
         MaterialUploadClient client,
         const GraphMaterialData& data,
         ShaderHandle gbuffer_shader,
@@ -73,32 +54,25 @@ namespace lux::render
         UploadGraphMaterialPayload payload{};
         payload.graph_gbuffer_shader = gbuffer_shader;
         payload.graph_forward_shader = forward_shader;
-        payload.shader_key =
-            (static_cast<std::uint64_t>(gbuffer_shader.index) << 40)
-            ^ (static_cast<std::uint64_t>(gbuffer_shader.gen) << 32)
-            ^ (static_cast<std::uint64_t>(forward_shader.index) << 8)
-            ^ static_cast<std::uint64_t>(forward_shader.gen);
+        payload.shader_key = (static_cast<std::uint64_t>(gbuffer_shader.index) << 40) ^
+                             (static_cast<std::uint64_t>(gbuffer_shader.gen) << 32) ^
+                             (static_cast<std::uint64_t>(forward_shader.index) << 8) ^
+                             static_cast<std::uint64_t>(forward_shader.gen);
         if (payload.shader_key == 0)
             payload.shader_key = 1;
-        payload.alpha_mode   = alpha_mode;
+        payload.alpha_mode = alpha_mode;
         payload.double_sided = double_sided ? 1u : 0u;
         return submitGraphMaterial(client, data, payload);
     }
 
-    lux::cxx::expected<void, ERenderUploadSubmitError> modifyGraphMaterial(
-        MaterialUploadClient client,
-        RMaterialHandle handle,
-        const GraphMaterialData& data
-    )
+    lux::cxx::expected<void, ERenderUploadSubmitError>
+    modifyGraphMaterial(MaterialUploadClient client, RMaterialHandle handle, const GraphMaterialData& data)
     {
         ModifyGraphMaterialPayload payload{};
         payload.handle = handle;
         return client.modifyGraphMaterial(
             payload,
-            std::span<const std::byte>{
-                reinterpret_cast<const std::byte*>(&data),
-                sizeof(GraphMaterialData)
-            },
+            std::span<const std::byte>{reinterpret_cast<const std::byte*>(&data), sizeof(GraphMaterialData)},
             alignof(GraphMaterialData)
         );
     }

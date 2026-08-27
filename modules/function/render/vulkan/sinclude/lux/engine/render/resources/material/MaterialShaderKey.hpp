@@ -23,8 +23,7 @@ namespace lux::render
     {
         inline bool supportsLayers(ELightingTechnique family) noexcept
         {
-            return family == ELightingTechnique::LegacyLit
-                || family == ELightingTechnique::PbrMetallicRoughness;
+            return family == ELightingTechnique::LegacyLit || family == ELightingTechnique::PbrMetallicRoughness;
         }
 
         inline bool supportsAlphaCutout(ELightingTechnique family) noexcept
@@ -38,23 +37,23 @@ namespace lux::render
      */
     struct MaterialShaderKey
     {
-        ELightingTechnique        family{ ELightingTechnique::Unlit };
-        rdesc::EDiffuseModel      diffuse_model{ rdesc::EDiffuseModel::Lambert };      // only LegacyLit
-        rdesc::ESpecularModel     specular_model{ rdesc::ESpecularModel::None };       // only LegacyLit
+        ELightingTechnique family{ELightingTechnique::Unlit};
+        rdesc::EDiffuseModel diffuse_model{rdesc::EDiffuseModel::Lambert}; // only LegacyLit
+        rdesc::ESpecularModel specular_model{rdesc::ESpecularModel::None}; // only LegacyLit
 
-        bool has_base_color_texture{ false };
-        bool has_normal_texture{ false };
-        bool has_emissive_texture{ false };
-        bool has_occlusion_texture{ false };
-        bool has_ramp_texture{ false };                // Stylized only
-        bool has_metallic_roughness_texture{ false };  // PBR only
+        bool has_base_color_texture{false};
+        bool has_normal_texture{false};
+        bool has_emissive_texture{false};
+        bool has_occlusion_texture{false};
+        bool has_ramp_texture{false};               // Stylized only
+        bool has_metallic_roughness_texture{false}; // PBR only
 
-        bool has_fresnel_layer{ false };
-        bool has_clearcoat_layer{ false };
-        bool has_sheen_layer{ false };
+        bool has_fresnel_layer{false};
+        bool has_clearcoat_layer{false};
+        bool has_sheen_layer{false};
 
-        rdesc::EAlphaMode alpha_mode{ rdesc::EAlphaMode::Opaque };
-        bool double_sided{ false };
+        rdesc::EAlphaMode alpha_mode{rdesc::EAlphaMode::Opaque};
+        bool double_sided{false};
 
         bool operator==(const MaterialShaderKey&) const = default;
     };
@@ -126,9 +125,9 @@ namespace lux::render
     {
         MaterialShaderKey material;
 
-        bool has_tangent{ false };
-        bool skinned{ false };
-        bool instanced{ false };
+        bool has_tangent{false};
+        bool skinned{false};
+        bool instanced{false};
 
         bool operator==(const DrawShaderKey&) const = default;
     };
@@ -142,29 +141,39 @@ namespace lux::render
     {
         const MaterialShaderKey k = canonicalizeMaterialShaderKey(key);
         ShaderFeatureMask mask = 0;
-        if (k.has_normal_texture)   mask |= EShaderFeature::HAS_NORMAL_MAP;
-        if (k.has_emissive_texture) mask |= EShaderFeature::HAS_EMISSION;
+        if (k.has_normal_texture)
+            mask |= EShaderFeature::HAS_NORMAL_MAP;
+        if (k.has_emissive_texture)
+            mask |= EShaderFeature::HAS_EMISSION;
         // Two-sided materials get their own variant bucket so the mesh features
         // can route them to a no-cull pipeline (rasterizer cull mode). The bit is
         // inert in shaders (no spec constant declared at this id) — it only acts
         // as a bucket/pipeline-cache discriminator.
-        if (k.double_sided)         mask |= EShaderFeature::DOUBLE_SIDED;
+        if (k.double_sided)
+            mask |= EShaderFeature::DOUBLE_SIDED;
 
         if (k.family == ELightingTechnique::PbrMetallicRoughness)
         {
-            if (k.alpha_mode == rdesc::EAlphaMode::Mask) mask |= EShaderFeature::ALPHA_CUTOUT;
-            if (k.has_occlusion_texture)                  mask |= EShaderFeature::HAS_AO_MAP;
-            if (k.has_metallic_roughness_texture)         mask |= EShaderFeature::HAS_METALLIC_MAP;
+            if (k.alpha_mode == rdesc::EAlphaMode::Mask)
+                mask |= EShaderFeature::ALPHA_CUTOUT;
+            if (k.has_occlusion_texture)
+                mask |= EShaderFeature::HAS_AO_MAP;
+            if (k.has_metallic_roughness_texture)
+                mask |= EShaderFeature::HAS_METALLIC_MAP;
         }
         if (k.family == ELightingTechnique::Stylized)
         {
-            if (k.has_ramp_texture) mask |= EShaderFeature::HAS_RAMP_MAP;
+            if (k.has_ramp_texture)
+                mask |= EShaderFeature::HAS_RAMP_MAP;
         }
         if (detail::supportsLayers(k.family))
         {
-            if (k.has_clearcoat_layer) mask |= EShaderFeature::HAS_CLEARCOAT;
-            if (k.has_sheen_layer)     mask |= EShaderFeature::HAS_SHEEN;
-            if (k.has_fresnel_layer)   mask |= EShaderFeature::HAS_FRESNEL_LAYER;
+            if (k.has_clearcoat_layer)
+                mask |= EShaderFeature::HAS_CLEARCOAT;
+            if (k.has_sheen_layer)
+                mask |= EShaderFeature::HAS_SHEEN;
+            if (k.has_fresnel_layer)
+                mask |= EShaderFeature::HAS_FRESNEL_LAYER;
         }
         return mask;
     }
@@ -172,8 +181,10 @@ namespace lux::render
     inline ShaderFeatureMask toFeatureMask(const DrawShaderKey& key)
     {
         ShaderFeatureMask mask = toFeatureMask(key.material);
-        if (key.skinned)   mask |= EShaderFeature::HAS_SKINNING;
-        if (key.instanced) mask |= EShaderFeature::INSTANCED;
+        if (key.skinned)
+            mask |= EShaderFeature::HAS_SKINNING;
+        if (key.instanced)
+            mask |= EShaderFeature::INSTANCED;
         return mask;
     }
 
@@ -188,17 +199,11 @@ namespace lux::render
             hash_combine(h, std::hash<uint8_t>{}(static_cast<uint8_t>(key.diffuse_model)));
             hash_combine(h, std::hash<uint8_t>{}(static_cast<uint8_t>(key.specular_model)));
             hash_combine(h, std::hash<uint8_t>{}(static_cast<uint8_t>(key.alpha_mode)));
-            uint16_t bools =
-                (key.has_base_color_texture        << 0) |
-                (key.has_normal_texture             << 1) |
-                (key.has_emissive_texture           << 2) |
-                (key.has_occlusion_texture          << 3) |
-                (key.has_ramp_texture               << 4) |
-                (key.has_metallic_roughness_texture << 5) |
-                (key.has_fresnel_layer              << 6) |
-                (key.has_clearcoat_layer            << 7) |
-                (key.has_sheen_layer                << 8) |
-                (key.double_sided                   << 9);
+            uint16_t bools = (key.has_base_color_texture << 0) | (key.has_normal_texture << 1) |
+                             (key.has_emissive_texture << 2) | (key.has_occlusion_texture << 3) |
+                             (key.has_ramp_texture << 4) | (key.has_metallic_roughness_texture << 5) |
+                             (key.has_fresnel_layer << 6) | (key.has_clearcoat_layer << 7) |
+                             (key.has_sheen_layer << 8) | (key.double_sided << 9);
             hash_combine(h, std::hash<uint16_t>{}(bools));
             return h;
         }

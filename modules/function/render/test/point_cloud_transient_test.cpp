@@ -12,7 +12,7 @@
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
-#include "RenderTask.hpp"            // relocated test-only coroutine support
+#include "RenderTask.hpp" // relocated test-only coroutine support
 #include "RenderTaskScheduler.hpp"
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
@@ -43,7 +43,8 @@ using namespace lux::render;
 static int g_pass = 0;
 static int g_fail = 0;
 
-static void check(bool cond, const char *name)
+static void
+check(bool cond, const char* name)
 {
     if (cond)
     {
@@ -59,7 +60,8 @@ static void check(bool cond, const char *name)
 
 // ── Vulkan extensions ───────────────────────────────────────────────────
 
-static std::vector<const char*> getVulkanExtensions()
+static std::vector<const char*>
+getVulkanExtensions()
 {
     const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
     return {exts.begin(), exts.end()};
@@ -69,22 +71,30 @@ static std::vector<const char*> getVulkanExtensions()
 
 static constexpr float kPi = 3.14159265f;
 
-static Eigen::Matrix4f buildViewMatrix(const Eigen::Vector3f &eye,
-                                       const Eigen::Vector3f &target,
-                                       const Eigen::Vector3f &up)
+static Eigen::Matrix4f
+buildViewMatrix(const Eigen::Vector3f& eye, const Eigen::Vector3f& target, const Eigen::Vector3f& up)
 {
     Eigen::Vector3f f = (target - eye).normalized();
     Eigen::Vector3f s = f.cross(up).normalized();
     Eigen::Vector3f u = s.cross(f);
     Eigen::Matrix4f V = Eigen::Matrix4f::Identity();
-    V(0, 0) = s.x();  V(0, 1) = s.y();  V(0, 2) = s.z();  V(0, 3) = -s.dot(eye);
-    V(1, 0) = u.x();  V(1, 1) = u.y();  V(1, 2) = u.z();  V(1, 3) = -u.dot(eye);
-    V(2, 0) = -f.x(); V(2, 1) = -f.y(); V(2, 2) = -f.z(); V(2, 3) = f.dot(eye);
+    V(0, 0) = s.x();
+    V(0, 1) = s.y();
+    V(0, 2) = s.z();
+    V(0, 3) = -s.dot(eye);
+    V(1, 0) = u.x();
+    V(1, 1) = u.y();
+    V(1, 2) = u.z();
+    V(1, 3) = -u.dot(eye);
+    V(2, 0) = -f.x();
+    V(2, 1) = -f.y();
+    V(2, 2) = -f.z();
+    V(2, 3) = f.dot(eye);
     return V;
 }
 
-static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect,
-                                       float near_z, float far_z)
+static Eigen::Matrix4f
+buildProjMatrix(float fov_rad, float aspect, float near_z, float far_z)
 {
     float tanHalf = std::tan(fov_rad * 0.5f);
     Eigen::Matrix4f P = Eigen::Matrix4f::Zero();
@@ -101,11 +111,8 @@ static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect,
 /// Generate a rotating ring of points. The ring angle changes each frame,
 /// so the visual output is completely replaced every frame — ideal for
 /// verifying transient (non-accumulative) behaviour.
-static std::vector<PointCloudPoint> generateRotatingRing(
-    uint32_t frame,
-    uint32_t point_count,
-    float radius,
-    std::mt19937 &rng)
+static std::vector<PointCloudPoint>
+generateRotatingRing(uint32_t frame, uint32_t point_count, float radius, std::mt19937& rng)
 {
     const float base_angle = static_cast<float>(frame) * 0.05f; // rotates over time
     std::uniform_real_distribution<float> noise(-0.02f, 0.02f);
@@ -133,7 +140,8 @@ static std::vector<PointCloudPoint> generateRotatingRing(
 }
 
 /// Generate a static ground-plane grid of points (for Simple mode comparison).
-static std::vector<PointCloudPoint> generateGroundPlane(uint32_t side, float spacing)
+static std::vector<PointCloudPoint>
+generateGroundPlane(uint32_t side, float spacing)
 {
     std::vector<PointCloudPoint> pts;
     pts.reserve(side * side);
@@ -154,11 +162,13 @@ static std::vector<PointCloudPoint> generateGroundPlane(uint32_t side, float spa
 
 // ── Coroutine task ──────────────────────────────────────────────────────
 
-static RenderTask<void> transientTestTask(
-    RenderFrameSession &session,
+static RenderTask<void>
+transientTestTask(
+    RenderFrameSession& session,
     RenderControlSession& control,
     RenderUploadClient upload,
-    lux::window::LuxWindow &window)
+    lux::window::LuxWindow& window
+)
 {
     // ── Phase 1: Create scene ───────────────────────────────────────
     auto scene_reply = co_await control.createScene("TransientTestScene");
@@ -190,8 +200,7 @@ static RenderTask<void> transientTestTask(
     co_await yield_frame();
 
     auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
-    auto view_cam_ops = ViewCameraOperationIds::fromOps(
-        view_cam_type_reply.ops, view_cam_type_reply.op_count);
+    auto view_cam_ops = ViewCameraOperationIds::fromOps(view_cam_type_reply.ops, view_cam_type_reply.op_count);
 
     co_await yield_frame();
 
@@ -215,8 +224,7 @@ static RenderTask<void> transientTestTask(
 
     auto transient_type_reply = co_await control.registerFeatureType(kPCFeatureTransientFactory);
     check(transient_type_reply.feature_type_id > 0, "RegisterFeatureType Transient — OK");
-    auto transient_ops = PointCloudOperationIds::fromOps(
-        transient_type_reply.ops, transient_type_reply.op_count);
+    auto transient_ops = PointCloudOperationIds::fromOps(transient_type_reply.ops, transient_type_reply.op_count);
     check(transient_ops.valid(), "Transient upload op — valid");
 
     PointCloudUploadClient transient_upload{upload, transient_ops};
@@ -226,8 +234,8 @@ static RenderTask<void> transientTestTask(
     PCTransientCommConfig transient_cc{};
     transient_cc.point_size = 5.0f;
     transient_cc.max_points = 500'000;
-    auto transient_feat_reply = co_await control.addFeature(
-        scene_id, transient_type_reply.feature_type_id, transient_cc);
+    auto transient_feat_reply =
+        co_await control.addFeature(scene_id, transient_type_reply.feature_type_id, transient_cc);
     auto transient_handle = transient_feat_reply.feature;
     check(transient_handle.isValid(), "AddFeature Transient — valid handle");
 
@@ -236,8 +244,7 @@ static RenderTask<void> transientTestTask(
 
     auto simple_type_reply = co_await control.registerFeatureType(kPCFeatureSimpleFactory);
     check(simple_type_reply.feature_type_id > 0, "RegisterFeatureType Simple — OK");
-    auto simple_ops = PointCloudOperationIds::fromOps(
-        simple_type_reply.ops, simple_type_reply.op_count);
+    auto simple_ops = PointCloudOperationIds::fromOps(simple_type_reply.ops, simple_type_reply.op_count);
 
     PointCloudUploadClient simple_upload{upload, simple_ops};
 
@@ -246,9 +253,8 @@ static RenderTask<void> transientTestTask(
     PCSimpleCommConfig simple_cc{};
     simple_cc.initial_point_size = 4.0f;
     simple_cc.max_global_points = 500'000;
-    simple_cc.max_octree_nodes  = 256;
-    auto simple_feat_reply = co_await control.addFeature(
-        scene_id, simple_type_reply.feature_type_id, simple_cc);
+    simple_cc.max_octree_nodes = 256;
+    auto simple_feat_reply = co_await control.addFeature(scene_id, simple_type_reply.feature_type_id, simple_cc);
     auto simple_handle = simple_feat_reply.feature;
     check(simple_handle.isValid(), "AddFeature Simple — valid handle");
 
@@ -261,14 +267,13 @@ static RenderTask<void> transientTestTask(
     {
         auto ground = generateGroundPlane(100, 0.15f);
         {
-                        auto pc_span = std::span<const PointCloudPoint>(ground.data(), ground.size());
-                        lux::render::UploadPointCloudChunkPayload up{};
-                        up.scene_id    = scene_id;
-                        up.chunk_id    = 0;
-                        up.point_count = static_cast<uint32_t>(pc_span.size());
-                        (void)simple_upload.uploadChunk(up, std::as_bytes(pc_span),
-                                             alignof(lux::render::PointCloudPoint));
-                    }
+            auto pc_span = std::span<const PointCloudPoint>(ground.data(), ground.size());
+            lux::render::UploadPointCloudChunkPayload up{};
+            up.scene_id = scene_id;
+            up.chunk_id = 0;
+            up.point_count = static_cast<uint32_t>(pc_span.size());
+            (void)simple_upload.uploadChunk(up, std::as_bytes(pc_span), alignof(lux::render::PointCloudPoint));
+        }
         check(true, "SimpleMode — ground plane uploaded");
     }
 
@@ -276,7 +281,7 @@ static RenderTask<void> transientTestTask(
     co_await yield_frame();
 
     constexpr uint32_t kRingPoints = 50'000;
-    constexpr float kRingRadius  = 3.0f;
+    constexpr float kRingRadius = 3.0f;
     uint32_t frame_num = 0;
 
     bool use_transient = true;
@@ -296,35 +301,35 @@ static RenderTask<void> transientTestTask(
         {
             auto ring = generateRotatingRing(frame_num, kRingPoints, kRingRadius, rng);
             {
-                        auto pc_span = std::span<const PointCloudPoint>(ring.data(), ring.size());
-                        lux::render::UploadPointCloudChunkPayload up{};
-                        up.scene_id    = scene_id;
-                        up.chunk_id    = 0;
-                        up.point_count = static_cast<uint32_t>(pc_span.size());
-                        (void)transient_upload.uploadChunk(up, std::as_bytes(pc_span),
-                                             alignof(lux::render::PointCloudPoint));
-                    }
+                auto pc_span = std::span<const PointCloudPoint>(ring.data(), ring.size());
+                lux::render::UploadPointCloudChunkPayload up{};
+                up.scene_id = scene_id;
+                up.chunk_id = 0;
+                up.point_count = static_cast<uint32_t>(pc_span.size());
+                (void)transient_upload.uploadChunk(up, std::as_bytes(pc_span), alignof(lux::render::PointCloudPoint));
+            }
         }
 
         // ── Orbiting camera ────────────
         {
-            float elapsed = std::chrono::duration<float>(
-                std::chrono::steady_clock::now() - start_time).count();
+            float elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - start_time).count();
             float angle = elapsed * 0.4f;
-            Eigen::Vector3f eye(
-                cam_dist * std::cos(angle),
-                cam_dist * 0.4f,
-                cam_dist * std::sin(angle));
+            Eigen::Vector3f eye(cam_dist * std::cos(angle), cam_dist * 0.4f, cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, target, up);
-            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(
+                ViewCameraProxy(session, view_cam_ops),
+                scene_id,
+                view_handle,
+                V.data(),
+                P.data(),
+                eye.data());
         }
 
         co_await yield_frame();
         ++frame_num;
 
         // ── Key input ──
-        auto keyPressed = [&](int glfw_key) -> bool
-        {
+        auto keyPressed = [&](int glfw_key) -> bool {
             bool down = (glfwGetKey(window.handle(), glfw_key) == GLFW_PRESS);
             bool edge = down && !key_was_down[glfw_key];
             key_was_down[glfw_key] = down;
@@ -363,7 +368,8 @@ static RenderTask<void> transientTestTask(
 
 // ── main ────────────────────────────────────────────────────────────────
 
-int main()
+int
+main()
 {
     std::cout << "=== Point Cloud Transient Test ===\n"
               << "  Verifies current-frame-only rendering with PCFeatureTransient.\n"
@@ -383,25 +389,28 @@ int main()
     std::atomic<bool> server_ready{false};
     std::atomic<bool> server_failed{false};
 
-    std::thread server_thread([&]
-    {
+    std::thread server_thread([&] {
         GeneralRenderServer server(channel, control_channel, upload_channel, sync);
         ServerConfig cfg;
         cfg.instance_extensions = surface_exts;
-        if (auto r = server.init(std::move(cfg)); !r) {
+        if (auto r = server.init(std::move(cfg)); !r)
+        {
             std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
-        if (auto r = server.attachToWindow(window); !r) {
+        if (auto r = server.attachToWindow(window); !r)
+        {
             std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
         server_ready.store(true, std::memory_order_release);
-        while (server.tick()) {}
+        while (server.tick())
+        {
+        }
     });
 
     while (!server_ready.load(std::memory_order_acquire))
@@ -422,18 +431,11 @@ int main()
 
     // ── Run coroutine via scheduler ─────────────────────────────────
     RenderTaskScheduler scheduler(session, control, &upload);
-    auto task = transientTestTask(
-        session,
-        control,
-        upload_client.client(),
-        window);
-    scheduler.run(
-        std::move(task), [&](RenderFrameSession &) -> bool
-        {
-            window.pollEvents();
-            return !window.shouldClose();
-        }
-    );
+    auto task = transientTestTask(session, control, upload_client.client(), window);
+    scheduler.run(std::move(task), [&](RenderFrameSession&) -> bool {
+        window.pollEvents();
+        return !window.shouldClose();
+    });
 
     // ── Shutdown ────────────────────────────────────────────────────
     sync->requestStop();

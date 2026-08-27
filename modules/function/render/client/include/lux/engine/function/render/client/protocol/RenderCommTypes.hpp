@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/function/render/client/core/RenderError.hpp>   // GenericOkReply::error
+#include <lux/engine/function/render/client/core/RenderError.hpp> // GenericOkReply::error
 
 #include <concepts>
 #include <array>
@@ -27,16 +27,14 @@ namespace lux::render
     //  Aligned allocator for the payload blob
     // -----------------------------------------------------------------------------
 
-    template <typename T, std::size_t Alignment>
-    class AlignedAllocator
+    template <typename T, std::size_t Alignment> class AlignedAllocator
     {
     public:
         using value_type = T;
 
         AlignedAllocator() noexcept = default;
 
-        template <typename U>
-        constexpr AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept
+        template <typename U> constexpr AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept
         {
         }
 
@@ -45,11 +43,7 @@ namespace lux::render
             if (n > (std::numeric_limits<std::size_t>::max)() / sizeof(T))
                 std::abort();
 
-            void* p = ::operator new(
-                n * sizeof(T),
-                std::align_val_t{Alignment},
-                std::nothrow
-            );
+            void* p = ::operator new(n * sizeof(T), std::align_val_t{Alignment}, std::nothrow);
             if (!p)
                 std::abort();
             return static_cast<T*>(p);
@@ -60,8 +54,7 @@ namespace lux::render
             ::operator delete(p, std::align_val_t{Alignment});
         }
 
-        template <typename U>
-        struct rebind
+        template <typename U> struct rebind
         {
             using other = AlignedAllocator<U, Alignment>;
         };
@@ -70,15 +63,13 @@ namespace lux::render
     };
 
     template <typename T, typename U, std::size_t Alignment>
-    constexpr bool operator==(const AlignedAllocator<T, Alignment>&,
-                              const AlignedAllocator<U, Alignment>&) noexcept
+    constexpr bool operator==(const AlignedAllocator<T, Alignment>&, const AlignedAllocator<U, Alignment>&) noexcept
     {
         return true;
     }
 
     template <typename T, typename U, std::size_t Alignment>
-    constexpr bool operator!=(const AlignedAllocator<T, Alignment>&,
-                              const AlignedAllocator<U, Alignment>&) noexcept
+    constexpr bool operator!=(const AlignedAllocator<T, Alignment>&, const AlignedAllocator<U, Alignment>&) noexcept
     {
         return false;
     }
@@ -87,19 +78,19 @@ namespace lux::render
     //  Protocol primitives
     // -----------------------------------------------------------------------------
 
-    using TypeId      = std::uint32_t;
-    using RequestId   = std::uint32_t;
-    using OpCode      = std::uint8_t;
+    using TypeId = std::uint32_t;
+    using RequestId = std::uint32_t;
+    using OpCode = std::uint8_t;
 
-    inline constexpr TypeId     kInvalidTypeId    = std::numeric_limits<TypeId>::max();
-    inline constexpr RequestId  kInvalidRequestId = std::numeric_limits<RequestId>::max();
+    inline constexpr TypeId kInvalidTypeId = std::numeric_limits<TypeId>::max();
+    inline constexpr RequestId kInvalidRequestId = std::numeric_limits<RequestId>::max();
 
     // Reply type id for a generic "the command failed during dispatch" reply.
     // A reserved high value so it never collides with a hand-assigned type_ids reply
     // id. Lives in this base comm header so BOTH the client (RenderRequest /
     // ResponseCallbackStore) and the server/protocol can name it without a circular
     // include (RenderProtocol.hpp aliases it as type_ids::ReplyCommandFailed).
-    inline constexpr TypeId     kReplyCommandFailedTypeId = 0xFFFFFF01u;
+    inline constexpr TypeId kReplyCommandFailedTypeId = 0xFFFFFF01u;
 
     // TypeId encodes a 16-bit slot index (low) and 16-bit generation (high).
     // Static type_ids have generation 0 — they are never recycled.
@@ -142,7 +133,7 @@ namespace lux::render
     namespace attachment_types
     {
         inline constexpr TypeId BorrowedBytes = 1;
-        inline constexpr TypeId OwnedBytes    = 2; ///< Lifetime-managing owner; not resolved directly
+        inline constexpr TypeId OwnedBytes = 2; ///< Lifetime-managing owner; not resolved directly
         /// Owns a module or package while render-thread function pointers remain
         /// registered. The payload is std::shared_ptr<const void>.
         inline constexpr TypeId LifetimeLease = 4;
@@ -154,8 +145,8 @@ namespace lux::render
 
     enum class CmdFlags : std::uint16_t
     {
-        None          = 0,
-        ExpectsReply  = 1u << 0,
+        None = 0,
+        ExpectsReply = 1u << 0,
         DeferredReply = 1u << 1,
     };
 
@@ -189,8 +180,7 @@ namespace lux::render
         return (value + (alignment - 1)) & ~(alignment - 1);
     }
 
-    template <typename T>
-    struct CommandTraits
+    template <typename T> struct CommandTraits
     {
         static constexpr bool has_reply = false;
         static constexpr TypeId reply_type_id = kInvalidTypeId;
@@ -201,7 +191,7 @@ namespace lux::render
     /// 包含那个重头,正说明它归错了层。与 CommandTraits 主模板同处。
     struct GenericOkReply
     {
-        uint32_t    code{0};
+        uint32_t code{0};
         /// code != 0 时说明为什么。此前只有一个不透明的 code —— 调用方看得出失败了,
         /// 看不出失败在哪,于是原因只能同时打一份到服务端 stderr。
         RenderError error{};
@@ -210,12 +200,12 @@ namespace lux::render
     /// 一条命令在**分发期**失败的方式(还没到 handler 的业务逻辑)。
     enum class EDispatchFailure : uint32_t
     {
-        Unspecified      = 0,
-        InvalidOpcode    = 1,
+        Unspecified = 0,
+        InvalidOpcode = 1,
         PayloadOutOfBounds = 2,
-        UnknownTypeId    = 3,
+        UnknownTypeId = 3,
         TypeIdGeneration = 4,
-        HandlerRejected  = 5,
+        HandlerRejected = 5,
         PayloadValidation = 6,
     };
 
@@ -226,7 +216,7 @@ namespace lux::render
     // error 存进请求的失败态),不该为此拖进整个线协议头。
     struct CommandFailedReply
     {
-        uint32_t    code{0};   ///< EDispatchFailure
+        uint32_t code{0}; ///< EDispatchFailure
         /// 分发失败的具体那一条,实参槽里带着定位所需的数字(越界的 opcode、
         /// 出界的载荷偏移与长度、认不出的 TypeId 下标)。此前这些数字只打在
         /// 服务端 stderr 上,客户端拿到的是一个粗粒度的 code。
@@ -234,30 +224,29 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<CommandFailedReply>);
 
-    template <typename T>
-    inline constexpr bool command_has_reply_v = CommandTraits<T>::has_reply;
+    template <typename T> inline constexpr bool command_has_reply_v = CommandTraits<T>::has_reply;
 
     struct CmdRecord
     {
-        OpCode        opcode{0};
-        std::uint8_t  reserved0{0};
+        OpCode opcode{0};
+        std::uint8_t reserved0{0};
         std::uint16_t flags{0};
-        TypeId        type_id{kInvalidTypeId};
+        TypeId type_id{kInvalidTypeId};
         std::uint32_t payload_offset{0};
         std::uint32_t payload_size{0};
-        RequestId     request_id{kInvalidRequestId};
+        RequestId request_id{kInvalidRequestId};
     };
     static_assert(sizeof(CmdRecord) == 20);
     static_assert(std::is_trivially_copyable_v<CmdRecord>);
 
     struct ReplyRecord
     {
-        TypeId        type_id{kInvalidTypeId};
+        TypeId type_id{kInvalidTypeId};
         std::uint16_t flags{0};
         std::uint16_t reserved0{0};
         std::uint32_t payload_offset{0};
         std::uint32_t payload_size{0};
-        RequestId     request_id{kInvalidRequestId};
+        RequestId request_id{kInvalidRequestId};
     };
     static_assert(sizeof(ReplyRecord) == 20);
     static_assert(std::is_trivially_copyable_v<ReplyRecord>);
@@ -294,8 +283,8 @@ namespace lux::render
 
     struct AttachmentRecord
     {
-        TypeId  type_id{kInvalidTypeId};
-        void*   object{nullptr};
+        TypeId type_id{kInvalidTypeId};
+        void* object{nullptr};
         std::size_t object_size{0};
         std::size_t accounted_size{0};
         void (*destroy)(void*) noexcept {nullptr};
@@ -309,11 +298,7 @@ namespace lux::render
             std::size_t charged_size,
             void (*deleter)(void*) noexcept
         ) noexcept
-            : type_id(type),
-              object(value),
-              object_size(value_size),
-              accounted_size(charged_size),
-              destroy(deleter)
+            : type_id(type), object(value), object_size(value_size), accounted_size(charged_size), destroy(deleter)
         {
         }
 
@@ -326,10 +311,8 @@ namespace lux::render
         AttachmentRecord& operator=(const AttachmentRecord&) = delete;
 
         AttachmentRecord(AttachmentRecord&& other) noexcept
-            : type_id(std::exchange(other.type_id, kInvalidTypeId)),
-              object(std::exchange(other.object, nullptr)),
-              object_size(std::exchange(other.object_size, 0)),
-              accounted_size(std::exchange(other.accounted_size, 0)),
+            : type_id(std::exchange(other.type_id, kInvalidTypeId)), object(std::exchange(other.object, nullptr)),
+              object_size(std::exchange(other.object_size, 0)), accounted_size(std::exchange(other.accounted_size, 0)),
               destroy(std::exchange(other.destroy, nullptr))
         {
         }
@@ -364,8 +347,8 @@ namespace lux::render
 
     struct BorrowedBytesAttachment
     {
-        const std::byte*      data{nullptr};
-        std::uint32_t         size{0};
+        const std::byte* data{nullptr};
+        std::uint32_t size{0};
     };
 
     /// Owns or aliases a byte range via shared ownership.
@@ -378,7 +361,7 @@ namespace lux::render
     struct OwnedBytesAttachment
     {
         std::shared_ptr<const void> owner{};
-        const std::byte*            data{nullptr};
-        std::uint32_t               size{0};
+        const std::byte* data{nullptr};
+        std::uint32_t size{0};
     };
 }

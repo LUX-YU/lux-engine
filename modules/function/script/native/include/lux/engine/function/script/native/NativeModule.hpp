@@ -14,8 +14,7 @@
 
 namespace lux::script
 {
-    using HostSymbolResolver =
-        lux::cxx::move_only_function<void*(std::string_view symbol)>;
+    using HostSymbolResolver = lux::cxx::move_only_function<void*(std::string_view symbol)>;
 
     class LUX_FUNCTION_PUBLIC NativeModule final
     {
@@ -31,12 +30,9 @@ namespace lux::script
         NativeModule& operator=(const NativeModule&) = delete;
 
         [[nodiscard]] std::string_view name() const noexcept;
-        [[nodiscard]] std::span<const lux_script_function_desc>
-            functions() const noexcept;
-        [[nodiscard]] const lux_script_function_desc*
-            findFunction(std::string_view name) const noexcept;
-        [[nodiscard]] const lux_script_function_desc*
-            findFunction(ScriptSymbolId symbol) const noexcept;
+        [[nodiscard]] std::span<const lux_script_function_desc> functions() const noexcept;
+        [[nodiscard]] const lux_script_function_desc* findFunction(std::string_view name) const noexcept;
+        [[nodiscard]] const lux_script_function_desc* findFunction(ScriptSymbolId symbol) const noexcept;
         [[nodiscard]] std::uint32_t abiVersion() const noexcept;
         [[nodiscard]] std::uint64_t stateLayoutHash() const noexcept;
         [[nodiscard]] std::uint32_t stateSize() const noexcept;
@@ -47,15 +43,8 @@ namespace lux::script
     };
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC ScriptResult<NativeModule>
-        loadNativeModule(
-            const std::filesystem::path& path,
-            HostSymbolResolver resolver = {}
-        );
+    loadNativeModule(const std::filesystem::path& path, HostSymbolResolver resolver = {});
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC ScriptResult<NativeModule>
-        loadNativeModule(
-            std::span<const std::byte> image,
-            std::string_view module_name,
-            HostSymbolResolver resolver = {}
-        );
+    loadNativeModule(std::span<const std::byte> image, std::string_view module_name, HostSymbolResolver resolver = {});
 }

@@ -24,16 +24,16 @@ namespace lux::render
     /// the coincidence.
     struct alignas(16) ShadowSliceGPU
     {
-        Eigen::Matrix4f light_vp;     // Light-space view-projection matrix
-        float           bias;         // Depth comparison bias
-        float           slope_bias;   // Raster slope depth bias
-        float           normal_bias;  // Normal offset bias
-        float           texel_size;   // 1.0 / tile shadow resolution
-        Eigen::Vector2f atlas_uv_scale; // Tile scale in page UV [0,1]
-        Eigen::Vector2f atlas_uv_bias;  // Tile origin in page UV [0,1]
+        Eigen::Matrix4f light_vp;           // Light-space view-projection matrix
+        float bias;                         // Depth comparison bias
+        float slope_bias;                   // Raster slope depth bias
+        float normal_bias;                  // Normal offset bias
+        float texel_size;                   // 1.0 / tile shadow resolution
+        Eigen::Vector2f atlas_uv_scale;     // Tile scale in page UV [0,1]
+        Eigen::Vector2f atlas_uv_bias;      // Tile origin in page UV [0,1]
         Eigen::Vector2f atlas_inner_uv_min; // Inner sampling rect min UV (atlas space)
         Eigen::Vector2f atlas_inner_uv_max; // Inner sampling rect max UV (atlas space)
-        uint32_t        atlas_layer;  // Layer index in the shadow map 2D array
+        uint32_t atlas_layer;               // Layer index in the shadow map 2D array
         // EVSM depth-linearization params (reuse old padding — no size change).
         // Perspective (point/spot) shadows must warp a LINEAR depth metric, not
         // the hyperbolic post-projection NDC z, or fp16 moment precision
@@ -41,11 +41,11 @@ namespace lux::render
         // Directional/ortho slices leave depth_is_perspective = 0 and keep using
         // NDC z directly (already linear). near/far are the light projection's
         // clip planes used to recover view-space distance from NDC z.
-        float           shadow_near;          // Light projection near plane (perspective only)
-        float           shadow_far;           // Light projection far plane (perspective only)
-        uint32_t        depth_is_perspective; // 1 = perspective slice (linearize), 0 = ortho
-        std::int32_t    origin_page[4]{};
-        float           origin_local_page_size[4]{0.0f, 0.0f, 0.0f, 1024.0f};
+        float shadow_near;             // Light projection near plane (perspective only)
+        float shadow_far;              // Light projection far plane (perspective only)
+        uint32_t depth_is_perspective; // 1 = perspective slice (linearize), 0 = ortho
+        std::int32_t origin_page[4]{};
+        float origin_local_page_size[4]{0.0f, 0.0f, 0.0f, 1024.0f};
     };
     static_assert(sizeof(ShadowSliceGPU) % 16 == 0);
     static_assert(sizeof(ShadowSliceGPU) == 160, "ShadowSliceGPU must stay 160 B (std430 parity)");
@@ -55,16 +55,16 @@ namespace lux::render
     /// `shadow_evsm.glsl`(旧注释指向的 `shadow_common.glsl` 已不存在)。
     struct alignas(16) ShadowConfigGPU
     {
-        uint32_t total_slices;       // Total active shadow slices
-        uint32_t dir_light_offset;   // Slice offset for directional lights
-        uint32_t dir_cascade_count;  // Cascades for main directional light
-        uint32_t spot_light_offset;  // Slice offset for spot lights
-        uint32_t spot_light_count;   // Number of spot light shadow slices
-        uint32_t point_light_offset; // Slice offset for point lights
-        uint32_t point_light_count;  // Number of point light shadow slices
-        float    dir_split_is_normalized; // 1.0: cascade_splits are normalized [0,1], 0.0: absolute view depth
-        float    dir_split_near;          // Camera near for normalized directional splits
-        float    dir_split_far;           // Camera far for normalized directional splits
+        uint32_t total_slices;         // Total active shadow slices
+        uint32_t dir_light_offset;     // Slice offset for directional lights
+        uint32_t dir_cascade_count;    // Cascades for main directional light
+        uint32_t spot_light_offset;    // Slice offset for spot lights
+        uint32_t spot_light_count;     // Number of spot light shadow slices
+        uint32_t point_light_offset;   // Slice offset for point lights
+        uint32_t point_light_count;    // Number of point light shadow slices
+        float dir_split_is_normalized; // 1.0: cascade_splits are normalized [0,1], 0.0: absolute view depth
+        float dir_split_near;          // Camera near for normalized directional splits
+        float dir_split_far;           // Camera far for normalized directional splits
         // Slot of the directional light whose cascades occupy dir_light_offset.
         // The CPU picks the first shadow-CASTING directional at ANY slot, so the
         // shader must compare light_index against this rather than hardcoding 0
@@ -72,7 +72,7 @@ namespace lux::render
         uint32_t dir_caster_slot;
         // Uses the former tail padding. Caster shaders use it to advance
         // per-instance world/HLOD coverage without per-frame property writes.
-        float    scene_time;
+        float scene_time;
     };
     static_assert(sizeof(ShadowConfigGPU) % 16 == 0);
 

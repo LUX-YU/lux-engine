@@ -23,7 +23,7 @@ namespace
 {
     class TestPane final : public lux::object::Object<TestPane, lux::ui::Pane>
     {
-      public:
+    public:
         TestPane(lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, std::string title)
             : Object(dispatcher, std::move(id), lux::ui::PaneTypeId{"test.pane"}, std::move(title))
         {
@@ -50,22 +50,21 @@ namespace
         int contextual_count{0};
         int global_count{0};
 
-      protected:
-        void draw(lux::ui::PaneDrawContext &context) override
+    protected:
+        void draw(lux::ui::PaneDrawContext& context) override
         {
             context.activateContext(lux::ui::UiContextIdView{"test.local.first"});
             context.activateContext(lux::ui::UiContextIdView{"test.local.second"});
             ImGui::TextUnformatted("UI vNext");
         }
 
-      private:
-        std::array<lux::ui::UiContextIdView, 1> contexts_{
-            lux::ui::UiContextIdView{"test.selection"}};
+    private:
+        std::array<lux::ui::UiContextIdView, 1> contexts_{lux::ui::UiContextIdView{"test.selection"}};
     };
 
     class Receiver final : public lux::object::Object<Receiver>
     {
-      public:
+    public:
         void invoke() noexcept
         {
             ++count;
@@ -74,13 +73,18 @@ namespace
     };
 } // namespace
 
-int main()
+int
+main()
 {
     std::array<std::byte, lux::ui::detail::kInlineDragDropBytes> inline_payload{};
     std::vector<std::byte> heap_payload;
     const std::array small_content{std::byte{0x1}, std::byte{0x2}, std::byte{0x3}};
     const auto small_encoded = lux::ui::detail::encodeDragDropPayload(
-        lux::ui::PayloadTypeIdView{"test.payload"}, small_content, inline_payload, heap_payload);
+        lux::ui::PayloadTypeIdView{"test.payload"},
+        small_content,
+        inline_payload,
+        heap_payload
+    );
     assert(heap_payload.empty());
     const auto small_decoded = lux::ui::detail::decodeDragDropPayload(small_encoded);
     assert(small_decoded);
@@ -88,21 +92,25 @@ int main()
     assert(std::ranges::equal(small_decoded->bytes, small_content));
 
     std::vector<std::byte> large_content(512, std::byte{0x7});
-    const auto large_encoded =
-        lux::ui::detail::encodeDragDropPayload(lux::ui::PayloadTypeIdView{"test.large_payload"},
-                                               large_content, inline_payload, heap_payload);
+    const auto large_encoded = lux::ui::detail::encodeDragDropPayload(
+        lux::ui::PayloadTypeIdView{"test.large_payload"},
+        large_content,
+        inline_payload,
+        heap_payload
+    );
     assert(!heap_payload.empty());
     const auto large_decoded = lux::ui::detail::decodeDragDropPayload(large_encoded);
     assert(large_decoded);
     assert(large_decoded->bytes.size() == large_content.size());
 
-    auto *external_context = ImGui::CreateContext();
+    auto* external_context = ImGui::CreateContext();
     ImGui::SetCurrentContext(external_context);
     {
         lux::ui::UISession first_session;
         lux::ui::UISession second_session;
-        assert(lux::ui::detail::UISessionDiagnosticsAccess::contextIdentity(first_session) !=
-               lux::ui::detail::UISessionDiagnosticsAccess::contextIdentity(second_session));
+        assert(
+            lux::ui::detail::UISessionDiagnosticsAccess::contextIdentity(first_session) !=
+            lux::ui::detail::UISessionDiagnosticsAccess::contextIdentity(second_session));
         assert(ImGui::GetCurrentContext() == external_context);
         first_session.beginFrame({64.0F, 64.0F}, 1.0F / 60.0F);
         static_cast<void>(first_session.endFrame());
@@ -132,52 +140,66 @@ int main()
         assert(foreign_registration.error() == lux::ui::EUiRegistrationError::FOREIGN_SESSION);
 
         auto factory_registration = session.registerFactory(lux::ui::PaneFactory{
-            lux::ui::PaneTypeId{"test.pane"}, "Test Pane",
-            [](lux::object::ObjectDispatcherRef dispatcher,
-               lux::ui::PaneId id) -> std::unique_ptr<lux::ui::Pane> {
+            lux::ui::PaneTypeId{"test.pane"},
+            "Test Pane",
+            [](lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id) -> std::unique_ptr<lux::ui::Pane> {
                 return std::make_unique<TestPane>(std::move(dispatcher), std::move(id), "Created");
-            }});
+            }}
+        );
         assert(factory_registration);
         auto duplicate_factory = session.registerFactory(lux::ui::PaneFactory{
-            lux::ui::PaneTypeId{"test.pane"}, "Duplicate",
-            [](lux::object::ObjectDispatcherRef,
-               lux::ui::PaneId) -> std::unique_ptr<lux::ui::Pane> { return {}; }});
+            lux::ui::PaneTypeId{"test.pane"},
+            "Duplicate",
+            [](lux::object::ObjectDispatcherRef, lux::ui::PaneId) -> std::unique_ptr<lux::ui::Pane> { return {}; }}
+        );
         assert(!duplicate_factory);
-        auto created =
-            session.createPane(lux::ui::PaneTypeIdView{"test.pane"}, lux::ui::PaneId{"created"});
+        auto created = session.createPane(lux::ui::PaneTypeIdView{"test.pane"}, lux::ui::PaneId{"created"});
         assert(created);
 
         int focus_changes = 0;
         bool last_focus = false;
-        auto focus_connection = first.observeScoped<lux::ui::Pane::focusChanged>(
-            [&](const lux::ui::PaneFocusChanged &change) noexcept {
+        auto focus_connection =
+            first.observeScoped<lux::ui::Pane::focusChanged>([&](const lux::ui::PaneFocusChanged& change) noexcept {
                 ++focus_changes;
                 last_focus = change.focused;
-            });
+            }
+            );
         static_cast<void>(focus_connection);
 
         int visibility_changes = 0;
         auto visibility_connection = first.observeScoped<lux::ui::Pane::visibilityChanged>(
-            [&](const lux::ui::PaneVisibilityChanged &) noexcept { ++visibility_changes; });
+            [&](const lux::ui::PaneVisibilityChanged&) noexcept { ++visibility_changes; }
+        );
         static_cast<void>(visibility_connection);
         first.setVisible(false);
         first.setVisible(true);
         assert(visibility_changes == 2);
 
-        auto &router = session.commandRouter();
+        auto& router = session.commandRouter();
         auto delete_command = router.defineCommand({lux::ui::UiCommandId{"delete"}, "Delete"});
         assert(delete_command);
-        auto duplicate_command =
-            router.defineCommand({lux::ui::UiCommandId{"delete"}, "Delete Again"});
+        auto duplicate_command = router.defineCommand({lux::ui::UiCommandId{"delete"}, "Delete Again"});
         assert(!duplicate_command);
         auto contextual = router.bind<&TestPane::contextualDelete, &TestPane::contextualEnabled>(
-            *delete_command, lux::ui::UiContextId{"test.selection"}, first, first);
+            *delete_command,
+            lux::ui::UiContextId{"test.selection"},
+            first,
+            first
+        );
         assert(contextual);
         auto duplicate_binding = router.bind<&TestPane::contextualDelete>(
-            *delete_command, lux::ui::UiContextId{"test.selection"}, first, first);
+            *delete_command,
+            lux::ui::UiContextId{"test.selection"},
+            first,
+            first
+        );
         assert(!duplicate_binding);
         auto second_contextual = router.bind<&TestPane::contextualDelete>(
-            *delete_command, lux::ui::UiContextId{"test.selection"}, second, second);
+            *delete_command,
+            lux::ui::UiContextId{"test.selection"},
+            second,
+            second
+        );
         assert(second_contextual);
         auto global = router.bindGlobal<&TestPane::globalDelete>(*delete_command, first);
         assert(global);
@@ -228,18 +250,19 @@ int main()
         assert(first.global_count == 1);
 
         Receiver fallback_global_receiver;
-        auto fallback_command =
-            router.defineCommand({lux::ui::UiCommandId{"fallback"}, "Fallback"});
+        auto fallback_command = router.defineCommand({lux::ui::UiCommandId{"fallback"}, "Fallback"});
         assert(fallback_command);
-        auto fallback_global =
-            router.bindGlobal<&Receiver::invoke>(*fallback_command, fallback_global_receiver);
+        auto fallback_global = router.bindGlobal<&Receiver::invoke>(*fallback_command, fallback_global_receiver);
         assert(fallback_global);
         lux::ui::CommandRegistration expired_contextual;
         {
             Receiver contextual_receiver;
             auto contextual_receiver_binding = router.bind<&Receiver::invoke>(
-                *fallback_command, lux::ui::UiContextId{"test.selection"}, second,
-                contextual_receiver);
+                *fallback_command,
+                lux::ui::UiContextId{"test.selection"},
+                second,
+                contextual_receiver
+            );
             assert(contextual_receiver_binding);
             expired_contextual = std::move(*contextual_receiver_binding);
             assert(router.invoke(*fallback_command) == lux::ui::ECommandDispatchResult::EXECUTED);
@@ -252,8 +275,7 @@ int main()
         lux::ui::CommandRegistration dead_binding;
         {
             Receiver receiver;
-            const auto temporary =
-                router.defineCommand({lux::ui::UiCommandId{"temporary"}, "Temporary"});
+            const auto temporary = router.defineCommand({lux::ui::UiCommandId{"temporary"}, "Temporary"});
             assert(temporary);
             auto binding = router.bindGlobal<&Receiver::invoke>(*temporary, receiver);
             assert(binding);
@@ -285,11 +307,11 @@ int main()
 
         std::vector<lux::ui::MenuItem> menu;
         menu.push_back(lux::ui::MenuItem::command(*delete_command, "Delete"));
-        menu.push_back(
-            lux::ui::MenuItem::submenu("More", {lux::ui::MenuItem::command(*fallback_command),
-                                                lux::ui::MenuItem::separator()}));
-        std::array toolbar{lux::ui::ToolbarItem::command(*delete_command),
-                           lux::ui::ToolbarItem::separator()};
+        menu.push_back(lux::ui::MenuItem::submenu(
+            "More",
+            {lux::ui::MenuItem::command(*fallback_command), lux::ui::MenuItem::separator()})
+        );
+        std::array toolbar{lux::ui::ToolbarItem::command(*delete_command), lux::ui::ToolbarItem::separator()};
         assert(menu.front().command() == toolbar.front().command());
         assert(menu[1].kind() == lux::ui::EMenuItemKind::SUBMENU);
         assert(menu[1].children().size() == 2);
@@ -307,14 +329,12 @@ int main()
     lux::ui::CommandHandle stale_handle;
     {
         lux::ui::CommandRouter retired_router;
-        auto command =
-            retired_router.defineCommand({lux::ui::UiCommandId{"stale.command"}, "Stale"});
+        auto command = retired_router.defineCommand({lux::ui::UiCommandId{"stale.command"}, "Stale"});
         assert(command);
         stale_handle = *command;
     }
     lux::ui::CommandRouter replacement_router;
-    auto replacement_command =
-        replacement_router.defineCommand({lux::ui::UiCommandId{"stale.command"}, "Replacement"});
+    auto replacement_command = replacement_router.defineCommand({lux::ui::UiCommandId{"stale.command"}, "Replacement"});
     assert(replacement_command);
     assert(!replacement_router.state(stale_handle).found);
     assert(replacement_router.label(stale_handle).empty());
@@ -323,9 +343,10 @@ int main()
     {
         lux::ui::UISession short_lived_session;
         auto registered = short_lived_session.registerFactory(lux::ui::PaneFactory{
-            lux::ui::PaneTypeId{"short.lived"}, "Short lived",
-            [](lux::object::ObjectDispatcherRef,
-               lux::ui::PaneId) -> std::unique_ptr<lux::ui::Pane> { return {}; }});
+            lux::ui::PaneTypeId{"short.lived"},
+            "Short lived",
+            [](lux::object::ObjectDispatcherRef, lux::ui::PaneId) -> std::unique_ptr<lux::ui::Pane> { return {}; }}
+        );
         assert(registered);
         expired_factory_registration = std::move(*registered);
     }

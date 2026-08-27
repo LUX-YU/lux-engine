@@ -47,21 +47,13 @@ namespace lux::asset
     {
         CookedAssetImageLimits() = delete;
 
-        explicit constexpr CookedAssetImageLimits(
-            std::size_t image_bytes
-        ) noexcept
-            : max_image_bytes(image_bytes)
+        explicit constexpr CookedAssetImageLimits(std::size_t image_bytes) noexcept : max_image_bytes(image_bytes)
         {
         }
 
         std::size_t max_image_bytes;
     };
 
-    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<
-        CookedAssetImageView,
-        ECookedAssetImageError>
-    inspectCookedAssetImage(
-        std::span<const std::byte> image,
-        const CookedAssetImageLimits& limits
-    ) noexcept;
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<CookedAssetImageView, ECookedAssetImageError>
+    inspectCookedAssetImage(std::span<const std::byte> image, const CookedAssetImageLimits& limits) noexcept;
 } // namespace lux::asset

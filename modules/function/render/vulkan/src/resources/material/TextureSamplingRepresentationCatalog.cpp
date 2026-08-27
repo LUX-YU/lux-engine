@@ -8,8 +8,7 @@ namespace lux::render
 {
     namespace
     {
-        [[nodiscard]] bool isCanonicalTextureSamplingName(
-            std::string_view name) noexcept
+        [[nodiscard]] bool isCanonicalTextureSamplingName(std::string_view name) noexcept
         {
             if (name.empty() || name.front() == '.' || name.back() == '.')
                 return false;
@@ -24,11 +23,14 @@ namespace lux::render
                         return false;
                     has_dot = true;
                 }
-                else if (!((value >= 'a' && value <= 'z') ||
-                           (value >= '0' && value <= '9') ||
-                           value == '_' || value == '-'))
+                else
                 {
-                    return false;
+                    const bool is_lowercase = value >= 'a' && value <= 'z';
+                    const bool is_digit = value >= '0' && value <= '9';
+                    const bool is_allowed_symbol = value == '_' || value == '-';
+                    const bool is_valid_character = is_lowercase || is_digit || is_allowed_symbol;
+                    if (!is_valid_character)
+                        return false;
                 }
                 previous_dot = dot;
             }
@@ -36,96 +38,80 @@ namespace lux::render
         }
 
         template <class Tag>
-        [[nodiscard]] bool stableIdCollision(
-            lux::cxx::StableNameIdView<Tag> lhs,
-            lux::cxx::StableNameIdView<Tag> rhs) noexcept
+        [[nodiscard]] bool
+        stableIdCollision(lux::cxx::StableNameIdView<Tag> lhs, lux::cxx::StableNameIdView<Tag> rhs) noexcept
         {
             return lhs.hash() == rhs.hash() && lhs.name() != rhs.name();
         }
 
-        lux::cxx::expected<TextureRefGPU, std::string> resolveBindless(
-            std::uint32_t resource_index,
-            std::uint32_t aux,
-            std::uint32_t flags) noexcept
+        lux::cxx::expected<TextureRefGPU, std::string>
+        resolveBindless(std::uint32_t resource_index, std::uint32_t aux, std::uint32_t flags) noexcept
         {
             return TextureRefGPU{0u, resource_index, aux, flags};
         }
 
     } // namespace
 
-    lux::cxx::expected<
-        TextureSamplingRepresentationCatalog,
-        ETextureSamplingCatalogError>
+    lux::cxx::expected<TextureSamplingRepresentationCatalog, ETextureSamplingCatalogError>
     TextureSamplingRepresentationCatalog::build(
-        std::vector<TextureSamplingRepresentationDescriptor> descriptors)
-        noexcept
+        std::vector<TextureSamplingRepresentationDescriptor> descriptors
+    ) noexcept
     {
         for (const auto& descriptor : descriptors)
         {
-            if (!descriptor.id.isValid() ||
-                !isCanonicalTextureSamplingName(descriptor.id.name()))
+            if (!descriptor.id.isValid() || !isCanonicalTextureSamplingName(descriptor.id.name()))
             {
-                return lux::cxx::unexpected<ETextureSamplingCatalogError>(
-                    ETextureSamplingCatalogError::INVALID_ID);
+                return lux::cxx::unexpected<ETextureSamplingCatalogError>(ETextureSamplingCatalogError::INVALID_ID);
             }
             if (!descriptor.resolve_reference)
             {
                 return lux::cxx::unexpected<ETextureSamplingCatalogError>(
-                    ETextureSamplingCatalogError::MISSING_RESOLVER);
+                    ETextureSamplingCatalogError::MISSING_RESOLVER
+                );
             }
             if (descriptor.shader_sampling_implementation.empty())
             {
                 return lux::cxx::unexpected<ETextureSamplingCatalogError>(
-                    ETextureSamplingCatalogError::
-                        MISSING_SHADER_IMPLEMENTATION);
+                    ETextureSamplingCatalogError::MISSING_SHADER_IMPLEMENTATION
+                );
             }
         }
-        std::ranges::sort(
-            descriptors,
-            {},
-            &TextureSamplingRepresentationDescriptor::representation_index);
+        std::ranges::sort(descriptors, {}, &TextureSamplingRepresentationDescriptor::representation_index);
         for (std::size_t index = 0u; index < descriptors.size(); ++index)
         {
             if (descriptors[index].representation_index != index)
             {
                 return lux::cxx::unexpected<ETextureSamplingCatalogError>(
                     index != 0u &&
-                            descriptors[index - 1u].representation_index ==
-                                descriptors[index].representation_index
+                            descriptors[index - 1u].representation_index == descriptors[index].representation_index
                         ? ETextureSamplingCatalogError::DUPLICATE_INDEX
-                        : ETextureSamplingCatalogError::NON_CONTIGUOUS_INDEX);
+                        : ETextureSamplingCatalogError::NON_CONTIGUOUS_INDEX
+                );
             }
         }
         auto by_id = descriptors;
-        std::ranges::sort(
-            by_id,
-            {},
-            [](const TextureSamplingRepresentationDescriptor& descriptor)
-            {
-                return descriptor.id.hash();
-            });
+        std::ranges::sort(by_id, {}, [](const TextureSamplingRepresentationDescriptor& descriptor) {
+            return descriptor.id.hash();
+        }
+        );
         for (std::size_t index = 1u; index < by_id.size(); ++index)
         {
             const auto previous = by_id[index - 1u].id.view();
             const auto current = by_id[index].id.view();
             if (stableIdCollision(previous, current))
             {
-                return lux::cxx::unexpected<ETextureSamplingCatalogError>(
-                    ETextureSamplingCatalogError::HASH_COLLISION);
+                return lux::cxx::unexpected<ETextureSamplingCatalogError>(ETextureSamplingCatalogError::HASH_COLLISION);
             }
             if (previous == current)
             {
-                return lux::cxx::unexpected<ETextureSamplingCatalogError>(
-                    ETextureSamplingCatalogError::DUPLICATE_ID);
+                return lux::cxx::unexpected<ETextureSamplingCatalogError>(ETextureSamplingCatalogError::DUPLICATE_ID);
             }
         }
-        return TextureSamplingRepresentationCatalog{
-            std::move(descriptors)};
+        return TextureSamplingRepresentationCatalog{std::move(descriptors)};
     }
 
     const TextureSamplingRepresentationDescriptor*
-    TextureSamplingRepresentationCatalog::find(
-        TextureSamplingRepresentationIdView id) const noexcept
+    TextureSamplingRepresentationCatalog::find(TextureSamplingRepresentationIdView id) const noexcept
     {
         for (const auto& descriptor : descriptors_)
         {
@@ -136,27 +122,22 @@ namespace lux::render
     }
 
     const TextureSamplingRepresentationDescriptor*
-    TextureSamplingRepresentationCatalog::find(
-        std::uint32_t representation_index) const noexcept
+    TextureSamplingRepresentationCatalog::find(std::uint32_t representation_index) const noexcept
     {
-        return representation_index < descriptors_.size()
-            ? &descriptors_[representation_index]
-            : nullptr;
+        return representation_index < descriptors_.size() ? &descriptors_[representation_index] : nullptr;
     }
 
-    TextureSamplingRepresentationCatalog
-    builtinTextureSamplingRepresentationCatalog() noexcept
+    TextureSamplingRepresentationCatalog builtinTextureSamplingRepresentationCatalog() noexcept
     {
         std::vector<TextureSamplingRepresentationDescriptor> descriptors;
-        descriptors.push_back({
-            ownTextureSamplingRepresentationId(
-                kBindlessTextureSamplingRepresentation),
-            0u,
-            &resolveBindless,
-            {"sampled_image_2d", "sampler"},
-            "luxSampleTexture.bindless"});
-        auto result = TextureSamplingRepresentationCatalog::build(
-            std::move(descriptors));
+        descriptors.push_back(
+            {ownTextureSamplingRepresentationId(kBindlessTextureSamplingRepresentation),
+             0u,
+             &resolveBindless,
+             {"sampled_image_2d", "sampler"},
+             "luxSampleTexture.bindless"}
+        );
+        auto result = TextureSamplingRepresentationCatalog::build(std::move(descriptors));
         if (!result)
             std::terminate();
         return std::move(*result);

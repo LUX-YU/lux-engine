@@ -27,16 +27,15 @@ namespace lux::render
     // =========================================================================
     //  Default shader name constants for PointCloudFeature
     // =========================================================================
-    inline constexpr std::string_view kPCSimpleVertShaderName  = "pointcloud_simple.vert";
-    inline constexpr std::string_view kPCSimpleFragShaderName  = "pointcloud_simple.frag";
+    inline constexpr std::string_view kPCSimpleVertShaderName = "pointcloud_simple.vert";
+    inline constexpr std::string_view kPCSimpleFragShaderName = "pointcloud_simple.frag";
     inline constexpr std::string_view kPCCullingCompShaderName = "pointcloud_culling.comp";
-    inline constexpr std::string_view kPCLodVertShaderName     = "pointcloud_lod.vert";
-    inline constexpr std::string_view kPCSplatFragShaderName   = "pointcloud_splat.frag";
+    inline constexpr std::string_view kPCLodVertShaderName = "pointcloud_lod.vert";
+    inline constexpr std::string_view kPCSplatFragShaderName = "pointcloud_splat.frag";
 
     /// 通信身份 tag:只为承载 prefix 与 no_factory(五模式共享一套 op,
     /// 工厂/描述符全手写)。不是 wire 类型。
-    struct LUX_COMM_CONFIG(prefix=PointCloud, no_factory=true)
-    PointCloudCommTag
+    struct LUX_COMM_CONFIG(prefix = PointCloud, no_factory = true) PointCloudCommTag
     {
     };
 
@@ -47,7 +46,7 @@ namespace lux::render
     {
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
-        float    initial_point_size{3.0f};
+        float initial_point_size{3.0f};
         uint32_t max_global_points{4'000'000};
         uint32_t max_octree_nodes{65'536};
     };
@@ -58,7 +57,7 @@ namespace lux::render
         ShaderHandle compute_shader{};
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
-        float    initial_point_size{3.0f};
+        float initial_point_size{3.0f};
         uint32_t max_nodes{65'536};
     };
     static_assert(std::is_trivially_copyable_v<PCGPUDrivenCommConfig>);
@@ -68,9 +67,9 @@ namespace lux::render
         ShaderHandle compute_shader{};
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
-        float    point_size_world{0.05f};
-        float    min_size{1.0f};
-        float    max_size{20.0f};
+        float point_size_world{0.05f};
+        float min_size{1.0f};
+        float max_size{20.0f};
         uint32_t max_nodes{65'536};
     };
     static_assert(std::is_trivially_copyable_v<PCLODCommConfig>);
@@ -80,9 +79,9 @@ namespace lux::render
         ShaderHandle compute_shader{};
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
-        float    point_size_world{0.05f};
-        float    min_size{2.0f};
-        float    max_size{30.0f};
+        float point_size_world{0.05f};
+        float min_size{2.0f};
+        float max_size{30.0f};
         uint32_t max_nodes{65'536};
     };
     static_assert(std::is_trivially_copyable_v<PCSplattingCommConfig>);
@@ -91,7 +90,7 @@ namespace lux::render
     {
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
-        float    point_size{3.0f};
+        float point_size{3.0f};
         uint32_t max_points{2'000'000};
     };
     static_assert(std::is_trivially_copyable_v<PCTransientCommConfig>);
@@ -101,7 +100,7 @@ namespace lux::render
     // =========================================================================
     struct PointCloudPoint
     {
-        float    x, y, z;
+        float x, y, z;
         uint32_t packed_attr;
 
         static constexpr uint32_t pack(float r, float g, float b, float intensity = 1.0f) noexcept
@@ -109,18 +108,13 @@ namespace lux::render
             auto to_u8 = [](float v) constexpr -> uint32_t {
                 return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
             };
-            return (to_u8(r) <<  0) |
-                   (to_u8(g) <<  8) |
-                   (to_u8(b) << 16) |
-                   (to_u8(intensity) << 24);
+            return (to_u8(r) << 0) | (to_u8(g) << 8) | (to_u8(b) << 16) | (to_u8(intensity) << 24);
         }
 
-        static constexpr PointCloudPoint make(
-            float px, float py, float pz,
-            float r, float g, float b,
-            float intensity = 1.0f) noexcept
+        static constexpr PointCloudPoint
+        make(float px, float py, float pz, float r, float g, float b, float intensity = 1.0f) noexcept
         {
-            return { px, py, pz, pack(r,g,b,intensity) };
+            return {px, py, pz, pack(r, g, b, intensity)};
         }
     };
     static_assert(sizeof(PointCloudPoint) == 16, "PointCloudPoint must be 16 bytes to match GPU layout");
@@ -140,20 +134,24 @@ namespace lux::render
     // =========================================================================
 
     /// Upload (or replace) a point cloud chunk. Data is copied into the request payload.
-    struct LUX_OP(lane=upload, kind=blob, name=PointCloudUpload, method=uploadChunk,
-                  reply=PointCloudChunkUploadedReply, opcode=resource)
-    UploadPointCloudChunkPayload
+    struct LUX_OP(
+        lane = upload,
+        kind = blob,
+        name = PointCloudUpload,
+        method = uploadChunk,
+        reply = PointCloudChunkUploadedReply,
+        opcode = resource) UploadPointCloudChunkPayload
     {
         RenderSceneId scene_id{};
-        uint32_t      chunk_id{0};
-        uint32_t      point_count{0};    ///< 必须等于 blob 字节数 / sizeof(PointCloudPoint)
-        LUX_OP_BLOB() BlobRef point_data{};
+        uint32_t chunk_id{0};
+        uint32_t point_count{0}; ///< 必须等于 blob 字节数 / sizeof(PointCloudPoint)
+        LUX_OP_BLOB() BlobRef point_data {};
     };
     static_assert(std::is_trivially_copyable_v<UploadPointCloudChunkPayload>);
 
     /// Remove a point cloud chunk from the GPU (fire-and-forget).
-    struct LUX_OP(lane=control, kind=stream, name=PointCloudRemove, method=removeChunk)
-    RemovePointCloudChunkPayload
+    struct LUX_OP(lane = control, kind = stream, name = PointCloudRemove, method = removeChunk)
+        RemovePointCloudChunkPayload
     {
         RenderSceneId scene_id{};
         uint32_t chunk_id{0};
@@ -161,18 +159,26 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<RemovePointCloudChunkPayload>);
 
     /// Clear all point cloud chunks for a scene (free all slots + octree nodes).
-    struct LUX_OP(lane=control, kind=resource, name=PointCloudClearAll, method=clearAll,
-                  reply=GenericOkReply, opcode=command)
-    ClearAllPointCloudPayload
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = PointCloudClearAll,
+        method = clearAll,
+        reply = GenericOkReply,
+        opcode = command) ClearAllPointCloudPayload
     {
         RenderSceneId scene_id{};
     };
     static_assert(std::is_trivially_copyable_v<ClearAllPointCloudPayload>);
 
     /// Clear a single chunk (reset point_count to 0, keep slot allocated).
-    struct LUX_OP(lane=control, kind=resource, name=PointCloudClearChunk, method=clearChunk,
-                  reply=GenericOkReply, opcode=command)
-    ClearPointCloudChunkPayload
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = PointCloudClearChunk,
+        method = clearChunk,
+        reply = GenericOkReply,
+        opcode = command) ClearPointCloudChunkPayload
     {
         RenderSceneId scene_id{};
         uint32_t chunk_id{0};
@@ -186,12 +192,12 @@ namespace lux::render
     ///                                      world radius and min clamp keep their
     ///                                      original Config values so depth scaling
     ///                                      is preserved.
-    struct LUX_OP(lane=frame, kind=stream, name=PointCloudSetPointSize, method=setPointSize)
-    SetPointCloudPointSizePayload
+    struct LUX_OP(lane = frame, kind = stream, name = PointCloudSetPointSize, method = setPointSize)
+        SetPointCloudPointSizePayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
-        float         point_size{3.0f};
+        float point_size{3.0f};
     };
     static_assert(std::is_trivially_copyable_v<SetPointCloudPointSizePayload>);
 

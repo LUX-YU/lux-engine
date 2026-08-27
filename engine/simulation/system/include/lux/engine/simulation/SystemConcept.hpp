@@ -14,8 +14,7 @@ namespace lux::simulation
      * The application binds the concrete object into a TaskGraph lambda.
      */
     template <class Type>
-    concept System = requires
-    {
+    concept System = requires {
         requires detail::TrustedSystemAccessDescriptor<decltype(Type::Access)>;
         requires validSystemDescription(Type::Description);
         requires std::is_nothrow_destructible_v<Type>;

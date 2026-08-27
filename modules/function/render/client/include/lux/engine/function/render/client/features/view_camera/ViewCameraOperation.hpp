@@ -25,48 +25,54 @@
 namespace lux::render
 {
     /// 无客户端创建参数 —— 空配置结构只承载特性身份注解。
-    struct LUX_COMM_CONFIG(prefix=ViewCamera, id=lux.render.view_camera.v1, display=StandardViewCamera,
-                           feature=StandardViewCameraFeature,
-                           feature_header=lux/engine/render/renderer/features/view_camera/StandardViewCameraFeature.hpp)
-    ViewCameraCommTag
+    struct LUX_COMM_CONFIG(
+        prefix = ViewCamera,
+        id = lux.render.view_camera.v1,
+        display = StandardViewCamera,
+        feature = StandardViewCameraFeature,
+        feature_header = lux / engine / render / renderer / features / view_camera /
+                         StandardViewCameraFeature.hpp) ViewCameraCommTag
     {
     };
     static_assert(std::is_trivially_copyable_v<ViewCameraCommTag>);
 
     /// Per-view camera update(核心 RenderProtocol 退役件):column-major 4x4,
     /// Vulkan ZO 投影(NDC z ∈ [0,1])。
-    struct LUX_OP(lane=frame, kind=bulk, name=ViewCameraUpdate, method=update)
-    ViewCameraUpdatePayload
+    struct LUX_OP(lane = frame, kind = bulk, name = ViewCameraUpdate, method = update) ViewCameraUpdatePayload
     {
         RenderSceneId scene_id{};
-        ViewHandle    view{};
-        float view_matrix[16]{};      // column-major 4x4
-        float proj_matrix[16]{};      // column-major 4x4, Vulkan ZO (NDC z in [0,1])
+        ViewHandle view{};
+        float view_matrix[16]{}; // column-major 4x4
+        float proj_matrix[16]{}; // column-major 4x4, Vulkan ZO (NDC z in [0,1])
         RenderLargePosition3D render_origin{};
         float coordinate_page_size{1024.0f};
     };
     static_assert(std::is_trivially_copyable_v<ViewCameraUpdatePayload>);
 
-    class ViewCameraProxy;   // 生成于 comm/genops/ViewCameraOperation.ops.hpp
+    class ViewCameraProxy; // 生成于 comm/genops/ViewCameraOperation.ops.hpp
 
     /// 单视图便捷面(裸矩阵数组 → 载荷拷贝 → span of 1),原 Proxy::update
     /// 的形状降级为自由函数 —— 语义糖留手写,wire 面归生成。
     LUX_FUNCTION_PUBLIC void viewCameraUpdate(
         ViewCameraProxy proxy,
-        RenderSceneId scene_id, ViewHandle view,
+        RenderSceneId scene_id,
+        ViewHandle view,
         const float view_matrix[16],
         const float proj_matrix[16],
         const RenderLargePosition3D& render_origin,
-        float coordinate_page_size);
+        float coordinate_page_size
+    );
 
     /// Explicit page-zero adapter for render tests and other transient scenes.
     /// Persistent World callers must use the exact RenderLargePosition3D API.
     LUX_FUNCTION_PUBLIC void viewCameraUpdateTransient(
         ViewCameraProxy proxy,
-        RenderSceneId scene_id, ViewHandle view,
+        RenderSceneId scene_id,
+        ViewHandle view,
         const float view_matrix[16],
         const float proj_matrix[16],
         const float camera_position[3],
-        float coordinate_page_size = 1024.0f);
+        float coordinate_page_size = 1024.0f
+    );
 
 } // namespace lux::render

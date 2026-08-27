@@ -22,11 +22,14 @@ namespace lux::render
     /// Result of a chained arena allocation.
     struct SegmentedAllocation
     {
-        uint16_t segment_index{0};   ///< Which segment this allocation lives in
-        uint64_t offset{0};          ///< Byte offset within the segment
-        uint64_t size{0};            ///< Size of the allocation in bytes
+        uint16_t segment_index{0};                   ///< Which segment this allocation lives in
+        uint64_t offset{0};                          ///< Byte offset within the segment
+        uint64_t size{0};                            ///< Size of the allocation in bytes
         VmaVirtualAllocation handle{VK_NULL_HANDLE}; ///< VMA handle (needed for free)
-        [[nodiscard]] bool valid() const { return size > 0; }
+        [[nodiscard]] bool valid() const
+        {
+            return size > 0;
+        }
     };
 
     /**
@@ -45,7 +48,7 @@ namespace lux::render
         /// Zero means that allocation is bounded only by the uint16 segment
         /// protocol and the external CapacityPlan/VRAM admission.
         static constexpr uint16_t kDefaultMaxSegments = 0;
-        static constexpr uint16_t kInvalidSegment     = 0xFFFF;
+        static constexpr uint16_t kInvalidSegment = 0xFFFF;
 
         ChainedArenaAllocator() = default;
 
@@ -54,8 +57,7 @@ namespace lux::render
          * @param seed_capacity  Size of the first segment in bytes.
          * @param max_segments   Maximum number of segments (default 16, 0 = unlimited).
          */
-        explicit ChainedArenaAllocator(uint64_t seed_capacity,
-                                       uint16_t max_segments = kDefaultMaxSegments)
+        explicit ChainedArenaAllocator(uint64_t seed_capacity, uint16_t max_segments = kDefaultMaxSegments)
             : max_segments_(max_segments)
         {
             if (seed_capacity > 0)
@@ -63,7 +65,10 @@ namespace lux::render
         }
 
         /// Number of active segments.
-        [[nodiscard]] uint16_t segmentCount() const { return static_cast<uint16_t>(segments_.size()); }
+        [[nodiscard]] uint16_t segmentCount() const
+        {
+            return static_cast<uint16_t>(segments_.size());
+        }
 
         /// Capacity of a specific segment.
         [[nodiscard]] uint64_t segmentCapacity(uint16_t idx) const
@@ -75,7 +80,8 @@ namespace lux::render
         [[nodiscard]] uint64_t totalUsedBytes() const
         {
             uint64_t total = 0;
-            for (auto& s : segments_) total += s->usedBytes();
+            for (auto& s : segments_)
+                total += s->usedBytes();
             return total;
         }
 
@@ -83,7 +89,8 @@ namespace lux::render
         [[nodiscard]] uint64_t totalCapacity() const
         {
             uint64_t total = 0;
-            for (auto& s : segments_) total += s->totalCapacity();
+            for (auto& s : segments_)
+                total += s->totalCapacity();
             return total;
         }
 
@@ -103,10 +110,7 @@ namespace lux::render
             if (free == 0u)
                 return 0.0f;
             const auto largest = largestFreeBlock();
-            return largest >= free
-                ? 0.0f
-                : 1.0f - static_cast<float>(largest) /
-                    static_cast<float>(free);
+            return largest >= free ? 0.0f : 1.0f - static_cast<float>(largest) / static_cast<float>(free);
         }
 
         /**
@@ -118,14 +122,15 @@ namespace lux::render
          */
         [[nodiscard]] SegmentedAllocation allocate(uint64_t size, uint64_t alignment = 1)
         {
-            if (size == 0 || segments_.empty()) return {};
+            if (size == 0 || segments_.empty())
+                return {};
 
             // Try most-recent segment first (hot path).
             {
                 auto& last = *segments_.back();
                 auto alloc = last.allocate(size, alignment);
                 if (alloc.valid())
-                    return { static_cast<uint16_t>(segments_.size() - 1), alloc.offset, alloc.size, alloc.handle };
+                    return {static_cast<uint16_t>(segments_.size() - 1), alloc.offset, alloc.size, alloc.handle};
             }
 
             // Fall back to earlier segments (reuse freed space).
@@ -133,15 +138,13 @@ namespace lux::render
             {
                 auto alloc = segments_[i]->allocate(size, alignment);
                 if (alloc.valid())
-                    return { i, alloc.offset, alloc.size, alloc.handle };
+                    return {i, alloc.offset, alloc.size, alloc.handle};
             }
 
             return {}; // all segments full
         }
 
-        [[nodiscard]] bool canAllocate(
-            uint64_t size,
-            uint64_t alignment = 1)
+        [[nodiscard]] bool canAllocate(uint64_t size, uint64_t alignment = 1)
         {
             if (size == 0u)
                 return true;
@@ -162,8 +165,9 @@ namespace lux::render
          */
         void free(const SegmentedAllocation& alloc)
         {
-            if (!alloc.valid() || alloc.segment_index >= segments_.size()) return;
-            segments_[alloc.segment_index]->free({ alloc.offset, alloc.size, alloc.handle });
+            if (!alloc.valid() || alloc.segment_index >= segments_.size())
+                return;
+            segments_[alloc.segment_index]->free({alloc.offset, alloc.size, alloc.handle});
         }
 
         /**
@@ -172,9 +176,9 @@ namespace lux::render
          */
         uint16_t addSegment(uint64_t capacity)
         {
-            if (capacity == 0) return kInvalidSegment;
-            if ((max_segments_ > 0 && segments_.size() >= max_segments_) ||
-                segments_.size() >= kInvalidSegment)
+            if (capacity == 0)
+                return kInvalidSegment;
+            if ((max_segments_ > 0 && segments_.size() >= max_segments_) || segments_.size() >= kInvalidSegment)
             {
                 return kInvalidSegment;
             }
@@ -200,7 +204,10 @@ namespace lux::render
         }
 
         /// Reset all segments.
-        void clear() { segments_.clear(); }
+        void clear()
+        {
+            segments_.clear();
+        }
 
     private:
         std::vector<std::unique_ptr<ArenaAllocator>> segments_;

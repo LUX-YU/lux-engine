@@ -9,7 +9,7 @@
  */
 
 #include <lux/engine/render/graph/FrameExtensionRegistry.hpp>
-#include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp>  // kMaxShadowBiasGroups(唯一真相源)
+#include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp> // kMaxShadowBiasGroups(唯一真相源)
 #include <vulkan/vulkan.h>
 #include <cstdint>
 #include <array>
@@ -27,20 +27,20 @@ namespace lux::render
 
         struct DrawLane
         {
-            VkRect2D     scissor{};
-            float        depth_bias{0.0f};
-            float        slope_bias{0.0f};
-            bool         active{false};
+            VkRect2D scissor{};
+            float depth_bias{0.0f};
+            float slope_bias{0.0f};
+            bool active{false};
         };
 
         std::array<DrawLane, kMaxBiasGroups> draw_lanes{};
-        uint32_t        group_count{0};
-        uint32_t        slice_count{0};
-        VkBuffer        cull_ubo{VK_NULL_HANDLE};
-        const void*     frustum_data{nullptr};
-        uint32_t        frustum_size{0};
-        const void*     group_map_data{nullptr};
-        uint32_t        group_map_size{0};
+        uint32_t group_count{0};
+        uint32_t slice_count{0};
+        VkBuffer cull_ubo{VK_NULL_HANDLE};
+        const void* frustum_data{nullptr};
+        uint32_t frustum_size{0};
+        const void* group_map_data{nullptr};
+        uint32_t group_map_size{0};
     };
 
     /// Global slot ID for shadow frame extension data.

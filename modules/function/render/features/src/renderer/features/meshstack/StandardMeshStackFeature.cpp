@@ -3,15 +3,15 @@
 
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp>          // kDefaultVertexLayoutId
+#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // kDefaultVertexLayoutId
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <lux/engine/render/resources/mesh/MeshResources.hpp>
 #include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>
 #include <lux/engine/render/resources/vertex/StaticVertexPoolSet.hpp>
 #include <lux/engine/render/resources/vertex/VertexProduction.hpp>
 #include <lux/engine/render/resources/material/MaterialResources.hpp>
-#include <lux/engine/render/gpu/transfer/TransferContributor.hpp>     // makeTransferContributor
-#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>   // domain-set dual-write target
+#include <lux/engine/render/gpu/transfer/TransferContributor.hpp>         // makeTransferContributor
+#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp> // domain-set dual-write target
 #include <lux/engine/render/renderer/features/meshstack/MeshInstanceAssembly.hpp>
 
 #include <algorithm>
@@ -28,9 +28,11 @@ namespace lux::render
 
     StandardMeshStackFeature::StandardMeshStackFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
-    {}
+    {
+    }
 
-    lux::render::Expected<void> StandardMeshStackFeature::initAndAttachTo(RenderScene& sc){
+    lux::render::Expected<void> StandardMeshStackFeature::initAndAttachTo(RenderScene& sc)
+    {
         // Own the per-scene 3D mesh-stack resources the RenderScene ctor used to
         // emplace unconditionally. ensure<T>: whoever attaches first builds them;
         // a second mesh feature gets the same instances. Order matters —
@@ -52,8 +54,7 @@ namespace lux::render
 
         // (2) Bindless vertex-source array (descriptor set 7).
         const bool fresh = (reg.find<VertexPoolRegistry>() == nullptr);
-        auto vpr_r = reg.ensure<VertexPoolRegistry>(
-            ctx.deviceContext(), ctx.descriptorService(), sc.descriptorArena());
+        auto vpr_r = reg.ensure<VertexPoolRegistry>(ctx.deviceContext(), ctx.descriptorService(), sc.descriptorArena());
         if (!vpr_r)
             return lux::cxx::unexpected<RenderError>(vpr_r.error());
         auto* vpr = *vpr_r;
@@ -67,8 +68,8 @@ namespace lux::render
             {
                 const auto accepted = vpr->setDomainWriteTarget(
                     domains->setsFor(rdesc::EBindFrequency::FEATURE),
-                    engineSetDomainOffset(
-                        static_cast<uint32_t>(EDescriptorSetSlot::VertexPool)));
+                    engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::VertexPool))
+                );
                 if (!accepted)
                     return accepted;
             }
@@ -83,8 +84,9 @@ namespace lux::render
         //     ensure<T>(init_args) 要消灭的形状,所以改成 must<>。
         auto mip_r = reg.ensure<StaticVertexPoolSet>(StaticVertexPoolSet::InitInfo{
             .vertex_pool_registry = vpr,
-            .mesh_resources       = &ctx.globalRegistry().must<MeshResources>(),
-        });
+            .mesh_resources = &ctx.globalRegistry().must<MeshResources>(),
+        }
+        );
         if (!mip_r)
             return lux::cxx::unexpected<RenderError>(mip_r.error());
 
@@ -102,22 +104,18 @@ namespace lux::render
         //     init(),ensure<InstanceResources>() 的无参形态编译不过。
         const bool fresh_inst = (reg.find<InstanceResources>() == nullptr);
         InstanceResources::InitInfo si{};
-        si.device_context   = &ctx.deviceContext();
-        si.descriptor_svc   = &ctx.descriptorService();
-        si.arena            = &sc.descriptorArena();
-        const auto instance_capacity = ctx.capacityPlan().effective(
-            lux::render::kActiveInstancesCapacity);
+        si.device_context = &ctx.deviceContext();
+        si.descriptor_svc = &ctx.descriptorService();
+        si.arena = &sc.descriptorArena();
+        const auto instance_capacity = ctx.capacityPlan().effective(lux::render::kActiveInstancesCapacity);
         if (instance_capacity == 0u || instance_capacity > 0xffffffffull)
             return renderFailure<err::internal::Unspecified>();
         si.max_capacity = static_cast<std::uint32_t>(instance_capacity);
-        si.sparse_bda = ctx.capacityPlan().device.buffer_device_address &&
-            ctx.capacityPlan().device.shader_int64;
+        si.sparse_bda = ctx.capacityPlan().device.buffer_device_address && ctx.capacityPlan().device.shader_int64;
         // BDA scenes materialize one 16K physical page and grow page-by-page;
         // the root descriptor remains stable. Legacy keeps the admitted flat
         // buffer allocation because it cannot dereference the page table.
-        si.initial_capacity = si.sparse_bda
-            ? std::min(si.max_capacity, kInstanceSlotsPerPage)
-            : si.max_capacity;
+        si.initial_capacity = si.sparse_bda ? std::min(si.max_capacity, kInstanceSlotsPerPage) : si.max_capacity;
         si.coordinate_page_size = sc.spatialTileSize();
         auto inst_r = reg.ensure<InstanceResources>(si);
         if (!inst_r)
@@ -128,11 +126,12 @@ namespace lux::render
             // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。写在
             // fresh_inst 守卫内:InstanceResources 是 ensure<> 出来的,第二个
             // 网格单元会拿到同一个实例,登记若在守卫外就会每帧驱动两次。
-            reg.addBeginFrameHook(EUploadPhase::Upload,
-                                  [inst](const FrameStamp& s) { inst->onFrameBeginMaintenance(s); });
+            reg.addBeginFrameHook(EUploadPhase::Upload, [inst](const FrameStamp& s) {
+                inst->onFrameBeginMaintenance(s);
+            }
+            );
             inst->setDeferredQueue(&ctx.deferredDestroyQueue());
-            sc.transferScheduler().contributors().add(
-                makeTransferContributor(inst, /*priority=*/0));
+            sc.transferScheduler().contributors().add(makeTransferContributor(inst, /*priority=*/0));
         }
 
         // Wiring is idempotent and belongs outside the fresh-resource branch.
@@ -144,23 +143,21 @@ namespace lux::render
         {
             const auto accepted = inst->setDomainWriteTarget(
                 domains->setsFor(rdesc::EBindFrequency::FEATURE),
-                engineSetDomainOffset(
-                    static_cast<uint32_t>(EDescriptorSetSlot::Instance)));
+                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::Instance))
+            );
             if (!accepted)
                 return accepted;
         }
         return {};
     }
 
-    void StandardMeshStackFeature::onFrameBegin(
-        const FeatureFrameContext& /*context*/)
+    void StandardMeshStackFeature::onFrameBegin(const FeatureFrameContext& /*context*/)
     {
         auto& scene = renderScene();
         auto* instances = scene.sceneRegistry().find<InstanceResources>();
         if (!instances)
             return;
-        for (const auto object :
-             instances->collectExpiredFadeRetirements(scene.sceneTime()))
+        for (const auto object : instances->collectExpiredFadeRetirements(scene.sceneTime()))
         {
             detail::destroyMeshInstance(scene, renderContext(), object);
         }
@@ -175,8 +172,7 @@ namespace lux::render
         auto* instances = sc.sceneRegistry().find<InstanceResources>();
         if (!instances)
             return;
-        auto* materials = renderContext().globalRegistry().find<
-            MaterialResources>();
+        auto* materials = renderContext().globalRegistry().find<MaterialResources>();
         auto* meshes = renderContext().globalRegistry().find<MeshResources>();
         for (const auto binding : instances->takeAllResources())
         {
@@ -187,20 +183,15 @@ namespace lux::render
         }
     }
 
-    bool StandardMeshStackFeature::canRebaseSceneOrigin(
-        const std::int64_t origin_delta[3]) const noexcept
+    bool StandardMeshStackFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
-        const auto* instances = renderScene().sceneRegistry().find<
-            InstanceResources>();
-        return instances == nullptr ||
-            instances->canRebaseSceneOrigin(origin_delta);
+        const auto* instances = renderScene().sceneRegistry().find<InstanceResources>();
+        return instances == nullptr || instances->canRebaseSceneOrigin(origin_delta);
     }
 
-    void StandardMeshStackFeature::rebaseSceneOrigin(
-        const std::int64_t origin_delta[3]) noexcept
+    void StandardMeshStackFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
     {
-        if (auto* instances = renderScene().sceneRegistry().find<
-                InstanceResources>())
+        if (auto* instances = renderScene().sceneRegistry().find<InstanceResources>())
         {
             instances->rebaseSceneOrigin(origin_delta);
         }

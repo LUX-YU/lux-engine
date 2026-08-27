@@ -23,12 +23,10 @@ namespace lux::navigation::detour3d::detail
 {
     struct RegionIdHash final
     {
-        [[nodiscard]] std::size_t
-        operator()(NavigationRegionId value) const noexcept
+        [[nodiscard]] std::size_t operator()(NavigationRegionId value) const noexcept
         {
             const auto mixed =
-                value.high ^ (value.low + 0x9e3779b97f4a7c15ull +
-                              (value.high << 6u) + (value.high >> 2u));
+                value.high ^ (value.low + 0x9e3779b97f4a7c15ull + (value.high << 6u) + (value.high >> 2u));
             return static_cast<std::size_t>(mixed);
         }
     };
@@ -69,8 +67,7 @@ namespace lux::navigation::detour3d::detail
         }
     };
 
-    [[nodiscard]] inline NavigationRegion3DFailure
-    fail(ENavigationRegion3DError code, std::string detail)
+    [[nodiscard]] inline NavigationRegion3DFailure fail(ENavigationRegion3DError code, std::string detail)
     {
         return NavigationRegion3DFailure{code, std::move(detail)};
     }
@@ -81,19 +78,18 @@ namespace lux::navigation::detour3d::detail
     }
 
     [[nodiscard]] inline bool
-    sameAgent(const NavigationAgentConstraints& left,
-              const NavigationAgentConstraints& right) noexcept
+    sameAgent(const NavigationAgentConstraints& left, const NavigationAgentConstraints& right) noexcept
     {
         return left == right;
     }
 
-    [[nodiscard]] inline bool
-    contains(const lux::math::Position3d& point,
-             const lux::math::Position3d& minimum,
-             const lux::math::Position3d& maximum) noexcept
+    [[nodiscard]] inline bool contains(
+        const lux::math::Position3d& point,
+        const lux::math::Position3d& minimum,
+        const lux::math::Position3d& maximum
+    ) noexcept
     {
-        return point.x >= minimum.x && point.x <= maximum.x &&
-               point.y >= minimum.y && point.y <= maximum.y &&
+        return point.x >= minimum.x && point.x <= maximum.x && point.y >= minimum.y && point.y <= maximum.y &&
                point.z >= minimum.z && point.z <= maximum.z;
     }
 } // namespace lux::navigation::detour3d::detail
@@ -138,17 +134,11 @@ namespace lux::navigation::detour3d
         bool alive{true};
         std::uint64_t generation{0u};
         std::uint64_t owned_bytes{0u};
-        std::unordered_map<NavigationRegionId,
-                           std::shared_ptr<PreparedNavigationRegion3D::Data>,
-                           detail::RegionIdHash>
+        std::unordered_map<NavigationRegionId, std::shared_ptr<PreparedNavigationRegion3D::Data>, detail::RegionIdHash>
             staged;
-        std::unordered_map<NavigationRegionId,
-                           std::shared_ptr<PreparedNavigationRegion3D::Data>,
-                           detail::RegionIdHash>
+        std::unordered_map<NavigationRegionId, std::shared_ptr<PreparedNavigationRegion3D::Data>, detail::RegionIdHash>
             active;
-        std::unordered_map<NavigationRegionId,
-                           std::shared_ptr<PreparedNavigationRegion3D::Data>,
-                           detail::RegionIdHash>
+        std::unordered_map<NavigationRegionId, std::shared_ptr<PreparedNavigationRegion3D::Data>, detail::RegionIdHash>
             retiring;
         std::optional<NavigationRegionId> retirement_after;
     };

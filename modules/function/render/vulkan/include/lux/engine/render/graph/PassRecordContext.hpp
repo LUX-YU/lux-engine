@@ -15,7 +15,10 @@
 #include <vulkan/vulkan.h>
 #include <lux/engine/function/visibility.h>
 
-namespace lux::cxx { template <typename Key, typename Value, Key Offset> class OffsetAutoSparseSet; }
+namespace lux::cxx
+{
+    template <typename Key, typename Value, Key Offset> class OffsetAutoSparseSet;
+}
 
 namespace lux::render
 {
@@ -23,11 +26,11 @@ namespace lux::render
     struct RGCompiledPass;
     struct RGCompiledGraph;
     struct RGFrameContext;
-    class  PipelineManager;
-    class  ResourceRegistry;
+    class PipelineManager;
+    class ResourceRegistry;
     struct View;
     struct RGPhysicalResource;
-    using  RGPhysicalResourceTable = lux::cxx::OffsetAutoSparseSet<uint32_t, RGPhysicalResource, 0>;
+    using RGPhysicalResourceTable = lux::cxx::OffsetAutoSparseSet<uint32_t, RGPhysicalResource, 0>;
 
     // ─────────────────────────────────────────────────────────────────────
     //  推送常量的共享视图前缀 —— 全引擎不变量
@@ -49,13 +52,13 @@ namespace lux::render
         uint32_t scene_index;
         uint32_t view_index;
     };
-    static_assert(sizeof(ViewPushPrefix) == 8,
-                  "视图前缀的大小是 C++ 与 GLSL 之间的 ABI:改它必须同步所有"
-                  "着色器的推送常量块起手两字段,以及本文件下方的 kViewPushPrefixSize");
+    static_assert(
+        sizeof(ViewPushPrefix) == 8,
+        "视图前缀的大小是 C++ 与 GLSL 之间的 ABI:改它必须同步所有"
+        "着色器的推送常量块起手两字段,以及本文件下方的 kViewPushPrefixSize");
 
     /// 共享前缀占据的字节数。特性自己的推送参数从这个偏移起。
-    inline constexpr uint32_t kViewPushPrefixSize =
-        static_cast<uint32_t>(sizeof(ViewPushPrefix));
+    inline constexpr uint32_t kViewPushPrefixSize = static_cast<uint32_t>(sizeof(ViewPushPrefix));
 
     /// Context passed to the per-pass recording lambda.
     ///
@@ -73,28 +76,28 @@ namespace lux::render
     {
         using BindPipelineVariantFn = bool (*)(void* user, const RGCompiledPass& cpass, uint32_t variant_index);
 
-        VkCommandBuffer             cmd;
-        const RGCompiledPass&       cpass;
-        const RGCompiledGraph&      graph;
-        const RGFrameContext&       frame;
-        PipelineManager&            pipeline_manager;
-        ResourceRegistry*       gpu_resource_manager = nullptr;
-        VkPipelineLayout            pipeline_layout      = VK_NULL_HANDLE;
-        const View*                 view                 = nullptr;
+        VkCommandBuffer cmd;
+        const RGCompiledPass& cpass;
+        const RGCompiledGraph& graph;
+        const RGFrameContext& frame;
+        PipelineManager& pipeline_manager;
+        ResourceRegistry* gpu_resource_manager = nullptr;
+        VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+        const View* view = nullptr;
 
         /// Render-area extent for the current pass group.
         /// Filled by the framework before the recorder lambda is invoked.
         /// Features should use these instead of storing their own extent_/viewport_/scissor_.
-        VkExtent2D  extent   {};
-        VkViewport  viewport {};
-        VkRect2D    scissor  {};
+        VkExtent2D extent{};
+        VkViewport viewport{};
+        VkRect2D scissor{};
 
         /// Union of all VkPushConstantRange::stageFlags for ranges overlapping the
         /// shared view prefix (see ViewPushPrefix) in the pass pipeline layout.
         /// Use as the stageFlags argument in every vkCmdPushConstants call within
         /// this pass (both the shared prefix and per-feature pushes at
         /// kViewPushPrefixSize+) to satisfy VUID-vkCmdPushConstants-offset-01795/01796.
-        VkShaderStageFlags  pc_stage_flags = 0;
+        VkShaderStageFlags pc_stage_flags = 0;
 
         /// Pre-created per-frame attachment views [resource_index][frame_index].
         /// Filled by the recorder before the lambda is invoked. For mip_levels>1
@@ -143,20 +146,22 @@ namespace lux::render
 
     /// Move-only owning callback wrapper backed by (fn_ptr + user_ptr).
     /// Captured lambdas are heap-owned once at graph build time.
-    template <typename R, typename... Args>
-    class OwningDelegate
+    template <typename R, typename... Args> class OwningDelegate
     {
     public:
-        using InvokeFn  = R (*)(void* user, Args... args);
+        using InvokeFn = R (*)(void* user, Args... args);
         using DestroyFn = void (*)(void* user);
-        using CloneFn   = void* (*)(const void* user);
+        using CloneFn = void* (*)(const void* user);
 
         OwningDelegate() = default;
-        OwningDelegate(std::nullptr_t) {}
+        OwningDelegate(std::nullptr_t)
+        {
+        }
 
-        template <typename F,
-                  typename D = std::decay_t<F>,
-                  typename = std::enable_if_t<!std::is_same_v<D, OwningDelegate>>>
+        template <
+            typename F,
+            typename D = std::decay_t<F>,
+            typename = std::enable_if_t<!std::is_same_v<D, OwningDelegate>>>
         OwningDelegate(F&& fn)
         {
             bind(std::forward<F>(fn));
@@ -218,17 +223,14 @@ namespace lux::render
         }
 
     private:
-        template <typename F>
-        void bind(F&& fn)
+        template <typename F> void bind(F&& fn)
         {
             using Fn = std::decay_t<F>;
-            static_assert(std::is_invocable_r_v<R, Fn&, Args...>,
-                          "OwningDelegate: callable signature mismatch");
+            static_assert(std::is_invocable_r_v<R, Fn&, Args...>, "OwningDelegate: callable signature mismatch");
 
             Fn* obj = new Fn(std::forward<F>(fn));
             user_ = obj;
-            invoke_ = [](void* user, Args... args) -> R
-            {
+            invoke_ = [](void* user, Args... args) -> R {
                 if constexpr (std::is_void_v<R>)
                 {
                     (*static_cast<Fn*>(user))(std::forward<Args>(args)...);
@@ -238,17 +240,11 @@ namespace lux::render
                     return (*static_cast<Fn*>(user))(std::forward<Args>(args)...);
                 }
             };
-            destroy_ = [](void* user)
-            {
-                delete static_cast<Fn*>(user);
-            };
+            destroy_ = [](void* user) { delete static_cast<Fn*>(user); };
 
             if constexpr (std::is_copy_constructible_v<Fn>)
             {
-                clone_ = [](const void* user) -> void*
-                {
-                    return new Fn(*static_cast<const Fn*>(user));
-                };
+                clone_ = [](const void* user) -> void* { return new Fn(*static_cast<const Fn*>(user)); };
             }
             else
             {

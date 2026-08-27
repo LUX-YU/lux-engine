@@ -32,20 +32,29 @@ namespace lux::render
 
         StagingBuffer& operator=(StagingBuffer&& o) noexcept;
 
-        StagingBuffer(const StagingBuffer&)            = delete;
+        StagingBuffer(const StagingBuffer&) = delete;
         StagingBuffer& operator=(const StagingBuffer&) = delete;
 
-        [[nodiscard]] VkBuffer      buffer()     const noexcept { return buffer_; }
-        [[nodiscard]] VmaAllocation allocation() const noexcept { return allocation_; }
-        [[nodiscard]] bool          valid()      const noexcept { return buffer_ != VK_NULL_HANDLE; }
+        [[nodiscard]] VkBuffer buffer() const noexcept
+        {
+            return buffer_;
+        }
+        [[nodiscard]] VmaAllocation allocation() const noexcept
+        {
+            return allocation_;
+        }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return buffer_ != VK_NULL_HANDLE;
+        }
 
         /// Explicitly release the allocation (idempotent).
         void reset() noexcept;
 
     private:
-        VmaAllocator  allocator_  {VK_NULL_HANDLE};
-        VkBuffer      buffer_     {VK_NULL_HANDLE};
-        VmaAllocation allocation_ {VK_NULL_HANDLE};
+        VmaAllocator allocator_{VK_NULL_HANDLE};
+        VkBuffer buffer_{VK_NULL_HANDLE};
+        VmaAllocation allocation_{VK_NULL_HANDLE};
     };
 
 } // namespace lux::render

@@ -12,13 +12,13 @@ namespace lux::input
     enum class EModifierKind : uint8_t
     {
         NONE,
-        SCALE,         ///< Multiply each axis by (x, y, z)
-        NEGATE_X,      ///< Flip X
-        NEGATE_Y,      ///< Flip Y
-        NEGATE_Z,      ///< Flip Z
-        DEAD_ZONE,     ///< Zero output if magnitude < threshold (x)
-        NORMALIZE_2D,  ///< Normalize the XY vector to unit length
-        CLAMP_1D,      ///< Clamp AXIS_1D value to [x, y]
+        SCALE,        ///< Multiply each axis by (x, y, z)
+        NEGATE_X,     ///< Flip X
+        NEGATE_Y,     ///< Flip Y
+        NEGATE_Z,     ///< Flip Z
+        DEAD_ZONE,    ///< Zero output if magnitude < threshold (x)
+        NORMALIZE_2D, ///< Normalize the XY vector to unit length
+        CLAMP_1D,     ///< Clamp AXIS_1D value to [x, y]
     };
 
     struct ModifierSpec
@@ -63,7 +63,8 @@ namespace lux::input
         case EModifierKind::DEAD_ZONE:
             if (in.type == EInputValueType::AXIS_1D)
             {
-                if (std::fabs(out.v.x) < mod.x) out.v.x = 0.0f;
+                if (std::fabs(out.v.x) < mod.x)
+                    out.v.x = 0.0f;
             }
             else if (in.type == EInputValueType::AXIS_2D)
             {
@@ -101,8 +102,7 @@ namespace lux::input
     //  Apply a chain of modifiers                                         //
     // ------------------------------------------------------------------ //
 
-    inline InputValue applyModifiers(const InputValue& in,
-                                     const std::vector<ModifierSpec>& mods)
+    inline InputValue applyModifiers(const InputValue& in, const std::vector<ModifierSpec>& mods)
     {
         InputValue out = in;
         for (const auto& m : mods)

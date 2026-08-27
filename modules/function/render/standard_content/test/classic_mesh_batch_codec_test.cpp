@@ -38,27 +38,20 @@ namespace
         second.mesh_asset = assetId(65u);
         second.stable_pick_id = 12u;
         second.rgba8 = 0x44cc88ffu;
-        second.flags = static_cast<std::uint32_t>(
-            EClassicMeshInstanceFlag::VISIBLE);
+        second.flags = static_cast<std::uint32_t>(EClassicMeshInstanceFlag::VISIBLE);
         return {{first, second}};
     }
 
-    void writeU32(
-        std::vector<std::byte>& bytes,
-        std::size_t offset,
-        std::uint32_t value)
+    void writeU32(std::vector<std::byte>& bytes, std::size_t offset, std::uint32_t value)
     {
         assert(offset + 4u <= bytes.size());
         for (std::size_t index = 0u; index < 4u; ++index)
         {
-            bytes[offset + index] = static_cast<std::byte>(
-                (value >> (index * 8u)) & 0xffu);
+            bytes[offset + index] = static_cast<std::byte>((value >> (index * 8u)) & 0xffu);
         }
     }
 
-    void expectError(
-        const std::vector<std::byte>& bytes,
-        EClassicMeshBatchCodecError error)
+    void expectError(const std::vector<std::byte>& bytes, EClassicMeshBatchCodecError error)
     {
         const auto decoded = decodeClassicMeshBatchBlob(bytes);
         assert(!decoded);
@@ -66,18 +59,18 @@ namespace
     }
 }
 
-int main()
+int
+main()
 {
     static_assert(kClassicMeshBatchSchemaVersion == 1u);
-    assert(kClassicMeshBatchContentTypeName ==
-        "lux.render.geometry.classic_mesh.batch");
+    assert(kClassicMeshBatchContentTypeName == "lux.render.geometry.classic_mesh.batch");
 
     const auto source = makeBlob();
     const auto encoded = encodeClassicMeshBatchBlob(source);
     assert(encoded);
     assert(encoded->size() == 188u);
-    assert(lux::cxx::algorithm::toHex(
-        lux::cxx::algorithm::Sha256::hash(*encoded)) ==
+    assert(
+        lux::cxx::algorithm::toHex(lux::cxx::algorithm::Sha256::hash(*encoded)) ==
         "7f8b4a4d5506fba18b2587725480cde3dbdd54114b94ef6e6e2bd5ead96a99ec");
     const auto decoded = decodeClassicMeshBatchBlob(*encoded);
     assert(decoded);
@@ -100,9 +93,7 @@ int main()
 
     malformed = *encoded;
     writeU32(malformed, 4u, kClassicMeshBatchSchemaVersion + 1u);
-    expectError(
-        malformed,
-        EClassicMeshBatchCodecError::UNSUPPORTED_VERSION);
+    expectError(malformed, EClassicMeshBatchCodecError::UNSUPPORTED_VERSION);
 
     malformed = *encoded;
     writeU32(malformed, 8u, 0u);
@@ -115,11 +106,7 @@ int main()
     // First row starts at byte 12.  A non-finite translation must be rejected
     // after structural decoding rather than reaching a render extractor.
     malformed = *encoded;
-    writeU32(
-        malformed,
-        12u,
-        std::bit_cast<std::uint32_t>(
-            std::numeric_limits<float>::quiet_NaN()));
+    writeU32(malformed, 12u, std::bit_cast<std::uint32_t>(std::numeric_limits<float>::quiet_NaN()));
     expectError(malformed, EClassicMeshBatchCodecError::INVALID_INSTANCE);
 
     // Flags are the final u32 of each fixed 88-byte row.
@@ -143,12 +130,9 @@ int main()
     invalid_source.instances[0].rotation = {0.0f, 0.0f, 0.0f, 0.0f};
     assert(!encodeClassicMeshBatchBlob(invalid_source));
 
-    const ClassicMeshBatchCodecLimits tiny_limit{
-        .maximum_instances = 1u,
-        .maximum_encoded_bytes = 512u};
+    const ClassicMeshBatchCodecLimits tiny_limit{.maximum_instances = 1u, .maximum_encoded_bytes = 512u};
     const auto limited = decodeClassicMeshBatchBlob(*encoded, tiny_limit);
     assert(!limited);
-    assert(limited.error().error ==
-        EClassicMeshBatchCodecError::LIMIT_EXCEEDED);
+    assert(limited.error().error == EClassicMeshBatchCodecError::LIMIT_EXCEEDED);
     return 0;
 }

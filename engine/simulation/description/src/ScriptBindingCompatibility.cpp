@@ -12,17 +12,13 @@ namespace lux::simulation
         ) noexcept
         {
             return script_type.type_id == target_type.type_id &&
-                script_type.canonical_name == target_type.canonical_name &&
-                script_type.pass == target_type.pass;
+                   script_type.canonical_name == target_type.canonical_name && script_type.pass == target_type.pass;
         }
 
-        [[nodiscard]] bool sameHookSignature(
-            const lux::rdesc::ScriptFunction& function,
-            const SimulationHookPointView& hook
-        ) noexcept
+        [[nodiscard]] bool
+        sameHookSignature(const lux::rdesc::ScriptFunction& function, const SimulationHookPointView& hook) noexcept
         {
-            if (function.args.size() != hook.parameterCount() ||
-                function.returns.size() != hook.returnCount())
+            if (function.args.size() != hook.parameterCount() || function.returns.size() != hook.returnCount())
                 return false;
             for (std::size_t index{}; index < function.args.size(); ++index)
             {
@@ -37,40 +33,30 @@ namespace lux::simulation
             return true;
         }
 
-        [[nodiscard]] bool sameEventSignature(
-            const lux::rdesc::ScriptFunction& function,
-            const SimulationEventView& event
-        ) noexcept
+        [[nodiscard]] bool
+        sameEventSignature(const lux::rdesc::ScriptFunction& function, const SimulationEventView& event) noexcept
         {
             if (!function.returns.empty())
                 return false;
             if (event.payloadSchemaName().empty())
                 return function.args.empty();
-            return function.args.size() == 1U &&
-                function.args.front().canonical_name ==
-                    event.payloadSchemaName() &&
-                function.args.front().type_id == event.payloadSchemaHash() &&
-                function.args.front().pass ==
-                    lux::script::EScriptPassMode::CONST_REF;
+            return function.args.size() == 1U && function.args.front().canonical_name == event.payloadSchemaName() &&
+                   function.args.front().type_id == event.payloadSchemaHash() &&
+                   function.args.front().pass == lux::script::EScriptPassMode::CONST_REF;
         }
 
-        [[nodiscard]] bool sameLifecycleSignature(
-            const lux::rdesc::ScriptFunction& function,
-            EBehaviorLifecyclePoint point
-        ) noexcept
+        [[nodiscard]] bool
+        sameLifecycleSignature(const lux::rdesc::ScriptFunction& function, EBehaviorLifecyclePoint point) noexcept
         {
             if (!function.returns.empty())
                 return false;
             if (point != EBehaviorLifecyclePoint::STOP)
                 return function.args.empty();
             return function.args.size() == 1U &&
-                function.args.front().canonical_name ==
-                    BehaviorStopReasonCanonicalName &&
-                function.args.front().type_id ==
-                    lux::script::scriptSemanticTypeId(
-                        BehaviorStopReasonCanonicalName) &&
-                function.args.front().pass ==
-                    lux::script::EScriptPassMode::VALUE;
+                   function.args.front().canonical_name == BehaviorStopReasonCanonicalName &&
+                   function.args.front().type_id ==
+                       lux::script::scriptSemanticTypeId(BehaviorStopReasonCanonicalName) &&
+                   function.args.front().pass == lux::script::EScriptPassMode::VALUE;
         }
 
         [[nodiscard]] EScriptBindingCompatibility resolveSystem(
@@ -85,9 +71,8 @@ namespace lux::simulation
                 result = simulation.findSystem(instance);
                 if (!result)
                     return EScriptBindingCompatibility::TARGET_NOT_FOUND;
-                return result.type() == type
-                    ? EScriptBindingCompatibility::COMPATIBLE
-                    : EScriptBindingCompatibility::TARGET_TYPE_MISMATCH;
+                return result.type() == type ? EScriptBindingCompatibility::COMPATIBLE
+                                             : EScriptBindingCompatibility::TARGET_TYPE_MISMATCH;
             }
             for (std::size_t index{}; index < simulation.systemCount(); ++index)
             {
@@ -98,35 +83,30 @@ namespace lux::simulation
                     return EScriptBindingCompatibility::TARGET_AMBIGUOUS;
                 result = candidate;
             }
-            return result
-                ? EScriptBindingCompatibility::COMPATIBLE
-                : EScriptBindingCompatibility::TARGET_NOT_FOUND;
+            return result ? EScriptBindingCompatibility::COMPATIBLE : EScriptBindingCompatibility::TARGET_NOT_FOUND;
         }
     }
 
     EScriptBindingCompatibility evaluateScriptBindingSignatureCompatibility(
-        lux::rdesc::EScriptModel source_model,
-        const lux::rdesc::ScriptFunction& function,
-        lux::rdesc::EScriptModel target_model,
-        ESystemHookCardinality cardinality,
+        lux::rdesc::EScriptModel                     source_model,
+        const lux::rdesc::ScriptFunction&            function,
+        lux::rdesc::EScriptModel                     target_model,
+        ESystemHookCardinality                       cardinality,
         std::span<const lux::rdesc::ScriptValueType> parameters,
         std::span<const lux::rdesc::ScriptValueType> returns
     ) noexcept
     {
-        if (function.name.empty() ||
-            function.symbol_id == lux::script::InvalidScriptSymbolId)
+        if (function.name.empty() || function.symbol_id == lux::script::InvalidScriptSymbolId)
         {
             return EScriptBindingCompatibility::INVALID_FUNCTION;
         }
         if (source_model != target_model)
             return EScriptBindingCompatibility::SCOPE_MISMATCH;
-        if (source_model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR &&
-            cardinality == ESystemHookCardinality::SINGLE)
+        if (source_model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR && cardinality == ESystemHookCardinality::SINGLE)
         {
             return EScriptBindingCompatibility::CARDINALITY_MISMATCH;
         }
-        if (function.args.size() != parameters.size() ||
-            function.returns.size() != returns.size())
+        if (function.args.size() != parameters.size() || function.returns.size() != returns.size())
         {
             return EScriptBindingCompatibility::SIGNATURE_MISMATCH;
         }
@@ -150,70 +130,55 @@ namespace lux::simulation
         const ScriptBindingTarget& target
     ) noexcept
     {
-        if (function.name.empty() ||
-            function.symbol_id == lux::script::InvalidScriptSymbolId)
+        if (function.name.empty() || function.symbol_id == lux::script::InvalidScriptSymbolId)
             return EScriptBindingCompatibility::INVALID_FUNCTION;
         const bool entity = model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
         if (!entity && model != lux::rdesc::EScriptModel::GLOBAL_MODULE)
             return EScriptBindingCompatibility::SCOPE_MISMATCH;
         return std::visit(
-            [&](const auto& concrete) noexcept
-            {
+            [&](const auto& concrete) noexcept {
                 using Target = std::remove_cvref_t<decltype(concrete)>;
                 if constexpr (std::is_same_v<Target, SystemHookBindingTarget>)
                 {
                     SimulationSystemView system;
-                    const auto resolved = resolveSystem(
-                        simulation,
-                        concrete.system_type,
-                        concrete.system_instance,
-                        system
-                    );
+                    const auto resolved =
+                        resolveSystem(simulation, concrete.system_type, concrete.system_instance, system);
                     if (resolved != EScriptBindingCompatibility::COMPATIBLE)
                         return resolved;
                     const auto hook = system.findHookPoint(concrete.hook);
                     if (!hook)
                         return EScriptBindingCompatibility::TARGET_NOT_FOUND;
-                    if (entity && hook.cardinality() !=
-                        ESystemHookCardinality::MULTI)
+                    if (entity && hook.cardinality() != ESystemHookCardinality::MULTI)
                     {
                         return EScriptBindingCompatibility::CARDINALITY_MISMATCH;
                     }
-                    return sameHookSignature(function, hook)
-                        ? EScriptBindingCompatibility::COMPATIBLE
-                        : EScriptBindingCompatibility::SIGNATURE_MISMATCH;
+                    return sameHookSignature(function, hook) ? EScriptBindingCompatibility::COMPATIBLE
+                                                             : EScriptBindingCompatibility::SIGNATURE_MISMATCH;
                 }
-                else if constexpr (
-                    std::is_same_v<Target, SystemEventBindingTarget>)
+                else if constexpr (std::is_same_v<Target, SystemEventBindingTarget>)
                 {
                     SimulationSystemView system;
-                    const auto resolved = resolveSystem(
-                        simulation,
-                        concrete.system_type,
-                        concrete.system_instance,
-                        system
-                    );
+                    const auto resolved =
+                        resolveSystem(simulation, concrete.system_type, concrete.system_instance, system);
                     if (resolved != EScriptBindingCompatibility::COMPATIBLE)
                         return resolved;
                     const auto event = system.findEvent(concrete.event);
                     if (!event)
                         return EScriptBindingCompatibility::TARGET_NOT_FOUND;
-                    if (entity != (event.target() ==
-                        ESystemEventTarget::ENTITY_TARGETED))
+                    if (entity != (event.target() == ESystemEventTarget::ENTITY_TARGETED))
                     {
                         return EScriptBindingCompatibility::SCOPE_MISMATCH;
                     }
-                    return sameEventSignature(function, event)
-                        ? EScriptBindingCompatibility::COMPATIBLE
-                        : EScriptBindingCompatibility::SIGNATURE_MISMATCH;
+                    return sameEventSignature(function, event) ? EScriptBindingCompatibility::COMPATIBLE
+                                                               : EScriptBindingCompatibility::SIGNATURE_MISMATCH;
                 }
                 else
                 {
                     if (!entity)
                         return EScriptBindingCompatibility::SCOPE_MISMATCH;
                     return sameLifecycleSignature(function, concrete.point)
-                        ? EScriptBindingCompatibility::COMPATIBLE
-                        : EScriptBindingCompatibility::SIGNATURE_MISMATCH;
+                               ? EScriptBindingCompatibility::COMPATIBLE
+                               : EScriptBindingCompatibility::SIGNATURE_MISMATCH;
                 }
             },
             target

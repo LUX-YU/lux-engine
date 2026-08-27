@@ -34,8 +34,7 @@ namespace lux::render
         return scene_->retireOwnerToken();
     }
 
-    void RenderSceneView::invalidateGraph(
-        EGraphInvalidationReason reason) noexcept
+    void RenderSceneView::invalidateGraph(EGraphInvalidationReason reason) noexcept
     {
         scene_->invalidateGraph(reason);
     }

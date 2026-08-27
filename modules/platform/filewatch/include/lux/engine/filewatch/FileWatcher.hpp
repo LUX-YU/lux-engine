@@ -36,9 +36,9 @@ namespace lux::platform
 
     struct FileEvent
     {
-        std::filesystem::path path;       ///< 绝对路径
-        std::filesystem::path old_path;   ///< FILE_RENAMED 的旧路径,其余为空
-        EFileEvent            kind{ EFileEvent::FILE_MODIFIED };
+        std::filesystem::path path;     ///< 绝对路径
+        std::filesystem::path old_path; ///< FILE_RENAMED 的旧路径,其余为空
+        EFileEvent kind{EFileEvent::FILE_MODIFIED};
     };
 
     class LUX_PLATFORM_FILEWATCH_PUBLIC FileWatcher
@@ -47,7 +47,7 @@ namespace lux::platform
         FileWatcher();
         ~FileWatcher();
 
-        FileWatcher(const FileWatcher&)            = delete;
+        FileWatcher(const FileWatcher&) = delete;
         FileWatcher& operator=(const FileWatcher&) = delete;
 
         /// 递归监视一个目录树。可多次调用(多个根);同一目录重复 watch 是

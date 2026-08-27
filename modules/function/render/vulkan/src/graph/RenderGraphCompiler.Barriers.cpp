@@ -5,10 +5,11 @@
 #include <lux/engine/render/graph/ProgramEmitter.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>                       // domain slot resolution (kEngineSetShapes)
-#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp> // domain set instance (record-time collapsed binding)
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>             // domain slot resolution (kEngineSetShapes)
+#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
+// domain set instance (record-time collapsed binding)
 #include <lux/engine/render/graph/RGBarrierUtils.hpp>
-#include <lux/engine/render/graph/vk_type_converter.hpp>   // convertVkImageLayout (neutral DS layout)
+#include <lux/engine/render/graph/vk_type_converter.hpp> // convertVkImageLayout (neutral DS layout)
 #include <algorithm>
 #include <string>
 #include <type_traits>
@@ -33,58 +34,55 @@ namespace lux::render
             return VK_IMAGE_ASPECT_COLOR_BIT;
         }
 
-        VkDescriptorSet resolveFeatureDomainSet(
-            const void* resource,
-            uint32_t frame_slot,
-            uint32_t /*view_id*/)
+        VkDescriptorSet resolveFeatureDomainSet(const void* resource, uint32_t frame_slot, uint32_t /*view_id*/)
         {
             return static_cast<const SceneDomainDescriptorSets*>(resource)->set(
                 rdesc::EBindFrequency::FEATURE,
-                frame_slot);
+                frame_slot
+            );
         }
 
-        VkDescriptorSet resolveGlobalDomainSet(
-            const void* resource,
-            uint32_t frame_slot,
-            uint32_t /*view_id*/)
+        VkDescriptorSet resolveGlobalDomainSet(const void* resource, uint32_t frame_slot, uint32_t /*view_id*/)
         {
             return static_cast<const SceneDomainDescriptorSets*>(resource)->set(
                 rdesc::EBindFrequency::GLOBAL,
-                frame_slot);
+                frame_slot
+            );
         }
 
     } // namespace
 
-    void RenderGraphCompiler::computeDescriptorBindingPlan(RGCompiledGraph& compiled,
-                                                        PipelineManager& pipeline_manager,
-                                                        const SceneDomainDescriptorSets* domain_sets)
+    void RenderGraphCompiler::computeDescriptorBindingPlan(
+        RGCompiledGraph& compiled,
+        PipelineManager& pipeline_manager,
+        const SceneDomainDescriptorSets* domain_sets
+    )
     {
         const auto& order = compiled.execution_order;
-        if (order.empty()) return;
+        if (order.empty())
+            return;
 
         // The merged domain of a given slot in this pass's pipeline (-1 = not
         // a domain slot, otherwise an rdesc::EBindFrequency enum value). Both
         // the graphics and compute paths need this lookup — compute pipelines
         // (cluster lighting, skinning) also switch over to the domain layout.
-        const auto domainOfSlot = [&pipeline_manager](
-            const RGPassDescription& pass, uint32_t slot_index) -> int
-        {
+        const auto domainOfSlot = [&pipeline_manager](const RGPassDescription& pass, uint32_t slot_index) -> int {
             const PipelineReflectedInfo* refl = nullptr;
             if (pass.pipeline_template.valid())
                 refl = pipeline_manager.templateReflection(pass.pipeline_template);
             else if (pass.compute_pipeline_handle.valid())
                 refl = pipeline_manager.computeReflection(pass.compute_pipeline_handle);
-            if (!refl) return -1;
+            if (!refl)
+                return -1;
             for (const auto& rslot : refl->slots)
                 if (rslot.slot == slot_index)
-                    return rslot.source == ESlotSource::DomainMerged
-                         ? static_cast<int>(rslot.logical_set) : -1;
+                    return rslot.source == ESlotSource::DomainMerged ? static_cast<int>(rslot.logical_set) : -1;
             return -1;
         };
 
         constexpr uint32_t kMaxSlots = 16;
         std::array<VkPipelineLayout, kMaxSlots> slot_last_layout{};
-        std::array<uint64_t,         kMaxSlots> slot_last_identity{};
+        std::array<uint64_t, kMaxSlots> slot_last_identity{};
         slot_last_layout.fill(VK_NULL_HANDLE);
         slot_last_identity.fill(0ull);
 
@@ -119,9 +117,8 @@ namespace lux::render
         // initial value (no logical set, a legacy-path pipeline supplying its
         // own layout, or this slot not being registered under an engine
         // identity) — matching pre-migration behavior.
-        const auto resolveLogicalSlot = [&pipeline_manager](
-            const PassDSBinding& binding, const RGPassDescription& pass) -> uint32_t
-        {
+        const auto resolveLogicalSlot =
+            [&pipeline_manager](const PassDSBinding& binding, const RGPassDescription& pass) -> uint32_t {
             if (!binding.logical.has_value())
             {
                 // A bare slot literal is translated through the PRIVATE
@@ -144,8 +141,7 @@ namespace lux::render
 
             if (pass.pipeline_template.valid())
             {
-                const auto& map =
-                    pipeline_manager.getTemplate(pass.pipeline_template).resource_slot_map;
+                const auto& map = pipeline_manager.getTemplate(pass.pipeline_template).resource_slot_map;
                 for (const auto& [logical, index] : map)
                     if (logical == *binding.logical)
                         return index;
@@ -180,8 +176,7 @@ namespace lux::render
 
             if (pass.compute_pipeline_handle.valid())
             {
-                if (const auto* refl =
-                        pipeline_manager.computeReflection(pass.compute_pipeline_handle))
+                if (const auto* refl = pipeline_manager.computeReflection(pass.compute_pipeline_handle))
                 {
                     const auto want = static_cast<uint32_t>(*binding.logical);
                     for (const auto& slot : refl->slots)
@@ -194,13 +189,11 @@ namespace lux::render
                         if (slot.source == ESlotSource::DomainMerged)
                         {
                             if (want < kEngineSetShapes.size() &&
-                                static_cast<uint32_t>(kEngineSetShapes[want].frequency) ==
-                                    slot.logical_set)
+                                static_cast<uint32_t>(kEngineSetShapes[want].frequency) == slot.logical_set)
                                 return slot.slot;
                             continue;
                         }
-                        if (slot.source != ESlotSource::EngineShared &&
-                            slot.source != ESlotSource::ReflectionHole)
+                        if (slot.source != ESlotSource::EngineShared && slot.source != ESlotSource::ReflectionHole)
                             continue;
                         if (slot.logical_set == want)
                             return slot.slot;
@@ -242,7 +235,8 @@ namespace lux::render
                 // reflection slot table), fall back to the binding's own
                 // canonical initial value, matching pre-migration behavior.
                 const uint32_t slot = resolveLogicalSlot(binding, *cpass.pass);
-                if (slot >= kMaxSlots) continue;
+                if (slot >= kMaxSlots)
+                    continue;
 
                 // -- Domain-slot collapsing (domain merging) ------------------
                 //
@@ -258,8 +252,7 @@ namespace lux::render
                 // the rebind is forced. The first logical binding emits one
                 // domain bind; subsequent bindings to the same slot are
                 // skipped.
-                const int slot_domain = binding.logical.has_value()
-                    ? domainOfSlot(*cpass.pass, slot) : -1;
+                const int slot_domain = binding.logical.has_value() ? domainOfSlot(*cpass.pass, slot) : -1;
                 if (slot_domain == static_cast<int>(rdesc::EBindFrequency::FEATURE) ||
                     slot_domain == static_cast<int>(rdesc::EBindFrequency::GLOBAL))
                 {
@@ -267,7 +260,8 @@ namespace lux::render
                     {
                         if (compiled.layout_plan.has_value())
                             compiled.layout_plan->warnings.push_back(
-                                renderError<err::graph::DomainSlotWithoutDomainSets>(cpass.pass_index));
+                                renderError<err::graph::DomainSlotWithoutDomainSets>(cpass.pass_index)
+                            );
                         continue;
                     }
                     if (domain_emitted_mask & (1u << slot))
@@ -275,12 +269,12 @@ namespace lux::render
                     domain_emitted_mask |= (1u << slot);
 
                     DSBindRecipe domain_recipe{};
-                    domain_recipe.slot     = slot;
-                    domain_recipe.resolve  = &DSBindRecipe::resolveResource;
+                    domain_recipe.slot = slot;
+                    domain_recipe.resolve = &DSBindRecipe::resolveResource;
                     domain_recipe.provider = DescriptorProvider{
                         domain_sets,
-                        slot_domain == static_cast<int>(rdesc::EBindFrequency::GLOBAL)
-                            ? &resolveGlobalDomainSet : &resolveFeatureDomainSet};
+                        slot_domain == static_cast<int>(rdesc::EBindFrequency::GLOBAL) ? &resolveGlobalDomainSet
+                                                                                       : &resolveFeatureDomainSet};
                     cpass.render.ds_bind_recipe.push_back(domain_recipe);
 
                     // FORCE A REBIND ON EVERY PASS, NO CROSS-PASS DEDUP — the
@@ -296,9 +290,8 @@ namespace lux::render
                     // The cost of one extra vkCmdBindDescriptorSets call is
                     // negligible; correctness comes first.
                     bind_mask |= (1u << slot);
-                    slot_last_layout[slot]   = curr_layout;
-                    slot_last_identity[slot] = static_cast<uint64_t>(
-                        reinterpret_cast<uintptr_t>(domain_sets));
+                    slot_last_layout[slot] = curr_layout;
+                    slot_last_identity[slot] = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(domain_sets));
                     continue;
                 }
 
@@ -330,34 +323,32 @@ namespace lux::render
                     // 不绑更难查。
                     if (compiled.layout_plan.has_value())
                         compiled.layout_plan->warnings.push_back(
-                            renderError<err::graph::EngineSetUnresolved>(cpass.pass_index));
+                            renderError<err::graph::EngineSetUnresolved>(cpass.pass_index)
+                        );
                     continue;
                 }
                 cpass.render.ds_bind_recipe.push_back(recipe);
 
-                const bool force_rebind =
-                    (binding.mode == EDSBindMode::PER_FIF)
-                 || (binding.mode == EDSBindMode::VERSIONED)
-                 || (binding.source == EDSBindingSource::Scene)
-                 || (binding.source == EDSBindingSource::Transient)
-                 // A domain slot (BINDLESS falls here too: the instance is
-                 // whatever global table the binding already carries) follows
-                 // the same forced-rebind, no-cross-pass-dedup rule as
-                 // FEATURE/GLOBAL.
-                 || (slot_domain >= 0);
+                const bool force_rebind = (binding.mode == EDSBindMode::PER_FIF) ||
+                                          (binding.mode == EDSBindMode::VERSIONED) ||
+                                          (binding.source == EDSBindingSource::Scene) ||
+                                          (binding.source == EDSBindingSource::Transient)
+                                          // A domain slot (BINDLESS falls here too: the instance is
+                                          // whatever global table the binding already carries) follows
+                                          // the same forced-rebind, no-cross-pass-dedup rule as
+                                          // FEATURE/GLOBAL.
+                                          || (slot_domain >= 0);
 
                 uint64_t identity = 0ull;
                 if (!force_rebind)
                 {
                     if (binding.source == EDSBindingSource::Immutable)
                     {
-                        identity = static_cast<uint64_t>(
-                            reinterpret_cast<uintptr_t>(binding.immutable_set));
+                        identity = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(binding.immutable_set));
                     }
                     else if (binding.source == EDSBindingSource::Resource)
                     {
-                        identity = static_cast<uint64_t>(
-                            reinterpret_cast<uintptr_t>(binding.provider.resource));
+                        identity = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(binding.provider.resource));
                     }
                 }
 
@@ -380,7 +371,6 @@ namespace lux::render
                         slot_last_identity[slot] = identity;
                     }
                 }
-
             }
 
             cpass.render.bind_ds_mask = bind_mask;
@@ -405,16 +395,19 @@ namespace lux::render
         std::vector<ResourceStateTracker> resource_states(resource_count);
 
         // Initialize Imported resource states
-        for (uint32_t i = 0; i < resource_count; ++i) {
+        for (uint32_t i = 0; i < resource_count; ++i)
+        {
             const auto& res = compiled.original_graph.resources[i];
-            if (res.lifetime == ERGResourceLifetime::IMPORTED && res.import_info) {
+            if (res.lifetime == ERGResourceLifetime::IMPORTED && res.import_info)
+            {
                 resource_states[i].current_layout = res.import_info->initial_layout;
                 resource_states[i].last_stage_mask = res.import_info->initial_stage;
                 resource_states[i].last_access_mask = res.import_info->initial_access;
                 // If initial_layout is not UNDEFINED, we consider it already touched,
                 // so subsequent barrier calculations will be based on this initial state.
                 // If it is UNDEFINED, touched = false will cause a transition from UNDEFINED on first use.
-                if (res.import_info->initial_layout != VK_IMAGE_LAYOUT_UNDEFINED) {
+                if (res.import_info->initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+                {
                     resource_states[i].touched = true;
                 }
             }
@@ -423,12 +416,12 @@ namespace lux::render
         // ── Local-read merged groups: lookups ──────────────────
         // pass → its local_read group (or UINT32_MAX); resource → "input-read
         // attachment of such a group"; group → its first pass (barrier sink).
-        std::vector<uint32_t> lr_pass_group(compiled.compiled_passes.size(),
-                                            std::numeric_limits<uint32_t>::max());
-        std::vector<uint8_t>  lr_input_attachment(resource_count, 0);
+        std::vector<uint32_t> lr_pass_group(compiled.compiled_passes.size(), std::numeric_limits<uint32_t>::max());
+        std::vector<uint8_t> lr_input_attachment(resource_count, 0);
         std::vector<uint32_t> lr_group_first_pass(
             compiled.render_pass_layout.groups.size(),
-            std::numeric_limits<uint32_t>::max());
+            std::numeric_limits<uint32_t>::max()
+        );
         for (uint32_t gi = 0; gi < compiled.render_pass_layout.groups.size(); ++gi)
         {
             const auto& g = compiled.render_pass_layout.groups[gi];
@@ -440,11 +433,9 @@ namespace lux::render
                 if (p.pass_index < lr_pass_group.size())
                     lr_pass_group[p.pass_index] = gi;
                 for (uint32_t s = 0; s < p.input_indices.size(); ++s)
-                    if (p.input_indices[s] != VK_ATTACHMENT_UNUSED
-                        && g.union_color_res[s] < resource_count)
+                    if (p.input_indices[s] != VK_ATTACHMENT_UNUSED && g.union_color_res[s] < resource_count)
                         lr_input_attachment[g.union_color_res[s]] = 1;
-                if (p.depth_input_index != VK_ATTACHMENT_UNUSED
-                    && g.union_depth_res < resource_count)
+                if (p.depth_input_index != VK_ATTACHMENT_UNUSED && g.union_depth_res < resource_count)
                     lr_input_attachment[g.union_depth_res] = 1;
             }
         }
@@ -453,10 +444,8 @@ namespace lux::render
         // That access is not represented by RGPassTextureRef::usage (a pass may
         // declare a pure WRITE yet preserve content produced by an earlier
         // pass), so recover the compiled loadOp for this exact pass/resource.
-        const auto attachmentLoadOp = [&compiled](
-            uint32_t pass_idx,
-            const RGPassTextureRef& ref) -> VkAttachmentLoadOp
-        {
+        const auto attachmentLoadOp =
+            [&compiled](uint32_t pass_idx, const RGPassTextureRef& ref) -> VkAttachmentLoadOp {
             if (ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT &&
                 ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                 return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -465,8 +454,7 @@ namespace lux::render
             if (pass_idx >= layout.pass_to_group.size())
                 return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             const uint32_t group_idx = layout.pass_to_group[pass_idx];
-            if (group_idx == std::numeric_limits<uint32_t>::max() ||
-                group_idx >= layout.groups.size())
+            if (group_idx == std::numeric_limits<uint32_t>::max() || group_idx >= layout.groups.size())
                 return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 
             const auto& group = layout.groups[group_idx];
@@ -475,8 +463,7 @@ namespace lux::render
                 if (ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT)
                 {
                     for (std::size_t i = 0; i < group.union_color_res.size(); ++i)
-                        if (group.union_color_res[i] == ref.resource.index &&
-                            i < group.union_color_load_ops.size())
+                        if (group.union_color_res[i] == ref.resource.index && i < group.union_color_load_ops.size())
                             return group.union_color_load_ops[i];
                 }
                 else if (group.union_depth_res == ref.resource.index)
@@ -494,8 +481,7 @@ namespace lux::render
                     return group_pass.pass_depth_load_op;
 
                 const RGPassDescription* pass =
-                    pass_idx < compiled.compiled_passes.size()
-                        ? compiled.compiled_passes[pass_idx].pass : nullptr;
+                    pass_idx < compiled.compiled_passes.size() ? compiled.compiled_passes[pass_idx].pass : nullptr;
                 if (pass == nullptr)
                     return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 
@@ -506,8 +492,8 @@ namespace lux::render
                         continue;
                     if (texture.resource.index == ref.resource.index)
                         return color_ordinal < group_pass.pass_color_load_ops.size()
-                            ? group_pass.pass_color_load_ops[color_ordinal]
-                            : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                                   ? group_pass.pass_color_load_ops[color_ordinal]
+                                   : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                     ++color_ordinal;
                 }
                 return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -526,11 +512,9 @@ namespace lux::render
             // first pass (recorded pre-scope). Intra-scope attachment hazards
             // are owned by the LocalReadBoundary by-region barrier instead.
             const uint32_t lr_gi = lr_pass_group[pass_idx];
-            const bool lr_hoist = lr_gi != std::numeric_limits<uint32_t>::max()
-                && pass_idx != lr_group_first_pass[lr_gi];
-            RGCompiledPass& barrier_sink = lr_hoist
-                ? compiled.compiled_passes[lr_group_first_pass[lr_gi]]
-                : cpass;
+            const bool lr_hoist =
+                lr_gi != std::numeric_limits<uint32_t>::max() && pass_idx != lr_group_first_pass[lr_gi];
+            RGCompiledPass& barrier_sink = lr_hoist ? compiled.compiled_passes[lr_group_first_pass[lr_gi]] : cpass;
 
             // --- Process Textures ---
             for (const auto& tex_ref : desc->textures)
@@ -538,7 +522,8 @@ namespace lux::render
                 const uint32_t res_idx = tex_ref.resource.index;
 
                 // Skip if resource is not valid (e.g., culled)
-                if (res_idx >= compiled.valid_resources.size() || !compiled.valid_resources[res_idx]) continue;
+                if (res_idx >= compiled.valid_resources.size() || !compiled.valid_resources[res_idx])
+                    continue;
 
                 // Get resource description (for determining format, etc.)
                 const auto& res_desc_wrap = compiled.original_graph.resources[res_idx];
@@ -550,18 +535,17 @@ namespace lux::render
                 ResourceStateTracker& tracker = resource_states[res_idx];
 
                 // ── Local-read scope attachments ────────────────
-                if (lr_gi != std::numeric_limits<uint32_t>::max()
-                    && lr_input_attachment[res_idx])
+                if (lr_gi != std::numeric_limits<uint32_t>::max() && lr_input_attachment[res_idx])
                 {
                     if (tex_ref.role == lux::render::ETextureRole::INPUT_ATTACHMENT)
                     {
                         // Intra-scope read: NO pipeline barrier here (the
                         // LocalReadBoundary command owns by-region sync);
                         // just fold the reader into the tracked state.
-                        tracker.last_stage_mask  |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                        tracker.last_stage_mask |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
                         tracker.last_access_mask |= VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT;
-                        tracker.current_layout    = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-                        tracker.touched           = true;
+                        tracker.current_layout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+                        tracker.touched = true;
                         continue;
                     }
                     // Attachment WRITE of an input-read slot: the whole scope
@@ -588,8 +572,7 @@ namespace lux::render
                 // Conditions: Layout mismatch, or previous/current write access (WAW, RAW, WAR conflicts),
                 // or first use (requires initial layout transition)
                 bool layout_mismatch = (tracker.current_layout != target_state.layout);
-                bool need_barrier = layout_mismatch ||
-                                    isWriteAccess(tracker.last_access_mask) ||
+                bool need_barrier = layout_mismatch || isWriteAccess(tracker.last_access_mask) ||
                                     isWriteAccess(target_state.access_mask) ||
                                     (!tracker.touched); // First use always transitions Layout
 
@@ -598,12 +581,12 @@ namespace lux::render
                     // Build sync2 barrier with per-barrier stage masks
                     RGBarrierInfo2 barrier2{};
                     barrier2.resource_index = tex_ref.resource.index;
-                    barrier2.srcStageMask   = tracker.last_stage_mask;
-                    barrier2.srcAccessMask  = tracker.last_access_mask;
-                    barrier2.dstStageMask   = target_state.stage_mask;
-                    barrier2.dstAccessMask  = target_state.access_mask;
-                    barrier2.oldLayout      = tracker.current_layout;
-                    barrier2.newLayout      = target_state.layout;
+                    barrier2.srcStageMask = tracker.last_stage_mask;
+                    barrier2.srcAccessMask = tracker.last_access_mask;
+                    barrier2.dstStageMask = target_state.stage_mask;
+                    barrier2.dstAccessMask = target_state.access_mask;
+                    barrier2.oldLayout = tracker.current_layout;
+                    barrier2.newLayout = target_state.layout;
 
                     // First touch of an image whose old layout is UNDEFINED.
                     //
@@ -624,16 +607,17 @@ namespace lux::render
                     // (RGImportedResourceInfo::initial_stage, seeded into the tracker
                     // above); it defaults to TOP_OF_PIPE, so transients and imports that
                     // genuinely have no prior reader behave exactly as before.
-                    if (!tracker.touched && tracker.current_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+                    if (!tracker.touched && tracker.current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+                    {
                         barrier2.srcAccessMask = VK_ACCESS_2_NONE;
                     }
 
                     // Subresource range (Mip/Layer)
                     barrier2.subresourceRange.aspectMask = buildAspectMask(tex_desc.format);
-                    barrier2.subresourceRange.baseMipLevel   = tex_ref.range.base_mip_level;
-                    barrier2.subresourceRange.levelCount     = tex_ref.range.level_count;
+                    barrier2.subresourceRange.baseMipLevel = tex_ref.range.base_mip_level;
+                    barrier2.subresourceRange.levelCount = tex_ref.range.level_count;
                     barrier2.subresourceRange.baseArrayLayer = tex_ref.range.base_array_layer;
-                    barrier2.subresourceRange.layerCount     = tex_ref.range.layer_count;
+                    barrier2.subresourceRange.layerCount = tex_ref.range.layer_count;
 
                     barrier_sink.sync.image_barriers_2.push_back(barrier2);
                 }
@@ -646,27 +630,24 @@ namespace lux::render
                 // different stage. (Layout is unchanged on the no-barrier path.)
                 if (need_barrier)
                 {
-                    tracker.current_layout   = target_state.layout;
-                    tracker.last_stage_mask  = target_state.stage_mask;
+                    tracker.current_layout = target_state.layout;
+                    tracker.last_stage_mask = target_state.stage_mask;
                     tracker.last_access_mask = target_state.access_mask;
                 }
                 else
                 {
-                    tracker.last_stage_mask  |= target_state.stage_mask;
+                    tracker.last_stage_mask |= target_state.stage_mask;
                     tracker.last_access_mask |= target_state.access_mask;
                 }
                 tracker.touched = true;
             }
 
             // --- Process Buffers ---
-            for (std::size_t buffer_ref_index = 0u;
-                 buffer_ref_index < desc->buffers.size();
-                 ++buffer_ref_index)
+            for (std::size_t buffer_ref_index = 0u; buffer_ref_index < desc->buffers.size(); ++buffer_ref_index)
             {
                 const auto& buf_ref = desc->buffers[buffer_ref_index];
                 const uint32_t res_idx = buf_ref.resource.index;
-                if (res_idx >= compiled.valid_resources.size() ||
-                    !compiled.valid_resources[res_idx])
+                if (res_idx >= compiled.valid_resources.size() || !compiled.valid_resources[res_idx])
                 {
                     continue;
                 }
@@ -680,9 +661,7 @@ namespace lux::render
                 // dependency and allowed vkCmdDrawIndirect to observe a buffer
                 // that was still being written by compute.
                 bool already_merged = false;
-                for (std::size_t earlier = 0u;
-                     earlier < buffer_ref_index;
-                     ++earlier)
+                for (std::size_t earlier = 0u; earlier < buffer_ref_index; ++earlier)
                 {
                     if (desc->buffers[earlier].resource.index == res_idx)
                     {
@@ -693,32 +672,23 @@ namespace lux::render
                 if (already_merged)
                     continue;
 
-                VulkanResourceState target_state = determineBufferState_shared(
-                    buf_ref,
-                    desc->type
-                );
+                VulkanResourceState target_state = determineBufferState_shared(buf_ref, desc->type);
                 std::uint64_t barrier_offset = buf_ref.offset;
                 std::uint64_t barrier_end = buf_ref.offset;
                 bool whole_buffer = buf_ref.size == 0u;
                 if (!whole_buffer)
                 {
-                    barrier_end = buf_ref.offset >
-                        std::numeric_limits<std::uint64_t>::max() -
-                            buf_ref.size
-                        ? std::numeric_limits<std::uint64_t>::max()
-                        : buf_ref.offset + buf_ref.size;
+                    barrier_end = buf_ref.offset > std::numeric_limits<std::uint64_t>::max() - buf_ref.size
+                                      ? std::numeric_limits<std::uint64_t>::max()
+                                      : buf_ref.offset + buf_ref.size;
                 }
-                for (std::size_t sibling_index = buffer_ref_index + 1u;
-                     sibling_index < desc->buffers.size();
+                for (std::size_t sibling_index = buffer_ref_index + 1u; sibling_index < desc->buffers.size();
                      ++sibling_index)
                 {
                     const auto& sibling = desc->buffers[sibling_index];
                     if (sibling.resource.index != res_idx)
                         continue;
-                    const auto sibling_state = determineBufferState_shared(
-                        sibling,
-                        desc->type
-                    );
+                    const auto sibling_state = determineBufferState_shared(sibling, desc->type);
                     target_state.stage_mask |= sibling_state.stage_mask;
                     target_state.access_mask |= sibling_state.access_mask;
                     if (whole_buffer || sibling.size == 0u)
@@ -726,27 +696,24 @@ namespace lux::render
                         whole_buffer = true;
                         continue;
                     }
-                    barrier_offset = (std::min)(
-                        barrier_offset,
-                        sibling.offset
-                    );
-                    const auto sibling_end = sibling.offset >
-                        std::numeric_limits<std::uint64_t>::max() -
-                            sibling.size
-                        ? std::numeric_limits<std::uint64_t>::max()
-                        : sibling.offset + sibling.size;
+                    barrier_offset = (std::min)(barrier_offset, sibling.offset);
+                    const auto sibling_end = sibling.offset > std::numeric_limits<std::uint64_t>::max() - sibling.size
+                                                 ? std::numeric_limits<std::uint64_t>::max()
+                                                 : sibling.offset + sibling.size;
                     barrier_end = (std::max)(barrier_end, sibling_end);
                 }
                 ResourceStateTracker& tracker = resource_states[res_idx];
 
                 // Use shared isWriteAccess() instead of duplicating the lambda
-                bool last_is_write    = isWriteAccess(tracker.last_access_mask);
+                bool last_is_write = isWriteAccess(tracker.last_access_mask);
                 bool current_is_write = isWriteAccess(target_state.access_mask);
 
                 const bool was_touched = tracker.touched;
                 bool need_barrier = false;
-                if (tracker.touched) {
-                    if (last_is_write || current_is_write) {
+                if (tracker.touched)
+                {
+                    if (last_is_write || current_is_write)
+                    {
                         need_barrier = true;
                     }
                 }
@@ -756,18 +723,14 @@ namespace lux::render
                     // Build sync2-style buffer barrier with per-barrier stage masks
                     RGBarrierInfo2 buf_barrier2{};
                     buf_barrier2.resource_index = buf_ref.resource.index;
-                    buf_barrier2.srcStageMask   = tracker.last_stage_mask;
-                    buf_barrier2.srcAccessMask  = tracker.last_access_mask;
-                    buf_barrier2.dstStageMask   = target_state.stage_mask;
-                    buf_barrier2.dstAccessMask  = target_state.access_mask;
-                    buf_barrier2.oldLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
-                    buf_barrier2.newLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
-                    buf_barrier2.offset = whole_buffer
-                        ? 0u
-                        : barrier_offset;
-                    buf_barrier2.size = whole_buffer
-                        ? VK_WHOLE_SIZE
-                        : barrier_end - barrier_offset;
+                    buf_barrier2.srcStageMask = tracker.last_stage_mask;
+                    buf_barrier2.srcAccessMask = tracker.last_access_mask;
+                    buf_barrier2.dstStageMask = target_state.stage_mask;
+                    buf_barrier2.dstAccessMask = target_state.access_mask;
+                    buf_barrier2.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    buf_barrier2.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    buf_barrier2.offset = whole_buffer ? 0u : barrier_offset;
+                    buf_barrier2.size = whole_buffer ? VK_WHOLE_SIZE : barrier_end - barrier_offset;
                     barrier_sink.sync.buffer_barriers_2.push_back(buf_barrier2);
                 }
 
@@ -783,16 +746,15 @@ namespace lux::render
                 // 读吞掉了 GBufferDraw 的读 barrier)。累积保留写位,后续
                 // 读者也生成 barrier:链跑时 buffer barrier 重复幂等,链跳
                 // 时正确同步。
-                const bool elective_pure_read =
-                    desc->condition && !current_is_write;
+                const bool elective_pure_read = desc->condition && !current_is_write;
                 if ((need_barrier || !was_touched) && !elective_pure_read)
                 {
-                    tracker.last_stage_mask  = target_state.stage_mask;
+                    tracker.last_stage_mask = target_state.stage_mask;
                     tracker.last_access_mask = target_state.access_mask;
                 }
                 else
                 {
-                    tracker.last_stage_mask  |= target_state.stage_mask;
+                    tracker.last_stage_mask |= target_state.stage_mask;
                     tracker.last_access_mask |= target_state.access_mask;
                 }
                 tracker.touched = true;
@@ -800,9 +762,11 @@ namespace lux::render
         }
 
         // 3. Handle final layout transitions for imported resources
-        for (uint32_t i = 0; i < resource_count; ++i) {
+        for (uint32_t i = 0; i < resource_count; ++i)
+        {
             const auto& res = compiled.original_graph.resources[i];
-            if (res.lifetime == ERGResourceLifetime::IMPORTED && res.import_info) {
+            if (res.lifetime == ERGResourceLifetime::IMPORTED && res.import_info)
+            {
                 // Check if transition to final_layout is needed.
                 // 槽位导入(target 附件)恒发射:final_layout 已运行时参数化
                 //,编译期恒等(current==final)不代表运行时恒等——
@@ -810,26 +774,26 @@ namespace lux::render
                 // 自转换屏障,合法且廉价。非槽位导入维持按需发射。
                 const bool is_slot_import = res.import_info->slot.has_value();
                 if (res.import_info->final_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
-                    (is_slot_import ||
-                     resource_states[i].current_layout != res.import_info->final_layout))
+                    (is_slot_import || resource_states[i].current_layout != res.import_info->final_layout))
                 {
                     // Create a Final Barrier Info (sync2)
                     RGBarrierInfo2 final_b2{};
                     final_b2.resource_index = i;
-                    final_b2.srcStageMask   = resource_states[i].last_stage_mask;
-                    final_b2.srcAccessMask  = resource_states[i].last_access_mask;
-                    final_b2.dstStageMask   = res.import_info->final_stage;
-                    final_b2.dstAccessMask  = res.import_info->final_access;
-                    final_b2.oldLayout      = resource_states[i].current_layout;
-                    final_b2.newLayout      = res.import_info->final_layout;
+                    final_b2.srcStageMask = resource_states[i].last_stage_mask;
+                    final_b2.srcAccessMask = resource_states[i].last_access_mask;
+                    final_b2.dstStageMask = res.import_info->final_stage;
+                    final_b2.dstAccessMask = res.import_info->final_access;
+                    final_b2.oldLayout = resource_states[i].current_layout;
+                    final_b2.newLayout = res.import_info->final_layout;
 
-                    if (i < compiled.valid_resources.size() && compiled.valid_resources[i]) {
+                    if (i < compiled.valid_resources.size() && compiled.valid_resources[i])
+                    {
                         const auto& tex_desc = std::get<RGTextureDescription>(res.desc);
-                        final_b2.subresourceRange.aspectMask     = buildAspectMask(tex_desc.format);
-                        final_b2.subresourceRange.baseMipLevel   = 0;
-                        final_b2.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
+                        final_b2.subresourceRange.aspectMask = buildAspectMask(tex_desc.format);
+                        final_b2.subresourceRange.baseMipLevel = 0;
+                        final_b2.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
                         final_b2.subresourceRange.baseArrayLayer = 0;
-                        final_b2.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+                        final_b2.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
                         compiled.final_barrier_infos_2.push_back(final_b2);
                     }
@@ -845,29 +809,32 @@ namespace lux::render
         //    initial state.
         //
         //    Update resource_states to account for final barriers:
-        for (const auto& fb : compiled.final_barrier_infos_2) {
-            resource_states[fb.resource_index].current_layout    = fb.newLayout;
-            resource_states[fb.resource_index].last_stage_mask   = fb.dstStageMask;
-            resource_states[fb.resource_index].last_access_mask  = fb.dstAccessMask;
+        for (const auto& fb : compiled.final_barrier_infos_2)
+        {
+            resource_states[fb.resource_index].current_layout = fb.newLayout;
+            resource_states[fb.resource_index].last_stage_mask = fb.dstStageMask;
+            resource_states[fb.resource_index].last_access_mask = fb.dstAccessMask;
         }
 
         compiled.imported_final_state_lut.resize(resource_count, RGCompiledGraph::kInvalidSlotIdx);
-        for (uint32_t i = 0; i < resource_count; ++i) {
+        for (uint32_t i = 0; i < resource_count; ++i)
+        {
             const auto& res = compiled.original_graph.resources[i];
-            if (res.lifetime != ERGResourceLifetime::IMPORTED) continue;
-            if (!resource_states[i].touched) continue;
+            if (res.lifetime != ERGResourceLifetime::IMPORTED)
+                continue;
+            if (!resource_states[i].touched)
+                continue;
 
             ImportedResourceFinalState fs{};
             fs.resource_index = i;
-            fs.stage_mask     = resource_states[i].last_stage_mask;
-            fs.access_mask    = resource_states[i].last_access_mask;
-            fs.layout         = resource_states[i].current_layout;
+            fs.stage_mask = resource_states[i].last_stage_mask;
+            fs.access_mask = resource_states[i].last_access_mask;
+            fs.layout = resource_states[i].current_layout;
 
             const uint32_t idx = static_cast<uint32_t>(compiled.imported_final_states.size());
             compiled.imported_final_states.push_back(fs);
             compiled.imported_final_state_lut[i] = idx;
         }
-
     }
 
     // ---------------------------
@@ -878,32 +845,32 @@ namespace lux::render
     // to a single handle-patch pass (1 store per barrier) followed by vkCmdPipelineBarrier2.
     static VkImageMemoryBarrier2 makeImageBarrier2(const RGBarrierInfo2& info)
     {
-        VkImageMemoryBarrier2 b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-        b.srcStageMask        = info.srcStageMask;
-        b.srcAccessMask       = info.srcAccessMask;
-        b.dstStageMask        = info.dstStageMask;
-        b.dstAccessMask       = info.dstAccessMask;
-        b.oldLayout           = info.oldLayout;
-        b.newLayout           = info.newLayout;
+        VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+        b.srcStageMask = info.srcStageMask;
+        b.srcAccessMask = info.srcAccessMask;
+        b.dstStageMask = info.dstStageMask;
+        b.dstAccessMask = info.dstAccessMask;
+        b.oldLayout = info.oldLayout;
+        b.newLayout = info.newLayout;
         b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        b.subresourceRange    = info.subresourceRange;
-        b.image               = VK_NULL_HANDLE; // patched per frame
+        b.subresourceRange = info.subresourceRange;
+        b.image = VK_NULL_HANDLE; // patched per frame
         return b;
     }
 
     static VkBufferMemoryBarrier2 makeBufferBarrier2(const RGBarrierInfo2& info)
     {
-        VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-        b.srcStageMask        = info.srcStageMask;
-        b.srcAccessMask       = info.srcAccessMask;
-        b.dstStageMask        = info.dstStageMask;
-        b.dstAccessMask       = info.dstAccessMask;
+        VkBufferMemoryBarrier2 b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+        b.srcStageMask = info.srcStageMask;
+        b.srcAccessMask = info.srcAccessMask;
+        b.dstStageMask = info.dstStageMask;
+        b.dstAccessMask = info.dstAccessMask;
         b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        b.offset              = info.offset;
-        b.size                = info.size;
-        b.buffer              = VK_NULL_HANDLE; // patched per frame
+        b.offset = info.offset;
+        b.size = info.size;
+        b.buffer = VK_NULL_HANDLE; // patched per frame
         return b;
     }
 
@@ -932,7 +899,6 @@ namespace lux::render
                 s.prebuilt_buffer_barriers.push_back(makeBufferBarrier2(info));
                 s.buffer_patch_resource_idx.push_back(info.resource_index);
             }
-
         }
 
         // Final / export barriers
@@ -951,10 +917,10 @@ namespace lux::render
         for (auto& cpass : compiled.compiled_passes)
         {
             auto& s = cpass.sync;
-            s.image_barriers_2              = {};
-            s.buffer_barriers_2             = {};
-            s.release_ownership_barriers    = {};
-            s.acquire_ownership_barriers    = {};
+            s.image_barriers_2 = {};
+            s.buffer_barriers_2 = {};
+            s.release_ownership_barriers = {};
+            s.acquire_ownership_barriers = {};
         }
         compiled.final_barrier_infos_2 = {};
     }
@@ -970,9 +936,9 @@ namespace lux::render
             cpass.resources.pass_resource_bindings.clear();
 
             // DESIGN-01: Handle both GRAPHICS and COMPUTE passes
-            if (cpass.pass->type != ERGPassType::GRAPHICS &&
-                cpass.pass->type != ERGPassType::COMPUTE &&
-                cpass.pass->type != ERGPassType::ASYNC_COMPUTE) continue;
+            if (cpass.pass->type != ERGPassType::GRAPHICS && cpass.pass->type != ERGPassType::COMPUTE &&
+                cpass.pass->type != ERGPassType::ASYNC_COMPUTE)
+                continue;
 
             if (!cpass.pass->pipeline_template.valid())
             {
@@ -996,19 +962,14 @@ namespace lux::render
             {
                 // Legacy template without resource_slot_map (pre-reflection).
                 // Synthesise identity (slot_name == vk_index) entries from active_sets_mask.
-                const uint32_t mask = (tmpl.active_sets_mask != 0)
-                    ? tmpl.active_sets_mask : kAllSetsMask;
+                const uint32_t mask = (tmpl.active_sets_mask != 0) ? tmpl.active_sets_mask : kAllSetsMask;
                 for (uint32_t i = 0; i < kDescriptorSetCount; ++i)
                 {
                     if ((mask & (1u << i)) && mapSetIndexToResourceType(i).has_value())
-                        cpass.resources.pass_resource_bindings.push_back(
-                            {static_cast<EDescriptorSetSlot>(i), i});
+                        cpass.resources.pass_resource_bindings.push_back({static_cast<EDescriptorSetSlot>(i), i});
                 }
             }
         }
     }
-
-
-
 
 } // namespace lux::render

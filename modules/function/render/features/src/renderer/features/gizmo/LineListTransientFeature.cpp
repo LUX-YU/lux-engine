@@ -26,14 +26,15 @@ namespace lux::render
         {
             const std::array attributes{
                 VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GizmoVertex, x)},
-                VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32_UINT,          offsetof(GizmoVertex, packed_attr)},
+                VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32_UINT, offsetof(GizmoVertex, packed_attr)},
             };
             return detail::makeTransientPrimitivePipelineTemplate(
                 sizeof(GizmoVertex),
                 attributes,
                 VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
                 EGeometryType::LINE_SEGMENTS,
-                false);
+                false
+            );
         }
     } // namespace
 
@@ -49,25 +50,26 @@ namespace lux::render
     //  Initialisation
     // ============================================================================
 
-    lux::render::Expected<void> LineListTransientFeature::initAndAttachTo(RenderScene & /*scene*/){
+    lux::render::Expected<void> LineListTransientFeature::initAndAttachTo(RenderScene& /*scene*/)
+    {
         // Self-contained feature: only the narrow RenderContextView / RenderSceneView
         // SDK surface — no engine-internal RenderContext / RenderScene / ShaderResources.
         auto cv = contextView();
 
         // ---- Shaders ----
-    // 解析内置默认 + 域合并切换 + 取模块反射,一次做完。引用引擎契约资源(本 vert
-    // 用 uViews)的管线必须带域合并标记,否则注册被拒。
-    const std::array stage_requests{
-        RenderContextView::PipelineStageDesc{EBuiltinShader::LINE_LIST_VERT, cfg_.vertex_shader},
-        RenderContextView::PipelineStageDesc{EBuiltinShader::LINE_LIST_FRAG, cfg_.fragment_shader}};
+        // 解析内置默认 + 域合并切换 + 取模块反射,一次做完。引用引擎契约资源(本 vert
+        // 用 uViews)的管线必须带域合并标记,否则注册被拒。
+        const std::array stage_requests{
+            RenderContextView::PipelineStageDesc{EBuiltinShader::LINE_LIST_VERT, cfg_.vertex_shader},
+            RenderContextView::PipelineStageDesc{EBuiltinShader::LINE_LIST_FRAG, cfg_.fragment_shader}};
 
-    auto stages = cv.preparePipelineStages(stage_requests);
-    if (!stages)
-        return lux::cxx::unexpected(stages.error());
+        auto stages = cv.preparePipelineStages(stage_requests);
+        if (!stages)
+            return lux::cxx::unexpected(stages.error());
         auto tmpl = makeLineListGizmoTemplate();
         tmpl.descriptor_set_count = 1;
         tmpl.line_width = cfg_.line_width;
-        tmpl.vertex_shader   = stages->module(0);
+        tmpl.vertex_shader = stages->module(0);
         tmpl.fragment_shader = stages->module(1);
         // The layout is left empty -> built from reflection (this pipeline
         // only uses the Scene set, and the contract routes it back to the
@@ -76,8 +78,10 @@ namespace lux::render
         pipeline_handle_ = cv.registerGraphics(tmpl, stages->infos());
 
         // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped; shared FIF ring) ----
-        if (auto r = ring_.create(cv.vmaAllocator(), cv.framesInFlight(),
-                                  static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex));
+        if (auto r = ring_.create(
+                cv.vmaAllocator(),
+                cv.framesInFlight(),
+                static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex));
             !r)
             return r;
 
@@ -90,9 +94,13 @@ namespace lux::render
     //  Frame lifecycle
     // ============================================================================
 
-    void LineListTransientFeature::onFrameBegin(const FeatureFrameContext &ctx)
+    void LineListTransientFeature::onFrameBegin(const FeatureFrameContext& ctx)
     {
-        if (ring_.empty()) { draw_count_ = 0; return; }
+        if (ring_.empty())
+        {
+            draw_count_ = 0;
+            return;
+        }
         // The engine's REAL frame-in-flight picks the slot (rule encoded in the ring —
         // the old private frame counter could desync and overwrite an in-flight slot).
         active_slot_ = ring_.slotIndexFor(ctx.frame_index);
@@ -104,10 +112,9 @@ namespace lux::render
             return;
         }
 
-        const uint32_t count = static_cast<uint32_t>(
-            std::min<size_t>(data.size(), cfg_.max_vertices));
+        const uint32_t count = static_cast<uint32_t>(std::min<size_t>(data.size(), cfg_.max_vertices));
 
-        auto &slot = ring_.slotAt(active_slot_);
+        auto& slot = ring_.slotAt(active_slot_);
         assert(slot.mapped && "ring slot buffer was not created");
 
         std::memcpy(slot.mapped, data.data(), count * sizeof(GizmoVertex));
@@ -119,7 +126,7 @@ namespace lux::render
     //  Render graph
     // ============================================================================
 
-    void LineListTransientFeature::addPasses(RGBuilder &builder)
+    void LineListTransientFeature::addPasses(RGBuilder& builder)
     {
         builder.addPass("ForwardLineListTransient", ERGPassType::GRAPHICS)
             .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
@@ -127,22 +134,25 @@ namespace lux::render
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::Gizmo)))
-            .setKernelFn([this](const PassRecordContext &ctx)
-                         {
-            if (draw_count_ == 0) return;
-            if (ctx.view == nullptr) return;
+            .setKernelFn([this](const PassRecordContext& ctx) {
+                if (draw_count_ == 0)
+                    return;
+                if (ctx.view == nullptr)
+                    return;
 
-            auto& slot = ring_.slotAt(active_slot_);
+                auto& slot = ring_.slotAt(active_slot_);
 
-            VkDeviceSize zero_offset = 0;
-            vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
-            vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0); })
+                VkDeviceSize zero_offset = 0;
+                vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
+                vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
+            }
+            )
             .setKernel("LineListTransientDraw")
             .stage(ERenderStage::Overlay); // overlay — composited on top of the post-processed
                                            // (tonemapped) image, after the grid
     }
 
-    void LineListTransientFeature::onDetachFromScene(RenderScene & /*scene*/)
+    void LineListTransientFeature::onDetachFromScene(RenderScene& /*scene*/)
     {
         // Runtime removeFeature has no GPU idle wait; frames N-1/N-2 may still bind
         // these ring buffers. Retire through the FIF deferred-destroy queue rather

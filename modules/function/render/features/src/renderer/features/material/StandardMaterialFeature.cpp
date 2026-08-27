@@ -3,7 +3,7 @@
 
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/render/resources/material/MaterialResources.hpp>   // ensureGlobalMaterialResources
+#include <lux/engine/render/resources/material/MaterialResources.hpp> // ensureGlobalMaterialResources
 #include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
 #include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
@@ -17,9 +17,11 @@ namespace lux::render
 
     StandardMaterialFeature::StandardMaterialFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
-    {}
+    {
+    }
 
-    lux::render::Expected<void> StandardMaterialFeature::initAndAttachTo(RenderScene& sc){
+    lux::render::Expected<void> StandardMaterialFeature::initAndAttachTo(RenderScene& sc)
+    {
         // Own the global material stack (registry-first; MaterialResources::init
         // Idempotent + shared across scenes (lives
         // in the global registry). Adding this feature IS the opt-in to the stack —
@@ -34,9 +36,7 @@ namespace lux::render
         const auto accepted = materials.addDomainWriteTarget(
             &sc,
             sc.domainDescriptorSets()->setsFor(rdesc::EBindFrequency::FEATURE),
-            engineSetDomainOffset(
-                static_cast<uint32_t>(EDescriptorSetSlot::Material)
-            )
+            engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::Material))
         );
         if (!accepted)
             renderFatal("StandardMaterialFeature: material domain target is empty");

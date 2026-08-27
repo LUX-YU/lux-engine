@@ -6,22 +6,25 @@
 namespace lux::simulation::asset
 {
     template <class CurrentSystem>
-    [[nodiscard]] bool matchesCurrentSystemDescription(
-        SimulationSystemView asset_system
-    ) noexcept
+    [[nodiscard]] bool matchesCurrentSystemDescription(SimulationSystemView asset_system) noexcept
         requires requires { CurrentSystem::Description; }
     {
         constexpr const auto& current = CurrentSystem::Description;
-        if (!asset_system || !validSystemDescription(current) ||
+        const bool is_invalid_description = !asset_system || !validSystemDescription(current);
+        const bool is_invalid_identity = !asset_system ||
             asset_system.type() != systemTypeId(current.canonical_name) ||
-            asset_system.version() != current.version ||
-            asset_system.configurationSchemaName() !=
-                current.configuration_schema_name ||
-            asset_system.configurationSchemaVersion() !=
-                current.configuration_schema_version ||
+            asset_system.version() != current.version;
+        const bool is_invalid_configuration = !asset_system ||
+            asset_system.configurationSchemaName() != current.configuration_schema_name ||
+            asset_system.configurationSchemaVersion() != current.configuration_schema_version;
+        const bool is_invalid_counts = !asset_system ||
             asset_system.capabilityCount() != current.capabilities.size() ||
             asset_system.hookPointCount() != current.hooks.size() ||
-            asset_system.eventCount() != current.events.size())
+            asset_system.eventCount() != current.events.size();
+        const bool is_invalid_system = is_invalid_description || is_invalid_identity ||
+            is_invalid_configuration || is_invalid_counts;
+
+        if (is_invalid_system)
         {
             return false;
         }
@@ -34,18 +37,19 @@ namespace lux::simulation::asset
         {
             const auto actual = asset_system.hookPointAt(index);
             const auto& expected = current.hooks[index];
-            if (actual.name() != expected.name ||
-                actual.cardinality() != expected.cardinality ||
+            const bool is_invalid_identity = actual.name() != expected.name ||
+                actual.cardinality() != expected.cardinality;
+            const bool is_invalid_signature =
                 actual.parameterCount() != expected.signature.parameters.size() ||
-                actual.returnCount() != expected.signature.returns.size())
+                actual.returnCount() != expected.signature.returns.size();
+            const bool is_invalid_hook = is_invalid_identity || is_invalid_signature;
+            if (is_invalid_hook)
             {
                 return false;
             }
-            for (std::size_t parameter{};
-                 parameter < actual.parameterCount(); ++parameter)
+            for (std::size_t parameter{}; parameter < actual.parameterCount(); ++parameter)
             {
-                if (actual.parameterAt(parameter) !=
-                    expected.signature.parameters[parameter])
+                if (actual.parameterAt(parameter) != expected.signature.parameters[parameter])
                     return false;
             }
             for (std::size_t result{}; result < actual.returnCount(); ++result)
@@ -58,11 +62,13 @@ namespace lux::simulation::asset
         {
             const auto actual = asset_system.eventAt(index);
             const auto& expected = current.events[index];
-            if (actual.name() != expected.name ||
-                actual.dispatchHook().name() != expected.dispatch_hook ||
-                actual.target() != expected.target ||
+            const bool is_invalid_identity = actual.name() != expected.name ||
+                actual.dispatchHook().name() != expected.dispatch_hook || actual.target() != expected.target;
+            const bool is_invalid_payload =
                 actual.payloadSchemaName() != expected.payload_schema_name ||
-                actual.payloadSchemaVersion() != expected.payload_schema_version)
+                actual.payloadSchemaVersion() != expected.payload_schema_version;
+            const bool is_invalid_event = is_invalid_identity || is_invalid_payload;
+            if (is_invalid_event)
             {
                 return false;
             }

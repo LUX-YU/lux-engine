@@ -19,9 +19,9 @@ namespace lux::input
     /// active action set transparent and auditable.
     struct InputActionDesc
     {
-        ActionId         id = 0;
-        std::string      name;
-        EInputValueType   value_type = EInputValueType::AXIS_1D;
+        ActionId id = 0;
+        std::string name;
+        EInputValueType value_type = EInputValueType::AXIS_1D;
 
         /// Whether this action's bindings consume input (preventing lower-priority
         /// contexts from reading the same physical source).
@@ -39,7 +39,7 @@ namespace lux::input
         ///   2. Passing bindings are accumulated into the action value.
         ///   3. Action-level modifiers are applied.
         ///   4. Action-level triggers are evaluated on the final accumulated value.
-        std::vector<TriggerDesc>  action_triggers;
+        std::vector<TriggerDesc> action_triggers;
     };
 
 } // namespace lux::input

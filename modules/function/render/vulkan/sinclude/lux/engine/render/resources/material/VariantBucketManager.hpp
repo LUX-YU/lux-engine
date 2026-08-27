@@ -12,10 +12,10 @@
 //  R1 will swap the Graph-family bucket key from feature_mask to a baked-shader
 //  fingerprint HERE, without touching MaterialResources' slot/SSBO APIs.
 // ============================================================================
-#include <lux/engine/render/resources/material/MaterialFamily.hpp>        // ELightingTechnique, kLightingTechniqueCount
-#include <lux/engine/render/gpu/pipeline/ShaderPermutation.hpp> // ShaderFeatureMask
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>        // ShaderHandle
-#include <lux/engine/description/MaterialEnums.hpp>           // rdesc::EAlphaMode
+#include <lux/engine/render/resources/material/MaterialFamily.hpp>   // ELightingTechnique, kLightingTechniqueCount
+#include <lux/engine/render/gpu/pipeline/ShaderPermutation.hpp>      // ShaderFeatureMask
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp> // ShaderHandle
+#include <lux/engine/description/MaterialEnums.hpp>                  // rdesc::EAlphaMode
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
@@ -29,8 +29,8 @@ namespace lux::render
     /// baked-shader id.
     struct VariantBucketDesc
     {
-        ELightingTechnique family{ ELightingTechnique::Unlit };
-        ShaderFeatureMask  feature_mask{ 0 };
+        ELightingTechnique family{ELightingTechnique::Unlit};
+        ShaderFeatureMask feature_mask{0};
         // Graph family only: the material's baked per-pass frag shaders. The
         // mesh feature builds this bucket's own PSO from them (R1). Null for
         // builtin families and for Graph materials uploaded without a shader
@@ -42,8 +42,8 @@ namespace lux::render
         // cull-mode tier in the per-bucket PSO build; graph_alpha_mode is carried
         // for the (deferred) transparent-routing decision (Blend is not yet a
         // separate pass -> currently rendered opaque, see GpuDrivenMeshFeatureBase).
-        lux::rdesc::EAlphaMode graph_alpha_mode{ lux::rdesc::EAlphaMode::Opaque };
-        bool                   graph_double_sided{ false };
+        lux::rdesc::EAlphaMode graph_alpha_mode{lux::rdesc::EAlphaMode::Opaque};
+        bool graph_double_sided{false};
     };
 
     class LUX_FUNCTION_PUBLIC VariantBucketManager
@@ -58,8 +58,7 @@ namespace lux::render
         /// allocates a distinct bucket on first sight — no cap, no degrade. The
         /// live bucket count is a pure mechanism number (see count()); any
         /// "too many" policy belongs to the upper layer, not here.
-        [[nodiscard]] uint32_t getOrCreate(ELightingTechnique family,
-                                           ShaderFeatureMask  feature_mask);
+        [[nodiscard]] uint32_t getOrCreate(ELightingTechnique family, ShaderFeatureMask feature_mask);
 
         /// Look up or allocate a bucket for a Graph material identified by its
         /// baked shader: distinct @p shader_key -> distinct bucket (its own PSO);
@@ -73,11 +72,13 @@ namespace lux::render
         /// W3a: @p alpha_mode + @p double_sided are folded into the bucket key
         /// (makeGraphKey) so two materials sharing baked shaders but differing in
         /// render-state get DISTINCT buckets (distinct PSOs).
-        [[nodiscard]] uint32_t getOrCreateGraph(uint64_t               shader_key,
-                                                ShaderHandle           gbuffer_shader,
-                                                ShaderHandle           forward_shader,
-                                                lux::rdesc::EAlphaMode alpha_mode,
-                                                bool                   double_sided);
+        [[nodiscard]] uint32_t getOrCreateGraph(
+            uint64_t shader_key,
+            ShaderHandle gbuffer_shader,
+            ShaderHandle forward_shader,
+            lux::rdesc::EAlphaMode alpha_mode,
+            bool double_sided
+        );
 
         /// Release one reference to a bucket (call when a material using it is
         /// destroyed). When a GRAPH bucket's refcount hits zero its graph_lookup_
@@ -108,11 +109,9 @@ namespace lux::render
             graph_free_list_.clear();
         }
 
-        [[nodiscard]] static uint64_t makeKey(ELightingTechnique family,
-                                              ShaderFeatureMask  feature_mask) noexcept
+        [[nodiscard]] static uint64_t makeKey(ELightingTechnique family, ShaderFeatureMask feature_mask) noexcept
         {
-            return (static_cast<uint64_t>(family) << 32u)
-                 | static_cast<uint64_t>(feature_mask);
+            return (static_cast<uint64_t>(family) << 32u) | static_cast<uint64_t>(feature_mask);
         }
 
     private:
@@ -125,8 +124,8 @@ namespace lux::render
         struct GraphBucketKey
         {
             uint32_t gb_index, gb_gen, fw_index, fw_gen;
-            uint8_t  alpha_mode;
-            bool     double_sided;
+            uint8_t alpha_mode;
+            bool double_sided;
             bool operator==(const GraphBucketKey&) const noexcept = default;
         };
         struct GraphBucketKeyHash
@@ -137,20 +136,22 @@ namespace lux::render
                 auto mix = [&h](uint64_t v) {
                     h ^= static_cast<size_t>(v) + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
                 };
-                mix(k.gb_gen); mix(k.fw_index); mix(k.fw_gen);
+                mix(k.gb_gen);
+                mix(k.fw_index);
+                mix(k.fw_gen);
                 mix((static_cast<uint64_t>(k.alpha_mode) << 1) | (k.double_sided ? 1u : 0u));
                 return h;
             }
         };
 
-        std::vector<VariantBucketDesc>         buckets_;
-        std::unordered_map<uint64_t, uint32_t> lookup_;        // (family,feature_mask) key
+        std::vector<VariantBucketDesc> buckets_;
+        std::unordered_map<uint64_t, uint32_t> lookup_;                                 // (family,feature_mask) key
         std::unordered_map<GraphBucketKey, uint32_t, GraphBucketKeyHash> graph_lookup_; // full graph identity -> bucket
         // Per-bucket-slot live-material refcount (indexed by bucket id; family
         // bootstrap slots are pinned and ignored). When a graph slot hits 0 it is
         // freed: graph_lookup_ key erased, slot blanked, id pushed to graph_free_list_.
-        std::vector<uint32_t>                  graph_refcount_;
-        std::vector<uint32_t>                  graph_free_list_; // recyclable graph bucket ids
+        std::vector<uint32_t> graph_refcount_;
+        std::vector<uint32_t> graph_free_list_; // recyclable graph bucket ids
     };
 
 } // namespace lux::render

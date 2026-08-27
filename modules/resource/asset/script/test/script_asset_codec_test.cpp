@@ -4,7 +4,8 @@
 #include <limits>
 #include <memory>
 
-int main()
+int
+main()
 {
     using namespace lux;
 
@@ -15,8 +16,7 @@ int main()
     source.description.body = rdesc::LuaSourceScript{"module"};
     source.payload = {std::byte{1U}, std::byte{2U}, std::byte{3U}};
 
-    const auto descriptor = asset::scriptAssetCodecDescriptor(
-        std::make_shared<int>(1));
+    const auto descriptor = asset::scriptAssetCodecDescriptor(std::make_shared<int>(1));
     const asset::AssetCodecLimits limits{
         std::numeric_limits<std::size_t>::max(),
         std::numeric_limits<std::size_t>::max(),
@@ -27,8 +27,7 @@ int main()
 
     auto decoded = descriptor.decode(*encoded, asset::AssetDecodeContext{limits});
     assert(decoded);
-    const auto content = std::static_pointer_cast<const asset::ScriptAssetContent>(
-        decoded->payload);
+    const auto content = std::static_pointer_cast<const asset::ScriptAssetContent>(decoded->payload);
     assert(content->description.schema_version == 4U);
     assert(content->description.model == rdesc::EScriptModel::ENTITY_BEHAVIOR);
     assert(content->description.exports.front().symbol_id == 11U);
@@ -43,11 +42,7 @@ int main()
     auto corrupt_model = *encoded;
     corrupt_model[16] = std::byte{0xFFU};
     assert(!descriptor.decode(corrupt_model, asset::AssetDecodeContext{limits}));
-    assert(!descriptor.decode(
-        *encoded,
-        asset::AssetDecodeContext{asset::AssetCodecLimits{
-            encoded->size(), 1U, 0U}}
-    ));
+    assert(!descriptor.decode(*encoded, asset::AssetDecodeContext{asset::AssetCodecLimits{encoded->size(), 1U, 0U}}));
     auto trailing = *encoded;
     trailing.push_back(std::byte{});
     assert(!descriptor.decode(trailing, asset::AssetDecodeContext{limits}));

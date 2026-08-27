@@ -15,19 +15,20 @@
 //  server's tick() / pollPendingReadbacks() also use, so they live with that machinery.
 // ============================================================================
 
-#include <lux/engine/render/comm/server/RenderServer.hpp>         // Dispatcher, Ctx, replyToCurrent, resolveExternalData(View)
-#include <lux/engine/render/comm/server/RenderServerImpl.hpp>     // GeneralRenderServer::Impl, FeatureTypeRecord, handle_cast
-#include <lux/engine/function/render/client/RenderProtocol.hpp>              // payloads / replies / type_ids / opcodes
-#include <lux/engine/render/scene/RenderScene.hpp>                // getScene, feature mutators, queryFeatureParamDescs
-#include <lux/engine/render/resources/TextureResources.hpp>      // TextureResources, bindless sets, TextureTransferTask
+#include <lux/engine/render/comm/server/RenderServer.hpp> // Dispatcher, Ctx, replyToCurrent, resolveExternalData(View)
+#include <lux/engine/render/comm/server/RenderServerImpl.hpp>
+// GeneralRenderServer::Impl, FeatureTypeRecord, handle_cast
+#include <lux/engine/function/render/client/RenderProtocol.hpp> // payloads / replies / type_ids / opcodes
+#include <lux/engine/render/scene/RenderScene.hpp>              // getScene, feature mutators, queryFeatureParamDescs
+#include <lux/engine/render/resources/TextureResources.hpp>     // TextureResources, bindless sets, TextureTransferTask
 #include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp> // TextureUpdate{Mip,Face}, SlotHandle
-#include <lux/engine/render/resources/ShaderResources.hpp>       // ShaderResources
-#include <lux/engine/description/Shader.hpp>                      // rdesc::ShaderInfo::deserialize
+#include <lux/engine/render/resources/ShaderResources.hpp>                // ShaderResources
+#include <lux/engine/description/Shader.hpp>                              // rdesc::ShaderInfo::deserialize
 
-#include <algorithm>   // std::clamp, std::copy_n, std::min
+#include <algorithm> // std::clamp, std::copy_n, std::min
 #include <array>
 #include <cstdint>
-#include <cstring>     // std::memcpy, strnlen
+#include <cstring> // std::memcpy, strnlen
 #include <limits>
 #include <span>
 #include <sstream>
@@ -36,7 +37,7 @@
 namespace lux::render
 {
     using Dispatcher = GeneralRenderServer::Dispatcher;
-    using Ctx        = Dispatcher::Ctx;
+    using Ctx = Dispatcher::Ctx;
 
     namespace
     {
@@ -49,7 +50,7 @@ namespace lux::render
 
         void handleRegisterFeatureType(Ctx& ctx, const RegisterFeatureTypePayload& p)
         {
-            auto& im       = impl(ctx);
+            auto& im = impl(ctx);
             auto& registry = im.renderer_->featureTypeRegistry();
 
             // Register the TYPE first with NO ops — the registry dedups by factory identity
@@ -64,31 +65,25 @@ namespace lux::render
                 FeatureTypeRegisteredReply reply{};
                 if (p.module_lease_attachment >= ctx.program.attachments.size())
                 {
-                    reply.error = renderError<
-                        err::comm::AttachmentIndexOutOfRange>(
-                            p.module_lease_attachment,
-                            static_cast<std::uint32_t>(
-                                ctx.program.attachments.size()));
+                    reply.error = renderError<err::comm::AttachmentIndexOutOfRange>(
+                        p.module_lease_attachment,
+                        static_cast<std::uint32_t>(ctx.program.attachments.size())
+                    );
                     replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
                     return;
                 }
-                const auto& attachment =
-                    ctx.program.attachments[p.module_lease_attachment];
-                if (attachment.type_id != attachment_types::LifetimeLease ||
-                    attachment.object == nullptr ||
-                    attachment.object_size !=
-                        sizeof(std::shared_ptr<const void>))
+                const auto& attachment = ctx.program.attachments[p.module_lease_attachment];
+                if (attachment.type_id != attachment_types::LifetimeLease || attachment.object == nullptr ||
+                    attachment.object_size != sizeof(std::shared_ptr<const void>))
                 {
-                    reply.error = renderError<
-                        err::comm::AttachmentTypeMismatch>(
-                            attachment_types::LifetimeLease,
-                            attachment.type_id);
+                    reply.error = renderError<err::comm::AttachmentTypeMismatch>(
+                        attachment_types::LifetimeLease,
+                        attachment.type_id
+                    );
                     replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
                     return;
                 }
-                rec.registration_leases.push_back(
-                    *static_cast<const std::shared_ptr<const void>*>(
-                        attachment.object));
+                rec.registration_leases.push_back(*static_cast<const std::shared_ptr<const void>*>(attachment.object));
             }
             auto result = registry.add(std::move(rec));
 
@@ -104,7 +99,7 @@ namespace lux::render
             }
 
             reply.feature_type_id = result->type_id;
-            reply.status          = static_cast<std::uint32_t>(result->status);
+            reply.status = static_cast<std::uint32_t>(result->status);
 
             FeatureTypeRecord& stored = registry.at(result->type_id);
             if (result->status == EFeatureTypeRegisterStatus::Registered && p.factory.register_ops_fn)
@@ -132,7 +127,7 @@ namespace lux::render
             QueryTypeIdReply reply{};
             auto entry = im.dispatcher.findTypeId(name);
             reply.type_id = entry.type_id;
-            reply.opcode  = entry.opcode;
+            reply.opcode = entry.opcode;
             replyToCurrent<QueryTypeIdPayload>(ctx, reply);
         }
 
@@ -155,10 +150,11 @@ namespace lux::render
             if (p.attachment_index >= ctx.program.attachments.size())
                 return renderFailure<err::comm::AttachmentIndexOutOfRange>(
                     p.attachment_index,
-                    static_cast<std::uint32_t>(ctx.program.attachments.size()));
+                    static_cast<std::uint32_t>(ctx.program.attachments.size())
+                );
 
             const auto& attachment = ctx.program.attachments[p.attachment_index];
-            const auto& factory    = im.renderer_->featureTypeRegistry().at(p.feature_type_id).factory;
+            const auto& factory = im.renderer_->featureTypeRegistry().at(p.feature_type_id).factory;
 
             // Typed addFeature() stores Config itself in the attachment record,
             // while addFeatureRaw(SharedBytes) stores an owning byte-range
@@ -168,15 +164,13 @@ namespace lux::render
             std::size_t config_size = attachment.object_size;
             if (attachment.type_id == attachment_types::OwnedBytes)
             {
-                const auto& owned =
-                    *static_cast<const OwnedBytesAttachment*>(attachment.object);
+                const auto& owned = *static_cast<const OwnedBytesAttachment*>(attachment.object);
                 config_data = owned.data;
                 config_size = owned.size;
             }
             else if (attachment.type_id == attachment_types::BorrowedBytes)
             {
-                const auto& borrowed =
-                    *static_cast<const BorrowedBytesAttachment*>(attachment.object);
+                const auto& borrowed = *static_cast<const BorrowedBytesAttachment*>(attachment.object);
                 config_data = borrowed.data;
                 config_size = borrowed.size;
             }
@@ -211,18 +205,16 @@ namespace lux::render
             return GenericOkReply{.code = 1u, .error = outcome.error()};
         }
 
-        void handleUnregisterFeatureType(
-            Ctx& ctx,
-            const UnregisterFeatureTypePayload& p)
+        void handleUnregisterFeatureType(Ctx& ctx, const UnregisterFeatureTypePayload& p)
         {
             auto& im = impl(ctx);
-            auto released =
-                im.renderer_->featureTypeRegistry().release(p.feature_type_id);
+            auto released = im.renderer_->featureTypeRegistry().release(p.feature_type_id);
             if (!released)
             {
                 replyToCurrent<UnregisterFeatureTypePayload>(
                     ctx,
-                    GenericOkReply{.code = 1u, .error = released.error()});
+                    GenericOkReply{.code = 1u, .error = released.error()}
+                );
                 return;
             }
 
@@ -233,23 +225,17 @@ namespace lux::render
                 auto& record = **released;
                 if (record.factory.unregister_ops_fn != nullptr)
                 {
-                    record.factory.unregister_ops_fn(
-                        &im.dispatcher,
-                        record.ops,
-                        record.op_count);
+                    record.factory.unregister_ops_fn(&im.dispatcher, record.ops, record.op_count);
                 }
             }
-            replyToCurrent<UnregisterFeatureTypePayload>(
-                ctx,
-                GenericOkReply{});
+            replyToCurrent<UnregisterFeatureTypePayload>(ctx, GenericOkReply{});
         }
 
         void handleRemoveFeature(Ctx& ctx, const RemoveFeaturePayload& p)
         {
             auto* sc = impl(ctx).renderer_->getScene(p.scene_id);
-            const auto outcome = sc != nullptr
-                ? sc->removeFeature(p.feature)
-                : Expected<void>{renderFailure<err::scene::NotFound>(p.scene_id.index)};
+            const auto outcome = sc != nullptr ? sc->removeFeature(p.feature)
+                                               : Expected<void>{renderFailure<err::scene::NotFound>(p.scene_id.index)};
 
             replyToCurrent<RemoveFeaturePayload>(ctx, toGenericReply(outcome));
         }
@@ -257,9 +243,8 @@ namespace lux::render
         void handleSetFeatureEnabled(Ctx& ctx, const SetFeatureEnabledPayload& p)
         {
             auto* sc = impl(ctx).renderer_->getScene(p.scene_id);
-            const auto outcome = sc != nullptr
-                ? sc->setFeatureEnabled(p.feature, p.enabled)
-                : Expected<void>{renderFailure<err::scene::NotFound>(p.scene_id.index)};
+            const auto outcome = sc != nullptr ? sc->setFeatureEnabled(p.feature, p.enabled)
+                                               : Expected<void>{renderFailure<err::scene::NotFound>(p.scene_id.index)};
 
             replyToCurrent<SetFeatureEnabledPayload>(ctx, toGenericReply(outcome));
         }
@@ -273,7 +258,12 @@ namespace lux::render
             auto& im = impl(ctx);
             RenderGraphDumpReply reply{};
             auto* sc = im.renderer_->getScene(p.scene_id);
-            if (!sc) { reply.status = 1; replyToCurrent<DumpRenderGraphPayload>(ctx, reply); return; }
+            if (!sc)
+            {
+                reply.status = 1;
+                replyToCurrent<DumpRenderGraphPayload>(ctx, reply);
+                return;
+            }
 
             std::ostringstream oss;
             sc->dumpCompiledGraph(oss);
@@ -282,10 +272,8 @@ namespace lux::render
             reply.needed = static_cast<uint32_t>(text.size());
             if (p.dst_ptr != 0 && p.dst_capacity > 0)
             {
-                const auto n = static_cast<uint32_t>(
-                    std::min<uint64_t>(text.size(), p.dst_capacity));
-                std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(p.dst_ptr)),
-                            text.data(), n);
+                const auto n = static_cast<uint32_t>(std::min<uint64_t>(text.size(), p.dst_capacity));
+                std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(p.dst_ptr)), text.data(), n);
                 reply.written = n;
             }
             replyToCurrent<DumpRenderGraphPayload>(ctx, reply);
@@ -309,16 +297,8 @@ namespace lux::render
             reply.needed = static_cast<uint32_t>(text.size());
             if (p.dst_ptr != 0 && p.dst_capacity > 0)
             {
-                const auto bytes = static_cast<uint32_t>(
-                    std::min<uint64_t>(text.size(), p.dst_capacity)
-                );
-                std::memcpy(
-                    reinterpret_cast<void*>(
-                        static_cast<std::uintptr_t>(p.dst_ptr)
-                    ),
-                    text.data(),
-                    bytes
-                );
+                const auto bytes = static_cast<uint32_t>(std::min<uint64_t>(text.size(), p.dst_capacity));
+                std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(p.dst_ptr)), text.data(), bytes);
                 reply.written = bytes;
             }
             replyToCurrent<QueryGpuTimingPayload>(ctx, reply);
@@ -335,7 +315,7 @@ namespace lux::render
 
             DeviceCapsReply reply{};
             reply.version = kDeviceCapsVersion;
-            reply.needed  = static_cast<uint32_t>(sizeof(DeviceCaps));
+            reply.needed = static_cast<uint32_t>(sizeof(DeviceCaps));
 
             if (im.dev_ctx_ == nullptr)
             {
@@ -350,14 +330,14 @@ namespace lux::render
             {
                 reply.error = renderError<err::comm::PayloadSizeMismatch>(
                     static_cast<uint32_t>(sizeof(DeviceCaps)),
-                    static_cast<uint32_t>(p.dst_capacity));
+                    static_cast<uint32_t>(p.dst_capacity)
+                );
                 replyToCurrent<QueryDeviceCapsPayload>(ctx, reply);
                 return;
             }
 
             const DeviceCaps& caps = im.dev_ctx_->caps();
-            std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(p.dst_ptr)),
-                        &caps, sizeof(DeviceCaps));
+            std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(p.dst_ptr)), &caps, sizeof(DeviceCaps));
             reply.written = static_cast<uint32_t>(sizeof(DeviceCaps));
 
             replyToCurrent<QueryDeviceCapsPayload>(ctx, reply);
@@ -372,7 +352,12 @@ namespace lux::render
             auto& im = impl(ctx);
             QueryFeatureParamsReply reply{};
             auto* sc = im.renderer_->getScene(p.scene_id);
-            if (!sc) { reply.status = 1; replyToCurrent<QueryFeatureParamsPayload>(ctx, reply); return; }
+            if (!sc)
+            {
+                reply.status = 1;
+                replyToCurrent<QueryFeatureParamsPayload>(ctx, reply);
+                return;
+            }
 
             const auto descs = sc->queryFeatureParamDescs();
 
@@ -382,7 +367,8 @@ namespace lux::render
                 return 8u + 1u + 2u + d.name.size() + 2u + d.struct_name.size() + 2u + d.size;
             };
             uint64_t needed = 0;
-            for (const auto& d : descs) needed += recordSize(d);
+            for (const auto& d : descs)
+                needed += recordSize(d);
             reply.needed = static_cast<uint32_t>(needed);
 
             // PASS 2: write only if the whole stream fits (else caller resizes +
@@ -392,22 +378,30 @@ namespace lux::render
                 auto* base = reinterpret_cast<uint8_t*>(static_cast<std::uintptr_t>(p.dst_ptr));
                 uint64_t off = 0;
                 auto put = [&](const void* src, uint64_t n) {
-                    if (n) { std::memcpy(base + off, src, static_cast<size_t>(n)); off += n; }
+                    if (n)
+                    {
+                        std::memcpy(base + off, src, static_cast<size_t>(n));
+                        off += n;
+                    }
                 };
                 for (const auto& d : descs)
                 {
-                    const lux::render::FeatureHandle id = d.id;   // 8 bytes (5-5)
-                    const uint8_t  en  = d.enabled ? 1u : 0u;
-                    const uint16_t nl  = static_cast<uint16_t>(d.name.size());
-                    const uint16_t sl  = static_cast<uint16_t>(d.struct_name.size());
-                    const uint16_t pl  = static_cast<uint16_t>(d.size);
-                    put(&id, 8); put(&en, 1);
-                    put(&nl, 2); put(d.name.data(), nl);
-                    put(&sl, 2); put(d.struct_name.data(), sl);
-                    put(&pl, 2); put(d.data, pl);
+                    const lux::render::FeatureHandle id = d.id; // 8 bytes (5-5)
+                    const uint8_t en = d.enabled ? 1u : 0u;
+                    const uint16_t nl = static_cast<uint16_t>(d.name.size());
+                    const uint16_t sl = static_cast<uint16_t>(d.struct_name.size());
+                    const uint16_t pl = static_cast<uint16_t>(d.size);
+                    put(&id, 8);
+                    put(&en, 1);
+                    put(&nl, 2);
+                    put(d.name.data(), nl);
+                    put(&sl, 2);
+                    put(d.struct_name.data(), sl);
+                    put(&pl, 2);
+                    put(d.data, pl);
                 }
                 reply.written = static_cast<uint32_t>(off);
-                reply.count   = static_cast<uint32_t>(descs.size());
+                reply.count = static_cast<uint32_t>(descs.size());
             }
             replyToCurrent<QueryFeatureParamsPayload>(ctx, reply);
         }
@@ -424,36 +418,44 @@ namespace lux::render
             auto& im = impl(ctx);
             auto& tex_res = im.render_ctx_->globalRegistry().must<TextureResources>();
             const auto r = tex_res.createPersistentTexture2D(p.desc);
-            if (!r) {
+            if (!r)
+            {
                 // 把内部错误映射回线协议的 ERegionUploadStatus。
-                const auto st = isError<err::asset::UnsupportedFormat>(r.error())
-                    ? ERegionUploadStatus::UnsupportedFormat
-                    : isError<err::memory::CapacityExhausted>(r.error())
-                        ? ERegionUploadStatus::CapacityExhausted
-                        : ERegionUploadStatus::InvalidDesc;
-                replyToCurrent<CreatePersistentTexture2DPayload>(ctx,
-                    Texture2DCreatedReply{RTextureHandle{}, static_cast<uint32_t>(st)});
+                const auto st =
+                    isError<err::asset::UnsupportedFormat>(r.error())    ? ERegionUploadStatus::UnsupportedFormat
+                    : isError<err::memory::CapacityExhausted>(r.error()) ? ERegionUploadStatus::CapacityExhausted
+                                                                         : ERegionUploadStatus::InvalidDesc;
+                replyToCurrent<CreatePersistentTexture2DPayload>(
+                    ctx,
+                    Texture2DCreatedReply{RTextureHandle{}, static_cast<uint32_t>(st)}
+                );
                 return;
             }
-            replyToCurrent<CreatePersistentTexture2DPayload>(ctx,
-                Texture2DCreatedReply{RTextureHandle{r->index, r->gen}, 0u});
+            replyToCurrent<CreatePersistentTexture2DPayload>(
+                ctx,
+                Texture2DCreatedReply{RTextureHandle{r->index, r->gen}, 0u}
+            );
         }
 
         void handleUpdateTextureRegions(Ctx& ctx, const UpdateTextureRegionsPayload& p)
         {
             auto& im = impl(ctx);
             auto reply = [&](ERegionUploadStatus st) {
-                replyToCurrent<UpdateTextureRegionsPayload>(ctx,
-                    TextureRegionsAppliedReply{p.content_revision,
-                                               static_cast<uint32_t>(st), 0});
+                replyToCurrent<UpdateTextureRegionsPayload>(
+                    ctx,
+                    TextureRegionsAppliedReply{p.content_revision, static_cast<uint32_t>(st), 0}
+                );
             };
             auto& tex_res = im.render_ctx_->globalRegistry().must<TextureResources>();
 
             const auto region_bytes = resolveExternalData(ctx.program, p.regions);
-            const auto pixel_bytes  = resolveExternalData(ctx.program, p.pixels);
-            const std::size_t decl  = static_cast<std::size_t>(p.region_count) * sizeof(TextureRegionDesc);
+            const auto pixel_bytes = resolveExternalData(ctx.program, p.pixels);
+            const std::size_t decl = static_cast<std::size_t>(p.region_count) * sizeof(TextureRegionDesc);
             if (p.region_count == 0 || region_bytes.size() < decl)
-            { reply(ERegionUploadStatus::NoRegions); return; }
+            {
+                reply(ERegionUploadStatus::NoRegions);
+                return;
+            }
 
             // Authoritative validation + queuing live in TextureResources (the SAME
             // shared U2-00 validator the client pre-flights with).
@@ -462,7 +464,8 @@ namespace lux::render
                 std::span<const TextureRegionDesc>{
                     reinterpret_cast<const TextureRegionDesc*>(region_bytes.data()),
                     p.region_count},
-                std::span<const std::byte>{pixel_bytes.data(), pixel_bytes.size()});
+                std::span<const std::byte>{pixel_bytes.data(), pixel_bytes.size()}
+            );
             reply(st);
         }
 
@@ -476,22 +479,33 @@ namespace lux::render
             // silently accept a protocol error). Resolve each mip's byte span, then
             // validate format / exact byte size / legal mip chain with the shared
             // validator (same one the client pre-flights with).
-            if (p.mip_count == 0 || p.mip_count > kTextureUploadMaxMipCount) {
+            if (p.mip_count == 0 || p.mip_count > kTextureUploadMaxMipCount)
+            {
                 replyToCurrent<CreateTexture2DPayload>(ctx, Texture2DCreatedReply{RTextureHandle{}, 1u});
                 return;
             }
-            struct ResolvedMip { std::shared_ptr<const void> owner; const std::byte* data; std::size_t bytes; };
+            struct ResolvedMip
+            {
+                std::shared_ptr<const void> owner;
+                const std::byte* data;
+                std::size_t bytes;
+            };
             std::array<ResolvedMip, kTextureUploadMaxMipCount> resolved{};
             std::array<TextureUploadMipInput, kTextureUploadMaxMipCount> mip_inputs{};
-            for (uint32_t i = 0; i < p.mip_count; ++i) {
+            for (uint32_t i = 0; i < p.mip_count; ++i)
+            {
                 auto rv = resolveExternalDataView(ctx.program, p.mips[i].pixels);
-                resolved[i]   = { std::move(rv.owner), rv.bytes.data(), rv.bytes.size() };
-                mip_inputs[i] = { p.mips[i].width, p.mips[i].height, resolved[i].bytes };
+                resolved[i] = {std::move(rv.owner), rv.bytes.data(), rv.bytes.size()};
+                mip_inputs[i] = {p.mips[i].width, p.mips[i].height, resolved[i].bytes};
             }
             const Texture2DUploadPlan plan = validateTexture2DUpload(
-                p.format, p.mip_count, mip_inputs.data(),
-                im.dev_ctx_->caps().max_image_dimension_2d);
-            if (!plan.ok()) {
+                p.format,
+                p.mip_count,
+                mip_inputs.data(),
+                im.dev_ctx_->caps().max_image_dimension_2d
+            );
+            if (!plan.ok())
+            {
                 replyToCurrent<CreateTexture2DPayload>(ctx, Texture2DCreatedReply{RTextureHandle{}, 1u});
                 return;
             }
@@ -500,7 +514,8 @@ namespace lux::render
             // upload completes). Capacity exhausted → invalid handle; fail synchronously
             // rather than dispatch a worker into slot 0 and clobber a texture.
             auto sh = tex_res.bindlessSet2D().allocateSlotDeferred();
-            if (!sh.isValid()) {
+            if (!sh.isValid())
+            {
                 replyToCurrent<CreateTexture2DPayload>(ctx, Texture2DCreatedReply{RTextureHandle{}, 1u});
                 return;
             }
@@ -510,49 +525,42 @@ namespace lux::render
             // extent + total) into the task so the worker copies it verbatim — no
             // second, drift-prone layout algorithm on the transfer side.
             TextureTransferTask task{};
-            task.slot_index   = sh.index;
-            task.format       = p.format;
-            task.gen_mips     = p.generate_mips;
-            task.mip_count    = p.mip_count;
-            task.total_bytes  = static_cast<VkDeviceSize>(plan.total_bytes);
+            task.slot_index = sh.index;
+            task.format = p.format;
+            task.gen_mips = p.generate_mips;
+            task.mip_count = p.mip_count;
+            task.total_bytes = static_cast<VkDeviceSize>(plan.total_bytes);
             for (uint32_t i = 0; i < p.mip_count; ++i)
             {
-                task.mips[i].owner         = std::move(resolved[i].owner);
-                task.mips[i].data          = resolved[i].data;
-                task.mips[i].bytes         = static_cast<std::size_t>(plan.mips[i].bytes);
-                task.mips[i].width         = static_cast<int32_t>(plan.mips[i].width);
-                task.mips[i].height        = static_cast<int32_t>(plan.mips[i].height);
+                task.mips[i].owner = std::move(resolved[i].owner);
+                task.mips[i].data = resolved[i].data;
+                task.mips[i].bytes = static_cast<std::size_t>(plan.mips[i].bytes);
+                task.mips[i].width = static_cast<int32_t>(plan.mips[i].width);
+                task.mips[i].height = static_cast<int32_t>(plan.mips[i].height);
                 task.mips[i].buffer_offset = static_cast<VkDeviceSize>(plan.mips[i].offset);
             }
 
-            task.request_id   = ctx.currentRequestId();
+            task.request_id = ctx.currentRequestId();
             task.resource_gen = sh.gen;
             if (!im.transfer_pipeline_->submitTextureTransfer(std::move(task)))
             {
                 tex_res.bindlessSet2D().removeTexture(sh);
-                replyToCurrent<CreateTexture2DPayload>(
-                    ctx,
-                    Texture2DCreatedReply{RTextureHandle{}, 1u});
+                replyToCurrent<CreateTexture2DPayload>(ctx, Texture2DCreatedReply{RTextureHandle{}, 1u});
             }
         }
 
-        void handleReplaceTexture2DMipRange(
-            Ctx& ctx,
-            const ReplaceTexture2DMipRangePayload& p)
+        void handleReplaceTexture2DMipRange(Ctx& ctx, const ReplaceTexture2DMipRangePayload& p)
         {
             auto& im = impl(ctx);
-            auto& tex_res =
-                im.render_ctx_->globalRegistry().must<TextureResources>();
-            const auto fail = [&]
-            {
+            auto& tex_res = im.render_ctx_->globalRegistry().must<TextureResources>();
+            const auto fail = [&] {
                 replyToCurrent<ReplaceTexture2DMipRangePayload>(
                     ctx,
-                    TextureMipRangeReplacedReply{
-                        p.handle, p.base_mip, 1u});
+                    TextureMipRangeReplacedReply{p.handle, p.base_mip, 1u}
+                );
             };
 
-            if (p.mip_count == 0u ||
-                p.mip_count > kTextureUploadMaxMipCount)
+            if (p.mip_count == 0u || p.mip_count > kTextureUploadMaxMipCount)
             {
                 fail();
                 return;
@@ -565,26 +573,19 @@ namespace lux::render
                 std::size_t bytes{0u};
             };
             std::array<ResolvedMip, kTextureUploadMaxMipCount> resolved{};
-            std::array<TextureUploadMipInput, kTextureUploadMaxMipCount>
-                mip_inputs{};
+            std::array<TextureUploadMipInput, kTextureUploadMaxMipCount> mip_inputs{};
             for (std::uint32_t i = 0u; i < p.mip_count; ++i)
             {
-                auto view = resolveExternalDataView(
-                    ctx.program, p.mips[i].pixels);
-                resolved[i] = {
-                    std::move(view.owner),
-                    view.bytes.data(),
-                    view.bytes.size()};
-                mip_inputs[i] = {
-                    p.mips[i].width,
-                    p.mips[i].height,
-                    resolved[i].bytes};
+                auto view = resolveExternalDataView(ctx.program, p.mips[i].pixels);
+                resolved[i] = {std::move(view.owner), view.bytes.data(), view.bytes.size()};
+                mip_inputs[i] = {p.mips[i].width, p.mips[i].height, resolved[i].bytes};
             }
             const Texture2DUploadPlan plan = validateTexture2DUpload(
                 p.format,
                 p.mip_count,
                 mip_inputs.data(),
-                im.dev_ctx_->caps().max_image_dimension_2d);
+                im.dev_ctx_->caps().max_image_dimension_2d
+            );
             if (!plan.ok())
             {
                 fail();
@@ -592,14 +593,10 @@ namespace lux::render
             }
 
             std::uint32_t physical_mip_count = p.mip_count;
-            if (p.generate_mips &&
-                pixelFormatBlockInfo(p.format).block_width == 1u &&
-                p.mip_count == 1u)
+            if (p.generate_mips && pixelFormatBlockInfo(p.format).block_width == 1u && p.mip_count == 1u)
             {
                 physical_mip_count = 1u;
-                for (std::uint32_t extent = std::max(
-                         plan.mips[0].width, plan.mips[0].height);
-                     extent > 1u;
+                for (std::uint32_t extent = std::max(plan.mips[0].width, plan.mips[0].height); extent > 1u;
                      extent >>= 1u)
                 {
                     ++physical_mip_count;
@@ -631,14 +628,10 @@ namespace lux::render
             {
                 task.mips[i].owner = std::move(resolved[i].owner);
                 task.mips[i].data = resolved[i].data;
-                task.mips[i].bytes = static_cast<std::size_t>(
-                    plan.mips[i].bytes);
-                task.mips[i].width = static_cast<std::int32_t>(
-                    plan.mips[i].width);
-                task.mips[i].height = static_cast<std::int32_t>(
-                    plan.mips[i].height);
-                task.mips[i].buffer_offset = static_cast<VkDeviceSize>(
-                    plan.mips[i].offset);
+                task.mips[i].bytes = static_cast<std::size_t>(plan.mips[i].bytes);
+                task.mips[i].width = static_cast<std::int32_t>(plan.mips[i].width);
+                task.mips[i].height = static_cast<std::int32_t>(plan.mips[i].height);
+                task.mips[i].buffer_offset = static_cast<VkDeviceSize>(plan.mips[i].offset);
             }
             task.request_id = ctx.currentRequestId();
             task.resource_gen = handle.gen;
@@ -649,15 +642,10 @@ namespace lux::render
             }
         }
 
-        void handleQueryTextureMipDemands(
-            Ctx& ctx,
-            const QueryTextureMipDemandsPayload& payload)
+        void handleQueryTextureMipDemands(Ctx& ctx, const QueryTextureMipDemandsPayload& payload)
         {
-            auto& tex_res = impl(ctx).render_ctx_->globalRegistry()
-                .must<TextureResources>();
-            replyToCurrent<QueryTextureMipDemandsPayload>(
-                ctx,
-                tex_res.mipDemands(payload.maximum_count));
+            auto& tex_res = impl(ctx).render_ctx_->globalRegistry().must<TextureResources>();
+            replyToCurrent<QueryTextureMipDemandsPayload>(ctx, tex_res.mipDemands(payload.maximum_count));
         }
 
         void handleCreateCubeTexture(Ctx& ctx, const CreateCubeTexturePayload& p)
@@ -668,18 +656,24 @@ namespace lux::render
             // ── Authoritative validation BEFORE reserving a bindless slot ──
             // Resolve each face's byte span, then validate format / positive face size /
             // exact per-face bytes / six-face consistency with the shared validator.
-            struct ResolvedFace { std::shared_ptr<const void> owner; const std::byte* data; std::size_t bytes; };
+            struct ResolvedFace
+            {
+                std::shared_ptr<const void> owner;
+                const std::byte* data;
+                std::size_t bytes;
+            };
             std::array<ResolvedFace, 6> faces{};
             std::uint64_t face_bytes[6]{};
-            for (int i = 0; i < 6; ++i) {
+            for (int i = 0; i < 6; ++i)
+            {
                 auto rv = resolveExternalDataView(ctx.program, p.face_data[i]);
-                faces[i]      = { std::move(rv.owner), rv.bytes.data(), rv.bytes.size() };
+                faces[i] = {std::move(rv.owner), rv.bytes.data(), rv.bytes.size()};
                 face_bytes[i] = faces[i].bytes;
             }
-            const CubeUploadPlan plan = validateCubeUpload(
-                p.format, p.face_size, face_bytes,
-                im.dev_ctx_->caps().max_image_dimension_2d);
-            if (!plan.ok()) {
+            const CubeUploadPlan plan =
+                validateCubeUpload(p.format, p.face_size, face_bytes, im.dev_ctx_->caps().max_image_dimension_2d);
+            if (!plan.ok())
+            {
                 replyToCurrent<CreateCubeTexturePayload>(ctx, CubeTextureCreatedReply{RTextureHandle{}, 1u});
                 return;
             }
@@ -687,7 +681,8 @@ namespace lux::render
             // Phase 1 (render thread): reserve the deferred slot. Capacity exhausted →
             // invalid handle; fail synchronously rather than clobber slot 0.
             auto sh = tex_res.bindlessSetCube().allocateSlotDeferred();
-            if (!sh.isValid()) {
+            if (!sh.isValid())
+            {
                 replyToCurrent<CreateCubeTexturePayload>(ctx, CubeTextureCreatedReply{RTextureHandle{}, 1u});
                 return;
             }
@@ -696,22 +691,21 @@ namespace lux::render
             // Thread the validated plan's authoritative per-face size into the task; the
             // transfer owner uses it as the staging stride verbatim (no recompute).
             CubeTransferTask task{};
-            task.slot_index   = sh.index;
-            task.face_size    = p.face_size;
-            task.format       = p.format;
-            task.face_bytes   = static_cast<VkDeviceSize>(plan.face_bytes);
-            for (int i = 0; i < 6; ++i) {
+            task.slot_index = sh.index;
+            task.face_size = p.face_size;
+            task.format = p.format;
+            task.face_bytes = static_cast<VkDeviceSize>(plan.face_bytes);
+            for (int i = 0; i < 6; ++i)
+            {
                 task.faces[i].owner = std::move(faces[i].owner);
-                task.faces[i].data  = faces[i].data;
+                task.faces[i].data = faces[i].data;
             }
-            task.request_id   = ctx.currentRequestId();
+            task.request_id = ctx.currentRequestId();
             task.resource_gen = sh.gen;
             if (!im.transfer_pipeline_->submitCubeTransfer(std::move(task)))
             {
                 tex_res.bindlessSetCube().removeTexture(sh);
-                replyToCurrent<CreateCubeTexturePayload>(
-                    ctx,
-                    CubeTextureCreatedReply{RTextureHandle{}, 1u});
+                replyToCurrent<CreateCubeTexturePayload>(ctx, CubeTextureCreatedReply{RTextureHandle{}, 1u});
             }
         }
 
@@ -721,10 +715,7 @@ namespace lux::render
             auto& tex_res = im.render_ctx_->globalRegistry().must<TextureResources>();
 
             std::array<BindlessCombinedSet::TextureUpdateMip, kTextureUploadMaxMipCount> mips{};
-            const uint32_t mip_count = std::clamp<uint32_t>(
-                p.mip_count,
-                1u,
-                kTextureUploadMaxMipCount);
+            const uint32_t mip_count = std::clamp<uint32_t>(p.mip_count, 1u, kTextureUploadMaxMipCount);
             for (uint32_t i = 0; i < mip_count; ++i)
             {
                 auto mip_pixels = resolveExternalData(ctx.program, p.mips[i].pixels);
@@ -738,7 +729,8 @@ namespace lux::render
             const bool ok = tex_res.bindlessSet2D().updateTextureMips(
                 SlotHandle{h.index, h.gen},
                 std::span<const BindlessCombinedSet::TextureUpdateMip>(mips.data(), mip_count),
-                p.generate_mips);
+                p.generate_mips
+            );
 
             replyToCurrent<UpdateTexture2DPayload>(ctx, GenericOkReply{ok ? 0u : 1u});
         }
@@ -757,9 +749,7 @@ namespace lux::render
             }
 
             const TextureHandle h = handle_cast<TextureHandle>(p.handle);
-            const bool ok = tex_res.bindlessSetCube().updateCubeFaces(
-                SlotHandle{h.index, h.gen},
-                faces);
+            const bool ok = tex_res.bindlessSetCube().updateCubeFaces(SlotHandle{h.index, h.gen}, faces);
 
             replyToCurrent<UpdateCubeTexturePayload>(ctx, GenericOkReply{ok ? 0u : 1u});
         }
@@ -797,9 +787,11 @@ namespace lux::render
 
             // Deserialize ShaderInfo from the attached blob
             lux::rdesc::ShaderInfo info{};
-            if (p.shader_info_data.size > 0) {
+            if (p.shader_info_data.size > 0)
+            {
                 auto info_bytes = resolveExternalData(ctx.program, p.shader_info_data);
-                if (!lux::rdesc::ShaderInfo::deserialize(info_bytes, info)) {
+                if (!lux::rdesc::ShaderInfo::deserialize(info_bytes, info))
+                {
                     replyToCurrent<CompileShaderPayload>(ctx, ShaderCompiledReply{{}, 1u});
                     return;
                 }
@@ -824,31 +816,115 @@ namespace lux::render
     void registerResourceAndFeatureHandlers(GeneralRenderServer::Dispatcher& d)
     {
         // ── CommandOp: Feature lifecycle ──
-        d.registerUnary<RegisterFeatureTypePayload,         &handleRegisterFeatureType>  (opcodes::CommandOp, type_ids::RegisterFeatureType,   "RegisterFeatureType");
-        d.registerUnary<UnregisterFeatureTypePayload,       &handleUnregisterFeatureType>(opcodes::CommandOp, type_ids::UnregisterFeatureType, "UnregisterFeatureType");
-        d.registerUnary<AddFeaturePayload,                  &handleAddFeature>       (opcodes::CommandOp, type_ids::AddFeature,        "AddFeature");
-        d.registerUnary<RemoveFeaturePayload,               &handleRemoveFeature>    (opcodes::CommandOp, type_ids::RemoveFeature,     "RemoveFeature");
-        d.registerUnary<DumpRenderGraphPayload,             &handleDumpRenderGraph>  (opcodes::CommandOp, type_ids::DumpRenderGraph,   "DumpRenderGraph");
-        d.registerUnary<QueryGpuTimingPayload,              &handleQueryGpuTiming>   (opcodes::CommandOp, type_ids::QueryGpuTiming,    "QueryGpuTiming");
-        d.registerUnary<QueryFeatureParamsPayload,          &handleQueryFeatureParams>(opcodes::CommandOp, type_ids::QueryFeatureParams, "QueryFeatureParams");
-        d.registerUnary<QueryDeviceCapsPayload,             &handleQueryDeviceCaps>  (opcodes::CommandOp, type_ids::QueryDeviceCaps,   "QueryDeviceCaps");
-        d.registerUnary<SetFeatureEnabledPayload,           &handleSetFeatureEnabled>(opcodes::CommandOp, type_ids::SetFeatureEnabled, "SetFeatureEnabled");
+        d.registerUnary<RegisterFeatureTypePayload, &handleRegisterFeatureType>(
+            opcodes::CommandOp,
+            type_ids::RegisterFeatureType,
+            "RegisterFeatureType"
+        );
+        d.registerUnary<UnregisterFeatureTypePayload, &handleUnregisterFeatureType>(
+            opcodes::CommandOp,
+            type_ids::UnregisterFeatureType,
+            "UnregisterFeatureType"
+        );
+        d.registerUnary<AddFeaturePayload, &handleAddFeature>(opcodes::CommandOp, type_ids::AddFeature, "AddFeature");
+        d.registerUnary<RemoveFeaturePayload, &handleRemoveFeature>(
+            opcodes::CommandOp,
+            type_ids::RemoveFeature,
+            "RemoveFeature"
+        );
+        d.registerUnary<DumpRenderGraphPayload, &handleDumpRenderGraph>(
+            opcodes::CommandOp,
+            type_ids::DumpRenderGraph,
+            "DumpRenderGraph"
+        );
+        d.registerUnary<QueryGpuTimingPayload, &handleQueryGpuTiming>(
+            opcodes::CommandOp,
+            type_ids::QueryGpuTiming,
+            "QueryGpuTiming"
+        );
+        d.registerUnary<QueryFeatureParamsPayload, &handleQueryFeatureParams>(
+            opcodes::CommandOp,
+            type_ids::QueryFeatureParams,
+            "QueryFeatureParams"
+        );
+        d.registerUnary<QueryDeviceCapsPayload, &handleQueryDeviceCaps>(
+            opcodes::CommandOp,
+            type_ids::QueryDeviceCaps,
+            "QueryDeviceCaps"
+        );
+        d.registerUnary<SetFeatureEnabledPayload, &handleSetFeatureEnabled>(
+            opcodes::CommandOp,
+            type_ids::SetFeatureEnabled,
+            "SetFeatureEnabled"
+        );
         // ── CommandOp: Name-based TypeId query ──
-        d.registerUnary<QueryTypeIdPayload,                 &handleQueryTypeId>      (opcodes::CommandOp, type_ids::QueryTypeId,       "QueryTypeId");
+        d.registerUnary<QueryTypeIdPayload, &handleQueryTypeId>(
+            opcodes::CommandOp,
+            type_ids::QueryTypeId,
+            "QueryTypeId"
+        );
         // ── ResourceOp: textures ──
-        d.registerUnary<CreateTexture2DPayload,             &handleCreateTexture2D>  (opcodes::ResourceOp, type_ids::CreateTexture2D,  "CreateTexture2D");
-        d.registerUnary<UpdateTexture2DPayload,             &handleUpdateTexture2D>  (opcodes::ResourceOp, type_ids::UpdateTexture2D,  "UpdateTexture2D");
-        d.registerUnary<CreateCubeTexturePayload,           &handleCreateCubeTexture>(opcodes::ResourceOp, type_ids::CreateCubeTexture,"CreateCubeTexture");
-        d.registerUnary<UpdateCubeTexturePayload,           &handleUpdateCubeTexture>(opcodes::ResourceOp, type_ids::UpdateCubeTexture,"UpdateCubeTexture");
-        d.registerUnary<CreatePersistentTexture2DPayload,   &handleCreatePersistentTexture2D>(opcodes::ResourceOp, type_ids::CreatePersistentTexture2D, "CreatePersistentTexture2D");
-        d.registerUnary<UpdateTextureRegionsPayload,        &handleUpdateTextureRegions>(opcodes::ResourceOp, type_ids::UpdateTextureRegions, "UpdateTextureRegions");
-        d.registerUnary<ReplaceTexture2DMipRangePayload,    &handleReplaceTexture2DMipRange>(opcodes::ResourceOp, type_ids::ReplaceTexture2DMipRange, "ReplaceTexture2DMipRange");
-        d.registerUnary<QueryTextureMipDemandsPayload,      &handleQueryTextureMipDemands>(opcodes::ResourceOp, type_ids::QueryTextureMipDemands, "QueryTextureMipDemands");
-        d.registerUnary<DestroyTexturePayload,              &handleDestroyTexture>   (opcodes::ResourceOp, type_ids::DestroyTexture,   "DestroyTexture");
-        d.registerUnary<DestroyCubeTexturePayload,          &handleDestroyCubeTexture>(opcodes::ResourceOp, type_ids::DestroyCubeTexture, "DestroyCubeTexture");
+        d.registerUnary<CreateTexture2DPayload, &handleCreateTexture2D>(
+            opcodes::ResourceOp,
+            type_ids::CreateTexture2D,
+            "CreateTexture2D"
+        );
+        d.registerUnary<UpdateTexture2DPayload, &handleUpdateTexture2D>(
+            opcodes::ResourceOp,
+            type_ids::UpdateTexture2D,
+            "UpdateTexture2D"
+        );
+        d.registerUnary<CreateCubeTexturePayload, &handleCreateCubeTexture>(
+            opcodes::ResourceOp,
+            type_ids::CreateCubeTexture,
+            "CreateCubeTexture"
+        );
+        d.registerUnary<UpdateCubeTexturePayload, &handleUpdateCubeTexture>(
+            opcodes::ResourceOp,
+            type_ids::UpdateCubeTexture,
+            "UpdateCubeTexture"
+        );
+        d.registerUnary<CreatePersistentTexture2DPayload, &handleCreatePersistentTexture2D>(
+            opcodes::ResourceOp,
+            type_ids::CreatePersistentTexture2D,
+            "CreatePersistentTexture2D"
+        );
+        d.registerUnary<UpdateTextureRegionsPayload, &handleUpdateTextureRegions>(
+            opcodes::ResourceOp,
+            type_ids::UpdateTextureRegions,
+            "UpdateTextureRegions"
+        );
+        d.registerUnary<ReplaceTexture2DMipRangePayload, &handleReplaceTexture2DMipRange>(
+            opcodes::ResourceOp,
+            type_ids::ReplaceTexture2DMipRange,
+            "ReplaceTexture2DMipRange"
+        );
+        d.registerUnary<QueryTextureMipDemandsPayload, &handleQueryTextureMipDemands>(
+            opcodes::ResourceOp,
+            type_ids::QueryTextureMipDemands,
+            "QueryTextureMipDemands"
+        );
+        d.registerUnary<DestroyTexturePayload, &handleDestroyTexture>(
+            opcodes::ResourceOp,
+            type_ids::DestroyTexture,
+            "DestroyTexture"
+        );
+        d.registerUnary<DestroyCubeTexturePayload, &handleDestroyCubeTexture>(
+            opcodes::ResourceOp,
+            type_ids::DestroyCubeTexture,
+            "DestroyCubeTexture"
+        );
         // ── ResourceOp: shaders ──
-        d.registerUnary<CompileShaderPayload,               &handleCompileShader>    (opcodes::ResourceOp, type_ids::CompileShader,    "CompileShader");
-        d.registerUnary<DestroyShaderPayload,               &handleDestroyShader>    (opcodes::ResourceOp, type_ids::DestroyShader,    "DestroyShader");
+        d.registerUnary<CompileShaderPayload, &handleCompileShader>(
+            opcodes::ResourceOp,
+            type_ids::CompileShader,
+            "CompileShader"
+        );
+        d.registerUnary<DestroyShaderPayload, &handleDestroyShader>(
+            opcodes::ResourceOp,
+            type_ids::DestroyShader,
+            "DestroyShader"
+        );
     }
 
 } // namespace lux::render

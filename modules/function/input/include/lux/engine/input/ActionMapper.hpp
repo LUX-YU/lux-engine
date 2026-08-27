@@ -38,27 +38,35 @@ namespace lux::input
         //  Action registry                                                    //
         // ------------------------------------------------------------------ //
 
-        [[nodiscard]] InputActionRegistry&       actionRegistry()       noexcept { return registry_; }
-        [[nodiscard]] const InputActionRegistry& actionRegistry() const noexcept { return registry_; }
+        [[nodiscard]] InputActionRegistry& actionRegistry() noexcept
+        {
+            return registry_;
+        }
+        [[nodiscard]] const InputActionRegistry& actionRegistry() const noexcept
+        {
+            return registry_;
+        }
 
         // ------------------------------------------------------------------ //
         //  Per-frame update                                                   //
         // ------------------------------------------------------------------ //
 
-        void update(const InputSnapshot& snapshot,
-                    InputContextStack& stack,
-                    float dt,
-                    bool want_kb    = true,
-                    bool want_mouse = true);
+        void update(
+            const InputSnapshot& snapshot,
+            InputContextStack& stack,
+            float dt,
+            bool want_kb = true,
+            bool want_mouse = true
+        );
 
         // ------------------------------------------------------------------ //
         //  Query API — call after update()                                    //
         // ------------------------------------------------------------------ //
 
-        [[nodiscard]] bool  ongoing  (ActionId id) const noexcept;
-        [[nodiscard]] bool  canceled (ActionId id) const noexcept;
-        [[nodiscard]] bool  active   (ActionId id) const noexcept;
-        [[nodiscard]] bool  triggered(ActionId id) const noexcept;
+        [[nodiscard]] bool ongoing(ActionId id) const noexcept;
+        [[nodiscard]] bool canceled(ActionId id) const noexcept;
+        [[nodiscard]] bool active(ActionId id) const noexcept;
+        [[nodiscard]] bool triggered(ActionId id) const noexcept;
 
         /// Multi-dimensional value query.
         [[nodiscard]] const InputValue& getValue(ActionId id) const noexcept;
@@ -84,10 +92,13 @@ namespace lux::input
 
         void beginFrame(float dt);
 
-        void evaluateBindings(const InputSnapshot& snapshot,
-                              InputContextStack& stack,
-                              float dt,
-                              bool want_kb, bool want_mouse);
+        void evaluateBindings(
+            const InputSnapshot& snapshot,
+            InputContextStack& stack,
+            float dt,
+            bool want_kb,
+            bool want_mouse
+        );
 
         void accumulateActions();
 
@@ -97,18 +108,17 @@ namespace lux::input
 
         // ── Helpers ─────────────────────────────────────────── //
 
-        struct RawExtract {
-            float value        = 0.f;
-            bool  just_pressed = false;
-            bool  just_released= false;
-            bool  held         = false;
+        struct RawExtract
+        {
+            float value = 0.f;
+            bool just_pressed = false;
+            bool just_released = false;
+            bool held = false;
         };
 
-        static RawExtract extractRaw(const InputSnapshot& snapshot,
-                                     const ActionBinding& binding);
+        static RawExtract extractRaw(const InputSnapshot& snapshot, const ActionBinding& binding);
 
-        static InputValue projectContribution(float raw_scalar,
-                                              const InputValue& contribution);
+        static InputValue projectContribution(float raw_scalar, const InputValue& contribution);
 
         // ── State ───────────────────────────────────────────── //
 
@@ -133,7 +143,7 @@ namespace lux::input
         float dt_ = 0.f;
 
         static const ActionState kDefaultState_;
-        static const InputValue  kDefaultValue_;
+        static const InputValue kDefaultValue_;
     };
 
 } // namespace lux::input

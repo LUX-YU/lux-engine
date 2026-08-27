@@ -11,11 +11,7 @@ namespace lux::simulation
     using SystemRegistryId = lux::cxx::ScopeId<SystemRegistryScopeTag>;
 
     struct SystemSlotTag;
-    using SystemSlot = lux::cxx::SlotKey<
-        SystemSlotTag,
-        std::uint32_t,
-        std::uint32_t
-    >;
+    using SystemSlot = lux::cxx::SlotKey<SystemSlotTag, std::uint32_t, std::uint32_t>;
 
     struct SystemId final
     {
@@ -32,8 +28,6 @@ namespace lux::simulation
             return !isNull();
         }
 
-        [[nodiscard]] constexpr bool operator==(
-            const SystemId&
-        ) const noexcept = default;
+        [[nodiscard]] constexpr bool operator==(const SystemId&) const noexcept = default;
     };
 }

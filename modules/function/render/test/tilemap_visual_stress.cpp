@@ -76,21 +76,34 @@ namespace d2 = lux::ecs;
 namespace
 {
     constexpr std::uint32_t W = 1280, H = 800;
-    constexpr std::uint32_t MAP_W = 256, MAP_H = 128;   // 32k tiles, one instance
-    constexpr float kTile = 0.05f;                       // map = 12.8 × 6.4 world units
+    constexpr std::uint32_t MAP_W = 256, MAP_H = 128; // 32k tiles, one instance
+    constexpr float kTile = 0.05f;                    // map = 12.8 × 6.4 world units
 
     struct Lcg
     {
         std::uint32_t s{0xC0FFEE01u};
-        std::uint32_t next() { s = s * 1664525u + 1013904223u; return s >> 8; }
-        float unit() { return static_cast<float>(next() & 0xFFFF) / 65535.f; }
+        std::uint32_t next()
+        {
+            s = s * 1664525u + 1013904223u;
+            return s >> 8;
+        }
+        float unit()
+        {
+            return static_cast<float>(next() & 0xFFFF) / 65535.f;
+        }
     };
 
     // Tileset ordinals (row-major in a 4×4 atlas, row 0 = TOP of the image).
     enum : std::uint16_t
     {
-        kGrass = 0, kDirt = 1, kStone = 2, kOre = 3,
-        kBrick = 4, kSand2 = 5, kIce = 6, kLava = 7,
+        kGrass = 0,
+        kDirt = 1,
+        kStone = 2,
+        kOre = 3,
+        kBrick = 4,
+        kSand2 = 5,
+        kIce = 6,
+        kLava = 7,
     };
 
     /// Procedural 4×4 tileset atlas: 16 tiles of 16×16 px, each a flat colour
@@ -101,10 +114,22 @@ namespace
         constexpr std::uint32_t TS = 16, COLS = 4, ROWS = 4;
         constexpr std::uint32_t TW = TS * COLS, TH = TS * ROWS;
         static constexpr std::uint32_t kBase[16] = {
-            0xFF3FA34Du, 0xFF275A8Cu, 0xFF6A6A6Au, 0xFF29C5F0u,   // grass dirt stone ore
-            0xFF4444AAu, 0xFF52C5E6u, 0xFFD0B080u, 0xFF2020D0u,   // brick sand ice lava
-            0xFF808020u, 0xFF208080u, 0xFF802080u, 0xFF404040u,
-            0xFFC0C0C0u, 0xFF6090C0u, 0xFF90C060u, 0xFFC06090u,
+            0xFF3FA34Du,
+            0xFF275A8Cu,
+            0xFF6A6A6Au,
+            0xFF29C5F0u, // grass dirt stone ore
+            0xFF4444AAu,
+            0xFF52C5E6u,
+            0xFFD0B080u,
+            0xFF2020D0u, // brick sand ice lava
+            0xFF808020u,
+            0xFF208080u,
+            0xFF802080u,
+            0xFF404040u,
+            0xFFC0C0C0u,
+            0xFF6090C0u,
+            0xFF90C060u,
+            0xFFC06090u,
         };
         std::vector<std::byte> px(static_cast<std::size_t>(TW) * TH * 4);
         for (std::uint32_t y = 0; y < TH; ++y)
@@ -116,12 +141,13 @@ namespace
                 const bool border = lx == 0 || ly == 0 || lx == TS - 1 || ly == TS - 1;
                 const bool accent = ((lx + ly) % TS) < 2;
                 const auto dim = [](std::uint32_t v, std::uint32_t num) {
-                    return ((((v >> 16) & 0xFF) * num / 256) << 16) |
-                           ((((v >> 8) & 0xFF) * num / 256) << 8) |
+                    return ((((v >> 16) & 0xFF) * num / 256) << 16) | ((((v >> 8) & 0xFF) * num / 256) << 8) |
                            (((v & 0xFF) * num / 256));
                 };
-                if (border)      c = 0xFF000000u | dim(c, 140);
-                else if (accent) c = 0xFF000000u | dim(c, 210);
+                if (border)
+                    c = 0xFF000000u | dim(c, 140);
+                else if (accent)
+                    c = 0xFF000000u | dim(c, 210);
                 const std::size_t o = (static_cast<std::size_t>(y) * TW + x) * 4;
                 px[o + 0] = std::byte(c & 0xFF);
                 px[o + 1] = std::byte((c >> 8) & 0xFF);
@@ -130,15 +156,18 @@ namespace
             }
 
         lux::rdesc::TextureInfo ti{};
-        ti.width = TW; ti.height = TH; ti.channel = 4;
+        ti.width = TW;
+        ti.height = TH;
+        ti.channel = 4;
         ti.pixel_format = lux::rdesc::ETexturePixelFormat::RGBA8_UNORM;
-        ti.mip_count = 1; ti.layers = 1;
+        ti.mip_count = 1;
+        ti.layers = 1;
         // Pixel-art atlas: NO mip chain (a minified average of a tileset is
         // meaningless — it bleeds neighbouring tiles into every seam).
         ti.flags = lux::rdesc::toUnderlying(lux::rdesc::ETextureAssetFlags::NO_MIPS);
 
-        auto info  = std::make_unique<lux::asset::AssetInfo>();
-        info->id   = uuids::uuid::from_string("aaaa1111-2222-3333-4444-555566667777").value();
+        auto info = std::make_unique<lux::asset::AssetInfo>();
+        info->id = uuids::uuid::from_string("aaaa1111-2222-3333-4444-555566667777").value();
         info->type = lux::asset::EAssetType::TEXTURE;
         const auto id = info->id;
 
@@ -146,45 +175,38 @@ namespace
         auto texture = lux::rdesc::Texture::copyOf(ti, px);
         if (!texture)
             return {};
-        a->setData(std::make_unique<lux::rdesc::Texture>(
-            std::move(*texture)));
+        a->setData(std::make_unique<lux::rdesc::Texture>(std::move(*texture)));
         mgr.registerAsset(std::move(a));
         return id;
     }
 
     /// Rolling-hills terrain into the map (one fill-shaped rebuild).
-    void generateTerrain(
-        d2::TilemapRuntime& runtime,
-        d2::TilemapHandle tilemap,
-        std::uint32_t seed)
+    void generateTerrain(d2::TilemapRuntime& runtime, d2::TilemapHandle tilemap, std::uint32_t seed)
     {
         Lcg rng{seed};
         for (std::uint32_t y = 0; y < MAP_H; ++y)
             for (std::uint32_t x = 0; x < MAP_W; ++x)
                 (void)runtime.setTile(
                     tilemap,
-                    {
-                        static_cast<std::int64_t>(x),
-                        static_cast<std::int64_t>(y)},
-                    lux::rdesc::kEmptyTile);
+                    {static_cast<std::int64_t>(x), static_cast<std::int64_t>(y)},
+                    lux::rdesc::kEmptyTile
+                );
         const float p0 = rng.unit() * 6.28f, p1 = rng.unit() * 6.28f;
         for (std::uint32_t x = 0; x < MAP_W; ++x)
         {
             const float fx = static_cast<float>(x);
-            const auto ground = static_cast<std::uint32_t>(
-                34.f + 16.f * std::sin(fx * 0.045f + p0) + 8.f * std::sin(fx * 0.11f + p1));
+            const auto ground =
+                static_cast<std::uint32_t>(34.f + 16.f * std::sin(fx * 0.045f + p0) + 8.f * std::sin(fx * 0.11f + p1));
             for (std::uint32_t y = 0; y <= ground; ++y)
             {
                 std::uint16_t id = kStone;
-                if (y == ground)            id = kGrass;
-                else if (y + 6 >= ground)   id = kDirt;
-                else if ((rng.next() & 31u) == 0u) id = kOre;   // sparkle
-                (void)runtime.setTile(
-                    tilemap,
-                    {
-                        static_cast<std::int64_t>(x),
-                        static_cast<std::int64_t>(y)},
-                    id);
+                if (y == ground)
+                    id = kGrass;
+                else if (y + 6 >= ground)
+                    id = kDirt;
+                else if ((rng.next() & 31u) == 0u)
+                    id = kOre; // sparkle
+                (void)runtime.setTile(tilemap, {static_cast<std::int64_t>(x), static_cast<std::int64_t>(y)}, id);
             }
             // occasional floating brick platform
             if ((x % 24u) == 12u)
@@ -193,16 +215,16 @@ namespace
                 for (std::uint32_t k = 0; k < 6 && x + k < MAP_W; ++k)
                     (void)runtime.setTile(
                         tilemap,
-                        {
-                            static_cast<std::int64_t>(x + k),
-                            static_cast<std::int64_t>(py)},
-                        kBrick);
+                        {static_cast<std::int64_t>(x + k), static_cast<std::int64_t>(py)},
+                        kBrick
+                    );
             }
         }
     }
 } // namespace
 
-int main(int argc, char** argv)
+int
+main(int argc, char** argv)
 {
     std::setbuf(stdout, nullptr);
     lux::rendertest::VisualSoak soak;
@@ -214,23 +236,26 @@ int main(int argc, char** argv)
     );
 
     lux::rendertest::DeviceRenderFixture fx(W, H, "Tilemap Visual Stress — one instance, 32k tiles");
-    if (!fx.ok()) { std::printf("No Vulkan device. Skipping.\n"); return 0; }
+    if (!fx.ok())
+    {
+        std::printf("No Vulkan device. Skipping.\n");
+        return 0;
+    }
 
     const auto sv = fx.makeSceneWithSwapchainView("TilemapWorld", "main");
 
     const auto cam_reg = fx.awaitControl(fx.control().registerFeatureType(kViewCameraFeatureFactory));
     fx.awaitControl(fx.control().addFeature(sv.scene_id, cam_reg.feature_type_id, lux::render::ViewCameraCommTag{}));
     const auto canvas_reg = fx.awaitControl(fx.control().registerFeatureType(kCanvas2DFeatureFactory));
-    fx.awaitControl(fx.control().addFeature(sv.scene_id, canvas_reg.feature_type_id, lux::render::Canvas2DCommConfig{}));
+    fx.awaitControl(
+        fx.control().addFeature(sv.scene_id, canvas_reg.feature_type_id, lux::render::Canvas2DCommConfig{})
+    );
 
     FeatureCatalog features;
-    features.injectForTest("StandardViewCamera",
-                           std::span<const TypeId>{cam_reg.ops, cam_reg.op_count});
-    features.injectForTest("Canvas2D",
-                           std::span<const TypeId>{canvas_reg.ops, canvas_reg.op_count});
+    features.injectForTest("StandardViewCamera", std::span<const TypeId>{cam_reg.ops, cam_reg.op_count});
+    features.injectForTest("Canvas2D", std::span<const TypeId>{canvas_reg.ops, canvas_reg.op_count});
 
-    lux::asset::AssetManager assets{
-        lux::asset::runtimeAssetCodecCatalog()};
+    lux::asset::AssetManager assets{lux::asset::runtimeAssetCodecCatalog()};
     const auto tileset_id = registerTilesetTexture(assets);
 
     // 驻留三件套(裁决二):声明在渲染绑定之前 —— 逆序析构。
@@ -238,21 +263,12 @@ int main(int argc, char** argv)
         assets,
         fx.upload(),
         fx.sync(),
-        lux::exec::AsyncRuntimeConfig{
-            .blocking_io_threads = 1,
-            .background_cpu_concurrency = 1}
+        lux::exec::AsyncRuntimeConfig{.blocking_io_threads = 1, .background_cpu_concurrency = 1}
     );
     if (!async.valid())
         return 1;
-    lux::runtime::ResidencyAssembly residency(
-        fx.control(),
-        async.uploadClient(),
-        assets,
-        features,
-        async.assetClient(),
-        async.runtime(),
-        {}
-    );
+    lux::runtime::ResidencyAssembly
+        residency(fx.control(), async.uploadClient(), assets, features, async.assetClient(), async.runtime(), {});
     // Registry owner must outlive every observer that detaches from it.
     lux::ecs::World world;
     d2::TilemapRuntime tilemap_runtime;
@@ -270,16 +286,13 @@ int main(int argc, char** argv)
     // Reverse destruction is intentional: builder → schedule systems → owned
     // services → residency observers → World registry. Longer-lived borrowed
     // render/asset resources remain below that graph.
-    lux::ecs::SceneServices   services;
-    lux::ecs::Schedule        schedule{world};
+    lux::ecs::SceneServices services;
+    lux::ecs::Schedule schedule{world};
     lux::ecs::ScheduleBuilder assembly{schedule, services};
 
     auto& staged = assembly.services();
-    auto render_binding = staged.emplace<lux::ecs::SceneRenderBinding>(
-        fx.session(),
-        fx.control(),
-        async.uploadClient(),
-        sv.scene_id);
+    auto render_binding =
+        staged.emplace<lux::ecs::SceneRenderBinding>(fx.session(), fx.control(), async.uploadClient(), sv.scene_id);
     auto active_view = staged.emplace<lux::ecs::ActiveRenderView>();
     if (!render_binding || !active_view)
     {
@@ -299,20 +312,19 @@ int main(int argc, char** argv)
     if (!lux::ecs::initializeGeneratedMetadata(components))
         return 1;
 
-    if (!lux::ecs::installSpatial2DTransformSystems(
-            assembly, components) ||
-        !assembly.add(
-            std::move(residency_glue), lux::ecs::kPhasePreRender) ||
-        !lux::ecs::installSimulation2DSystems(
-            assembly, components) ||
-        !lux::ecs::installPresentation2DSystems(
-            assembly, components) ||
-        !lux::ecs::installPresentation2DRendering(
+    const bool installed_spatial = lux::ecs::installSpatial2DTransformSystems(assembly, components);
+    const bool added_residency = installed_spatial &&
+        assembly.add(std::move(residency_glue), lux::ecs::kPhasePreRender);
+    const bool installed_simulation = added_residency && lux::ecs::installSimulation2DSystems(assembly, components);
+    const bool installed_presentation = installed_simulation &&
+        lux::ecs::installPresentation2DSystems(assembly, components);
+    const bool installed_rendering = installed_presentation && lux::ecs::installPresentation2DRendering(
             assembly,
             components,
             render_stages,
             render_feature_roots,
-            *residency_owner))
+            *residency_owner);
+    if (!installed_rendering)
     {
         std::printf("2D system assembly failed\n");
         return 1;
@@ -321,12 +333,11 @@ int main(int argc, char** argv)
         **render_binding,
         **active_view,
         fx.control().adoptScene(sv.scene_id),
-        std::move(render_stages));
+        std::move(render_stages)
+    );
     if (!assembly.add(std::move(render_system), lux::ecs::kPhaseRender) ||
         !assembly.add(
-            std::make_unique<lux::ecs::CameraViewSystem>(
-                **render_binding,
-                **active_view),
+            std::make_unique<lux::ecs::CameraViewSystem>(**render_binding, **active_view),
             lux::ecs::kPhaseRender))
     {
         std::printf("RenderSystem installation failed\n");
@@ -350,34 +361,25 @@ int main(int argc, char** argv)
     world.emplace<lux::ecs::PrimaryCameraTag>(cam);
     // camera → view wiring is DATA now (RenderViewBinding): this camera drives
     // the demo's swapchain view; unbound cameras are inert.
-    world.emplace<lux::ecs::RenderViewBindingComponent>(cam,
-        fx.control().adoptView(sv.scene_id, sv.view));
+    world.emplace<lux::ecs::RenderViewBindingComponent>(cam, fx.control().adoptView(sv.scene_id, sv.view));
 
     // the map: min corner at the origin of its entity.
     const auto map_e = world.createEntity();
     world.emplace<d2::Transform2DComponent>(map_e).position = {0.0, 0.0};
     auto& tm = world.emplace<d2::TilemapComponent>(map_e);
-    tm.id = d2::TilemapId{
-        uuids::uuid::from_string(
-            "72000000-0000-4000-8000-000000000001").value()};
+    tm.id = d2::TilemapId{uuids::uuid::from_string("72000000-0000-4000-8000-000000000001").value()};
     const auto tilemap = tilemap_runtime.create({tm.id});
-    world.emplace<d2::TilemapBindingComponent>(
-        map_e,
-        d2::TilemapBindingComponent{tilemap});
+    world.emplace<d2::TilemapBindingComponent>(map_e, d2::TilemapBindingComponent{tilemap});
     tm.tileset_texture = tileset_id;
     tm.tileset_cols = 4;
     tm.tileset_rows = 4;
-    tm.tile_size    = kTile;
-    tm.priority     = 0.f;
-    for (std::int64_t chunk_x = 0;
-         chunk_x * d2::TilemapRuntime::kChunkSizeTiles < MAP_W;
-         ++chunk_x)
+    tm.tile_size = kTile;
+    tm.priority = 0.f;
+    for (std::int64_t chunk_x = 0; chunk_x * d2::TilemapRuntime::kChunkSizeTiles < MAP_W; ++chunk_x)
     {
         d2::TileChunkLoad chunk;
         chunk.coordinate = {chunk_x, 0};
-        chunk.tiles.assign(
-            d2::TilemapRuntime::kChunkTileCount,
-            lux::rdesc::kEmptyTile);
+        chunk.tiles.assign(d2::TilemapRuntime::kChunkTileCount, lux::rdesc::kEmptyTile);
         if (!tilemap_runtime.loadChunk(tilemap, std::move(chunk)))
             return 1;
     }
@@ -395,7 +397,7 @@ int main(int argc, char** argv)
         const float s = 0.008f + 0.012f * rng.unit();
         sp.size = Eigen::Vector2f(s, s);
         sp.tint = 0xFF60E0FFu;
-        sp.priority = -5.f;   // behind the map (shows through empty tiles)
+        sp.priority = -5.f; // behind the map (shows through empty tiles)
     }
     std::vector<lux::ecs::Entity> clouds;
     for (int i = 0; i < 24; ++i)
@@ -406,62 +408,56 @@ int main(int argc, char** argv)
             static_cast<double>(4.2f + rng.unit() * 1.8f)};
         auto& sp = world.emplace<d2::Image2DComponent>(e);
         sp.size = Eigen::Vector2f(0.5f + 0.4f * rng.unit(), 0.12f);
-        sp.tint = 0x50FFFFFFu;   // translucent premultiplied white
-        sp.priority = 5.f;       // above the map
+        sp.tint = 0x50FFFFFFu; // translucent premultiplied white
+        sp.priority = 5.f;     // above the map
         clouds.push_back(e);
     }
 
+    std::printf("map up: %ux%u tiles (one canvas instance). Mining wave + regen every ~15 s.\n", MAP_W, MAP_H);
 
-    std::printf("map up: %ux%u tiles (one canvas instance). Mining wave + regen every ~15 s.\n",
-                MAP_W, MAP_H);
-
-    const auto t0  = std::chrono::steady_clock::now();
-    auto fps_mark  = t0;
+    const auto t0 = std::chrono::steady_clock::now();
+    auto fps_mark = t0;
     auto last_time = t0;
-    int  fps_frames = 0;
-    int  frame_no   = 0;
+    int fps_frames = 0;
+    int frame_no = 0;
     std::uint32_t seed = 2u;
 
     while (fx.running())
     {
         const auto now = std::chrono::steady_clock::now();
-        const float t  = std::chrono::duration<float>(now - t0).count();
+        const float t = std::chrono::duration<float>(now - t0).count();
         float dt = std::chrono::duration<float>(now - last_time).count();
         last_time = now;
-        if (dt > 0.1f) dt = 0.1f;
+        if (dt > 0.1f)
+            dt = 0.1f;
 
         // camera: auto-scroll the full width + breathing zoom (view op only —
         // the untouched map is zero wire traffic).
         const float half_span = MAP_W * kTile * 0.5f;
         // Transform mutation must go through patch so observers see it.
-        world.registry().patch<d2::Transform2DComponent>(cam, [&](auto& tc)
-        {
-            tc.position = {
-                static_cast<double>(
-                    half_span + (half_span - 2.2f) * std::sin(t * 0.15f)),
-                3.0};
-        });
+        world.registry().patch<d2::Transform2DComponent>(cam, [&](auto& tc) {
+            tc.position = {static_cast<double>(half_span + (half_span - 2.2f) * std::sin(t * 0.15f)), 3.0};
+        }
+        );
         cc.units_per_view_height = 3.4f + 0.8f * std::sin(t * 0.23f);
 
         // mining wave: a column sweeps across the map — carve this column,
         // restore the trailing one (steady per-frame dirty-rect uploads).
         {
-            const auto col  = static_cast<std::uint32_t>(t * 60.f) % MAP_W;
+            const auto col = static_cast<std::uint32_t>(t * 60.f) % MAP_W;
             const auto back = (col + MAP_W - 30u) % MAP_W;
             for (std::uint32_t y = 8; y < 60; ++y)
                 (void)tilemap_runtime.setTile(
                     tilemap,
-                    {
-                        static_cast<std::int64_t>(col),
-                        static_cast<std::int64_t>(y)},
-                    lux::rdesc::kEmptyTile);
+                    {static_cast<std::int64_t>(col), static_cast<std::int64_t>(y)},
+                    lux::rdesc::kEmptyTile
+                );
             for (std::uint32_t y = 8; y < 60; ++y)
                 (void)tilemap_runtime.setTile(
                     tilemap,
-                    {
-                        static_cast<std::int64_t>(back),
-                        static_cast<std::int64_t>(y)},
-                    (y > 40u) ? kDirt : kStone);
+                    {static_cast<std::int64_t>(back), static_cast<std::int64_t>(y)},
+                    (y > 40u) ? kDirt : kStone
+                );
         }
         // full regeneration every ~15 s (worst-case full-map upload, once).
         if (frame_no > 0 && (frame_no % 900) == 0)
@@ -473,16 +469,16 @@ int main(int argc, char** argv)
         // clouds drift
         for (std::size_t i = 0; i < clouds.size(); ++i)
         {
-            world.registry().patch<d2::Transform2DComponent>(clouds[i], [&](auto& tc)
-            {
+            world.registry().patch<d2::Transform2DComponent>(clouds[i], [&](auto& tc) {
                 auto& p = tc.position;
-                p.x += static_cast<double>(
-                    dt * (0.05f + 0.05f * static_cast<float>(i % 3)));
-                if (p.x > MAP_W * kTile + 0.5f) p.x = -0.5;
-            });
+                p.x += static_cast<double>(dt * (0.05f + 0.05f * static_cast<float>(i % 3)));
+                if (p.x > MAP_W * kTile + 0.5f)
+                    p.x = -0.5;
+            }
+            );
         }
 
-        async.drainMainThreadCompletions();   // 驻留管道主线程会合
+        async.drainMainThreadCompletions(); // 驻留管道主线程会合
         schedule.tick(dt);
         residency_owner->drainResolvers(world.registry());
         fx.flush();
@@ -492,11 +488,7 @@ int main(int argc, char** argv)
         const auto soak_now = std::chrono::steady_clock::now();
         if (soak.reached(t0, soak_now))
         {
-            soak.reportGracefulTeardown(
-                t0,
-                soak_now,
-                static_cast<std::uint64_t>(frame_no)
-            );
+            soak.reportGracefulTeardown(t0, soak_now, static_cast<std::uint64_t>(frame_no));
             break;
         }
         if (now - fps_mark >= std::chrono::seconds(1))
@@ -505,12 +497,11 @@ int main(int argc, char** argv)
             std::printf(
                 "fps=%d | resident chunks=%llu | resident bytes=%llu\n",
                 fps_frames,
-                static_cast<unsigned long long>(
-                    tile_stats.resident_chunks),
-                static_cast<unsigned long long>(
-                    tile_stats.resident_bytes));
+                static_cast<unsigned long long>(tile_stats.resident_chunks),
+                static_cast<unsigned long long>(tile_stats.resident_bytes)
+            );
             fps_frames = 0;
-            fps_mark   = now;
+            fps_mark = now;
         }
     }
     schedule.requestClose();
@@ -521,10 +512,7 @@ int main(int argc, char** argv)
         fx.pumpReplies();
         schedule.tick(0.0f);
     }
-    const auto residency_close =
-        lux::runtime::testing::detail::closeResidency(
-            residency,
-            async.runtime());
+    const auto residency_close = lux::runtime::testing::detail::closeResidency(residency, async.runtime());
     if (!residency_close.clean())
         return 1;
     async.close();

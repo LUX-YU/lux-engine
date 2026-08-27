@@ -17,12 +17,12 @@ namespace lux::math
     struct Sphere
     {
         Eigen::Vector3f center{Eigen::Vector3f::Zero()};
-        float           radius{0.0f};
+        float radius{0.0f};
 
         Sphere() = default;
-        Sphere(const Eigen::Vector3f& c, float r)
-            : center(c), radius(r)
-        {}
+        Sphere(const Eigen::Vector3f& c, float r) : center(c), radius(r)
+        {
+        }
 
         [[nodiscard]] bool isValid() const noexcept
         {
@@ -61,12 +61,9 @@ namespace lux::math
             const float sx = m.col(0).norm();
             const float sy = m.col(1).norm();
             const float sz = m.col(2).norm();
-            const float s  = std::max({sx, sy, sz});
+            const float s = std::max({sx, sy, sz});
 
-            return Sphere{
-                Eigen::Vector3f(wc4.x(), wc4.y(), wc4.z()),
-                radius * s
-            };
+            return Sphere{Eigen::Vector3f(wc4.x(), wc4.y(), wc4.z()), radius * s};
         }
     };
 

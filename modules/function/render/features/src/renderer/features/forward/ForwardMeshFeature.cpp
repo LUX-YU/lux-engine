@@ -14,12 +14,12 @@
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
-#include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>   // set-7 bind
-#include <lux/engine/render/resources/vertex/VertexProduction.hpp>     // producer registry
-#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>  // vertex-layout SSOT
-#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>      // appendVertexLayoutSpecs
+#include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp> // set-7 bind
+#include <lux/engine/render/resources/vertex/VertexProduction.hpp>   // producer registry
+#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>   // vertex-layout SSOT
+#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>             // kShadowViewUploadPassName
+#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>
@@ -35,8 +35,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    ForwardMeshFeature::ForwardMeshFeature(Config cfg)
-        : cfg_(std::move(cfg))
+    ForwardMeshFeature::ForwardMeshFeature(Config cfg) : cfg_(std::move(cfg))
     {
     }
 
@@ -51,8 +50,9 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    lux::render::Expected<void> ForwardMeshFeature::initAndAttachTo(RenderScene &scene){
-        return init();  // propagate init failure instead of swallowing it (audit feat-init)
+    lux::render::Expected<void> ForwardMeshFeature::initAndAttachTo(RenderScene& scene)
+    {
+        return init(); // propagate init failure instead of swallowing it (audit feat-init)
     }
 
     // =========================================================================
@@ -76,13 +76,10 @@ namespace lux::render
         //
         // 改为断言:进来时必须已解析。真漏了就当场暴露,而不是拿一份可能过时的
         // 默认值兜住。
-        assert(cfg_.forward_cull_shader.isValid() &&
-               cfg_.forward_compact_shader.isValid() &&
-               cfg_.forward_vert_shader.isValid() &&
-               cfg_.unlit_fragment.isValid() &&
-               cfg_.pbr_fragment.isValid() &&
-               cfg_.stylized_fragment.isValid()
-               && "ForwardMeshFeature: 着色器句柄应由 handler 侧的回填表解析完毕");
+        assert(
+            cfg_.forward_cull_shader.isValid() && cfg_.forward_compact_shader.isValid() &&
+            cfg_.forward_vert_shader.isValid() && cfg_.unlit_fragment.isValid() && cfg_.pbr_fragment.isValid() &&
+            cfg_.stylized_fragment.isValid() && "ForwardMeshFeature: 着色器句柄应由 handler 侧的回填表解析完毕");
 
         // ---- Common infrastructure (instance storage, buffers, cull) ----
         // On a hard prerequisite failure (missing InstanceResources / cull shader —
@@ -91,7 +88,7 @@ namespace lux::render
         if (auto r = initCommon(cfg_.forward_cull_shader, cfg_.extension_flags); !r)
             return r;
 
-        auto &ctx = renderContext();
+        auto& ctx = renderContext();
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
         assert(shaders.get(cfg_.forward_vert_shader) && "ForwardMeshFeature: forward_vert_shader is invalid");
         assert(shaders.get(cfg_.unlit_fragment) && "ForwardMeshFeature: unlit_fragment shader index is invalid");
@@ -102,8 +99,7 @@ namespace lux::render
 
         if (visible_set_layout_ == VK_NULL_HANDLE)
         {
-            auto id = ctx.descriptorService().registerLayout(
-                storageBufferVertexLayout("ForwardVisibleSetLayout"));
+            auto id = ctx.descriptorService().registerLayout(storageBufferVertexLayout("ForwardVisibleSetLayout"));
             visible_set_layout_ = ctx.descriptorService().layout(id);
         }
 
@@ -139,7 +135,8 @@ namespace lux::render
             // VUID-vkCmdPushConstants-01795.
             base.debug_name = "ForwardMeshDraw";
             base.push_constant_ranges.push_back(
-                {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, kViewPushPrefixSize});
+                {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, kViewPushPrefixSize}
+            );
 
             // Feed the _vp vertex shader the global VBO layout spec. Skinned
             // compute writes the same 22-float layout (bone tail zero-padded),
@@ -152,26 +149,25 @@ namespace lux::render
             // needs a new case below (+ the matching builtin frag ID up top).
             // The pipeline registration itself lives in the shared base method
             // registerFamilyPipelines (same source of truth as the deferred path).
-            auto resolveFragmentShader =
-                [this](EShadingModel sm) -> ShaderHandle
-            {
-                return resolveFragmentForFamily(sm, cfg_.unlit_fragment, cfg_.pbr_fragment,
-                                                cfg_.stylized_fragment, cfg_.graph_fragment);
+            auto resolveFragmentShader = [this](EShadingModel sm) -> ShaderHandle {
+                return resolveFragmentForFamily(
+                    sm,
+                    cfg_.unlit_fragment,
+                    cfg_.pbr_fragment,
+                    cfg_.stylized_fragment,
+                    cfg_.graph_fragment
+                );
             };
 
-            if (auto family = registerFamilyPipelines(
-                    base,
-                    cfg_.forward_vert_shader,
-                    vlr,
-                    vp_read_layout,
-                    resolveFragmentShader
-                ); !family)
+            if (auto family =
+                    registerFamilyPipelines(base, cfg_.forward_vert_shader, vlr, vp_read_layout, resolveFragmentShader);
+                !family)
                 return family;
         }
 
         // ---- MDC compact compute pipeline ----
         if (auto r = initCompactPipeline(cfg_.forward_compact_shader, "ForwardMeshCompactLayout"); !r)
-            return lux::cxx::unexpected(r.error());   // propagate, don't swallow
+            return lux::cxx::unexpected(r.error()); // propagate, don't swallow
         return {};
     }
 
@@ -179,26 +175,31 @@ namespace lux::render
     //  Render graph passes
     // =========================================================================
 
-    void ForwardMeshFeature::addPasses(RGBuilder &builder)
+    void ForwardMeshFeature::addPasses(RGBuilder& builder)
     {
-        auto &ctx = renderContext();
+        auto& ctx = renderContext();
 
         // ---- Cull + compact (shared GPU-driven view path; H9 de-dup) ----
-        addCullAndCompactPasses(builder, CullCompactParams{
-            .prefix                    = "Fwd",
-            .phase                     = ECoreRenderPhase::ForwardOpaque,
-            .domain                    = EPassDomain::ForwardOpaque,
-            .cull_pass_name            = "ForwardMeshForwardCull",
-            .compact_pass_name         = "ForwardMeshForwardCompact",
-            .descriptor_layout_version = cfg_.descriptor_layout_version,
-            .extension_flags           = cfg_.extension_flags,
-        });
+        addCullAndCompactPasses(
+            builder,
+            CullCompactParams{
+                .prefix = "Fwd",
+                .phase = ECoreRenderPhase::ForwardOpaque,
+                .domain = EPassDomain::ForwardOpaque,
+                .cull_pass_name = "ForwardMeshForwardCull",
+                .compact_pass_name = "ForwardMeshForwardCompact",
+                .descriptor_layout_version = cfg_.descriptor_layout_version,
+                .extension_flags = cfg_.extension_flags,
+            }
+        );
 
         auto visible_tds = builder.createTransientDS(
             "ForwardMeshVisibleDS",
-            visible_set_layout_, {
+            visible_set_layout_,
+            {
                 {0, EDescriptorType::STORAGE_BUFFER, visible_instance_rg_},
-            });
+            }
+        );
 
         auto* mat_res = ctx.globalRegistry().find<MaterialResources>();
         auto variant_buckets = collectVariantBuckets(mat_res);
@@ -211,22 +212,29 @@ namespace lux::render
         auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
 
         // ---- Forward draw (graphics) ----
-        auto &draw_pass = builder.addPass("ForwardMeshForwardDraw", ERGPassType::GRAPHICS)
-            .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
-            .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
-            .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
-            .bindSceneDS()
-            .useEngineSet(EDescriptorSetSlot::Instance)
-            .bindImmutableDS(EDescriptorSetSlot::Texture, ctx.globalRegistry().descriptorSetOf<TextureResources>())
-            .useEngineSet(EDescriptorSetSlot::Light,
-                            builder.trackExternalBuffer("ext.LightResources"), ERGResourceType::BUFFER)
-            .useEngineSet(EDescriptorSetSlot::Material,
-                            builder.trackExternalBuffer("ext.MaterialResources"), ERGResourceType::BUFFER)
-            .bindTransientDS(5, visible_tds)
-            .read(draw_indirect_rg_, ERGBufferRole::INDIRECT)
-            .read(draw_count_rg_, ERGBufferRole::INDIRECT)
-            .read(visible_instance_rg_, ERGBufferRole::STORAGE)
-            .after("ForwardMeshForwardCompact");
+        auto& draw_pass =
+            builder.addPass("ForwardMeshForwardDraw", ERGPassType::GRAPHICS)
+                .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
+                .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
+                .bindSceneDS()
+                .useEngineSet(EDescriptorSetSlot::Instance)
+                .bindImmutableDS(EDescriptorSetSlot::Texture, ctx.globalRegistry().descriptorSetOf<TextureResources>())
+                .useEngineSet(
+                    EDescriptorSetSlot::Light,
+                    builder.trackExternalBuffer("ext.LightResources"),
+                    ERGResourceType::BUFFER
+                )
+                .useEngineSet(
+                    EDescriptorSetSlot::Material,
+                    builder.trackExternalBuffer("ext.MaterialResources"),
+                    ERGResourceType::BUFFER
+                )
+                .bindTransientDS(5, visible_tds)
+                .read(draw_indirect_rg_, ERGBufferRole::INDIRECT)
+                .read(draw_count_rg_, ERGBufferRole::INDIRECT)
+                .read(visible_instance_rg_, ERGBufferRole::STORAGE)
+                .after("ForwardMeshForwardCompact");
 
         {
             auto shadow_atlas = builder.referenceTexture(cfg_.shadow_atlas);
@@ -272,18 +280,20 @@ namespace lux::render
         draw_pass.setPipelineVariantFeatures(variant_features);
 
         const auto index_buffers = importSharedIndexBuffers(builder);
-        draw_pass.setKernel("MeshDraw", makeKernelConfig(MeshDrawKernelConfig{
-            .draw_count_rg  = draw_count_rg_,
-            .indirect_rg    = draw_indirect_rg_,
-            .index_buffers_rg = index_buffers.data(),
-            .index_buffer_count = static_cast<std::uint32_t>(
-                index_buffers.size()),
-            .geometry_mask  = supportedGeometryMask(),
-            .mdc_count      = mdcCount(),
-            .mdc_entries    = instance_res_->mdcTable().entries().data(),
-            // family_count = 0 ⇒ kernel skips the legacy `+ family_count`
-            // skinned-variant offset; static + skinned share one pipeline.
-            .family_count   = 0u,
-        }));
+        draw_pass.setKernel(
+            "MeshDraw",
+            makeKernelConfig(MeshDrawKernelConfig{
+                .draw_count_rg = draw_count_rg_,
+                .indirect_rg = draw_indirect_rg_,
+                .index_buffers_rg = index_buffers.data(),
+                .index_buffer_count = static_cast<std::uint32_t>(index_buffers.size()),
+                .geometry_mask = supportedGeometryMask(),
+                .mdc_count = mdcCount(),
+                .mdc_entries = instance_res_->mdcTable().entries().data(),
+                // family_count = 0 ⇒ kernel skips the legacy `+ family_count`
+                // skinned-variant offset; static + skinned share one pipeline.
+                .family_count = 0u,
+            })
+        );
     }
 } // namespace lux::render

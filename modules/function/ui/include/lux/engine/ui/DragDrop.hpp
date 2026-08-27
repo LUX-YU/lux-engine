@@ -8,20 +8,17 @@
 
 namespace lux::ui
 {
-	/** Frame-borrowed view; invalid after the next UI frame or payload mutation. */
-	struct DragDropPayloadView final
-	{
-		PayloadTypeIdView type;
-		std::span<const std::byte> bytes;
+    /** Frame-borrowed view; invalid after the next UI frame or payload mutation. */
+    struct DragDropPayloadView final
+    {
+        PayloadTypeIdView type;
+        std::span<const std::byte> bytes;
 
-		[[nodiscard]] explicit operator bool() const noexcept
-		{
-			return type.isValid();
-		}
-	};
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return type.isValid();
+        }
+    };
 
-	LUX_FUNCTION_PUBLIC void setDragDropPayload(
-		PayloadTypeIdView 		   type,
-		std::span<const std::byte> bytes
-	);
+    LUX_FUNCTION_PUBLIC void setDragDropPayload(PayloadTypeIdView type, std::span<const std::byte> bytes);
 } // namespace lux::ui

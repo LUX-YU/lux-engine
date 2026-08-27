@@ -18,14 +18,17 @@
 
 namespace lux::render
 {
-    struct LUX_COMM_CONFIG(prefix=TriOverlay, id=lux.render.tri_overlay.v1, display=TriOverlayTransient,
-                           feature=TriOverlayTransientFeature,
-                           feature_header=lux/engine/render/renderer/features/gizmo/TriOverlayTransientFeature.hpp)
-    TriOverlayTransientCommConfig
+    struct LUX_COMM_CONFIG(
+        prefix = TriOverlay,
+        id = lux.render.tri_overlay.v1,
+        display = TriOverlayTransient,
+        feature = TriOverlayTransientFeature,
+        feature_header = lux / engine / render / renderer / features / gizmo /
+                         TriOverlayTransientFeature.hpp) TriOverlayTransientCommConfig
     {
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
-        uint32_t     max_vertices{200'000};
+        uint32_t max_vertices{200'000};
     };
     static_assert(std::is_trivially_copyable_v<TriOverlayTransientCommConfig>);
 
@@ -37,14 +40,18 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<TriOverlayUploadedReply>);
 
-    struct LUX_OP(lane=frame, kind=blob, name=TriOverlayUpload, method=uploadTriangles,
-                  reply=TriOverlayUploadedReply, opcode=resource)
-    UploadTriOverlayPayload
+    struct LUX_OP(
+        lane = frame,
+        kind = blob,
+        name = TriOverlayUpload,
+        method = uploadTriangles,
+        reply = TriOverlayUploadedReply,
+        opcode = resource) UploadTriOverlayPayload
     {
         RenderSceneId scene_id{};
-        uint32_t      chunk_id{0};
-        uint32_t      vertex_count{0};   ///< 必须等于 blob 字节数 / sizeof(GizmoVertex)
-        LUX_OP_BLOB() BlobRef vertex_data{};
+        uint32_t chunk_id{0};
+        uint32_t vertex_count{0}; ///< 必须等于 blob 字节数 / sizeof(GizmoVertex)
+        LUX_OP_BLOB() BlobRef vertex_data {};
     };
     static_assert(std::is_trivially_copyable_v<UploadTriOverlayPayload>);
 

@@ -18,8 +18,7 @@ namespace lux::render
     inline constexpr std::uint32_t kInstanceFlagStreamingFeedback = 1u << 4;
     static_assert(
         (kInstanceFlagStreamingFeedback &
-         (kInstanceFlagCastShadow | kInstanceFlagReceiveShadow |
-          kInstanceFlagVisible)) == 0,
+         (kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible)) == 0,
         "streaming feedback bit overlaps core instance flags");
 
     enum class EStreamingFeedbackPattern : std::uint32_t
@@ -32,12 +31,11 @@ namespace lux::render
     /// renders the built-in ids through this default implementation.  A plugin
     /// can replace the feature factory without changing ECS data.
     struct LUX_COMM_CONFIG(
-        prefix=StreamingFeedback,
-        id=lux.render.streaming_feedback.v1,
-        display=StreamingFeedback,
-        requires=lux.render.mesh_stack.v1,
-        custom_create=true)
-    StreamingFeedbackCommConfig
+        prefix = StreamingFeedback,
+        id = lux.render.streaming_feedback.v1,
+        display = StreamingFeedback,
+        requires = lux.render.mesh_stack.v1,
+        custom_create = true) StreamingFeedbackCommConfig
     {
         ShaderHandle cull_shader{};
         ShaderHandle compact_shader{};
@@ -50,8 +48,7 @@ namespace lux::render
         float speed{1.6f};
         float intensity{0.72f};
         float color[3]{0.18f, 0.72f, 1.0f};
-        EStreamingFeedbackPattern pattern{
-            EStreamingFeedbackPattern::MOSAIC_DITHER};
+        EStreamingFeedbackPattern pattern{EStreamingFeedbackPattern::MOSAIC_DITHER};
     };
     static_assert(std::is_trivially_copyable_v<StreamingFeedbackCommConfig>);
 }

@@ -19,13 +19,27 @@ namespace lux::window
         std::uint32_t height{0};
     };
 
-    struct WindowCloseEvent {};
-    struct WindowFocusEvent {};
-    struct WindowLostFocusEvent {};
-    struct WindowMovedEvent {};
-    struct WindowMinimizedEvent {};
-    struct CursorEnterEvent {};
-    struct CursorLeaveEvent {};
+    struct WindowCloseEvent
+    {
+    };
+    struct WindowFocusEvent
+    {
+    };
+    struct WindowLostFocusEvent
+    {
+    };
+    struct WindowMovedEvent
+    {
+    };
+    struct WindowMinimizedEvent
+    {
+    };
+    struct CursorEnterEvent
+    {
+    };
+    struct CursorLeaveEvent
+    {
+    };
 
     struct CursorMoveEvent
     {
@@ -61,15 +75,14 @@ namespace lux::window
         std::uint32_t codepoint{0};
     };
 
-    using WindowInputEvent = std::variant<
-        WindowKeyEvent,
-        WindowMouseButtonEvent,
-        WindowScrollEvent,
-        WindowTextEvent
-    >;
+    using WindowInputEvent = std::variant<WindowKeyEvent, WindowMouseButtonEvent, WindowScrollEvent, WindowTextEvent>;
 
-    struct DrawReadyEvent {};
-    struct DrawFinishedEvent {};
+    struct DrawReadyEvent
+    {
+    };
+    struct DrawFinishedEvent
+    {
+    };
 
     struct FileDropEvent
     {

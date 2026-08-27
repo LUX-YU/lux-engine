@@ -15,10 +15,8 @@ namespace lux::simulation
 
 namespace lux::script
 {
-    template <>
-    struct ScriptSemanticTypeTraits<lux::simulation::SimulationStepInfo> final
+    template <> struct ScriptSemanticTypeTraits<lux::simulation::SimulationStepInfo> final
     {
-        inline static constexpr std::string_view CanonicalName =
-            "lux.simulation.SimulationStepInfo";
+        inline static constexpr std::string_view CanonicalName = "lux.simulation.SimulationStepInfo";
     };
 }

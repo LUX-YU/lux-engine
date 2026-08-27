@@ -14,14 +14,12 @@
 
 namespace lux::serialization
 {
-    using SerializationResult =
-        lux::cxx::expected<void, SerializationFailure>;
+    using SerializationResult = lux::cxx::expected<void, SerializationFailure>;
 
     class BinaryWriter final
     {
     public:
-        explicit BinaryWriter(std::vector<std::byte>& destination) noexcept
-            : destination_(&destination)
+        explicit BinaryWriter(std::vector<std::byte>& destination) noexcept : destination_(&destination)
         {
         }
 
@@ -30,30 +28,22 @@ namespace lux::serialization
             return destination_->size();
         }
 
-        [[nodiscard]] SerializationResult writeBytes(
-            std::span<const std::byte> bytes
-        ) noexcept
+        [[nodiscard]] SerializationResult writeBytes(std::span<const std::byte> bytes) noexcept
         {
             try
             {
-                destination_->insert(
-                    destination_->end(),
-                    bytes.begin(),
-                    bytes.end()
-                );
+                destination_->insert(destination_->end(), bytes.begin(), bytes.end());
                 return {};
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{
-                    ESerializationError::ALLOCATION_FAILURE,
-                    offset()
-                });
+                return lux::cxx::unexpected<SerializationFailure>(
+                    SerializationFailure{ESerializationError::ALLOCATION_FAILURE, offset()}
+                );
             }
         }
 
-        template <std::unsigned_integral T>
-        [[nodiscard]] SerializationResult writeUnsigned(T value) noexcept
+        template <std::unsigned_integral T> [[nodiscard]] SerializationResult writeUnsigned(T value) noexcept
         {
             std::byte bytes[sizeof(T)];
             for (std::size_t index{}; index < sizeof(T); ++index)
@@ -68,14 +58,12 @@ namespace lux::serialization
             return writeBytes(bytes);
         }
 
-        template <std::signed_integral T>
-        [[nodiscard]] SerializationResult writeSigned(T value) noexcept
+        template <std::signed_integral T> [[nodiscard]] SerializationResult writeSigned(T value) noexcept
         {
             return writeUnsigned(static_cast<std::make_unsigned_t<T>>(value));
         }
 
-        template <std::floating_point T>
-        [[nodiscard]] SerializationResult writeFloat(T value) noexcept
+        template <std::floating_point T> [[nodiscard]] SerializationResult writeFloat(T value) noexcept
         {
             if constexpr (sizeof(T) == sizeof(std::uint32_t))
             {

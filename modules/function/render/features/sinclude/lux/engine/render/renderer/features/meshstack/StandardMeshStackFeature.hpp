@@ -43,14 +43,14 @@ namespace lux::render
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onFrameBegin(const FeatureFrameContext& context) override;
         void onDetachFromScene(RenderScene& scene) override;
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept override;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept override;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept override;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept override;
     };
 
     // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
     // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
-    inline StandardMeshStackFeature::StandardMeshStackFeature() : StandardMeshStackFeature(Config{}) {}
+    inline StandardMeshStackFeature::StandardMeshStackFeature() : StandardMeshStackFeature(Config{})
+    {
+    }
 
 } // namespace lux::render

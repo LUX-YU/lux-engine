@@ -11,24 +11,14 @@ namespace lux::asset
         if (!desc.provider || !VirtualPath::isLegalRoot(desc.root))
             return kInvalidMountId;
 
-        Mount m{
-            next_id_++,
-            std::move(desc.root),
-            std::move(desc.provider),
-            desc.priority,
-            next_seq_++
-        };
+        Mount m{next_id_++, std::move(desc.root), std::move(desc.provider), desc.priority, next_seq_++};
 
         // Insert keeping (priority desc, seq desc): the first position whose
         // mount loses to the new one. Equal priority -> the new (higher seq)
         // mount lands BEFORE existing ones = head-insert, newest wins.
-        const auto pos = std::find_if(
-            mounts_.begin(), mounts_.end(),
-            [&](const Mount& other)
-            {
-                return other.priority < m.priority
-                    || (other.priority == m.priority && other.seq < m.seq);
-            }
+        const auto pos = std::find_if(mounts_.begin(), mounts_.end(), [&](const Mount& other) {
+            return other.priority < m.priority || (other.priority == m.priority && other.seq < m.seq);
+        }
         );
         const MountId id = m.id;
         mounts_.insert(pos, std::move(m));
@@ -50,7 +40,7 @@ namespace lux::asset
         for (const Mount& m : mounts_)
         {
             // m.root is "/Game"; parsed root() is "Game".
-            if (std::string_view{ m.root }.substr(1) != parsed.value().root())
+            if (std::string_view{m.root}.substr(1) != parsed.value().root())
                 continue;
             if (const auto id = m.provider->resolve(rel))
                 return *id;
@@ -58,8 +48,7 @@ namespace lux::asset
         return AssetId{};
     }
 
-    lux::cxx::expected<AssetBlob, EAssetStorageError>
-    AssetVfs::open(const AssetId& id) const
+    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfs::open(const AssetId& id) const
     {
         if (id.isNull())
             return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
@@ -72,28 +61,25 @@ namespace lux::asset
         return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
     }
 
-    void AssetVfs::enumerate(
-        const std::function<void(const ProviderEntry&)>& fn) const
+    void AssetVfs::enumerate(const std::function<void(const ProviderEntry&)>& fn) const
     {
-        std::unordered_set<AssetId>  claimed_ids;
+        std::unordered_set<AssetId> claimed_ids;
         std::unordered_set<std::string> claimed_paths;
 
         for (const Mount& m : mounts_)
         {
-            m.provider->enumerate(
-                [&](const ProviderEntry& e)
-                {
-                    if (!claimed_ids.insert(e.id).second)
-                        return;             // id already won by a higher mount
-                    if (e.tombstone)
-                        return;             // claims the id, emits nothing
+            m.provider->enumerate([&](const ProviderEntry& e) {
+                if (!claimed_ids.insert(e.id).second)
+                    return; // id already won by a higher mount
+                if (e.tombstone)
+                    return; // claims the id, emits nothing
 
-                    ProviderEntry abs = e;
-                    abs.vpath = m.root + "/" + e.vpath;
-                    if (!claimed_paths.insert(abs.vpath).second)
-                        return;             // path shadowed by a higher mount
-                    fn(abs);
-                }
+                ProviderEntry abs = e;
+                abs.vpath = m.root + "/" + e.vpath;
+                if (!claimed_paths.insert(abs.vpath).second)
+                    return; // path shadowed by a higher mount
+                fn(abs);
+            }
             );
         }
     }

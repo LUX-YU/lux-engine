@@ -27,30 +27,23 @@ namespace lux::simulation::ecs::detail
 
     class LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC HierarchyMaintenance final
     {
-      public:
-        HierarchyMaintenance(
-            Registry& registry,
-            HierarchyIndex& hierarchy,
-            HierarchyDeltaBatch& deltas
-        );
+    public:
+        HierarchyMaintenance(Registry& registry, HierarchyIndex& hierarchy, HierarchyDeltaBatch& deltas);
         ~HierarchyMaintenance() noexcept = default;
         HierarchyMaintenance(const HierarchyMaintenance&) = delete;
         HierarchyMaintenance& operator=(const HierarchyMaintenance&) = delete;
         HierarchyMaintenance(HierarchyMaintenance&&) = delete;
         HierarchyMaintenance& operator=(HierarchyMaintenance&&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> prepare(
-            std::size_t mutation_capacity
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> prepare(std::size_t mutation_capacity) noexcept;
         [[nodiscard]] lux::cxx::expected<void, EHierarchyError> update() noexcept;
 
-      private:
+    private:
         void onParentConstruct(Registry& registry, Entity entity) noexcept;
         void onParentUpdate(Registry& registry, Entity entity) noexcept;
         void onParentDestroy(Registry& registry, Entity entity) noexcept;
         [[nodiscard]] bool append(HierarchyMutation mutation) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError>
-        rebuildFromRegistry() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuildFromRegistry() noexcept;
 
         Registry* registry_{};
         HierarchyIndex* hierarchy_{};

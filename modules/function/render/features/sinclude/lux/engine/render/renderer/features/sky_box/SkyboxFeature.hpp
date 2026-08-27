@@ -1,7 +1,8 @@
 #pragma once
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/features/sky_box/SkyboxOperation.hpp>
-#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>   // RTextureHandle(此前由 SkyboxSyncCommands.hpp 间接带入)
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
+// RTextureHandle(此前由 SkyboxSyncCommands.hpp 间接带入)
 #include <cstdint>
 #include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
@@ -30,13 +31,19 @@ namespace lux::render
         explicit SkyboxFeature(Config cfg);
         ~SkyboxFeature() override;
 
-        std::string_view name() const override { return "Skybox"; }
+        std::string_view name() const override
+        {
+            return "Skybox";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         // ---- RenderFeature lifecycle (render thread) ----
         void addPasses(RGBuilder& builder) override;
 
-        bool isLoaded() const noexcept { return active_mode_ != ActiveMode::NONE; }
+        bool isLoaded() const noexcept
+        {
+            return active_mode_ != ActiveMode::NONE;
+        }
 
     private:
         /// 装载期建管线。返回错误 = 这个特性装不起来 —— 天空盒建不出管线,
@@ -46,14 +53,8 @@ namespace lux::render
 
     public:
         // Handle-based operations (pre-uploaded via ResourceSyncer)
-        bool applyEquirectangularHandle(
-            RTextureHandle texture,
-            float rotation_radians,
-            float intensity);
-        bool applyCubemapHandles(
-            RTextureHandle cube,
-            float rotation_radians,
-            float intensity);
+        bool applyEquirectangularHandle(RTextureHandle texture, float rotation_radians, float intensity);
+        bool applyCubemapHandles(RTextureHandle cube, float rotation_radians, float intensity);
         [[nodiscard]] SkyboxStatsReply stats() const noexcept;
 
     private:
@@ -67,14 +68,14 @@ namespace lux::render
         // ------------------------------------------------------------------
         // Equirectangular state (managed by TextureResources, binding 0)
         // ------------------------------------------------------------------
-        uint32_t      equirect_bindless_index_{0};   ///< Index into the bindless sampler2D[] array
+        uint32_t equirect_bindless_index_{0}; ///< Index into the bindless sampler2D[] array
 
         // ------------------------------------------------------------------
         // Cubemap state (managed by TextureResources, binding 1)
         // ------------------------------------------------------------------
-        uint32_t      cubemap_bindless_index_{0};     ///< Index into the bindless samplerCube[] array
-        float         rotation_radians_{0.0f};
-        float         intensity_{1.0f};
+        uint32_t cubemap_bindless_index_{0}; ///< Index into the bindless samplerCube[] array
+        float rotation_radians_{0.0f};
+        float intensity_{1.0f};
 
         // ------------------------------------------------------------------
         // Context: accessed via base-class renderContext() after attach
@@ -83,7 +84,12 @@ namespace lux::render
         // ------------------------------------------------------------------
         // Which variant is active?
         // ------------------------------------------------------------------
-        enum class ActiveMode { NONE, EQUIRECT, CUBEMAP };
+        enum class ActiveMode
+        {
+            NONE,
+            EQUIRECT,
+            CUBEMAP
+        };
         ActiveMode active_mode_{ActiveMode::NONE};
         std::uint32_t pass_visits_{0u};
         std::uint32_t draws_{0u};

@@ -35,23 +35,20 @@ namespace lux::render
         static constexpr std::size_t kCapacity = 64;
 
         /// 记一条失败。同键的已有条目只累加 occurrences,不占新槽。
-        void emit(const RenderError& error,
-                  std::uint32_t      scene_index,
-                  std::uint64_t      frame_serial) noexcept
+        void emit(const RenderError& error, std::uint32_t scene_index, std::uint64_t frame_serial) noexcept
         {
             if (error.ok())
                 return;
 
             const auto batch = std::span<RenderErrorEvent>{ring_.data(), count_};
-            const auto same  = std::ranges::find_if(batch, [&](const RenderErrorEvent& e) {
-                return e.scene_index == scene_index
-                    && e.error.type  == error.type
-                    && e.error.args  == error.args;
-            });
+            const auto same = std::ranges::find_if(batch, [&](const RenderErrorEvent& e) {
+                return e.scene_index == scene_index && e.error.type == error.type && e.error.args == error.args;
+            }
+            );
             if (same != batch.end())
             {
                 ++same->occurrences;
-                same->frame_serial = frame_serial;   // 最近一次发生的帧
+                same->frame_serial = frame_serial; // 最近一次发生的帧
                 return;
             }
 
@@ -62,28 +59,34 @@ namespace lux::render
             }
 
             ring_[count_++] = RenderErrorEvent{
-                .error        = error,
-                .scene_index  = scene_index,
-                .occurrences  = 1,
+                .error = error,
+                .scene_index = scene_index,
+                .occurrences = 1,
                 .frame_serial = frame_serial,
-                .seq          = next_seq_++,
+                .seq = next_seq_++,
             };
         }
 
-        [[nodiscard]] bool empty() const noexcept { return count_ == 0; }
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return count_ == 0;
+        }
 
         [[nodiscard]] std::span<const RenderErrorEvent> pending() const noexcept
         {
             return {ring_.data(), count_};
         }
 
-        [[nodiscard]] std::uint32_t dropped() const noexcept { return dropped_; }
+        [[nodiscard]] std::uint32_t dropped() const noexcept
+        {
+            return dropped_;
+        }
 
         /// 推送成功后调用。推送失败(回复环满 / 通道关闭)时**不调用** ——
         /// 事件留在原地,下 tick 重试,与 flushDeferredRepliesOnly 同策略。
         void clear() noexcept
         {
-            count_   = 0;
+            count_ = 0;
             dropped_ = 0;
         }
 

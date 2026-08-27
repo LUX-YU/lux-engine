@@ -9,8 +9,7 @@
 namespace
 {
     inline constexpr std::array kHooks{
-        lux::simulation::makeSystemHookPoint<void(
-            const lux::simulation::SimulationStepInfo&)>("after"),
+        lux::simulation::makeSystemHookPoint<void(const lux::simulation::SimulationStepInfo&)>("after"),
         lux::simulation::makeSystemHookPoint<void(float)>("value-f32")};
     inline constexpr lux::simulation::SystemDescription kSystem{
         .canonical_name = "lux.flowforge.fixture",
@@ -18,7 +17,8 @@ namespace
         .hooks = kHooks};
 }
 
-int main()
+int
+main()
 {
     using namespace lux::flowforge;
     using namespace lux::simulation;
@@ -31,8 +31,7 @@ int main()
 
     const lux::rdesc::ScriptValueType step{
         "lux.simulation.SimulationStepInfo",
-        lux::script::scriptSemanticTypeId(
-            "lux.simulation.SimulationStepInfo"),
+        lux::script::scriptSemanticTypeId("lux.simulation.SimulationStepInfo"),
         lux::script::EScriptPassMode::CONST_REF};
     const lux::rdesc::ScriptValueType i32{
         "lux.i32",
@@ -50,18 +49,10 @@ int main()
         ExportMethodNode{FlowForgeExportNodeId{5U}, "foo", {f32}, {}}};
     const auto type = systemTypeId(kSystem.canonical_name);
     const std::array bindings{
-        BindingEdge{
-            FlowForgeExportNodeId{1U},
-            SystemHookBindingTarget{type, "physics", "after"}},
-        BindingEdge{
-            FlowForgeExportNodeId{1U},
-            SystemHookBindingTarget{type, "animation", "after"}},
-        BindingEdge{
-            FlowForgeExportNodeId{3U},
-            SystemHookBindingTarget{type, "physics", "after"}},
-        BindingEdge{
-            FlowForgeExportNodeId{5U},
-            SystemHookBindingTarget{type, "physics", "value-f32"}}};
+        BindingEdge{FlowForgeExportNodeId{1U}, SystemHookBindingTarget{type, "physics", "after"}},
+        BindingEdge{FlowForgeExportNodeId{1U}, SystemHookBindingTarget{type, "animation", "after"}},
+        BindingEdge{FlowForgeExportNodeId{3U}, SystemHookBindingTarget{type, "physics", "after"}},
+        BindingEdge{FlowForgeExportNodeId{5U}, SystemHookBindingTarget{type, "physics", "value-f32"}}};
 
     auto compiled = compileFlowForgeScript(
         "gameplay.behavior",
@@ -69,23 +60,15 @@ int main()
         exports,
         bindings,
         *simulation,
-        FlowForgeStateLayout{
-            0x1234U,
-            16U,
-            16U,
-            {std::byte{1U}}}
+        FlowForgeStateLayout{0x1234U, 16U, 16U, {std::byte{1U}}}
     );
     assert(compiled);
     assert(compiled->description.exports.size() == 5U);
     assert(compiled->binding_template.size() == 4U);
-    assert(compiled->binding_template[0].function ==
-        compiled->binding_template[1].function);
-    assert(compiled->binding_template[0].function !=
-        compiled->binding_template[2].function);
-    assert(compiled->binding_template[3].function ==
-        compiled->description.exports[4].symbol_id);
-    assert(compiled->binding_template[3].function !=
-        compiled->description.exports[3].symbol_id);
+    assert(compiled->binding_template[0].function == compiled->binding_template[1].function);
+    assert(compiled->binding_template[0].function != compiled->binding_template[2].function);
+    assert(compiled->binding_template[3].function == compiled->description.exports[4].symbol_id);
+    assert(compiled->binding_template[3].function != compiled->description.exports[3].symbol_id);
     assert(compiled->description.exports[1].name == "idle");
     assert(compiled->abi.abi_version == LUX_SCRIPT_ABI_VERSION);
     assert(compiled->abi.state.align == 16U);

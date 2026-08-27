@@ -57,9 +57,7 @@ namespace lux::render
     };
 } // namespace lux::render
 
-template <>
-struct lux::cxx::enable_enum_flags<lux::render::EGpuDrivenMeshExt>
-    : std::true_type
+template <> struct lux::cxx::enable_enum_flags<lux::render::EGpuDrivenMeshExt> : std::true_type
 {
 };
 
@@ -72,7 +70,8 @@ namespace lux::render
     // shared space that request is now satisfied structurally rather than by
     // comment: bit 1 IS Bindless everywhere, and a feature that does not accept
     // it simply leaves it out of its known-flags set.
-    static_assert(static_cast<std::uint32_t>(EGpuDrivenMeshExt::Bindless) == (1u << 1),
-                  "bit 1 stays Bindless — DeferredGBuffer's reserved bit is this one");
+    static_assert(
+        static_cast<std::uint32_t>(EGpuDrivenMeshExt::Bindless) == (1u << 1),
+        "bit 1 stays Bindless — DeferredGBuffer's reserved bit is this one");
 
 } // namespace lux::render

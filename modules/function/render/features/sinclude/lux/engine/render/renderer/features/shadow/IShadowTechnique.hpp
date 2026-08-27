@@ -28,7 +28,8 @@
  */
 
 #include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp>
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp> // EBuiltinShader enum only (avoids pulling embed byte arrays into shadow TUs)
+#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
+// EBuiltinShader enum only (avoids pulling embed byte arrays into shadow TUs)
 
 #include <cstdint>
 
@@ -44,10 +45,10 @@ namespace lux::render
     /// resolution) and the scene. Filled by MeshShadowFeature::addPasses.
     struct ShadowFrameContext
     {
-        RGBuilder*       builder          = nullptr;
-        ShadowResources* shadow_res       = nullptr;
-        RenderScene*     scene            = nullptr;
-        uint32_t         atlas_resolution = 0;
+        RGBuilder* builder = nullptr;
+        ShadowResources* shadow_res = nullptr;
+        RenderScene* scene = nullptr;
+        uint32_t atlas_resolution = 0;
     };
 
     /// Polymorphic shadow-technique contract. PCF / EVSM / VSM all implement
@@ -59,24 +60,40 @@ namespace lux::render
         virtual ~IShadowTechnique() = default;
 
         // ── Startup / shutdown (once per technique lifetime). ───────────
-        virtual void buildResources()   {}
-        virtual void destroyResources() {}
+        virtual void buildResources()
+        {
+        }
+        virtual void destroyResources()
+        {
+        }
 
         // ── Per-frame scheduling. Each technique chooses how many and what
         //    kind of GPU passes it emits. ─────────────────────────────────
-        virtual void recordFrameSetup  (const ShadowFrameContext&) {}
-        virtual void recordShadowPasses(const ShadowFrameContext&) {}
-        virtual void recordPostFrame   (const ShadowFrameContext&) {}
+        virtual void recordFrameSetup(const ShadowFrameContext&)
+        {
+        }
+        virtual void recordShadowPasses(const ShadowFrameContext&)
+        {
+        }
+        virtual void recordPostFrame(const ShadowFrameContext&)
+        {
+        }
 
         // ── Caster pass declaration. The mesh shadow caster pipeline depends on
         //    the mesh vertex shader (owned by MeshShadowFeature), so a technique
         //    only DECLARES its caster shape here and MeshShadowFeature assembles
         //    the pipeline from it. Adding a technique = return its variants;
         //    MeshShadowFeature needs zero change. ──────────────────────────────
-        virtual EBuiltinShader casterVertVariant() const = 0;   ///< SHADOW_DEPTH_VERT / MESH_SHADOW_VERT / ...
-        virtual EBuiltinShader casterFragVariant() const = 0;   ///< SHADOW_DEPTH_FRAG / SHADOW_EVSM_CASTER_FRAG / ...
-        virtual const char*    casterColorTarget()    const { return nullptr; } ///< null = depth-only; else a named RG color target (EVSM moment atlas)
-        virtual uint32_t       casterColorWriteMask() const { return 0u; }      ///< 0 = depth-only; 0xF = RGBA color (EVSM)
+        virtual EBuiltinShader casterVertVariant() const = 0; ///< SHADOW_DEPTH_VERT / MESH_SHADOW_VERT / ...
+        virtual EBuiltinShader casterFragVariant() const = 0; ///< SHADOW_DEPTH_FRAG / SHADOW_EVSM_CASTER_FRAG / ...
+        virtual const char* casterColorTarget() const
+        {
+            return nullptr;
+        } ///< null = depth-only; else a named RG color target (EVSM moment atlas)
+        virtual uint32_t casterColorWriteMask() const
+        {
+            return 0u;
+        } ///< 0 = depth-only; 0xF = RGBA color (EVSM)
 
         // ── Lighting-side binding. ──────────────────────────────────────
         /// Returns the SPIR-V variant to use for the deferred-lighting (and
@@ -85,11 +102,17 @@ namespace lux::render
         /// — see modules/function/render/CMakeLists.txt and §3 / C1 of the
         /// EVSM plan.
         virtual EBuiltinShader lightingFragVariantDeferred() const = 0;
-        virtual EBuiltinShader lightingFragVariantForwardPBR() const { return lightingFragVariantDeferred(); }
+        virtual EBuiltinShader lightingFragVariantForwardPBR() const
+        {
+            return lightingFragVariantDeferred();
+        }
 
         // ── Metadata. ───────────────────────────────────────────────────
         virtual EShadowTechnique id() const = 0;
-        virtual const char* name() const { return toString(id()); }
+        virtual const char* name() const
+        {
+            return toString(id());
+        }
     };
 
 } // namespace lux::render

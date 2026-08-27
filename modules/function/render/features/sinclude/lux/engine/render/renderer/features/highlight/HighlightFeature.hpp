@@ -32,26 +32,29 @@ namespace lux::render
     public:
         struct Config
         {
-            ShaderHandle cull_shader{};      ///< MESH_CULL_UNIFIED_COMP
-            ShaderHandle compact_shader{};   ///< MDC_COMPACT_COMP
-            ShaderHandle mask_vert{};        ///< HIGHLIGHT_MASK_VERT
-            ShaderHandle mask_frag{};        ///< HIGHLIGHT_MASK_FRAG
-            ShaderHandle blur_frag{};        ///< HIGHLIGHT_BLUR_FRAG (separable Gaussian)
-            ShaderHandle composite_frag{};   ///< HIGHLIGHT_COMPOSITE_FRAG (outer halo)
-            uint32_t     descriptor_layout_version{0};
-            GpuDrivenMeshExtFlags     extension_flags{};
-            std::string  color_target{"SceneColor"};
-            std::string  mask_target{"HighlightMask"};
+            ShaderHandle cull_shader{};    ///< MESH_CULL_UNIFIED_COMP
+            ShaderHandle compact_shader{}; ///< MDC_COMPACT_COMP
+            ShaderHandle mask_vert{};      ///< HIGHLIGHT_MASK_VERT
+            ShaderHandle mask_frag{};      ///< HIGHLIGHT_MASK_FRAG
+            ShaderHandle blur_frag{};      ///< HIGHLIGHT_BLUR_FRAG (separable Gaussian)
+            ShaderHandle composite_frag{}; ///< HIGHLIGHT_COMPOSITE_FRAG (outer halo)
+            uint32_t descriptor_layout_version{0};
+            GpuDrivenMeshExtFlags extension_flags{};
+            std::string color_target{"SceneColor"};
+            std::string mask_target{"HighlightMask"};
             // Halo appearance
-            float        glow_color[3]{1.0f, 0.55f, 0.06f};
-            float        glow_intensity{3.0f};
-            float        glow_radius{2.5f};
+            float glow_color[3]{1.0f, 0.55f, 0.06f};
+            float glow_intensity{3.0f};
+            float glow_radius{2.5f};
         };
 
         explicit HighlightFeature(Config cfg);
         ~HighlightFeature() override;
 
-        std::string_view name() const override { return "Highlight"; }
+        std::string_view name() const override
+        {
+            return "Highlight";
+        }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
@@ -63,15 +66,15 @@ namespace lux::render
         void releaseAll() noexcept;
 
         Config cfg_;
-        VkDescriptorSetLayout  visible_set_layout_{VK_NULL_HANDLE};    // set 5 (cull → draw)
-        VkDescriptorSetLayout  blur_ds_layout_{VK_NULL_HANDLE};        // blur set 1 (1 sampler: input)
-        VkDescriptorSetLayout  composite_ds_layout_{VK_NULL_HANDLE};   // composite set 1 (2 samplers: blurred + sharp)
-        GraphicsPipelineHandle blur_pipeline_{kInvalidPipelineHandle};      // separable Gaussian (H & V)
+        VkDescriptorSetLayout visible_set_layout_{VK_NULL_HANDLE};     // set 5 (cull → draw)
+        VkDescriptorSetLayout blur_ds_layout_{VK_NULL_HANDLE};         // blur set 1 (1 sampler: input)
+        VkDescriptorSetLayout composite_ds_layout_{VK_NULL_HANDLE};    // composite set 1 (2 samplers: blurred + sharp)
+        GraphicsPipelineHandle blur_pipeline_{kInvalidPipelineHandle}; // separable Gaussian (H & V)
         GraphicsPipelineHandle composite_pipeline_{kInvalidPipelineHandle}; // outer-halo composite
         // The mask DRAW pipeline lives in bucket_pipelines_ (base), built by
         // registerFamilyPipelines with a constant mask-frag resolver — every family
         // bucket resolves to the same mask pipeline.
-        VkSampler              mask_sampler_{VK_NULL_HANDLE};   ///< 服务缓存句柄
+        VkSampler mask_sampler_{VK_NULL_HANDLE}; ///< 服务缓存句柄
     };
 
 } // namespace lux::render

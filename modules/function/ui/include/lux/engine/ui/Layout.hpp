@@ -16,14 +16,14 @@ namespace lux::ui
 
     class LayoutSnapshot final
     {
-      public:
-        LayoutSnapshot(const LayoutSnapshot &) = default;
-        LayoutSnapshot &operator=(const LayoutSnapshot &) = default;
-        LayoutSnapshot(LayoutSnapshot &&) noexcept = default;
-        LayoutSnapshot &operator=(LayoutSnapshot &&) noexcept = default;
+    public:
+        LayoutSnapshot(const LayoutSnapshot&) = default;
+        LayoutSnapshot& operator=(const LayoutSnapshot&) = default;
+        LayoutSnapshot(LayoutSnapshot&&) noexcept = default;
+        LayoutSnapshot& operator=(LayoutSnapshot&&) noexcept = default;
 
-        [[nodiscard]] static lux::cxx::expected<LayoutSnapshot, ELayoutError> fromBytes(
-            std::span<const std::byte> bytes)
+        [[nodiscard]] static lux::cxx::expected<LayoutSnapshot, ELayoutError>
+        fromBytes(std::span<const std::byte> bytes)
         {
             if (bytes.empty())
                 return lux::cxx::unexpected(ELayoutError::INVALID_DATA);
@@ -35,7 +35,7 @@ namespace lux::ui
             return bytes_;
         }
 
-      private:
+    private:
         friend class UISession;
         explicit LayoutSnapshot(std::vector<std::byte> bytes) noexcept : bytes_(std::move(bytes))
         {

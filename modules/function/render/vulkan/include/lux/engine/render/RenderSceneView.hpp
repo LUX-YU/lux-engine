@@ -22,41 +22,41 @@
  */
 
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp> // ResourceRegistry (public)
-#include <lux/engine/render/core/FrameRetireScheduler.hpp>                 // FrameRetireScheduler::OwnerToken (public)
+#include <lux/engine/render/core/FrameRetireScheduler.hpp>      // FrameRetireScheduler::OwnerToken (public)
 #include <lux/engine/render/core/GraphInvalidation.hpp>
 #include <lux/engine/function/visibility.h>
 
 namespace lux::render
 {
-    class RenderScene;            // held subject (forwarded to; defined in an internal header)
-    class SceneDescriptorArena;   // returned by-reference; defined in an internal header
-    class TransferScheduler;      // returned by-reference; defined in an internal header
+    class RenderScene;          // held subject (forwarded to; defined in an internal header)
+    class SceneDescriptorArena; // returned by-reference; defined in an internal header
+    class TransferScheduler;    // returned by-reference; defined in an internal header
 
     class LUX_FUNCTION_PUBLIC RenderSceneView
     {
     public:
         /// Wrap a subject. The facade is a non-owning view; @p scene must outlive
         /// it (it always does — the scene outlives every feature it serves).
-        explicit RenderSceneView(RenderScene& scene) noexcept : scene_(&scene) {}
+        explicit RenderSceneView(RenderScene& scene) noexcept : scene_(&scene)
+        {
+        }
 
         // ── Per-scene resource registry (find<T> instantiates on caller's T) ──
-        [[nodiscard]] ResourceRegistry&       sceneRegistry() noexcept;
+        [[nodiscard]] ResourceRegistry& sceneRegistry() noexcept;
         [[nodiscard]] const ResourceRegistry& sceneRegistry() const noexcept;
 
         // ── Per-scene descriptor-pool chain + transfer scheduler ────────
         [[nodiscard]] SceneDescriptorArena& descriptorArena() noexcept;
-        [[nodiscard]] TransferScheduler&    transferScheduler() noexcept;
+        [[nodiscard]] TransferScheduler& transferScheduler() noexcept;
 
         // ── Frame-retire owner token (this scene's GPU-resource owner id) ──
         [[nodiscard]] FrameRetireScheduler::OwnerToken retireOwnerToken() const noexcept;
 
         // ── Mark the scene's render graph for recompilation ─────────────
-        void invalidateGraph(
-            EGraphInvalidationReason reason =
-                EGraphInvalidationReason::UNKNOWN) noexcept;
+        void invalidateGraph(EGraphInvalidationReason reason = EGraphInvalidationReason::UNKNOWN) noexcept;
 
     private:
-        RenderScene* scene_;   // the subject this facade forwards to (never null)
+        RenderScene* scene_; // the subject this facade forwards to (never null)
     };
 
 } // namespace lux::render

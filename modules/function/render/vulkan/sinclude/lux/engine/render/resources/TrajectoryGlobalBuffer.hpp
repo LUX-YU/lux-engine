@@ -28,38 +28,54 @@ namespace lux::render
 {
     class TransferScheduler;
 
-class LUX_FUNCTION_PUBLIC TrajectoryGlobalBuffer final
-    : public SlotArenaBuffer<GpuTrajectoryVertex>
-{
-    using Base = SlotArenaBuffer<GpuTrajectoryVertex>;
+    class LUX_FUNCTION_PUBLIC TrajectoryGlobalBuffer final : public SlotArenaBuffer<GpuTrajectoryVertex>
+    {
+        using Base = SlotArenaBuffer<GpuTrajectoryVertex>;
 
-public:
-    static constexpr uint32_t kInvalidTrajectoryId = Base::kInvalidId;
+    public:
+        static constexpr uint32_t kInvalidTrajectoryId = Base::kInvalidId;
 
-    /// @param max_vertices 缓冲的总顶点容量。
-    bool init(VmaAllocator allocator, uint32_t max_vertices) { return Base::init(allocator, max_vertices); }
+        /// @param max_vertices 缓冲的总顶点容量。
+        bool init(VmaAllocator allocator, uint32_t max_vertices)
+        {
+            return Base::init(allocator, max_vertices);
+        }
 
-    /// 确保 @p trajectory_id 至少有 @p capacity 个顶点的槽位。
-    ///
-    /// 与点云侧的同名方法**语义不同**:这里扩容会把已有顶点搬到新区间并保留
-    /// vertex_count(轨迹是不断 append 的),点云那边扩容即丢弃。差异正是它没能
-    /// 进基类的原因。
-    bool ensureSlotCapacity(uint32_t trajectory_id, uint32_t capacity, TransferScheduler& scheduler);
+        /// 确保 @p trajectory_id 至少有 @p capacity 个顶点的槽位。
+        ///
+        /// 与点云侧的同名方法**语义不同**:这里扩容会把已有顶点搬到新区间并保留
+        /// vertex_count(轨迹是不断 append 的),点云那边扩容即丢弃。差异正是它没能
+        /// 进基类的原因。
+        bool ensureSlotCapacity(uint32_t trajectory_id, uint32_t capacity, TransferScheduler& scheduler);
 
-    /// 往槽位尾部追加,返回实际写入数(容量不足时截断,满则返回 0)。
-    uint32_t append(uint32_t trajectory_id, std::span<const GpuTrajectoryVertex> data,
-                    TransferScheduler& scheduler);
+        /// 往槽位尾部追加,返回实际写入数(容量不足时截断,满则返回 0)。
+        uint32_t
+        append(uint32_t trajectory_id, std::span<const GpuTrajectoryVertex> data, TransferScheduler& scheduler);
 
-    // ── 领域命名转发 ────────────────────────────────────────────────────
-    void clearTrajectory(uint32_t trajectory_id) noexcept { resetSlot(trajectory_id); }
-    void setVertexCount(uint32_t trajectory_id, uint32_t count) noexcept { setCount(trajectory_id, count); }
+        // ── 领域命名转发 ────────────────────────────────────────────────────
+        void clearTrajectory(uint32_t trajectory_id) noexcept
+        {
+            resetSlot(trajectory_id);
+        }
+        void setVertexCount(uint32_t trajectory_id, uint32_t count) noexcept
+        {
+            setCount(trajectory_id, count);
+        }
 
-    [[nodiscard]] uint32_t maxVertices() const noexcept { return maxElements(); }
-    [[nodiscard]] uint32_t usedVertices() const noexcept { return usedElements(); }
+        [[nodiscard]] uint32_t maxVertices() const noexcept
+        {
+            return maxElements();
+        }
+        [[nodiscard]] uint32_t usedVertices() const noexcept
+        {
+            return usedElements();
+        }
 
-    /// 遍历全部活跃轨迹。回调:void fn(uint32_t trajectory_id, const Slot&)
-    template <typename Fn>
-    void forEachTrajectory(Fn&& fn) const { forEachSlot(std::forward<Fn>(fn)); }
-};
+        /// 遍历全部活跃轨迹。回调:void fn(uint32_t trajectory_id, const Slot&)
+        template <typename Fn> void forEachTrajectory(Fn&& fn) const
+        {
+            forEachSlot(std::forward<Fn>(fn));
+        }
+    };
 
 } // namespace lux::render

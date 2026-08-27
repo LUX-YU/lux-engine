@@ -26,7 +26,8 @@ namespace lux::render
             const RGPassDescription& pass,
             std::uint32_t pass_index,
             RenderPassKey& out_key,
-            RenderError& out_error)
+            RenderError& out_error
+        )
         {
             RenderPassKey key{};
             uint32_t samples = 1;
@@ -34,9 +35,8 @@ namespace lux::render
 
             for (const auto& tex_ref : pass.textures)
             {
-                const bool is_attachment =
-                    tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT
-                    || tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT;
+                const bool is_attachment = tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT ||
+                                           tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT;
                 if (!is_attachment)
                     continue;
 
@@ -45,8 +45,7 @@ namespace lux::render
                 const auto* tex_desc = find_texture_desc(graph, tex_ref.resource);
                 if (!tex_desc)
                 {
-                    out_error = renderError<err::graph::AttachmentFormatUnknown>(
-                        pass_index, tex_ref.resource.index);
+                    out_error = renderError<err::graph::AttachmentFormatUnknown>(pass_index, tex_ref.resource.index);
                     return false;
                 }
 
@@ -56,25 +55,23 @@ namespace lux::render
 
                 switch (tex_ref.role)
                 {
-                case lux::render::ETextureRole::COLOR_ATTACHMENT:
-                {
+                case lux::render::ETextureRole::COLOR_ATTACHMENT: {
                     VkFormat fmt = convertTextureFormat(tex_desc->format);
                     if (fmt == VK_FORMAT_UNDEFINED)
                     {
-                        out_error = renderError<err::graph::AttachmentFormatUnknown>(
-                            pass_index, tex_ref.resource.index);
+                        out_error =
+                            renderError<err::graph::AttachmentFormatUnknown>(pass_index, tex_ref.resource.index);
                         return false;
                     }
                     key.push_color_format(fmt);
                     break;
                 }
-                case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
-                {
+                case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT: {
                     VkFormat fmt = convertTextureFormat(tex_desc->format);
                     if (fmt == VK_FORMAT_UNDEFINED)
                     {
-                        out_error = renderError<err::graph::AttachmentFormatUnknown>(
-                            pass_index, tex_ref.resource.index);
+                        out_error =
+                            renderError<err::graph::AttachmentFormatUnknown>(pass_index, tex_ref.resource.index);
                         return false;
                     }
                     // For simplicity, only take the first depth/stencil
@@ -101,8 +98,7 @@ namespace lux::render
         }
 
         // Check whether two keys can share a single physical render pass
-        bool is_render_pass_key_compatible(const RenderPassKey& a,
-                                           const RenderPassKey& b)
+        bool is_render_pass_key_compatible(const RenderPassKey& a, const RenderPassKey& b)
         {
             if (a.samples != b.samples)
                 return false;
@@ -126,8 +122,8 @@ namespace lux::render
         // for colors — it defines the fragment output location order).
         struct PassAttachmentRefs
         {
-            std::vector<uint32_t> colors;              ///< COLOR_ATTACHMENT resource indices
-            uint32_t              depth = std::numeric_limits<uint32_t>::max();
+            std::vector<uint32_t> colors; ///< COLOR_ATTACHMENT resource indices
+            uint32_t depth = std::numeric_limits<uint32_t>::max();
             /// INPUT_ATTACHMENT-role reads: (resource index, declared input index)
             std::vector<std::pair<uint32_t, uint32_t>> inputs;
         };
@@ -164,12 +160,14 @@ namespace lux::render
         // group key becomes the union and per-pass remaps are recorded; the
         // caller must not finalize the group. Inert until a feature declares
         // inputRead() (no caller does today).
-        bool try_local_read_merge(const RGGraphDescription& graph,
-                                  RGRenderPassGroup& group,
-                                  uint32_t pass_idx,
-                                  const RGPassDescription& pass,
-                                  const RenderPassKey& pass_key,
-                                  uint32_t color_budget)
+        bool try_local_read_merge(
+            const RGGraphDescription& graph,
+            RGRenderPassGroup& group,
+            uint32_t pass_idx,
+            const RGPassDescription& pass,
+            const RenderPassKey& pass_key,
+            uint32_t color_budget
+        )
         {
             const PassAttachmentRefs refs = collect_pass_refs(pass);
             if (refs.inputs.empty())
@@ -179,8 +177,7 @@ namespace lux::render
 
             // Seed the union from the group's FIRST pass (the same refs the
             // emit path uses for plain groups), once.
-            if (group.union_color_res.empty()
-                && group.union_depth_res == std::numeric_limits<uint32_t>::max())
+            if (group.union_color_res.empty() && group.union_depth_res == std::numeric_limits<uint32_t>::max())
             {
                 const auto& first_pass = graph.passes[group.passes.front().pass_index];
                 const PassAttachmentRefs first_refs = collect_pass_refs(first_pass);
@@ -199,8 +196,7 @@ namespace lux::render
             for (const auto& [res_idx, input_idx] : refs.inputs)
             {
                 (void)input_idx;
-                const bool is_scope_color =
-                    union_color_slot_of(res_idx) != std::numeric_limits<uint32_t>::max();
+                const bool is_scope_color = union_color_slot_of(res_idx) != std::numeric_limits<uint32_t>::max();
                 const bool is_scope_depth = res_idx == group.union_depth_res;
                 if (!is_scope_color && !is_scope_depth)
                     return false;
@@ -208,8 +204,7 @@ namespace lux::render
 
             // Depth: the consumer either declares no depth attachment or the
             // scope's own depth.
-            if (refs.depth != std::numeric_limits<uint32_t>::max()
-                && refs.depth != group.union_depth_res)
+            if (refs.depth != std::numeric_limits<uint32_t>::max() && refs.depth != group.union_depth_res)
                 return false;
 
             // Append the consumer's own color outputs (dedupe by resource).
@@ -221,8 +216,7 @@ namespace lux::render
                 // Refusing the merge is the correct fallback: the passes stay
                 // separate, which is always legal. Merging past the DEVICE's
                 // limit would not be.
-                if (group.union_color_res.size() + appended.size()
-                    >= color_budget)
+                if (group.union_color_res.size() + appended.size() >= color_budget)
                     return false;
                 appended.push_back(res_idx);
             }
@@ -238,14 +232,12 @@ namespace lux::render
             // Per-pass remaps. Producers already in the group get identity
             // over the union prefix they wrote (their own declaration order),
             // UNUSED elsewhere.
-            const uint32_t scope_colors =
-                static_cast<uint32_t>(group.union_color_res.size());
+            const uint32_t scope_colors = static_cast<uint32_t>(group.union_color_res.size());
             for (auto& p : group.passes)
             {
                 if (!p.color_locations.empty())
-                    continue;   // already remapped by an earlier merge
-                const PassAttachmentRefs prefs =
-                    collect_pass_refs(graph.passes[p.pass_index]);
+                    continue; // already remapped by an earlier merge
+                const PassAttachmentRefs prefs = collect_pass_refs(graph.passes[p.pass_index]);
                 p.color_locations.assign(scope_colors, VK_ATTACHMENT_UNUSED);
                 for (uint32_t loc = 0; loc < prefs.colors.size(); ++loc)
                 {
@@ -258,7 +250,7 @@ namespace lux::render
 
             // The consumer pass itself.
             RGPassInRenderPass entry{};
-            entry.pass_index    = pass_idx;
+            entry.pass_index = pass_idx;
             entry.subpass_index = static_cast<uint32_t>(group.passes.size());
             entry.color_locations.assign(scope_colors, VK_ATTACHMENT_UNUSED);
             for (uint32_t loc = 0; loc < refs.colors.size(); ++loc)
@@ -284,30 +276,30 @@ namespace lux::render
 
     } // anonymous namespace
 
-    RGRenderPassLayoutInfo RenderPassPlanner::plan(const RGGraphDescription& graph,
-                                                   const RGDependencyInfo&   dep,
-                                                   uint32_t                  max_color_attachments)
+    RGRenderPassLayoutInfo RenderPassPlanner::plan(
+        const RGGraphDescription& graph,
+        const RGDependencyInfo& dep,
+        uint32_t max_color_attachments
+    )
     {
         // Two independent ceilings, and the SMALLER wins:
         //   - the key struct's array capacity (compile-time, costs memory);
         //   - the device's maxColorAttachments (runtime, costs correctness).
         // A caller that does not know the device passes 0 and gets the capacity
         // — the old behaviour, preserved for scene-less test graphs.
-        const uint32_t color_budget =
-            max_color_attachments == 0
-                ? RenderPassKey::kMaxColorAttachments
-                : std::min(max_color_attachments, RenderPassKey::kMaxColorAttachments);
+        const uint32_t color_budget = max_color_attachments == 0
+                                          ? RenderPassKey::kMaxColorAttachments
+                                          : std::min(max_color_attachments, RenderPassKey::kMaxColorAttachments);
 
         RGRenderPassLayoutInfo info{};
 
-        const uint32_t pass_count =
-            static_cast<uint32_t>(graph.passes.size());
+        const uint32_t pass_count = static_cast<uint32_t>(graph.passes.size());
 
         info.pass_to_group.assign(pass_count, std::numeric_limits<uint32_t>::max());
         info.pass_to_subpass.assign(pass_count, 0u);
 
         // Pre-compute keys for all graphics passes
-        std::vector<bool>        is_graphics(pass_count, false);
+        std::vector<bool> is_graphics(pass_count, false);
         std::vector<RenderPassKey> per_pass_key(pass_count);
 
         for (uint32_t pass_idx = 0; pass_idx < pass_count; ++pass_idx)
@@ -316,7 +308,7 @@ namespace lux::render
             if (pass.type != ERGPassType::GRAPHICS)
                 continue;
 
-            is_graphics[pass_idx]   = true;
+            is_graphics[pass_idx] = true;
             if (!build_render_pass_key(graph, pass, pass_idx, per_pass_key[pass_idx], info.error))
             {
                 info.valid = false;
@@ -346,7 +338,7 @@ namespace lux::render
 
                     for (const auto& p : current_group.passes)
                     {
-                        info.pass_to_group[p.pass_index]   = group_index;
+                        info.pass_to_group[p.pass_index] = group_index;
                         info.pass_to_subpass[p.pass_index] = p.subpass_index;
                     }
 
@@ -362,12 +354,12 @@ namespace lux::render
                 // Start a new group (full reset: a previous local-read merge
                 // leaves union/local_read state behind otherwise)
                 current_group = RGRenderPassGroup{};
-                current_group.key    = key;
+                current_group.key = key;
                 current_group.key.subpass_count = 1;
                 current_group.passes.push_back(RGPassInRenderPass{
                     pass_idx,
-                    /*subpass_index*/ 0u
-                });
+                    /*subpass_index*/ 0u}
+                );
 
                 has_current_group = true;
             }
@@ -377,14 +369,17 @@ namespace lux::render
                 if (is_render_pass_key_compatible(current_group.key, key))
                 {
                     uint32_t subpass_idx = static_cast<uint32_t>(current_group.passes.size());
-                    current_group.passes.push_back(RGPassInRenderPass{
-                        pass_idx,
-                        subpass_idx
-                    });
+                    current_group.passes.push_back(RGPassInRenderPass{pass_idx, subpass_idx});
                     current_group.key.subpass_count++;
                 }
-                else if (try_local_read_merge(graph, current_group, pass_idx,
-                                              graph.passes[pass_idx], key, color_budget))
+                else if (try_local_read_merge(
+                             graph,
+                             current_group,
+                             pass_idx,
+                             graph.passes[pass_idx],
+                             key,
+                             color_budget)
+                )
                 {
                     // Absorbed as a local-read consumer: the group
                     // key is now the attachment UNION and stays open — a
@@ -399,18 +394,18 @@ namespace lux::render
                     // Fill mapping: pass -> group/subpass
                     for (const auto& p : current_group.passes)
                     {
-                        info.pass_to_group[p.pass_index]   = group_index;
+                        info.pass_to_group[p.pass_index] = group_index;
                         info.pass_to_subpass[p.pass_index] = p.subpass_index;
                     }
 
                     // Start a new group (full reset — see above)
                     current_group = RGRenderPassGroup{};
-                    current_group.key    = key;
+                    current_group.key = key;
                     current_group.key.subpass_count = 1;
                     current_group.passes.push_back(RGPassInRenderPass{
                         pass_idx,
-                        /*subpass_index*/ 0u
-                    });
+                        /*subpass_index*/ 0u}
+                    );
                 }
             }
         }
@@ -418,13 +413,12 @@ namespace lux::render
         // Finalize the last group
         if (has_current_group)
         {
-            const uint32_t group_index =
-                static_cast<uint32_t>(info.groups.size());
+            const uint32_t group_index = static_cast<uint32_t>(info.groups.size());
             info.groups.push_back(current_group);
 
             for (const auto& p : current_group.passes)
             {
-                info.pass_to_group[p.pass_index]   = group_index;
+                info.pass_to_group[p.pass_index] = group_index;
                 info.pass_to_subpass[p.pass_index] = p.subpass_index;
             }
         }
@@ -442,8 +436,7 @@ namespace lux::render
             if (refs.inputs.empty())
                 continue;
             const uint32_t gi = info.pass_to_group[pass_idx];
-            if (gi == std::numeric_limits<uint32_t>::max()
-                || !info.groups[gi].local_read)
+            if (gi == std::numeric_limits<uint32_t>::max() || !info.groups[gi].local_read)
             {
                 info.valid = false;
                 // 声明了 input-attachment 读,却没被并进生产者的 rendering scope

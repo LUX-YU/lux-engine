@@ -1,6 +1,7 @@
 #include <lux/engine/input/Input.hpp>
 
-int main()
+int
+main()
 {
     lux::input::Input input;
     input.evaluate(lux::input::InputSnapshot{}, 1.0f / 60.0f);

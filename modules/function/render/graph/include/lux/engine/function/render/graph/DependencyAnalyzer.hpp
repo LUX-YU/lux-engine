@@ -8,8 +8,6 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC DependencyAnalyzer final
     {
     public:
-        [[nodiscard]] static RGDependencyInfo analyze(
-            RGLogicalGraphView graph
-        );
+        [[nodiscard]] static RGDependencyInfo analyze(RGLogicalGraphView graph);
     };
 } // namespace lux::render

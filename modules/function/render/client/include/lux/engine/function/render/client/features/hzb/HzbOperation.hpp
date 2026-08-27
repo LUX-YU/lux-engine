@@ -12,10 +12,11 @@ namespace lux::render
 {
     /// Factory identity for HzbFeature (P2 HZB Stage A).
     struct LUX_COMM_CONFIG(
-        prefix=Hzb, id=lux.render.hzb.v1, display=Hzb,
-        feature=HzbFeature,
-        feature_header=lux/engine/render/renderer/features/hzb/HzbFeature.hpp)
-    HzbCommTag
+        prefix = Hzb,
+        id = lux.render.hzb.v1,
+        display = Hzb,
+        feature = HzbFeature,
+        feature_header = lux / engine / render / renderer / features / hzb / HzbFeature.hpp) HzbCommTag
     {
     };
     static_assert(std::is_trivially_copyable_v<HzbCommTag>);

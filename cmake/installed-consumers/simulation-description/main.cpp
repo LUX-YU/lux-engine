@@ -2,7 +2,8 @@
 
 #include <utility>
 
-int main()
+int
+main()
 {
     lux::simulation::SimulationDescriptionBuilder builder;
     auto description = std::move(builder).build();

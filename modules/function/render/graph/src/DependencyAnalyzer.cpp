@@ -18,7 +18,7 @@ namespace lux::render
         // Pre-built index entry: which pass uses a resource and how.
         struct ResourcePassEntry
         {
-            uint32_t          pass_idx;
+            uint32_t pass_idx;
             PassResourceUsage usage;
         };
 
@@ -27,8 +27,12 @@ namespace lux::render
         {
             switch (u)
             {
-            case ERGResourceUsage::READ:      out.any_read  = true; break;
-            case ERGResourceUsage::WRITE:     out.any_write = true; break;
+            case ERGResourceUsage::READ:
+                out.any_read = true;
+                break;
+            case ERGResourceUsage::WRITE:
+                out.any_write = true;
+                break;
             case ERGResourceUsage::READ_WRITE:
                 out.any_read = true;
                 out.any_write = true;
@@ -43,8 +47,9 @@ namespace lux::render
         // 顺序位置取真正的末写者(第二次 Kahn 用 iteration_order)。
         std::vector<std::vector<uint32_t>> buildGlueConsumers(
             const RGLogicalGraphView& graph,
-            uint32_t                  resource_count,
-            const std::vector<uint32_t>* order_pos)
+            uint32_t resource_count,
+            const std::vector<uint32_t>* order_pos
+        )
         {
             const uint32_t pass_count = static_cast<uint32_t>(graph.passes.size());
             std::vector<std::vector<uint32_t>> glue(pass_count);
@@ -55,15 +60,13 @@ namespace lux::render
                 {
                     if (ref.resource.index >= resource_count)
                         continue;
-                    if (ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT
-                        && ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                    if (ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT &&
+                        ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                         continue;
                     auto [it, inserted] = attachment_writer.try_emplace(ref.resource.index, i);
                     if (!inserted)
                     {
-                        const bool later = order_pos
-                            ? (*order_pos)[i] > (*order_pos)[it->second]
-                            : i > it->second;
+                        const bool later = order_pos ? (*order_pos)[i] > (*order_pos)[it->second] : i > it->second;
                         if (later)
                             it->second = i;
                     }
@@ -89,7 +92,7 @@ namespace lux::render
     {
         RGDependencyInfo info{};
 
-        const uint32_t pass_count     = static_cast<uint32_t>(graph.passes.size());
+        const uint32_t pass_count = static_cast<uint32_t>(graph.passes.size());
         const uint32_t resource_count = graph.resource_count;
 
         if (pass_count == 0)
@@ -159,7 +162,7 @@ namespace lux::render
                     auto it = name_map.find(dep_name);
                     if (it != name_map.end())
                     {
-                        after_adj[it->second].push_back(i);  // dep → i
+                        after_adj[it->second].push_back(i); // dep → i
                         ++after_indeg[i];
                     }
                 }
@@ -169,7 +172,7 @@ namespace lux::render
                     auto it = name_map.find(dep_name);
                     if (it != name_map.end())
                     {
-                        after_adj[i].push_back(it->second);  // i → target
+                        after_adj[i].push_back(it->second); // i → target
                         ++after_indeg[it->second];
                     }
                 }
@@ -180,16 +183,14 @@ namespace lux::render
             // NOT set a stage keep pure declaration-order tie-break (unchanged
             // behaviour); annotated passes (e.g. Skybox=Sky, Grid=Overlay) get a
             // deterministic painter order independent of feature REGISTRATION order.
-            using Key   = std::pair<uint16_t, uint32_t>;  // (stage, original_index)
-            using Entry = std::pair<Key, uint32_t>;       // (key, pass_index)
+            using Key = std::pair<uint16_t, uint32_t>; // (stage, original_index)
+            using Entry = std::pair<Key, uint32_t>;    // (key, pass_index)
             std::priority_queue<Entry, std::vector<Entry>, std::greater<>> pq;
-            auto stage_key = [&](uint32_t i) -> Key {
-                return { static_cast<uint16_t>(graph.passes[i].stage), i };
-            };
+            auto stage_key = [&](uint32_t i) -> Key { return {static_cast<uint16_t>(graph.passes[i].stage), i}; };
             for (uint32_t i = 0; i < pass_count; ++i)
             {
                 if (after_indeg[i] == 0)
-                    pq.push({ stage_key(i), i });
+                    pq.push({stage_key(i), i});
             }
 
             // ── Local-read gluing ──────────────────────────────
@@ -200,8 +201,7 @@ namespace lux::render
             // producer is emitted, its ready consumers jump the tie-break.
             // 声明序末写者近似(此时尚无执行序);最终序的第二次 Kahn 用
             // 执行序末写者重建同表(F9)。
-            const auto glue_consumers =
-                buildGlueConsumers(graph, resource_count, nullptr);
+            const auto glue_consumers = buildGlueConsumers(graph, resource_count, nullptr);
 
             std::vector<bool> emitted(pass_count, false);
             std::vector<uint32_t> glue_stack;
@@ -211,7 +211,7 @@ namespace lux::render
                 const uint32_t u = pq.top().second;
                 pq.pop();
                 if (emitted[u])
-                    continue;   // already pulled ahead by the glue rule
+                    continue; // already pulled ahead by the glue rule
                 // Emit u, then depth-first its READY glue consumers —— 栈式
                 // 递归覆盖三级 inputRead 链(A→B→C 时 C 随 B 一起跳队)。
                 glue_stack.push_back(u);
@@ -226,7 +226,7 @@ namespace lux::render
                     for (uint32_t v : after_adj[p])
                     {
                         if (--after_indeg[v] == 0)
-                            pq.push({ stage_key(v), v });
+                            pq.push({stage_key(v), v});
                     }
                     // 反向压栈保持多消费者的声明序。
                     const auto& gc = glue_consumers[p];
@@ -240,9 +240,11 @@ namespace lux::render
             if (iteration_order.size() < pass_count)
             {
                 std::vector<bool> visited(pass_count, false);
-                for (uint32_t idx : iteration_order) visited[idx] = true;
+                for (uint32_t idx : iteration_order)
+                    visited[idx] = true;
                 for (uint32_t i = 0; i < pass_count; ++i)
-                    if (!visited[i]) iteration_order.push_back(i);
+                    if (!visited[i])
+                        iteration_order.push_back(i);
             }
         }
 
@@ -256,9 +258,10 @@ namespace lux::render
         // WAW chains are built in the correct sequence.
         for (auto& entries : res_to_passes)
         {
-            std::sort(entries.begin(), entries.end(),
-                      [&](const ResourcePassEntry& a, const ResourcePassEntry& b)
-                      { return pass_to_order_pos[a.pass_idx] < pass_to_order_pos[b.pass_idx]; });
+            std::sort(entries.begin(), entries.end(), [&](const ResourcePassEntry& a, const ResourcePassEntry& b) {
+                return pass_to_order_pos[a.pass_idx] < pass_to_order_pos[b.pass_idx];
+            }
+            );
         }
 
         // 1b) Build WAW/RAW edges using the pre-built resource→pass index
@@ -355,8 +358,7 @@ namespace lux::render
         // input-attachment 消费者之间,把合并作用域劈开(planner 兜底成
         // compile error,报错还指向错误方向)。此处末写者按 iteration_order
         // 位置判定(声明序在多写者时会指错 producer)。
-        const auto final_glue =
-            buildGlueConsumers(graph, resource_count, &pass_to_order_pos);
+        const auto final_glue = buildGlueConsumers(graph, resource_count, &pass_to_order_pos);
 
         info.pass_topological_order.reserve(pass_count);
 
@@ -367,7 +369,7 @@ namespace lux::render
             const uint32_t u = q.top();
             q.pop();
             if (emitted_final[u])
-                continue;   // already pulled ahead by the glue rule
+                continue; // already pulled ahead by the glue rule
             final_glue_stack.push_back(u);
             while (!final_glue_stack.empty())
             {
@@ -409,9 +411,9 @@ namespace lux::render
                 continue;
 
             RGTransientLifetime life{};
-            life.resource   = RGResourceHandle{ res_idx };
+            life.resource = RGResourceHandle{res_idx};
             life.first_pass = std::numeric_limits<uint32_t>::max();
-            life.last_pass  = 0;
+            life.last_pass = 0;
 
             for (const auto& entry : entries)
             {

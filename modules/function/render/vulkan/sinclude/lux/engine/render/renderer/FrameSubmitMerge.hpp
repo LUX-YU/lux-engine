@@ -32,7 +32,7 @@ namespace lux::render
     /// A submission is identified by its (queue, command buffer) pair.
     struct SubmitMergeKey
     {
-        ERGQueueType    queue_type{ERGQueueType::GRAPHICS};
+        ERGQueueType queue_type{ERGQueueType::GRAPHICS};
         VkCommandBuffer cmd{VK_NULL_HANDLE};
 
         bool operator==(const SubmitMergeKey& rhs) const noexcept
@@ -46,7 +46,7 @@ namespace lux::render
         size_t operator()(const SubmitMergeKey& key) const noexcept
         {
             const size_t h_queue = std::hash<uint32_t>{}(static_cast<uint32_t>(key.queue_type));
-            const size_t h_cmd   = std::hash<VkCommandBuffer>{}(key.cmd);
+            const size_t h_cmd = std::hash<VkCommandBuffer>{}(key.cmd);
             return h_queue ^ (h_cmd + 0x9e3779b9u + (h_queue << 6u) + (h_queue >> 2u));
         }
     };
@@ -60,8 +60,7 @@ namespace lux::render
         /// Merge @p inputs. Null / non-multi-queue infos and null command buffers
         /// are skipped. Returns a reference to internal storage that stays valid
         /// until the next merge() call on this instance.
-        const std::vector<RGQueueSubmission>&
-        merge(const std::vector<const RGMultiQueueSubmitInfo*>& inputs)
+        const std::vector<RGQueueSubmission>& merge(const std::vector<const RGMultiQueueSubmitInfo*>& inputs)
         {
             merged_.clear();
             index_.clear();
@@ -88,11 +87,13 @@ namespace lux::render
                         merged.wait_semaphores.insert(
                             merged.wait_semaphores.end(),
                             sub.wait_semaphores.begin(),
-                            sub.wait_semaphores.end());
+                            sub.wait_semaphores.end()
+                        );
                         merged.signal_semaphores.insert(
                             merged.signal_semaphores.end(),
                             sub.signal_semaphores.begin(),
-                            sub.signal_semaphores.end());
+                            sub.signal_semaphores.end()
+                        );
                     }
                 }
             }
@@ -100,7 +101,7 @@ namespace lux::render
         }
 
     private:
-        std::vector<RGQueueSubmission>                                   merged_;
+        std::vector<RGQueueSubmission> merged_;
         std::unordered_map<SubmitMergeKey, size_t, SubmitMergeKeyHasher> index_;
     };
 

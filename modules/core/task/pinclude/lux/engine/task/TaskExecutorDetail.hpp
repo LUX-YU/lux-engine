@@ -22,38 +22,22 @@ namespace lux::task::detail
             head.store(InvalidTaskIndex, std::memory_order_relaxed);
         }
 
-        void push(
-            std::uint32_t task,
-            std::uint32_t* next_ready
-        ) noexcept
+        void push(std::uint32_t task, std::uint32_t* next_ready) noexcept
         {
             std::uint32_t observed = head.load(std::memory_order_relaxed);
             do
             {
                 next_ready[task] = observed;
-            }
-            while (!head.compare_exchange_weak(
-                observed,
-                task,
-                std::memory_order_release,
-                std::memory_order_relaxed
-            ));
+            } while (!head.compare_exchange_weak(observed, task, std::memory_order_release, std::memory_order_relaxed));
         }
 
-        [[nodiscard]] std::uint32_t pop(
-            const std::uint32_t* next_ready
-        ) noexcept
+        [[nodiscard]] std::uint32_t pop(const std::uint32_t* next_ready) noexcept
         {
             std::uint32_t observed = head.load(std::memory_order_acquire);
             while (observed != InvalidTaskIndex)
             {
                 const std::uint32_t next = next_ready[observed];
-                if (head.compare_exchange_weak(
-                    observed,
-                    next,
-                    std::memory_order_acq_rel,
-                    std::memory_order_acquire
-                ))
+                if (head.compare_exchange_weak(observed, next, std::memory_order_acq_rel, std::memory_order_acquire))
                 {
                     return observed;
                 }
@@ -72,27 +56,15 @@ namespace lux::task::detail
 
         void reserveOrThrow(std::size_t task_capacity);
 
-        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure>
-        reserve(std::size_t task_capacity) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure> reserve(std::size_t task_capacity) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure>
-        execute(const TaskGraph& graph) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure> execute(const TaskGraph& graph) noexcept;
 
         void workerLoop(std::uint32_t worker) noexcept;
-        void executeTask(
-            const TaskGraph& graph,
-            std::uint32_t task,
-            std::uint32_t worker
-        ) noexcept;
-        void schedule(
-            const TaskGraph& graph,
-            std::uint32_t task,
-            std::uint32_t worker_hint
-        ) noexcept;
+        void executeTask(const TaskGraph& graph, std::uint32_t task, std::uint32_t worker) noexcept;
+        void schedule(const TaskGraph& graph, std::uint32_t task, std::uint32_t worker_hint) noexcept;
 
-        [[nodiscard]] std::uint32_t popWorkerTask(
-            std::uint32_t preferred_worker
-        ) noexcept;
+        [[nodiscard]] std::uint32_t popWorkerTask(std::uint32_t preferred_worker) noexcept;
 
         void signalCaller() noexcept
         {

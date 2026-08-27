@@ -34,7 +34,7 @@ namespace lux::world
 
     class LUX_ENGINE_WORLD_PUBLIC WorldDescriptionBuilder final
     {
-      public:
+    public:
         WorldDescriptionBuilder();
         ~WorldDescriptionBuilder();
         WorldDescriptionBuilder(WorldDescriptionBuilder&&) noexcept;
@@ -43,14 +43,18 @@ namespace lux::world
         WorldDescriptionBuilder(const WorldDescriptionBuilder&) = delete;
         WorldDescriptionBuilder& operator=(const WorldDescriptionBuilder&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        addObject(WorldObjectId id) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addObject(WorldObjectId id) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        eraseObject(WorldObjectId id) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> eraseObject(WorldObjectId id) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        addData(
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addData(
+            WorldObjectId object,
+            WorldDataSchemaId schema,
+            std::uint32_t version,
+            std::span<const std::byte> payload
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> setData(
             WorldObjectId object,
             WorldDataSchemaId schema,
             std::uint32_t version,
@@ -58,26 +62,12 @@ namespace lux::world
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        setData(
-            WorldObjectId object,
-            WorldDataSchemaId schema,
-            std::uint32_t version,
-            std::span<const std::byte> payload
-        ) noexcept;
-
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        eraseData(
-            WorldObjectId object,
-            const WorldDataSchemaId& schema
-        ) noexcept;
+        eraseData(WorldObjectId object, const WorldDataSchemaId& schema) noexcept;
         void clear() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            WorldDescription,
-            WorldDescriptionFailure>
-        build() && noexcept;
+        [[nodiscard]] lux::cxx::expected<WorldDescription, WorldDescriptionFailure> build() && noexcept;
 
-      private:
+    private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

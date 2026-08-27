@@ -22,10 +22,18 @@ namespace lux::script
     public:
         CallFrame() = delete;
 
-        explicit CallFrame(lux_script_call_frame& raw) noexcept : raw_(raw) {}
+        explicit CallFrame(lux_script_call_frame& raw) noexcept : raw_(raw)
+        {
+        }
 
-        lux_script_call_frame&       raw()       noexcept { return raw_; }
-        const lux_script_call_frame& raw() const noexcept { return raw_; }
+        lux_script_call_frame& raw() noexcept
+        {
+            return raw_;
+        }
+        const lux_script_call_frame& raw() const noexcept
+        {
+            return raw_;
+        }
 
         std::uint32_t argCount() const noexcept
         {
@@ -47,8 +55,14 @@ namespace lux::script
             return make_view(raw_.returns[i]);
         }
 
-        void* worldContext() const noexcept { return raw_.world_context; }
-        void* userContext()  const noexcept { return raw_.user_context; }
+        void* worldContext() const noexcept
+        {
+            return raw_.world_context;
+        }
+        void* userContext() const noexcept
+        {
+            return raw_.user_context;
+        }
 
     private:
         lux_script_call_frame& raw_;

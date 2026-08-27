@@ -17,26 +17,22 @@ namespace lux::render
 
     // ── 瞬态语义:整帧替换本场景的全部覆盖三角(last-writer-wins),
     //    blob 解码后回执上传状态。──
-    void handleTriOverlayUpload(GeneralRenderServer::Dispatcher::Ctx& ctx,
-                                const UploadTriOverlayPayload& p)
+    void handleTriOverlayUpload(GeneralRenderServer::Dispatcher::Ctx& ctx, const UploadTriOverlayPayload& p)
     {
-        auto* sc  = lookupScene(ctx.user_state, p.scene_id);
+        auto* sc = lookupScene(ctx.user_state, p.scene_id);
         auto* buf = sc ? sc->sceneRegistry().find<TransientTriOverlayBuffer>() : nullptr;
-        if (!buf) {
-            replyToCurrent<UploadTriOverlayPayload>(ctx,
-                TriOverlayUploadedReply{p.chunk_id, 1u});
+        if (!buf)
+        {
+            replyToCurrent<UploadTriOverlayPayload>(ctx, TriOverlayUploadedReply{p.chunk_id, 1u});
             return;
         }
 
         auto blob = resolveBlob(ctx.program, p.vertex_data);
         assert(blob.size() == p.vertex_count * sizeof(GizmoVertex));
 
-        buf->replace(
-            reinterpret_cast<const GizmoVertex*>(blob.data()),
-            p.vertex_count);
+        buf->replace(reinterpret_cast<const GizmoVertex*>(blob.data()), p.vertex_count);
 
-        replyToCurrent<UploadTriOverlayPayload>(ctx,
-            TriOverlayUploadedReply{p.chunk_id, 0u});
+        replyToCurrent<UploadTriOverlayPayload>(ctx, TriOverlayUploadedReply{p.chunk_id, 0u});
     }
 
 } // namespace lux::render

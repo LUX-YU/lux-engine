@@ -26,15 +26,19 @@ namespace lux::gapi::vk
     // importer has duplicated it (CUDA dup's on import).
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-    using ExternalHandle = void*;   // Win32 NT HANDLE
+    using ExternalHandle = void*; // Win32 NT HANDLE
     inline constexpr ExternalHandle kInvalidExternalHandle = nullptr;
-    inline constexpr VkExternalMemoryHandleTypeFlagBits    kOpaqueExternalMemoryType    = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
-    inline constexpr VkExternalSemaphoreHandleTypeFlagBits kOpaqueExternalSemaphoreType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+    inline constexpr VkExternalMemoryHandleTypeFlagBits kOpaqueExternalMemoryType =
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+    inline constexpr VkExternalSemaphoreHandleTypeFlagBits kOpaqueExternalSemaphoreType =
+        VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 #else
-    using ExternalHandle = int;     // POSIX file descriptor
+    using ExternalHandle = int; // POSIX file descriptor
     inline constexpr ExternalHandle kInvalidExternalHandle = -1;
-    inline constexpr VkExternalMemoryHandleTypeFlagBits    kOpaqueExternalMemoryType    = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-    inline constexpr VkExternalSemaphoreHandleTypeFlagBits kOpaqueExternalSemaphoreType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+    inline constexpr VkExternalMemoryHandleTypeFlagBits kOpaqueExternalMemoryType =
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+    inline constexpr VkExternalSemaphoreHandleTypeFlagBits kOpaqueExternalSemaphoreType =
+        VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 #endif
 
     /// True when this build targets a platform with a concrete external-handle path

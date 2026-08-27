@@ -23,10 +23,7 @@ namespace lux::simulation
             return value != 0U;
         }
 
-        friend constexpr bool operator==(
-            const ScriptMountId&,
-            const ScriptMountId&
-        ) noexcept = default;
+        friend constexpr bool operator==(const ScriptMountId&, const ScriptMountId&) noexcept = default;
     };
 
     struct SystemHookBindingTarget final
@@ -35,10 +32,7 @@ namespace lux::simulation
         std::string system_instance;
         std::string hook;
 
-        friend bool operator==(
-            const SystemHookBindingTarget&,
-            const SystemHookBindingTarget&
-        ) noexcept = default;
+        friend bool operator==(const SystemHookBindingTarget&, const SystemHookBindingTarget&) noexcept = default;
     };
 
     struct SystemEventBindingTarget final
@@ -47,10 +41,7 @@ namespace lux::simulation
         std::string system_instance;
         std::string event;
 
-        friend bool operator==(
-            const SystemEventBindingTarget&,
-            const SystemEventBindingTarget&
-        ) noexcept = default;
+        friend bool operator==(const SystemEventBindingTarget&, const SystemEventBindingTarget&) noexcept = default;
     };
 
     enum class EBehaviorLifecyclePoint : std::uint8_t
@@ -68,34 +59,25 @@ namespace lux::simulation
         INITIALIZATION_FAILED,
     };
 
-    inline constexpr std::string_view BehaviorStopReasonCanonicalName{
-        "lux.simulation.BehaviorStopReason"};
+    inline constexpr std::string_view BehaviorStopReasonCanonicalName{"lux.simulation.BehaviorStopReason"};
 
     struct BehaviorLifecycleBindingTarget final
     {
         EBehaviorLifecyclePoint point{EBehaviorLifecyclePoint::CONSTRUCT};
 
-        friend bool operator==(
-            const BehaviorLifecycleBindingTarget&,
-            const BehaviorLifecycleBindingTarget&
-        ) noexcept = default;
+        friend bool
+        operator==(const BehaviorLifecycleBindingTarget&, const BehaviorLifecycleBindingTarget&) noexcept = default;
     };
 
-    using ScriptBindingTarget = std::variant<
-        SystemHookBindingTarget,
-        SystemEventBindingTarget,
-        BehaviorLifecycleBindingTarget>;
+    using ScriptBindingTarget =
+        std::variant<SystemHookBindingTarget, SystemEventBindingTarget, BehaviorLifecycleBindingTarget>;
 
     struct ScriptBindingDescription final
     {
-        lux::script::ScriptSymbolId function{
-            lux::script::InvalidScriptSymbolId};
+        lux::script::ScriptSymbolId function{lux::script::InvalidScriptSymbolId};
         ScriptBindingTarget target;
 
-        friend bool operator==(
-            const ScriptBindingDescription&,
-            const ScriptBindingDescription&
-        ) noexcept = default;
+        friend bool operator==(const ScriptBindingDescription&, const ScriptBindingDescription&) noexcept = default;
     };
 
     struct ScriptMountDescription final
@@ -104,39 +86,30 @@ namespace lux::simulation
         lux::asset::AssetId script;
         std::vector<ScriptBindingDescription> bindings;
 
-        friend bool operator==(
-            const ScriptMountDescription&,
-            const ScriptMountDescription&
-        ) noexcept = default;
+        friend bool operator==(const ScriptMountDescription&, const ScriptMountDescription&) noexcept = default;
     };
 
-    [[nodiscard]] inline bool validScriptBindingDescription(
-        const ScriptBindingDescription& binding
-    ) noexcept
+    [[nodiscard]] inline bool validScriptBindingDescription(const ScriptBindingDescription& binding) noexcept
     {
         if (binding.function == lux::script::InvalidScriptSymbolId)
             return false;
         return std::visit(
-            [](const auto& target) noexcept
-            {
+            [](const auto& target) noexcept {
                 using Target = std::remove_cvref_t<decltype(target)>;
                 if constexpr (std::is_same_v<Target, SystemHookBindingTarget>)
                     return target.system_type.valid() && !target.hook.empty();
-                else if constexpr (
-                    std::is_same_v<Target, SystemEventBindingTarget>)
+                else if constexpr (std::is_same_v<Target, SystemEventBindingTarget>)
                     return target.system_type.valid() && !target.event.empty();
                 else
                     return target.point == EBehaviorLifecyclePoint::CONSTRUCT ||
-                        target.point == EBehaviorLifecyclePoint::START ||
-                        target.point == EBehaviorLifecyclePoint::STOP;
+                           target.point == EBehaviorLifecyclePoint::START ||
+                           target.point == EBehaviorLifecyclePoint::STOP;
             },
             binding.target
         );
     }
 
-    [[nodiscard]] inline bool validScriptMountDescription(
-        const ScriptMountDescription& mount
-    ) noexcept
+    [[nodiscard]] inline bool validScriptMountDescription(const ScriptMountDescription& mount) noexcept
     {
         if (!mount.id.valid() || mount.script.isNull())
             return false;
@@ -153,9 +126,7 @@ namespace lux::simulation
         return true;
     }
 
-    [[nodiscard]] inline bool validScriptMountList(
-        const std::vector<ScriptMountDescription>& mounts
-    ) noexcept
+    [[nodiscard]] inline bool validScriptMountList(const std::vector<ScriptMountDescription>& mounts) noexcept
     {
         for (std::size_t index{}; index < mounts.size(); ++index)
         {

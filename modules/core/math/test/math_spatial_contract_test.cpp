@@ -9,7 +9,8 @@
 #include <limits>
 #include <type_traits>
 
-int main()
+int
+main()
 {
     using namespace lux::math;
 
@@ -46,30 +47,18 @@ int main()
     static_assert(offsetof(GridCoord3i64, z) == 16u);
 
     constexpr Position3d far_origin{1.0e12, -1.0e12, 5.0e11};
-    constexpr Position3d millimetre_step{
-        far_origin.x + 0.001,
-        far_origin.y - 0.001,
-        far_origin.z + 0.002};
+    constexpr Position3d millimetre_step{far_origin.x + 0.001, far_origin.y - 0.001, far_origin.z + 0.002};
     const auto relative = relativeFloat(millimetre_step, far_origin, 1.0f);
     assert(relative);
     assert(std::abs((*relative)[0] - 0.0009765625f) < 1.0e-7f);
     assert(std::abs((*relative)[1] + 0.0009765625f) < 1.0e-7f);
     assert(std::abs((*relative)[2] - 0.00201416015625f) < 1.0e-7f);
 
-    assert(!relativeFloat(
-        Position2d{std::numeric_limits<double>::infinity(), 0.0},
-        Position2d{},
-        1.0f));
-    assert(!relativeFloat(
-        Position3d{0.0, std::numeric_limits<double>::quiet_NaN(), 0.0},
-        Position3d{},
-        1.0f));
+    assert(!relativeFloat(Position2d{std::numeric_limits<double>::infinity(), 0.0}, Position2d{}, 1.0f));
+    assert(!relativeFloat(Position3d{0.0, std::numeric_limits<double>::quiet_NaN(), 0.0}, Position3d{}, 1.0f));
     assert(!relativeFloat(Position2d{2.0, 0.0}, Position2d{}, 1.0f));
     assert(!relativeFloat(Position2d{}, Position2d{}, -1.0f));
-    assert(!relativeFloat(
-        Position2d{},
-        Position2d{},
-        std::numeric_limits<float>::infinity()));
+    assert(!relativeFloat(Position2d{}, Position2d{}, std::numeric_limits<float>::infinity()));
 
     constexpr GridCoord2i64 negative{-1'000'000, 1'000'000};
     constexpr GridCoord2i64 origin{};

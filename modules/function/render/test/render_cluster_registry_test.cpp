@@ -4,7 +4,8 @@
 #include <limits>
 #include <vector>
 
-int main()
+int
+main()
 {
     using namespace lux::render;
 
@@ -22,10 +23,8 @@ int main()
     instances[1].stable_pick_id = 101u;
     instances[1].transform.page_delta[0] = 12;
     assert(resources.upsert(upload, instances));
-    assert(resources.clusterCount() == 1u &&
-        resources.instanceCount() == 2u);
-    assert(resources.find(upload.id) &&
-        resources.find(upload.id)->instances[1].stable_pick_id == 101u);
+    assert(resources.clusterCount() == 1u && resources.instanceCount() == 2u);
+    assert(resources.find(upload.id) && resources.find(upload.id)->instances[1].stable_pick_id == 101u);
     const auto initial_memory = resources.cpuMemorySnapshot();
     assert(initial_memory.capacity_bytes != 0u);
     assert(initial_memory.allocation_count != 0u);
@@ -33,34 +32,25 @@ int main()
     const std::int64_t origin_delta[3]{10, 0, 0};
     assert(resources.canRebaseSceneOrigin(origin_delta));
     resources.rebaseSceneOrigin(origin_delta);
-    assert(resources.find(upload.id)->header.bounds_center.page_delta[0] ==
-        10);
-    assert(resources.find(upload.id)->instances[0].transform.page_delta[0] ==
-        1);
-    assert(resources.find(upload.id)->instances[1].transform.page_delta[0] ==
-        2);
-    const std::int64_t rejected_delta[3]{
-        std::numeric_limits<std::int64_t>::max(), 0, 0};
+    assert(resources.find(upload.id)->header.bounds_center.page_delta[0] == 10);
+    assert(resources.find(upload.id)->instances[0].transform.page_delta[0] == 1);
+    assert(resources.find(upload.id)->instances[1].transform.page_delta[0] == 2);
+    const std::int64_t rejected_delta[3]{std::numeric_limits<std::int64_t>::max(), 0, 0};
     assert(!resources.canRebaseSceneOrigin(rejected_delta));
-    assert(resources.find(upload.id)->header.bounds_center.page_delta[0] ==
-        10);
+    assert(resources.find(upload.id)->header.bounds_center.page_delta[0] == 10);
 
     // Control and upload lanes can overtake one another. A newer tombstone
     // must keep an older in-flight upload from resurrecting the Cluster.
     assert(resources.remove(upload.id, 3u));
-    assert(resources.clusterCount() == 0u &&
-        resources.instanceCount() == 0u);
+    assert(resources.clusterCount() == 0u && resources.instanceCount() == 0u);
     upload.revision = 2u;
     assert(resources.upsert(upload, instances));
     assert(resources.clusterCount() == 0u);
 
     upload.revision = 4u;
     upload.instance_count = 1u;
-    assert(resources.upsert(
-        upload,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
-    assert(resources.clusterCount() == 1u &&
-        resources.instanceCount() == 1u);
+    assert(resources.upsert(upload, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(resources.clusterCount() == 1u && resources.instanceCount() == 1u);
     assert(resources.remove(upload.id, 5u));
     assert(resources.clusterCount() == 0u);
 
@@ -71,8 +61,7 @@ int main()
     RenderClusterResources picking;
     const auto cancelled_token = picking.allocatePickToken(0x1'0000'0042ull);
     assert(cancelled_token != 0u);
-    assert(picking.resolvePickToken(cancelled_token) ==
-        0x1'0000'0042ull);
+    assert(picking.resolvePickToken(cancelled_token) == 0x1'0000'0042ull);
     picking.cancelPickToken(cancelled_token);
     assert(!picking.resolvePickToken(cancelled_token));
 
@@ -90,8 +79,7 @@ int main()
         {},
         {retired_token}));
     assert(picking.remove(pick_upload.id, 2u));
-    assert(picking.resolvePickToken(retired_token) ==
-        0x2'0000'0042ull);
+    assert(picking.resolvePickToken(retired_token) == 0x2'0000'0042ull);
     picking.onPickingFrameBegin(0u);
     assert(picking.resolvePickToken(retired_token));
     picking.onPickingFrameBegin(0u);
@@ -130,35 +118,27 @@ int main()
     parent.children[0].bytes[0] = 0xa1u;
     parent.children[1].bytes[0] = 0xa2u;
     parent.instance_count = 1u;
-    assert(hierarchy.upsert(
-        parent,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(hierarchy.upsert(parent, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     (void)hierarchy.reconcileHierarchy(parent.id);
     assert(hierarchy.find(parent.id)->visible);
-    assert(hierarchy.visibleClusterCount() == 1u &&
-        hierarchy.visibleInstanceCount() == 1u);
+    assert(hierarchy.visibleClusterCount() == 1u && hierarchy.visibleInstanceCount() == 1u);
 
     auto child = parent;
     child.parent = parent.id;
     child.child_count = 0u;
     child.id = parent.children[0];
-    assert(hierarchy.upsert(
-        child,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(hierarchy.upsert(child, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     (void)hierarchy.reconcileHierarchy(parent.id);
     assert(hierarchy.find(parent.id)->visible);
     assert(!hierarchy.find(child.id)->visible);
 
     child.id = parent.children[1];
-    assert(hierarchy.upsert(
-        child,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(hierarchy.upsert(child, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     (void)hierarchy.reconcileHierarchy(parent.id);
     assert(!hierarchy.find(parent.id)->visible);
     assert(hierarchy.find(parent.children[0])->visible);
     assert(hierarchy.find(parent.children[1])->visible);
-    assert(hierarchy.visibleClusterCount() == 2u &&
-        hierarchy.visibleInstanceCount() == 2u);
+    assert(hierarchy.visibleClusterCount() == 2u && hierarchy.visibleInstanceCount() == 2u);
     (void)hierarchy.reconcileHierarchy(parent.id, false);
     assert(hierarchy.find(parent.id)->visible);
     assert(!hierarchy.find(parent.children[0])->visible);
@@ -188,34 +168,24 @@ int main()
     root.id.bytes[0] = 0xb0u;
     root.children[0].bytes[0] = 0xb1u;
     root.children[1].bytes[0] = 0xb2u;
-    assert(multilevel.upsert(
-        root,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(multilevel.upsert(root, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
 
     auto middle = parent;
     middle.id = root.children[0];
     middle.parent = root.id;
     middle.children[0].bytes[0] = 0xb3u;
     middle.children[1].bytes[0] = 0xb4u;
-    assert(multilevel.upsert(
-        middle,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(multilevel.upsert(middle, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     auto middle_leaf = child;
     middle_leaf.id = root.children[1];
     middle_leaf.parent = root.id;
-    assert(multilevel.upsert(
-        middle_leaf,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(multilevel.upsert(middle_leaf, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     auto leaf = child;
     leaf.id = middle.children[0];
     leaf.parent = middle.id;
-    assert(multilevel.upsert(
-        leaf,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(multilevel.upsert(leaf, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     leaf.id = middle.children[1];
-    assert(multilevel.upsert(
-        leaf,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(multilevel.upsert(leaf, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
 
     (void)multilevel.reconcileHierarchy(root.id, true);
     (void)multilevel.reconcileHierarchy(middle.id, true);
@@ -243,44 +213,32 @@ int main()
     // coverage interval completes. A reverse request preserves the current
     // coverage instead of restarting at an endpoint.
     RenderClusterResources transitioning;
-    assert(transitioning.upsert(
-        parent,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(transitioning.upsert(parent, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     child.id = parent.children[0];
-    assert(transitioning.upsert(
-        child,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    assert(transitioning.upsert(child, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
     child.id = parent.children[1];
-    assert(transitioning.upsert(
-        child,
-        std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
-    (void)transitioning.reconcileHierarchy(
-        parent.id, false, 1.0f, 0.35f);
-    (void)transitioning.reconcileHierarchy(
-        parent.id, false, 1.36f, 0.35f);
+    assert(transitioning.upsert(child, std::span<const RenderClusterWireInstance>{instances.data(), 1u}));
+    (void)transitioning.reconcileHierarchy(parent.id, false, 1.0f, 0.35f);
+    (void)transitioning.reconcileHierarchy(parent.id, false, 1.36f, 0.35f);
     assert(transitioning.find(parent.id)->visible);
     assert(!transitioning.find(parent.children[0])->visible);
     assert(transitioning.transitionCount() == 0u);
 
-    const auto begin_changes = transitioning.reconcileHierarchy(
-        parent.id, true, 2.0f, 0.35f);
+    const auto begin_changes = transitioning.reconcileHierarchy(parent.id, true, 2.0f, 0.35f);
     assert(!begin_changes.empty());
     assert(transitioning.find(parent.id)->visible);
     assert(transitioning.find(parent.children[0])->visible);
     assert(transitioning.find(parent.children[1])->visible);
     assert(transitioning.transitionCount() == 3u);
-    (void)transitioning.reconcileHierarchy(
-        parent.id, false, 2.1f, 0.35f);
+    (void)transitioning.reconcileHierarchy(parent.id, false, 2.1f, 0.35f);
     assert(transitioning.transitionCount() == 3u);
-    (void)transitioning.reconcileHierarchy(
-        parent.id, false, 2.46f, 0.35f);
+    (void)transitioning.reconcileHierarchy(parent.id, false, 2.46f, 0.35f);
     assert(transitioning.find(parent.id)->visible);
     assert(!transitioning.find(parent.children[0])->visible);
     assert(!transitioning.find(parent.children[1])->visible);
     assert(transitioning.transitionCount() == 0u);
-    assert(RenderClusterResources::transitionSeed(
-               42u, parent.id, 0u) ==
-        RenderClusterResources::transitionSeed(
-               42u, parent.id, 0u));
+    assert(
+        RenderClusterResources::transitionSeed(42u, parent.id, 0u) ==
+        RenderClusterResources::transitionSeed(42u, parent.id, 0u));
     return 0;
 }

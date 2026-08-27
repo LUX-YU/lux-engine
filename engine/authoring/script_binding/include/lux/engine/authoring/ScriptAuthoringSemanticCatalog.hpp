@@ -30,30 +30,23 @@ namespace lux::authoring
         std::uint32_t size{};
         std::uint32_t alignment{};
         std::vector<lux::script::EScriptPassMode> allowed_parameter_passes;
-        lux::script::EScriptPassMode default_parameter_pass{
-            lux::script::EScriptPassMode::VALUE};
+        lux::script::EScriptPassMode default_parameter_pass{lux::script::EScriptPassMode::VALUE};
         bool return_allowed{};
 
-        friend bool operator==(
-            const ScriptAuthoringSemanticEntry&,
-            const ScriptAuthoringSemanticEntry&
-        ) noexcept = default;
+        friend bool
+        operator==(const ScriptAuthoringSemanticEntry&, const ScriptAuthoringSemanticEntry&) noexcept = default;
     };
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
-    lux::cxx::expected<
-        ScriptAuthoringSemanticEntry,
-        EScriptAuthoringSemanticCatalogError>
-    makeScriptAuthoringRecordEntry(
-        std::string_view canonical_name,
-        std::uint32_t size,
-        std::uint32_t alignment
-    ) noexcept;
+        lux::cxx::expected<ScriptAuthoringSemanticEntry, EScriptAuthoringSemanticCatalogError>
+        makeScriptAuthoringRecordEntry(
+            std::string_view canonical_name,
+            std::uint32_t size,
+            std::uint32_t alignment
+        ) noexcept;
 
     template <class Type>
-    [[nodiscard]] lux::cxx::expected<
-        ScriptAuthoringSemanticEntry,
-        EScriptAuthoringSemanticCatalogError>
+    [[nodiscard]] lux::cxx::expected<ScriptAuthoringSemanticEntry, EScriptAuthoringSemanticCatalogError>
     makeScriptAuthoringRecordEntry() noexcept
     {
         return makeScriptAuthoringRecordEntry(
@@ -63,32 +56,23 @@ namespace lux::authoring
         );
     }
 
-    class LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
-        ScriptAuthoringSemanticCatalog final
+    class LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC ScriptAuthoringSemanticCatalog final
     {
-      public:
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            EScriptAuthoringSemanticCatalogError> add(
-                ScriptAuthoringSemanticEntry entry
-            ) noexcept;
+    public:
+        [[nodiscard]] lux::cxx::expected<void, EScriptAuthoringSemanticCatalogError>
+        add(ScriptAuthoringSemanticEntry entry) noexcept;
 
-        [[nodiscard]] std::span<const ScriptAuthoringSemanticEntry>
-        entries() const noexcept;
+        [[nodiscard]] std::span<const ScriptAuthoringSemanticEntry> entries() const noexcept;
 
-        [[nodiscard]] const ScriptAuthoringSemanticEntry* find(
-            std::string_view canonical_name
-        ) const noexcept;
+        [[nodiscard]] const ScriptAuthoringSemanticEntry* find(std::string_view canonical_name) const noexcept;
 
         [[nodiscard]] std::string canonicalJson() const;
 
-      private:
+    private:
         std::vector<ScriptAuthoringSemanticEntry> entries_;
     };
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
-    lux::cxx::expected<
-        ScriptAuthoringSemanticCatalog,
-        EScriptAuthoringSemanticCatalogError>
-    makeBaseScriptAuthoringSemanticCatalog() noexcept;
+        lux::cxx::expected<ScriptAuthoringSemanticCatalog, EScriptAuthoringSemanticCatalogError>
+        makeBaseScriptAuthoringSemanticCatalog() noexcept;
 }

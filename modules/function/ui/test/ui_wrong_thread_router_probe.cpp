@@ -2,11 +2,11 @@
 
 #include <thread>
 
-int main()
+int
+main()
 {
     lux::ui::CommandRouter router;
-    std::thread foreign(
-        [&] { static_cast<void>(router.findCommand(lux::ui::UiCommandIdView{"missing"})); });
+    std::thread foreign([&] { static_cast<void>(router.findCommand(lux::ui::UiCommandIdView{"missing"})); });
     foreign.join();
     return 0;
 }

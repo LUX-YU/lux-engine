@@ -20,16 +20,16 @@
  * `findByStableType()` is the NEW capability that dependency resolution needs.
  */
 
-#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>   // FeatureFactory / GenericOkReply
-#include <lux/engine/function/render/client/core/FeatureTypeId.hpp>     // FeatureTypeId
-#include <lux/engine/function/render/client/core/Errors.hpp>            // Expected / renderFailure
-#include <lux/cxx/container/SparseSet.hpp>              // OffsetAutoSparseSet
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
+#include <lux/engine/function/render/client/core/FeatureTypeId.hpp>      // FeatureTypeId
+#include <lux/engine/function/render/client/core/Errors.hpp>             // Expected / renderFailure
+#include <lux/cxx/container/SparseSet.hpp>                               // OffsetAutoSparseSet
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>   // findByName 的重名比较
+#include <string_view> // findByName 的重名比较
 #include <vector>
 
 namespace lux::render
@@ -39,20 +39,20 @@ namespace lux::render
     struct FeatureTypeRecord
     {
         FeatureFactory factory{};
-        std::uint32_t  op_count{0};
-        TypeId         ops[16]{};
+        std::uint32_t op_count{0};
+        TypeId ops[16]{};
         /// How many register calls share this record. The idempotent AlreadyRegistered
         /// path hands a second registrant the FIRST registration's type_id + ops — i.e.
         /// shared ownership — so unregistration must be counted: one sharer's unregister
         /// must not destroy the type id and dispatcher slots the others still use.
-        std::uint32_t  registrations{1};
+        std::uint32_t registrations{1};
         /// One entry per registration, including an empty entry for built-ins.
         /// Keeping the lease beside the function table guarantees that a dynamic
         /// module cannot disappear while create/unregister trampolines remain
         /// callable on the render thread.
         std::vector<std::shared_ptr<const void>> registration_leases{};
         /// Live instances across every RenderScene owned by this Renderer.
-        std::uint32_t  active_instances{0};
+        std::uint32_t active_instances{0};
     };
 
     /// Outcome SCOPE of a successful add(): distinguishes a fresh insert from an
@@ -62,15 +62,15 @@ namespace lux::render
     /// numeric values ride the wire FeatureTypeRegisteredReply::status field.
     enum class EFeatureTypeRegisterStatus : std::uint32_t
     {
-        Registered        = 0,   ///< newly inserted; type_id is fresh, op handlers were just bound
-        AlreadyRegistered = 1,   ///< same factory already present; type_id is the EXISTING id (idempotent)
+        Registered = 0,        ///< newly inserted; type_id is fresh, op handlers were just bound
+        AlreadyRegistered = 1, ///< same factory already present; type_id is the EXISTING id (idempotent)
     };
 
     /// Successful registration result: a valid type_id (>=1) plus which scope it was.
     /// Failures are carried out-of-band as the Expected's error (see add()).
     struct FeatureTypeAddResult
     {
-        std::uint32_t              type_id{0};
+        std::uint32_t type_id{0};
         EFeatureTypeRegisterStatus status{EFeatureTypeRegisterStatus::Registered};
     };
 
@@ -80,7 +80,7 @@ namespace lux::render
         // Offset 1 so id 0 stays reserved as "none" (matches the prior comm registry).
         using Storage = lux::cxx::OffsetAutoSparseSet<std::uint32_t, FeatureTypeRecord, 1>;
 
-        static constexpr std::uint32_t kMaxOps = 16;  // FeatureTypeRecord::ops[] capacity
+        static constexpr std::uint32_t kMaxOps = 16; // FeatureTypeRecord::ops[] capacity
 
         /// Register a feature type (boundary-validated), returning a TYPED outcome:
         ///   - Registered        — a genuinely new type was inserted (fresh type_id).
@@ -128,8 +128,7 @@ namespace lux::render
                     if (record.registration_leases.empty())
                         shared.registration_leases.emplace_back();
                     else
-                        shared.registration_leases.push_back(
-                            std::move(record.registration_leases.front()));
+                        shared.registration_leases.push_back(std::move(record.registration_leases.front()));
                     return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::AlreadyRegistered};
                 }
             }
@@ -153,32 +152,42 @@ namespace lux::render
             {
                 if (const FeatureTypeRecord* clash = findByName(record.factory.name))
                     return renderFailure<err::feature::FeatureNameCollision>(
-                        encodeFeatureType(clash->factory.descriptor.type));
+                        encodeFeatureType(clash->factory.descriptor.type)
+                    );
             }
 
             const std::uint32_t id = types_.insert(std::move(record));
             return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::Registered};
         }
 
-        [[nodiscard]] bool                contains(std::uint32_t id) const noexcept { return types_.contains(id); }
-        [[nodiscard]] FeatureTypeRecord&  at(std::uint32_t id)                      { return types_.at(id); }
-        [[nodiscard]] const FeatureTypeRecord& at(std::uint32_t id) const           { return types_.at(id); }
-        void                              erase(std::uint32_t id)                   { types_.erase(id); }
+        [[nodiscard]] bool contains(std::uint32_t id) const noexcept
+        {
+            return types_.contains(id);
+        }
+        [[nodiscard]] FeatureTypeRecord& at(std::uint32_t id)
+        {
+            return types_.at(id);
+        }
+        [[nodiscard]] const FeatureTypeRecord& at(std::uint32_t id) const
+        {
+            return types_.at(id);
+        }
+        void erase(std::uint32_t id)
+        {
+            types_.erase(id);
+        }
 
         /// Counted unregistration. A final release returns the removed record so the
         /// comm layer can unbind its opcodes while the record's module lease is still
         /// alive. Any live instance rejects the release without consuming a
         /// registration reference.
-        [[nodiscard]] Expected<std::optional<FeatureTypeRecord>> release(
-            std::uint32_t id)
+        [[nodiscard]] Expected<std::optional<FeatureTypeRecord>> release(std::uint32_t id)
         {
             if (!types_.contains(id))
                 return renderFailure<err::feature::TypeNotRegistered>(id);
             FeatureTypeRecord& rec = types_.at(id);
             if (rec.active_instances != 0u)
-                return renderFailure<err::feature::FeatureTypeInUse>(
-                    id,
-                    rec.active_instances);
+                return renderFailure<err::feature::FeatureTypeInUse>(id, rec.active_instances);
             if (rec.registrations > 1)
             {
                 --rec.registrations;
@@ -241,7 +250,8 @@ namespace lux::render
         /// arrays (keys[i] ↔ values[i]). Mirrors findByStableType but yields the id.
         [[nodiscard]] std::uint32_t findIdByStableType(FeatureTypeId type) const noexcept
         {
-            if (type == kInvalidFeatureTypeId) return 0;
+            if (type == kInvalidFeatureTypeId)
+                return 0;
             const auto& ks = types_.keys();
             const auto& vs = types_.values();
             for (std::size_t i = 0; i < vs.size(); ++i)

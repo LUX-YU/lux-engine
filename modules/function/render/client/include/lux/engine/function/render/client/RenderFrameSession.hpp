@@ -24,7 +24,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RenderFrameSession
     {
     public:
-        using Client  = GeneralRenderClient;
+        using Client = GeneralRenderClient;
         using Builder = Client::Builder;
         using FrameProgressToken = Client::FrameProgressToken;
 
@@ -55,19 +55,23 @@ namespace lux::render
         void waitForProgress(FrameProgressToken observed) const noexcept;
         [[nodiscard]] bool waitForProgressUntil(
             FrameProgressToken observed,
-            std::chrono::steady_clock::time_point deadline) const noexcept;
+            std::chrono::steady_clock::time_point deadline
+        ) const noexcept;
         void notifyProgress() noexcept;
         [[nodiscard]] bool isStopping() const noexcept;
         [[nodiscard]] RenderError terminalError() const noexcept;
-        [[nodiscard]] std::shared_ptr<RenderChannelSync>
-        progressDomain() const noexcept;
+        [[nodiscard]] std::shared_ptr<RenderChannelSync> progressDomain() const noexcept;
 
         [[nodiscard]] Builder& builder() noexcept;
-        [[nodiscard]] bool rebaseSceneOrigin(
-            RenderSceneId scene,
-            const std::int64_t scene_origin_page[3]) noexcept;
-        [[nodiscard]] Client& rawClient() noexcept { return client_; }
-        [[nodiscard]] const Client& rawClient() const noexcept { return client_; }
+        [[nodiscard]] bool rebaseSceneOrigin(RenderSceneId scene, const std::int64_t scene_origin_page[3]) noexcept;
+        [[nodiscard]] Client& rawClient() noexcept
+        {
+            return client_;
+        }
+        [[nodiscard]] const Client& rawClient() const noexcept
+        {
+            return client_;
+        }
 
         void requestStop() noexcept;
 

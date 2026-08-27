@@ -34,29 +34,43 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC OffscreenImagePool
     {
     public:
-        OffscreenImagePool(ResourceContext &res_ctx,
-                           const RenderTargetLayout &layout,
-                           VkExtent2D extent,
-                           uint32_t frames_in_flight);
+        OffscreenImagePool(
+            ResourceContext& res_ctx,
+            const RenderTargetLayout& layout,
+            VkExtent2D extent,
+            uint32_t frames_in_flight
+        );
 
         virtual ~OffscreenImagePool();
 
-        OffscreenImagePool(const OffscreenImagePool &) = delete;
-        OffscreenImagePool &operator=(const OffscreenImagePool &) = delete;
-        OffscreenImagePool(OffscreenImagePool &&) = delete;
-        OffscreenImagePool &operator=(OffscreenImagePool &&) = delete;
+        OffscreenImagePool(const OffscreenImagePool&) = delete;
+        OffscreenImagePool& operator=(const OffscreenImagePool&) = delete;
+        OffscreenImagePool(OffscreenImagePool&&) = delete;
+        OffscreenImagePool& operator=(OffscreenImagePool&&) = delete;
 
         // ── Image queries ───────────────────────────────────────
 
         /// Build a single-FIF-slot binding for rendering into.
         [[nodiscard]] RenderTargetBinding makeFrameBinding(uint32_t frame_index) const;
 
-        [[nodiscard]] RenderTargetLayout layout() const noexcept { return layout_; }
-        [[nodiscard]] VkExtent2D extent() const noexcept { return binding_.extent; }
-        [[nodiscard]] uint32_t framesInFlight() const noexcept { return frames_in_flight_; }
+        [[nodiscard]] RenderTargetLayout layout() const noexcept
+        {
+            return layout_;
+        }
+        [[nodiscard]] VkExtent2D extent() const noexcept
+        {
+            return binding_.extent;
+        }
+        [[nodiscard]] uint32_t framesInFlight() const noexcept
+        {
+            return frames_in_flight_;
+        }
 
         /// Full binding with all FIF slots (used for descriptor creation).
-        [[nodiscard]] const RenderTargetBinding &binding() const noexcept { return binding_; }
+        [[nodiscard]] const RenderTargetBinding& binding() const noexcept
+        {
+            return binding_;
+        }
 
         // ── Resize ──────────────────────────────────────────────
 
@@ -82,7 +96,7 @@ namespace lux::render
         void collectRetired(uint64_t frame_id, uint64_t completed_serial);
 
     protected:
-        ResourceContext &res_ctx_;
+        ResourceContext& res_ctx_;
         RenderTargetLayout layout_;
         uint32_t frames_in_flight_;
 

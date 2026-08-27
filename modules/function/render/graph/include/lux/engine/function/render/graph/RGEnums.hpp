@@ -37,7 +37,7 @@ namespace lux::render
     // ========== Render Phase ==========
 
     using render_phase_id = uint8_t;
-    using phase_mask_t    = uint64_t;
+    using phase_mask_t = uint64_t;
 
     static_assert(sizeof(phase_mask_t) * 8 >= 64, "phase_mask_t must support at least 64 phases");
 
@@ -49,16 +49,16 @@ namespace lux::render
 
     enum class ECoreRenderPhase : render_phase_id
     {
-        Depth        = 0,
-        GBuffer      = 1,
+        Depth = 0,
+        GBuffer = 1,
         ForwardOpaque = 2,
         ForwardTrans = 3,
-        Shadow       = 4,
-        UI           = 5,
-        PostProcess  = 6,
-        PointCloud   = 7,  ///< point-cloud items (P2-B: centralised phase constant)
-        OctreeDebug  = 8,  ///< octree wireframe overlay
-        Gizmo        = 9,  ///< gizmo overlays (line list, tri overlay)
+        Shadow = 4,
+        UI = 5,
+        PostProcess = 6,
+        PointCloud = 7,  ///< point-cloud items (P2-B: centralised phase constant)
+        OctreeDebug = 8, ///< octree wireframe overlay
+        Gizmo = 9,       ///< gizmo overlays (line list, tri overlay)
     };
 
     // ========== Render-graph pass painter-order sort key ==========
@@ -74,32 +74,32 @@ namespace lux::render
     /// are NOT a draw order). Gaps of 1000 leave room to insert stages later.
     enum class ERenderStage : uint16_t
     {
-        Early       = 1000,   ///< shadow atlas / pre-scene compute
-        Geometry    = 2000,   ///< depth prepass / GBuffer
-        Opaque      = 3000,   ///< deferred lighting / forward opaque
-        Sky         = 4000,   ///< skybox — after opaque, before transparent
-        Transparent = 5000,   ///< blended geometry
-        PostProcess = 6000,   ///< bloom / tonemap / HDR→LDR scene composite
-        Overlay     = 7000,   ///< grid / gizmo / debug — composited ON TOP of the
-                              ///< post-processed image. MUST outrank PostProcess: the
-                              ///< overlays write the same SceneColor that tonemap writes,
-                              ///< so a lower stage lets tonemap overwrite them and the
-                              ///< grid/AABB vanish (editor registers them last for this).
-        Present     = 8000,
-        Default     = Opaque, ///< unset == Opaque ⇒ ties fall back to declaration order
+        Early = 1000,       ///< shadow atlas / pre-scene compute
+        Geometry = 2000,    ///< depth prepass / GBuffer
+        Opaque = 3000,      ///< deferred lighting / forward opaque
+        Sky = 4000,         ///< skybox — after opaque, before transparent
+        Transparent = 5000, ///< blended geometry
+        PostProcess = 6000, ///< bloom / tonemap / HDR→LDR scene composite
+        Overlay = 7000,     ///< grid / gizmo / debug — composited ON TOP of the
+                            ///< post-processed image. MUST outrank PostProcess: the
+                            ///< overlays write the same SceneColor that tonemap writes,
+                            ///< so a lower stage lets tonemap overwrite them and the
+                            ///< grid/AABB vanish (editor registers them last for this).
+        Present = 8000,
+        Default = Opaque, ///< unset == Opaque ⇒ ties fall back to declaration order
     };
 
     // ========== Texture enums (canonical definitions in lux::gapi::Image.hpp) ==========
 
     enum class ERGTextureUsageBits : uint32_t
     {
-        NONE             = 0,
+        NONE = 0,
         COLOR_ATTACHMENT = 1u << 0,
-        DEPTH_STENCIL    = 1u << 1,
-        SAMPLED          = 1u << 2,
-        STORAGE          = 1u << 3,
-        TRANSFER_SRC     = 1u << 4,
-        TRANSFER_DST     = 1u << 5,
+        DEPTH_STENCIL = 1u << 1,
+        SAMPLED = 1u << 2,
+        STORAGE = 1u << 3,
+        TRANSFER_SRC = 1u << 4,
+        TRANSFER_DST = 1u << 5,
         INPUT_ATTACHMENT = 1u << 6
     };
     using ERGTextureUsageFlags = uint32_t;
@@ -137,15 +137,15 @@ namespace lux::render
 
     enum class ERGBufferUsageBits : uint32_t
     {
-        NONE         = 0,
-        VERTEX       = 1 << 0,
-        INDEX        = 1 << 1,
-        UNIFORM      = 1 << 2,
-        STORAGE      = 1 << 3,
-        INDIRECT     = 1 << 4,
+        NONE = 0,
+        VERTEX = 1 << 0,
+        INDEX = 1 << 1,
+        UNIFORM = 1 << 2,
+        STORAGE = 1 << 3,
+        INDIRECT = 1 << 4,
         TRANSFER_SRC = 1 << 5,
         TRANSFER_DST = 1 << 6,
-        ACCEL_STRUCT  = 1 << 7,
+        ACCEL_STRUCT = 1 << 7,
         SHADER_BINDING = 1 << 8
     };
     using ERGBufferUsageFlags = uint32_t;
@@ -173,17 +173,18 @@ namespace lux::render
         PERSISTENT,
         TRANSIENT,
         IMPORTED,
-        FORWARD_REFERENCE,  ///< Placeholder resolved at compile time to the actual TRANSIENT/IMPORTED resource with the same name
-        EXTERNAL,           ///< Feature owns the physical storage and updates it OUTSIDE the graph
-                            ///< (e.g. scene-level Light/Material SSBOs). RG records ONLY the logical
-                            ///< identity so a pass can declare consumption via bindResourceDS(...,
-                            ///< declared_consume) and dependency/dead-pass analysis sees it. RG never
-                            ///< allocates it, fetches its handle, or emits a barrier for it.
-        PING_PONG           ///< N physical copies rotated by frame (double-buffer / history). The
-                            ///< CURRENT handle (ring_phase 0) writes this frame's copy and owns the
-                            ///< allocation; PREVIOUS/history handles (ring_phase>0) read an earlier
-                            ///< frame's copy of the same resource and allocate nothing. RG picks the
-                            ///< copy per frame. For HZB / TAA / temporal cross-frame resources.
+        FORWARD_REFERENCE, ///< Placeholder resolved at compile time to the actual TRANSIENT/IMPORTED resource with the
+                           ///< same name
+        EXTERNAL,          ///< Feature owns the physical storage and updates it OUTSIDE the graph
+                           ///< (e.g. scene-level Light/Material SSBOs). RG records ONLY the logical
+                           ///< identity so a pass can declare consumption via bindResourceDS(...,
+                           ///< declared_consume) and dependency/dead-pass analysis sees it. RG never
+                           ///< allocates it, fetches its handle, or emits a barrier for it.
+        PING_PONG          ///< N physical copies rotated by frame (double-buffer / history). The
+                           ///< CURRENT handle (ring_phase 0) writes this frame's copy and owns the
+                           ///< allocation; PREVIOUS/history handles (ring_phase>0) read an earlier
+                           ///< frame's copy of the same resource and allocate nothing. RG picks the
+                           ///< copy per frame. For HZB / TAA / temporal cross-frame resources.
     };
 
     enum class ERGSizeMode
@@ -199,8 +200,8 @@ namespace lux::render
     /// explicit and its failure mode chosen rather than silent.
     enum class ERGReference : uint8_t
     {
-        Optional,   ///< no producer → reader pruned by dead-pass (current behaviour); consumer degrades
-        Required,   ///< no producer → compile FAILS FAST with a named error (no silent VUID downstream)
+        Optional, ///< no producer → reader pruned by dead-pass (current behaviour); consumer degrades
+        Required, ///< no producer → compile FAILS FAST with a named error (no silent VUID downstream)
     };
 
     // ========== Queue type ==========
@@ -217,12 +218,12 @@ namespace lux::render
 
     enum class RGUpdateGroup : uint32_t
     {
-        GROUP_NONE      = 0,
+        GROUP_NONE = 0,
         GROUP_SWAPCHAIN = 1 << 0,
-        GROUP_GUI       = 1 << 1,
-        GROUP_VIDEO     = 1 << 2,
-        GROUP_COMPUTE   = 1 << 3,
-        GROUP_ALL       = 0xFFFFFFFF
+        GROUP_GUI = 1 << 1,
+        GROUP_VIDEO = 1 << 2,
+        GROUP_COMPUTE = 1 << 3,
+        GROUP_ALL = 0xFFFFFFFF
     };
 
     inline uint32_t operator|(RGUpdateGroup a, RGUpdateGroup b)

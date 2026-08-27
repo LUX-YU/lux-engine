@@ -26,7 +26,8 @@ namespace lux::input
         ActionId registerAction(InputActionDesc desc)
         {
             auto it = name_to_id_.find(desc.name);
-            if (it != name_to_id_.end()) {
+            if (it != name_to_id_.end())
+            {
                 // Already registered — update desc, return existing id.
                 ActionId existing = it->second;
                 desc.id = existing;
@@ -44,7 +45,8 @@ namespace lux::input
         /// Unregister an action.
         void unregisterAction(ActionId id)
         {
-            if (descs_.contains(id)) {
+            if (descs_.contains(id))
+            {
                 name_to_id_.erase(descs_.at(id).name);
                 descs_.erase(id);
             }
@@ -70,8 +72,14 @@ namespace lux::input
             name_to_id_.clear();
         }
 
-        [[nodiscard]] const auto& keys()   const noexcept { return descs_.keys(); }
-        [[nodiscard]] const auto& values() const noexcept { return descs_.values(); }
+        [[nodiscard]] const auto& keys() const noexcept
+        {
+            return descs_.keys();
+        }
+        [[nodiscard]] const auto& values() const noexcept
+        {
+            return descs_.values();
+        }
 
     private:
         lux::cxx::OffsetAutoSparseSet<uint32_t, InputActionDesc, 1> descs_;

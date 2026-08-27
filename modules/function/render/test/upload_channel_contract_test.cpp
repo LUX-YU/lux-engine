@@ -13,51 +13,32 @@
 
 namespace
 {
-    constexpr lux::render::TypeId kPublicationProbeType =
-        lux::render::makeTypeId(31u, 0u);
-    constexpr lux::render::TypeId kPublicationProbeReplyType =
-        lux::render::makeTypeId(32u, 0u);
+    constexpr lux::render::TypeId kPublicationProbeType = lux::render::makeTypeId(31u, 0u);
+    constexpr lux::render::TypeId kPublicationProbeReplyType = lux::render::makeTypeId(32u, 0u);
 
-    void publicationProbeHandler(
-        lux::render::ExecuteContext<>& ctx,
-        const std::uint32_t& value)
+    void publicationProbeHandler(lux::render::ExecuteContext<>& ctx, const std::uint32_t& value)
     {
-        ctx.replies.push<std::uint32_t>(
-            kPublicationProbeReplyType,
-            value,
-            0u,
-            ctx.currentRequestId()
-        );
+        ctx.replies.push<std::uint32_t>(kPublicationProbeReplyType, value, 0u, ctx.currentRequestId());
     }
 
-    [[nodiscard]] std::uint32_t firstReplyValue(
-        const lux::render::ReplyPacket<>& packet)
+    [[nodiscard]] std::uint32_t firstReplyValue(const lux::render::ReplyPacket<>& packet)
     {
         if (packet.replies.empty())
             return 0u;
         const auto& reply = packet.replies.front();
-        if (reply.payload_size != sizeof(std::uint32_t) ||
-            reply.payload_offset > packet.payload.size() ||
+        if (reply.payload_size != sizeof(std::uint32_t) || reply.payload_offset > packet.payload.size() ||
             reply.payload_size > packet.payload.size() - reply.payload_offset)
         {
             return 0u;
         }
         std::uint32_t value = 0u;
-        std::memcpy(
-            &value,
-            packet.payload.data() + reply.payload_offset,
-            sizeof(value)
-        );
+        std::memcpy(&value, packet.payload.data() + reply.payload_offset, sizeof(value));
         return value;
     }
 
     template <typename Builder>
-    concept AcceptsBorrowedBytes = requires(
-        Builder& builder,
-        const std::byte* bytes
-    ) {
-        builder.pushBorrowedBytesAttachment(bytes, 1);
-    };
+    concept AcceptsBorrowedBytes =
+        requires(Builder& builder, const std::byte* bytes) { builder.pushBorrowedBytesAttachment(bytes, 1); };
 
     static_assert(!AcceptsBorrowedBytes<lux::render::RenderUploadSession::Builder>);
 
@@ -74,9 +55,8 @@ namespace
         std::shared_ptr<lux::render::detail::PreparedUpload> prepared;
     };
 
-    [[nodiscard]] lux::render::UploadSubmitNoReplyResult captureUpload(
-        void* opaque,
-        std::shared_ptr<lux::render::detail::PreparedUpload> prepared) noexcept
+    [[nodiscard]] lux::render::UploadSubmitNoReplyResult
+    captureUpload(void* opaque, std::shared_ptr<lux::render::detail::PreparedUpload> prepared) noexcept
     {
         auto* capture = static_cast<UploadCapture*>(opaque);
         capture->prepared = std::move(prepared);
@@ -84,7 +64,8 @@ namespace
     }
 }
 
-int main()
+int
+main()
 {
     using namespace lux::render;
 
@@ -92,32 +73,29 @@ int main()
     // any live state, and no terminal state can transition again.
     {
         using State = EUploadLifecycleState;
-        if (!check(
-                isValidUploadLifecycleTransition(
-                    State::Accepted, State::ValidatedAndReserved) &&
-                isValidUploadLifecycleTransition(
-                    State::ValidatedAndReserved, State::TransferQueued) &&
-                isValidUploadLifecycleTransition(
-                    State::TransferQueued,
-                    State::RecordedOrTransferComplete) &&
-                isValidUploadLifecycleTransition(
-                    State::RecordedOrTransferComplete, State::Ready) &&
-                isValidUploadLifecycleTransition(
-                    State::RecordedOrTransferComplete,
-                    State::GraphicsFinalizeSubmitted) &&
-                isValidUploadLifecycleTransition(
-                    State::GraphicsFinalizeSubmitted, State::Ready) &&
-                isValidUploadLifecycleTransition(
-                    State::Accepted, State::Failed) &&
-                !isValidUploadLifecycleTransition(
-                    State::Accepted, State::Ready) &&
-                !isValidUploadLifecycleTransition(
-                    State::TransferQueued, State::Ready) &&
-                !isValidUploadLifecycleTransition(
-                    State::Ready, State::Failed) &&
-                !isValidUploadLifecycleTransition(
-                    State::Failed, State::Ready),
-                "upload lifecycle accepts only explicit forward edges"))
+        const bool accepts_transfer_reservation =
+            isValidUploadLifecycleTransition(State::Accepted, State::ValidatedAndReserved);
+        const bool accepts_transfer_queue =
+            isValidUploadLifecycleTransition(State::ValidatedAndReserved, State::TransferQueued);
+        const bool accepts_transfer_completion =
+            isValidUploadLifecycleTransition(State::TransferQueued, State::RecordedOrTransferComplete);
+        const bool accepts_ready = isValidUploadLifecycleTransition(State::RecordedOrTransferComplete, State::Ready);
+        const bool accepts_graphics_finalize = isValidUploadLifecycleTransition(
+            State::RecordedOrTransferComplete,
+            State::GraphicsFinalizeSubmitted
+        );
+        const bool accepts_graphics_ready =
+            isValidUploadLifecycleTransition(State::GraphicsFinalizeSubmitted, State::Ready);
+        const bool accepts_failure = isValidUploadLifecycleTransition(State::Accepted, State::Failed);
+        const bool rejects_direct_ready = !isValidUploadLifecycleTransition(State::Accepted, State::Ready);
+        const bool rejects_skip_completion = !isValidUploadLifecycleTransition(State::TransferQueued, State::Ready);
+        const bool rejects_ready_failure = !isValidUploadLifecycleTransition(State::Ready, State::Failed);
+        const bool rejects_failed_ready = !isValidUploadLifecycleTransition(State::Failed, State::Ready);
+        const bool is_valid_lifecycle = accepts_transfer_reservation && accepts_transfer_queue &&
+            accepts_transfer_completion && accepts_ready && accepts_graphics_finalize && accepts_graphics_ready &&
+            accepts_failure && rejects_direct_ready && rejects_skip_completion && rejects_ready_failure &&
+            rejects_failed_ready;
+        if (!check(is_valid_lifecycle, "upload lifecycle accepts only explicit forward edges"))
             return 1;
     }
 
@@ -128,16 +106,13 @@ int main()
         auto sync = std::make_shared<RenderChannelSync>();
         RenderUploadSession session(channel, sync);
         const auto result = session.trySubmitNoReply(
-            [](RenderUploadSession::Builder& builder)
-            {
-                builder.push(opcodes::CommandOp, 7, std::uint32_t{42});
-            }
+            [](RenderUploadSession::Builder& builder) { builder.push(opcodes::CommandOp, 7, std::uint32_t{42}); }
         );
-        if (!check(!result &&
-                       result.error() ==
-                           ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED &&
-                       channel->payloadBytes() == 0,
-                   "byte-budget rejection is non-mutating"))
+        const bool is_rejected = !result;
+        const bool has_expected_error = is_rejected &&
+            result.error() == ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED;
+        const bool has_no_payload = has_expected_error && channel->payloadBytes() == 0;
+        if (!check(has_no_payload, "byte-budget rejection is non-mutating"))
             return 1;
     }
 
@@ -147,17 +122,14 @@ int main()
         auto channel = RenderUploadChannel<>::create(4, 1024);
         auto sync = std::make_shared<RenderChannelSync>();
         RenderUploadSession session(channel, sync);
-        const auto result = session.trySubmitNoReply(
-            [](RenderUploadSession::Builder&) {}
-        );
+        const auto result = session.trySubmitNoReply([](RenderUploadSession::Builder&) {});
         OperationPacket<> packet{};
-        if (!check(!result &&
-                       result.error() ==
-                           ERenderUploadSubmitError::PAYLOAD_INVALID &&
-                       channel->payloadBytes() == 0 &&
-                       channel->requests.tryPop(packet) !=
-                           lux::cxx::EQueuePopResult::VALUE,
-                   "invalid packet is neither charged nor published"))
+        const bool is_rejected = !result;
+        const bool has_expected_error = is_rejected && result.error() == ERenderUploadSubmitError::PAYLOAD_INVALID;
+        const bool has_no_payload = has_expected_error && channel->payloadBytes() == 0;
+        const bool has_no_packet = has_no_payload &&
+            channel->requests.tryPop(packet) != lux::cxx::EQueuePopResult::VALUE;
+        if (!check(has_no_packet, "invalid packet is neither charged nor published"))
             return 2;
     }
 
@@ -171,10 +143,7 @@ int main()
         for (std::uint32_t value = 0; value != 32; ++value)
         {
             auto result = session.trySubmitNoReply(
-                [value](RenderUploadSession::Builder& builder)
-                {
-                    builder.push(opcodes::CommandOp, 9, value);
-                }
+                [value](RenderUploadSession::Builder& builder) { builder.push(opcodes::CommandOp, 9, value); }
             );
             if (!result)
             {
@@ -183,35 +152,32 @@ int main()
             }
             ++accepted;
         }
-        if (!check(accepted != 0,
-                   "bounded request ring accepts at least one packet"))
+        if (!check(accepted != 0, "bounded request ring accepts at least one packet"))
             return 3;
-        if (!check(terminal == ERenderUploadSubmitError::QUEUE_FULL,
-                   "bounded request ring reports QUEUE_FULL"))
+        if (!check(terminal == ERenderUploadSubmitError::QUEUE_FULL, "bounded request ring reports QUEUE_FULL"))
             return 3;
-        if (!check(channel->queueHighWater() == accepted,
-                   "queue high-water matches accepted packets"))
+        if (!check(channel->queueHighWater() == accepted, "queue high-water matches accepted packets"))
             return 3;
         // Byte ownership is reserved before the ring publication attempt. The
         // one packet that observes QUEUE_FULL therefore contributes to the
         // instantaneous memory-pressure high-water, then rolls back its live
         // byte count before returning to the caller.
-        if (!check(channel->payloadHighWater() ==
-                       (accepted + 1u) * sizeof(std::uint32_t),
-                   "payload high-water includes the rejected attempt"))
+        if (!check(
+                channel->payloadHighWater() == (accepted + 1u) * sizeof(std::uint32_t),
+                "payload high-water includes the rejected attempt"))
             return 3;
 
         OperationPacket<> packet{};
         std::size_t drained = 0;
-        while (channel->requests.tryPop(packet) ==
-               lux::cxx::EQueuePopResult::VALUE)
+        while (channel->requests.tryPop(packet) == lux::cxx::EQueuePopResult::VALUE)
         {
             channel->releaseBytes(packet.accountedBytes());
             packet = OperationPacket<>{};
             ++drained;
         }
-        if (!check(drained == accepted && channel->payloadBytes() == 0,
-                   "drain retires exactly the accepted byte reservations"))
+        if (!check(
+                drained == accepted && channel->payloadBytes() == 0,
+                "drain retires exactly the accepted byte reservations"))
             return 4;
     }
 
@@ -222,8 +188,7 @@ int main()
         constexpr std::int32_t kWidth = 2;
         constexpr std::int32_t kHeight = 2;
         constexpr std::size_t kPixelBytes = 16;
-        constexpr std::size_t kBudget =
-            sizeof(CreateTexture2DPayload) + kPixelBytes;
+        constexpr std::size_t kBudget = sizeof(CreateTexture2DPayload) + kPixelBytes;
 
         auto channel = RenderUploadChannel<>::create(4, kBudget);
         auto sync = std::make_shared<RenderChannelSync>();
@@ -237,34 +202,32 @@ int main()
             EPixelFormat::RGBA8_UNORM,
             false
         );
-        if (!check(static_cast<bool>(submitted) &&
-                       channel->payloadBytes() == kBudget &&
-                       channel->payloadHighWater() == kBudget &&
-                       channel->queueHighWater() == 1,
-                   "owning texture packet uses the complete byte budget"))
+        const bool was_submitted = static_cast<bool>(submitted);
+        const bool has_expected_payload = was_submitted && channel->payloadBytes() == kBudget;
+        const bool has_expected_payload_high_water = has_expected_payload && channel->payloadHighWater() == kBudget;
+        const bool has_expected_queue_high_water = has_expected_payload_high_water && channel->queueHighWater() == 1;
+        if (!check(has_expected_queue_high_water, "owning texture packet uses the complete byte budget"))
             return 5;
 
         std::vector<std::byte>{}.swap(pixels);
         OperationPacket<> packet{};
         if (!check(
-                channel->requests.tryPop(packet) ==
-                        lux::cxx::EQueuePopResult::VALUE &&
-                       packet.attachments.size() == 1,
-                   "texture packet is independently consumable"))
+                channel->requests.tryPop(packet) == lux::cxx::EQueuePopResult::VALUE && packet.attachments.size() == 1,
+                "texture packet is independently consumable"))
             return 6;
         const auto& attachment = packet.attachments.front();
-        const auto* owned = static_cast<const OwnedBytesAttachment*>(
-            attachment.object);
-        if (!check(attachment.type_id == attachment_types::OwnedBytes &&
-                       owned != nullptr && owned->owner &&
-                       owned->size == kPixelBytes &&
-                       owned->data[0] == std::byte{0x5a} &&
-                       owned->data[kPixelBytes - 1] == std::byte{0x5a},
-                   "packet attachment pins an immutable byte copy"))
+        const auto* owned = static_cast<const OwnedBytesAttachment*>(attachment.object);
+        const bool has_owned_attachment_type = attachment.type_id == attachment_types::OwnedBytes;
+        const bool has_owned_attachment = has_owned_attachment_type && owned != nullptr;
+        const bool owns_pixel_storage = has_owned_attachment && owned->owner;
+        const bool has_expected_size = owns_pixel_storage && owned->size == kPixelBytes;
+        const bool has_expected_first_byte = has_expected_size && owned->data[0] == std::byte{0x5a};
+        const bool has_expected_last_byte = has_expected_first_byte &&
+            owned->data[kPixelBytes - 1] == std::byte{0x5a};
+        if (!check(has_expected_last_byte, "packet attachment pins an immutable byte copy"))
             return 7;
         channel->releaseBytes(packet.accountedBytes());
-        if (!check(channel->payloadBytes() == 0,
-                   "owning packet retirement releases its complete budget"))
+        if (!check(channel->payloadBytes() == 0, "owning packet retirement releases its complete budget"))
             return 8;
     }
 
@@ -278,15 +241,12 @@ int main()
         std::weak_ptr<const std::byte[]> weak_pixels;
 
         {
-            auto pixels = std::shared_ptr<std::byte[]>(
-                new std::byte[kPixelBytes]);
+            auto pixels = std::shared_ptr<std::byte[]>(new std::byte[kPixelBytes]);
             std::fill_n(pixels.get(), kPixelBytes, std::byte{0x6b});
             weak_pixels = pixels;
-            auto shared_pixels = lux::cxx::SharedBytes<>::fromOwner(
-                pixels,
-                std::span<const std::byte>{pixels.get(), kPixelBytes});
-            if (!check(!shared_pixels.empty(),
-                       "shared-array pixel range is accepted"))
+            auto shared_pixels =
+                lux::cxx::SharedBytes<>::fromOwner(pixels, std::span<const std::byte>{pixels.get(), kPixelBytes});
+            if (!check(!shared_pixels.empty(), "shared-array pixel range is accepted"))
                 return 9;
 
             OwnedTextureUploadBatch batch{};
@@ -300,29 +260,29 @@ int main()
                 .mip = 0u,
                 .array_layer = 0u,
                 .row_pitch_bytes = static_cast<std::uint32_t>(kPixelBytes),
-                .data_offset = 0u});
+                .data_offset = 0u}
+            );
             batch.pixels = std::move(shared_pixels);
             auto submitted = client.tryUpdateTextureRegions(std::move(batch));
-            if (!check(static_cast<bool>(submitted),
-                       "shared-array region upload is admitted"))
+            if (!check(static_cast<bool>(submitted), "shared-array region upload is admitted"))
                 return 9;
         }
 
-        if (!check(capture->prepared != nullptr &&
-                       capture->prepared->packet.attachments.size() == 2u &&
-                       !weak_pixels.expired(),
-                   "prepared region upload pins caller pixel storage"))
+        if (!check(
+                capture->prepared != nullptr && capture->prepared->packet.attachments.size() == 2u &&
+                    !weak_pixels.expired(),
+                "prepared region upload pins caller pixel storage"))
             return 9;
-        const auto& attachment =
-            capture->prepared->packet.attachments[1u];
-        const auto* owned = static_cast<const OwnedBytesAttachment*>(
-            attachment.object);
-        if (!check(attachment.type_id == attachment_types::OwnedBytes &&
-                       owned != nullptr && owned->owner &&
-                       owned->size == kPixelBytes &&
-                       owned->data[0] == std::byte{0x6b} &&
-                       owned->data[kPixelBytes - 1u] == std::byte{0x6b},
-                   "prepared region upload retains immutable pixel bytes"))
+        const auto& attachment = capture->prepared->packet.attachments[1u];
+        const auto* owned = static_cast<const OwnedBytesAttachment*>(attachment.object);
+        const bool has_owned_attachment_type = attachment.type_id == attachment_types::OwnedBytes;
+        const bool has_owned_attachment = has_owned_attachment_type && owned != nullptr;
+        const bool owns_pixel_storage = has_owned_attachment && owned->owner;
+        const bool has_expected_size = owns_pixel_storage && owned->size == kPixelBytes;
+        const bool has_expected_first_byte = has_expected_size && owned->data[0] == std::byte{0x6b};
+        const bool has_expected_last_byte = has_expected_first_byte &&
+            owned->data[kPixelBytes - 1u] == std::byte{0x6b};
+        if (!check(has_expected_last_byte, "prepared region upload retains immutable pixel bytes"))
             return 9;
 
         auto channel = RenderUploadChannel<>::create(4, 4096u);
@@ -331,22 +291,20 @@ int main()
         auto published = session.trySubmitPrepared(
             capture->prepared->packet,
             capture->prepared->expected_reply_type,
-            std::move(capture->prepared->callback));
-        if (!check(static_cast<bool>(published),
-                   "prepared region upload publishes to the SPSC lane"))
+            std::move(capture->prepared->callback)
+        );
+        if (!check(static_cast<bool>(published), "prepared region upload publishes to the SPSC lane"))
             return 9;
         capture->prepared.reset();
         OperationPacket<> packet{};
-        if (!check(!weak_pixels.expired() &&
-                       channel->requests.tryPop(packet) ==
-                           lux::cxx::EQueuePopResult::VALUE &&
-                       packet.attachments.size() == 2u,
-                   "published region packet keeps pixel storage alive"))
+        if (!check(
+                !weak_pixels.expired() && channel->requests.tryPop(packet) == lux::cxx::EQueuePopResult::VALUE &&
+                    packet.attachments.size() == 2u,
+                "published region packet keeps pixel storage alive"))
             return 9;
         channel->releaseBytes(packet.accountedBytes());
         packet = {};
-        if (!check(weak_pixels.expired(),
-                   "retiring published upload releases pixel storage"))
+        if (!check(weak_pixels.expired(), "retiring published upload releases pixel storage"))
             return 9;
     }
 
@@ -355,26 +313,20 @@ int main()
         auto channel = RenderUploadChannel<>::create(4, 1024);
         auto sync = std::make_shared<RenderChannelSync>();
         RenderUploadSession session(channel, sync);
-        const auto terminal =
-            renderError<err::memory::CapacityExhausted>();
+        const auto terminal = renderError<err::memory::CapacityExhausted>();
         sync->publishTerminalError(terminal);
-        sync->publishTerminalError(
-            renderError<err::memory::GpuAllocationFailed>());
-        if (!check(sync->terminalError().type == terminal.type &&
-                       sync->terminalError().args == terminal.args,
-                   "terminal error snapshot preserves the first failure"))
+        sync->publishTerminalError(renderError<err::memory::GpuAllocationFailed>());
+        if (!check(
+                sync->terminalError().type == terminal.type && sync->terminalError().args == terminal.args,
+                "terminal error snapshot preserves the first failure"))
             return 9;
         sync->requestStop();
         const auto result = session.trySubmitNoReply(
-            [](RenderUploadSession::Builder& builder)
-            {
-                builder.push(opcodes::CommandOp, 10, std::uint32_t{1});
-            }
+            [](RenderUploadSession::Builder& builder) { builder.push(opcodes::CommandOp, 10, std::uint32_t{1}); }
         );
-        if (!check(!result &&
-                       result.error() == ERenderUploadSubmitError::STOPPING &&
-                       channel->payloadBytes() == 0,
-                   "stopped upload endpoint rejects without mutation"))
+        if (!check(
+                !result && result.error() == ERenderUploadSubmitError::STOPPING && channel->payloadBytes() == 0,
+                "stopped upload endpoint rejects without mutation"))
             return 9;
     }
 
@@ -386,13 +338,11 @@ int main()
         auto channel = RenderUploadChannel<>::create(4, 4096);
         auto sync = std::make_shared<RenderChannelSync>();
         FrameDispatcher<> dispatcher;
-        dispatcher.registerUnary<
-            std::uint32_t,
-            publicationProbeHandler>(
-                opcodes::CommandOp,
-                kPublicationProbeType,
-                "publication_probe"
-            );
+        dispatcher.registerUnary<std::uint32_t, publicationProbeHandler>(
+            opcodes::CommandOp,
+            kPublicationProbeType,
+            "publication_probe"
+        );
         RenderUploadServer server(channel, sync, dispatcher);
 
         for (std::uint32_t marker : {11u, 22u})
@@ -402,35 +352,23 @@ int main()
                 return 10;
             FrameReplyBuilder<> builder(*slot);
             builder.begin();
-            builder.push<std::uint32_t>(
-                kPublicationProbeReplyType,
-                marker
-            );
-            if (!check(
-                    channel->responses.publishWrite(),
-                    "response prefill reaches the configured pending bound"))
+            builder.push<std::uint32_t>(kPublicationProbeReplyType, marker);
+            if (!check(channel->responses.publishWrite(), "response prefill reaches the configured pending bound"))
             {
                 return 10;
             }
         }
 
         RenderUploadSession session(channel, sync);
-        const auto submitted = session.trySubmitNoReply(
-            [](RenderUploadSession::Builder& builder)
-            {
-                builder.push(
-                    opcodes::CommandOp,
-                    kPublicationProbeType,
-                    std::uint32_t{33u}
-                );
-            }
+        const auto submitted = session.trySubmitNoReply([](RenderUploadSession::Builder& builder) {
+            builder.push(opcodes::CommandOp, kPublicationProbeType, std::uint32_t{33u});
+        }
         );
-        if (!check(static_cast<bool>(submitted),
-                   "publication probe request is admitted"))
+        if (!check(static_cast<bool>(submitted), "publication probe request is admitted"))
             return 11;
-        if (!check(!server.drainAndDispatch() &&
-                       server.hasPendingReplyPublication(),
-                   "primary server exposes ownership of its unpublished reply"))
+        if (!check(
+                !server.drainAndDispatch() && server.hasPendingReplyPublication(),
+                "primary server exposes ownership of its unpublished reply"))
             return 11;
 
         bool auxiliary_still_queued = true;
@@ -441,31 +379,28 @@ int main()
             {
                 FrameReplyBuilder<> builder(*slot);
                 builder.begin();
-                builder.push<std::uint32_t>(
-                    kPublicationProbeReplyType,
-                    44u
-                );
+                builder.push<std::uint32_t>(kPublicationProbeReplyType, 44u);
                 if (channel->responses.publishWrite())
                     auxiliary_still_queued = false;
             }
         }
-        if (!check(auxiliary_still_queued,
-                   "auxiliary publisher defers behind the primary slot"))
+        if (!check(auxiliary_still_queued, "auxiliary publisher defers behind the primary slot"))
             return 12;
 
-        if (!check(channel->responses.tryAcquireRead() &&
-                       firstReplyValue(channel->responses.currentRead()) == 11u,
-                   "consumer frees one response slot in sequence"))
+        if (!check(
+                channel->responses.tryAcquireRead() && firstReplyValue(channel->responses.currentRead()) == 11u,
+                "consumer frees one response slot in sequence"))
             return 13;
         (void)server.drainAndDispatch();
-        if (!check(!server.hasPendingReplyPublication(),
-                   "primary reply publishes after consumer progress"))
+        if (!check(!server.hasPendingReplyPublication(), "primary reply publishes after consumer progress"))
             return 13;
-        if (!check(channel->responses.tryAcquireRead() &&
-                       firstReplyValue(channel->responses.currentRead()) == 22u &&
-                       channel->responses.tryAcquireRead() &&
-                       firstReplyValue(channel->responses.currentRead()) == 33u,
-                   "the primary reply survives response-ring backpressure"))
+        const bool has_second_reply = channel->responses.tryAcquireRead();
+        const bool has_expected_second_reply = has_second_reply &&
+            firstReplyValue(channel->responses.currentRead()) == 22u;
+        const bool has_third_reply = has_expected_second_reply && channel->responses.tryAcquireRead();
+        const bool has_expected_third_reply = has_third_reply &&
+            firstReplyValue(channel->responses.currentRead()) == 33u;
+        if (!check(has_expected_third_reply, "the primary reply survives response-ring backpressure"))
             return 14;
     }
 

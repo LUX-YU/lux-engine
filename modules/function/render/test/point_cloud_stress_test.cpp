@@ -12,7 +12,7 @@
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
-#include "RenderTask.hpp"            // relocated test-only coroutine support
+#include "RenderTask.hpp" // relocated test-only coroutine support
 #include "RenderTaskScheduler.hpp"
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
@@ -49,7 +49,8 @@ namespace fs = std::filesystem;
 static int g_pass = 0;
 static int g_fail = 0;
 
-static void check(bool cond, const char *name)
+static void
+check(bool cond, const char* name)
 {
     if (cond)
     {
@@ -63,19 +64,17 @@ static void check(bool cond, const char *name)
     }
 }
 
-
-
 // ── Vulkan extensions ───────────────────────────────────────────────────
-static std::vector<const char*> getVulkanExtensions()
+static std::vector<const char*>
+getVulkanExtensions()
 {
     const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
     return {exts.begin(), exts.end()};
 }
 
 // ── Matrix helpers ──────────────────────────────────────────────────────
-static Eigen::Matrix4f buildViewMatrix(const Eigen::Vector3f &eye,
-                                       const Eigen::Vector3f &target,
-                                       const Eigen::Vector3f &up)
+static Eigen::Matrix4f
+buildViewMatrix(const Eigen::Vector3f& eye, const Eigen::Vector3f& target, const Eigen::Vector3f& up)
 {
     Eigen::Vector3f f = (target - eye).normalized();
     Eigen::Vector3f s = f.cross(up).normalized();
@@ -96,8 +95,8 @@ static Eigen::Matrix4f buildViewMatrix(const Eigen::Vector3f &eye,
     return V;
 }
 
-static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect,
-                                       float near_z, float far_z)
+static Eigen::Matrix4f
+buildProjMatrix(float fov_rad, float aspect, float near_z, float far_z)
 {
     float tanHalf = std::tan(fov_rad * 0.5f);
     Eigen::Matrix4f P = Eigen::Matrix4f::Zero();
@@ -138,10 +137,8 @@ static constexpr float kPi = 3.14159265f;
 ///  @param chunk_index   Sequential chunk id (determines azimuth base)
 ///  @param vehicle_pos   Current vehicle XYZ at timestamp of this chunk
 ///  @param rng           Random engine (for noise/return variation)
-static std::vector<PointCloudPoint> generateLidarChunk(
-    uint32_t chunk_index,
-    const Eigen::Vector3f &vehicle_pos,
-    std::mt19937 &rng)
+static std::vector<PointCloudPoint>
+generateLidarChunk(uint32_t chunk_index, const Eigen::Vector3f& vehicle_pos, std::mt19937& rng)
 {
     // Azimuth range for this wedge
     const uint32_t sweep_index = chunk_index % kChunksPerRevolution;
@@ -222,17 +219,19 @@ static std::vector<PointCloudPoint> generateLidarChunk(
 
 struct ModeTestConfig
 {
-    const char *name;
-    const FeatureFactory *factory;
+    const char* name;
+    const FeatureFactory* factory;
 };
 
 // ── Coroutine task — replaces Phase state machine ───────────────────────
 
-static RenderTask<void> pointCloudTask(
-    RenderFrameSession &session,
+static RenderTask<void>
+pointCloudTask(
+    RenderFrameSession& session,
     RenderControlSession& control,
     RenderUploadClient upload,
-    lux::window::LuxWindow &window)
+    lux::window::LuxWindow& window
+)
 {
 
     // ── Phase 1: Create scene ───────────────────────────────────────
@@ -265,8 +264,7 @@ static RenderTask<void> pointCloudTask(
     co_await yield_frame();
 
     auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
-    auto view_cam_ops = ViewCameraOperationIds::fromOps(
-        view_cam_type_reply.ops, view_cam_type_reply.op_count);
+    auto view_cam_ops = ViewCameraOperationIds::fromOps(view_cam_type_reply.ops, view_cam_type_reply.op_count);
 
     co_await yield_frame();
 
@@ -308,14 +306,8 @@ static RenderTask<void> pointCloudTask(
     lux::render::CreateTrajectoryPayload traj_create_p{};
     traj_create_p.scene_id = scene_id;
     auto traj_create_reply = co_await requireUploadAccepted(
-        traj_upload.newTrajectory(
-            traj_create_p,
-            std::span<const std::byte>{},
-            alignof(TrajectoryPoint)
-        )
-    );
-    check(traj_create_reply.status == 0 && traj_create_reply.trajectory.isValid(),
-          "newTrajectory — OK");
+        traj_upload.newTrajectory(traj_create_p, std::span<const std::byte>{}, alignof(TrajectoryPoint)));
+    check(traj_create_reply.status == 0 && traj_create_reply.trajectory.isValid(), "newTrajectory — OK");
     TrajectoryHandle trajectory = traj_create_reply.trajectory;
 
     // ── Phase 5: Fill CommConfigs + register all 4 PC modes ─────────
@@ -350,9 +342,9 @@ static RenderTask<void> pointCloudTask(
         co_await yield_frame();
         auto type_reply = co_await control.registerFeatureType(*modes[m].factory);
         feat_type_ids[m] = type_reply.feature_type_id;
-        if (m == 0) pc_ops = PointCloudOperationIds::fromOps(type_reply.ops, type_reply.op_count);
-        check(feat_type_ids[m] > 0,
-              (std::string("RegisterFeatureType ") + modes[m].name + " — OK").c_str());
+        if (m == 0)
+            pc_ops = PointCloudOperationIds::fromOps(type_reply.ops, type_reply.op_count);
+        check(feat_type_ids[m] > 0, (std::string("RegisterFeatureType ") + modes[m].name + " — OK").c_str());
     }
 
     PointCloudUploadClient pc_upload{upload, pc_ops};
@@ -382,8 +374,7 @@ static RenderTask<void> pointCloudTask(
         }
         auto feat_reply = co_await freq;
         feat_handles[m] = feat_reply.feature;
-        check(feat_handles[m].isValid(),
-              (std::string("AddFeature ") + modes[m].name + " — OK").c_str());
+        check(feat_handles[m].isValid(), (std::string("AddFeature ") + modes[m].name + " — OK").c_str());
 
         // Only mode 0 starts enabled; disable the rest
         if (m != 0)
@@ -453,9 +444,8 @@ static RenderTask<void> pointCloudTask(
                     float g = 1.0f - t * 0.5f;
                     float b = 1.0f;
                     trajectory_append_buf.push_back(
-                        TrajectoryPoint::make(
-                            traj_pt.x(), traj_pt.y(), traj_pt.z(),
-                            r, g, b, 1.0f, t, 2.0f));
+                        TrajectoryPoint::make(traj_pt.x(), traj_pt.y(), traj_pt.z(), r, g, b, 1.0f, t, 2.0f)
+                    );
                     last_traj_pos = traj_pt;
                 }
             }
@@ -463,9 +453,8 @@ static RenderTask<void> pointCloudTask(
             {
                 // First point
                 trajectory_append_buf.push_back(
-                    TrajectoryPoint::make(
-                        traj_pt.x(), traj_pt.y(), traj_pt.z(),
-                        0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 2.0f));
+                    TrajectoryPoint::make(traj_pt.x(), traj_pt.y(), traj_pt.z(), 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 2.0f)
+                );
                 last_traj_pos = traj_pt;
                 first_traj_point = false;
             }
@@ -476,10 +465,14 @@ static RenderTask<void> pointCloudTask(
                 ap_p.scene_id = scene_id;
                 ap_p.trajectory = trajectory;
                 ap_p.point_count = static_cast<uint32_t>(trajectory_append_buf.size());
-                auto append_req = traj_upload.appendPoints(ap_p,
+                auto append_req = traj_upload.appendPoints(
+                    ap_p,
                     std::as_bytes(std::span<const TrajectoryPoint>(
                         trajectory_append_buf.data(),
-                        static_cast<size_t>(trajectory_append_buf.size()))), alignof(TrajectoryPoint));
+                        static_cast<size_t>(trajectory_append_buf.size()))
+                    ),
+                    alignof(TrajectoryPoint)
+                );
                 (void)append_req;
             }
         }
@@ -498,13 +491,13 @@ static RenderTask<void> pointCloudTask(
                     {
                         auto pc_span = std::span<const PointCloudPoint>(
                             current_chunk_data.data(),
-                            static_cast<size_t>(current_chunk_data.size()));
+                            static_cast<size_t>(current_chunk_data.size())
+                        );
                         lux::render::UploadPointCloudChunkPayload up{};
-                        up.scene_id    = scene_id;
-                        up.chunk_id    = next_chunk;
+                        up.scene_id = scene_id;
+                        up.chunk_id = next_chunk;
                         up.point_count = static_cast<uint32_t>(pc_span.size());
-                        (void)pc_upload.uploadChunk(up, std::as_bytes(pc_span),
-                                             alignof(lux::render::PointCloudPoint));
+                        (void)pc_upload.uploadChunk(up, std::as_bytes(pc_span), alignof(lux::render::PointCloudPoint));
                     }
                     total_points_uploaded += current_chunk_data.size();
                 }
@@ -512,9 +505,8 @@ static RenderTask<void> pointCloudTask(
 
                 if (next_chunk % kChunksPerRevolution == 0)
                 {
-                    std::cout << "    LiDAR sweep " << (next_chunk / kChunksPerRevolution)
-                              << " — " << (total_points_uploaded / 1000) << "K pts, vehicle Z="
-                              << vehicle_pos.z() << "\n";
+                    std::cout << "    LiDAR sweep " << (next_chunk / kChunksPerRevolution) << " — "
+                              << (total_points_uploaded / 1000) << "K pts, vehicle Z=" << vehicle_pos.z() << "\n";
                 }
             }
         }
@@ -529,17 +521,24 @@ static RenderTask<void> pointCloudTask(
             Eigen::Vector3f eye(
                 cam_target.x() + cam_dist * std::cos(angle),
                 cam_target.y() + cam_dist * 0.5f,
-                cam_target.z() + cam_dist * std::sin(angle));
+                cam_target.z() + cam_dist * std::sin(angle)
+            );
             Eigen::Matrix4f V = buildViewMatrix(eye, cam_target, up);
 
-            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(
+                ViewCameraProxy(session, view_cam_ops),
+                scene_id,
+                view_handle,
+                V.data(),
+                P.data(),
+                eye.data()
+            );
         }
 
         co_await yield_frame(); // <-- frame boundary: submitFrame + pumpReplies
 
         // ── Key input (edge-triggered) ──
-        auto keyPressed = [&](int glfw_key) -> bool
-        {
+        auto keyPressed = [&](int glfw_key) -> bool {
             bool down = (glfwGetKey(window.handle(), glfw_key) == GLFW_PRESS);
             bool edge = down && !key_was_down[glfw_key];
             key_was_down[glfw_key] = down;
@@ -558,8 +557,7 @@ static RenderTask<void> pointCloudTask(
                 mode_enabled[active_mode] = false;
                 mode_enabled[m] = true;
                 active_mode = m;
-                std::cout << "  >> Switched to mode " << (m + 1) << ": "
-                          << modes[m].name << "\n";
+                std::cout << "  >> Switched to mode " << (m + 1) << ": " << modes[m].name << "\n";
             }
         }
 
@@ -584,15 +582,14 @@ static RenderTask<void> pointCloudTask(
 
 // ── main ────────────────────────────────────────────────────────────────
 
-int main()
+int
+main()
 {
     std::cout << "=== Point Cloud Stress Test — LiDAR Simulation ===\n";
-    std::cout << "  Simulating " << kLidarChannels << "-ch LiDAR, "
-              << kChunksPerSecond << " chunks/sec, vehicle speed " << kVehicleSpeed << " m/s\n";
-    std::cout << "  Streaming " << kMaxChunks << " chunks (~"
-              << (kPointsPerChunk / 1000) << "K pts each) over "
+    std::cout << "  Simulating " << kLidarChannels << "-ch LiDAR, " << kChunksPerSecond << " chunks/sec, vehicle speed "
+              << kVehicleSpeed << " m/s\n";
+    std::cout << "  Streaming " << kMaxChunks << " chunks (~" << (kPointsPerChunk / 1000) << "K pts each) over "
               << kScanDurationSec << " seconds\n\n";
-
 
     // ── Channel + sync + window ─────────────────────────────────────
 
@@ -609,25 +606,30 @@ int main()
     std::atomic<bool> server_ready{false};
     std::atomic<bool> server_failed{false};
 
-    std::thread server_thread([&]
-                              {
+    std::thread server_thread([&] {
         GeneralRenderServer server(channel, control_channel, upload_channel, sync);
         ServerConfig cfg;
         cfg.instance_extensions = surface_exts;
-        if (auto r = server.init(std::move(cfg)); !r) {
+        if (auto r = server.init(std::move(cfg)); !r)
+        {
             std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
-        if (auto r = server.attachToWindow(window); !r) {
+        if (auto r = server.attachToWindow(window); !r)
+        {
             std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
         server_ready.store(true, std::memory_order_release);
-        while (server.tick()) {} });
+        while (server.tick())
+        {
+        }
+    }
+    );
 
     while (!server_ready.load(std::memory_order_acquire))
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -647,17 +649,11 @@ int main()
 
     // ── Run coroutine via scheduler ─────────────────────────────────
     RenderTaskScheduler scheduler(session, control, &upload);
-    auto task = pointCloudTask(
-        session,
-        control,
-        upload_client.client(),
-        window);
-    scheduler.run(
-        std::move(task), [&](RenderFrameSession &) -> bool
-        {
-            window.pollEvents();
-            return !window.shouldClose(); 
-        }
+    auto task = pointCloudTask(session, control, upload_client.client(), window);
+    scheduler.run(std::move(task), [&](RenderFrameSession&) -> bool {
+        window.pollEvents();
+        return !window.shouldClose();
+    }
     );
 
     // ── Shutdown ────────────────────────────────────────────────────

@@ -42,35 +42,22 @@ namespace
         setvbuf(stderr, nullptr, _IONBF, 0);
         dup2(pipe_fds[1], STDOUT_FILENO);
         dup2(pipe_fds[1], STDERR_FILENO);
-        std::thread(
-            []
+        std::thread([] {
+            char line[1024];
+            ssize_t count;
+            while ((count = read(pipe_fds[0], line, sizeof(line) - 1)) > 0)
             {
-                char line[1024];
-                ssize_t count;
-                while ((count = read(
-                            pipe_fds[0],
-                            line,
-                            sizeof(line) - 1
-                        )) > 0)
+                while (count > 0 && (line[count - 1] == '\n' || line[count - 1] == '\r'))
                 {
-                    while (count > 0 &&
-                           (line[count - 1] == '\n' ||
-                            line[count - 1] == '\r'))
-                    {
-                        --count;
-                    }
-                    line[count] = '\0';
-                    if (count > 0)
-                    {
-                        __android_log_write(
-                            ANDROID_LOG_INFO,
-                            "luxstdio",
-                            line
-                        );
-                    }
+                    --count;
+                }
+                line[count] = '\0';
+                if (count > 0)
+                {
+                    __android_log_write(ANDROID_LOG_INFO, "luxstdio", line);
                 }
             }
-        ).detach();
+        }).detach();
     }
 
     struct AndroidGame final
@@ -84,51 +71,31 @@ namespace
 
     AndroidGame game;
 
-    [[nodiscard]] bool extractAsset(
-        AAssetManager* manager,
-        const char* name,
-        const std::filesystem::path& destination)
+    [[nodiscard]] bool extractAsset(AAssetManager* manager, const char* name, const std::filesystem::path& destination)
     {
-        AAsset* asset = AAssetManager_open(
-            manager,
-            name,
-            AASSET_MODE_STREAMING
-        );
+        AAsset* asset = AAssetManager_open(manager, name, AASSET_MODE_STREAMING);
         if (!asset)
         {
             LOGE("APK asset '%s' is missing", name);
             return false;
         }
 
-        const auto total = static_cast<std::uint64_t>(
-            AAsset_getLength64(asset)
-        );
+        const auto total = static_cast<std::uint64_t>(AAsset_getLength64(asset));
         std::error_code error;
-        std::filesystem::create_directories(
-            destination.parent_path(),
-            error
-        );
+        std::filesystem::create_directories(destination.parent_path(), error);
         if (error)
         {
             AAsset_close(asset);
-            LOGE(
-                "cannot create '%s': %s",
-                destination.parent_path().string().c_str(),
-                error.message().c_str()
-            );
+            LOGE("cannot create '%s': %s", destination.parent_path().string().c_str(), error.message().c_str());
             return false;
         }
-        if (std::filesystem::exists(destination, error) &&
-            std::filesystem::file_size(destination, error) == total)
+        if (std::filesystem::exists(destination, error) && std::filesystem::file_size(destination, error) == total)
         {
             AAsset_close(asset);
             return true;
         }
 
-        std::ofstream output(
-            destination,
-            std::ios::binary | std::ios::trunc
-        );
+        std::ofstream output(destination, std::ios::binary | std::ios::trunc);
         if (!output)
         {
             AAsset_close(asset);
@@ -147,8 +114,7 @@ namespace
         return complete;
     }
 
-    [[nodiscard]] bool isDeploymentRelative(
-        const std::filesystem::path& path)
+    [[nodiscard]] bool isDeploymentRelative(const std::filesystem::path& path)
     {
         if (path.empty() || path.is_absolute() || path.has_root_path())
             return false;
@@ -160,33 +126,23 @@ namespace
         return true;
     }
 
-    [[nodiscard]] bool prepareApplicationConfig(
-        android_app* native_app,
-        lux::game::GameApplicationConfig& config)
+    [[nodiscard]] bool prepareApplicationConfig(android_app* native_app, lux::game::GameApplicationConfig& config)
     {
         constexpr const char* kManifestAsset = "game.luxruntime.toml";
-        AAssetManager* asset_manager =
-            native_app->activity->assetManager;
-        const std::filesystem::path data_directory =
-            native_app->activity->internalDataPath;
+        AAssetManager* asset_manager = native_app->activity->assetManager;
+        const std::filesystem::path data_directory = native_app->activity->internalDataPath;
         const auto manifest_path = data_directory / kManifestAsset;
         if (!extractAsset(asset_manager, kManifestAsset, manifest_path))
             return false;
 
-        auto manifest = lux::game::LaunchManifest::loadFromFile(
-            manifest_path
-        );
+        auto manifest = lux::game::LaunchManifest::loadFromFile(manifest_path);
         if (!manifest)
         {
-            LOGE(
-                "packaged runtime manifest was rejected: %s",
-                manifest.error().c_str()
-            );
+            LOGE("packaged runtime manifest was rejected: %s", manifest.error().c_str());
             return false;
         }
         if (!isDeploymentRelative(manifest->game_pak) ||
-            (!manifest->base_pak.empty() &&
-             !isDeploymentRelative(manifest->base_pak)))
+            (!manifest->base_pak.empty() && !isDeploymentRelative(manifest->base_pak)))
         {
             LOGE("runtime pak paths must be APK-relative");
             return false;
@@ -195,11 +151,7 @@ namespace
         const auto deployment = data_directory / "deployment";
         const auto game_pak_path = deployment / manifest->game_pak;
         const auto game_pak_asset = manifest->game_pak.generic_string();
-        if (!extractAsset(
-                asset_manager,
-                game_pak_asset.c_str(),
-                game_pak_path
-            ))
+        if (!extractAsset(asset_manager, game_pak_asset.c_str(), game_pak_path))
         {
             return false;
         }
@@ -208,13 +160,8 @@ namespace
         if (!manifest->base_pak.empty())
         {
             base_pak_path = deployment / manifest->base_pak;
-            const auto base_pak_asset =
-                manifest->base_pak.generic_string();
-            if (!extractAsset(
-                    asset_manager,
-                    base_pak_asset.c_str(),
-                    base_pak_path
-                ))
+            const auto base_pak_asset = manifest->base_pak.generic_string();
+            if (!extractAsset(asset_manager, base_pak_asset.c_str(), base_pak_path))
             {
                 return false;
             }
@@ -234,22 +181,16 @@ namespace
             }
             const auto packaged_path = extension.path.generic_string();
             const auto extracted_path = deployment / extension.path;
-            if (!extractAsset(
-                    asset_manager,
-                    packaged_path.c_str(),
-                    extracted_path
-                ))
+            if (!extractAsset(asset_manager, packaged_path.c_str(), extracted_path))
             {
                 return false;
             }
-            config.extensions.push_back(
-                lux::extensions::ExtensionModuleRequirement::fromPath(
-                    extension.id,
-                    extracted_path,
-                    lux::extensions::EExtensionModuleTarget::RUNTIME,
-                    extension.required_major,
-                    extension.minimum_minor
-                )
+            config.extensions.push_back(lux::extensions::ExtensionModuleRequirement::fromPath(
+                extension.id,
+                extracted_path,
+                lux::extensions::EExtensionModuleTarget::RUNTIME,
+                extension.required_major,
+                extension.minimum_minor)
             );
         }
 
@@ -265,25 +206,17 @@ namespace
             .maximum_replacement_tasks = 2u,
             .maximum_replacement_bytes = 4u * 1024u * 1024u,
         };
-        const auto required_extensions =
-            lux::window::LuxWindow::requiredVulkanInstanceExtensions();
-        config.vulkan_instance_extensions.reserve(
-            required_extensions.size()
-        );
+        const auto required_extensions = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+        config.vulkan_instance_extensions.reserve(required_extensions.size());
         for (const auto* extension : required_extensions)
             config.vulkan_instance_extensions.emplace_back(extension);
         return true;
     }
 
-    [[nodiscard]] lux::math::Extent2u updateSurfaceExtent(
-        android_app* native_app)
+    [[nodiscard]] lux::math::Extent2u updateSurfaceExtent(android_app* native_app)
     {
-        game.width = static_cast<std::uint32_t>(
-            ANativeWindow_getWidth(native_app->window)
-        );
-        game.height = static_cast<std::uint32_t>(
-            ANativeWindow_getHeight(native_app->window)
-        );
+        game.width = static_cast<std::uint32_t>(ANativeWindow_getWidth(native_app->window));
+        game.height = static_cast<std::uint32_t>(ANativeWindow_getHeight(native_app->window));
         return {game.width, game.height};
     }
 
@@ -293,24 +226,17 @@ namespace
         if (!prepareApplicationConfig(native_app, config))
             return false;
 
-        auto application =
-            std::make_unique<lux::game::GameApplication>();
+        auto application = std::make_unique<lux::game::GameApplication>();
         const auto extent = updateSurfaceExtent(native_app);
-        if (!application->start(
-                std::move(config),
-                reinterpret_cast<std::uint64_t>(native_app->window),
-                extent
-            ))
+        if (!application->start(std::move(config), reinterpret_cast<std::uint64_t>(native_app->window), extent))
         {
             return false;
         }
         ALooper* looper = native_app->looper;
-        application->bindExternalWake(
-            [looper]
-            {
-                if (looper)
-                    ALooper_wake(looper);
-            }
+        application->bindExternalWake([looper] {
+            if (looper)
+                ALooper_wake(looper);
+        }
         );
         game.application = std::move(application);
         return true;
@@ -324,17 +250,12 @@ namespace
             return startApplication(native_app);
 
         const auto extent = updateSurfaceExtent(native_app);
-        return game.application->attachSurface(
-            reinterpret_cast<std::uint64_t>(native_app->window),
-            extent
-        );
+        return game.application->attachSurface(reinterpret_cast<std::uint64_t>(native_app->window), extent);
     }
 
     void releaseSurface()
     {
-        if (game.application &&
-            game.application->surfaceAttached() &&
-            !game.application->detachSurface())
+        if (game.application && game.application->surfaceAttached() && !game.application->detachSurface())
         {
             LOGE("surface target release failed");
         }
@@ -343,14 +264,9 @@ namespace
     void frame()
     {
         const auto now = std::chrono::steady_clock::now();
-        const float dt = std::chrono::duration<float>(
-            now - game.last_frame
-        ).count();
+        const float dt = std::chrono::duration<float>(now - game.last_frame).count();
         game.last_frame = now;
-        (void)game.application->tick(
-            dt,
-            lux::math::Extent2u{game.width, game.height}
-        );
+        (void)game.application->tick(dt, lux::math::Extent2u{game.width, game.height});
     }
 
     void onAppCmd(android_app* native_app, std::int32_t command)
@@ -373,16 +289,13 @@ namespace
             break;
 
         case APP_CMD_GAINED_FOCUS:
-            if (game.application &&
-                !game.application->surfaceAttached() &&
-                native_app->window)
+            if (game.application && !game.application->surfaceAttached() && native_app->window)
             {
                 LOGI("[lifecycle] re-acquiring retained NativeWindow");
                 if (acquireSurface(native_app))
                     game.last_frame = std::chrono::steady_clock::now();
             }
-            game.animating = game.application &&
-                game.application->surfaceAttached();
+            game.animating = game.application && game.application->surfaceAttached();
             break;
 
         case APP_CMD_LOST_FOCUS:
@@ -396,26 +309,19 @@ namespace
     }
 }
 
-void android_main(android_app* native_app)
+void
+android_main(android_app* native_app)
 {
     redirectStdioToLogcat();
     LOGI("=== lux game start ===");
-    lux::log::setOutput(
-        [](const lux::log::LogRecord& record)
-        { lux::log::writeRecordToLogcat(record, LUX_TAG); }
-    );
+    lux::log::setOutput([](const lux::log::LogRecord& record) { lux::log::writeRecordToLogcat(record, LUX_TAG); });
 
     native_app->onAppCmd = onAppCmd;
     for (;;)
     {
         int events = 0;
         android_poll_source* source = nullptr;
-        while (ALooper_pollOnce(
-                   game.animating ? 0 : -1,
-                   nullptr,
-                   &events,
-                   reinterpret_cast<void**>(&source)
-               ) >= 0)
+        while (ALooper_pollOnce(game.animating ? 0 : -1, nullptr, &events, reinterpret_cast<void**>(&source)) >= 0)
         {
             if (source)
                 source->process(native_app, source);
@@ -435,8 +341,7 @@ void android_main(android_app* native_app)
         }
         if (!game.animating && game.application)
             (void)game.application->pumpSafePoint();
-        if (game.animating && game.application &&
-            game.application->surfaceAttached())
+        if (game.animating && game.application && game.application->surfaceAttached())
         {
             frame();
         }

@@ -16,8 +16,7 @@ namespace lux::render::testing
     class DirectRenderUploadClient final
     {
     public:
-        explicit DirectRenderUploadClient(RenderUploadSession& session)
-            : state_(std::make_shared<State>())
+        explicit DirectRenderUploadClient(RenderUploadSession& session) : state_(std::make_shared<State>())
         {
             state_->session = &session;
         }
@@ -28,16 +27,13 @@ namespace lux::render::testing
         }
 
         DirectRenderUploadClient(const DirectRenderUploadClient&) = delete;
-        DirectRenderUploadClient& operator=(
-            const DirectRenderUploadClient&) = delete;
+        DirectRenderUploadClient& operator=(const DirectRenderUploadClient&) = delete;
         DirectRenderUploadClient(DirectRenderUploadClient&&) = delete;
         DirectRenderUploadClient& operator=(DirectRenderUploadClient&&) = delete;
 
         [[nodiscard]] RenderUploadClient client() const noexcept
         {
-            return RenderUploadClient::bind(
-                state_,
-                &DirectRenderUploadClient::submit);
+            return RenderUploadClient::bind(state_, &DirectRenderUploadClient::submit);
         }
 
     private:
@@ -46,25 +42,23 @@ namespace lux::render::testing
             RenderUploadSession* session{nullptr};
         };
 
-        [[nodiscard]] static UploadSubmitNoReplyResult submit(
-            void* opaque,
-            std::shared_ptr<detail::PreparedUpload> prepared) noexcept
+        [[nodiscard]] static UploadSubmitNoReplyResult
+        submit(void* opaque, std::shared_ptr<detail::PreparedUpload> prepared) noexcept
         {
             auto* state = static_cast<State*>(opaque);
             if (!state || !state->session || !prepared)
             {
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::STOPPING);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
             }
             if (prepared->expected_reply_type == kInvalidTypeId)
             {
-                return state->session->trySubmitPreparedNoReply(
-                    prepared->packet);
+                return state->session->trySubmitPreparedNoReply(prepared->packet);
             }
             return state->session->trySubmitPrepared(
                 prepared->packet,
                 prepared->expected_reply_type,
-                std::move(prepared->callback));
+                std::move(prepared->callback)
+            );
         }
 
         std::shared_ptr<State> state_;

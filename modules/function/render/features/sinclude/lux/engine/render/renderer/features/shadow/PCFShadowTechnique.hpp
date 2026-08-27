@@ -27,12 +27,21 @@ namespace lux::render
         {
             return EBuiltinShader::FORWARD_PBR_FRAG_PCF;
         }
-        EShadowTechnique id() const override { return EShadowTechnique::PCF; }
+        EShadowTechnique id() const override
+        {
+            return EShadowTechnique::PCF;
+        }
 
         // Caster = plain depth-only: thin depth vert + depth frag, no color
         // target (casterColorTarget/casterColorWriteMask use base defaults null/0).
-        EBuiltinShader casterVertVariant() const override { return EBuiltinShader::SHADOW_DEPTH_VERT; }
-        EBuiltinShader casterFragVariant() const override { return EBuiltinShader::SHADOW_DEPTH_FRAG; }
+        EBuiltinShader casterVertVariant() const override
+        {
+            return EBuiltinShader::SHADOW_DEPTH_VERT;
+        }
+        EBuiltinShader casterFragVariant() const override
+        {
+            return EBuiltinShader::SHADOW_DEPTH_FRAG;
+        }
     };
 
 } // namespace lux::render

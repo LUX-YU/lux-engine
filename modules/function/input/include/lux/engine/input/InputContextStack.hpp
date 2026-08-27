@@ -18,11 +18,13 @@ namespace lux::input
         void push(InputContext* ctx)
         {
             assert(ctx && "InputContextStack: null context pushed");
-            if (contains(ctx)) return;
-            auto it = std::upper_bound(stack_.begin(), stack_.end(), ctx,
-                [](const InputContext* a, const InputContext* b) {
+            if (contains(ctx))
+                return;
+            auto it =
+                std::upper_bound(stack_.begin(), stack_.end(), ctx, [](const InputContext* a, const InputContext* b) {
                     return a->priority() < b->priority();
-                });
+                }
+                );
             stack_.insert(it, ctx);
         }
 
@@ -35,8 +37,10 @@ namespace lux::input
         /// Remove the topmost context whose pointer equals ctx.
         bool pop(InputContext* ctx)
         {
-            for (auto it = stack_.rbegin(); it != stack_.rend(); ++it) {
-                if (*it == ctx) {
+            for (auto it = stack_.rbegin(); it != stack_.rend(); ++it)
+            {
+                if (*it == ctx)
+                {
                     stack_.erase(std::next(it).base());
                     return true;
                 }
@@ -47,19 +51,35 @@ namespace lux::input
         /// Remove and return the top-most context.
         InputContext* pop()
         {
-            if (stack_.empty()) return nullptr;
+            if (stack_.empty())
+                return nullptr;
             InputContext* top = stack_.back();
             stack_.pop_back();
             return top;
         }
 
-        [[nodiscard]] InputContext*       top()   noexcept { return stack_.empty() ? nullptr : stack_.back(); }
-        [[nodiscard]] const InputContext* top()   const noexcept { return stack_.empty() ? nullptr : stack_.back(); }
-        [[nodiscard]] bool                empty() const noexcept { return stack_.empty(); }
-        [[nodiscard]] std::size_t         size()  const noexcept { return stack_.size(); }
+        [[nodiscard]] InputContext* top() noexcept
+        {
+            return stack_.empty() ? nullptr : stack_.back();
+        }
+        [[nodiscard]] const InputContext* top() const noexcept
+        {
+            return stack_.empty() ? nullptr : stack_.back();
+        }
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return stack_.empty();
+        }
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            return stack_.size();
+        }
 
         /// Ordered from lowest (index 0) to highest (index size-1) priority.
-        [[nodiscard]] std::span<InputContext* const> active() const noexcept { return stack_; }
+        [[nodiscard]] std::span<InputContext* const> active() const noexcept
+        {
+            return stack_;
+        }
 
     private:
         std::vector<InputContext*> stack_;

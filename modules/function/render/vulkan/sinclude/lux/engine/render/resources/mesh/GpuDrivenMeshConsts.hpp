@@ -18,8 +18,7 @@ namespace lux::render
     // kMaxDrawsPerBiasGroup、视图路径传 0,那句话从来不成立。)
 
     /// Number of geometry-kind lanes used by mesh indirect/count buffers.
-    inline constexpr uint32_t kGeometryKindCount =
-        static_cast<uint32_t>(EGeometryKind::Custom) + 1u;
+    inline constexpr uint32_t kGeometryKindCount = static_cast<uint32_t>(EGeometryKind::Custom) + 1u;
 
     /// Sentinel used by cull shaders to mean "no geometry-kind filter".
     inline constexpr uint32_t kAnyGeometryKind = 0xFFFFFFFFu;
@@ -64,15 +63,15 @@ namespace lux::render
     //            field9 = view MDC count
     struct MeshCullPushConstants
     {
-        uint32_t slot_count;                          // patched per-frame (instance slot count)
-        uint32_t max_draws_per_bucket;                // SHADOW: kMaxDrawsPerBiasGroup; VIEW: 0
+        uint32_t slot_count;           // patched per-frame (instance slot count)
+        uint32_t max_draws_per_bucket; // SHADOW: kMaxDrawsPerBiasGroup; VIEW: 0
         uint32_t required_pass_mask;
         uint32_t required_geometry_kind;              // kAnyGeometryKind => no kind filter
         uint32_t geometry_kind_count_or_slice_count;  // VIEW: kGeometryKindCount; SHADOW: slice count
         uint32_t buckets_per_geometry_or_bias_groups; // VIEW: 0; SHADOW: bias-group count
         uint32_t enabled_geometry_mask;
         uint32_t extension_flags;
-        uint32_t reserved_input0_or_view_mdc_count;   // SHADOW: view MDC count; VIEW: unused
+        uint32_t reserved_input0_or_view_mdc_count; // SHADOW: view MDC count; VIEW: unused
         uint32_t reserved_input1;
         // World-partition active-mask GPU address (buffer-device-address), 8-byte
         // aligned at offset 40. 0 = no mask bound (large-world disabled) → the shader
@@ -86,10 +85,10 @@ namespace lux::render
         uint32_t graph_material_capacity;
         uint32_t texture_slot_capacity;
     };
-    static_assert(sizeof(MeshCullPushConstants) ==
-                      12u * sizeof(uint32_t) + 3u * sizeof(uint64_t),
-                  "MeshCullPushConstants must match the PC block in mesh_cull_unified.comp "
-                  "(12 uints + three 64-bit buffer addresses)");
+    static_assert(
+        sizeof(MeshCullPushConstants) == 12u * sizeof(uint32_t) + 3u * sizeof(uint64_t),
+        "MeshCullPushConstants must match the PC block in mesh_cull_unified.comp "
+        "(12 uints + three 64-bit buffer addresses)");
 
     /// VIEW-mode cull push constants.
     /// `geometry_kind_count_or_slice_count` is set to the number of EGeometryKind
@@ -99,24 +98,25 @@ namespace lux::render
     [[nodiscard]] inline MeshCullPushConstants makeViewCullPushConstants(
         uint32_t required_pass_mask,
         uint32_t enabled_geometry_mask,
-        uint32_t extension_flags) noexcept
+        uint32_t extension_flags
+    ) noexcept
     {
         return MeshCullPushConstants{
-            /*slot_count*/                          0u,
-            /*max_draws_per_bucket*/                0u,
-            /*required_pass_mask*/                  required_pass_mask,
-            /*required_geometry_kind*/              kAnyGeometryKind,
-            /*geometry_kind_count_or_slice_count*/  kGeometryKindCount,
+            /*slot_count*/ 0u,
+            /*max_draws_per_bucket*/ 0u,
+            /*required_pass_mask*/ required_pass_mask,
+            /*required_geometry_kind*/ kAnyGeometryKind,
+            /*geometry_kind_count_or_slice_count*/ kGeometryKindCount,
             /*buckets_per_geometry_or_bias_groups*/ 0u,
-            /*enabled_geometry_mask*/               enabled_geometry_mask,
-            /*extension_flags*/                     extension_flags,
-            /*reserved_input0_or_view_mdc_count*/   0u,   // unused in view mode
-            /*reserved_input1*/                     0u,
-            /*active_mask_addr*/                    0ull, // patched per-frame by recorder
-            /*graph_material_addr*/                 0ull,
-            /*wanted_mip_addr*/                     0ull,
-            /*graph_material_capacity*/             0u,
-            /*texture_slot_capacity*/               0u,
+            /*enabled_geometry_mask*/ enabled_geometry_mask,
+            /*extension_flags*/ extension_flags,
+            /*reserved_input0_or_view_mdc_count*/ 0u, // unused in view mode
+            /*reserved_input1*/ 0u,
+            /*active_mask_addr*/ 0ull, // patched per-frame by recorder
+            /*graph_material_addr*/ 0ull,
+            /*wanted_mip_addr*/ 0ull,
+            /*graph_material_capacity*/ 0u,
+            /*texture_slot_capacity*/ 0u,
         };
     }
 
@@ -127,24 +127,25 @@ namespace lux::render
         uint32_t required_pass_mask,
         uint32_t enabled_geometry_mask,
         uint32_t extension_flags,
-        uint32_t view_mdc_count) noexcept
+        uint32_t view_mdc_count
+    ) noexcept
     {
         return MeshCullPushConstants{
-            /*slot_count*/                          0u,
-            /*max_draws_per_bucket*/                kMaxDrawsPerBiasGroup,
-            /*required_pass_mask*/                  required_pass_mask,
-            /*required_geometry_kind*/              kAnyGeometryKind,
-            /*geometry_kind_count_or_slice_count*/  0u,   // slice count (filled per-dispatch)
-            /*buckets_per_geometry_or_bias_groups*/ 0u,   // bias-group count (filled per-dispatch)
-            /*enabled_geometry_mask*/               enabled_geometry_mask,
-            /*extension_flags*/                     extension_flags,
-            /*reserved_input0_or_view_mdc_count*/   view_mdc_count,
-            /*reserved_input1*/                     0u,
-            /*active_mask_addr*/                    0ull, // patched per-frame by recorder
-            /*graph_material_addr*/                 0ull,
-            /*wanted_mip_addr*/                     0ull,
-            /*graph_material_capacity*/             0u,
-            /*texture_slot_capacity*/               0u,
+            /*slot_count*/ 0u,
+            /*max_draws_per_bucket*/ kMaxDrawsPerBiasGroup,
+            /*required_pass_mask*/ required_pass_mask,
+            /*required_geometry_kind*/ kAnyGeometryKind,
+            /*geometry_kind_count_or_slice_count*/ 0u,  // slice count (filled per-dispatch)
+            /*buckets_per_geometry_or_bias_groups*/ 0u, // bias-group count (filled per-dispatch)
+            /*enabled_geometry_mask*/ enabled_geometry_mask,
+            /*extension_flags*/ extension_flags,
+            /*reserved_input0_or_view_mdc_count*/ view_mdc_count,
+            /*reserved_input1*/ 0u,
+            /*active_mask_addr*/ 0ull, // patched per-frame by recorder
+            /*graph_material_addr*/ 0ull,
+            /*wanted_mip_addr*/ 0ull,
+            /*graph_material_capacity*/ 0u,
+            /*texture_slot_capacity*/ 0u,
         };
     }
 } // namespace lux::render

@@ -63,16 +63,12 @@ namespace lux::asset::detail
             return true;
         }
 
-        void writeDigest(
-            ByteWriter& writer,
-            const lux::cxx::algorithm::Sha256Digest& digest)
+        void writeDigest(ByteWriter& writer, const lux::cxx::algorithm::Sha256Digest& digest)
         {
             writer.bytes(digest.data(), digest.size());
         }
 
-        bool readDigest(
-            ByteReader& reader,
-            lux::cxx::algorithm::Sha256Digest& digest)
+        bool readDigest(ByteReader& reader, lux::cxx::algorithm::Sha256Digest& digest)
         {
             return reader.bytes(digest.data(), digest.size());
         }
@@ -92,14 +88,11 @@ namespace lux::asset::detail
         bool readPageHeader(ByteReader& reader, PakPageHeader& header)
         {
             std::uint8_t kind = 0u;
-            if (!reader.u32(header.magic)
-                || !reader.u16(header.version)
-                || !reader.u8(kind)
-                || !reader.u8(header.level)
-                || !reader.u16(header.count)
-                || !reader.u16(header.reserved)
-                || !reader.u32(header.used_bytes)
-                || !reader.u64(header.next_leaf_offset))
+            const bool has_valid_header =
+                reader.u32(header.magic) && reader.u16(header.version) && reader.u8(kind) &&
+                reader.u8(header.level) && reader.u16(header.count) && reader.u16(header.reserved) &&
+                reader.u32(header.used_bytes) && reader.u64(header.next_leaf_offset);
+            if (!has_valid_header)
             {
                 return false;
             }
@@ -114,7 +107,8 @@ namespace lux::asset::detail
             std::uint8_t level,
             std::uint16_t count,
             std::uint64_t next_leaf_offset,
-            std::vector<std::byte> payload)
+            std::vector<std::byte> payload
+        )
         {
             PakPage page{};
             PakPageHeader header{
@@ -136,8 +130,7 @@ namespace lux::asset::detail
             return page;
         }
 
-        std::vector<std::byte> encodeEntryRows(
-            std::span<const PakEntry> rows)
+        std::vector<std::byte> encodeEntryRows(std::span<const PakEntry> rows)
         {
             ByteWriter writer;
             for (const auto& row : rows)
@@ -158,8 +151,7 @@ namespace lux::asset::detail
             return std::move(writer).takeOrThrow();
         }
 
-        std::vector<std::byte> encodeEntryChildren(
-            std::span<const PageNode> children)
+        std::vector<std::byte> encodeEntryChildren(std::span<const PageNode> children)
         {
             ByteWriter writer;
             for (const auto& child : children)
@@ -171,8 +163,7 @@ namespace lux::asset::detail
             return std::move(writer).takeOrThrow();
         }
 
-        std::vector<std::byte> encodePathRows(
-            std::span<const PakPathRow> rows)
+        std::vector<std::byte> encodePathRows(std::span<const PakPathRow> rows)
         {
             ByteWriter writer;
             for (const auto& row : rows)
@@ -185,19 +176,15 @@ namespace lux::asset::detail
             return std::move(writer).takeOrThrow();
         }
 
-        std::vector<std::byte> encodePathChildren(
-            std::span<const PageNode> children)
+        std::vector<std::byte> encodePathChildren(std::span<const PageNode> children)
         {
             ByteWriter writer;
             for (const auto& child : children)
             {
-                writer.u16(
-                    static_cast<std::uint16_t>(child.maximum_path.size()));
+                writer.u16(static_cast<std::uint16_t>(child.maximum_path.size()));
                 if (!child.maximum_path.empty())
                 {
-                    writer.bytes(
-                        child.maximum_path.data(),
-                        child.maximum_path.size());
+                    writer.bytes(child.maximum_path.data(), child.maximum_path.size());
                 }
                 writer.u64(child.offset);
                 writeDigest(writer, child.digest);
@@ -207,8 +194,8 @@ namespace lux::asset::detail
 
         void finishPage(PageNode& node)
         {
-            node.digest = lux::cxx::algorithm::Sha256::hash(
-                std::span<const std::byte>{node.page.data(), node.page.size()});
+            node.digest =
+                lux::cxx::algorithm::Sha256::hash(std::span<const std::byte>{node.page.data(), node.page.size()});
         }
 
         bool appendEntryTree(
@@ -216,7 +203,8 @@ namespace lux::asset::detail
             std::uint64_t& next_offset,
             std::vector<PageNode>& pages,
             TreeRoot& root,
-            std::string* error_out)
+            std::string* error_out
+        )
         {
             std::vector<std::pair<std::size_t, std::size_t>> chunks;
             for (std::size_t begin = 0u; begin < entries.size();)
@@ -253,16 +241,14 @@ namespace lux::asset::detail
             for (std::size_t i = 0u; i < level.size(); ++i)
             {
                 const auto [begin, end] = chunks[i];
-                const auto next = i + 1u < level.size()
-                    ? level[i + 1u].offset
-                    : 0u;
+                const auto next = i + 1u < level.size() ? level[i + 1u].offset : 0u;
                 level[i].page = makePage(
                     EPakPageKind::ENTRY_LEAF,
                     0u,
                     static_cast<std::uint16_t>(end - begin),
                     next,
-                    encodeEntryRows(std::span<const PakEntry>{entries}.subspan(
-                        begin, end - begin)));
+                    encodeEntryRows(std::span<const PakEntry>{entries}.subspan(begin, end - begin))
+                );
                 finishPage(level[i]);
                 pages.push_back(level[i]);
             }
@@ -270,13 +256,11 @@ namespace lux::asset::detail
             std::uint8_t tree_level = 1u;
             while (level.size() > 1u)
             {
-                constexpr std::size_t children_per_page =
-                    kPagePayloadBytes / 56u;
+                constexpr std::size_t children_per_page = kPagePayloadBytes / 56u;
                 std::vector<PageNode> parent;
                 for (std::size_t begin = 0u; begin < level.size();)
                 {
-                    const auto count = std::min(
-                        children_per_page, level.size() - begin);
+                    const auto count = std::min(children_per_page, level.size() - begin);
                     PageNode node;
                     node.offset = next_offset;
                     next_offset += kPakPageSize;
@@ -286,9 +270,8 @@ namespace lux::asset::detail
                         tree_level,
                         static_cast<std::uint16_t>(count),
                         0u,
-                        encodeEntryChildren(
-                            std::span<const PageNode>{level}.subspan(
-                                begin, count)));
+                        encodeEntryChildren(std::span<const PageNode>{level}.subspan(begin, count))
+                    );
                     finishPage(node);
                     pages.push_back(node);
                     parent.push_back(std::move(node));
@@ -306,7 +289,8 @@ namespace lux::asset::detail
             std::uint64_t& next_offset,
             std::vector<PageNode>& pages,
             TreeRoot& root,
-            std::string* error_out)
+            std::string* error_out
+        )
         {
             std::vector<std::pair<std::size_t, std::size_t>> chunks;
             for (std::size_t begin = 0u; begin < rows.size();)
@@ -343,16 +327,14 @@ namespace lux::asset::detail
             for (std::size_t i = 0u; i < level.size(); ++i)
             {
                 const auto [begin, end] = chunks[i];
-                const auto next = i + 1u < level.size()
-                    ? level[i + 1u].offset
-                    : 0u;
+                const auto next = i + 1u < level.size() ? level[i + 1u].offset : 0u;
                 level[i].page = makePage(
                     EPakPageKind::PATH_LEAF,
                     0u,
                     static_cast<std::uint16_t>(end - begin),
                     next,
-                    encodePathRows(std::span<const PakPathRow>{rows}.subspan(
-                        begin, end - begin)));
+                    encodePathRows(std::span<const PakPathRow>{rows}.subspan(begin, end - begin))
+                );
                 finishPage(level[i]);
                 pages.push_back(level[i]);
             }
@@ -367,8 +349,7 @@ namespace lux::asset::detail
                     std::size_t bytes = 0u;
                     while (begin + count < level.size())
                     {
-                        const auto row_bytes =
-                            42u + level[begin + count].maximum_path.size();
+                        const auto row_bytes = 42u + level[begin + count].maximum_path.size();
                         if (row_bytes > kPagePayloadBytes)
                             return fail(error_out, "Pak path key does not fit an internal page");
                         if (count != 0u && bytes + row_bytes > kPagePayloadBytes)
@@ -379,16 +360,14 @@ namespace lux::asset::detail
                     PageNode node;
                     node.offset = next_offset;
                     next_offset += kPakPageSize;
-                    node.maximum_path =
-                        level[begin + count - 1u].maximum_path;
+                    node.maximum_path = level[begin + count - 1u].maximum_path;
                     node.page = makePage(
                         EPakPageKind::PATH_INTERNAL,
                         tree_level,
                         static_cast<std::uint16_t>(count),
                         0u,
-                        encodePathChildren(
-                            std::span<const PageNode>{level}.subspan(
-                                begin, count)));
+                        encodePathChildren(std::span<const PageNode>{level}.subspan(begin, count))
+                    );
                     finishPage(node);
                     pages.push_back(node);
                     parent.push_back(std::move(node));
@@ -431,16 +410,15 @@ namespace lux::asset::detail
             const PakWriteEntry& input,
             std::ofstream& output,
             std::uint64_t& size,
-            lux::cxx::algorithm::Sha256Digest& digest)
+            lux::cxx::algorithm::Sha256Digest& digest
+        )
         {
             lux::cxx::algorithm::Sha256 hasher;
             size = 0u;
             if (!input.source_bytes.empty())
             {
                 const auto bytes = input.source_bytes.view();
-                output.write(
-                    reinterpret_cast<const char*>(bytes.data()),
-                    static_cast<std::streamsize>(bytes.size()));
+                output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
                 if (!output)
                     return false;
                 hasher.update(bytes);
@@ -454,16 +432,12 @@ namespace lux::asset::detail
                 std::array<std::byte, 64u * 1024u> buffer{};
                 while (source)
                 {
-                    source.read(
-                        reinterpret_cast<char*>(buffer.data()),
-                        static_cast<std::streamsize>(buffer.size()));
+                    source.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
                     const auto count = source.gcount();
                     if (count <= 0)
                         break;
-                    const auto bytes = std::span<const std::byte>{
-                        buffer.data(), static_cast<std::size_t>(count)};
-                    output.write(
-                        reinterpret_cast<const char*>(bytes.data()), count);
+                    const auto bytes = std::span<const std::byte>{buffer.data(), static_cast<std::size_t>(count)};
+                    output.write(reinterpret_cast<const char*>(bytes.data()), count);
                     if (!output)
                         return false;
                     hasher.update(bytes);
@@ -481,24 +455,22 @@ namespace lux::asset::detail
             EPakPageKind expected,
             PakPageHeader& header,
             ByteReader& reader,
-            std::string* error_out)
+            std::string* error_out
+        )
         {
-            ByteReader prelude(
-                std::span<const std::byte>{page.data(), page.size()}, error_out);
+            ByteReader prelude(std::span<const std::byte>{page.data(), page.size()}, error_out);
             if (!readPageHeader(prelude, header))
                 return fail(error_out, "invalid Pak index page header");
-            if (header.magic != kPakPageMagic
-                || header.version != kPakVersion
-                || header.kind != expected
-                || header.used_bytes < kPageHeaderBytes
-                || header.used_bytes > kPakPageSize)
+            const bool is_invalid_header = header.magic != kPakPageMagic || header.version != kPakVersion ||
+                header.kind != expected || header.used_bytes < kPageHeaderBytes || header.used_bytes > kPakPageSize;
+            if (is_invalid_header)
             {
                 return fail(error_out, "invalid Pak index page contract");
             }
             reader = ByteReader(
-                std::span<const std::byte>{page.data(), header.used_bytes}
-                    .subspan(kPageHeaderBytes),
-                error_out);
+                std::span<const std::byte>{page.data(), header.used_bytes}.subspan(kPageHeaderBytes),
+                error_out
+            );
             return true;
         }
     }
@@ -507,7 +479,8 @@ namespace lux::asset::detail
         const std::filesystem::path& out_pak,
         std::vector<PakWriteEntry> entries,
         std::string_view mount_hint,
-        std::string* error_out)
+        std::string* error_out
+    )
     try
     {
         if (!VirtualPath::isLegalRoot(mount_hint))
@@ -517,16 +490,13 @@ namespace lux::asset::detail
         if (entries.size() > kMaxPakEntries)
             return fail(error_out, "too many Pak entries");
 
-        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b)
-        {
-            return a.id < b.id;
-        });
+        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.id < b.id; });
         for (std::size_t i = 0u; i < entries.size(); ++i)
         {
             if (i != 0u && entries[i - 1u].id == entries[i].id)
                 return fail(error_out, "duplicate Pak entry UUID");
-            if (entries[i].vpath.size() > kMaximumPathBytes
-                || entries[i].vpath.size() > std::numeric_limits<std::uint16_t>::max())
+            if (entries[i].vpath.size() > kMaximumPathBytes ||
+                entries[i].vpath.size() > std::numeric_limits<std::uint16_t>::max())
             {
                 return fail(error_out, "Pak virtual path is too long");
             }
@@ -539,7 +509,8 @@ namespace lux::asset::detail
                         lux::format(
                             "non-canonical vpath '{}' (err={})",
                             entries[i].vpath,
-                            static_cast<int>(*path_error)));
+                            static_cast<int>(*path_error))
+                    );
                 }
             }
         }
@@ -551,10 +522,7 @@ namespace lux::asset::detail
             if (!entry.vpath.empty())
                 path_rows.push_back(PakPathRow{entry.vpath, entry.id});
         }
-        std::sort(path_rows.begin(), path_rows.end(), [](const auto& a, const auto& b)
-        {
-            return a.vpath < b.vpath;
-        });
+        std::sort(path_rows.begin(), path_rows.end(), [](const auto& a, const auto& b) { return a.vpath < b.vpath; });
         for (std::size_t i = 1u; i < path_rows.size(); ++i)
         {
             if (path_rows[i - 1u].vpath == path_rows[i].vpath)
@@ -570,29 +538,28 @@ namespace lux::asset::detail
         std::filesystem::remove(temporary, ec);
         ec.clear();
 
-        std::ofstream output(
-            temporary,
-            std::ios::binary | std::ios::trunc);
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
         if (!output)
             return fail(error_out, "cannot create temporary Pak");
         std::array<std::byte, kHeaderBytes> empty_header{};
         output.write(
             reinterpret_cast<const char*>(empty_header.data()),
-            static_cast<std::streamsize>(empty_header.size()));
+            static_cast<std::streamsize>(empty_header.size())
+        );
 
         std::vector<PakEntry> cooked_entries;
         cooked_entries.reserve(entries.size());
         for (const auto& input : entries)
         {
             auto cursor = static_cast<std::uint64_t>(output.tellp());
-            const auto aligned = (cursor + kPakPayloadAlign - 1u)
-                & ~(kPakPayloadAlign - 1u);
+            const auto aligned = (cursor + kPakPayloadAlign - 1u) & ~(kPakPayloadAlign - 1u);
             std::array<std::byte, kPakPayloadAlign> padding{};
             if (aligned != cursor)
             {
                 output.write(
                     reinterpret_cast<const char*>(padding.data()),
-                    static_cast<std::streamsize>(aligned - cursor));
+                    static_cast<std::streamsize>(aligned - cursor)
+                );
             }
             PakEntry entry;
             entry.id = input.id;
@@ -600,11 +567,7 @@ namespace lux::asset::detail
             entry.asset_magic = input.asset_magic;
             entry.compression = kPakCompressionNone;
             entry.vpath = input.vpath;
-            if (!copyPayload(
-                    input,
-                    output,
-                    entry.size,
-                    entry.content_digest))
+            if (!copyPayload(input, output, entry.size, entry.content_digest))
             {
                 output.close();
                 std::filesystem::remove(temporary, ec);
@@ -621,27 +584,15 @@ namespace lux::asset::detail
         {
             const auto count = kPakPageSize - remainder;
             std::vector<std::byte> padding(count);
-            output.write(
-                reinterpret_cast<const char*>(padding.data()),
-                static_cast<std::streamsize>(padding.size()));
+            output.write(reinterpret_cast<const char*>(padding.data()), static_cast<std::streamsize>(padding.size()));
             next_page_offset += count;
         }
 
         std::vector<PageNode> pages;
         TreeRoot entry_root;
         TreeRoot path_root;
-        if (!appendEntryTree(
-                cooked_entries,
-                next_page_offset,
-                pages,
-                entry_root,
-                error_out)
-            || !appendPathTree(
-                path_rows,
-                next_page_offset,
-                pages,
-                path_root,
-                error_out))
+        if (!appendEntryTree(cooked_entries, next_page_offset, pages, entry_root, error_out) ||
+            !appendPathTree(path_rows, next_page_offset, pages, path_root, error_out))
         {
             output.close();
             std::filesystem::remove(temporary, ec);
@@ -652,7 +603,8 @@ namespace lux::asset::detail
             output.seekp(static_cast<std::streamoff>(page.offset), std::ios::beg);
             output.write(
                 reinterpret_cast<const char*>(page.page.data()),
-                static_cast<std::streamsize>(page.page.size()));
+                static_cast<std::streamsize>(page.page.size())
+            );
         }
 
         PakHeader header{};
@@ -674,7 +626,8 @@ namespace lux::asset::detail
         output.seekp(0, std::ios::beg);
         output.write(
             reinterpret_cast<const char*>(header_bytes.data()),
-            static_cast<std::streamsize>(header_bytes.size()));
+            static_cast<std::streamsize>(header_bytes.size())
+        );
         output.flush();
         if (!output)
         {
@@ -728,11 +681,7 @@ namespace lux::asset::detail
         return false;
     }
 
-    bool readPakHeader(
-        std::istream& stream,
-        std::uint64_t file_size,
-        PakHeader& output,
-        std::string* error_out)
+    bool readPakHeader(std::istream& stream, std::uint64_t file_size, PakHeader& output, std::string* error_out)
     {
         output = {};
         if (file_size < kHeaderBytes + 2u * kPakPageSize)
@@ -740,48 +689,35 @@ namespace lux::asset::detail
         std::array<std::byte, kHeaderBytes> bytes{};
         stream.clear();
         stream.seekg(0, std::ios::beg);
-        if (!stream.read(
-                reinterpret_cast<char*>(bytes.data()),
-                static_cast<std::streamsize>(bytes.size())))
+        if (!stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
         {
             return fail(error_out, "cannot read Pak header");
         }
         ByteReader reader(bytes, error_out);
-        if (!reader.bytes(output.magic, sizeof(output.magic))
-            || !reader.u32(output.endian_tag)
-            || !reader.u32(output.version)
-            || !reader.u32(output.page_size)
-            || !reader.u32(output.flags)
-            || !reader.u64(output.entry_root_offset)
-            || !reader.u64(output.path_root_offset)
-            || !reader.u64(output.entry_count)
-            || !reader.u64(output.path_count)
-            || !reader.u64(output.index_page_count)
-            || !reader.u64(output.payload_end)
-            || !reader.u32(output.mount_hint_size)
-            || !reader.bytes(output.mount_hint, sizeof(output.mount_hint))
-            || !readDigest(reader, output.entry_root_digest)
-            || !readDigest(reader, output.path_root_digest)
-            || !reader.bytes(output.reserved, sizeof(output.reserved)))
+        const bool has_valid_header =
+            reader.bytes(output.magic, sizeof(output.magic)) && reader.u32(output.endian_tag) &&
+            reader.u32(output.version) && reader.u32(output.page_size) && reader.u32(output.flags) &&
+            reader.u64(output.entry_root_offset) && reader.u64(output.path_root_offset) &&
+            reader.u64(output.entry_count) && reader.u64(output.path_count) && reader.u64(output.index_page_count) &&
+            reader.u64(output.payload_end) && reader.u32(output.mount_hint_size) &&
+            reader.bytes(output.mount_hint, sizeof(output.mount_hint)) &&
+            readDigest(reader, output.entry_root_digest) && readDigest(reader, output.path_root_digest) &&
+            reader.bytes(output.reserved, sizeof(output.reserved));
+        if (!has_valid_header)
         {
             return fail(error_out, "truncated Pak header");
         }
-        if (!std::equal(
-                std::begin(output.magic),
-                std::end(output.magic),
-                std::begin(kPakFileMagic))
-            || output.endian_tag != kPakEndianTag
-            || output.version != kPakVersion
-            || output.page_size != kPakPageSize
-            || output.mount_hint_size > kPakMountHintBytes
-            || output.entry_count > kMaxPakEntries
-            || output.path_count > output.entry_count
-            || output.index_page_count < 2u
-            || output.payload_end < kHeaderBytes
-            || output.entry_root_offset < output.payload_end
-            || output.path_root_offset < output.payload_end
-            || output.entry_root_offset > file_size - kPakPageSize
-            || output.path_root_offset > file_size - kPakPageSize)
+        const bool is_invalid_identity =
+            !std::equal(std::begin(output.magic), std::end(output.magic), std::begin(kPakFileMagic)) ||
+            output.endian_tag != kPakEndianTag || output.version != kPakVersion || output.page_size != kPakPageSize;
+        const bool is_invalid_capacity = output.mount_hint_size > kPakMountHintBytes ||
+            output.entry_count > kMaxPakEntries || output.path_count > output.entry_count ||
+            output.index_page_count < 2u;
+        const bool is_invalid_offsets = output.payload_end < kHeaderBytes ||
+            output.entry_root_offset < output.payload_end || output.path_root_offset < output.payload_end ||
+            output.entry_root_offset > file_size - kPakPageSize || output.path_root_offset > file_size - kPakPageSize;
+        const bool is_invalid_header = is_invalid_identity || is_invalid_capacity || is_invalid_offsets;
+        if (is_invalid_header)
         {
             return fail(error_out, "invalid Pak v2 header contract");
         }
@@ -793,56 +729,46 @@ namespace lux::asset::detail
         std::uint64_t file_size,
         std::uint64_t offset,
         PakPage& output,
-        std::string* error_out)
+        std::string* error_out
+    )
     {
         if (offset % kPakPageSize != 0u || offset > file_size - kPakPageSize)
             return fail(error_out, "Pak index page offset is out of bounds");
         stream.clear();
         stream.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
-        if (!stream.read(
-                reinterpret_cast<char*>(output.data()),
-                static_cast<std::streamsize>(output.size())))
+        if (!stream.read(reinterpret_cast<char*>(output.data()), static_cast<std::streamsize>(output.size())))
         {
             return fail(error_out, "cannot read Pak index page");
         }
         const auto header = pakPageHeader(output);
-        if (header.magic != kPakPageMagic
-            || header.version != kPakVersion
-            || header.used_bytes < kPageHeaderBytes
-            || header.used_bytes > kPakPageSize)
+        const bool is_invalid_header = header.magic != kPakPageMagic || header.version != kPakVersion ||
+            header.used_bytes < kPageHeaderBytes || header.used_bytes > kPakPageSize;
+        if (is_invalid_header)
         {
             return fail(error_out, "invalid Pak index page header");
         }
         return true;
     }
 
-    bool verifyPakPageDigest(
-        const PakPage& page,
-        const lux::cxx::algorithm::Sha256Digest& expected) noexcept
+    bool verifyPakPageDigest(const PakPage& page, const lux::cxx::algorithm::Sha256Digest& expected) noexcept
     {
-        return lux::cxx::algorithm::Sha256::hash(
-            std::span<const std::byte>{page.data(), page.size()}) == expected;
+        return lux::cxx::algorithm::Sha256::hash(std::span<const std::byte>{page.data(), page.size()}) == expected;
     }
 
     PakPageHeader pakPageHeader(const PakPage& page) noexcept
     {
         PakPageHeader header{};
-        ByteReader reader(
-            std::span<const std::byte>{page.data(), page.size()}, nullptr);
+        ByteReader reader(std::span<const std::byte>{page.data(), page.size()}, nullptr);
         static_cast<void>(readPageHeader(reader, header));
         return header;
     }
 
-    bool decodeEntryLeaf(
-        const PakPage& page,
-        std::vector<PakEntry>& output,
-        std::string* error_out)
+    bool decodeEntryLeaf(const PakPage& page, std::vector<PakEntry>& output, std::string* error_out)
     {
         output.clear();
         PakPageHeader header;
         ByteReader reader({}, error_out);
-        if (!decodePagePrelude(
-                page, EPakPageKind::ENTRY_LEAF, header, reader, error_out))
+        if (!decodePagePrelude(page, EPakPageKind::ENTRY_LEAF, header, reader, error_out))
             return false;
         output.reserve(header.count);
         for (std::uint16_t i = 0u; i < header.count; ++i)
@@ -850,23 +776,18 @@ namespace lux::asset::detail
             PakEntry entry;
             std::uint16_t reserved = 0u;
             std::uint16_t path_size = 0u;
-            if (!readUuid(reader, entry.id)
-                || !reader.u64(entry.offset)
-                || !reader.u64(entry.size)
-                || !reader.u64(entry.uncompressed_size)
-                || !reader.u32(entry.asset_magic)
-                || !reader.u8(entry.compression)
-                || !reader.u8(entry.flags)
-                || !reader.u16(reserved)
-                || !readDigest(reader, entry.content_digest)
-                || !reader.u16(path_size)
-                || path_size > kMaximumPathBytes)
+            const bool has_valid_entry =
+                readUuid(reader, entry.id) && reader.u64(entry.offset) && reader.u64(entry.size) &&
+                reader.u64(entry.uncompressed_size) && reader.u32(entry.asset_magic) &&
+                reader.u8(entry.compression) && reader.u8(entry.flags) && reader.u16(reserved) &&
+                readDigest(reader, entry.content_digest) && reader.u16(path_size);
+            const bool is_invalid_entry = !has_valid_entry || path_size > kMaximumPathBytes;
+            if (is_invalid_entry)
             {
                 return fail(error_out, "invalid Pak entry leaf row");
             }
             entry.vpath.resize(path_size);
-            if (path_size != 0u
-                && !reader.bytes(entry.vpath.data(), entry.vpath.size()))
+            if (path_size != 0u && !reader.bytes(entry.vpath.data(), entry.vpath.size()))
             {
                 return fail(error_out, "truncated Pak entry path");
             }
@@ -875,16 +796,12 @@ namespace lux::asset::detail
         return true;
     }
 
-    bool decodeEntryInternal(
-        const PakPage& page,
-        std::vector<PakEntryChild>& output,
-        std::string* error_out)
+    bool decodeEntryInternal(const PakPage& page, std::vector<PakEntryChild>& output, std::string* error_out)
     {
         output.clear();
         PakPageHeader header;
         ByteReader reader({}, error_out);
-        if (!decodePagePrelude(
-                page, EPakPageKind::ENTRY_INTERNAL, header, reader, error_out))
+        if (!decodePagePrelude(page, EPakPageKind::ENTRY_INTERNAL, header, reader, error_out))
             return false;
         if (header.count == 0u)
             return fail(error_out, "empty Pak entry internal page");
@@ -892,9 +809,7 @@ namespace lux::asset::detail
         for (std::uint16_t i = 0u; i < header.count; ++i)
         {
             PakEntryChild child;
-            if (!readUuid(reader, child.maximum_key)
-                || !reader.u64(child.offset)
-                || !readDigest(reader, child.digest))
+            if (!readUuid(reader, child.maximum_key) || !reader.u64(child.offset) || !readDigest(reader, child.digest))
             {
                 return fail(error_out, "invalid Pak entry child row");
             }
@@ -903,16 +818,12 @@ namespace lux::asset::detail
         return true;
     }
 
-    bool decodePathLeaf(
-        const PakPage& page,
-        std::vector<PakPathRow>& output,
-        std::string* error_out)
+    bool decodePathLeaf(const PakPage& page, std::vector<PakPathRow>& output, std::string* error_out)
     {
         output.clear();
         PakPageHeader header;
         ByteReader reader({}, error_out);
-        if (!decodePagePrelude(
-                page, EPakPageKind::PATH_LEAF, header, reader, error_out))
+        if (!decodePagePrelude(page, EPakPageKind::PATH_LEAF, header, reader, error_out))
             return false;
         output.reserve(header.count);
         for (std::uint16_t i = 0u; i < header.count; ++i)
@@ -922,9 +833,7 @@ namespace lux::asset::detail
             if (!reader.u16(path_size) || path_size > kMaximumPathBytes)
                 return fail(error_out, "invalid Pak path leaf row");
             row.vpath.resize(path_size);
-            if ((path_size != 0u
-                    && !reader.bytes(row.vpath.data(), row.vpath.size()))
-                || !readUuid(reader, row.id))
+            if ((path_size != 0u && !reader.bytes(row.vpath.data(), row.vpath.size())) || !readUuid(reader, row.id))
             {
                 return fail(error_out, "truncated Pak path leaf row");
             }
@@ -933,16 +842,12 @@ namespace lux::asset::detail
         return true;
     }
 
-    bool decodePathInternal(
-        const PakPage& page,
-        std::vector<PakPathChild>& output,
-        std::string* error_out)
+    bool decodePathInternal(const PakPage& page, std::vector<PakPathChild>& output, std::string* error_out)
     {
         output.clear();
         PakPageHeader header;
         ByteReader reader({}, error_out);
-        if (!decodePagePrelude(
-                page, EPakPageKind::PATH_INTERNAL, header, reader, error_out))
+        if (!decodePagePrelude(page, EPakPageKind::PATH_INTERNAL, header, reader, error_out))
             return false;
         if (header.count == 0u)
             return fail(error_out, "empty Pak path internal page");
@@ -954,11 +859,11 @@ namespace lux::asset::detail
             if (!reader.u16(path_size) || path_size > kMaximumPathBytes)
                 return fail(error_out, "invalid Pak path child row");
             child.maximum_key.resize(path_size);
-            if ((path_size != 0u
-                    && !reader.bytes(
-                        child.maximum_key.data(), child.maximum_key.size()))
-                || !reader.u64(child.offset)
-                || !readDigest(reader, child.digest))
+            const bool has_valid_key = path_size == 0u ||
+                reader.bytes(child.maximum_key.data(), child.maximum_key.size());
+            const bool has_valid_child = has_valid_key && reader.u64(child.offset) &&
+                readDigest(reader, child.digest);
+            if (!has_valid_child)
             {
                 return fail(error_out, "truncated Pak path child row");
             }
@@ -972,7 +877,8 @@ namespace lux::asset::detail
         std::uint64_t file_size,
         const PakHeader& header,
         std::vector<PakEntry>& output,
-        std::string* error_out)
+        std::string* error_out
+    )
     {
         output.clear();
         struct Pending final
@@ -980,8 +886,7 @@ namespace lux::asset::detail
             std::uint64_t offset;
             lux::cxx::algorithm::Sha256Digest digest;
         };
-        std::vector<Pending> pending{
-            Pending{header.entry_root_offset, header.entry_root_digest}};
+        std::vector<Pending> pending{Pending{header.entry_root_offset, header.entry_root_digest}};
         std::unordered_set<std::uint64_t> visited;
         while (!pending.empty())
         {
@@ -992,8 +897,8 @@ namespace lux::asset::detail
             if (visited.size() > header.index_page_count)
                 return fail(error_out, "Pak entry tree exceeds page count");
             PakPage page;
-            if (!readPakPage(stream, file_size, current.offset, page, error_out)
-                || !verifyPakPageDigest(page, current.digest))
+            if (!readPakPage(stream, file_size, current.offset, page, error_out) ||
+                !verifyPakPageDigest(page, current.digest))
             {
                 return fail(error_out, "Pak entry page digest mismatch");
             }
@@ -1003,10 +908,7 @@ namespace lux::asset::detail
                 std::vector<PakEntry> rows;
                 if (!decodeEntryLeaf(page, rows, error_out))
                     return false;
-                output.insert(
-                    output.end(),
-                    std::make_move_iterator(rows.begin()),
-                    std::make_move_iterator(rows.end()));
+                output.insert(output.end(), std::make_move_iterator(rows.begin()), std::make_move_iterator(rows.end()));
             }
             else if (page_header.kind == EPakPageKind::ENTRY_INTERNAL)
             {
@@ -1021,11 +923,8 @@ namespace lux::asset::detail
                 return fail(error_out, "wrong page kind in Pak entry tree");
             }
         }
-        if (output.size() != header.entry_count
-            || !std::is_sorted(output.begin(), output.end(), [](const auto& a, const auto& b)
-            {
-                return a.id < b.id;
-            }))
+        if (output.size() != header.entry_count ||
+            !std::is_sorted(output.begin(), output.end(), [](const auto& a, const auto& b) { return a.id < b.id; }))
         {
             return fail(error_out, "Pak entry tree cardinality or ordering mismatch");
         }

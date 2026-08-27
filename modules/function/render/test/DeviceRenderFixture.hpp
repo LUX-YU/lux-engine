@@ -53,7 +53,7 @@ namespace lux::rendertest
         /// fixture is destroyed so instance/device-destroy leak reports count too.
         struct Options
         {
-            bool              enable_validation{false};
+            bool enable_validation{false};
             std::atomic<int>* validation_errors{nullptr};
             /// Requested feature-level tier. The server resolves
             /// min(device-achievable, this), so on a desktop box asking for
@@ -67,17 +67,14 @@ namespace lux::rendertest
             lux::render::CapacityRequest capacity_request{};
         };
 
-        DeviceRenderFixture(std::uint32_t width, std::uint32_t height, const char* name,
-                            Options opts = {})
-            : glfw_inited_(initWindowBackend())
-            , width_(width)
-            , height_(height)
-            , window_(static_cast<int>(width), static_cast<int>(height), name)
+        DeviceRenderFixture(std::uint32_t width, std::uint32_t height, const char* name, Options opts = {})
+            : glfw_inited_(initWindowBackend()), width_(width), height_(height),
+              window_(static_cast<int>(width), static_cast<int>(height), name)
         {
             channel_ = lux::render::RenderFrameChannel<>::create();
             control_channel_ = lux::render::RenderControlChannel<>::create();
             upload_channel_ = lux::render::RenderUploadChannel<>::create();
-            sync_    = std::make_shared<lux::render::RenderChannelSync>();
+            sync_ = std::make_shared<lux::render::RenderChannelSync>();
 
             // Backend-required instance extensions (the surface the server attaches to).
             std::vector<const char*> exts;
@@ -86,20 +83,30 @@ namespace lux::rendertest
                 exts.assign(span.begin(), span.end());
             }
 
-            server_thread_ = std::thread([this, exts, opts]()
-            {
-                lux::render::GeneralRenderServer server(
-                    channel_, control_channel_, upload_channel_, sync_);
+            server_thread_ = std::thread([this, exts, opts]() {
+                lux::render::GeneralRenderServer server(channel_, control_channel_, upload_channel_, sync_);
                 lux::render::ServerConfig cfg;
-                cfg.instance_extensions      = exts;
-                cfg.enable_validation        = opts.enable_validation;
+                cfg.instance_extensions = exts;
+                cfg.enable_validation = opts.enable_validation;
                 cfg.validation_error_counter = opts.validation_errors;
-                cfg.preferred_level          = opts.preferred_level;
-                cfg.capacity_request         = opts.capacity_request;
-                if (auto r = server.init(std::move(cfg)); !r) { failed_.store(true); ready_.store(true); return; }
-                if (auto r = server.attachToWindow(window_); !r) { failed_.store(true); ready_.store(true); return; }
+                cfg.preferred_level = opts.preferred_level;
+                cfg.capacity_request = opts.capacity_request;
+                if (auto r = server.init(std::move(cfg)); !r)
+                {
+                    failed_.store(true);
+                    ready_.store(true);
+                    return;
+                }
+                if (auto r = server.attachToWindow(window_); !r)
+                {
+                    failed_.store(true);
+                    ready_.store(true);
+                    return;
+                }
                 ready_.store(true);
-                while (server.tick()) {}
+                while (server.tick())
+                {
+                }
                 // Liveness: if the loop ended WITHOUT the fixture asking (device loss,
                 // an exception swallowed above, a server-side fatal), any await() is
                 // blocked on a reply that will never come. Mark the death and set the
@@ -110,7 +117,8 @@ namespace lux::rendertest
                     server_died_.store(true, std::memory_order_release);
                     sync_->requestStop();
                 }
-            });
+            }
+            );
 
             while (!ready_.load(std::memory_order_acquire))
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -120,23 +128,14 @@ namespace lux::rendertest
                 session_ = std::make_unique<lux::render::RenderFrameSession>(channel_, sync_);
                 session_->setErrorEventHandler(
                     [](const lux::render::ErrorEventBatchReply&) {},
-                    [](const lux::render::RenderErrorEvent& event)
-                    {
-                        const auto message = lux::render::formatRenderError(
-                            lux::render::renderErrorRegistry(),
-                            event.error
-                        );
-                        std::fprintf(
-                            stderr,
-                            "[DeviceRenderFixture] render error: %s\n",
-                            message.c_str()
-                        );
+                    [](const lux::render::RenderErrorEvent& event) {
+                        const auto message =
+                            lux::render::formatRenderError(lux::render::renderErrorRegistry(), event.error);
+                        std::fprintf(stderr, "[DeviceRenderFixture] render error: %s\n", message.c_str());
                     }
                 );
-                control_ = std::make_unique<lux::render::RenderControlSession>(
-                    control_channel_, sync_);
-                upload_ = std::make_unique<lux::render::RenderUploadSession>(
-                    upload_channel_, sync_);
+                control_ = std::make_unique<lux::render::RenderControlSession>(control_channel_, sync_);
+                upload_ = std::make_unique<lux::render::RenderUploadSession>(upload_channel_, sync_);
                 direct_upload_state_ = std::make_shared<DirectUploadState>();
                 direct_upload_state_->session = upload_.get();
                 (void)session_->beginFrame({});
@@ -147,19 +146,26 @@ namespace lux::rendertest
         {
             if (direct_upload_state_)
                 direct_upload_state_->session = nullptr;
-            stop_requested_.store(true, std::memory_order_release);   // an expected stop, not a death
-            if (sync_) sync_->requestStop();
-            if (server_thread_.joinable()) server_thread_.join();
+            stop_requested_.store(true, std::memory_order_release); // an expected stop, not a death
+            if (sync_)
+                sync_->requestStop();
+            if (server_thread_.joinable())
+                server_thread_.join();
         }
 
-        DeviceRenderFixture(const DeviceRenderFixture&)            = delete;
+        DeviceRenderFixture(const DeviceRenderFixture&) = delete;
         DeviceRenderFixture& operator=(const DeviceRenderFixture&) = delete;
 
         /// false when no Vulkan device could be brought up — the test should skip (return 0).
         [[nodiscard]] bool ok() const noexcept
-        { return !failed_.load(std::memory_order_acquire) && session_ != nullptr; }
+        {
+            return !failed_.load(std::memory_order_acquire) && session_ != nullptr;
+        }
 
-        [[nodiscard]] lux::render::RenderFrameSession&  session() noexcept { return *session_; }
+        [[nodiscard]] lux::render::RenderFrameSession& session() noexcept
+        {
+            return *session_;
+        }
         [[nodiscard]] lux::render::RenderControlSession& control() noexcept
         {
             return *control_;
@@ -173,42 +179,45 @@ namespace lux::rendertest
         /// coordinator.  This facade exercises the same owning packet/client
         /// protocol as production without installing an engine AsyncRuntime.
         /// Engine-level tests use AsyncTestServices instead.
-        [[nodiscard]] lux::render::RenderUploadClient
-        uploadClientForTest() const noexcept
+        [[nodiscard]] lux::render::RenderUploadClient uploadClientForTest() const noexcept
         {
             return lux::render::RenderUploadClient::bind(
                 direct_upload_state_,
-                +[](void* opaque,
-                    std::shared_ptr<
-                        lux::render::detail::PreparedUpload> prepared) noexcept
-                    -> lux::render::UploadSubmitNoReplyResult
-                {
+                +[](void* opaque, std::shared_ptr<lux::render::detail::PreparedUpload> prepared) noexcept
+                    -> lux::render::UploadSubmitNoReplyResult {
                     auto* state = static_cast<DirectUploadState*>(opaque);
                     if (!state || !state->session || !prepared)
                     {
-                        return lux::cxx::unexpected(
-                            lux::render::ERenderUploadSubmitError::STOPPING);
+                        return lux::cxx::unexpected(lux::render::ERenderUploadSubmitError::STOPPING);
                     }
-                    if (prepared->expected_reply_type ==
-                        lux::render::kInvalidTypeId)
+                    if (prepared->expected_reply_type == lux::render::kInvalidTypeId)
                     {
-                        return state->session->trySubmitPreparedNoReply(
-                            prepared->packet);
+                        return state->session->trySubmitPreparedNoReply(prepared->packet);
                     }
                     return state->session->trySubmitPrepared(
                         prepared->packet,
                         prepared->expected_reply_type,
-                        std::move(prepared->callback));
-                });
+                        std::move(prepared->callback)
+                    );
+                }
+            );
         }
-        [[nodiscard]] std::shared_ptr<lux::render::RenderChannelSync>
-        sync() const noexcept
+        [[nodiscard]] std::shared_ptr<lux::render::RenderChannelSync> sync() const noexcept
         {
             return sync_;
         }
-        [[nodiscard]] lux::window::LuxWindow&      window()  noexcept { return window_; }
-        [[nodiscard]] std::uint32_t                width()  const noexcept { return width_; }
-        [[nodiscard]] std::uint32_t                height() const noexcept { return height_; }
+        [[nodiscard]] lux::window::LuxWindow& window() noexcept
+        {
+            return window_;
+        }
+        [[nodiscard]] std::uint32_t width() const noexcept
+        {
+            return width_;
+        }
+        [[nodiscard]] std::uint32_t height() const noexcept
+        {
+            return height_;
+        }
 
         /// Pump every independent reply lane. Tests that drive a whole engine
         /// safe point must not assume a frame reply also carries control or
@@ -227,8 +236,7 @@ namespace lux::rendertest
         /// Liveness: waitAndPumpReplies() returning false means the channel is stopping and
         /// the reply can never arrive (RenderFrameSession::syncCall honours the same signal) —
         /// fail fast with a diagnostic instead of hanging into the ctest timeout.
-        template <class T>
-        T await(lux::render::RenderRequest<T> req)
+        template <class T> T await(lux::render::RenderRequest<T> req)
         {
             submitStagedFrame("await submit");
             while (!req.isReady())
@@ -238,7 +246,8 @@ namespace lux::rendertest
                 control_->pumpReplies();
                 if (!upload_->coordinatorOwned())
                     upload_->pumpReplies();
-                if (req.isReady()) break;
+                if (req.isReady())
+                    break;
                 if (!channel_alive || server_died_.load(std::memory_order_acquire))
                     dieServerLost("await");
             }
@@ -250,8 +259,7 @@ namespace lux::rendertest
         /// Wait for a control-plane request without publishing a FrameProgram.
         /// This is the regression seam proving scene/resource control remains
         /// live while frame production is paused or minimized.
-        template <class T>
-        T awaitControl(lux::render::RenderRequest<T> req)
+        template <class T> T awaitControl(lux::render::RenderRequest<T> req)
         {
             while (!req.isReady())
             {
@@ -260,7 +268,8 @@ namespace lux::rendertest
                 session_->pumpReplies();
                 if (!upload_->coordinatorOwned())
                     upload_->pumpReplies();
-                if (req.isReady()) break;
+                if (req.isReady())
+                    break;
                 if (!channel_alive || server_died_.load(std::memory_order_acquire))
                     dieServerLost("awaitControl");
             }
@@ -270,8 +279,7 @@ namespace lux::rendertest
         /// Wait for an upload-plane request without publishing a FrameProgram.
         /// The transfer result, graphics-finalize control submit, and reply must
         /// all make progress from upload/transfer epochs alone.
-        template <class T>
-        T awaitUpload(lux::render::RenderRequest<T> req)
+        template <class T> T awaitUpload(lux::render::RenderRequest<T> req)
         {
             while (!req.isReady())
             {
@@ -279,7 +287,8 @@ namespace lux::rendertest
                 const bool channel_alive = upload_->waitAndPumpReplies();
                 session_->pumpReplies();
                 control_->pumpReplies();
-                if (req.isReady()) break;
+                if (req.isReady())
+                    break;
                 if (!channel_alive || server_died_.load(std::memory_order_acquire))
                     dieServerLost("awaitUpload");
             }
@@ -299,45 +308,43 @@ namespace lux::rendertest
             if (!session_->beginFrame({}))
                 dieServerLost("flush begin");
         }
-        void flush(int n) { for (int i = 0; i < n; ++i) flush(); }
+        void flush(int n)
+        {
+            for (int i = 0; i < n; ++i)
+                flush();
+        }
 
         struct SceneView
         {
-            lux::render::RenderSceneId  scene_id{};
-            lux::render::ViewHandle     view{};
-            lux::render::RenderTargetId target{};  ///< offscreen 目标(swapchain 视图无)
+            lux::render::RenderSceneId scene_id{};
+            lux::render::ViewHandle view{};
+            lux::render::RenderTargetId target{}; ///< offscreen 目标(swapchain 视图无)
         };
 
         /// createScene + setActiveScene(true) + one width×height OFFSCREEN view,
         /// wired to an explicit offscreen render target (views no longer imply
         /// targets — the fixture does the createOffscreenRenderTarget + setLayer
         /// handshake so tests can readback(sv) directly).
-        SceneView makeSceneWithView(const char* scene_name = "TestScene",
-                                    const char* view_name  = "TestView")
+        SceneView makeSceneWithView(const char* scene_name = "TestScene", const char* view_name = "TestView")
         {
             const auto scene = awaitControl(control_->createScene(scene_name));
             awaitControl(control_->setActiveScene(scene.scene_id, true));
-            const auto v = awaitControl(
-                control_->addView(scene.scene_id, {width_, height_}, view_name));
-            const auto t = awaitControl(
-                control_->createOffscreenRenderTarget({width_, height_}));
+            const auto v = awaitControl(control_->addView(scene.scene_id, {width_, height_}, view_name));
+            const auto t = awaitControl(control_->createOffscreenRenderTarget({width_, height_}));
             control_->setLayer(t.target, 0, scene.scene_id, v.view);
-            flush();   // let the layer wiring take effect before the first content frame
-            return { scene.scene_id, v.view, t.target };
+            flush(); // let the layer wiring take effect before the first content frame
+            return {scene.scene_id, v.view, t.target};
         }
 
         /// Configurable-scene counterpart used by semantic tests that need an
         /// exact attachment format (for example, deferred LDR readback).
-        SceneView makeSceneWithView(
-            const lux::render::RenderControlSession::CreateSceneConfig& config,
-            const char* view_name)
+        SceneView
+        makeSceneWithView(const lux::render::RenderControlSession::CreateSceneConfig& config, const char* view_name)
         {
             const auto scene = awaitControl(control_->createScene(config));
             awaitControl(control_->setActiveScene(scene.scene_id, true));
-            const auto v = awaitControl(
-                control_->addView(scene.scene_id, {width_, height_}, view_name));
-            const auto t = awaitControl(
-                control_->createOffscreenRenderTarget({width_, height_}));
+            const auto v = awaitControl(control_->addView(scene.scene_id, {width_, height_}, view_name));
+            const auto t = awaitControl(control_->createOffscreenRenderTarget({width_, height_}));
             control_->setLayer(t.target, 0, scene.scene_id, v.view);
             flush();
             return {scene.scene_id, v.view, t.target};
@@ -345,20 +352,22 @@ namespace lux::rendertest
 
         /// Same, but the view is BOUND TO THE SWAPCHAIN so it presents to the (visible)
         /// window — for interactive / visual demos rather than offscreen readback.
-        SceneView makeSceneWithSwapchainView(const char* scene_name = "TestScene",
-                                             const char* view_name  = "TestView")
+        SceneView makeSceneWithSwapchainView(const char* scene_name = "TestScene", const char* view_name = "TestView")
         {
             const auto scene = awaitControl(control_->createScene(scene_name));
             awaitControl(control_->setActiveScene(scene.scene_id, true));
-            const auto v = awaitControl(
-                control_->addView(scene.scene_id, {width_, height_}, view_name));
+            const auto v = awaitControl(control_->addView(scene.scene_id, {width_, height_}, view_name));
             control_->bindSwapchain(scene.scene_id, v.view);
-            flush();   // let the bind take effect before the first content frame
-            return { scene.scene_id, v.view };
+            flush(); // let the bind take effect before the first content frame
+            return {scene.scene_id, v.view};
         }
 
         /// True until the window's close button is pressed — the interactive-demo loop guard.
-        [[nodiscard]] bool running() { window_.pollEvents(); return !window_.shouldClose(); }
+        [[nodiscard]] bool running()
+        {
+            window_.pollEvents();
+            return !window_.shouldClose();
+        }
 
         /// Blocking GPU→CPU color readback of @p sv's offscreen target into a fresh
         /// width*height*4 BGRA8 buffer.
@@ -366,11 +375,13 @@ namespace lux::rendertest
         std::vector<std::uint8_t> readback(const SceneView& sv)
         {
             std::vector<std::uint8_t> px(static_cast<std::size_t>(width_) * height_ * 4, 0);
-            last_readback_ = awaitControl(
-                control_->readbackTarget(sv.target, px.data(), px.size()));
+            last_readback_ = awaitControl(control_->readbackTarget(sv.target, px.data(), px.size()));
             return px;
         }
-        [[nodiscard]] const lux::render::ReadbackTargetReply& lastReadback() const noexcept { return last_readback_; }
+        [[nodiscard]] const lux::render::ReadbackTargetReply& lastReadback() const noexcept
+        {
+            return last_readback_;
+        }
 
     private:
         struct DirectUploadState final
@@ -388,8 +399,7 @@ namespace lux::rendertest
             {
                 if (session_->trySubmitFrame())
                     return;
-                if (session_->isStopping() ||
-                    server_died_.load(std::memory_order_acquire))
+                if (session_->isStopping() || server_died_.load(std::memory_order_acquire))
                 {
                     dieServerLost(where);
                 }
@@ -400,8 +410,7 @@ namespace lux::rendertest
 
                 if (session_->trySubmitFrame())
                     return;
-                if (session_->isStopping() ||
-                    server_died_.load(std::memory_order_acquire))
+                if (session_->isStopping() || server_died_.load(std::memory_order_acquire))
                 {
                     dieServerLost(where);
                 }
@@ -418,10 +427,12 @@ namespace lux::rendertest
             // diagnostic is not hidden by the liveness guard below.
             if (session_)
                 session_->pumpReplies();
-            std::fprintf(stderr,
+            std::fprintf(
+                stderr,
                 "[DeviceRenderFixture] render server thread died / channel stopped during %s — "
                 "a pending reply can never arrive; aborting instead of hanging into the ctest timeout.\n",
-                where);
+                where
+            );
             std::abort();
         }
 
@@ -432,24 +443,24 @@ namespace lux::rendertest
             return !lux::window::LuxWindow::requiredVulkanInstanceExtensions().empty();
         }
 
-        bool                                                glfw_inited_;   // FIRST: backend init before window_
-        std::uint32_t                                       width_;
-        std::uint32_t                                       height_;
-        lux::window::LuxWindow                              window_;
+        bool glfw_inited_; // FIRST: backend init before window_
+        std::uint32_t width_;
+        std::uint32_t height_;
+        lux::window::LuxWindow window_;
         std::shared_ptr<lux::render::RenderFrameChannel<>> channel_;
         std::shared_ptr<lux::render::RenderControlChannel<>> control_channel_;
         std::shared_ptr<lux::render::RenderUploadChannel<>> upload_channel_;
-        std::shared_ptr<lux::render::RenderChannelSync>     sync_;
-        std::atomic<bool>                                   ready_{false};
-        std::atomic<bool>                                   failed_{false};
-        std::atomic<bool>                                   stop_requested_{false};
-        std::atomic<bool>                                   server_died_{false};
-        std::thread                                         server_thread_;
-        std::unique_ptr<lux::render::RenderFrameSession>         session_;
-        std::unique_ptr<lux::render::RenderControlSession>  control_;
-        std::unique_ptr<lux::render::RenderUploadSession>   upload_;
-        std::shared_ptr<DirectUploadState>                  direct_upload_state_;
-        lux::render::ReadbackTargetReply                    last_readback_{};
+        std::shared_ptr<lux::render::RenderChannelSync> sync_;
+        std::atomic<bool> ready_{false};
+        std::atomic<bool> failed_{false};
+        std::atomic<bool> stop_requested_{false};
+        std::atomic<bool> server_died_{false};
+        std::thread server_thread_;
+        std::unique_ptr<lux::render::RenderFrameSession> session_;
+        std::unique_ptr<lux::render::RenderControlSession> control_;
+        std::unique_ptr<lux::render::RenderUploadSession> upload_;
+        std::shared_ptr<DirectUploadState> direct_upload_state_;
+        lux::render::ReadbackTargetReply last_readback_{};
     };
 
 } // namespace lux::rendertest

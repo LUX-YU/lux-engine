@@ -9,22 +9,27 @@ namespace
 {
     class CountSystem final
     {
-      public:
-        inline static constexpr auto Access =
-            lux::simulation::makeSystemAccessSpec<>();
+    public:
+        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
         inline static constexpr lux::simulation::SystemDescription Description{
             .canonical_name = "lux.consumer.l1-core-system",
             .version = 1};
 
-        explicit CountSystem(std::uint32_t& count) noexcept : count_(&count) {}
-        void update() noexcept { ++*count_; }
+        explicit CountSystem(std::uint32_t& count) noexcept : count_(&count)
+        {
+        }
+        void update() noexcept
+        {
+            ++*count_;
+        }
 
-      private:
+    private:
         std::uint32_t* count_{};
     };
 }
 
-int main()
+int
+main()
 {
     lux::simulation::SystemRegistry systems;
     std::uint32_t count{};
@@ -39,18 +44,8 @@ int main()
         return 2;
 
     lux::task::TaskGraphBuilder builder;
-    if (!builder.add(
-            [system = std::move(*first_system)]() noexcept
-            {
-                system->update();
-            }
-        ) ||
-        !builder.add(
-            [system = std::move(*second_system)]() noexcept
-            {
-                system->update();
-            }
-        ))
+    if (!builder.add([system = std::move(*first_system)]() noexcept { system->update(); }) ||
+        !builder.add([system = std::move(*second_system)]() noexcept { system->update(); }))
     {
         return 3;
     }

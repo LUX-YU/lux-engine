@@ -26,7 +26,8 @@ namespace lux::asset
         const std::filesystem::path& out_pak,
         std::vector<PakWriteEntry> entries,
         std::string_view mount_hint,
-        std::string* error_out)
+        std::string* error_out
+    )
     {
         if (out_pak.empty())
             return fail(error_out, "Pak output path is empty");
@@ -51,11 +52,7 @@ namespace lux::asset
             {
                 return fail(
                     error_out,
-                    lux::format(
-                        "non-canonical vpath '{}' (err={})",
-                        entry.vpath,
-                        static_cast<int>(*path_error)
-                    )
+                    lux::format("non-canonical vpath '{}' (err={})", entry.vpath, static_cast<int>(*path_error))
                 );
             }
             if (!by_path.emplace(entry.vpath, index).second)
@@ -81,32 +78,22 @@ namespace lux::asset
             }
         }
 
-        return detail::writePakFileImpl(
-            out_pak,
-            std::move(entries),
-            mount_hint,
-            error_out
-        );
+        return detail::writePakFileImpl(out_pak, std::move(entries), mount_hint, error_out);
     }
 
-    lux::cxx::expected<PakInspectInfo, std::string>
-    inspectPak(const std::filesystem::path& pak_path)
+    lux::cxx::expected<PakInspectInfo, std::string> inspectPak(const std::filesystem::path& pak_path)
     {
         std::error_code error;
         const auto file_size = std::filesystem::file_size(pak_path, error);
         if (error)
         {
-            return lux::cxx::unexpected(
-                lux::format("cannot stat '{}'", pak_path.string())
-            );
+            return lux::cxx::unexpected(lux::format("cannot stat '{}'", pak_path.string()));
         }
 
         std::ifstream stream(pak_path, std::ios::binary);
         if (!stream)
         {
-            return lux::cxx::unexpected(
-                lux::format("cannot open '{}'", pak_path.string())
-            );
+            return lux::cxx::unexpected(lux::format("cannot open '{}'", pak_path.string()));
         }
 
         detail::PakHeader header;
@@ -115,22 +102,13 @@ namespace lux::asset
             return lux::cxx::unexpected(std::move(message));
 
         std::vector<detail::PakEntry> entries;
-        if (!detail::readAllPakEntries(
-                stream,
-                file_size,
-                header,
-                entries,
-                &message
-            ))
+        if (!detail::readAllPakEntries(stream, file_size, header, entries, &message))
         {
             return lux::cxx::unexpected(std::move(message));
         }
 
         PakInspectInfo info;
-        info.mount_hint.assign(
-            header.mount_hint,
-            header.mount_hint + header.mount_hint_size
-        );
+        info.mount_hint.assign(header.mount_hint, header.mount_hint + header.mount_hint_size);
         info.entries.reserve(entries.size());
         for (const auto& entry : entries)
         {
@@ -143,7 +121,8 @@ namespace lux::asset
                 entry.compression,
                 entry.tombstone(),
                 entry.content_digest,
-            });
+            }
+            );
         }
         return info;
     }

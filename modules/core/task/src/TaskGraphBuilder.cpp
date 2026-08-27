@@ -37,20 +37,16 @@ namespace lux::task
         return TaskBuildId{value};
     }
 
-    TaskGraphBuilder::TaskGraphBuilder()
-        : id_(acquireBuildId())
+    TaskGraphBuilder::TaskGraphBuilder() : id_(acquireBuildId())
     {
     }
 
     TaskGraphBuilder::TaskGraphBuilder(TaskGraphBuilder&& other) noexcept
-        : id_(std::exchange(other.id_, {})),
-          tasks_(std::move(other.tasks_))
+        : id_(std::exchange(other.id_, {})), tasks_(std::move(other.tasks_))
     {
     }
 
-    TaskGraphBuilder& TaskGraphBuilder::operator=(
-        TaskGraphBuilder&& other
-    ) noexcept
+    TaskGraphBuilder& TaskGraphBuilder::operator=(TaskGraphBuilder&& other) noexcept
     {
         if (this == std::addressof(other))
             return *this;
@@ -59,32 +55,22 @@ namespace lux::task
         return *this;
     }
 
-    lux::cxx::expected<TaskHandle, TaskGraphFailure>
-    TaskGraphBuilder::addPending(PendingTask pending) noexcept
+    lux::cxx::expected<TaskHandle, TaskGraphFailure> TaskGraphBuilder::addPending(PendingTask pending) noexcept
     {
         if (!id_.isValid())
         {
-            return lux::cxx::unexpected(TaskGraphFailure{
-                .code = ETaskGraphError::INVALID_BUILDER
-            });
+            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::INVALID_BUILDER});
         }
         if (!pending.callable.valid())
         {
-            return lux::cxx::unexpected(TaskGraphFailure{
-                .code = ETaskGraphError::INVALID_CALLABLE
-            });
+            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::INVALID_CALLABLE});
         }
         if (tasks_.size() >= InvalidTaskIndex)
         {
-            return lux::cxx::unexpected(TaskGraphFailure{
-                .code = ETaskGraphError::ALLOCATION_FAILURE
-            });
+            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::ALLOCATION_FAILURE});
         }
 
-        const TaskHandle result{
-            id_,
-            static_cast<std::uint32_t>(tasks_.size())
-        };
+        const TaskHandle result{id_, static_cast<std::uint32_t>(tasks_.size())};
 
         for (std::size_t index{}; index < pending.resources.size(); ++index)
         {
@@ -94,8 +80,8 @@ namespace lux::task
                 return lux::cxx::unexpected(TaskGraphFailure{
                     .code = ETaskGraphError::INVALID_RESOURCE,
                     .task = result,
-                    .resource = current.key
-                });
+                    .resource = current.key}
+                );
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
@@ -104,8 +90,8 @@ namespace lux::task
                     return lux::cxx::unexpected(TaskGraphFailure{
                         .code = ETaskGraphError::DUPLICATE_RESOURCE,
                         .task = result,
-                        .resource = current.key
-                    });
+                        .resource = current.key}
+                    );
                 }
             }
         }
@@ -115,19 +101,17 @@ namespace lux::task
             const TaskHandle dependency = pending.dependencies[index];
             if (!dependency.isValid() || dependency.owner != id_)
             {
-                return lux::cxx::unexpected(TaskGraphFailure{
-                    .code = ETaskGraphError::INVALID_TASK,
-                    .task = result,
-                    .related = dependency
-                });
+                return lux::cxx::unexpected(
+                    TaskGraphFailure{.code = ETaskGraphError::INVALID_TASK, .task = result, .related = dependency}
+                );
             }
             if (dependency.index >= result.index)
             {
                 return lux::cxx::unexpected(TaskGraphFailure{
                     .code = ETaskGraphError::DEPENDENCY_MUST_PRECEDE_TASK,
                     .task = result,
-                    .related = dependency
-                });
+                    .related = dependency}
+                );
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
@@ -136,8 +120,8 @@ namespace lux::task
                     return lux::cxx::unexpected(TaskGraphFailure{
                         .code = ETaskGraphError::DUPLICATE_DEPENDENCY,
                         .task = result,
-                        .related = dependency
-                    });
+                        .related = dependency}
+                    );
                 }
             }
         }
@@ -149,21 +133,15 @@ namespace lux::task
         }
         catch (...)
         {
-            return lux::cxx::unexpected(TaskGraphFailure{
-                .code = ETaskGraphError::ALLOCATION_FAILURE,
-                .task = result
-            });
+            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::ALLOCATION_FAILURE, .task = result});
         }
     }
 
-    lux::cxx::expected<TaskGraph, TaskGraphFailure>
-    TaskGraphBuilder::build() && noexcept
+    lux::cxx::expected<TaskGraph, TaskGraphFailure> TaskGraphBuilder::build() && noexcept
     {
         if (!id_.isValid())
         {
-            return lux::cxx::unexpected(TaskGraphFailure{
-                .code = ETaskGraphError::INVALID_BUILDER
-            });
+            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::INVALID_BUILDER});
         }
 
         try
@@ -187,11 +165,7 @@ namespace lux::task
             }
 
             std::map<TaskResourceKey, ResourceState> resources;
-            const auto addEdge = [&edges](
-                std::uint32_t before,
-                std::uint32_t after
-            )
-            {
+            const auto addEdge = [&edges](std::uint32_t before, std::uint32_t after) {
                 if (before != InvalidTaskIndex && before != after)
                     edges.push_back(Edge{before, after});
             };
@@ -206,14 +180,14 @@ namespace lux::task
                     auto& state = resources[access.key];
                     if (access.access == ETaskResourceAccess::READ)
                     {
-                        addEdge(state.writer, task);       // RAW
+                        addEdge(state.writer, task); // RAW
                         state.readers.push_back(task);
                     }
                     else
                     {
-                        addEdge(state.writer, task);       // WAW
+                        addEdge(state.writer, task); // WAW
                         for (const std::uint32_t reader : state.readers)
-                            addEdge(reader, task);          // WAR
+                            addEdge(reader, task); // WAR
                         state.readers.clear();
                         state.writer = task;
                     }
@@ -233,8 +207,7 @@ namespace lux::task
             }
             for (std::size_t index{1U}; index < graph.successor_offsets_.size(); ++index)
             {
-                graph.successor_offsets_[index] +=
-                    graph.successor_offsets_[index - 1U];
+                graph.successor_offsets_[index] += graph.successor_offsets_[index - 1U];
             }
 
             graph.successors_.resize(edges.size());
@@ -248,16 +221,15 @@ namespace lux::task
             {
                 if (graph.initial_dependencies_[task] == 0U)
                     graph.roots_.push_back(task);
-                if (graph.successor_offsets_[task] ==
-                    graph.successor_offsets_[task + 1U])
+                if (graph.successor_offsets_[task] == graph.successor_offsets_[task + 1U])
                 {
                     ++graph.terminal_task_count_;
                 }
 
                 graph.tasks_.push_back(TaskGraph::TaskRecord{
                     .callable = std::move(tasks_[task].callable),
-                    .affinity = tasks_[task].affinity
-                });
+                    .affinity = tasks_[task].affinity}
+                );
             }
 
             // Pin by ownership identity, not raw pointer value.
@@ -271,11 +243,7 @@ namespace lux::task
                     const bool already_pinned = std::any_of(
                         graph.lifetime_pins_.begin(),
                         graph.lifetime_pins_.end(),
-                        [&](const auto& existing)
-                        {
-                            return !owner_less(existing, pin) &&
-                                   !owner_less(pin, existing);
-                        }
+                        [&](const auto& existing) { return !owner_less(existing, pin) && !owner_less(pin, existing); }
                     );
                     if (!already_pinned)
                         graph.lifetime_pins_.push_back(std::move(pin));
@@ -288,9 +256,7 @@ namespace lux::task
         }
         catch (...)
         {
-            return lux::cxx::unexpected(TaskGraphFailure{
-                .code = ETaskGraphError::ALLOCATION_FAILURE
-            });
+            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::ALLOCATION_FAILURE});
         }
     }
 }

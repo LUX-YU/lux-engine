@@ -10,8 +10,8 @@
 #include <lux/engine/function/render/client/features/spatialcull/SpatialCullOperation.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 
-#include <lux/engine/render/comm/server/RenderServer.hpp>          // Dispatcher
-#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>    // typed-op Param 注册
+#include <lux/engine/render/comm/server/RenderServer.hpp>       // Dispatcher
+#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp> // typed-op Param 注册
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 
 #include <cstddef>
@@ -29,7 +29,7 @@ namespace lux::render
         const SpatialCullCommConfig& cc = *decoded;
 
         SpatialCullFeature::Config cfg{};
-        cfg.cell_size     = cc.cell_size;
+        cfg.cell_size = cc.cell_size;
         cfg.cull_distance = cc.cull_distance;
         return sc->addFeature<SpatialCullFeature>(cfg);
     }

@@ -19,13 +19,13 @@ namespace lux::ui::detail
 #endif
     }
 
-    [[nodiscard]] inline const void *currentUiThreadToken() noexcept
+    [[nodiscard]] inline const void* currentUiThreadToken() noexcept
     {
         static thread_local const std::byte token{};
         return &token;
     }
 
-    inline void requireUiOwner(std::thread::id owner, const void *owner_token) noexcept
+    inline void requireUiOwner(std::thread::id owner, const void* owner_token) noexcept
     {
         if (currentUiThreadToken() != owner_token)
             failUiContract();
@@ -38,7 +38,7 @@ namespace lux::ui::detail
     }
 
 #if !defined(NDEBUG) || defined(LUX_UI_CONTRACT_CHECKS)
-#define LUX_UI_CHECK_OWNER(owner_expression, owner_token_expression)                           \
+#define LUX_UI_CHECK_OWNER(owner_expression, owner_token_expression)                                                   \
     ::lux::ui::detail::requireUiOwner((owner_expression), (owner_token_expression))
 #else
 #define LUX_UI_CHECK_OWNER(owner_expression, owner_token_expression) static_cast<void>(0)

@@ -20,7 +20,7 @@ namespace lux::ui
 
     class MenuItem final
     {
-      public:
+    public:
         [[nodiscard]] static MenuItem command(CommandHandle command, std::string label = {})
         {
             return MenuItem{EMenuItemKind::COMMAND, std::move(label), command, {}};
@@ -53,11 +53,9 @@ namespace lux::ui
             return children_;
         }
 
-      private:
-        MenuItem(EMenuItemKind kind, std::string label, CommandHandle command,
-                 std::vector<MenuItem> children)
-            : kind_(kind), label_(std::move(label)), command_(command),
-              children_(std::move(children))
+    private:
+        MenuItem(EMenuItemKind kind, std::string label, CommandHandle command, std::vector<MenuItem> children)
+            : kind_(kind), label_(std::move(label)), command_(command), children_(std::move(children))
         {
         }
 
@@ -75,7 +73,7 @@ namespace lux::ui
 
     class ToolbarItem final
     {
-      public:
+    public:
         [[nodiscard]] static ToolbarItem command(CommandHandle command)
         {
             return ToolbarItem{EToolbarItemKind::COMMAND, command};
@@ -95,9 +93,8 @@ namespace lux::ui
             return command_;
         }
 
-      private:
-        ToolbarItem(EToolbarItemKind kind, CommandHandle command) noexcept
-            : kind_(kind), command_(command)
+    private:
+        ToolbarItem(EToolbarItemKind kind, CommandHandle command) noexcept : kind_(kind), command_(command)
         {
         }
 
@@ -107,7 +104,7 @@ namespace lux::ui
 
     class CommandRouter;
 
-    LUX_FUNCTION_PUBLIC void drawMenu(std::span<const MenuItem> items, CommandRouter &router);
+    LUX_FUNCTION_PUBLIC void drawMenu(std::span<const MenuItem> items, CommandRouter& router);
 
-    LUX_FUNCTION_PUBLIC void drawToolbar(std::span<const ToolbarItem> items, CommandRouter &router);
+    LUX_FUNCTION_PUBLIC void drawToolbar(std::span<const ToolbarItem> items, CommandRouter& router);
 } // namespace lux::ui

@@ -10,8 +10,7 @@ namespace lux::task
     }
 
     TaskCallable::TaskCallable(TaskCallable&& other) noexcept
-        : object_(std::exchange(other.object_, nullptr)),
-          invoke_(std::exchange(other.invoke_, nullptr)),
+        : object_(std::exchange(other.object_, nullptr)), invoke_(std::exchange(other.invoke_, nullptr)),
           destroy_(std::exchange(other.destroy_, nullptr))
     {
     }

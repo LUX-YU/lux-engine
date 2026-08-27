@@ -37,18 +37,14 @@ namespace lux::render
 
     namespace detail
     {
-        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void> waitPresentQueueIdle(
-            VkQueue queue,
-            PFN_vkQueueWaitIdle wait_idle
-        ) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void>
+        waitPresentQueueIdle(VkQueue queue, PFN_vkQueueWaitIdle wait_idle) noexcept;
 
-        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void> ensurePresentContextOpen(
-            bool closed
-        ) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void> ensurePresentContextOpen(bool closed) noexcept;
 
         struct PresentSemaphoreCreateOps final
         {
-            PFN_vkCreateSemaphore  create_semaphore{nullptr};
+            PFN_vkCreateSemaphore create_semaphore{nullptr};
             PFN_vkDestroySemaphore destroy_semaphore{nullptr};
         };
 
@@ -60,18 +56,10 @@ namespace lux::render
         public:
             ~PresentSemaphoreCreateCandidate() noexcept;
 
-            PresentSemaphoreCreateCandidate(
-                const PresentSemaphoreCreateCandidate&
-            ) = delete;
-            PresentSemaphoreCreateCandidate& operator=(
-                const PresentSemaphoreCreateCandidate&
-            ) = delete;
-            PresentSemaphoreCreateCandidate(
-                PresentSemaphoreCreateCandidate&& other
-            ) noexcept;
-            PresentSemaphoreCreateCandidate& operator=(
-                PresentSemaphoreCreateCandidate&& other
-            ) noexcept;
+            PresentSemaphoreCreateCandidate(const PresentSemaphoreCreateCandidate&) = delete;
+            PresentSemaphoreCreateCandidate& operator=(const PresentSemaphoreCreateCandidate&) = delete;
+            PresentSemaphoreCreateCandidate(PresentSemaphoreCreateCandidate&& other) noexcept;
+            PresentSemaphoreCreateCandidate& operator=(PresentSemaphoreCreateCandidate&& other) noexcept;
 
             [[nodiscard]] static Expected<PresentSemaphoreCreateCandidate> create(
                 VkDevice device,
@@ -90,16 +78,12 @@ namespace lux::render
                 return static_cast<std::uint32_t>(present_semaphores_.size());
             }
 
-            [[nodiscard]] VkSemaphore acquireSemaphore(
-                std::uint32_t index
-            ) const noexcept
+            [[nodiscard]] VkSemaphore acquireSemaphore(std::uint32_t index) const noexcept
             {
                 return acquire_semaphores_[index];
             }
 
-            [[nodiscard]] VkSemaphore presentSemaphore(
-                std::uint32_t index
-            ) const noexcept
+            [[nodiscard]] VkSemaphore presentSemaphore(std::uint32_t index) const noexcept
             {
                 return present_semaphores_[index];
             }
@@ -107,24 +91,23 @@ namespace lux::render
             void commit() noexcept;
 
         private:
-            PresentSemaphoreCreateCandidate(
-                VkDevice device,
-                PresentSemaphoreCreateOps ops
-            ) noexcept;
+            PresentSemaphoreCreateCandidate(VkDevice device, PresentSemaphoreCreateOps ops) noexcept;
 
             void rollback() noexcept;
             void disarm() noexcept;
 
-            VkDevice                    device_{VK_NULL_HANDLE};
-            PresentSemaphoreCreateOps   ops_{};
-            std::vector<VkSemaphore>    acquire_semaphores_;
-            std::vector<VkSemaphore>    present_semaphores_;
+            VkDevice device_{VK_NULL_HANDLE};
+            PresentSemaphoreCreateOps ops_{};
+            std::vector<VkSemaphore> acquire_semaphores_;
+            std::vector<VkSemaphore> present_semaphores_;
         };
     } // namespace detail
 
     class LUX_FUNCTION_PUBLIC PresentContext
     {
-        struct ConstructionKey final {};
+        struct ConstructionKey final
+        {
+        };
 
     public:
         /// surface 所有权移交进来;内部建 swapchain + 两套信号量。
@@ -137,15 +120,11 @@ namespace lux::render
             bool enable_present_scaling = false
         );
 
-        explicit PresentContext(
-            ConstructionKey,
-            ResourceContext& res_ctx,
-            RenderSurface&& surface
-        );
+        explicit PresentContext(ConstructionKey, ResourceContext& res_ctx, RenderSurface&& surface);
 
         ~PresentContext();
 
-        PresentContext(const PresentContext&)            = delete;
+        PresentContext(const PresentContext&) = delete;
         PresentContext& operator=(const PresentContext&) = delete;
 
         [[nodiscard]] SwapchainProvider* provider() noexcept
@@ -185,11 +164,11 @@ namespace lux::render
         /// FrameDriver 不再自持呈现信号量)。
         struct Acquired
         {
-            bool        valid{false};
-            uint32_t    image_index{0};
-            VkImage     image{VK_NULL_HANDLE};
+            bool valid{false};
+            uint32_t image_index{0};
+            VkImage image{VK_NULL_HANDLE};
             VkImageView view{VK_NULL_HANDLE};
-            VkExtent2D  extent{0, 0};
+            VkExtent2D extent{0, 0};
             VkSemaphore acquire_sem{VK_NULL_HANDLE};
             VkSemaphore present_sem{VK_NULL_HANDLE};
         };
@@ -201,26 +180,23 @@ namespace lux::render
 
         /// present + 把 OUT_OF_DATE/SUBOPTIMAL/SURFACE_LOST 归一为重建标记
         ///(可恢复态),其余错误上抛。
-        [[nodiscard]] Expected<void> present(
-            uint32_t image_index,
-            VkSemaphore wait_sem
-        );
+        [[nodiscard]] Expected<void> present(uint32_t image_index, VkSemaphore wait_sem);
 
     private:
         /// 按当前 imageCount 重配两套信号量(acquire 环 = imageCount+1)。
         [[nodiscard]] Expected<void> resyncSemaphores();
 
-        ResourceContext&                   res_ctx_;
-        RenderSurface                      surface_;
+        ResourceContext& res_ctx_;
+        RenderSurface surface_;
 
-        std::vector<gapi::vk::Semaphore>   acquire_ring_;
-        uint32_t                           acquire_cursor_{0};
-        std::vector<gapi::vk::Semaphore>   present_per_image_;
+        std::vector<gapi::vk::Semaphore> acquire_ring_;
+        uint32_t acquire_cursor_{0};
+        std::vector<gapi::vk::Semaphore> present_per_image_;
         // Declared last so reverse member destruction removes the swapchain
         // before its semaphore sets, then finally the surface.
         std::unique_ptr<SwapchainProvider> provider_;
-        bool                               close_required_{false};
-        bool                               closed_{false};
+        bool close_required_{false};
+        bool closed_{false};
     };
 
 } // namespace lux::render

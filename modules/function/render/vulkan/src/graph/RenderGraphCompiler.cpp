@@ -5,10 +5,11 @@
 #include <lux/engine/render/graph/ProgramEmitter.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>                       // domain slot resolution (kEngineSetShapes)
-#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp> // domain set instance (record-time collapsed binding)
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>             // domain slot resolution (kEngineSetShapes)
+#include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
+// domain set instance (record-time collapsed binding)
 #include <lux/engine/render/graph/RGBarrierUtils.hpp>
-#include <lux/engine/render/graph/vk_type_converter.hpp>   // convertVkImageLayout (neutral DS layout)
+#include <lux/engine/render/graph/vk_type_converter.hpp> // convertVkImageLayout (neutral DS layout)
 #include <algorithm>
 #include <string>
 #include <type_traits>
@@ -55,9 +56,7 @@ namespace lux::render
 
         void classifyExecutionModes(RGCompiledGraph& compiled)
         {
-            for (std::uint32_t pass_index = 0;
-                 pass_index < compiled.compiled_passes.size();
-                 ++pass_index)
+            for (std::uint32_t pass_index = 0; pass_index < compiled.compiled_passes.size(); ++pass_index)
             {
                 auto& cpass = compiled.compiled_passes[pass_index];
                 cpass.execution_mode = classifyPassExecutionMode(cpass.pass);
@@ -66,23 +65,29 @@ namespace lux::render
                 // RECORDER_FALLBACK 意味着 recordPassContent 对它 no-op——
                 // 声明了绘制意图却永远不执行。选中高亮曾因此整链静默失效
                 // (condition 降级执行模式的历史行为),响亮报出来。
-                if (cpass.execution_mode == EPassExecutionMode::RECORDER_FALLBACK &&
-                    cpass.pass && cpass.pass->hasKernel() &&
-                    !cpass.pass->recorder && !cpass.pass->kernel_fn)
+                const bool is_recorder_fallback =
+                    cpass.execution_mode == EPassExecutionMode::RECORDER_FALLBACK;
+                const bool has_kernel = cpass.pass != nullptr && cpass.pass->hasKernel();
+                const bool is_missing_recorder = has_kernel && !cpass.pass->recorder;
+                const bool is_missing_kernel = has_kernel && !cpass.pass->kernel_fn;
+                const bool is_missing_kernel_emitter = is_recorder_fallback && has_kernel &&
+                    is_missing_recorder && is_missing_kernel;
+                if (is_missing_kernel_emitter)
                 {
-                    compiled.diagnostics.push_back(
-                        renderError<err::graph::KernelEmitterMissing>(pass_index));
+                    compiled.diagnostics.push_back(renderError<err::graph::KernelEmitterMissing>(pass_index));
                 }
             }
         }
 
         bool hasCompiledPasses(const RGCompiledGraph& compiled) noexcept
         {
-            return std::any_of(compiled.compiled_passes.begin(), compiled.compiled_passes.end(),
-                [](const RGCompiledPass& cpass)
-                {
+            return std::any_of(
+                compiled.compiled_passes.begin(),
+                compiled.compiled_passes.end(),
+                [](const RGCompiledPass& cpass) {
                     return cpass.execution_mode != EPassExecutionMode::RECORDER_FALLBACK;
-                });
+                }
+            );
         }
 
         // Scan resources and build fast lookup tables for resize-tracking,
@@ -147,7 +152,6 @@ namespace lux::render
 
     } // namespace
 
-
     namespace
     {
         // ── 资源用途并集 ────────────────────────────────────────────
@@ -166,12 +170,18 @@ namespace lux::render
             using B = ERGTextureUsageBits;
             switch (role)
             {
-            case lux::render::ETextureRole::SAMPLED:                  return static_cast<ERGTextureUsageFlags>(B::SAMPLED);
-            case lux::render::ETextureRole::COLOR_ATTACHMENT:         return static_cast<ERGTextureUsageFlags>(B::COLOR_ATTACHMENT);
-            case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return static_cast<ERGTextureUsageFlags>(B::DEPTH_STENCIL);
-            case lux::render::ETextureRole::INPUT_ATTACHMENT:         return static_cast<ERGTextureUsageFlags>(B::INPUT_ATTACHMENT);
-            case lux::render::ETextureRole::UNORDERED_ACCESS:         return static_cast<ERGTextureUsageFlags>(B::STORAGE);
-            default:                                                  return static_cast<ERGTextureUsageFlags>(0);
+            case lux::render::ETextureRole::SAMPLED:
+                return static_cast<ERGTextureUsageFlags>(B::SAMPLED);
+            case lux::render::ETextureRole::COLOR_ATTACHMENT:
+                return static_cast<ERGTextureUsageFlags>(B::COLOR_ATTACHMENT);
+            case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
+                return static_cast<ERGTextureUsageFlags>(B::DEPTH_STENCIL);
+            case lux::render::ETextureRole::INPUT_ATTACHMENT:
+                return static_cast<ERGTextureUsageFlags>(B::INPUT_ATTACHMENT);
+            case lux::render::ETextureRole::UNORDERED_ACCESS:
+                return static_cast<ERGTextureUsageFlags>(B::STORAGE);
+            default:
+                return static_cast<ERGTextureUsageFlags>(0);
             }
         }
 
@@ -179,9 +189,9 @@ namespace lux::render
         {
             auto& graph = compiled.original_graph;
             constexpr ERGTextureUsageFlags kAttachmentOnly =
-                  static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT)
-                | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::DEPTH_STENCIL)
-                | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::INPUT_ATTACHMENT);
+                static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT) |
+                static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::DEPTH_STENCIL) |
+                static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::INPUT_ATTACHMENT);
 
             std::vector<ERGTextureUsageFlags> role_union(graph.resources.size(), ERGTextureUsageFlags{0});
             for (const auto& pass : graph.passes)
@@ -216,10 +226,10 @@ namespace lux::render
                 if (tex->keep_transient && (add & ~kAttachmentOnly) != 0)
                 {
                     // 创建者主权:承诺了仅附件用途,越界需求丢弃 + 记一条诊断。
-                    compiled.diagnostics.push_back(
-                        renderError<err::graph::TransientUsageViolation>(
-                            static_cast<std::uint32_t>(i),
-                            static_cast<std::uint32_t>(add & ~kAttachmentOnly)));
+                    compiled.diagnostics.push_back(renderError<err::graph::TransientUsageViolation>(
+                        static_cast<std::uint32_t>(i),
+                        static_cast<std::uint32_t>(add & ~kAttachmentOnly))
+                    );
                     add &= kAttachmentOnly;
                     if (add == ERGTextureUsageFlags{0})
                         continue;
@@ -227,15 +237,20 @@ namespace lux::render
 
                 // 当前树上这条应当为零 —— validation 一直干净意味着创建者声明 ⊇
                 // 消费角色。它开火 = 抓到一处此前的欠声明,值得看一眼。
-                compiled.diagnostics.push_back(
-                    renderError<err::graph::UsageUnderdeclared>(
-                        static_cast<std::uint32_t>(i), static_cast<std::uint32_t>(add)));
+                compiled.diagnostics.push_back(renderError<err::graph::UsageUnderdeclared>(
+                    static_cast<std::uint32_t>(i),
+                    static_cast<std::uint32_t>(add))
+                );
                 tex->usage |= add;
             }
         }
     } // namespace
 
-    RGCompiledGraph RenderGraphCompiler::compile(RGGraphDescription graph, PipelineManager& pipeline_manager, const RGCompileOptions &options)
+    RGCompiledGraph RenderGraphCompiler::compile(
+        RGGraphDescription graph,
+        PipelineManager& pipeline_manager,
+        const RGCompileOptions& options
+    )
     {
         RGCompiledGraph compiled{};
         compiled.original_graph = std::move(graph);
@@ -344,7 +359,7 @@ namespace lux::render
         computeAttachmentOps(compiled, access_index);
         if (!compiled.compile_error.ok())
         {
-            return compiled;   // F13 guard: conditional CLEAR in an lr write chain
+            return compiled; // F13 guard: conditional CLEAR in an lr write chain
         }
 
         // 6) Compute Barriers
@@ -391,7 +406,7 @@ namespace lux::render
     // 1) Global Info
     // ---------------------------
 
-    bool RenderGraphCompiler::buildGlobalInfo(RGCompiledGraph &compiled, const RGCompileOptions &options)
+    bool RenderGraphCompiler::buildGlobalInfo(RGCompiledGraph& compiled, const RGCompileOptions& options)
     {
         // Dependency analysis consumes a backend-neutral view. Building the
         // small view array is graph-compile cold-path work; resource/pass
@@ -404,31 +419,15 @@ namespace lux::render
                 .name = pass.name,
                 .phase_mask = pass.phase_mask,
                 .stage = pass.stage,
-                .textures = std::span<const RGPassTextureRef>{
-                    pass.textures.data(),
-                    pass.textures.size()
-                },
-                .buffers = std::span<const RGPassBufferRef>{
-                    pass.buffers.data(),
-                    pass.buffers.size()
-                },
-                .after_passes = std::span<const std::string>{
-                    pass.after_passes.data(),
-                    pass.after_passes.size()
-                },
-                .before_passes = std::span<const std::string>{
-                    pass.before_passes.data(),
-                    pass.before_passes.size()
-                }
-            });
+                .textures = std::span<const RGPassTextureRef>{pass.textures.data(), pass.textures.size()},
+                .buffers = std::span<const RGPassBufferRef>{pass.buffers.data(), pass.buffers.size()},
+                .after_passes = std::span<const std::string>{pass.after_passes.data(), pass.after_passes.size()},
+                .before_passes = std::span<const std::string>{pass.before_passes.data(), pass.before_passes.size()}}
+            );
         }
-        compiled.dependency_info = DependencyAnalyzer::analyze(
-            RGLogicalGraphView{
-                .resource_count = static_cast<std::uint32_t>(
-                    compiled.original_graph.resources.size()
-                ),
-                .passes = logical_passes
-            }
+        compiled.dependency_info = DependencyAnalyzer::analyze(RGLogicalGraphView{
+            .resource_count = static_cast<std::uint32_t>(compiled.original_graph.resources.size()),
+            .passes = logical_passes}
         );
         if (compiled.dependency_info.has_cycle)
         {
@@ -441,32 +440,39 @@ namespace lux::render
         // can be allocated later by a per-view RGResourceState.
         const size_t res_count = compiled.original_graph.resources.size();
         compiled.valid_resources.resize(res_count, false);
-        for (size_t i = 0; i < res_count; ++i) {
+        for (size_t i = 0; i < res_count; ++i)
+        {
             const auto& res = compiled.original_graph.resources[i];
-            if (res.lifetime == ERGResourceLifetime::IMPORTED) {
+            if (res.lifetime == ERGResourceLifetime::IMPORTED)
+            {
                 bool valid_import = false;
-                std::visit([&](auto&& desc) {
-                    using T = std::decay_t<decltype(desc)>;
-                    if constexpr (std::is_same_v<T, RGTextureDescription>)
-                    {
-                        if (res.import_info)
-                            valid_import = static_cast<bool>(res.import_info->image_getter)
-                                || res.import_info->slot.has_value();
-                    }
-                    else if constexpr (std::is_same_v<T, RGBufferDescription>)
-                    {
-                        valid_import = res.import_buffer_info
-                            && static_cast<bool>(res.import_buffer_info->buffer_getter);
-                    }
-                }, res.desc);
+                std::visit(
+                    [&](auto&& desc) {
+                        using T = std::decay_t<decltype(desc)>;
+                        if constexpr (std::is_same_v<T, RGTextureDescription>)
+                        {
+                            if (res.import_info)
+                                valid_import = static_cast<bool>(res.import_info->image_getter) ||
+                                               res.import_info->slot.has_value();
+                        }
+                        else if constexpr (std::is_same_v<T, RGBufferDescription>)
+                        {
+                            valid_import =
+                                res.import_buffer_info && static_cast<bool>(res.import_buffer_info->buffer_getter);
+                        }
+                    },
+                    res.desc
+                );
                 if (!valid_import)
                 {
-                    compiled.compile_error = renderError<err::graph::ImportedResourceIncomplete>(
-                        static_cast<std::uint32_t>(i));
+                    compiled.compile_error =
+                        renderError<err::graph::ImportedResourceIncomplete>(static_cast<std::uint32_t>(i));
                     return false;
                 }
                 compiled.valid_resources[i] = true;
-            } else if (res.lifetime == ERGResourceLifetime::FORWARD_REFERENCE) {
+            }
+            else if (res.lifetime == ERGResourceLifetime::FORWARD_REFERENCE)
+            {
                 // Unresolved forward reference: resolveForwardReferences() re-points
                 // every reader of a *resolved* ref to the real resource index, so any
                 // entry still tagged FORWARD_REFERENCE here is either orphaned (its
@@ -477,13 +483,16 @@ namespace lux::render
                 // a REQUIRED reference left unresolved is a hard error (fail fast),
                 // not a silent degrade to a null view / downstream VUID. Optional keeps
                 // the prune behaviour (consumer degrades).
-                if (res.reference_mode == ERGReference::Required) {
-                    compiled.compile_error = renderError<err::graph::ReferencedResourceHasNoProducer>(
-                        static_cast<std::uint32_t>(i));
+                if (res.reference_mode == ERGReference::Required)
+                {
+                    compiled.compile_error =
+                        renderError<err::graph::ReferencedResourceHasNoProducer>(static_cast<std::uint32_t>(i));
                     return false;
                 }
                 compiled.valid_resources[i] = false;
-            } else if (res.lifetime == ERGResourceLifetime::EXTERNAL) {
+            }
+            else if (res.lifetime == ERGResourceLifetime::EXTERNAL)
+            {
                 // Feature-owned: no RG-backed image/buffer. Mark invalid so
                 // computeBarriers skips it (the per-resource valid_resources guard
                 // at the top of its texture/buffer loops means NO barrier is emitted
@@ -491,26 +500,25 @@ namespace lux::render
                 // read pass.textures/buffers directly (not valid_resources), so the
                 // injected READ is still visible for ordering/reachability.
                 compiled.valid_resources[i] = false;
-            } else {
+            }
+            else
+            {
                 // TRANSIENT / PERSISTENT → valid if description exists
                 compiled.valid_resources[i] = true;
             }
         }
 
         // RenderPass layout (render pass groups organized by key)
-        compiled.render_pass_layout = RenderPassPlanner::plan(
-            compiled.original_graph,
-            compiled.dependency_info,
-            options.max_color_attachments
-        );
+        compiled.render_pass_layout =
+            RenderPassPlanner::plan(compiled.original_graph, compiled.dependency_info, options.max_color_attachments);
         if (!compiled.render_pass_layout.valid)
         {
             compiled.compile_error = compiled.render_pass_layout.error;
             return false;
         }
 
-		// Scan resources, build fast lookup tables
-		buildResourceLookupTables(compiled);
+        // Scan resources, build fast lookup tables
+        buildResourceLookupTables(compiled);
 
         return true;
     }
@@ -519,10 +527,9 @@ namespace lux::render
     // 2) Build RGCompiledPass
     // ---------------------------
 
-    bool RenderGraphCompiler::buildCompiledPasses(RGCompiledGraph &compiled, PipelineManager& pipeline_manager)
+    bool RenderGraphCompiler::buildCompiledPasses(RGCompiledGraph& compiled, PipelineManager& pipeline_manager)
     {
-        const uint32_t pass_count =
-            static_cast<uint32_t>(compiled.original_graph.passes.size());
+        const uint32_t pass_count = static_cast<uint32_t>(compiled.original_graph.passes.size());
 
         compiled.compiled_passes.clear();
         compiled.compiled_passes.resize(pass_count);
@@ -537,10 +544,14 @@ namespace lux::render
         return true;
     }
 
-    bool RenderGraphCompiler::buildSinglePass(RGCompiledGraph &compiled, uint32_t pass_index, PipelineManager& pipeline_manager)
+    bool RenderGraphCompiler::buildSinglePass(
+        RGCompiledGraph& compiled,
+        uint32_t pass_index,
+        PipelineManager& pipeline_manager
+    )
     {
-        RGPassDescription &pass_desc = compiled.original_graph.passes[pass_index];
-        RGCompiledPass    &cpass = compiled.compiled_passes[pass_index];
+        RGPassDescription& pass_desc = compiled.original_graph.passes[pass_index];
+        RGCompiledPass& cpass = compiled.compiled_passes[pass_index];
 
         cpass.pass = &pass_desc;
         cpass.pass_index = pass_index;
@@ -557,8 +568,7 @@ namespace lux::render
             setupGraphicsPass(compiled, pass_index, cpass, pass_desc, pipeline_manager);
         }
         // DESIGN-01: Compute pass — populate layout/descriptor info from template
-        else if (pass_desc.type == ERGPassType::COMPUTE
-              || pass_desc.type == ERGPassType::ASYNC_COMPUTE)
+        else if (pass_desc.type == ERGPassType::COMPUTE || pass_desc.type == ERGPassType::ASYNC_COMPUTE)
         {
             if (!setupComputePass(compiled, cpass, pass_desc, pipeline_manager))
             {
@@ -572,9 +582,15 @@ namespace lux::render
         return true;
     }
 
-    void RenderGraphCompiler::setupGraphicsPass(RGCompiledGraph &compiled, uint32_t pass_index, RGCompiledPass &cpass, RGPassDescription &pass_desc, PipelineManager& pipeline_manager)
+    void RenderGraphCompiler::setupGraphicsPass(
+        RGCompiledGraph& compiled,
+        uint32_t pass_index,
+        RGCompiledPass& cpass,
+        RGPassDescription& pass_desc,
+        PipelineManager& pipeline_manager
+    )
     {
-        const auto &layout = compiled.render_pass_layout;
+        const auto& layout = compiled.render_pass_layout;
 
         if (pass_index >= layout.pass_to_group.size())
         {
@@ -588,7 +604,8 @@ namespace lux::render
         }
 
         cpass.render.render_pass.index = group_index;
-        cpass.render.framebuffer.index = group_index; // 1:1 for now, can be differentiated by swapchain image etc. in the future
+        cpass.render.framebuffer.index =
+            group_index; // 1:1 for now, can be differentiated by swapchain image etc. in the future
 
         cpass.render.pipeline = VK_NULL_HANDLE;
         cpass.render.pipeline_variant_handles.clear();
@@ -602,8 +619,7 @@ namespace lux::render
         {
             const auto pipeline_template = pass_desc.pipeline_template;
 
-            const auto variantFeatureMask = [&](uint32_t variant_index) -> uint32_t
-            {
+            const auto variantFeatureMask = [&](uint32_t variant_index) -> uint32_t {
                 if (variant_index < pass_desc.pipeline_variant_features.size())
                 {
                     return pass_desc.pipeline_variant_features[variant_index];
@@ -617,16 +633,17 @@ namespace lux::render
                 subpass_index = layout.pass_to_subpass[pass_index];
             }
 
-            const auto &group = layout.groups[group_index];
+            const auto& group = layout.groups[group_index];
 
             auto pipeline = pipeline_manager.getOrCreatePipeline(
                 pipeline_template,
                 group.key,
                 subpass_index,
-                variantFeatureMask(0u));
+                variantFeatureMask(0u)
+            );
 
             cpass.render.pipeline = pipeline;
-            cpass.render.subpass  = subpass_index;
+            cpass.render.subpass = subpass_index;
 
             // C-4: Retain template handle + render pass key for per-item variant switching
             cpass.render.pipeline_template_handle = pipeline_template;
@@ -636,8 +653,7 @@ namespace lux::render
             cpass.render.pipeline_layout = tmpl.pipeline_layout;
             cpass.render.descriptor_set_count = tmpl.descriptor_set_count;
 
-            auto push_variant = [&](GraphicsPipelineHandle handle, VkPipeline vk_pipeline, VkPipelineLayout vk_layout)
-            {
+            auto push_variant = [&](GraphicsPipelineHandle handle, VkPipeline vk_pipeline, VkPipelineLayout vk_layout) {
                 if (!handle.valid() || vk_pipeline == VK_NULL_HANDLE || vk_layout == VK_NULL_HANDLE)
                 {
                     return;
@@ -655,7 +671,11 @@ namespace lux::render
             for (auto extra_handle : pass_desc.additional_pipelines)
             {
                 auto extra_pipeline = pipeline_manager.getOrCreatePipeline(
-                    extra_handle, group.key, subpass_index, variantFeatureMask(variant_index));
+                    extra_handle,
+                    group.key,
+                    subpass_index,
+                    variantFeatureMask(variant_index)
+                );
                 const auto& extra_tmpl = pipeline_manager.getTemplate(extra_handle);
                 push_variant(extra_handle, extra_pipeline, extra_tmpl.pipeline_layout);
 
@@ -664,9 +684,9 @@ namespace lux::render
                 const auto geo_idx = static_cast<uint32_t>(extra_tmpl.geometry_type);
                 if (geo_idx < PassRenderState::kGeometryTypeCount)
                 {
-                    cpass.render.geo_pipeline_table[geo_idx]   = extra_pipeline;
-                    cpass.render.geo_layout_table[geo_idx]     = extra_tmpl.pipeline_layout;
-                    cpass.render.geo_set_count_table[geo_idx]  = extra_tmpl.descriptor_set_count;
+                    cpass.render.geo_pipeline_table[geo_idx] = extra_pipeline;
+                    cpass.render.geo_layout_table[geo_idx] = extra_tmpl.pipeline_layout;
+                    cpass.render.geo_set_count_table[geo_idx] = extra_tmpl.descriptor_set_count;
                 }
             }
 
@@ -674,9 +694,9 @@ namespace lux::render
             const auto primary_geo = static_cast<uint32_t>(tmpl.geometry_type);
             if (primary_geo < PassRenderState::kGeometryTypeCount)
             {
-                cpass.render.geo_pipeline_table[primary_geo]   = pipeline;
-                cpass.render.geo_layout_table[primary_geo]     = tmpl.pipeline_layout;
-                cpass.render.geo_set_count_table[primary_geo]  = tmpl.descriptor_set_count;
+                cpass.render.geo_pipeline_table[primary_geo] = pipeline;
+                cpass.render.geo_layout_table[primary_geo] = tmpl.pipeline_layout;
+                cpass.render.geo_set_count_table[primary_geo] = tmpl.descriptor_set_count;
             }
 
             // Populate unfilled geometry type entries with the default pipeline
@@ -685,9 +705,9 @@ namespace lux::render
             {
                 if (cpass.render.geo_pipeline_table[g] == VK_NULL_HANDLE)
                 {
-                    cpass.render.geo_pipeline_table[g]   = pipeline;
-                    cpass.render.geo_layout_table[g]     = tmpl.pipeline_layout;
-                    cpass.render.geo_set_count_table[g]  = tmpl.descriptor_set_count;
+                    cpass.render.geo_pipeline_table[g] = pipeline;
+                    cpass.render.geo_layout_table[g] = tmpl.pipeline_layout;
+                    cpass.render.geo_set_count_table[g] = tmpl.descriptor_set_count;
                 }
             }
         }
@@ -699,9 +719,10 @@ namespace lux::render
         RGCompiledGraph& compiled,
         RGCompiledPass& cpass,
         RGPassDescription& pass_desc,
-        PipelineManager& pipeline_manager)
+        PipelineManager& pipeline_manager
+    )
     {
-        cpass.render.bind_pipeline = true;  // Always bind compute pipelines
+        cpass.render.bind_pipeline = true; // Always bind compute pipelines
         cpass.render.pipeline = VK_NULL_HANDLE;
 
         if (!pass_desc.compute_pipeline_handle.valid())
@@ -710,7 +731,7 @@ namespace lux::render
             return false;
         }
 
-        cpass.render.pipeline        = pipeline_manager.getComputePipeline(pass_desc.compute_pipeline_handle);
+        cpass.render.pipeline = pipeline_manager.getComputePipeline(pass_desc.compute_pipeline_handle);
         cpass.render.pipeline_layout = pipeline_manager.getComputeLayout(pass_desc.compute_pipeline_handle);
         if (cpass.render.pipeline == VK_NULL_HANDLE || cpass.render.pipeline_layout == VK_NULL_HANDLE)
         {
@@ -721,11 +742,11 @@ namespace lux::render
         return true;
     }
 
-    void RenderGraphCompiler::mapPassTextures(const RGCompiledGraph &compiled, RGCompiledPass &cpass)
+    void RenderGraphCompiler::mapPassTextures(const RGCompiledGraph& compiled, RGCompiledPass& cpass)
     {
-        const auto &pass = *cpass.pass;
+        const auto& pass = *cpass.pass;
 
-        for (const auto &tex_ref : pass.textures)
+        for (const auto& tex_ref : pass.textures)
         {
             const uint32_t res_idx = tex_ref.resource.index;
             if (res_idx >= compiled.valid_resources.size() || !compiled.valid_resources[res_idx])
@@ -734,12 +755,10 @@ namespace lux::render
             }
 
             const bool is_read =
-                tex_ref.usage == ERGResourceUsage::READ ||
-                tex_ref.usage == ERGResourceUsage::READ_WRITE;
+                tex_ref.usage == ERGResourceUsage::READ || tex_ref.usage == ERGResourceUsage::READ_WRITE;
 
             const bool is_write =
-                tex_ref.usage == ERGResourceUsage::WRITE ||
-                tex_ref.usage == ERGResourceUsage::READ_WRITE;
+                tex_ref.usage == ERGResourceUsage::WRITE || tex_ref.usage == ERGResourceUsage::READ_WRITE;
 
             if (is_read)
             {
@@ -752,11 +771,11 @@ namespace lux::render
         }
     }
 
-    void RenderGraphCompiler::mapPassBuffers(const RGCompiledGraph &compiled, RGCompiledPass &cpass)
+    void RenderGraphCompiler::mapPassBuffers(const RGCompiledGraph& compiled, RGCompiledPass& cpass)
     {
-        const auto &pass = *cpass.pass;
+        const auto& pass = *cpass.pass;
 
-        for (const auto &buf_ref : pass.buffers)
+        for (const auto& buf_ref : pass.buffers)
         {
             const uint32_t res_idx = buf_ref.resource.index;
             if (res_idx >= compiled.valid_resources.size() || !compiled.valid_resources[res_idx])
@@ -765,12 +784,10 @@ namespace lux::render
             }
 
             const bool is_read =
-                buf_ref.usage == ERGResourceUsage::READ ||
-                buf_ref.usage == ERGResourceUsage::READ_WRITE;
+                buf_ref.usage == ERGResourceUsage::READ || buf_ref.usage == ERGResourceUsage::READ_WRITE;
 
             const bool is_write =
-                buf_ref.usage == ERGResourceUsage::WRITE ||
-                buf_ref.usage == ERGResourceUsage::READ_WRITE;
+                buf_ref.usage == ERGResourceUsage::WRITE || buf_ref.usage == ERGResourceUsage::READ_WRITE;
 
             if (is_read)
             {
@@ -787,7 +804,7 @@ namespace lux::render
     // 3) Execution Order
     // ---------------------------
 
-    void RenderGraphCompiler::computeExecutionOrder(RGCompiledGraph &compiled)
+    void RenderGraphCompiler::computeExecutionOrder(RGCompiledGraph& compiled)
     {
         compiled.execution_order = compiled.dependency_info.pass_topological_order;
     }
@@ -882,8 +899,7 @@ namespace lux::render
         {
             for (auto& w : tds.writes)
             {
-                if (w.resource.index < resource_count
-                    && remap[w.resource.index] != w.resource.index)
+                if (w.resource.index < resource_count && remap[w.resource.index] != w.resource.index)
                     w.resource.index = remap[w.resource.index];
             }
         }
@@ -907,30 +923,38 @@ namespace lux::render
                 const uint32_t ri = bind.declared_consume.index;
                 if (ri >= resource_count)
                 {
-                    continue;   // not declared (invalid handle) — relies on markSideEffect
+                    continue; // not declared (invalid handle) — relies on markSideEffect
                 }
 
                 if (bind.consume_type == ERGResourceType::TEXTURE)
                 {
                     bool exists = false;
                     for (const auto& t : pass.textures)
-                        if (t.resource.index == ri) { exists = true; break; }
+                        if (t.resource.index == ri)
+                        {
+                            exists = true;
+                            break;
+                        }
                     if (exists)
                     {
-                        continue;   // already declared via .read()/.write()
+                        continue; // already declared via .read()/.write()
                     }
 
                     RGPassTextureRef ref{};
                     ref.resource = bind.declared_consume;
-                    ref.role     = bind.consume_tex_role;
-                    ref.usage    = ERGResourceUsage::READ;
+                    ref.role = bind.consume_tex_role;
+                    ref.usage = ERGResourceUsage::READ;
                     pass.textures.push_back(ref);
                 }
                 else
                 {
                     bool exists = false;
                     for (const auto& b : pass.buffers)
-                        if (b.resource.index == ri) { exists = true; break; }
+                        if (b.resource.index == ri)
+                        {
+                            exists = true;
+                            break;
+                        }
                     if (exists)
                     {
                         continue;
@@ -938,8 +962,8 @@ namespace lux::render
 
                     RGPassBufferRef ref{};
                     ref.resource = bind.declared_consume;
-                    ref.usage    = ERGResourceUsage::READ;
-                    ref.role     = ERGBufferRole::STORAGE;
+                    ref.usage = ERGResourceUsage::READ;
+                    ref.role = ERGBufferRole::STORAGE;
                     pass.buffers.push_back(ref);
                 }
             }
@@ -966,9 +990,8 @@ namespace lux::render
         {
             for (const auto& bind : graph.passes[pi].ds_bindings)
             {
-                if (bind.source == EDSBindingSource::Transient
-                    && bind.transient_ds_index < tds_count
-                    && tds_to_pass[bind.transient_ds_index] == kNoPass)
+                if (bind.source == EDSBindingSource::Transient && bind.transient_ds_index < tds_count &&
+                    tds_to_pass[bind.transient_ds_index] == kNoPass)
                     tds_to_pass[bind.transient_ds_index] = pi;
             }
         }
@@ -978,7 +1001,7 @@ namespace lux::render
             const uint32_t pi = tds_to_pass[ti];
             if (pi == kNoPass)
             {
-                continue;   // unbound DS — nothing to derive a layout from
+                continue; // unbound DS — nothing to derive a layout from
             }
             const RGPassDescription& pass = graph.passes[pi];
             auto& tds = graph.transient_descriptor_sets[ti];
@@ -993,7 +1016,7 @@ namespace lux::render
                 case EDescriptorType::INPUT_ATTACHMENT:
                     break;
                 default:
-                    continue;   // buffers / non-image descriptors carry no layout
+                    continue; // buffers / non-image descriptors carry no layout
                 }
 
                 const uint32_t ri = w.resource.index;
@@ -1006,10 +1029,15 @@ namespace lux::render
                         // author's value.
                         const RGPassTextureRef* ref = nullptr;
                         for (const auto& t : pass.textures)
-                            if (t.resource.index == ri) { ref = &t; break; }
+                            if (t.resource.index == ri)
+                            {
+                                ref = &t;
+                                break;
+                            }
                         if (ref != nullptr)
                         {
-                            w.image_layout = convertVkImageLayout(determineTextureState(*ref, *tex_desc, pass.type).layout);
+                            w.image_layout =
+                                convertVkImageLayout(determineTextureState(*ref, *tex_desc, pass.type).layout);
                         }
                     }
                 }
@@ -1018,19 +1046,18 @@ namespace lux::render
                 // derived from the pass role, so a mismatch means the feature declared
                 // a role inconsistent with the descriptor type (STORAGE_IMAGE needs
                 // GENERAL; sampled/combined/input needs a READ_ONLY layout).
-                const bool layout_ok =
-                    (w.descriptor_type == EDescriptorType::STORAGE_IMAGE)
-                        ? (w.image_layout == EImageLayout::GENERAL)
-                    : (w.descriptor_type == EDescriptorType::INPUT_ATTACHMENT)
-                        ? (w.image_layout == EImageLayout::RENDERING_LOCAL_READ)
-                        : (w.image_layout == EImageLayout::SHADER_READ_ONLY_OPTIMAL ||
-                           w.image_layout == EImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+                const bool layout_ok = (w.descriptor_type == EDescriptorType::STORAGE_IMAGE)
+                                           ? (w.image_layout == EImageLayout::GENERAL)
+                                       : (w.descriptor_type == EDescriptorType::INPUT_ATTACHMENT)
+                                           ? (w.image_layout == EImageLayout::RENDERING_LOCAL_READ)
+                                           : (w.image_layout == EImageLayout::SHADER_READ_ONLY_OPTIMAL ||
+                                              w.image_layout == EImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL);
                 if (!layout_ok)
-                    compiled.diagnostics.push_back(
-                        renderError<err::graph::TransientDescriptorLayoutMismatch>(
-                            ri,
-                            static_cast<std::uint32_t>(w.descriptor_type),
-                            static_cast<std::uint32_t>(w.image_layout)));
+                    compiled.diagnostics.push_back(renderError<err::graph::TransientDescriptorLayoutMismatch>(
+                        ri,
+                        static_cast<std::uint32_t>(w.descriptor_type),
+                        static_cast<std::uint32_t>(w.image_layout))
+                    );
             }
         }
     }
@@ -1051,7 +1078,7 @@ namespace lux::render
             const auto& pass = graph.passes[pass_index];
             if (pass.has_side_effect)
             {
-                continue;   // explicit opt-out (legacy markSideEffect path)
+                continue; // explicit opt-out (legacy markSideEffect path)
             }
 
             for (const auto& bind : pass.ds_bindings)
@@ -1062,13 +1089,12 @@ namespace lux::render
                 }
                 if (bind.declared_consume.index < rc)
                 {
-                    continue;   // declared — the graph sees the consumption
+                    continue; // declared — the graph sees the consumption
                 }
 
                 compiled.diagnostics.push_back(
-                    renderError<err::graph::ResourceBindingConsumeMissing>(
-                        pass_index,
-                        bind.slot));
+                    renderError<err::graph::ResourceBindingConsumeMissing>(pass_index, bind.slot)
+                );
             }
         }
     }
@@ -1101,7 +1127,7 @@ namespace lux::render
     void RenderGraphCompiler::eliminateStarvedPasses(RGCompiledGraph& compiled)
     {
         auto& graph = compiled.original_graph;
-        const uint32_t pass_count     = static_cast<uint32_t>(graph.passes.size());
+        const uint32_t pass_count = static_cast<uint32_t>(graph.passes.size());
         const uint32_t resource_count = static_cast<uint32_t>(graph.resources.size());
         if (pass_count == 0)
         {
@@ -1123,8 +1149,7 @@ namespace lux::render
         // remains is a name nobody created.
         std::vector<bool> unavailable(resource_count, false);
         for (uint32_t i = 0; i < resource_count; ++i)
-            unavailable[i] =
-                (graph.resources[i].lifetime == ERGResourceLifetime::FORWARD_REFERENCE);
+            unavailable[i] = (graph.resources[i].lifetime == ERGResourceLifetime::FORWARD_REFERENCE);
 
         // pass_touches, not pass_reads: WRITING an unbacked resource is just as
         // impossible as reading one, and it is the more dangerous half. A write
@@ -1185,12 +1210,11 @@ namespace lux::render
                         continue;
                     }
                     starved[pi] = true;
-                    changed     = true;
+                    changed = true;
                     // Name BOTH the pass and the resource: "which effect went
                     // missing" and "what was missing" are different questions,
                     // and acting on it needs the answer to both.
-                    compiled.diagnostics.push_back(
-                        renderError<err::graph::PassStarvedOfInput>(pi, ri));
+                    compiled.diagnostics.push_back(renderError<err::graph::PassStarvedOfInput>(pi, ri));
                     break;
                 }
             }
@@ -1206,8 +1230,16 @@ namespace lux::render
                 }
                 bool all_starved = true;
                 for (uint32_t w : resource_writers[ri])
-                    if (!starved[w]) { all_starved = false; break; }
-                if (all_starved) { unavailable[ri] = true; changed = true; }
+                    if (!starved[w])
+                    {
+                        all_starved = false;
+                        break;
+                    }
+                if (all_starved)
+                {
+                    unavailable[ri] = true;
+                    changed = true;
+                }
             }
         }
 
@@ -1219,14 +1251,16 @@ namespace lux::render
             {
                 new_order.push_back(pi);
             }
-            else              graph.passes[pi].enabled = false;
+            else
+                graph.passes[pi].enabled = false;
         }
         compiled.execution_order = std::move(new_order);
 
         for (auto& group : compiled.render_pass_layout.groups)
             std::erase_if(group.passes, [&](const RGPassInRenderPass& p) {
                 return p.pass_index < pass_count && starved[p.pass_index];
-            });
+            }
+            );
     }
 
     // 3.1) Dead Pass Elimination (A-02)
@@ -1245,7 +1279,7 @@ namespace lux::render
     void RenderGraphCompiler::eliminateDeadPasses(RGCompiledGraph& compiled)
     {
         const auto& graph = compiled.original_graph;
-        const uint32_t pass_count     = static_cast<uint32_t>(graph.passes.size());
+        const uint32_t pass_count = static_cast<uint32_t>(graph.passes.size());
         const uint32_t resource_count = static_cast<uint32_t>(graph.resources.size());
 
         if (pass_count == 0)
@@ -1303,7 +1337,7 @@ namespace lux::render
                 {
                     resource_writers[tex.resource.index].push_back(pi);
                 }
-                if (tex.usage == ERGResourceUsage::READ  || tex.usage == ERGResourceUsage::READ_WRITE)
+                if (tex.usage == ERGResourceUsage::READ || tex.usage == ERGResourceUsage::READ_WRITE)
                 {
                     pass_reads[pi].push_back(tex.resource.index);
                 }
@@ -1314,7 +1348,7 @@ namespace lux::render
                 {
                     resource_writers[buf.resource.index].push_back(pi);
                 }
-                if (buf.usage == ERGResourceUsage::READ  || buf.usage == ERGResourceUsage::READ_WRITE)
+                if (buf.usage == ERGResourceUsage::READ || buf.usage == ERGResourceUsage::READ_WRITE)
                 {
                     pass_reads[pi].push_back(buf.resource.index);
                 }
@@ -1329,8 +1363,7 @@ namespace lux::render
         for (uint32_t i = 0; i < resource_count; ++i)
         {
             const auto& res = graph.resources[i];
-            if (res.lifetime == ERGResourceLifetime::PING_PONG
-                && res.ring_phase > 0 && res.pingpong_peer >= 0)
+            if (res.lifetime == ERGResourceLifetime::PING_PONG && res.ring_phase > 0 && res.pingpong_peer >= 0)
             {
                 const auto peer = static_cast<uint32_t>(res.pingpong_peer);
                 if (peer < resource_count)
@@ -1424,9 +1457,7 @@ namespace lux::render
         // never encounters a dead subpass during group iteration.
         for (auto& group : compiled.render_pass_layout.groups)
         {
-            std::erase_if(group.passes, [&](const RGPassInRenderPass& p) {
-                return !pass_alive[p.pass_index];
-            });
+            std::erase_if(group.passes, [&](const RGPassInRenderPass& p) { return !pass_alive[p.pass_index]; });
         }
     }
 
@@ -1464,7 +1495,6 @@ namespace lux::render
                 break;
             }
         }
-
     }
 
     // ---------------------------
@@ -1495,22 +1525,32 @@ namespace lux::render
     //    replacing the former blanket ALL_COMMANDS_BIT on semaphore sync points.
     static VkPipelineStageFlags2 writeStageForTexture(lux::render::ETextureRole role, ERGPassType pt)
     {
-        switch (role) {
-        case lux::render::ETextureRole::COLOR_ATTACHMENT:         return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-        case lux::render::ETextureRole::UNORDERED_ACCESS:         return shaderStageForPass(pt);
-        default: return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        switch (role)
+        {
+        case lux::render::ETextureRole::COLOR_ATTACHMENT:
+            return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
+            return VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        case lux::render::ETextureRole::UNORDERED_ACCESS:
+            return shaderStageForPass(pt);
+        default:
+            return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
     }
 
     static VkPipelineStageFlags2 readStageForTexture(lux::render::ETextureRole role, ERGPassType pt)
     {
-        switch (role) {
-        case lux::render::ETextureRole::COLOR_ATTACHMENT:         return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+        switch (role)
+        {
+        case lux::render::ETextureRole::COLOR_ATTACHMENT:
+            return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
+            return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
         case lux::render::ETextureRole::SAMPLED:
-        case lux::render::ETextureRole::UNORDERED_ACCESS:         return shaderStageForPass(pt);
-        default: return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        case lux::render::ETextureRole::UNORDERED_ACCESS:
+            return shaderStageForPass(pt);
+        default:
+            return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
     }
 
@@ -1520,9 +1560,12 @@ namespace lux::render
         {
             return VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
         }
-        switch (role) {
-        case ERGBufferRole::STORAGE: return shaderStageForPass(pt);
-        default: return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        switch (role)
+        {
+        case ERGBufferRole::STORAGE:
+            return shaderStageForPass(pt);
+        default:
+            return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
     }
 
@@ -1532,27 +1575,37 @@ namespace lux::render
         {
             return VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
         }
-        switch (role) {
-        case ERGBufferRole::VERTEX:   return VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
-        case ERGBufferRole::INDEX:    return VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
-        case ERGBufferRole::INDIRECT: return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+        switch (role)
+        {
+        case ERGBufferRole::VERTEX:
+            return VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+        case ERGBufferRole::INDEX:
+            return VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+        case ERGBufferRole::INDIRECT:
+            return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
         case ERGBufferRole::CONSTANT:
             // Constant/uniform reads span all graphics stages on a graphics pass
             // (not just FRAGMENT) — so this keeps its own ternary, not shaderStageForPass.
             return (pt == ERGPassType::COMPUTE || pt == ERGPassType::ASYNC_COMPUTE)
-                ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
-                : VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-        case ERGBufferRole::STORAGE: return shaderStageForPass(pt);
-        default: return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                       ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                       : VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+        case ERGBufferRole::STORAGE:
+            return shaderStageForPass(pt);
+        default:
+            return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
     }
 
     static const char* queueTypeName(ERGQueueType q)
     {
-        switch (q) {
-        case ERGQueueType::GRAPHICS: return "GRAPHICS";
-        case ERGQueueType::COMPUTE:  return "COMPUTE";
-        case ERGQueueType::TRANSFER: return "TRANSFER";
+        switch (q)
+        {
+        case ERGQueueType::GRAPHICS:
+            return "GRAPHICS";
+        case ERGQueueType::COMPUTE:
+            return "COMPUTE";
+        case ERGQueueType::TRANSFER:
+            return "TRANSFER";
         }
         return "UNKNOWN";
     }
@@ -1567,9 +1620,15 @@ namespace lux::render
             const auto& cpass = compiled.compiled_passes[pi];
             switch (cpass.queue_type)
             {
-            case ERGQueueType::GRAPHICS: mq.graphics_order.push_back(pi); break;
-            case ERGQueueType::COMPUTE:  mq.compute_order.push_back(pi);  break;
-            case ERGQueueType::TRANSFER: mq.transfer_order.push_back(pi); break;
+            case ERGQueueType::GRAPHICS:
+                mq.graphics_order.push_back(pi);
+                break;
+            case ERGQueueType::COMPUTE:
+                mq.compute_order.push_back(pi);
+                break;
+            case ERGQueueType::TRANSFER:
+                mq.transfer_order.push_back(pi);
+                break;
             }
         }
 
@@ -1584,21 +1643,20 @@ namespace lux::render
         //    *different* queue, we create a timeline-semaphore sync point.
         struct WriterInfo
         {
-            uint32_t              pass_index   = UINT32_MAX;
-            ERGQueueType          queue        = ERGQueueType::GRAPHICS;
-            VkPipelineStageFlags2 write_stage  = 0; // H: accumulated write stage mask
+            uint32_t pass_index = UINT32_MAX;
+            ERGQueueType queue = ERGQueueType::GRAPHICS;
+            VkPipelineStageFlags2 write_stage = 0; // H: accumulated write stage mask
         };
 
-        const uint32_t resource_count =
-            static_cast<uint32_t>(compiled.original_graph.resources.size());
+        const uint32_t resource_count = static_cast<uint32_t>(compiled.original_graph.resources.size());
         std::vector<WriterInfo> last_writer(resource_count);
 
         uint64_t semaphore_counter = 0;
 
         for (uint32_t pi : compiled.execution_order)
         {
-            auto& cpass       = compiled.compiled_passes[pi];
-            const auto* desc  = cpass.pass;
+            auto& cpass = compiled.compiled_passes[pi];
+            const auto* desc = cpass.pass;
             if (!desc)
             {
                 continue;
@@ -1606,9 +1664,7 @@ namespace lux::render
 
             // --- Check reads for cross-queue producer dependency ---
             // H: consumer_stage parameter enables precise semaphore wait masks.
-            auto check_cross_queue_read = [&](uint32_t res_idx,
-                                              VkPipelineStageFlags2 consumer_stage)
-            {
+            auto check_cross_queue_read = [&](uint32_t res_idx, VkPipelineStageFlags2 consumer_stage) {
                 if (!compiled.compile_error.ok())
                 {
                     return; // already rejected — stop analysis
@@ -1640,7 +1696,8 @@ namespace lux::render
                 compiled.compile_error = renderError<err::graph::CrossQueueTransferRequired>(
                     res_idx,
                     static_cast<std::uint32_t>(writer.queue),
-                    static_cast<std::uint32_t>(cpass.queue_type));
+                    static_cast<std::uint32_t>(cpass.queue_type)
+                );
                 return;
 
                 const VkPipelineStageFlags2 producer_stage =
@@ -1657,10 +1714,12 @@ namespace lux::render
                     if (wd.src_pass_index == writer.pass_index)
                     {
                         // H: Widen stage masks for the existing sync point
-                        wd.wait_stage   |= consumer_stage;
+                        wd.wait_stage |= consumer_stage;
                         wd.signal_stage |= producer_stage;
-                        for (auto& sd : producer.signal_dependencies) {
-                            if (sd.signal_value == wd.signal_value) {
+                        for (auto& sd : producer.signal_dependencies)
+                        {
+                            if (sd.signal_value == wd.signal_value)
+                            {
                                 sd.signal_stage |= producer_stage;
                                 break;
                             }
@@ -1674,10 +1733,10 @@ namespace lux::render
 
                 RGCompiledPass::QueueDependency dep{};
                 dep.src_pass_index = writer.pass_index;
-                dep.semaphore      = VK_NULL_HANDLE; // assigned at record time
-                dep.signal_value   = semaphore_counter;
-                dep.signal_stage   = producer_stage;
-                dep.wait_stage     = consumer_stage;
+                dep.semaphore = VK_NULL_HANDLE; // assigned at record time
+                dep.signal_value = semaphore_counter;
+                dep.signal_stage = producer_stage;
+                dep.wait_stage = consumer_stage;
 
                 producer.signal_dependencies.push_back(dep);
                 cpass.wait_dependencies.push_back(dep);
@@ -1697,20 +1756,19 @@ namespace lux::render
             for (const auto& tex : desc->textures)
             {
                 if (tex.usage == ERGResourceUsage::READ || tex.usage == ERGResourceUsage::READ_WRITE)
-                    check_cross_queue_read(tex.resource.index,
-                                           readStageForTexture(tex.role, desc->type));
+                    check_cross_queue_read(tex.resource.index, readStageForTexture(tex.role, desc->type));
             }
             for (const auto& buf : desc->buffers)
             {
                 if (buf.usage == ERGResourceUsage::READ || buf.usage == ERGResourceUsage::READ_WRITE)
-                    check_cross_queue_read(buf.resource.index,
-                                           readStageForBuffer(buf.role, desc->type));
+                    check_cross_queue_read(buf.resource.index, readStageForBuffer(buf.role, desc->type));
             }
 
             // --- Update last_writer for writes (H: track write stage) ---
             for (const auto& tex : desc->textures)
             {
-                if (tex.usage == ERGResourceUsage::WRITE || tex.usage == ERGResourceUsage::READ_WRITE) {
+                if (tex.usage == ERGResourceUsage::WRITE || tex.usage == ERGResourceUsage::READ_WRITE)
+                {
                     auto& w = last_writer[tex.resource.index];
                     const auto ws = writeStageForTexture(tex.role, desc->type);
                     if (w.pass_index == pi)
@@ -1718,12 +1776,13 @@ namespace lux::render
                         w.write_stage |= ws; // same pass, accumulate
                     }
                     else
-                        w = { pi, cpass.queue_type, ws };
+                        w = {pi, cpass.queue_type, ws};
                 }
             }
             for (const auto& buf : desc->buffers)
             {
-                if (buf.usage == ERGResourceUsage::WRITE || buf.usage == ERGResourceUsage::READ_WRITE) {
+                if (buf.usage == ERGResourceUsage::WRITE || buf.usage == ERGResourceUsage::READ_WRITE)
+                {
                     auto& w = last_writer[buf.resource.index];
                     const auto ws = writeStageForBuffer(buf.role, desc->type);
                     if (w.pass_index == pi)
@@ -1731,7 +1790,7 @@ namespace lux::render
                         w.write_stage |= ws;
                     }
                     else
-                        w = { pi, cpass.queue_type, ws };
+                        w = {pi, cpass.queue_type, ws};
                 }
             }
         }
@@ -1741,9 +1800,9 @@ namespace lux::render
     // 4) RenderPass Begin/End
     // ---------------------------
 
-    void RenderGraphCompiler::computeRenderPassBoundaries(RGCompiledGraph &compiled)
+    void RenderGraphCompiler::computeRenderPassBoundaries(RGCompiledGraph& compiled)
     {
-        const auto &order = compiled.execution_order;
+        const auto& order = compiled.execution_order;
         const uint32_t count = static_cast<uint32_t>(order.size());
 
         if (count == 0)
@@ -1751,16 +1810,16 @@ namespace lux::render
             return;
         }
 
-        for (auto &cpass : compiled.compiled_passes)
+        for (auto& cpass : compiled.compiled_passes)
         {
             cpass.render.begin_render_pass = false;
-            cpass.render.end_render_pass   = false;
+            cpass.render.end_render_pass = false;
         }
 
         for (uint32_t i = 0; i < count; ++i)
         {
             const uint32_t curr_idx = order[i];
-            RGCompiledPass &curr = compiled.compiled_passes[curr_idx];
+            RGCompiledPass& curr = compiled.compiled_passes[curr_idx];
 
             if (curr.pass->type != ERGPassType::GRAPHICS)
             {
@@ -1774,10 +1833,9 @@ namespace lux::render
             if (i > 0)
             {
                 const uint32_t prev_idx = order[i - 1];
-                const RGCompiledPass &prev = compiled.compiled_passes[prev_idx];
+                const RGCompiledPass& prev = compiled.compiled_passes[prev_idx];
 
-                if (prev.pass->type == ERGPassType::GRAPHICS &&
-                    prev.render.render_pass.index == curr_rp)
+                if (prev.pass->type == ERGPassType::GRAPHICS && prev.render.render_pass.index == curr_rp)
                 {
                     begin = false;
                 }
@@ -1788,10 +1846,9 @@ namespace lux::render
             if (i + 1 < count)
             {
                 const uint32_t next_idx = order[i + 1];
-                const RGCompiledPass &next = compiled.compiled_passes[next_idx];
+                const RGCompiledPass& next = compiled.compiled_passes[next_idx];
 
-                if (next.pass->type == ERGPassType::GRAPHICS &&
-                    next.render.render_pass.index == curr_rp)
+                if (next.pass->type == ERGPassType::GRAPHICS && next.render.render_pass.index == curr_rp)
                 {
                     end = false;
                 }
@@ -1806,9 +1863,9 @@ namespace lux::render
     // 5) Pipeline Binding Strategy
     // ---------------------------
 
-    void RenderGraphCompiler::computePipelineBindingPlan(RGCompiledGraph &compiled)
+    void RenderGraphCompiler::computePipelineBindingPlan(RGCompiledGraph& compiled)
     {
-        const auto &order = compiled.execution_order;
+        const auto& order = compiled.execution_order;
         const uint32_t count = static_cast<uint32_t>(order.size());
 
         if (count == 0)
@@ -1821,7 +1878,7 @@ namespace lux::render
         for (uint32_t i = 0; i < count; ++i)
         {
             const uint32_t idx = order[i];
-            RGCompiledPass &curr = compiled.compiled_passes[idx];
+            RGCompiledPass& curr = compiled.compiled_passes[idx];
 
             curr.render.bind_pipeline = false;
 
@@ -1834,8 +1891,8 @@ namespace lux::render
             // DESIGN-01: Also handle COMPUTE / ASYNC_COMPUTE passes.
             // Compute passes are outside render passes; graphics and compute bind
             // points are independent, so a compute pass always binds its pipeline.
-            if ((curr.pass->type == ERGPassType::COMPUTE || curr.pass->type == ERGPassType::ASYNC_COMPUTE)
-                && curr.render.pipeline != VK_NULL_HANDLE)
+            if ((curr.pass->type == ERGPassType::COMPUTE || curr.pass->type == ERGPassType::ASYNC_COMPUTE) &&
+                curr.render.pipeline != VK_NULL_HANDLE)
             {
                 curr.render.bind_pipeline = true;
                 // Don't update last_bound_pipeline — compute/graphics are independent

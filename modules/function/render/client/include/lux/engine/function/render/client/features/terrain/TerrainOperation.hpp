@@ -30,9 +30,7 @@ namespace lux::render
             return false;
         }
 
-        friend bool operator==(
-            const TerrainWireId&,
-            const TerrainWireId&) = default;
+        friend bool operator==(const TerrainWireId&, const TerrainWireId&) = default;
     };
     static_assert(std::is_trivially_copyable_v<TerrainWireId>);
 
@@ -60,10 +58,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<TerrainPageUploadedReply>);
 
-    struct LUX_OP(lane=upload, kind=resource, name=TerrainPageUpload,
-                  method=upload, reply=TerrainPageUploadedReply,
-                  opcode=resource)
-    UploadTerrainPagePayload final
+    struct LUX_OP(
+        lane = upload,
+        kind = resource,
+        name = TerrainPageUpload,
+        method = upload,
+        reply = TerrainPageUploadedReply,
+        opcode = resource) UploadTerrainPagePayload final
     {
         RenderSceneId scene_id{};
         TerrainWireId id;
@@ -96,10 +97,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<TerrainPageRemovedReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=TerrainPageRemove,
-                  method=remove, reply=TerrainPageRemovedReply,
-                  opcode=command)
-    RemoveTerrainPagePayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = TerrainPageRemove,
+        method = remove,
+        reply = TerrainPageRemovedReply,
+        opcode = command) RemoveTerrainPagePayload final
     {
         RenderSceneId scene_id{};
         TerrainWireId id;
@@ -134,25 +138,26 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<TerrainPageCacheStatsReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=TerrainPageCacheStats,
-                  method=stats, reply=TerrainPageCacheStatsReply,
-                  opcode=command)
-    QueryTerrainPageCacheStatsPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = TerrainPageCacheStats,
+        method = stats,
+        reply = TerrainPageCacheStatsReply,
+        opcode = command) QueryTerrainPageCacheStatsPayload final
     {
         RenderSceneId scene_id{};
     };
-    static_assert(std::is_trivially_copyable_v<
-        QueryTerrainPageCacheStatsPayload>);
+    static_assert(std::is_trivially_copyable_v<QueryTerrainPageCacheStatsPayload>);
 
     struct LUX_COMM_CONFIG(
-        prefix=Terrain,
-        id=lux.render.terrain.v1,
-        display=Terrain,
-        requires="lux.render.view_camera.v1,lux.render.deferred_gbuffer.v1",
-        feature=TerrainFeature,
-        feature_header=lux/engine/render/renderer/features/terrain/TerrainFeature.hpp,
-        multiplicity=single)
-    TerrainCommConfig
+        prefix = Terrain,
+        id = lux.render.terrain.v1,
+        display = Terrain,
+        requires = "lux.render.view_camera.v1,lux.render.deferred_gbuffer.v1",
+        feature = TerrainFeature,
+        feature_header = lux / engine / render / renderer / features / terrain / TerrainFeature.hpp,
+        multiplicity = single) TerrainCommConfig
     {
         /// Logical full-resolution page budget. Parent fallback pages use a
         /// separate bounded cache owned by TerrainResources.

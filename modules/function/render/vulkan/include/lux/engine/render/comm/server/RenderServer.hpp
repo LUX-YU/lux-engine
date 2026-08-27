@@ -26,27 +26,36 @@
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
 #include <lux/engine/function/render/Capacity.hpp>
 
-namespace lux::window { class LuxWindow; }
+namespace lux::window
+{
+    class LuxWindow;
+}
 // rdesc::Mesh is a struct (see description/Mesh.hpp) — keyword must match the
 // definition for MSVC name mangling (class-vs-struct => V/U => LNK2019).
-namespace lux::rdesc { struct Mesh; class Material; class Texture; struct ShaderInfo; }
+namespace lux::rdesc
+{
+    struct Mesh;
+    class Material;
+    class Texture;
+    struct ShaderInfo;
+}
 
 namespace lux::render
 {
     // Forward declarations for types defined in sinclude/
     struct RenderTargetLayout;
-    struct GraphMaterialData;  // resources/GraphMaterialData.hpp (POD blob)
+    struct GraphMaterialData; // resources/GraphMaterialData.hpp (POD blob)
 
     // 派生服务器扩展面(protected)用到的树内类型。只按引用/指针出现在声明里,
     // 故安装面不必认识它们的定义 —— 派生类在树内 include 对应的 sinclude 头。
-    struct FrameTickState;         // FrameOrchestrator.hpp
-    struct FrameStamp;             // core/FrameStamp.hpp
-    class  RenderTargetRegistry;   // renderer/RenderTargetRegistry.hpp
-    class  Renderer;               // renderer/Renderer.hpp
-    class  ResourceContext;        // resources/ResourceContext.hpp
-    class  DeviceContext;          // gpu/DeviceContext.hpp
-    class  SwapchainProvider;      // targets/SwapchainProvider.hpp
-    class  PresentContext;         // targets/PresentContext.hpp
+    struct FrameTickState;      // FrameOrchestrator.hpp
+    struct FrameStamp;          // core/FrameStamp.hpp
+    class RenderTargetRegistry; // renderer/RenderTargetRegistry.hpp
+    class Renderer;             // renderer/Renderer.hpp
+    class ResourceContext;      // resources/ResourceContext.hpp
+    class DeviceContext;        // gpu/DeviceContext.hpp
+    class SwapchainProvider;    // targets/SwapchainProvider.hpp
+    class PresentContext;       // targets/PresentContext.hpp
 
     /// 场景销毁前的回调 —— 让派生类清掉自己缓存的 per-scene 指针。
     /// (原先埋在 Impl 里,随扩展面一并提到命名空间层。)
@@ -60,12 +69,10 @@ namespace lux::render
     /// 都成了它的接口。这个函数就是那一个字段的正门。
     [[nodiscard]] LUX_FUNCTION_PUBLIC void* serverExtensionOf(void* user_state) noexcept;
 
-    template <std::size_t PayloadAlignment = 64>
-    class FrameReplyBuilder
+    template <std::size_t PayloadAlignment = 64> class FrameReplyBuilder
     {
     public:
-        explicit FrameReplyBuilder(ReplyPacket<PayloadAlignment>& dst) noexcept
-            : dst_(&dst)
+        explicit FrameReplyBuilder(ReplyPacket<PayloadAlignment>& dst) noexcept : dst_(&dst)
         {
         }
 
@@ -76,12 +83,10 @@ namespace lux::render
         }
 
         template <FrameBlobPayload T>
-        bool push(TypeId type_id,
-                  const T& payload,
-                  std::uint16_t flags = 0,
-                  RequestId request_id = kInvalidRequestId)
+        bool push(TypeId type_id, const T& payload, std::uint16_t flags = 0, RequestId request_id = kInvalidRequestId)
         {
-            static_assert(alignof(T) <= PayloadAlignment,
+            static_assert(
+                alignof(T) <= PayloadAlignment,
                 "Reply type alignment exceeds reply blob alignment. Raise PayloadAlignment.");
 
             const std::uint32_t offset = appendBytes(&payload, sizeof(T), alignof(T));
@@ -92,28 +97,24 @@ namespace lux::render
                 .payload_offset = offset,
                 .payload_size = narrowU32(sizeof(T)),
                 .request_id = request_id,
-            });
+            }
+            );
             return true;
         }
 
         template <FrameBlobPayload CommandPayload, FrameBlobPayload ReplyPayload>
         bool pushFor(const CmdRecord& cmd, const ReplyPayload& payload, std::uint16_t flags = 0)
         {
-            static_assert(command_has_reply_v<CommandPayload>,
-                "CommandPayload does not declare a reply type.");
-            static_assert(std::is_same_v<typename CommandTraits<CommandPayload>::Reply, ReplyPayload>,
+            static_assert(command_has_reply_v<CommandPayload>, "CommandPayload does not declare a reply type.");
+            static_assert(
+                std::is_same_v<typename CommandTraits<CommandPayload>::Reply, ReplyPayload>,
                 "Reply payload type does not match CommandTraits<CommandPayload>::Reply.");
 
-            return push(CommandTraits<CommandPayload>::reply_type_id,
-                payload,
-                flags,
-                cmd.request_id
-            );
+            return push(CommandTraits<CommandPayload>::reply_type_id, payload, flags, cmd.request_id);
         }
 
     private:
-        template <typename T>
-        std::uint32_t appendBytes(const T* src, std::size_t byte_count, std::size_t alignment)
+        template <typename T> std::uint32_t appendBytes(const T* src, std::size_t byte_count, std::size_t alignment)
         {
             const std::size_t old_size = dst_->payload.size();
             const std::size_t offset = alignUp(old_size, alignment);
@@ -165,8 +166,7 @@ namespace lux::render
         };
     }
 
-    template <std::size_t PayloadAlignment>
-    struct ExternalDataView
+    template <std::size_t PayloadAlignment> struct ExternalDataView
     {
         std::span<const std::byte> bytes{};
         std::shared_ptr<const void> owner{};
@@ -176,10 +176,10 @@ namespace lux::render
     ExternalDataView<PayloadAlignment> resolveExternalDataView(
         const CommandStorage<PayloadAlignment>& pack,
         ExternalDataRef ref,
-        TypeId expected_attachment_type = kInvalidTypeId)
+        TypeId expected_attachment_type = kInvalidTypeId
+    )
     {
-        auto attachment_record =
-            CommandPacketView{pack}.attachment(ref.attachment_index);
+        auto attachment_record = CommandPacketView{pack}.attachment(ref.attachment_index);
         if (!attachment_record)
             return {};
         const AttachmentRecord& record = attachment_record->get();
@@ -208,12 +208,15 @@ namespace lux::render
             return {};
         }
 
-        if ((data == nullptr && ref.size != 0) ||
-            ref.offset > size || ref.size > size - ref.offset)
+        const bool is_missing_data = data == nullptr && ref.size != 0;
+        const bool is_offset_out_of_range = ref.offset > size;
+        const bool is_size_out_of_range = !is_offset_out_of_range && ref.size > size - ref.offset;
+        const bool is_invalid_reference = is_missing_data || is_offset_out_of_range || is_size_out_of_range;
+        if (is_invalid_reference)
             return {};
 
         return ExternalDataView<PayloadAlignment>{
-            .bytes = { data + ref.offset, ref.size },
+            .bytes = {data + ref.offset, ref.size},
             .owner = std::move(owner),
         };
     }
@@ -222,7 +225,8 @@ namespace lux::render
     std::span<const std::byte> resolveExternalData(
         const CommandStorage<PayloadAlignment>& pack,
         ExternalDataRef ref,
-        TypeId expected_attachment_type = kInvalidTypeId)
+        TypeId expected_attachment_type = kInvalidTypeId
+    )
     {
         // Synchronous handlers consume the attachment while the command
         // packet itself is alive. Do not manufacture a second shared_ptr just
@@ -230,13 +234,11 @@ namespace lux::render
         // that obscures packet-ownership bugs by releasing the backing store
         // in the middle of dispatch. Handlers that retain bytes beyond this
         // call must explicitly use resolveExternalDataView().
-        auto attachment_record =
-            CommandPacketView{pack}.attachment(ref.attachment_index);
+        auto attachment_record = CommandPacketView{pack}.attachment(ref.attachment_index);
         if (!attachment_record)
             return {};
         const AttachmentRecord& record = attachment_record->get();
-        if (expected_attachment_type != kInvalidTypeId &&
-            record.type_id != expected_attachment_type)
+        if (expected_attachment_type != kInvalidTypeId && record.type_id != expected_attachment_type)
         {
             return {};
         }
@@ -245,15 +247,13 @@ namespace lux::render
         std::uint32_t size = 0u;
         if (record.type_id == attachment_types::BorrowedBytes)
         {
-            const auto& attachment = *static_cast<
-                const BorrowedBytesAttachment*>(record.object);
+            const auto& attachment = *static_cast<const BorrowedBytesAttachment*>(record.object);
             data = attachment.data;
             size = attachment.size;
         }
         else if (record.type_id == attachment_types::OwnedBytes)
         {
-            const auto& attachment = *static_cast<
-                const OwnedBytesAttachment*>(record.object);
+            const auto& attachment = *static_cast<const OwnedBytesAttachment*>(record.object);
             data = attachment.data;
             size = attachment.size;
         }
@@ -262,8 +262,11 @@ namespace lux::render
             return {};
         }
 
-        if ((data == nullptr && ref.size != 0u) || ref.offset > size ||
-            ref.size > size - ref.offset)
+        const bool is_missing_data = data == nullptr && ref.size != 0u;
+        const bool is_offset_out_of_range = ref.offset > size;
+        const bool is_size_out_of_range = !is_offset_out_of_range && ref.size > size - ref.offset;
+        const bool is_invalid_reference = is_missing_data || is_offset_out_of_range || is_size_out_of_range;
+        if (is_invalid_reference)
         {
             return {};
         }
@@ -278,23 +281,20 @@ namespace lux::render
     /// emitFailure 处就到头了 —— 没有回复可路由,也没有别的出口,是彻底的黑洞;
     /// 现在每次分发失败都(额外)打到这个汇上,由具体服务器接进自己的错误事件
     /// 通道(GeneralRenderServer → RenderErrorSink → 客户端 error handler)。
-    using DispatchFailureSink = void (*)(void* user_state,
-                                         EDispatchFailure code,
-                                         const RenderError& error);
+    using DispatchFailureSink = void (*)(void* user_state, EDispatchFailure code, const RenderError& error);
 
-    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64>
-    struct ExecuteContext
+    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct ExecuteContext
     {
         const CommandStorage<RequestAlignment>& program;
-        FrameReplyBuilder<ReplyAlignment>&    replies;
-        void*                                 user_state{nullptr};
-        const CmdRecord*                      current_cmd{nullptr};
-        DispatchFailureSink                   on_dispatch_failure{nullptr};
+        FrameReplyBuilder<ReplyAlignment>& replies;
+        void* user_state{nullptr};
+        const CmdRecord* current_cmd{nullptr};
+        DispatchFailureSink on_dispatch_failure{nullptr};
 
         /// 载荷解码自报的失败(见 unaryThunk / bulkThunk)。`ok()` 为真 = 无错。
         /// 此前是一个 bool + 一个 `const char*` 消息,execute() 把消息打到 stderr,
         /// 交给客户端的只有一个粗粒度的 EDispatchFailure。现在带上期望值/实收值。
-        RenderError                           dispatch_error{};
+        RenderError dispatch_error{};
 
         [[nodiscard]] RequestId currentRequestId() const noexcept
         {
@@ -306,19 +306,21 @@ namespace lux::render
             return current_cmd && hasFlag(current_cmd->flags, CmdFlags::ExpectsReply);
         }
 
-        void markDispatchError(const RenderError& error) noexcept { dispatch_error = error; }
-        void clearDispatchError() noexcept { dispatch_error = RenderError{}; }
+        void markDispatchError(const RenderError& error) noexcept
+        {
+            dispatch_error = error;
+        }
+        void clearDispatchError() noexcept
+        {
+            dispatch_error = RenderError{};
+        }
     };
 
     template <std::size_t RequestAlignment, std::size_t ReplyAlignment>
-    using ErasedHandlerFn = void (*)(
-        ExecuteContext<RequestAlignment, ReplyAlignment>&,
-        const CmdRecord&,
-        std::span<const std::byte>
-    );
+    using ErasedHandlerFn =
+        void (*)(ExecuteContext<RequestAlignment, ReplyAlignment>&, const CmdRecord&, std::span<const std::byte>);
 
-    template <std::size_t RequestAlignment, std::size_t ReplyAlignment>
-    struct HandlerEntry
+    template <std::size_t RequestAlignment, std::size_t ReplyAlignment> struct HandlerEntry
     {
         ErasedHandlerFn<RequestAlignment, ReplyAlignment> fn{nullptr};
         std::uint32_t stride{0};
@@ -326,30 +328,31 @@ namespace lux::render
     };
 
     template <FrameBlobPayload CommandPayload, std::size_t RequestAlignment, std::size_t ReplyAlignment>
-    bool replyToCurrent(ExecuteContext<RequestAlignment, ReplyAlignment>& ctx,
+    bool replyToCurrent(
+        ExecuteContext<RequestAlignment, ReplyAlignment>& ctx,
         const typename CommandTraits<CommandPayload>::Reply& payload,
-        std::uint16_t flags = 0)
+        std::uint16_t flags = 0
+    )
     {
-        static_assert(command_has_reply_v<CommandPayload>,
-            "CommandPayload does not declare a reply type.");
+        static_assert(command_has_reply_v<CommandPayload>, "CommandPayload does not declare a reply type.");
 
         if (ctx.current_cmd == nullptr)
             return false;
         return ctx.replies.template pushFor<CommandPayload>(*ctx.current_cmd, payload, flags);
     }
 
-    template <std::size_t MaxOpcodes = 8,
-        std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64>
+    template <std::size_t MaxOpcodes = 8, std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64>
     class FrameDispatcher
     {
     public:
-        using Ctx     = ExecuteContext<RequestAlignment, ReplyAlignment>;
-        using Entry   = HandlerEntry<RequestAlignment, ReplyAlignment>;
+        using Ctx = ExecuteContext<RequestAlignment, ReplyAlignment>;
+        using Entry = HandlerEntry<RequestAlignment, ReplyAlignment>;
 
         // ── Name-based TypeId lookup (all opcode domains) ─────────────
 
         /// Result of a name-based TypeId lookup.
-        struct NamedTypeEntry {
+        struct NamedTypeEntry
+        {
             OpCode opcode{0xff};
             TypeId type_id{kInvalidTypeId};
         };
@@ -430,7 +433,8 @@ namespace lux::render
 
             // Bump generation (skip 0 — reserved for static slots).
             auto& gen = dom.generations[idx];
-            if (++gen == 0) gen = 1;
+            if (++gen == 0)
+                gen = 1;
 
             return makeTypeId(idx, gen);
         }
@@ -443,8 +447,7 @@ namespace lux::render
                 return;
             auto& dom = domains_[opcode];
             const auto idx = typeIdIndex(id);
-            if (idx >= dom.handlers.size() ||
-                dom.generations[idx] != typeIdGen(id))
+            if (idx >= dom.handlers.size() || dom.generations[idx] != typeIdGen(id))
                 return;
             {
                 const char* n = dom.handlers[idx].debug_name;
@@ -503,8 +506,7 @@ namespace lux::render
                 return;
             auto& dom = domains_[opcode];
             const auto idx = typeIdIndex(id);
-            if (idx >= dom.handlers.size() ||
-                dom.generations[idx] != typeIdGen(id))
+            if (idx >= dom.handlers.size() || dom.generations[idx] != typeIdGen(id))
                 return;
             dom.handlers[idx] = entry;
         }
@@ -516,18 +518,11 @@ namespace lux::render
             return executeCommands(program.commands, program, ctx);
         }
 
-        [[nodiscard]] bool executeOne(
-            const OperationPacket<RequestAlignment>& packet,
-            Ctx& ctx
-        ) const
+        [[nodiscard]] bool executeOne(const OperationPacket<RequestAlignment>& packet, Ctx& ctx) const
         {
             if (!packet.has_command)
                 return false;
-            return executeCommands(
-                std::span<const CmdRecord>{&packet.command, 1},
-                packet,
-                ctx
-            );
+            return executeCommands(std::span<const CmdRecord>{&packet.command, 1}, packet, ctx);
         }
 
     private:
@@ -544,13 +539,14 @@ namespace lux::render
             // 即发即忘的命令没有可路由的目的地 —— 走 on_dispatch_failure 自发汇
             //(每条失败都额外打一份到汇上,等回复的也打:错误事件通道是唯一
             // 会到 stderr/日志的出口,CommandFailedReply 只负责解除等待)。
-            auto emitFailure = [&ctx](const CmdRecord& c, EDispatchFailure code, const RenderError& error)
-            {
+            auto emitFailure = [&ctx](const CmdRecord& c, EDispatchFailure code, const RenderError& error) {
                 if (hasFlag(c.flags, CmdFlags::ExpectsReply))
                     ctx.replies.template push<CommandFailedReply>(
                         type_ids::ReplyCommandFailed,
                         CommandFailedReply{static_cast<uint32_t>(code), error},
-                        0, c.request_id);
+                        0,
+                        c.request_id
+                    );
                 if (ctx.on_dispatch_failure)
                     ctx.on_dispatch_failure(ctx.user_state, code, error);
             };
@@ -570,8 +566,11 @@ namespace lux::render
 
                 if (cmd.opcode >= MaxOpcodes)
                 {
-                    emitFailure(cmd, EDispatchFailure::InvalidOpcode,
-                                renderError<err::comm::InvalidOpcode>(cmd.opcode));
+                    emitFailure(
+                        cmd,
+                        EDispatchFailure::InvalidOpcode,
+                        renderError<err::comm::InvalidOpcode>(cmd.opcode)
+                    );
                     all_ok = false;
                     continue;
                 }
@@ -579,26 +578,27 @@ namespace lux::render
                 auto payload_bytes = packet.bytes(cmd);
                 if (!payload_bytes)
                 {
-                    emitFailure(cmd, EDispatchFailure::PayloadOutOfBounds,
-                                payload_bytes.error());
+                    emitFailure(cmd, EDispatchFailure::PayloadOutOfBounds, payload_bytes.error());
                     all_ok = false;
                     continue;
                 }
 
                 const auto& dom = domains_[cmd.opcode];
-                const auto  idx = typeIdIndex(cmd.type_id);
+                const auto idx = typeIdIndex(cmd.type_id);
                 if (idx >= dom.handlers.size())
                 {
-                    emitFailure(cmd, EDispatchFailure::UnknownTypeId,
-                                renderError<err::comm::UnknownTypeId>(idx));
+                    emitFailure(cmd, EDispatchFailure::UnknownTypeId, renderError<err::comm::UnknownTypeId>(idx));
                     all_ok = false;
                     continue;
                 }
 
                 if (dom.generations[idx] != typeIdGen(cmd.type_id))
                 {
-                    emitFailure(cmd, EDispatchFailure::TypeIdGeneration,
-                                renderError<err::comm::TypeIdGenerationMismatch>(idx));
+                    emitFailure(
+                        cmd,
+                        EDispatchFailure::TypeIdGeneration,
+                        renderError<err::comm::TypeIdGenerationMismatch>(idx)
+                    );
                     all_ok = false;
                     continue;
                 }
@@ -606,8 +606,11 @@ namespace lux::render
                 const auto& entry = dom.handlers[idx];
                 if (entry.fn == nullptr)
                 {
-                    emitFailure(cmd, EDispatchFailure::HandlerRejected,
-                                renderError<err::comm::HandlerNotRegistered>(idx));
+                    emitFailure(
+                        cmd,
+                        EDispatchFailure::HandlerRejected,
+                        renderError<err::comm::HandlerNotRegistered>(idx)
+                    );
                     all_ok = false;
                     continue;
                 }
@@ -650,7 +653,8 @@ namespace lux::render
             {
                 ctx.markDispatchError(renderError<err::comm::PayloadSizeMismatch>(
                     static_cast<std::uint32_t>(sizeof(T)),
-                    static_cast<std::uint32_t>(bytes.size())));
+                    static_cast<std::uint32_t>(bytes.size()))
+                );
                 return;
             }
             T value{};
@@ -665,15 +669,17 @@ namespace lux::render
             {
                 ctx.markDispatchError(renderError<err::comm::BulkPayloadNotMultiple>(
                     static_cast<std::uint32_t>(sizeof(T)),
-                    static_cast<std::uint32_t>(bytes.size())));
+                    static_cast<std::uint32_t>(bytes.size()))
+                );
                 return;
             }
 
             const auto* ptr = reinterpret_cast<const T*>(bytes.data());
             if ((reinterpret_cast<std::uintptr_t>(ptr) % alignof(T)) != 0)
             {
-                ctx.markDispatchError(renderError<err::comm::BulkPayloadMisaligned>(
-                    static_cast<std::uint32_t>(alignof(T))));
+                ctx.markDispatchError(
+                    renderError<err::comm::BulkPayloadMisaligned>(static_cast<std::uint32_t>(alignof(T)))
+                );
                 return;
             }
 
@@ -682,9 +688,9 @@ namespace lux::render
 
         struct OpDomain
         {
-            std::vector<Entry>          handlers{};
-            std::vector<std::uint16_t>  generations{};
-            std::vector<std::uint16_t>  free_list{};
+            std::vector<Entry> handlers{};
+            std::vector<std::uint16_t> generations{};
+            std::vector<std::uint16_t> free_list{};
         };
 
         std::array<OpDomain, MaxOpcodes> domains_{};
@@ -694,18 +700,18 @@ namespace lux::render
         std::unordered_map<std::string_view, NamedTypeEntry> name_index_;
     };
 
-    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64,
-        std::size_t MaxOpcodes = 8>
+    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64, std::size_t MaxOpcodes = 8>
     class RenderServer
     {
     public:
-        using Channel    = RenderFrameChannel<RequestAlignment, ReplyAlignment>;
+        using Channel = RenderFrameChannel<RequestAlignment, ReplyAlignment>;
         using Dispatcher = FrameDispatcher<MaxOpcodes, RequestAlignment, ReplyAlignment>;
 
         explicit RenderServer(
             std::shared_ptr<Channel> channel,
             std::shared_ptr<RenderChannelSync> sync,
-            Dispatcher& dispatcher)
+            Dispatcher& dispatcher
+        )
             : channel_(std::move(channel)), sync_(std::move(sync)), dispatcher_(dispatcher)
         {
         }
@@ -713,14 +719,16 @@ namespace lux::render
         /// Non-blocking: acquire one request frame, dispatch handlers, publish replies.
         bool drainAndDispatch(void* user_state = nullptr)
         {
-            if (!acquireAndExecute(/*blocking=*/false, user_state)) return false;
+            if (!acquireAndExecute(/*blocking=*/false, user_state))
+                return false;
             return finalizeReplies(/*blocking=*/false);
         }
 
         /// Blocking: sleeps until there is work, reply space, or stop is requested.
         bool drainAndDispatchBlocking(void* user_state = nullptr)
         {
-            if (!acquireAndExecute(/*blocking=*/true, user_state)) return false;
+            if (!acquireAndExecute(/*blocking=*/true, user_state))
+                return false;
             return finalizeReplies(/*blocking=*/true);
         }
 
@@ -729,7 +737,10 @@ namespace lux::render
             sync_->requestStop();
         }
 
-        [[nodiscard]] Channel& endpoint() noexcept { return *channel_; }
+        [[nodiscard]] Channel& endpoint() noexcept
+        {
+            return *channel_;
+        }
 
         /// True while the primary frame dispatcher owns a populated response
         /// slot that could not be published yet. Auxiliary response producers
@@ -749,10 +760,16 @@ namespace lux::render
 
     protected:
         /// Access the underlying channel (for completion-only reply frames).
-        [[nodiscard]] Channel& channel() noexcept { return *channel_; }
+        [[nodiscard]] Channel& channel() noexcept
+        {
+            return *channel_;
+        }
 
         /// Access the channel sync object (for blocking waits / notifications).
-        [[nodiscard]] RenderChannelSync& channelSync() noexcept { return *sync_; }
+        [[nodiscard]] RenderChannelSync& channelSync() noexcept
+        {
+            return *sync_;
+        }
 
         /// Acquire one request frame, dispatch all handlers.
         /// On success the reply builder is open — caller MUST call finalizeReplies().
@@ -790,10 +807,10 @@ namespace lux::render
             active_reply_->begin();
 
             ExecuteContext<> ctx{
-                .program             = request,
-                .replies             = *active_reply_,
-                .user_state          = user_state,
-                .current_cmd         = nullptr,
+                .program = request,
+                .replies = *active_reply_,
+                .user_state = user_state,
+                .current_cmd = nullptr,
                 .on_dispatch_failure = dispatch_failure_sink_,
             };
 
@@ -839,8 +856,7 @@ namespace lux::render
                     return true;
                 }
 
-                const std::uint64_t observed =
-                    sync_->work_epoch.load(std::memory_order_acquire);
+                const std::uint64_t observed = sync_->work_epoch.load(std::memory_order_acquire);
 
                 // Re-check after observing the epoch to avoid a missed wakeup.
                 if (channel_->requests.tryAcquireRead())
@@ -872,8 +888,7 @@ namespace lux::render
                     return slot;
                 }
 
-                const std::uint64_t observed =
-                    sync_->work_epoch.load(std::memory_order_acquire);
+                const std::uint64_t observed = sync_->work_epoch.load(std::memory_order_acquire);
 
                 if (ReplyPacket<ReplyAlignment>* slot = channel_->responses.tryBeginWrite())
                 {
@@ -904,8 +919,7 @@ namespace lux::render
                     return true;
                 }
 
-                const std::uint64_t observed =
-                    sync_->work_epoch.load(std::memory_order_acquire);
+                const std::uint64_t observed = sync_->work_epoch.load(std::memory_order_acquire);
 
                 if (channel_->responses.publishWrite())
                 {
@@ -923,16 +937,15 @@ namespace lux::render
         }
 
     private:
-        std::shared_ptr<Channel>                channel_;
-        std::shared_ptr<RenderChannelSync>      sync_;
-        Dispatcher&                             dispatcher_;
+        std::shared_ptr<Channel> channel_;
+        std::shared_ptr<RenderChannelSync> sync_;
+        Dispatcher& dispatcher_;
         std::optional<FrameReplyBuilder<ReplyAlignment>> active_reply_{};
-        bool                                    pending_reply_publish_{false};
-        DispatchFailureSink                     dispatch_failure_sink_{nullptr};
+        bool pending_reply_publish_{false};
+        DispatchFailureSink dispatch_failure_sink_{nullptr};
     };
 
-    template <class Channel>
-    class RenderOperationServer final
+    template <class Channel> class RenderOperationServer final
     {
     public:
         using Dispatcher = FrameDispatcher<>;
@@ -940,10 +953,9 @@ namespace lux::render
         RenderOperationServer(
             std::shared_ptr<Channel> channel,
             std::shared_ptr<RenderChannelSync> sync,
-            Dispatcher& dispatcher)
-            : channel_(std::move(channel)),
-              sync_(std::move(sync)),
-              dispatcher_(dispatcher)
+            Dispatcher& dispatcher
+        )
+            : channel_(std::move(channel)), sync_(std::move(sync)), dispatcher_(dispatcher)
         {
         }
 
@@ -967,8 +979,7 @@ namespace lux::render
                 return false;
 
             OperationPacket<> packet{};
-            if (channel_->requests.tryPop(packet) !=
-                lux::cxx::EQueuePopResult::VALUE)
+            if (channel_->requests.tryPop(packet) != lux::cxx::EQueuePopResult::VALUE)
                 return false;
             sync_->notifyRequestStateChanged();
 
@@ -1009,11 +1020,11 @@ namespace lux::render
         }
 
     private:
-        std::shared_ptr<Channel>               channel_;
-        std::shared_ptr<RenderChannelSync>     sync_;
-        Dispatcher&                           dispatcher_;
-        DispatchFailureSink                   dispatch_failure_sink_{nullptr};
-        bool                                  pending_reply_publish_{false};
+        std::shared_ptr<Channel> channel_;
+        std::shared_ptr<RenderChannelSync> sync_;
+        Dispatcher& dispatcher_;
+        DispatchFailureSink dispatch_failure_sink_{nullptr};
+        bool pending_reply_publish_{false};
     };
 
     using RenderControlServer = RenderOperationServer<RenderControlChannel<>>;
@@ -1037,8 +1048,7 @@ namespace lux::render
         /// (mobile-adaptation topic ①, item 1-3).
         EFeatureLevel preferred_level{EFeatureLevel::Desktop};
         lux::render::CapacityRequest capacity_request{};
-        lux::render::CapacityShortfall* capacity_shortfall_output{
-            nullptr};
+        lux::render::CapacityShortfall* capacity_shortfall_output{nullptr};
         /// Optional (requires enable_validation): incremented once per
         /// validation ERROR by the built-in debug callback. Lets lifecycle
         /// tests turn "validation printed something" into a hard assertion
@@ -1056,8 +1066,7 @@ namespace lux::render
         /// 这个钩子是全文的唯一出口。渲染库不替应用决定这些文字去哪个终端/日志/
         /// 面板,由装钩子的人决定;不装则全文就地丢弃(计数与指纹照旧)。
         /// 调用发生在校验层回调所在的线程 —— 可能是任意线程,实现须自己保证安全。
-        std::function<void(std::uint32_t severity, std::string_view text)>
-            validation_message_sink{};
+        std::function<void(std::uint32_t severity, std::string_view text)> validation_message_sink{};
     };
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1066,7 +1075,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC GeneralRenderServer : public RenderServer<>
     {
     public:
-        using Channel    = RenderServer<>::Channel;
+        using Channel = RenderServer<>::Channel;
         using Dispatcher = RenderServer<>::Dispatcher;
 
         GeneralRenderServer(
@@ -1100,23 +1109,26 @@ namespace lux::render
         [[nodiscard]] FeatureTypeRegisteredReply addFeatureFactory(const FeatureFactory& factory);
 
         /// Batch register, returns corresponding registration results.
-        [[nodiscard]] std::vector<FeatureTypeRegisteredReply> addFeatureFactories(std::span<const FeatureFactory> factories);
+        [[nodiscard]] std::vector<FeatureTypeRegisteredReply>
+        addFeatureFactories(std::span<const FeatureFactory> factories);
 
         /// Parameter for creating a feature within createScene().
-        struct FeatureInitParam {
-            uint32_t    feature_type_id;
+        struct FeatureInitParam
+        {
+            uint32_t feature_type_id;
             const void* param{nullptr};
-            size_t      param_size{0};
+            size_t param_size{0};
         };
 
         /// Result of createScene().
-        struct CreateSceneResult {
-            RenderSceneId              scene_id{};
+        struct CreateSceneResult
+        {
+            RenderSceneId scene_id{};
             /// 与入参 `features` 一一对应。装配失败的位置留一个无效句柄,
             /// 对应的 `feature_errors[i]` 说明原因(成功时 `ok()` 为真)。
             std::vector<FeatureHandle> features;
-            std::vector<RenderError>   feature_errors;
-            std::vector<ViewHandle>    views;
+            std::vector<RenderError> feature_errors;
+            std::vector<ViewHandle> views;
         };
 
         /// Create a scene and optionally add features in one call.
@@ -1126,7 +1138,8 @@ namespace lux::render
         [[nodiscard]] CreateSceneResult createScene(
             std::string_view name,
             std::span<const FeatureInitParam> features = {},
-            lux::rdesc::ETextureFormat lit_color_format = lux::rdesc::ETextureFormat::RGBA16_SFLOAT);
+            lux::rdesc::ETextureFormat lit_color_format = lux::rdesc::ETextureFormat::RGBA16_SFLOAT
+        );
 
         /// 设备实际启用了哪些能力。init 之后可读;失败或未初始化时返回错误。
         ///
@@ -1135,13 +1148,13 @@ namespace lux::render
         /// 面完全一致 —— 引擎不再替上层在延迟/前向、local-read/采样之间选路,那上层
         /// 就必须先看得见设备能做什么。装 feature 之前问它。
         [[nodiscard]] Expected<DeviceCaps> deviceCaps() const noexcept;
-        [[nodiscard]] const lux::render::CapacityPlan&
-        capacityPlan() const noexcept;
+        [[nodiscard]] const lux::render::CapacityPlan& capacityPlan() const noexcept;
 
         /// Parameter for creating a view (always offscreen).
-        struct ViewInitParam {
-            RenderSceneId    scene_id;
-            lux::math::Extent2u         extent;
+        struct ViewInitParam
+        {
+            RenderSceneId scene_id;
+            lux::math::Extent2u extent;
             std::string_view name;
         };
 
@@ -1155,9 +1168,8 @@ namespace lux::render
         /// @param layout  The RenderTargetLayout to use (caller decides
         ///                final_layout, e.g. PRESENT_SRC_KHR or
         ///                COLOR_ATTACHMENT_OPTIMAL when an overlay follows).
-        [[nodiscard]] Expected<void> bindSwapchain(
-            RenderSceneId scene_id, ViewHandle view,
-            const RenderTargetLayout& layout);
+        [[nodiscard]] Expected<void>
+        bindSwapchain(RenderSceneId scene_id, ViewHandle view, const RenderTargetLayout& layout);
 
         /// Remove the current swapchain binding.
         void unbindSwapchain();
@@ -1183,19 +1195,15 @@ namespace lux::render
         //  no longer names material upload.)
 
         /// Create a 2D texture. Staging is deferred until flushPendingGpuTransfers().
-        [[nodiscard]] Expected<RTextureHandle> createTexture2D(
-            const lux::rdesc::Texture& texture,
-            bool generate_mips = true
-        );
+        [[nodiscard]] Expected<RTextureHandle>
+        createTexture2D(const lux::rdesc::Texture& texture, bool generate_mips = true);
 
         // (createLight removed — light creation is feature-scoped via LightFeature;
         //  see renderer/features/light/LightOperationHandlers.cpp.)
 
         /// Compile a shader from SPIR-V (fully synchronous — VkShaderModule).
-        [[nodiscard]] ShaderHandle compileShader(
-            std::span<const std::byte> spirv,
-            const lux::rdesc::ShaderInfo* info = nullptr
-        );
+        [[nodiscard]] ShaderHandle
+        compileShader(std::span<const std::byte> spirv, const lux::rdesc::ShaderInfo* info = nullptr);
 
         // (MeshInstanceParam + addMeshInstance removed — the mesh-instance assembly is a
         //  StandardMeshStack feature concern now (serverAddMeshInstance, in the feature
@@ -1250,11 +1258,9 @@ namespace lux::render
         ///
         /// 渲染线程调用。同键(场景 + 错误类型 + 实参)在同一批内合并计数,所以
         /// 每帧调用它是安全的 —— 限流是通道的职责,失败点不必自己写。
-        void reportError(const RenderError& error,
-                         std::uint32_t scene_index = RenderErrorEvent::kNoScene) noexcept;
+        void reportError(const RenderError& error, std::uint32_t scene_index = RenderErrorEvent::kNoScene) noexcept;
 
     protected:
-
         // ── 派生服务器的扩展面 ───────────────────────────────────
         //
         // 存在的理由:UIRenderServer 此前直接 include 基类的**私有** Impl 头
@@ -1274,10 +1280,10 @@ namespace lux::render
         /// 时,按同样顺序调用它们,**而不是整份复制 tick()**。
         enum class ETickStage
         {
-            NoTarget,   ///< 无可渲染 target —— 未开帧,直接返回 true,无需收尾
-            Skipped,    ///< 已开帧但无命令缓冲(最小化/重建失败)—— 已代为收尾
-            Failed,     ///< 帧槽 Vulkan 状态失败——已上报并请求停止 device session
-            Ready,      ///< 正常,继续 renderRenderTick / endRenderTick
+            NoTarget, ///< 无可渲染 target —— 未开帧,直接返回 true,无需收尾
+            Skipped,  ///< 已开帧但无命令缓冲(最小化/重建失败)—— 已代为收尾
+            Failed,   ///< 帧槽 Vulkan 状态失败——已上报并请求停止 device session
+            Ready,    ///< 正常,继续 renderRenderTick / endRenderTick
         };
 
         /// 阶段 0:生成帧戳 → 排水请求 → 冲刷延迟回复。返回 false = 通道已停,
@@ -1306,37 +1312,37 @@ namespace lux::render
         /// const 重载 —— 供 const 查询方法用(如"主窗绑了场景没有")。
         [[nodiscard]] const RenderTargetRegistry& targets() const noexcept;
 
-        [[nodiscard]] Renderer&        renderer()        noexcept;
-        [[nodiscard]] ResourceContext&  resourceContext() noexcept;
-        [[nodiscard]] DeviceContext*    deviceContext()   noexcept;
+        [[nodiscard]] Renderer& renderer() noexcept;
+        [[nodiscard]] ResourceContext& resourceContext() noexcept;
+        [[nodiscard]] DeviceContext* deviceContext() noexcept;
 
         /// Last boundary for permanent frame-runtime failures. It emits through
         /// the configured render diagnostic channel, gives that channel one
         /// non-blocking flush opportunity, and stops the server loop.
-        [[nodiscard]] bool stopAfterFrameError(
-            const RenderError& error,
-            std::uint32_t phase);
+        [[nodiscard]] bool stopAfterFrameError(const RenderError& error, std::uint32_t phase);
         [[nodiscard]] SwapchainProvider* swapchainProvider() noexcept;
-        [[nodiscard]] const FrameStamp& currentStamp()   const noexcept;
-        [[nodiscard]] uint32_t          framesInFlight() const noexcept;
+        [[nodiscard]] const FrameStamp& currentStamp() const noexcept;
+        [[nodiscard]] uint32_t framesInFlight() const noexcept;
         /// 栅栏证实的 GPU 完成水位(无 FrameDriver 时退化为当前 serial)。
-        [[nodiscard]] uint64_t          gpuCompletedSerial() const noexcept;
+        [[nodiscard]] uint64_t gpuCompletedSerial() const noexcept;
 
         /// 派生类的不透明自有数据 + 场景销毁前回调。基类不拥有该指针。
-        void  setExtension(void* extension, PreDestroySceneCallback pre_destroy) noexcept;
+        void setExtension(void* extension, PreDestroySceneCallback pre_destroy) noexcept;
         [[nodiscard]] void* extension() const noexcept;
 
         /// 把一个 Surface target 的呈现机件转入两阶段销毁的在途账本:停止
         /// 呈现(entry 已除名),等 fence 水位越过 retire_serial 再拆,拆完
         /// 执行 on_teardown。内部释放不发 TargetReleased 回执。
-        void deferSurfaceRelease(RenderTargetId target,
-                                 std::unique_ptr<PresentContext> ctx,
-                                 std::function<void()> on_teardown);
+        void deferSurfaceRelease(
+            RenderTargetId target,
+            std::unique_ptr<PresentContext> ctx,
+            std::function<void()> on_teardown
+        );
 
         /// 关服路径:GPU 已 idle 时立即执行并清空全部在途 Surface 拆除。
         void flushPendingSurfaceReleases();
 
-        std::unique_ptr<Impl>           impl_;
+        std::unique_ptr<Impl> impl_;
         std::unique_ptr<RenderControlServer> control_server_;
         std::unique_ptr<RenderUploadServer> upload_server_;
     };

@@ -30,8 +30,8 @@ namespace lux::render
     /// How many instances of a feature type a single scene may hold.
     enum class FeatureMultiplicity : std::uint8_t
     {
-        MultiplePerScene,  ///< default — any number of instances (today's behaviour)
-        SinglePerScene,    ///< at most one; a second install of this type is rejected
+        MultiplePerScene, ///< default — any number of instances (today's behaviour)
+        SinglePerScene,   ///< at most one; a second install of this type is rejected
     };
 
     /// One declared dependency of a feature on another feature type.
@@ -60,18 +60,20 @@ namespace lux::render
     /// 不切分、且会剥掉包裹引号,模板拿到的就是本函数吃的裸串。
     /// 唯一预期调用方是生成器模板(comm_ops_cpp.template);全显式类型,零 CTAD
     /// (libclang 不吃别名模板 CTAD —— 本仓已知坑)。
-    [[nodiscard]] constexpr FeatureDependencyList
-        parseFeatureDependencies(std::string_view spec) noexcept
+    [[nodiscard]] constexpr FeatureDependencyList parseFeatureDependencies(std::string_view spec) noexcept
     {
         FeatureDependencyList out{};
         std::size_t begin = 0;
         while (begin <= spec.size())
         {
             std::size_t end = spec.find(',', begin);
-            if (end == std::string_view::npos) end = spec.size();
+            if (end == std::string_view::npos)
+                end = spec.size();
             std::string_view item = spec.substr(begin, end - begin);
-            while (!item.empty() && item.front() == ' ') item.remove_prefix(1);
-            while (!item.empty() && item.back() == ' ')  item.remove_suffix(1);
+            while (!item.empty() && item.front() == ' ')
+                item.remove_prefix(1);
+            while (!item.empty() && item.back() == ' ')
+                item.remove_suffix(1);
             bool optional = false;
             if (!item.empty() && item.back() == '?')
             {
@@ -93,12 +95,12 @@ namespace lux::render
     /// copyable and safe to embed in the (trivially-copyable) FeatureFactory.
     struct FeatureDescriptor
     {
-        FeatureTypeId    type{kInvalidFeatureTypeId};
+        FeatureTypeId type{kInvalidFeatureTypeId};
         std::string_view name{};
-        std::uint32_t    abi_version{1};
+        std::uint32_t abi_version{1};
 
         std::span<const FeatureDependency> dependencies{};
-        std::span<const FeatureTypeId>     conflicts{};
+        std::span<const FeatureTypeId> conflicts{};
 
         /// Needs per-view state (allocate/deallocateViewState) tracked by the manager.
         bool creates_view_state{false};

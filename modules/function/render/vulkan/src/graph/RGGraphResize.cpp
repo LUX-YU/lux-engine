@@ -10,19 +10,19 @@
 namespace lux::render
 {
     bool ResizeViewResources(
-        const RGCompiledGraph&          graph,
-        VkExtent2D                      new_extent,
-        RGResourceState&                state,
-        RGVulkanRecorder&               recorder,
-        PhysicalResourceAllocator&      allocator,
-        uint32_t                        frames_in_flight,
+        const RGCompiledGraph& graph,
+        VkExtent2D new_extent,
+        RGResourceState& state,
+        RGVulkanRecorder& recorder,
+        PhysicalResourceAllocator& allocator,
+        uint32_t frames_in_flight,
         std::function<void(RGPhysicalResourceTable&)> on_resources_allocated,
-        std::function<void(RGResourceState&&)>        on_old_state_retired,
-        uint32_t                        update_mask)
+        std::function<void(RGResourceState&&)> on_old_state_retired,
+        uint32_t update_mask
+    )
     {
         // 1. Check if resize is actually needed
-        if (state.current_extent.width == new_extent.width &&
-            state.current_extent.height == new_extent.height)
+        if (state.current_extent.width == new_extent.width && state.current_extent.height == new_extent.height)
         {
             return true; // No resize needed
         }
@@ -39,13 +39,8 @@ namespace lux::render
         // 3. Reallocate physical resources at the new extent.
         //    The allocator resolves RELATIVE_MODE sizes internally — no graph mutation needed.
         RGCompileOptions options{};
-        auto alloc_result = allocator.allocate(
-            graph.original_graph,
-            graph.dependency_info,
-            options,
-            new_extent,
-            frames_in_flight
-        );
+        auto alloc_result =
+            allocator.allocate(graph.original_graph, graph.dependency_info, options, new_extent, frames_in_flight);
         if (!alloc_result)
         {
             if (had_old_state)
@@ -55,11 +50,7 @@ namespace lux::render
         RGPhysicalResourceTable new_physical_resources = std::move(*alloc_result);
 
         // 4. Refresh external resources (e.g. swapchain images)
-        allocator.refreshExternalResources(
-            new_physical_resources,
-            graph.dynamic_external_resources,
-            update_mask
-        );
+        allocator.refreshExternalResources(new_physical_resources, graph.dynamic_external_resources, update_mask);
 
         // 5. Optional callback for additional manual injection
         if (on_resources_allocated)

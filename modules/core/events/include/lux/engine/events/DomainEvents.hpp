@@ -34,9 +34,7 @@ namespace lux::events
 
     using EventTypeId = decltype(lux::cxx::type_hash<int>());
 
-    template <class Event>
-    inline constexpr EventTypeId kEventTypeId =
-        lux::cxx::type_hash<Event>();
+    template <class Event> inline constexpr EventTypeId kEventTypeId = lux::cxx::type_hash<Event>();
 
     enum class EOverflow : std::uint8_t
     {
@@ -69,36 +67,32 @@ namespace lux::events
         public:
             virtual ~ChannelBase() = default;
 
-            virtual void unsubscribe(
-                void* per_pump,
-                std::uint64_t subscription_id) noexcept = 0;
-            virtual void collectDiagnostics(
-                std::vector<ChannelDiag>& output) const = 0;
-            [[nodiscard]] virtual std::size_t liveSubscriptions()
-                const noexcept = 0;
-            [[nodiscard]] virtual std::string_view typeName()
-                const noexcept = 0;
+            virtual void unsubscribe(void* per_pump, std::uint64_t subscription_id) noexcept = 0;
+            virtual void collectDiagnostics(std::vector<ChannelDiag>& output) const = 0;
+            [[nodiscard]] virtual std::size_t liveSubscriptions() const noexcept = 0;
+            [[nodiscard]] virtual std::string_view typeName() const noexcept = 0;
         };
 
-        template <DomainEvent Event>
-        class Channel;
+        template <DomainEvent Event> class Channel;
     }
 
     class Subscription final
     {
     public:
         Subscription() noexcept = default;
-        ~Subscription() { reset(); }
+        ~Subscription()
+        {
+            reset();
+        }
 
         Subscription(const Subscription&) = delete;
         Subscription& operator=(const Subscription&) = delete;
 
         Subscription(Subscription&& other) noexcept
-            : channel_(std::exchange(other.channel_, nullptr))
-            , per_pump_(std::exchange(other.per_pump_, nullptr))
-            , subscription_id_(
-                  std::exchange(other.subscription_id_, 0u))
-        {}
+            : channel_(std::exchange(other.channel_, nullptr)), per_pump_(std::exchange(other.per_pump_, nullptr)),
+              subscription_id_(std::exchange(other.subscription_id_, 0u))
+        {
+        }
 
         Subscription& operator=(Subscription&& other) noexcept
         {
@@ -107,8 +101,7 @@ namespace lux::events
             reset();
             channel_ = std::exchange(other.channel_, nullptr);
             per_pump_ = std::exchange(other.per_pump_, nullptr);
-            subscription_id_ =
-                std::exchange(other.subscription_id_, 0u);
+            subscription_id_ = std::exchange(other.subscription_id_, 0u);
             return *this;
         }
 
@@ -128,17 +121,12 @@ namespace lux::events
         }
 
     private:
-        template <DomainEvent Event>
-        friend class detail::Channel;
+        template <DomainEvent Event> friend class detail::Channel;
 
-        Subscription(
-            detail::ChannelBase& channel,
-            void* per_pump,
-            std::uint64_t subscription_id) noexcept
-            : channel_(&channel)
-            , per_pump_(per_pump)
-            , subscription_id_(subscription_id)
-        {}
+        Subscription(detail::ChannelBase& channel, void* per_pump, std::uint64_t subscription_id) noexcept
+            : channel_(&channel), per_pump_(per_pump), subscription_id_(subscription_id)
+        {
+        }
 
         detail::ChannelBase* channel_{nullptr};
         void* per_pump_{nullptr};
@@ -149,7 +137,10 @@ namespace lux::events
     {
     public:
         SubscriptionGroup() = default;
-        ~SubscriptionGroup() { clear(); }
+        ~SubscriptionGroup()
+        {
+            clear();
+        }
 
         SubscriptionGroup(const SubscriptionGroup&) = delete;
         SubscriptionGroup& operator=(const SubscriptionGroup&) = delete;
@@ -194,8 +185,7 @@ namespace lux::events
 
     private:
         friend class DomainEvents;
-        template <DomainEvent Event>
-        friend class detail::Channel;
+        template <DomainEvent Event> friend class detail::Channel;
 
         struct Badge final
         {
@@ -205,9 +195,9 @@ namespace lux::events
         };
 
     public:
-        EventPump(Badge, DomainEvents& events, std::string name) noexcept
-            : events_(&events), name_(std::move(name))
-        {}
+        EventPump(Badge, DomainEvents& events, std::string name) noexcept : events_(&events), name_(std::move(name))
+        {
+        }
 
     private:
         using DrainFn = std::size_t (*)(detail::ChannelBase&, void*) noexcept;
@@ -219,10 +209,7 @@ namespace lux::events
             DrainFn drain{nullptr};
         };
 
-        void addDrainEntry(
-            detail::ChannelBase& channel,
-            void* per_pump,
-            DrainFn drain)
+        void addDrainEntry(detail::ChannelBase& channel, void* per_pump, DrainFn drain)
         {
             entries_.push_back(DrainEntry{&channel, per_pump, drain});
         }
@@ -237,12 +224,10 @@ namespace lux::events
 
     namespace detail
     {
-        template <DomainEvent Event>
-        class Channel final : public ChannelBase
+        template <DomainEvent Event> class Channel final : public ChannelBase
         {
         public:
-            using HandlerFn =
-                lux::cxx::move_only_function<void(const Event&)>;
+            using HandlerFn = lux::cxx::move_only_function<void(const Event&)>;
 
             struct Handler final
             {
@@ -263,9 +248,9 @@ namespace lux::events
                 bool in_drain{false};
             };
 
-            explicit Channel(DomainEvents& owner) noexcept
-                : owner_(&owner)
-            {}
+            explicit Channel(DomainEvents& owner) noexcept : owner_(&owner)
+            {
+            }
 
             void publish(Event event)
             {
@@ -282,10 +267,8 @@ namespace lux::events
                 {
                     if (per_pump->live_handlers == 0u)
                         continue;
-                    if (per_pump->config.policy == EOverflow::DROP_NEWEST &&
-                        per_pump->config.capacity != 0u &&
-                        per_pump->pending.size() >=
-                            per_pump->config.capacity)
+                    if (per_pump->config.policy == EOverflow::DROP_NEWEST && per_pump->config.capacity != 0u &&
+                        per_pump->pending.size() >= per_pump->config.capacity)
                     {
                         ++per_pump->dropped;
                         --destinations;
@@ -299,9 +282,7 @@ namespace lux::events
                 }
             }
 
-            [[nodiscard]] Subscription subscribe(
-                EventPump& pump,
-                HandlerFn handler)
+            [[nodiscard]] Subscription subscribe(EventPump& pump, HandlerFn handler)
             {
                 ownerCheck();
                 PerPump* per_pump = findPerPump(pump);
@@ -312,15 +293,11 @@ namespace lux::events
                     storage->config = default_config_;
                     per_pump = storage.get();
                     per_pumps_.push_back(std::move(storage));
-                    pump.addDrainEntry(
-                        *this,
-                        per_pump,
-                        &Channel::drainThunk);
+                    pump.addDrainEntry(*this, per_pump, &Channel::drainThunk);
                 }
 
                 const auto id = next_subscription_id_++;
-                per_pump->handlers.push_back(
-                    Handler{id, std::move(handler), true});
+                per_pump->handlers.push_back(Handler{id, std::move(handler), true});
                 ++per_pump->live_handlers;
                 ++live_subscriptions_;
                 return Subscription{*this, per_pump, id};
@@ -334,9 +311,7 @@ namespace lux::events
                     per_pump->config = config;
             }
 
-            void unsubscribe(
-                void* opaque,
-                std::uint64_t subscription_id) noexcept override
+            void unsubscribe(void* opaque, std::uint64_t subscription_id) noexcept override
             {
                 ownerCheck();
                 auto& per_pump = *static_cast<PerPump*>(opaque);
@@ -354,8 +329,7 @@ namespace lux::events
                 }
             }
 
-            void collectDiagnostics(
-                std::vector<ChannelDiag>& output) const override
+            void collectDiagnostics(std::vector<ChannelDiag>& output) const override
             {
                 for (const auto& per_pump : per_pumps_)
                 {
@@ -363,18 +337,17 @@ namespace lux::events
                         lux::cxx::type_name<Event>(),
                         per_pump->pump->name(),
                         per_pump->dropped,
-                        per_pump->pending.size()});
+                        per_pump->pending.size()}
+                    );
                 }
             }
 
-            [[nodiscard]] std::size_t liveSubscriptions()
-                const noexcept override
+            [[nodiscard]] std::size_t liveSubscriptions() const noexcept override
             {
                 return live_subscriptions_;
             }
 
-            [[nodiscard]] std::string_view typeName()
-                const noexcept override
+            [[nodiscard]] std::string_view typeName() const noexcept override
             {
                 return lux::cxx::type_name<Event>();
             }
@@ -390,12 +363,9 @@ namespace lux::events
                 return nullptr;
             }
 
-            static std::size_t drainThunk(
-                ChannelBase& base,
-                void* opaque) noexcept
+            static std::size_t drainThunk(ChannelBase& base, void* opaque) noexcept
             {
-                return static_cast<Channel&>(base).drainFor(
-                    *static_cast<PerPump*>(opaque));
+                return static_cast<Channel&>(base).drainFor(*static_cast<PerPump*>(opaque));
             }
 
             static std::size_t drainFor(PerPump& per_pump) noexcept
@@ -404,25 +374,18 @@ namespace lux::events
                 per_pump.current.swap(per_pump.pending);
 
                 std::size_t first = 0u;
-                if (per_pump.config.policy == EOverflow::DROP_OLDEST &&
-                    per_pump.config.capacity != 0u &&
+                if (per_pump.config.policy == EOverflow::DROP_OLDEST && per_pump.config.capacity != 0u &&
                     per_pump.current.size() > per_pump.config.capacity)
                 {
-                    first = per_pump.current.size() -
-                        per_pump.config.capacity;
+                    first = per_pump.current.size() - per_pump.config.capacity;
                     per_pump.dropped += first;
                 }
 
-                const std::size_t handler_limit =
-                    per_pump.handlers.size();
+                const std::size_t handler_limit = per_pump.handlers.size();
                 per_pump.in_drain = true;
-                for (std::size_t event_index = first;
-                     event_index < per_pump.current.size();
-                     ++event_index)
+                for (std::size_t event_index = first; event_index < per_pump.current.size(); ++event_index)
                 {
-                    for (std::size_t handler_index = 0u;
-                         handler_index < handler_limit;
-                         ++handler_index)
+                    for (std::size_t handler_index = 0u; handler_index < handler_limit; ++handler_index)
                     {
                         auto& handler = per_pump.handlers[handler_index];
                         if (handler.alive && handler.invoke)
@@ -438,12 +401,7 @@ namespace lux::events
 
             static void compact(PerPump& per_pump) noexcept
             {
-                std::erase_if(
-                    per_pump.handlers,
-                    [](const Handler& handler) noexcept
-                    {
-                        return !handler.alive;
-                    });
+                std::erase_if(per_pump.handlers, [](const Handler& handler) noexcept { return !handler.alive; });
             }
 
             void ownerCheck() const noexcept;
@@ -467,8 +425,7 @@ namespace lux::events
         DomainEvents(DomainEvents&&) = delete;
         DomainEvents& operator=(DomainEvents&&) = delete;
 
-        template <DomainEvent Event>
-        void publish(Event event)
+        template <DomainEvent Event> void publish(Event event)
         {
             ownerCheck();
             auto* channel = findChannel<Event>();
@@ -479,26 +436,22 @@ namespace lux::events
         [[nodiscard]] LUX_CORE_PUBLIC EventPump& createPump(std::string_view name);
 
         template <DomainEvent Event, class Handler>
-        [[nodiscard]] Subscription subscribe(
-            EventPump& pump,
-            Handler&& handler)
+        [[nodiscard]] Subscription subscribe(EventPump& pump, Handler&& handler)
         {
             ownerCheck();
             return channelOf<Event>().subscribe(
                 pump,
-                typename detail::Channel<Event>::HandlerFn{
-                    std::forward<Handler>(handler)});
+                typename detail::Channel<Event>::HandlerFn{std::forward<Handler>(handler)}
+            );
         }
 
-        template <DomainEvent Event>
-        void configure(ChannelConfig config)
+        template <DomainEvent Event> void configure(ChannelConfig config)
         {
             ownerCheck();
             channelOf<Event>().configure(config);
         }
 
-        [[nodiscard]] LUX_CORE_PUBLIC std::vector<ChannelDiag>
-        diagnostics() const;
+        [[nodiscard]] LUX_CORE_PUBLIC std::vector<ChannelDiag> diagnostics() const;
 
         [[nodiscard]] bool isOwnerThread() const noexcept
         {
@@ -512,8 +465,7 @@ namespace lux::events
         }
 
     private:
-        template <DomainEvent Event>
-        [[nodiscard]] detail::Channel<Event>* findChannel() noexcept
+        template <DomainEvent Event> [[nodiscard]] detail::Channel<Event>* findChannel() noexcept
         {
             const auto found = channels_.find(kEventTypeId<Event>);
             if (found == channels_.end())
@@ -523,8 +475,7 @@ namespace lux::events
             return static_cast<detail::Channel<Event>*>(found->second.get());
         }
 
-        template <DomainEvent Event>
-        [[nodiscard]] detail::Channel<Event>& channelOf()
+        template <DomainEvent Event> [[nodiscard]] detail::Channel<Event>& channelOf()
         {
             if (auto* existing = findChannel<Event>())
                 return *existing;
@@ -535,16 +486,13 @@ namespace lux::events
         }
 
         std::thread::id owner_thread_;
-        std::unordered_map<
-            EventTypeId,
-            std::unique_ptr<detail::ChannelBase>> channels_;
+        std::unordered_map<EventTypeId, std::unique_ptr<detail::ChannelBase>> channels_;
         std::deque<EventPump> pumps_;
     };
 
     namespace detail
     {
-        template <DomainEvent Event>
-        void Channel<Event>::ownerCheck() const noexcept
+        template <DomainEvent Event> void Channel<Event>::ownerCheck() const noexcept
         {
             owner_->ownerCheck();
         }

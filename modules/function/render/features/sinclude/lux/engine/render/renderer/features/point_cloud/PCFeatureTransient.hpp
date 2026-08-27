@@ -49,12 +49,16 @@ namespace lux::render
             dirty_ = true;
         }
 
-        bool hasPending() const noexcept { return dirty_; }
+        bool hasPending() const noexcept
+        {
+            return dirty_;
+        }
 
         /// Move pending data out. Returns empty if nothing new arrived.
         std::vector<GpuPointVertex> take()
         {
-            if (!dirty_) return {};
+            if (!dirty_)
+                return {};
             dirty_ = false;
             return std::move(pending_);
         }
@@ -75,10 +79,10 @@ namespace lux::render
         {
             ShaderHandle vertex_shader{};
             ShaderHandle fragment_shader{};
-            float        point_size{3.0f};
-            uint32_t     max_points{2'000'000};
-            std::string  color_target{"SceneColor"};
-            std::string  depth_target{"SceneDepth"};
+            float point_size{3.0f};
+            uint32_t max_points{2'000'000};
+            std::string color_target{"SceneColor"};
+            std::string depth_target{"SceneDepth"};
         };
 
         explicit PCFeatureTransient(Config cfg);
@@ -89,7 +93,10 @@ namespace lux::render
             return EPointCloudMode::TRANSIENT;
         }
 
-        [[nodiscard]] std::string_view name() const override { return "PointCloudTransient"; }
+        [[nodiscard]] std::string_view name() const override
+        {
+            return "PointCloudTransient";
+        }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
@@ -102,16 +109,16 @@ namespace lux::render
         }
 
     private:
-        Config                 cfg_;
+        Config cfg_;
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
-        float                  point_size_{3.0f};
+        float point_size_{3.0f};
 
         // Shared FIF vertex ring: sized to framesInFlight() and indexed by the REAL
         // frame_index (replaces the old fixed slots_[3] + private frame counter, which
         // could desync from the actual in-flight set).
-        TransientVertexRing    ring_;
-        uint32_t               active_slot_{0};
-        uint32_t               draw_count_{0};
+        TransientVertexRing ring_;
+        uint32_t active_slot_{0};
+        uint32_t draw_count_{0};
 
         TransientPointCloudBuffer* incoming_{nullptr};
     };

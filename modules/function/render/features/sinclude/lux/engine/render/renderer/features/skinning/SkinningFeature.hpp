@@ -30,11 +30,11 @@
 #include <vulkan/vulkan.h>
 
 #include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>          // ShaderHandle
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>             // kMaxFramesInFlight
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // ShaderHandle
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>      // kMaxFramesInFlight
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp> // ComputePipelineHandle
-#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>   // DescriptorLayoutId
-#include <lux/engine/render/graph/RGPassTypes.hpp>             // RGResourceHandle
+#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>      // DescriptorLayoutId
+#include <lux/engine/render/graph/RGPassTypes.hpp>                     // RGResourceHandle
 #include <lux/engine/function/visibility.h>
 
 namespace lux::render
@@ -46,15 +46,18 @@ namespace lux::render
     public:
         struct Config
         {
-            ShaderHandle  compute_shader{};        ///< skin_compute.comp
-            std::uint32_t max_bones{64u * 1024};   ///< bone-palette capacity
-            VkDeviceSize  output_pool_bytes{16ull * 1024 * 1024};
+            ShaderHandle compute_shader{};       ///< skin_compute.comp
+            std::uint32_t max_bones{64u * 1024}; ///< bone-palette capacity
+            VkDeviceSize output_pool_bytes{16ull * 1024 * 1024};
         };
 
         SkinningFeature();
         explicit SkinningFeature(Config cfg);
 
-        std::string_view name() const override { return "Skinning"; }
+        std::string_view name() const override
+        {
+            return "Skinning";
+        }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
 
@@ -71,8 +74,8 @@ namespace lux::render
         /// this frame. @p frame_slot (framework FIF index) is only a fallback.
         /// DSResolverFn-compatible. view_id unused: skinning runs once per
         /// scene, not per view (its output pool is shared by every view).
-        static VkDescriptorSet resolveSkinDS(const void* self, std::uint32_t frame_slot,
-                                             std::uint32_t view_id) noexcept;
+        static VkDescriptorSet
+        resolveSkinDS(const void* self, std::uint32_t frame_slot, std::uint32_t view_id) noexcept;
 
         Config cfg_{};
 
@@ -83,13 +86,15 @@ namespace lux::render
         // Per-FIF skin descriptor sets: identical except binding 1 (bone palette)
         // points at that ring slot's palette buffer (S0.2 / H4).
         std::array<VkDescriptorSet, kMaxFramesInFlight> skin_ds_{};
-        SkinningResources*    skin_res_{nullptr};   ///< cached for resolveSkinDS
+        SkinningResources* skin_res_{nullptr}; ///< cached for resolveSkinDS
 
-        RGResourceHandle      out_pool_rg_{};
+        RGResourceHandle out_pool_rg_{};
     };
 
     // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
     // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
-    inline SkinningFeature::SkinningFeature() : SkinningFeature(Config{}) {}
+    inline SkinningFeature::SkinningFeature() : SkinningFeature(Config{})
+    {
+    }
 
 } // namespace lux::render

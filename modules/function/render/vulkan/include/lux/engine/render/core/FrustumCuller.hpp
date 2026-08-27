@@ -14,10 +14,19 @@ namespace lux::render
         struct Plane
         {
             Eigen::Vector3f normal{0.f, 0.f, 0.f};
-            float           d{0.f};
+            float d{0.f};
         };
 
-        enum Side : uint32_t { Left = 0, Right, Bottom, Top, Near, Far, Count };
+        enum Side : uint32_t
+        {
+            Left = 0,
+            Right,
+            Bottom,
+            Top,
+            Near,
+            Far,
+            Count
+        };
 
         std::array<Plane, Count> planes{};
 
@@ -25,10 +34,7 @@ namespace lux::render
         static Frustum fromViewProj(const Eigen::Matrix4f& vp);
 
         /// Test AABB (min, max vectors) against frustum planes.
-        [[nodiscard]] bool isAABBInside(
-            const Eigen::Vector3f& aabb_min,
-            const Eigen::Vector3f& aabb_max
-        ) const;
+        [[nodiscard]] bool isAABBInside(const Eigen::Vector3f& aabb_min, const Eigen::Vector3f& aabb_max) const;
     };
 
     /// GPU view-cull input. Frustum planes are expressed relative to the exact
@@ -55,23 +61,29 @@ namespace lux::render
     }
 
     /// Compute approximate screen-space error for an AABB node.
-    float computeScreenError(const float* aabb_min, const float* aabb_max,
-                             const float* view_proj, const float* camera_pos,
-                             float screen_width);
+    float computeScreenError(
+        const float* aabb_min,
+        const float* aabb_max,
+        const float* view_proj,
+        const float* camera_pos,
+        float screen_width
+    );
 
     /// @brief Frustum-based visibility culler.
     class FrustumCuller
     {
     public:
-        explicit FrustumCuller(const Frustum& f) : frustum_(f) {}
+        explicit FrustumCuller(const Frustum& f) : frustum_(f)
+        {
+        }
 
-        [[nodiscard]] const Frustum& frustum() const noexcept { return frustum_; }
+        [[nodiscard]] const Frustum& frustum() const noexcept
+        {
+            return frustum_;
+        }
 
         /// Returns true if an AABB (min, max) is at least partially inside the frustum.
-        [[nodiscard]] bool isVisible(
-            const Eigen::Vector3f& aabb_min,
-            const Eigen::Vector3f& aabb_max
-        ) const;
+        [[nodiscard]] bool isVisible(const Eigen::Vector3f& aabb_min, const Eigen::Vector3f& aabb_max) const;
 
     private:
         Frustum frustum_;

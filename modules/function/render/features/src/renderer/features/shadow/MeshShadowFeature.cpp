@@ -1,6 +1,7 @@
 #include <lux/engine/render/renderer/features/shadow/MeshShadowFeature.hpp>
-#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp>   // EShadowTechnique (technique id)
-#include <lux/engine/render/renderer/features/shadow/IShadowTechnique.hpp>   // IShadowTechnique + ShadowFrameContext — polymorphic caster/post dispatch
+#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp> // EShadowTechnique (technique id)
+#include <lux/engine/render/renderer/features/shadow/IShadowTechnique.hpp>
+// IShadowTechnique + ShadowFrameContext — polymorphic caster/post dispatch
 #include <vk_mem_alloc.h>
 #include <lux/engine/render/core/FrustumCuller.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
@@ -19,15 +20,16 @@
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
-#include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>   // set-3 bind
-#include <lux/engine/render/resources/vertex/VertexProduction.hpp>     // producer registry
-#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>  // vertex-layout SSOT
-#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>      // appendVertexLayoutSpecs
+#include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp> // set-3 bind
+#include <lux/engine/render/resources/vertex/VertexProduction.hpp>   // producer registry
+#include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>   // vertex-layout SSOT
+#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>   // kDeferredGBufferDrawPassName
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>             // kShadowViewUploadPassName
-#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp>            // kMeshShadowDrawPassName
-#include <lux/engine/render/scene/View.hpp>            // View::handle (canonical-view resolution)
+#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+// kDeferredGBufferDrawPassName
+#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>         // kShadowViewUploadPassName
+#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
+#include <lux/engine/render/scene/View.hpp> // View::handle (canonical-view resolution)
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
 #include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp>
@@ -68,9 +70,9 @@ namespace lux::render
             return h;
         }
 
-        [[nodiscard]] uint64_t hashLightVp(const Eigen::Matrix4f &m)
+        [[nodiscard]] uint64_t hashLightVp(const Eigen::Matrix4f& m)
         {
-            const auto *p = reinterpret_cast<const std::byte *>(m.data());
+            const auto* p = reinterpret_cast<const std::byte*>(m.data());
             return fnv1a64({p, sizeof(float) * 16});
         }
 
@@ -94,9 +96,7 @@ namespace lux::render
             return planes_bytes + metadata_bytes;
         }
 
-        [[nodiscard]] uint32_t clampShadowSliceCount(
-            std::span<const ShadowSliceGPU> slices,
-            uint32_t max_shadow_slices)
+        [[nodiscard]] uint32_t clampShadowSliceCount(std::span<const ShadowSliceGPU> slices, uint32_t max_shadow_slices)
         {
             return static_cast<uint32_t>(std::min<size_t>(slices.size(), max_shadow_slices));
         }
@@ -105,30 +105,23 @@ namespace lux::render
         {
             const float scaled = uv * static_cast<float>(atlas_resolution);
             const int32_t rounded = static_cast<int32_t>(std::lround(scaled));
-            return static_cast<uint32_t>(std::clamp(
-                rounded,
-                0,
-                static_cast<int32_t>(atlas_resolution)));
+            return static_cast<uint32_t>(std::clamp(rounded, 0, static_cast<int32_t>(atlas_resolution)));
         }
 
-        [[nodiscard]] VkRect2D makeSliceTileScissor(
-            const ShadowSliceGPU &slice,
-            uint32_t atlas_resolution)
+        [[nodiscard]] VkRect2D makeSliceTileScissor(const ShadowSliceGPU& slice, uint32_t atlas_resolution)
         {
             const uint32_t safe_resolution = std::max(atlas_resolution, 1u);
 
-            uint32_t x0 = std::min(
-                atlasUvToPixel(slice.atlas_uv_bias.x(), safe_resolution),
-                safe_resolution);
-            uint32_t y0 = std::min(
-                atlasUvToPixel(slice.atlas_uv_bias.y(), safe_resolution),
-                safe_resolution);
+            uint32_t x0 = std::min(atlasUvToPixel(slice.atlas_uv_bias.x(), safe_resolution), safe_resolution);
+            uint32_t y0 = std::min(atlasUvToPixel(slice.atlas_uv_bias.y(), safe_resolution), safe_resolution);
             uint32_t x1 = std::min(
                 atlasUvToPixel(slice.atlas_uv_bias.x() + slice.atlas_uv_scale.x(), safe_resolution),
-                safe_resolution);
+                safe_resolution
+            );
             uint32_t y1 = std::min(
                 atlasUvToPixel(slice.atlas_uv_bias.y() + slice.atlas_uv_scale.y(), safe_resolution),
-                safe_resolution);
+                safe_resolution
+            );
 
             if (x0 >= safe_resolution)
             {
@@ -164,8 +157,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    MeshShadowFeature::MeshShadowFeature(Config cfg)
-        : cfg_(cfg)
+    MeshShadowFeature::MeshShadowFeature(Config cfg) : cfg_(cfg)
     {
     }
 
@@ -191,13 +183,14 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    lux::render::Expected<void> MeshShadowFeature::initAndAttachTo(RenderScene &scene){
+    lux::render::Expected<void> MeshShadowFeature::initAndAttachTo(RenderScene& scene)
+    {
         // ---- Ensure builtin shader defaults ----
         {
             auto& shaders = renderContext().globalRegistry().must<ShaderResources>();
             const std::array backfill{
-                ShaderStageSlot{EBuiltinShader::MESH_CULL_UNIFIED_COMP,  &cfg_.shadow_cull_shader},
-                ShaderStageSlot{EBuiltinShader::MDC_COMPACT_COMP,        &cfg_.shadow_compact_shader},
+                ShaderStageSlot{EBuiltinShader::MESH_CULL_UNIFIED_COMP, &cfg_.shadow_cull_shader},
+                ShaderStageSlot{EBuiltinShader::MDC_COMPACT_COMP, &cfg_.shadow_compact_shader},
                 ShaderStageSlot{EBuiltinShader::CLEAR_COUNT_BUFFERS_COMP, &cfg_.shadow_clear_shader}};
             if (auto filled = resolveShaderStages(shaders, backfill); !filled)
                 return filled;
@@ -210,16 +203,13 @@ namespace lux::render
             // (audit R-5)
         }
 
-        auto &ctx = renderContext();
-        const uint32_t hzb_mode_spec =
-            cfg_.extension_flags.containsAll(EGpuDrivenMeshExt::HZB) ? 1u : 0u;
+        auto& ctx = renderContext();
+        const uint32_t hzb_mode_spec = cfg_.extension_flags.containsAll(EGpuDrivenMeshExt::HZB) ? 1u : 0u;
         vma_ = ctx.vmaAllocator();
         device_ = ctx.deviceContext().logicalDevice();
 
-        auto *shadow_res = scene.sceneRegistry().find<ShadowResources>();
-        max_shadow_slices_ = (shadow_res && shadow_res->isInitialized())
-                                 ? shadow_res->maxSlices()
-                                 : kMaxShadowSlices;
+        auto* shadow_res = scene.sceneRegistry().find<ShadowResources>();
+        max_shadow_slices_ = (shadow_res && shadow_res->isInitialized()) ? shadow_res->maxSlices() : kMaxShadowSlices;
 
         // Shared instance storage: OWNED (ensure<>d AND init()ed) by
         // StandardMeshStack. MeshShadow only find<>s it, so installing MeshShadow
@@ -240,28 +230,29 @@ namespace lux::render
 
         if (shadow_visible_set_layout_ == VK_NULL_HANDLE)
         {
-            auto id = ctx.descriptorService().registerLayout(
-                storageBufferVertexLayout("ShadowVisibleSetLayout"));
+            auto id = ctx.descriptorService().registerLayout(storageBufferVertexLayout("ShadowVisibleSetLayout"));
             shadow_visible_set_layout_ = ctx.descriptorService().layout(id);
         }
 
         // Shadow cull compute pipeline
         {
             auto& shaders = ctx.globalRegistry().must<ShaderResources>();
-            auto *shader_obj = shaders.get(cfg_.shadow_cull_shader);
+            auto* shader_obj = shaders.get(cfg_.shadow_cull_shader);
             // A missing cull shader is a HARD init failure. Returning {} (== success)
             // here would install a half-built feature whose later dispatch binds a null
             // pipeline — the exact Release-only silent-success the audit flagged.
             if (!shader_obj)
                 return renderFailure<err::asset::Invalid>();
 
-            const VkPushConstantRange pc{VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                                         static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
+            const VkPushConstantRange pc{
+                VK_SHADER_STAGE_COMPUTE_BIT,
+                0,
+                static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
             const std::array layouts{cull_set_layout_};
             const std::array pcs{pc};
-            auto pl = ctx.pipelineLayoutService().getOrCreate({.set_layouts = layouts,
-                                                               .push_constants = pcs,
-                                                               .debug_name = "MeshShadowCullLayout"});
+            auto pl = ctx.pipelineLayoutService().getOrCreate(
+                {.set_layouts = layouts, .push_constants = pcs, .debug_name = "MeshShadowCullLayout"}
+            );
             if (!pl)
                 return lux::cxx::unexpected(pl.error());
             const std::array<GraphicsPipelineTemplate::ShaderSpecializationValue, 3> cull_specs{{
@@ -269,15 +260,13 @@ namespace lux::render
                 {VK_SHADER_STAGE_COMPUTE_BIT, 2u, kGeometryKindCount},
                 {VK_SHADER_STAGE_COMPUTE_BIT, kSpecConstHZBMode, hzb_mode_spec},
             }};
-            shadow_cull_pipeline_ = ctx.pipelineManager().registerComputePipeline(
-                shader_obj->module,
-                pl.value(),
-                cull_specs);
+            shadow_cull_pipeline_ =
+                ctx.pipelineManager().registerComputePipeline(shader_obj->module, pl.value(), cull_specs);
         }
 
         // Shadow compact compute pipeline (replaces finalize for MDC mode)
         if (auto r = initCompactPipeline(cfg_.shadow_compact_shader, "MeshShadowCompactLayout"); !r)
-            return lux::cxx::unexpected(r.error());   // propagate, don't swallow
+            return lux::cxx::unexpected(r.error()); // propagate, don't swallow
 
         // Shadow MDC info buffer (CPU-writable, persistent mapping) — per-FIF so
         // the CPU never overwrites a slot an in-flight frame's cull/compact reads.
@@ -294,7 +283,14 @@ namespace lux::render
                 aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
                 VmaAllocationInfo alloc_info{};
-                VK_CHECK(vmaCreateBuffer(vma_, &ci, &aci, &shadow_mdc_info_buf_[i], &shadow_mdc_info_alloc_[i], &alloc_info));
+                VK_CHECK(vmaCreateBuffer(
+                    vma_,
+                    &ci,
+                    &aci,
+                    &shadow_mdc_info_buf_[i],
+                    &shadow_mdc_info_alloc_[i],
+                    &alloc_info)
+                );
                 shadow_mdc_info_mapped_[i] = alloc_info.pMappedData;
                 shadow_mdc_info_buf_size_[i] = kInitialMdcInfoSize;
             }
@@ -303,7 +299,7 @@ namespace lux::render
         if (cfg_.shadow_clear_shader.isValid())
         {
             auto& shaders = ctx.globalRegistry().must<ShaderResources>();
-            auto *shader_obj = shaders.get(cfg_.shadow_clear_shader);
+            auto* shader_obj = shaders.get(cfg_.shadow_clear_shader);
             // Configured (valid()) but unresolvable clear shader is a HARD failure, not
             // a silent skip that leaves shadow_clear_pipeline_ null.
             if (!shader_obj)
@@ -319,30 +315,33 @@ namespace lux::render
                     bindings[i].pImmutableSamplers = nullptr;
                 }
 
-                auto clear_id = ctx.descriptorService().registerLayout({.bindings = bindings,
-                                                                        .debug_name = "ShadowClearDSLayout"});
+                auto clear_id =
+                    ctx.descriptorService().registerLayout({.bindings = bindings, .debug_name = "ShadowClearDSLayout"});
                 shadow_clear_ds_layout_ = ctx.descriptorService().layout(clear_id);
 
-                const VkPushConstantRange clear_pc{VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                                                   static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
+                const VkPushConstantRange clear_pc{
+                    VK_SHADER_STAGE_COMPUTE_BIT,
+                    0,
+                    static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
                 const std::array clear_layouts{shadow_clear_ds_layout_};
                 const std::array clear_pcs{clear_pc};
-                auto clear_layout = ctx.pipelineLayoutService().getOrCreate({.set_layouts = clear_layouts,
-                                                                             .push_constants = clear_pcs,
-                                                                             .debug_name = "MeshShadowClearCountersLayout"});
+                auto clear_layout = ctx.pipelineLayoutService().getOrCreate(
+                    {.set_layouts = clear_layouts,
+                     .push_constants = clear_pcs,
+                     .debug_name = "MeshShadowClearCountersLayout"}
+                );
                 if (!clear_layout)
                     return lux::cxx::unexpected(clear_layout.error());
 
-                shadow_clear_pipeline_ = ctx.pipelineManager().registerComputePipeline(
-                    shader_obj->module,
-                    clear_layout.value());
+                shadow_clear_pipeline_ =
+                    ctx.pipelineManager().registerComputePipeline(shader_obj->module, clear_layout.value());
             }
         }
 
         return {};
     }
 
-    void MeshShadowFeature::populateFrameContext(RGFrameContext &frame_ctx)
+    void MeshShadowFeature::populateFrameContext(RGFrameContext& frame_ctx)
     {
         GpuDrivenMeshFeatureBase::populateFrameContext(frame_ctx);
 
@@ -353,7 +352,7 @@ namespace lux::render
             frame_ctx.ext_data[sslot] = &shadow_frame_ext_data_;
     }
 
-    void MeshShadowFeature::onFrameBegin(const FeatureFrameContext &ctx)
+    void MeshShadowFeature::onFrameBegin(const FeatureFrameContext& ctx)
     {
         GpuDrivenMeshFeatureBase::onFrameBegin(ctx);
 
@@ -377,7 +376,7 @@ namespace lux::render
 
         if (shadow_res_cache_ == nullptr)
             shadow_res_cache_ = renderScene().sceneRegistry().find<ShadowResources>();
-        auto *shadow_res = shadow_res_cache_;
+        auto* shadow_res = shadow_res_cache_;
         if (!shadow_res || !shadow_res->isInitialized())
         {
             shadow_mdc_count_ = 0;
@@ -395,22 +394,20 @@ namespace lux::render
         // (in-flight frames still read it) and recreate at the new size. The cull
         // UBO is imported via buffer_getter and bound through a per-frame transient
         // DS, so it re-resolves with no graph rebuild.
-        if (const uint32_t cur_max = shadow_res->maxSlices();
-            cur_max != max_shadow_slices_)
+        if (const uint32_t cur_max = shadow_res->maxSlices(); cur_max != max_shadow_slices_)
         {
-            max_shadow_slices_     = cur_max;
+            max_shadow_slices_ = cur_max;
             shadow_cull_ssbo_size_ = shadowCullSsboSize(cur_max);
 
             VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            ci.size  = shadow_cull_ssbo_size_;
+            ci.size = shadow_cull_ssbo_size_;
             ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             VmaAllocationCreateInfo aci{};
             aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
             for (uint32_t i = 0; i < kMaxFramesInFlight; ++i)
             {
                 if (shadow_cull_ubo_[i] != VK_NULL_HANDLE)
-                    renderContext().deferredDestroyQueue().retireBuffer(
-                        shadow_cull_ubo_[i], shadow_cull_ubo_alloc_[i]);
+                    renderContext().deferredDestroyQueue().retireBuffer(shadow_cull_ubo_[i], shadow_cull_ubo_alloc_[i]);
                 vmaCreateBuffer(vma_, &ci, &aci, &shadow_cull_ubo_[i], &shadow_cull_ubo_alloc_[i], nullptr);
             }
         }
@@ -426,16 +423,16 @@ namespace lux::render
         // still resolved at record time. Hold the snapshot for as long as `slices`
         // is read below. (medium)
         std::shared_ptr<const ShadowResources::PerViewCache> slice_cache;
-        this->renderScene().forEachActiveView([&](const View& view)
-        {
-            if (slice_cache) return;
+        this->renderScene().forEachActiveView([&](const View& view) {
+            if (slice_cache)
+                return;
             auto c = shadow_res->findViewCache(scene_key, view.handle.index);
             if (c && !c->slices.empty())
                 slice_cache = std::move(c);
-        });
-        const std::span<const ShadowSliceGPU> slices = slice_cache
-            ? std::span<const ShadowSliceGPU>{ slice_cache->slices }
-            : std::span<const ShadowSliceGPU>{};
+        }
+        );
+        const std::span<const ShadowSliceGPU> slices =
+            slice_cache ? std::span<const ShadowSliceGPU>{slice_cache->slices} : std::span<const ShadowSliceGPU>{};
         const uint32_t slice_count = clampShadowSliceCount(slices, max_shadow_slices_);
         if (slice_count == 0)
         {
@@ -456,7 +453,7 @@ namespace lux::render
         // (Already reset to {} at the top of onFrameBegin, before the early
         // returns, so its pointers never outlive shadow_frame_data_'s payloads.)
         {
-            const auto &fd = shadow_frame_data_;
+            const auto& fd = shadow_frame_data_;
             shadow_frame_ext_data_.group_count = fd.bias_group_count;
             shadow_frame_ext_data_.slice_count = fd.shadow_slice_count;
             shadow_frame_ext_data_.cull_ubo = fd.shadow_cull_ubo;
@@ -466,7 +463,7 @@ namespace lux::render
             shadow_frame_ext_data_.group_map_size = static_cast<uint32_t>(fd.group_map_payload.size());
             for (uint32_t g = 0; g < fd.bias_group_count; ++g)
             {
-                auto &lane = shadow_frame_ext_data_.draw_lanes[g];
+                auto& lane = shadow_frame_ext_data_.draw_lanes[g];
                 lane.scissor = fd.bias_groups[g].scissor;
                 lane.depth_bias = fd.bias_groups[g].depth_bias;
                 lane.slope_bias = fd.bias_groups[g].slope_bias;
@@ -477,7 +474,7 @@ namespace lux::render
         // ── Build shadow MDC info buffer ────────────────────────────────
         {
             view_mdc_count_ = mdcCount();
-            const auto &fd = shadow_frame_data_;
+            const auto& fd = shadow_frame_data_;
             const uint32_t bias_group_count = fd.bias_group_count;
             shadow_mdc_count_ = bias_group_count * view_mdc_count_;
 
@@ -503,9 +500,8 @@ namespace lux::render
             for (uint32_t s = 0; s < fd.shadow_slice_count; ++s)
                 slices_per_group[fd.slice_to_group_map[s]]++;
 
-
             // Build shadow MDC data: interleaved {offset, section_id} + sentinel
-            const auto &view_entries = instance_res_->mdcTable().entries();
+            const auto& view_entries = instance_res_->mdcTable().entries();
             shadow_mdc_gpu_data_.clear();
             shadow_mdc_gpu_data_.reserve((shadow_mdc_count_ + 1) * 2);
 
@@ -538,7 +534,9 @@ namespace lux::render
                 // DeferredDestroyQueue (a prior in-flight frame may still
                 // reference it) rather than destroying it synchronously.
                 renderContext().deferredDestroyQueue().retireBuffer(
-                    shadow_mdc_info_buf_[slot], shadow_mdc_info_alloc_[slot]);
+                    shadow_mdc_info_buf_[slot],
+                    shadow_mdc_info_alloc_[slot]
+                );
                 shadow_mdc_info_mapped_[slot] = nullptr;
 
                 VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -548,7 +546,14 @@ namespace lux::render
                 aci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
                 aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
                 VmaAllocationInfo alloc_info{};
-                VK_CHECK(vmaCreateBuffer(vma_, &ci, &aci, &shadow_mdc_info_buf_[slot], &shadow_mdc_info_alloc_[slot], &alloc_info));
+                VK_CHECK(vmaCreateBuffer(
+                    vma_,
+                    &ci,
+                    &aci,
+                    &shadow_mdc_info_buf_[slot],
+                    &shadow_mdc_info_alloc_[slot],
+                    &alloc_info)
+                );
                 shadow_mdc_info_mapped_[slot] = alloc_info.pMappedData;
                 shadow_mdc_info_buf_size_[slot] = ci.size;
                 // No descriptor rewrite: binding 7 is bound via the per-frame
@@ -575,9 +580,8 @@ namespace lux::render
         if (shadow_mdc_count_ != last_compiled_shadow_mdc_ ||
             shadow_total_visible_capacity_ != last_compiled_shadow_capacity_)
         {
-            renderScene().invalidateGraph(
-                EGraphInvalidationReason::MDC_STORAGE_GENERATION);
-            last_compiled_shadow_mdc_      = shadow_mdc_count_;
+            renderScene().invalidateGraph(EGraphInvalidationReason::MDC_STORAGE_GENERATION);
+            last_compiled_shadow_mdc_ = shadow_mdc_count_;
             last_compiled_shadow_capacity_ = shadow_total_visible_capacity_;
         }
     }
@@ -586,11 +590,9 @@ namespace lux::render
     //  Bias-group computation
     // =========================================================================
 
-    void MeshShadowFeature::buildBiasGroups(
-        std::span<const ShadowSliceGPU> slices,
-        uint32_t atlas_resolution)
+    void MeshShadowFeature::buildBiasGroups(std::span<const ShadowSliceGPU> slices, uint32_t atlas_resolution)
     {
-        auto &fd = shadow_frame_data_;
+        auto& fd = shadow_frame_data_;
         fd.shadow_slice_count = static_cast<uint32_t>(slices.size());
         fd.slice_to_group_map.assign(fd.shadow_slice_count, 0u);
 
@@ -682,14 +684,11 @@ namespace lux::render
         // Build frustum planes payload for vkCmdUpdateBuffer.
         const size_t planes_bytes = static_cast<size_t>(fd.shadow_slice_count) * 6u * sizeof(Frustum::Plane);
         fd.frustum_planes_payload.resize(planes_bytes);
-        auto *plane_dst = reinterpret_cast<Frustum::Plane *>(fd.frustum_planes_payload.data());
+        auto* plane_dst = reinterpret_cast<Frustum::Plane*>(fd.frustum_planes_payload.data());
         for (uint32_t s = 0; s < fd.shadow_slice_count; ++s)
         {
             Frustum frustum = Frustum::fromViewProj(slices[s].light_vp);
-            std::memcpy(
-                plane_dst + static_cast<size_t>(s) * 6u,
-                frustum.planes.data(),
-                6 * sizeof(Frustum::Plane));
+            std::memcpy(plane_dst + static_cast<size_t>(s) * 6u, frustum.planes.data(), 6 * sizeof(Frustum::Plane));
         }
 
         // Build the metadata tail: group map, exact origin page and exact
@@ -705,7 +704,7 @@ namespace lux::render
             static_assert(sizeof(GroupVec4) == 16);
             const size_t group_bytes = static_cast<size_t>(fd.shadow_slice_count) * 3u * sizeof(GroupVec4);
             fd.group_map_payload.resize(group_bytes);
-            auto *dst = reinterpret_cast<GroupVec4 *>(fd.group_map_payload.data());
+            auto* dst = reinterpret_cast<GroupVec4*>(fd.group_map_payload.data());
             for (uint32_t s = 0; s < fd.shadow_slice_count; ++s)
             {
                 float as_float;
@@ -713,13 +712,8 @@ namespace lux::render
                 std::memcpy(&as_float, &group_val, sizeof(float));
                 dst[s] = {as_float, 0.0f, 0.0f, 0.0f};
 
-                auto* origin_page = reinterpret_cast<std::int32_t*>(
-                    &dst[fd.shadow_slice_count + s]);
-                std::memcpy(
-                    origin_page,
-                    slices[s].origin_page,
-                    sizeof(slices[s].origin_page)
-                );
+                auto* origin_page = reinterpret_cast<std::int32_t*>(&dst[fd.shadow_slice_count + s]);
+                std::memcpy(origin_page, slices[s].origin_page, sizeof(slices[s].origin_page));
                 dst[fd.shadow_slice_count * 2u + s] = {
                     slices[s].origin_local_page_size[0],
                     slices[s].origin_local_page_size[1],
@@ -733,10 +727,10 @@ namespace lux::render
     //  Render graph passes
     // =========================================================================
 
-    void MeshShadowFeature::addPasses(RGBuilder &builder)
+    void MeshShadowFeature::addPasses(RGBuilder& builder)
     {
         // Resolve shadow resources from registry
-        auto *shadow_res = renderScene().sceneRegistry().find<ShadowResources>();
+        auto* shadow_res = renderScene().sceneRegistry().find<ShadowResources>();
         if (!shadow_res || !shadow_res->isInitialized())
             return;
 
@@ -781,8 +775,7 @@ namespace lux::render
         }
         {
             RGBufferDescription desc{};
-            desc.size = static_cast<VkDeviceSize>(safe_visible) *
-                sizeof(GpuVisibleInstance);
+            desc.size = static_cast<VkDeviceSize>(safe_visible) * sizeof(GpuVisibleInstance);
             desc.stride = sizeof(GpuVisibleInstance);
             desc.element_count = safe_visible;
             desc.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
@@ -803,9 +796,9 @@ namespace lux::render
             desc.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
             desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
             RGImportedBufferInfo imp{};
-            imp.buffer_getter = [this](VkBuffer *out, uint32_t cap) -> uint32_t
-            {
-                if (out == nullptr || cap == 0) return 0u;
+            imp.buffer_getter = [this](VkBuffer* out, uint32_t cap) -> uint32_t {
+                if (out == nullptr || cap == 0)
+                    return 0u;
                 // Current FIF slot — refreshed each frame by the recorder, same slot
                 // the kUploadFrustums write targets (shadow_frame_data_). (P1#24)
                 out[0] = shadow_cull_ubo_[mdc_info_slot_];
@@ -819,22 +812,24 @@ namespace lux::render
             instance_res_->fieldStorageImportBytes(sizeof(InstanceCullMeta)),
             sizeof(InstanceCullMeta),
             instance_res_->slotCount(),
-            &InstanceResources::cullMetaBuffer);
+            &InstanceResources::cullMetaBuffer
+        );
         const auto section_rg = importInstanceStorageBuffer(
             builder,
             "MeshShadowSectionTable",
-            static_cast<VkDeviceSize>(instance_res_->capacity()) *
-                sizeof(MeshSectionRecord),
+            static_cast<VkDeviceSize>(instance_res_->capacity()) * sizeof(MeshSectionRecord),
             sizeof(MeshSectionRecord),
             instance_res_->capacity(),
-            &InstanceResources::meshSectionBuffer);
+            &InstanceResources::meshSectionBuffer
+        );
         const auto property_rg = importInstanceStorageBuffer(
             builder,
             "MeshShadowProperty",
             instance_res_->fieldStorageImportBytes(sizeof(InstanceProperty)),
             sizeof(InstanceProperty),
             instance_res_->slotCount(),
-            &InstanceResources::propertyBuffer);
+            &InstanceResources::propertyBuffer
+        );
         const auto safe_alive_count = std::max(instance_res_->aliveCount(), 1u);
         const auto alive_slots_rg = importInstanceStorageBuffer(
             builder,
@@ -842,12 +837,14 @@ namespace lux::render
             static_cast<VkDeviceSize>(safe_alive_count) * sizeof(uint32_t),
             sizeof(uint32_t),
             safe_alive_count,
-            &InstanceResources::aliveSlotBuffer);
+            &InstanceResources::aliveSlotBuffer
+        );
         // MDC-info buffer: per-FIF CPU-mapped, imported at the current frame slot.
         // The recorder refreshes this getter each frame, so the rotating slot is
         // picked up without a graph rebuild.
         {
-            const VkDeviceSize mdc_info_size = static_cast<VkDeviceSize>(shadow_mdc_gpu_data_.size()) * sizeof(uint32_t);
+            const VkDeviceSize mdc_info_size =
+                static_cast<VkDeviceSize>(shadow_mdc_gpu_data_.size()) * sizeof(uint32_t);
             RGBufferDescription desc{};
             desc.size = std::max(mdc_info_size, VkDeviceSize{4});
             desc.stride = sizeof(uint32_t);
@@ -855,9 +852,9 @@ namespace lux::render
             desc.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
             desc.memory_usage = ERGMemoryUsage::CPU_TO_GPU;
             RGImportedBufferInfo imp{};
-            imp.buffer_getter = [this](VkBuffer *out, uint32_t cap) -> uint32_t
-            {
-                if (out == nullptr || cap == 0) return 0u;
+            imp.buffer_getter = [this](VkBuffer* out, uint32_t cap) -> uint32_t {
+                if (out == nullptr || cap == 0)
+                    return 0u;
                 out[0] = shadow_mdc_info_buf_[mdc_info_slot_];
                 return 1u;
             };
@@ -931,7 +928,8 @@ namespace lux::render
                              .read(shadow_mdc_info_rg_, ERGBufferRole::STORAGE);
         if (clear_counters_enabled)
             cull_pass.after("MeshShadowClearCounters");
-        else{
+        else
+        {
             cull_pass.after(kShadowViewUploadPassName);
         }
 
@@ -944,7 +942,7 @@ namespace lux::render
             .max_slices = static_cast<uint32_t>(max_shadow_slices_),
             .draw_list_count = shadow_mdc_count_,
             .descriptor_layout_version = cfg_.descriptor_layout_version,
-            .extension_flags = cfg_.extension_flags.bits(),  // GPU push constant: raw word
+            .extension_flags = cfg_.extension_flags.bits(), // GPU push constant: raw word
             .mdc_count = shadow_mdc_count_,
             .view_mdc_count = view_mdc_count_,
         };
@@ -961,27 +959,36 @@ namespace lux::render
             .readWrite(shadow_count_rg_, ERGBufferRole::STORAGE)
             .read(shadow_mdc_info_rg_, ERGBufferRole::STORAGE)
             .after("MeshShadowCull")
-            .setKernelFn([shadow_mdc_for_compact](const PassRecordContext &pctx)
-                         {
-            if (pctx.pipeline_layout == VK_NULL_HANDLE)
-                return;
-            vkCmdPushConstants(
-                pctx.cmd,
-                pctx.pipeline_layout,
-                VK_SHADER_STAGE_COMPUTE_BIT,
-                0,
-                sizeof(uint32_t),
-                &shadow_mdc_for_compact);
-            vkCmdDispatch(pctx.cmd, (shadow_mdc_for_compact + 63u) / 64u, 1u, 1u); })
-            .setKernel("MdcCompact", makeKernelConfig(MdcCompactKernelConfig{
-                                         .draw_count_rg = shadow_count_rg_,
-                                         .indirect_rg = shadow_indirect_rg_,
-                                         .mdc_count = shadow_mdc_count_,
-                                     }));
+            .setKernelFn([shadow_mdc_for_compact](const PassRecordContext& pctx) {
+                if (pctx.pipeline_layout == VK_NULL_HANDLE)
+                    return;
+                vkCmdPushConstants(
+                    pctx.cmd,
+                    pctx.pipeline_layout,
+                    VK_SHADER_STAGE_COMPUTE_BIT,
+                    0,
+                    sizeof(uint32_t),
+                    &shadow_mdc_for_compact
+                );
+                vkCmdDispatch(pctx.cmd, (shadow_mdc_for_compact + 63u) / 64u, 1u, 1u);
+            }
+            )
+            .setKernel(
+                "MdcCompact",
+                makeKernelConfig(MdcCompactKernelConfig{
+                    .draw_count_rg = shadow_count_rg_,
+                    .indirect_rg = shadow_indirect_rg_,
+                    .mdc_count = shadow_mdc_count_,
+                })
+            );
 
-        auto shadow_visible_tds = builder.createTransientDS("MeshShadowVisibleDS", shadow_visible_set_layout_, {
-                                                                                                                   {0, EDescriptorType::STORAGE_BUFFER, shadow_visible_rg_},
-                                                                                                               });
+        auto shadow_visible_tds = builder.createTransientDS(
+            "MeshShadowVisibleDS",
+            shadow_visible_set_layout_,
+            {
+                {0, EDescriptorType::STORAGE_BUFFER, shadow_visible_rg_},
+            }
+        );
 
         // Shadow draw (graphics) — per-MDC draws per bias group
         const uint32_t atlas_res = shadow_res->atlasResolution();
@@ -1001,8 +1008,7 @@ namespace lux::render
         // implicit ordering dependency the legacy EVSM draw already had.
         auto shadow_draw = builder.addPass(kMeshShadowDrawPassName, ERGPassType::GRAPHICS);
         if (const char* color_target = tech->casterColorTarget())
-            shadow_draw.write(builder.referenceTexture(color_target),
-                              lux::render::ETextureRole::COLOR_ATTACHMENT);
+            shadow_draw.write(builder.referenceTexture(color_target), lux::render::ETextureRole::COLOR_ATTACHMENT);
         shadow_draw
             .write(builder.referenceTexture(cfg_.shadow_atlas), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(caster_pipelines_[tech_idx]);
@@ -1023,8 +1029,7 @@ namespace lux::render
             ERGResourceType::BUFFER
         );
 
-        shadow_draw
-            .useEngineSet(EDescriptorSetSlot::Instance)
+        shadow_draw.useEngineSet(EDescriptorSetSlot::Instance)
             .bindTransientDS(2, shadow_visible_tds)
             .read(shadow_indirect_rg_, ERGBufferRole::INDIRECT)
             .read(shadow_count_rg_, ERGBufferRole::INDIRECT)
@@ -1055,29 +1060,31 @@ namespace lux::render
         //  在特性侧显式换管线,而不是设一个没人读的标志。)
 
         const auto index_buffers = importSharedIndexBuffers(builder);
-        shadow_draw.setKernel("ShadowDraw", makeKernelConfig(ShadowDrawKernelConfig{
-                                  .draw_count_rg = shadow_count_rg_,
-                                  .indirect_rg = shadow_indirect_rg_,
-                                  .index_buffers_rg = index_buffers.data(),
-                                  .index_buffer_count = static_cast<std::uint32_t>(
-                                      index_buffers.size()),
-                                  .geometry_mask = supportedGeometryMask(),
-                                  .atlas_resolution = atlas_res,
-                                  .view_mdc_count = view_mdc_count_,
-                                  .bias_group_count = shadow_frame_data_.bias_group_count,
-                                  .mdc_entries = instance_res_->mdcTable().entries().data(),
-                                  // family_count = 0 skips skinned `+N` offset.
-                                  .family_count = 0u,
-                              }));
+        shadow_draw.setKernel(
+            "ShadowDraw",
+            makeKernelConfig(ShadowDrawKernelConfig{
+                .draw_count_rg = shadow_count_rg_,
+                .indirect_rg = shadow_indirect_rg_,
+                .index_buffers_rg = index_buffers.data(),
+                .index_buffer_count = static_cast<std::uint32_t>(index_buffers.size()),
+                .geometry_mask = supportedGeometryMask(),
+                .atlas_resolution = atlas_res,
+                .view_mdc_count = view_mdc_count_,
+                .bias_group_count = shadow_frame_data_.bias_group_count,
+                .mdc_entries = instance_res_->mdcTable().entries().data(),
+                // family_count = 0 skips skinned `+N` offset.
+                .family_count = 0u,
+            })
+        );
 
         // ── Technique post passes (e.g. EVSM separable blur). PCF is a no-op
         //    (base recordPostFrame). Fully polymorphic — MeshShadowFeature no
         //    longer knows EVSM exists; the EVSM blur logic now lives in
         //    EVSMShadowTechnique::recordPostFrame.
         ShadowFrameContext fctx{};
-        fctx.builder          = &builder;
-        fctx.shadow_res       = shadow_res;
-        fctx.scene            = &renderScene();
+        fctx.builder = &builder;
+        fctx.shadow_res = shadow_res;
+        fctx.scene = &renderScene();
         fctx.atlas_resolution = atlas_res;
         tech->recordPostFrame(fctx);
     }
@@ -1101,9 +1108,8 @@ namespace lux::render
 
         auto& ctx = renderContext();
         auto* shadow_res = renderScene().sceneRegistry().find<ShadowResources>();
-        VkDescriptorSetLayout shadow_set0 = (shadow_res && shadow_res->isInitialized())
-                                                ? shadow_res->descriptorSetLayout()
-                                                : VK_NULL_HANDLE;
+        VkDescriptorSetLayout shadow_set0 =
+            (shadow_res && shadow_res->isInitialized()) ? shadow_res->descriptorSetLayout() : VK_NULL_HANDLE;
         if (shadow_set0 == VK_NULL_HANDLE)
             return;
 
@@ -1119,7 +1125,7 @@ namespace lux::render
             ShaderStageSlot{tech.casterVertVariant(), &vh},
             ShaderStageSlot{tech.casterFragVariant(), &fh}};
         if (!resolveShaderStages(shaders, caster_slots))
-            return;   // 与本函数其余早退口径一致:未就绪即不注册,下次再试
+            return; // 与本函数其余早退口径一致:未就绪即不注册,下次再试
 
         // 域合并切换:slices(uShadowSlices,原紧凑 set0)连同 transforms/vertex pool
         // 一起落进 FEATURE 域槽 2(数据正确性由 Shadow/Instance/VertexPool 对域集的写
@@ -1143,7 +1149,7 @@ namespace lux::render
         // [2]=visible、[3]=bindless vertex pool,槽号与 canonical 不同。它随
         // 紧凑老路一起退休了,见上面 fail-fast 处的说明。)
         auto tmpl = makeOpaqueMeshTemplate();
-        tmpl.debug_name           = "MeshShadowCaster";
+        tmpl.debug_name = "MeshShadowCaster";
         tmpl.descriptor_set_count = 4u;
         // Set 0 is allocated from ShadowResources' shared three-binding
         // layout (slice SSBO, atlas sampler, config UBO). The caster shaders
@@ -1153,14 +1159,14 @@ namespace lux::render
         // layout explicitly; this is exactly the shared-subset case covered
         // by GraphicsPipelineTemplate::explicit_set_layouts.
         tmpl.explicit_set_layouts.emplace_back(0u, shadow_set0);
-        tmpl.vertex_shader        = switched->module(0);
-        tmpl.fragment_shader      = switched->module(1);
+        tmpl.vertex_shader = switched->module(0);
+        tmpl.fragment_shader = switched->module(1);
         tmpl.vertex_bindings.clear();
         tmpl.vertex_attributes.clear();
         // Technique-declared color output: 0 = depth-only (PCF), 0xF = RGBA16F
         // moments written into the moment-atlas color target (EVSM).
-        tmpl.color_write_mask     = tech.casterColorWriteMask();
-        tmpl.blend_enable         = VK_FALSE;
+        tmpl.color_write_mask = tech.casterColorWriteMask();
+        tmpl.blend_enable = VK_FALSE;
         // Conventional back-face culling — records the occluder's light-facing
         // surface in the shadow map, the correct depth for both floating-receiver
         // and receiver-intersects-occluder cases. Self-shadow acne is handled by
@@ -1168,30 +1174,33 @@ namespace lux::render
         // `vkCmdSetDepthBias` per bias group) plus the receiver-plane bias in
         // `shadow_pcf.glsl / shadow_evsm.glsl`. Front-face culling — a tempting "free bias" —
         // fails the moment the receiver crosses into the occluder's volume.
-        tmpl.cull_mode            = VK_CULL_MODE_BACK_BIT;
+        tmpl.cull_mode = VK_CULL_MODE_BACK_BIT;
         // Depth bias enabled (zero constant/slope) for ALL techniques: the shared
         // ShadowDraw kernel issues `vkCmdSetDepthBias` per bias group, so a
         // pipeline that didn't opt into bias would trip VUID-...-08608. EVSM
         // doesn't need bias (its dual-exponential warp absorbs self-shadowing) but
         // must still opt in; 0*slope + 0*constant is a semantic no-op that keeps
         // the dynamic state valid.
-        tmpl.depth_bias_enable    = VK_TRUE;
-        tmpl.depth_bias_constant  = 0.0f;
-        tmpl.depth_bias_slope     = 0.0f;
-        tmpl.pipeline_layout      = VK_NULL_HANDLE;   // 空 → 反射注册 + 域路由
+        tmpl.depth_bias_enable = VK_TRUE;
+        tmpl.depth_bias_constant = 0.0f;
+        tmpl.depth_bias_slope = 0.0f;
+        tmpl.pipeline_layout = VK_NULL_HANDLE; // 空 → 反射注册 + 域路由
 
         // Feed the pool layout (full 22-float layout 0) as spec constants. The
         // skinned pool stride is the same, so one spec serves all draws.
-        if (auto& vlr = ctx.globalRegistry().must<VertexLayoutRegistry>();
-            vlr.hasLayout(kDefaultVertexLayoutId))
-            appendVertexLayoutSpecs(tmpl.specialization_values,
-                                    vlr.fetchLayout(kDefaultVertexLayoutId),
-                                    VK_SHADER_STAGE_VERTEX_BIT, kVtxSpecInputBase);
+        if (auto& vlr = ctx.globalRegistry().must<VertexLayoutRegistry>(); vlr.hasLayout(kDefaultVertexLayoutId))
+            appendVertexLayoutSpecs(
+                tmpl.specialization_values,
+                vlr.fetchLayout(kDefaultVertexLayoutId),
+                VK_SHADER_STAGE_VERTEX_BIT,
+                kVtxSpecInputBase
+            );
 
         const std::array<const lux::rdesc::ShaderInfo*, 2> infos{&switched->info(0), &switched->info(1)};
         auto pipe = ctx.pipelineManager().registerGraphicsTemplate(tmpl, infos);
-        if (!pipe.has_value()) return;
-        caster_pipelines_[idx]      = pipe.value();
+        if (!pipe.has_value())
+            return;
+        caster_pipelines_[idx] = pipe.value();
         caster_pipeline_ready_[idx] = true;
     }
 
@@ -1217,7 +1226,7 @@ namespace lux::render
             VmaAllocationCreateInfo aci{};
             aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-            for (uint32_t i = 0; i < kMaxFramesInFlight; ++i)   // per-FIF (P1#24)
+            for (uint32_t i = 0; i < kMaxFramesInFlight; ++i) // per-FIF (P1#24)
                 vmaCreateBuffer(vma_, &ci, &aci, &shadow_cull_ubo_[i], &shadow_cull_ubo_alloc_[i], nullptr);
         }
     }

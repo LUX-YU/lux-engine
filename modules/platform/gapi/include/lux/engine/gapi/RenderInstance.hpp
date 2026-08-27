@@ -15,7 +15,9 @@ namespace lux::gapi
     public:
         using DeviceList = std::vector<std::shared_ptr<RenderDevice>>;
 
-        LUX_PLATFORM_GAPI_PUBLIC virtual ~RenderInstance() {}
+        LUX_PLATFORM_GAPI_PUBLIC virtual ~RenderInstance()
+        {
+        }
 
         LUX_PLATFORM_GAPI_PUBLIC virtual DeviceList supportedDevices() = 0;
     };

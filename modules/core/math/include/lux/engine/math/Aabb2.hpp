@@ -15,19 +15,18 @@ namespace lux::math
      */
     struct Aabb2
     {
-        Eigen::Vector2f min{  std::numeric_limits<float>::max(),
-                              std::numeric_limits<float>::max() };
-        Eigen::Vector2f max{ -std::numeric_limits<float>::max(),
-                             -std::numeric_limits<float>::max() };
+        Eigen::Vector2f min{std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+        Eigen::Vector2f max{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
 
         // ----- Constructors -----
 
         Aabb2() = default;
-        Aabb2(const Eigen::Vector2f& mn, const Eigen::Vector2f& mx) : min(mn), max(mx) {}
+        Aabb2(const Eigen::Vector2f& mn, const Eigen::Vector2f& mx) : min(mn), max(mx)
+        {
+        }
 
         /// Build from a centre + half-extents (the collider-authoring form).
-        [[nodiscard]] static Aabb2 fromCenterHalf(const Eigen::Vector2f& c,
-                                                  const Eigen::Vector2f& half)
+        [[nodiscard]] static Aabb2 fromCenterHalf(const Eigen::Vector2f& c, const Eigen::Vector2f& half)
         {
             return Aabb2{c - half, c + half};
         }
@@ -39,22 +38,29 @@ namespace lux::math
             return min.x() <= max.x() && min.y() <= max.y();
         }
 
-        [[nodiscard]] Eigen::Vector2f center() const { return (min + max) * 0.5f; }
-        [[nodiscard]] Eigen::Vector2f extents() const { return max - min; }
-        [[nodiscard]] Eigen::Vector2f halfExtents() const { return (max - min) * 0.5f; }
+        [[nodiscard]] Eigen::Vector2f center() const
+        {
+            return (min + max) * 0.5f;
+        }
+        [[nodiscard]] Eigen::Vector2f extents() const
+        {
+            return max - min;
+        }
+        [[nodiscard]] Eigen::Vector2f halfExtents() const
+        {
+            return (max - min) * 0.5f;
+        }
 
         /// Point inside (or on the boundary).
         [[nodiscard]] bool contains(const Eigen::Vector2f& p) const
         {
-            return (p.array() >= min.array()).all() &&
-                   (p.array() <= max.array()).all();
+            return (p.array() >= min.array()).all() && (p.array() <= max.array()).all();
         }
 
         /// Overlaps another AABB (touching counts — closed intervals).
         [[nodiscard]] bool intersects(const Aabb2& other) const
         {
-            return (max.array() >= other.min.array()).all() &&
-                   (min.array() <= other.max.array()).all();
+            return (max.array() >= other.min.array()).all() && (min.array() <= other.max.array()).all();
         }
 
         /// Strict overlap (open intervals) — the falling-sand / collision form
@@ -62,8 +68,7 @@ namespace lux::math
         /// previous pack-side Aabb2::overlaps semantics exactly.
         [[nodiscard]] bool overlaps(const Aabb2& o) const
         {
-            return min.x() < o.max.x() && max.x() > o.min.x() &&
-                   min.y() < o.max.y() && max.y() > o.min.y();
+            return min.x() < o.max.x() && max.x() > o.min.x() && min.y() < o.max.y() && max.y() > o.min.y();
         }
 
         /// Intersects a circle.
@@ -86,8 +91,7 @@ namespace lux::math
             max = max.cwiseMax(other.max);
         }
 
-        template<typename Iter>
-        static Aabb2 fromPoints(Iter begin, Iter end)
+        template <typename Iter> static Aabb2 fromPoints(Iter begin, Iter end)
         {
             Aabb2 box;
             for (auto it = begin; it != end; ++it)

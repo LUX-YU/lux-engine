@@ -6,23 +6,19 @@
 
 namespace lux::meta
 {
-    template <auto Member>
-    struct TypeStaticField final
+    template <auto Member> struct TypeStaticField final
     {
         static constexpr auto pointer = Member;
         std::string_view name;
     };
 
     template <auto Member>
-    [[nodiscard]] consteval TypeStaticField<Member> typeStaticField(
-        std::string_view name
-    ) noexcept
+    [[nodiscard]] consteval TypeStaticField<Member> typeStaticField(std::string_view name) noexcept
     {
         return {name};
     }
 
-    template <class T>
-    struct TypeStaticInfo
+    template <class T> struct TypeStaticInfo
     {
         static constexpr bool available = false;
     };

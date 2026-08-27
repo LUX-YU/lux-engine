@@ -31,8 +31,9 @@ namespace lux::render
     // / kMaxBuckets fixed cap was removed; the variant-bucket count is now uncapped
     // and merely reported via VariantBucketManager::count() for the upper layer to
     // police — this layer enforces no PSO-count policy).
-    static_assert(kLightingTechniqueCount <= (1u << 4),
-                  "family_id must fit the 4-bit material_type nibble (see packMaterialType)");
+    static_assert(
+        kLightingTechniqueCount <= (1u << 4),
+        "family_id must fit the 4-bit material_type nibble (see packMaterialType)");
 
     // ===== Shading Model =====
     //  Numbering convention:
@@ -44,33 +45,31 @@ namespace lux::render
     enum class EShadingModel : uint16_t
     {
         // --- Unlit family ---
-        UNLIT            =   0,
+        UNLIT = 0,
 
         // --- LegacyLit family ---
         //  Dynamic: 100 + EDiffuseModel * 10 + ESpecularModel
         //  e.g. Lambert+BlinnPhong = 100 + 0*10 + 2 = 102
-        LEGACY_LIT_BASE  = 100,
+        LEGACY_LIT_BASE = 100,
 
         // --- PBR family ---
         PbrMetallicRoughness = 200,
 
         // --- Stylized family ---
-        STYLIZED         = 300,
+        STYLIZED = 300,
 
         // --- Graph family (node-graph materials; the actual shading is baked
         //     into the graph-generated frag — this is just the routing tag) ---
-        GRAPH            = 400,
+        GRAPH = 400,
 
         // Sentinel (not a valid model)
-        INVALID          = 0xFFFF
+        INVALID = 0xFFFF
     };
 
     // ===== LegacyLit shading model encoding =====
-    constexpr EShadingModel makeLegacyLitShadingModel(
-        rdesc::EDiffuseModel d, rdesc::ESpecularModel s) noexcept
+    constexpr EShadingModel makeLegacyLitShadingModel(rdesc::EDiffuseModel d, rdesc::ESpecularModel s) noexcept
     {
-        return static_cast<EShadingModel>(
-            100 + static_cast<uint16_t>(d) * 10 + static_cast<uint16_t>(s));
+        return static_cast<EShadingModel>(100 + static_cast<uint16_t>(d) * 10 + static_cast<uint16_t>(s));
     }
 
     constexpr rdesc::EDiffuseModel decodeDiffuseModel(EShadingModel model) noexcept
@@ -91,20 +90,19 @@ namespace lux::render
     //  read it — no more scattered 0/100/200/300/400 magic literals.
     //  Indexed by ELightingTechnique ordinal; {lo, hi} inclusive.
     inline constexpr uint16_t kFamilyShadingModelRange[kLightingTechniqueCount][2] = {
-        {   0,  99 },   // Unlit
-        { 100, 199 },   // LegacyLit
-        { 200, 299 },   // PbrMetallicRoughness
-        { 300, 399 },   // Stylized
-        { 400, 499 },   // Graph
+        {0, 99},    // Unlit
+        {100, 199}, // LegacyLit
+        {200, 299}, // PbrMetallicRoughness
+        {300, 399}, // Stylized
+        {400, 499}, // Graph
     };
 
     /// The inclusive [lo, hi] EShadingModel id range owned by @p family.
-    constexpr std::pair<uint16_t, uint16_t> familyShadingModelRange(
-        ELightingTechnique family) noexcept
+    constexpr std::pair<uint16_t, uint16_t> familyShadingModelRange(ELightingTechnique family) noexcept
     {
         const auto fi = static_cast<std::size_t>(family);
         const auto& r = kFamilyShadingModelRange[fi < kLightingTechniqueCount ? fi : 0];
-        return { r[0], r[1] };
+        return {r[0], r[1]};
     }
 
     // ===== Compile-time mapping: EShadingModel → ELightingTechnique =====
@@ -114,7 +112,7 @@ namespace lux::render
         for (std::size_t fi = 0; fi < kLightingTechniqueCount; ++fi)
             if (v >= kFamilyShadingModelRange[fi][0] && v <= kFamilyShadingModelRange[fi][1])
                 return static_cast<ELightingTechnique>(fi);
-        return ELightingTechnique::Stylized;   // >=500 (incl INVALID) — unreachable
+        return ELightingTechnique::Stylized; // >=500 (incl INVALID) — unreachable
     }
 
     // (materialToShadingModel(const rdesc::Material&) retired in W5a — the builtin
@@ -131,10 +129,10 @@ namespace lux::render
     //  (use normalizeMaterialType to repair a deliberately-packed mismatch).
     constexpr uint32_t packMaterialType(ELightingTechnique family, EShadingModel model) noexcept
     {
-        assert(family == getShadingModelFamily(model)
-               && "packMaterialType: explicit family disagrees with the model-derived family");
-        return (static_cast<uint32_t>(family) << 12u)
-             | (static_cast<uint32_t>(model) & 0xFFFu);
+        assert(
+            family == getShadingModelFamily(model) &&
+            "packMaterialType: explicit family disagrees with the model-derived family");
+        return (static_cast<uint32_t>(family) << 12u) | (static_cast<uint32_t>(model) & 0xFFFu);
     }
 
     /// Canonical pack route: family is derived from shading_model.

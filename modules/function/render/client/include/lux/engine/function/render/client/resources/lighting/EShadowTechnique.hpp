@@ -20,7 +20,7 @@ namespace lux::render
 {
     enum class EShadowTechnique : uint8_t
     {
-        PCF  = 0, ///< Percentage-Closer Filtering — current default, depth-compare based.
+        PCF = 0,  ///< Percentage-Closer Filtering — current default, depth-compare based.
         EVSM = 1, ///< Exponential Variance Shadow Maps — pre-filtered statistical, no bias tuning.
         // Reserved for future: MSM = 2, VSM = 3, PCSS = 4 ...
     };
@@ -28,9 +28,12 @@ namespace lux::render
 
     inline constexpr const char* toString(EShadowTechnique t) noexcept
     {
-        switch (t) {
-            case EShadowTechnique::PCF:  return "PCF";
-            case EShadowTechnique::EVSM: return "EVSM";
+        switch (t)
+        {
+        case EShadowTechnique::PCF:
+            return "PCF";
+        case EShadowTechnique::EVSM:
+            return "EVSM";
         }
         return "Unknown";
     }

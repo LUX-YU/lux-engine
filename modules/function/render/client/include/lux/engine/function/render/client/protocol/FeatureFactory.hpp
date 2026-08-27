@@ -11,10 +11,10 @@
 //  comm/RenderProtocol.hpp 仍包含本头,对外接口不变。
 // ============================================================================
 
-#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>  // TypeId
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // TypeId
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>
-#include <lux/engine/function/render/client/core/Errors.hpp>                    // Expected<T>
+#include <lux/engine/function/render/client/core/Errors.hpp> // Expected<T>
 
 #include <cstddef>
 #include <cstdint>
@@ -26,31 +26,31 @@ namespace lux::render
     /// 不符、内置着色器缺失、依赖资源建不起来……)必须能到达发起 AddFeature 的
     /// 客户端。此前返回类型只有句柄,create_fn 内部拿到的每一个错误都无路可走,
     /// 只能就地打印然后交回一个无效句柄 —— 客户端只知道"装失败了",不知道为什么。
-    using FeatureCreateFn        = Expected<FeatureHandle>(*)(void* scene, const void* param, size_t param_size);
-    using FeatureRegisterOpsFn   = uint32_t(*)(void* dispatcher, TypeId* out_ops, uint32_t max_ops);
-    using FeatureUnregisterOpsFn = void(*)(void* dispatcher, const TypeId* ops, uint32_t op_count);
+    using FeatureCreateFn = Expected<FeatureHandle> (*)(void* scene, const void* param, size_t param_size);
+    using FeatureRegisterOpsFn = uint32_t (*)(void* dispatcher, TypeId* out_ops, uint32_t max_ops);
+    using FeatureUnregisterOpsFn = void (*)(void* dispatcher, const TypeId* ops, uint32_t op_count);
 
     struct FeatureFactory
     {
-        FeatureCreateFn        create_fn{};
-        FeatureRegisterOpsFn   register_ops_fn{};
+        FeatureCreateFn create_fn{};
+        FeatureRegisterOpsFn register_ops_fn{};
         FeatureUnregisterOpsFn unregister_ops_fn{};
         /// Stable feature name (== RenderFeature::name()). Lets a client key a
         /// name→{handle, ops} store (no hard-coded indices) and map the scene's
         /// queryFeatures() back to a feature's ops. A plugin supplies its own name
         /// here, so the editor discovers + edits it with zero compile-time coupling.
-        const char*            name{""};
+        const char* name{""};
         /// Index into this factory's registered ops[] that is the GENERIC setParams
         /// op (a SetFeatureParamsPayload handler — FeatureParamsOperation.hpp), or -1
         /// when the feature exposes no editable params. Lets the settings panel push
         /// a reflected param blob to the right op BY NAME without knowing the
         /// feature's concrete type (so a plugin's params are editable too).
-        int                    param_set_op_index{-1};
+        int param_set_op_index{-1};
         /// Static type-level metadata: stable FeatureTypeId, declared dependencies /
         /// conflicts, capability flags. Default-empty (type == invalid) for
         /// factories that don't declare one — RenderScene then treats the
         /// feature as today: caller-ordered, no dependency/conflict validation.
-        FeatureDescriptor      descriptor{};
+        FeatureDescriptor descriptor{};
     };
     static_assert(std::is_trivially_copyable_v<FeatureFactory>);
 
@@ -67,23 +67,23 @@ namespace lux::render
     /// 的空结构蒙混过关。现在那些调用点都送自己真正的 CommConfig 默认值(见
     /// ViewCameraCommTag / LightCommTag / SpatialCullCommConfig 等),判据才收得住。
     /// 版本演进靠 `comm_config_version` 字段,不靠长度余量。
-    template <class Config>
-    [[nodiscard]] Expected<Config> decodeCommConfig(const void* param, std::size_t param_size)
+    template <class Config> [[nodiscard]] Expected<Config> decodeCommConfig(const void* param, std::size_t param_size)
     {
-        static_assert(std::is_trivially_copyable_v<Config>,
-                      "CommConfig 必须可平凡拷贝 —— 它是直接 memcpy 过 comm 通道的。");
+        static_assert(
+            std::is_trivially_copyable_v<Config>,
+            "CommConfig 必须可平凡拷贝 —— 它是直接 memcpy 过 comm 通道的。");
 
         if (param == nullptr || param_size != sizeof(Config))
             return renderFailure<err::comm::PayloadSizeMismatch>(
                 static_cast<std::uint32_t>(sizeof(Config)),
-                static_cast<std::uint32_t>(param_size));
+                static_cast<std::uint32_t>(param_size)
+            );
 
         return *static_cast<const Config*>(param);
     }
 
-    inline FeatureFactory makeSimpleFactory(FeatureCreateFn create_fn,
-                                            const char* name = "",
-                                            FeatureDescriptor descriptor = {}) noexcept
+    inline FeatureFactory
+    makeSimpleFactory(FeatureCreateFn create_fn, const char* name = "", FeatureDescriptor descriptor = {}) noexcept
     {
         return FeatureFactory{
             create_fn,
@@ -91,8 +91,7 @@ namespace lux::render
             +[](void*, const TypeId*, uint32_t) {},
             name,
             -1,
-            descriptor
-        };
+            descriptor};
     }
 
 } // namespace lux::render

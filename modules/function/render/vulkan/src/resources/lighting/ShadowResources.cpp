@@ -12,7 +12,7 @@
 
 namespace lux::render
 {
-    void ShadowResources::init(const InitInfo &info)
+    void ShadowResources::init(const InitInfo& info)
     {
         device_ = info.device;
         device_context_ = info.device_context;
@@ -37,7 +37,7 @@ namespace lux::render
         // 不是终端(no_terminal_io 门禁)。调用方 ShadowMapFeature::initAndAttachTo
         // 查 isInitialized() 并回 renderFailure<ResourceInitFailed>。
         if (!createShadowAtlas() || !createDescriptorResources())
-            shutdown();   // reclaims whatever succeeded, and clears initialized_
+            shutdown(); // reclaims whatever succeeded, and clears initialized_
     }
 
     void ShadowResources::shutdown()
@@ -106,8 +106,8 @@ namespace lux::render
         VmaAllocationCreateInfo alloc_ci{};
         alloc_ci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-        if (vmaCreateImage(allocator_, &img_ci, &alloc_ci,
-                           &shadow_atlas_image_, &shadow_atlas_alloc_, nullptr) != VK_SUCCESS)
+        if (vmaCreateImage(allocator_, &img_ci, &alloc_ci, &shadow_atlas_image_, &shadow_atlas_alloc_, nullptr) !=
+            VK_SUCCESS)
         {
             shadow_atlas_image_ = VK_NULL_HANDLE;
             shadow_atlas_alloc_ = VK_NULL_HANDLE;
@@ -150,10 +150,8 @@ namespace lux::render
             return false;
         }
 
-        const VkDeviceSize slice_buffer_size =
-            static_cast<VkDeviceSize>(sizeof(ShadowSliceGPU)) * max_shadow_slices_;
-        const VkDeviceSize map_buffer_size =
-            static_cast<VkDeviceSize>(sizeof(int32_t)) * shadow_light_map_capacity_;
+        const VkDeviceSize slice_buffer_size = static_cast<VkDeviceSize>(sizeof(ShadowSliceGPU)) * max_shadow_slices_;
+        const VkDeviceSize map_buffer_size = static_cast<VkDeviceSize>(sizeof(int32_t)) * shadow_light_map_capacity_;
 
         // Create per-FIF Slice SSBO, Config UBO, and mapping SSBOs.
         for (uint32_t fi = 0; fi < frames_in_flight_; ++fi)
@@ -163,16 +161,20 @@ namespace lux::render
                 VkBufferCreateInfo buf_ci{};
                 buf_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
                 buf_ci.size = slice_buffer_size;
-                buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                             | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
                 VmaAllocationCreateInfo alloc_ci{};
                 alloc_ci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
                 alloc_ci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
                 VmaAllocationInfo alloc_info{};
-                if (vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
-                                    &slice_ssbos_[fi], &slice_ssbo_allocs_[fi], &alloc_info) != VK_SUCCESS)
+                if (vmaCreateBuffer(
+                        allocator_,
+                        &buf_ci,
+                        &alloc_ci,
+                        &slice_ssbos_[fi],
+                        &slice_ssbo_allocs_[fi],
+                        &alloc_info) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -184,16 +186,20 @@ namespace lux::render
                 VkBufferCreateInfo buf_ci{};
                 buf_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
                 buf_ci.size = sizeof(ShadowConfigGPU);
-                buf_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
-                             | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                buf_ci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
                 VmaAllocationCreateInfo alloc_ci{};
                 alloc_ci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
                 alloc_ci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
                 VmaAllocationInfo alloc_info{};
-                if (vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
-                                    &config_ubos_[fi], &config_ubo_allocs_[fi], &alloc_info) != VK_SUCCESS)
+                if (vmaCreateBuffer(
+                        allocator_,
+                        &buf_ci,
+                        &alloc_ci,
+                        &config_ubos_[fi],
+                        &config_ubo_allocs_[fi],
+                        &alloc_info) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -205,16 +211,20 @@ namespace lux::render
                 VkBufferCreateInfo buf_ci{};
                 buf_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
                 buf_ci.size = map_buffer_size;
-                buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                             | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
                 VmaAllocationCreateInfo alloc_ci{};
                 alloc_ci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
                 alloc_ci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
                 VmaAllocationInfo alloc_info{};
-                if (vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
-                                    &spot_shadow_map_ssbos_[fi], &spot_shadow_map_ssbo_allocs_[fi], &alloc_info) != VK_SUCCESS)
+                if (vmaCreateBuffer(
+                        allocator_,
+                        &buf_ci,
+                        &alloc_ci,
+                        &spot_shadow_map_ssbos_[fi],
+                        &spot_shadow_map_ssbo_allocs_[fi],
+                        &alloc_info) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -226,16 +236,20 @@ namespace lux::render
                 VkBufferCreateInfo buf_ci{};
                 buf_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
                 buf_ci.size = map_buffer_size;
-                buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                             | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
                 VmaAllocationCreateInfo alloc_ci{};
                 alloc_ci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
                 alloc_ci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
                 VmaAllocationInfo alloc_info{};
-                if (vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
-                                    &point_shadow_map_ssbos_[fi], &point_shadow_map_ssbo_allocs_[fi], &alloc_info) != VK_SUCCESS)
+                if (vmaCreateBuffer(
+                        allocator_,
+                        &buf_ci,
+                        &alloc_ci,
+                        &point_shadow_map_ssbos_[fi],
+                        &point_shadow_map_ssbo_allocs_[fi],
+                        &alloc_info) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -304,10 +318,8 @@ namespace lux::render
         if (!light_resources_ || device_ == VK_NULL_HANDLE)
             return;
 
-        const VkDeviceSize slice_buffer_size =
-            static_cast<VkDeviceSize>(sizeof(ShadowSliceGPU)) * max_shadow_slices_;
-        const VkDeviceSize map_buffer_size =
-            static_cast<VkDeviceSize>(sizeof(int32_t)) * shadow_light_map_capacity_;
+        const VkDeviceSize slice_buffer_size = static_cast<VkDeviceSize>(sizeof(ShadowSliceGPU)) * max_shadow_slices_;
+        const VkDeviceSize map_buffer_size = static_cast<VkDeviceSize>(sizeof(int32_t)) * shadow_light_map_capacity_;
 
         VkDescriptorImageInfo atlas_img_info{};
         atlas_img_info.sampler = shadow_sampler_;
@@ -322,8 +334,7 @@ namespace lux::render
         const uint32_t fif_count = light_resources_->framesInFlight();
         for (uint32_t fi = 0; fi < fif_count; ++fi)
         {
-            VkDescriptorSet domain_ds =
-                domain_.setFor(fi);
+            VkDescriptorSet domain_ds = domain_.setFor(fi);
             if (domain_ds == VK_NULL_HANDLE)
                 continue;
 
@@ -354,9 +365,7 @@ namespace lux::render
             // Light 集有两个所有者(b0-b3 归 LightResources,b4-b10 归本类)。
             // 合并进域集后这个"多所有者共享一个集"的模式不变 —— 只是从跨
             // 多个 binding 扩成跨多个 set。
-            const auto db = [this](ELightSetBindings b) {
-                return domain_.binding(static_cast<uint32_t>(b));
-            };
+            const auto db = [this](ELightSetBindings b) { return domain_.binding(static_cast<uint32_t>(b)); };
 
             std::array<VkWriteDescriptorSet, 5> lw{};
             lw[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -393,8 +402,7 @@ namespace lux::render
         }
     }
 
-    Expected<void> ShadowResources::setDomainWriteTarget(std::span<const VkDescriptorSet> sets,
-                                                         uint32_t binding_offset)
+    Expected<void> ShadowResources::setDomainWriteTarget(std::span<const VkDescriptorSet> sets, uint32_t binding_offset)
     {
         if (auto accepted = domain_.set(sets, binding_offset); !accepted)
             return accepted;
@@ -414,7 +422,8 @@ namespace lux::render
     bool ShadowResources::tryRebuild(
         uint32_t new_atlas_page_resolution,
         uint32_t new_atlas_page_count,
-        uint32_t new_max_shadow_slices)
+        uint32_t new_max_shadow_slices
+    )
     {
         if (!initialized_)
             return false;
@@ -423,9 +432,8 @@ namespace lux::render
         new_atlas_page_count = std::max(new_atlas_page_count, 1u);
         new_max_shadow_slices = std::max(new_max_shadow_slices, 1u);
 
-        if (new_atlas_page_resolution == atlas_page_resolution_
-            && new_atlas_page_count == atlas_page_count_
-            && new_max_shadow_slices == max_shadow_slices_)
+        if (new_atlas_page_resolution == atlas_page_resolution_ && new_atlas_page_count == atlas_page_count_ &&
+            new_max_shadow_slices == max_shadow_slices_)
         {
             return true; // no change needed
         }
@@ -433,24 +441,22 @@ namespace lux::render
         VkDevice saved_device = device_;
         VmaAllocator saved_alloc = allocator_;
         DescriptorLayoutId saved_layout_id = shadow_ds_layout_id_;
-        DescriptorService *saved_ds_svc = descriptor_svc_;
-        SceneDescriptorArena *saved_arena = arena_;
-        LightResources *saved_light_res = light_resources_;
+        DescriptorService* saved_ds_svc = descriptor_svc_;
+        SceneDescriptorArena* saved_arena = arena_;
+        LightResources* saved_light_res = light_resources_;
         uint32_t saved_fif = frames_in_flight_;
 
         std::vector<ShadowSliceGPU> saved_slices;
         ShadowConfigGPU saved_config{};
         uint32_t saved_slice_count = 0;
-        if (auto last_view = findViewCache(
-                debug_last_upload_.scene_key, debug_last_upload_.view_handle))
+        if (auto last_view = findViewCache(debug_last_upload_.scene_key, debug_last_upload_.view_handle))
         {
             saved_slices = last_view->slices;
             saved_config = last_view->config;
             saved_slice_count = static_cast<uint32_t>(saved_slices.size());
         }
 
-        if (device_context_ == nullptr ||
-            device_context_->waitIdle() != VK_SUCCESS)
+        if (device_context_ == nullptr || device_context_->waitIdle() != VK_SUCCESS)
             return false;
 
         shutdown();
@@ -492,22 +498,22 @@ namespace lux::render
         const size_t byte_size = slices.size() * sizeof(ShadowSliceGPU);
         for (uint32_t fi = 0; fi < frames_in_flight_; ++fi)
         {
-            if (!slice_ssbo_mapped_[fi]) continue;
+            if (!slice_ssbo_mapped_[fi])
+                continue;
             std::memcpy(slice_ssbo_mapped_[fi], slices.data(), byte_size);
             vmaFlushAllocation(allocator_, slice_ssbo_allocs_[fi], 0, byte_size);
         }
-
     }
 
-    void ShadowResources::flushConfig(const ShadowConfigGPU &config)
+    void ShadowResources::flushConfig(const ShadowConfigGPU& config)
     {
         for (uint32_t fi = 0; fi < frames_in_flight_; ++fi)
         {
-            if (!config_ubo_mapped_[fi]) continue;
+            if (!config_ubo_mapped_[fi])
+                continue;
             std::memcpy(config_ubo_mapped_[fi], &config, sizeof(ShadowConfigGPU));
             vmaFlushAllocation(allocator_, config_ubo_allocs_[fi], 0, sizeof(ShadowConfigGPU));
         }
-
     }
 
     void ShadowResources::setCachedData(
@@ -518,7 +524,8 @@ namespace lux::render
         std::span<const int32_t> point_shadow_base_slice,
         const ShadowConfigGPU& config,
         uint64_t frame_id,
-        uint32_t frame_index)
+        uint32_t frame_index
+    )
     {
         // Build a FRESH immutable snapshot and swap it into the map.
         // Never mutate the existing entry in place: the cached render graph
@@ -527,10 +534,8 @@ namespace lux::render
         // later in the frame. Growing/reallocating them in place is a UAF.
         auto snapshot = std::make_shared<PerViewCache>();
         snapshot->slices.assign(slices.begin(), slices.end());
-        snapshot->spot_shadow_slice_index.assign(
-            spot_shadow_slice_index.begin(), spot_shadow_slice_index.end());
-        snapshot->point_shadow_base_slice.assign(
-            point_shadow_base_slice.begin(), point_shadow_base_slice.end());
+        snapshot->spot_shadow_slice_index.assign(spot_shadow_slice_index.begin(), spot_shadow_slice_index.end());
+        snapshot->point_shadow_base_slice.assign(point_shadow_base_slice.begin(), point_shadow_base_slice.end());
         snapshot->config = config;
 
         per_view_cache_[makeViewCacheKey(scene_key, view_handle)] = std::move(snapshot);
@@ -541,17 +546,21 @@ namespace lux::render
         ++debug_last_upload_.sequence;
     }
 
-    std::shared_ptr<const ShadowResources::PerViewCache> ShadowResources::findViewCache(
-        uint32_t scene_key, uint32_t view_handle) const noexcept
+    std::shared_ptr<const ShadowResources::PerViewCache>
+    ShadowResources::findViewCache(uint32_t scene_key, uint32_t view_handle) const noexcept
     {
         const auto it = per_view_cache_.find(makeViewCacheKey(scene_key, view_handle));
         if (it == per_view_cache_.end())
             return nullptr;
-        return it->second;  // shared_ptr copy: pins the snapshot for the caller
+        return it->second; // shared_ptr copy: pins the snapshot for the caller
     }
 
-    void ShadowResources::stampCacheFrame(uint32_t scene_key, uint32_t view_handle,
-                                          uint64_t frame_id, uint32_t frame_index) noexcept
+    void ShadowResources::stampCacheFrame(
+        uint32_t scene_key,
+        uint32_t view_handle,
+        uint64_t frame_id,
+        uint32_t frame_index
+    ) noexcept
     {
         // Pure diagnostic bookkeeping — does NOT touch the cached slice data.
         // Lets debugLastUploadSource() reflect the current frame even though
@@ -581,8 +590,7 @@ namespace lux::render
     void ShadowResources::evictSceneView(uint32_t scene_key, uint32_t view_id)
     {
         per_view_cache_.erase(makeViewCacheKey(scene_key, view_id));
-        if (debug_last_upload_.scene_key == scene_key
-            && debug_last_upload_.view_handle == view_id)
+        if (debug_last_upload_.scene_key == scene_key && debug_last_upload_.view_handle == view_id)
         {
             debug_last_upload_.scene_key = 0u;
             debug_last_upload_.view_handle = 0u;

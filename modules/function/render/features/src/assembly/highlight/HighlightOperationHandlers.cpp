@@ -16,19 +16,19 @@ namespace lux::render
         const HighlightCommConfig& cc = *decoded;
 
         HighlightFeature::Config cfg{};
-        cfg.cull_shader               = cc.cull_shader;
-        cfg.compact_shader            = cc.compact_shader;
-        cfg.mask_vert                 = cc.mask_vert;
-        cfg.mask_frag                 = cc.mask_frag;
-        cfg.blur_frag                 = cc.blur_frag;
-        cfg.composite_frag            = cc.composite_frag;
+        cfg.cull_shader = cc.cull_shader;
+        cfg.compact_shader = cc.compact_shader;
+        cfg.mask_vert = cc.mask_vert;
+        cfg.mask_frag = cc.mask_frag;
+        cfg.blur_frag = cc.blur_frag;
+        cfg.composite_frag = cc.composite_frag;
         cfg.descriptor_layout_version = cc.descriptor_layout_version;
-        cfg.extension_flags           = cc.extension_flags;
-        cfg.glow_color[0]             = cc.glow_color[0];
-        cfg.glow_color[1]             = cc.glow_color[1];
-        cfg.glow_color[2]             = cc.glow_color[2];
-        cfg.glow_intensity            = cc.glow_intensity;
-        cfg.glow_radius               = cc.glow_radius;
+        cfg.extension_flags = cc.extension_flags;
+        cfg.glow_color[0] = cc.glow_color[0];
+        cfg.glow_color[1] = cc.glow_color[1];
+        cfg.glow_color[2] = cc.glow_color[2];
+        cfg.glow_intensity = cc.glow_intensity;
+        cfg.glow_radius = cc.glow_radius;
         return sc->addFeature<HighlightFeature>(cfg);
     }
 

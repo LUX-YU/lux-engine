@@ -59,8 +59,7 @@ namespace lux::render
             return InstanceSlot::invalid();
 
         alive_[index] = 1u;
-        const auto dense_position = static_cast<std::uint32_t>(
-            dense_alive_slots_.size());
+        const auto dense_position = static_cast<std::uint32_t>(dense_alive_slots_.size());
         dense_alive_slots_.push_back(index);
         slot_dense_pos_[index] = dense_position;
         return InstanceSlot{index};
@@ -79,8 +78,7 @@ namespace lux::render
 
         const auto index = slot.index;
         const auto dense_position = slot_dense_pos_[index];
-        const auto last_position = static_cast<std::uint32_t>(
-            dense_alive_slots_.size() - 1u);
+        const auto last_position = static_cast<std::uint32_t>(dense_alive_slots_.size() - 1u);
         if (dense_position != last_position)
         {
             const auto moved_slot = dense_alive_slots_[last_position];
@@ -110,39 +108,27 @@ namespace lux::render
 
     bool InstanceSlotRegistry::isAlive(InstanceSlot slot) const noexcept
     {
-        return slot.index < slot_count_ && slot.index < alive_.size() &&
-            alive_[slot.index] != 0u;
+        return slot.index < slot_count_ && slot.index < alive_.size() && alive_[slot.index] != 0u;
     }
 
-    bool InstanceSlotRegistry::isAlive(
-        RenderObjectHandle handle) const noexcept
+    bool InstanceSlotRegistry::isAlive(RenderObjectHandle handle) const noexcept
     {
-        return handle.index != kInvalidDensePos &&
-            handle.index < slot_count_ &&
-            handle.index < generations_.size() &&
-            alive_[handle.index] != 0u &&
-            generations_[handle.index] == handle.gen;
+        return handle.index != kInvalidDensePos && handle.index < slot_count_ && handle.index < generations_.size() &&
+               alive_[handle.index] != 0u && generations_[handle.index] == handle.gen;
     }
 
-    std::uint32_t InstanceSlotRegistry::generation(
-        InstanceSlot slot) const noexcept
+    std::uint32_t InstanceSlotRegistry::generation(InstanceSlot slot) const noexcept
     {
         return isAlive(slot) ? generations_[slot.index] : 0u;
     }
 
-    InstanceSlot InstanceSlotRegistry::resolveSlot(
-        RenderObjectHandle handle) const noexcept
+    InstanceSlot InstanceSlotRegistry::resolveSlot(RenderObjectHandle handle) const noexcept
     {
-        return isAlive(handle)
-            ? InstanceSlot{handle.index}
-            : InstanceSlot::invalid();
+        return isAlive(handle) ? InstanceSlot{handle.index} : InstanceSlot::invalid();
     }
 
-    RenderObjectHandle InstanceSlotRegistry::handleForSlot(
-        InstanceSlot slot) const noexcept
+    RenderObjectHandle InstanceSlotRegistry::handleForSlot(InstanceSlot slot) const noexcept
     {
-        return isAlive(slot)
-            ? RenderObjectHandle{slot.index, generations_[slot.index]}
-            : RenderObjectHandle::invalid();
+        return isAlive(slot) ? RenderObjectHandle{slot.index, generations_[slot.index]} : RenderObjectHandle::invalid();
     }
 } // namespace lux::render

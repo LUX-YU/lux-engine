@@ -32,18 +32,9 @@ namespace lux::input
 
         void sample(lux::window::LuxWindow& window);
 
-        void evaluate(
-            float dt,
-            bool accept_keyboard = true,
-            bool accept_pointer = true
-        );
+        void evaluate(float dt, bool accept_keyboard = true, bool accept_pointer = true);
 
-        void evaluate(
-            InputSnapshot snapshot,
-            float dt,
-            bool accept_keyboard = true,
-            bool accept_pointer = true
-        );
+        void evaluate(InputSnapshot snapshot, float dt, bool accept_keyboard = true, bool accept_pointer = true);
 
         [[nodiscard]] const InputSnapshot& snapshot() const noexcept;
 

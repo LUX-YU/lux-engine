@@ -29,15 +29,15 @@ namespace lux::render
      */
     struct MeshCpuRecord
     {
-        math::AABB                      local_bounds{};  ///< Local-space AABB; valid after create()
-        std::unique_ptr<math::MeshBVH>  bvh;             ///< Triangle BVH (optional, CPU-only)
-        bool                            valid{false};
+        math::AABB local_bounds{};          ///< Local-space AABB; valid after create()
+        std::unique_ptr<math::MeshBVH> bvh; ///< Triangle BVH (optional, CPU-only)
+        bool valid{false};
 
         MeshCpuRecord() = default;
-        MeshCpuRecord(MeshCpuRecord&&) noexcept            = default;
+        MeshCpuRecord(MeshCpuRecord&&) noexcept = default;
         MeshCpuRecord& operator=(MeshCpuRecord&&) noexcept = default;
-        MeshCpuRecord(const MeshCpuRecord&)                = delete;
-        MeshCpuRecord& operator=(const MeshCpuRecord&)     = delete;
+        MeshCpuRecord(const MeshCpuRecord&) = delete;
+        MeshCpuRecord& operator=(const MeshCpuRecord&) = delete;
     };
 
 } // namespace lux::render

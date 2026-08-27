@@ -21,18 +21,18 @@ namespace lux::simulation
         SIGNATURE_MISMATCH,
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
-    EScriptBindingCompatibility evaluateScriptBindingSignatureCompatibility(
-        lux::rdesc::EScriptModel source_model,
-        const lux::rdesc::ScriptFunction& function,
-        lux::rdesc::EScriptModel target_model,
-        ESystemHookCardinality cardinality,
+    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC EScriptBindingCompatibility
+    evaluateScriptBindingSignatureCompatibility(
+        lux::rdesc::EScriptModel                     source_model,
+        const lux::rdesc::ScriptFunction&            function,
+        lux::rdesc::EScriptModel                     target_model,
+        ESystemHookCardinality                       cardinality,
         std::span<const lux::rdesc::ScriptValueType> parameters,
         std::span<const lux::rdesc::ScriptValueType> returns
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
-    EScriptBindingCompatibility evaluateScriptBindingCompatibility(
+    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC EScriptBindingCompatibility
+    evaluateScriptBindingCompatibility(
         const SimulationDescription& simulation,
         lux::rdesc::EScriptModel model,
         const lux::rdesc::ScriptFunction& function,

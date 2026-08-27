@@ -6,18 +6,13 @@
 
 namespace lux::input
 {
-    Input::Input()
-        : state_{std::make_unique<detail::InputState>()}
+    Input::Input() : state_{std::make_unique<detail::InputState>()}
     {
     }
 
     Input::~Input() = default;
 
-    void Input::evaluate(
-        float dt,
-        bool accept_keyboard,
-        bool accept_pointer
-    )
+    void Input::evaluate(float dt, bool accept_keyboard, bool accept_pointer)
     {
         state_->mapper.update(
             state_->snapshot,
@@ -28,12 +23,7 @@ namespace lux::input
         );
     }
 
-    void Input::evaluate(
-        InputSnapshot snapshot,
-        float dt,
-        bool accept_keyboard,
-        bool accept_pointer
-    )
+    void Input::evaluate(InputSnapshot snapshot, float dt, bool accept_keyboard, bool accept_pointer)
     {
         state_->snapshot = std::move(snapshot);
         evaluate(dt, accept_keyboard, accept_pointer);

@@ -12,7 +12,7 @@
 #include <lux/engine/render/resources/TrajectoryGlobalBuffer.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <lux/engine/render/resources/TrajectoryGpuData.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // TrajectoryHandle
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp> // TrajectoryHandle
 #include <lux/cxx/container/SparseSet.hpp>
 
 #include <cstdint>
@@ -22,19 +22,21 @@
 
 namespace lux::render
 {
-    class TrajectoryResources final
-        : public GPUResourceBase<TrajectoryResources, EGPUResourceType::Trajectory>
-        // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
-        //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
+    class TrajectoryResources final : public GPUResourceBase<TrajectoryResources, EGPUResourceType::Trajectory>
+    // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
+    //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
     {
     public:
         TrajectoryResources() = default;
-        ~TrajectoryResources() { shutdown(); }
+        ~TrajectoryResources()
+        {
+            shutdown();
+        }
 
-        TrajectoryResources(const TrajectoryResources &) = delete;
-        TrajectoryResources &operator=(const TrajectoryResources &) = delete;
-        TrajectoryResources(TrajectoryResources &&) = delete;
-        TrajectoryResources &operator=(TrajectoryResources &&) = delete;
+        TrajectoryResources(const TrajectoryResources&) = delete;
+        TrajectoryResources& operator=(const TrajectoryResources&) = delete;
+        TrajectoryResources(TrajectoryResources&&) = delete;
+        TrajectoryResources& operator=(TrajectoryResources&&) = delete;
 
         // ========== Lifecycle ==========
         bool init(VmaAllocator allocator, uint32_t max_vertices)
@@ -60,12 +62,21 @@ namespace lux::render
             initialized_ = false;
         }
 
-        bool isInitialized() const noexcept { return initialized_; }
+        bool isInitialized() const noexcept
+        {
+            return initialized_;
+        }
 
         // ========== Access ==========
 
-        TrajectoryGlobalBuffer &globalBuffer() noexcept { return global_buf_; }
-        const TrajectoryGlobalBuffer &globalBuffer() const noexcept { return global_buf_; }
+        TrajectoryGlobalBuffer& globalBuffer() noexcept
+        {
+            return global_buf_;
+        }
+        const TrajectoryGlobalBuffer& globalBuffer() const noexcept
+        {
+            return global_buf_;
+        }
 
         // ========== Deferred Destroy Queue ==========
 
@@ -134,8 +145,7 @@ namespace lux::render
         }
 
         /// Queue an atomic replace: clear + re-upload in the same frame (no flicker).
-        [[nodiscard]] bool queueReplace(TrajectoryHandle trajectory,
-                                        std::span<const GpuTrajectoryVertex> data)
+        [[nodiscard]] bool queueReplace(TrajectoryHandle trajectory, std::span<const GpuTrajectoryVertex> data)
         {
             if (!isHandleAlive(trajectory))
                 return false;
@@ -155,8 +165,7 @@ namespace lux::render
                 return false;
             if (!live_trajectories_.contains(trajectory_index))
                 return false;
-            if (trajectory_index < pending_remove_flags_.size() &&
-                pending_remove_flags_[trajectory_index] != 0u)
+            if (trajectory_index < pending_remove_flags_.size() && pending_remove_flags_[trajectory_index] != 0u)
                 return false;
 
             return true;
@@ -169,8 +178,14 @@ namespace lux::render
 
         // ========== TransferScheduler integration ==========
 
-        void setUseTransferScheduler(bool v) noexcept { use_transfer_scheduler_ = v; }
-        bool usesTransferScheduler()  const noexcept { return use_transfer_scheduler_; }
+        void setUseTransferScheduler(bool v) noexcept
+        {
+            use_transfer_scheduler_ = v;
+        }
+        bool usesTransferScheduler() const noexcept
+        {
+            return use_transfer_scheduler_;
+        }
 
         void submitTransfers(TransferScheduler& scheduler)
         {
@@ -190,40 +205,46 @@ namespace lux::render
                 case TrajOpKind::Replace:
                     // Atomic clear + re-upload (no flicker); clears even when empty.
                     global_buf_.clearTrajectory(op.trajectory_index);
-                    if (count == 0) break;
+                    if (count == 0)
+                        break;
                     // Skip the upload if capacity growth failed (C-2).
                     if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
                         break;
-                    global_buf_.upload(op.trajectory_index,
-                                       std::span<const GpuTrajectoryVertex>(op.data), scheduler);
+                    global_buf_.upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     break;
 
                 case TrajOpKind::Upload:
-                    if (count == 0) break;
+                    if (count == 0)
+                        break;
                     if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
-                        break;   // growth failed — skip, don't write OOB (C-2)
-                    global_buf_.upload(op.trajectory_index,
-                                       std::span<const GpuTrajectoryVertex>(op.data), scheduler);
+                        break; // growth failed — skip, don't write OOB (C-2)
+                    global_buf_.upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     break;
 
-                case TrajOpKind::Append:
-                {
-                    if (count == 0) break;
+                case TrajOpKind::Append: {
+                    if (count == 0)
+                        break;
                     auto existing = global_buf_.getSlot(op.trajectory_index);
                     if (!existing)
                     {
                         if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
-                            break;   // growth failed — skip, don't write OOB (C-2)
-                        global_buf_.upload(op.trajectory_index,
-                                           std::span<const GpuTrajectoryVertex>(op.data), scheduler);
+                            break; // growth failed — skip, don't write OOB (C-2)
+                        global_buf_.upload(
+                            op.trajectory_index,
+                            std::span<const GpuTrajectoryVertex>(op.data),
+                            scheduler
+                        );
                     }
                     else
                     {
                         const uint32_t needed = existing->count + count;
                         if (needed > existing->capacity)
                             global_buf_.ensureSlotCapacity(op.trajectory_index, needed, scheduler);
-                        global_buf_.append(op.trajectory_index,
-                                           std::span<const GpuTrajectoryVertex>(op.data), scheduler);
+                        global_buf_.append(
+                            op.trajectory_index,
+                            std::span<const GpuTrajectoryVertex>(op.data),
+                            scheduler
+                        );
                     }
                     break;
                 }
@@ -240,12 +261,19 @@ namespace lux::render
         }
 
     private:
-        enum class TrajOpKind : uint8_t { Upload, Append, Clear, Replace, Remove };
+        enum class TrajOpKind : uint8_t
+        {
+            Upload,
+            Append,
+            Clear,
+            Replace,
+            Remove
+        };
         struct TrajOp
         {
             TrajOpKind kind;
-            uint32_t   trajectory_index;
-            std::vector<GpuTrajectoryVertex> data;  // empty for Clear / Remove
+            uint32_t trajectory_index;
+            std::vector<GpuTrajectoryVertex> data; // empty for Clear / Remove
         };
 
         lux::cxx::OffsetAutoSparseSet<uint32_t, uint8_t> live_trajectories_;
@@ -255,8 +283,8 @@ namespace lux::render
         // Single ordered op-log so same-frame ops on one trajectory resolve in
         // client issue order (C-11). pending_remove_flags_ still gates ops issued
         // AFTER a remove in the same frame (isHandleAlive rejects them).
-        std::vector<TrajOp>   pending_ops_;
-        bool                  use_transfer_scheduler_{false};
+        std::vector<TrajOp> pending_ops_;
+        bool use_transfer_scheduler_{false};
     };
 
 } // namespace lux::render

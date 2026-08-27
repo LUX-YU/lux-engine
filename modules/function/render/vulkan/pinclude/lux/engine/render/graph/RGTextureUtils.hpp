@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/function/render/graph/RGEnums.hpp>          // ERGSizeMode
+#include <lux/engine/function/render/graph/RGEnums.hpp> // ERGSizeMode
 #include <lux/engine/render/graph/RGResourceTypes.hpp>  // RGTextureDescription
 
 #include <vulkan/vulkan.h>
@@ -20,8 +20,7 @@ namespace lux::render
     ///
     /// Single source of truth shared by RGVulkanResourceAllocator (image creation)
     /// and RGVulkanRecorder (renderArea for dynamic rendering).
-    [[nodiscard]] inline VkExtent2D resolveTextureExtent(
-        const RGTextureDescription& tex, VkExtent2D base) noexcept
+    [[nodiscard]] inline VkExtent2D resolveTextureExtent(const RGTextureDescription& tex, VkExtent2D base) noexcept
     {
         uint32_t w;
         uint32_t h;
@@ -35,6 +34,6 @@ namespace lux::render
             w = tex.width;
             h = tex.height;
         }
-        return { std::max(1u, w), std::max(1u, h) };
+        return {std::max(1u, w), std::max(1u, h)};
     }
 } // namespace lux::render

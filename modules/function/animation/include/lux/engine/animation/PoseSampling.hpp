@@ -30,17 +30,16 @@ namespace lux::animation
     /// instead of paying the decompose cost every frame.
     struct BindLocalTRS
     {
-        Eigen::Vector3f    translation{Eigen::Vector3f::Zero()};
+        Eigen::Vector3f translation{Eigen::Vector3f::Zero()};
         Eigen::Quaternionf rotation{Eigen::Quaternionf::Identity()};
-        Eigen::Vector3f    scale{Eigen::Vector3f::Ones()};
+        Eigen::Vector3f scale{Eigen::Vector3f::Ones()};
     };
 
     /// Decompose every bone's `bind_local` into T/R/S once. `out` is resized to
     /// `skeleton.bones.size()`. Call when the skeleton is (re)resolved, then
     /// pass the result to samplePose. Cheap to recompute, but the whole point
     /// is to NOT recompute it per frame.
-    LUX_FUNCTION_PUBLIC void precomputeBindLocals(const lux::rdesc::Skeleton& skeleton,
-                                                  std::vector<BindLocalTRS>&  out);
+    LUX_FUNCTION_PUBLIC void precomputeBindLocals(const lux::rdesc::Skeleton& skeleton, std::vector<BindLocalTRS>& out);
 
     /// Sample @p clip at @p time and write per-bone local transforms into
     /// @p out_pose. Bones not animated by the clip are filled with
@@ -65,12 +64,14 @@ namespace lux::animation
     /// used for per-channel fallback; otherwise samplePose decomposes the bind
     /// pose on demand (correct, but recomputes static data every call). Callers
     /// in a per-frame loop should always supply it.
-    LUX_FUNCTION_PUBLIC void samplePose(const lux::rdesc::AnimationClip& clip,
-                                        const lux::rdesc::Skeleton&      skeleton,
-                                        float                            time,
-                                        bool                             loop,
-                                        lux::rdesc::Pose&                out_pose,
-                                        std::span<const BindLocalTRS>    bind_trs = {});
+    LUX_FUNCTION_PUBLIC void samplePose(
+        const lux::rdesc::AnimationClip& clip,
+        const lux::rdesc::Skeleton& skeleton,
+        float time,
+        bool loop,
+        lux::rdesc::Pose& out_pose,
+        std::span<const BindLocalTRS> bind_trs = {}
+    );
 
     /// Compose world-space skinning matrices from a local-space pose.
     ///
@@ -84,7 +85,8 @@ namespace lux::animation
     ///
     /// `out_matrices` is resized to `skeleton.bones.size()` if needed.
     LUX_FUNCTION_PUBLIC void buildSkinningMatrices(
-        const lux::rdesc::Pose&        pose,
-        const lux::rdesc::Skeleton&    skeleton,
-        std::vector<Eigen::Matrix4f>&  out_matrices);
+        const lux::rdesc::Pose& pose,
+        const lux::rdesc::Skeleton& skeleton,
+        std::vector<Eigen::Matrix4f>& out_matrices
+    );
 }

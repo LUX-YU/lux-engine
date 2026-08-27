@@ -18,8 +18,8 @@
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
-#include <lux/engine/function/render/client/core/RenderViewTypes.hpp>  // CameraView, EntityTransform
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>          // Viewport
+#include <lux/engine/function/render/client/core/RenderViewTypes.hpp> // CameraView, EntityTransform
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>     // Viewport
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 
@@ -43,10 +43,10 @@ namespace lux::render
 
     struct alignas(16) SceneGlobalGpuData
     {
-        float    time_sec;      // 4B
-        float    delta_time;    // 4B
-        uint32_t frame_number;  // 4B
-        float    pad0;          // 4B  → 16B total
+        float time_sec;        // 4B
+        float delta_time;      // 4B
+        uint32_t frame_number; // 4B
+        float pad0;            // 4B  → 16B total
     };
     static_assert(sizeof(SceneGlobalGpuData) == 16);
 
@@ -56,29 +56,28 @@ namespace lux::render
 
     struct alignas(16) ViewGpuData
     {
-        float view[16];      // 64B  col-major mat4
-        float proj[16];      // 64B
-        float inv_view[16];  // 64B
-        float inv_proj[16];  // 64B
-        float cam_pos[4];    // 16B  xyz + w=1
-        float viewport[4];   // 16B  width, height, near_z, far_z
-        std::int32_t camera_page[4]; // xyz relative to RenderScene origin page
+        float view[16];                  // 64B  col-major mat4
+        float proj[16];                  // 64B
+        float inv_view[16];              // 64B
+        float inv_proj[16];              // 64B
+        float cam_pos[4];                // 16B  xyz + w=1
+        float viewport[4];               // 16B  width, height, near_z, far_z
+        std::int32_t camera_page[4];     // xyz relative to RenderScene origin page
         float camera_local_page_size[4]; // local xyz + coordinate page size
     };
     static_assert(sizeof(ViewGpuData) == 320);
     static_assert(sizeof(ViewGpuData) % 16 == 0);
-    static_assert(sizeof(ViewGpuData) == kViewDataStrideBytes,
-                  "ViewGpuData must match the neutral per-view stride (RenderTypes.hpp)");
+    static_assert(
+        sizeof(ViewGpuData) == kViewDataStrideBytes,
+        "ViewGpuData must match the neutral per-view stride (RenderTypes.hpp)");
 
     /// Recover the camera's positive near/far distances from the engine's
     /// Vulkan-ZO projection matrix.  ViewGpuData::viewport.zw is consumed as
     /// near/far by LinearDepth, Fog, Water and SSAO; filling it from
     /// VkViewport::minDepth/maxDepth (normally 0/1) collapses every background
     /// sample to zero metres and leaves the environment black.
-    [[nodiscard]] inline bool projectionDepthRange(
-        const Eigen::Matrix4f& projection,
-        float& near_z,
-        float& far_z) noexcept
+    [[nodiscard]] inline bool
+    projectionDepthRange(const Eigen::Matrix4f& projection, float& near_z, float& far_z) noexcept
     {
         constexpr float kEpsilon = 1.0e-5f;
         const float a = projection(2, 2);
@@ -98,23 +97,20 @@ namespace lux::render
         {
             // Engine Vulkan-ZO orthographic form:
             // a=-1/(far-near), b=-near/(far-near), w=1.
-            if (std::abs(a) < kEpsilon ||
-                std::abs(projection(3, 3) - 1.0f) > kEpsilon)
+            if (std::abs(a) < kEpsilon || std::abs(projection(3, 3) - 1.0f) > kEpsilon)
             {
                 return false;
             }
             recovered_near = std::abs(b / a);
             recovered_far = recovered_near + std::abs(1.0f / a);
         }
-        if (!std::isfinite(recovered_near) ||
-            !std::isfinite(recovered_far))
+        if (!std::isfinite(recovered_near) || !std::isfinite(recovered_far))
         {
             return false;
         }
         if (recovered_far < recovered_near)
             std::swap(recovered_near, recovered_far);
-        if (recovered_near <= 0.0f ||
-            recovered_far - recovered_near < kEpsilon)
+        if (recovered_near <= 0.0f || recovered_far - recovered_near < kEpsilon)
         {
             return false;
         }
@@ -123,18 +119,18 @@ namespace lux::render
         return true;
     }
 
-    inline void fillViewGpuData(const CameraView&      cv,
-                                const EntityTransform& ct,
-                                const Viewport&        vp,
-                                const RenderLargePosition3D& render_origin,
-                                float coordinate_page_size,
-                                ViewGpuData&           out)
+    inline void fillViewGpuData(
+        const CameraView& cv,
+        const EntityTransform& ct,
+        const Viewport& vp,
+        const RenderLargePosition3D& render_origin,
+        float coordinate_page_size,
+        ViewGpuData& out
+    )
     {
-        auto copy = [](const Eigen::Matrix4f& M, float* dst) {
-            std::memcpy(dst, M.data(), sizeof(float) * 16);
-        };
-        copy(cv.view,     out.view);
-        copy(cv.proj,     out.proj);
+        auto copy = [](const Eigen::Matrix4f& M, float* dst) { std::memcpy(dst, M.data(), sizeof(float) * 16); };
+        copy(cv.view, out.view);
+        copy(cv.proj, out.proj);
         copy(cv.inv_view, out.inv_view);
         copy(cv.inv_proj, out.inv_proj);
 
@@ -171,25 +167,24 @@ namespace lux::render
     //  SceneResources
     // =========================================================================
 
-    class SceneResources final
-        : public GPUResourceBase<SceneResources, EGPUResourceType::Scene>
+    class SceneResources final : public GPUResourceBase<SceneResources, EGPUResourceType::Scene>
     {
     public:
         static constexpr EUploadPhase kUploadPhase = EUploadPhase::PostUpload;
 
         using SceneGlobalBuffer = DynamicSSBO<SceneGlobalGpuData>;
-        using ViewBuffer        = DynamicSSBO<ViewGpuData>;
+        using ViewBuffer = DynamicSSBO<ViewGpuData>;
 
         struct InitInfo
         {
-            DeviceContext&        device_context;
-            uint32_t              slices;                  ///< frames_in_flight
-            uint32_t              initial_scene_capacity;  ///< initial SceneGlobal SoA capacity (e.g. 4–8)
-            uint32_t              initial_view_capacity;   ///< initial View SoA capacity (e.g. 4–8)
-            SceneDescriptorArena* arena{nullptr};          ///< per-scene set allocator (growable)
-            VkDescriptorSetLayout set_layout;              ///< Set 0 layout (2 SSBO bindings), shared/global
-            uint32_t              binding_scene_global = static_cast<uint32_t>(ESceneSetBindings::GLOBAL);
-            uint32_t              binding_view_data    = static_cast<uint32_t>(ESceneSetBindings::VIEW);
+            DeviceContext& device_context;
+            uint32_t slices;                      ///< frames_in_flight
+            uint32_t initial_scene_capacity;      ///< initial SceneGlobal SoA capacity (e.g. 4–8)
+            uint32_t initial_view_capacity;       ///< initial View SoA capacity (e.g. 4–8)
+            SceneDescriptorArena* arena{nullptr}; ///< per-scene set allocator (growable)
+            VkDescriptorSetLayout set_layout;     ///< Set 0 layout (2 SSBO bindings), shared/global
+            uint32_t binding_scene_global = static_cast<uint32_t>(ESceneSetBindings::GLOBAL);
+            uint32_t binding_view_data = static_cast<uint32_t>(ESceneSetBindings::VIEW);
 
             /// Transitional: per-slice handles into the domain set, plus this
             /// set's binding offset within the domain. When provided, writes go
@@ -202,22 +197,26 @@ namespace lux::render
             /// EngineSetShapes → LayoutContract chain doesn't get dragged into
             /// this header.
             std::span<const VkDescriptorSet> domain_sets{};
-            uint32_t                         domain_binding_offset{0};
+            uint32_t domain_binding_offset{0};
         };
 
         SceneResources() = default;
-        ~SceneResources() { if (initialized_) shutdown(); }
+        ~SceneResources()
+        {
+            if (initialized_)
+                shutdown();
+        }
 
         SceneResources(const SceneResources&) = delete;
         SceneResources& operator=(const SceneResources&) = delete;
 
         bool init(const InitInfo& info)
         {
-            device_ctx_           = &info.device_context;
-            slices_               = std::max(1u, info.slices);
-            frames_in_flight_     = slices_;
+            device_ctx_ = &info.device_context;
+            slices_ = std::max(1u, info.slices);
+            frames_in_flight_ = slices_;
             binding_scene_global_ = info.binding_scene_global;
-            binding_view_data_    = info.binding_view_data;
+            binding_view_data_ = info.binding_view_data;
             // Copied rather than stored as a span: although the domain-set
             // object's internal array doesn't change after init, storing a span
             // would hide a lifetime dependency inside a pointer — copying at
@@ -236,9 +235,9 @@ namespace lux::render
 
             // Initialise both SoA GPU buffers
             GpuBufferCreateInfo bci{};
-            bci.device_context     = device_ctx_;
-            bci.slices             = slices_;
-            bci.buffer_usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            bci.device_context = device_ctx_;
+            bci.slices = slices_;
+            bci.buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             bci.allow_shader_write = false;
 
             bci.initial_capacity = std::max(1u, info.initial_scene_capacity);
@@ -277,7 +276,10 @@ namespace lux::render
             return h;
         }
 
-        void freeScene(const SlotHandle& slot) { scene_buf_.free(slot); }
+        void freeScene(const SlotHandle& slot)
+        {
+            scene_buf_.free(slot);
+        }
 
         // ── View slot lifecycle (one slot per View) ───────────────────────────
 
@@ -291,7 +293,10 @@ namespace lux::render
             return h;
         }
 
-        void freeView(const SlotHandle& slot) { view_buf_.free(slot); }
+        void freeView(const SlotHandle& slot)
+        {
+            view_buf_.free(slot);
+        }
 
         // ── Batch pre-allocation ─────────────────────────────────────────────
 
@@ -299,7 +304,8 @@ namespace lux::render
         [[nodiscard]] bool reserveScenes(uint32_t count)
         {
             const uint32_t old_gen = scene_buf_.bufferGeneration();
-            if (!scene_buf_.reserve(count)) return false;
+            if (!scene_buf_.reserve(count))
+                return false;
             if (scene_buf_.bufferGeneration() != old_gen)
                 ds_revision_.bump();
             return true;
@@ -309,7 +315,8 @@ namespace lux::render
         [[nodiscard]] bool reserveViews(uint32_t count)
         {
             const uint32_t old_gen = view_buf_.bufferGeneration();
-            if (!view_buf_.reserve(count)) return false;
+            if (!view_buf_.reserve(count))
+                return false;
             if (view_buf_.bufferGeneration() != old_gen)
                 ds_revision_.bump();
             return true;
@@ -368,14 +375,16 @@ namespace lux::render
 
             VkBufferMemoryBarrier2 barriers[2];
             int b_count = 0;
-            if (bar0) barriers[b_count++] = *bar0;
-            if (bar1) barriers[b_count++] = *bar1;
+            if (bar0)
+                barriers[b_count++] = *bar0;
+            if (bar1)
+                barriers[b_count++] = *bar1;
 
             if (b_count > 0)
             {
-                VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+                VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
                 dep.bufferMemoryBarrierCount = static_cast<uint32_t>(b_count);
-                dep.pBufferMemoryBarriers    = barriers;
+                dep.pBufferMemoryBarriers = barriers;
                 vkCmdPipelineBarrier2(cb, &dep);
             }
 
@@ -423,7 +432,7 @@ namespace lux::render
         void writeDescriptorForSet(uint32_t set_index)
         {
             scene_buf_.writeDescriptorSlice(descriptor_sets_[set_index], binding_scene_global_, set_index);
-            view_buf_.writeDescriptorSlice(descriptor_sets_[set_index], binding_view_data_,    set_index);
+            view_buf_.writeDescriptorSlice(descriptor_sets_[set_index], binding_view_data_, set_index);
 
             // Transitional dual write: the same descriptor is also written into
             // this set's region of the domain set.
@@ -438,10 +447,8 @@ namespace lux::render
             // the per-set write above.
             if (VkDescriptorSet dds = domain_.setFor(set_index); dds != VK_NULL_HANDLE)
             {
-                scene_buf_.writeDescriptorSlice(
-                    dds, domain_.binding(binding_scene_global_), set_index);
-                view_buf_.writeDescriptorSlice(
-                    dds, domain_.binding(binding_view_data_),    set_index);
+                scene_buf_.writeDescriptorSlice(dds, domain_.binding(binding_scene_global_), set_index);
+                view_buf_.writeDescriptorSlice(dds, domain_.binding(binding_view_data_), set_index);
             }
         }
 
@@ -453,18 +460,18 @@ namespace lux::render
 
         /// Dual-write target for the transition period: per-slice handles into
         /// the domain set, plus the binding offset within the domain.
-        DomainWriteTarget            domain_{};
+        DomainWriteTarget domain_{};
 
-        DeviceContext*               device_ctx_{ nullptr };
-        uint32_t                     slices_{ 1 };
-        uint32_t                     current_slice_{ 0 };
-        uint32_t                     binding_scene_global_{ 0 };
-        uint32_t                     binding_view_data_{ 1 };
+        DeviceContext* device_ctx_{nullptr};
+        uint32_t slices_{1};
+        uint32_t current_slice_{0};
+        uint32_t binding_scene_global_{0};
+        uint32_t binding_view_data_{1};
 
-        SceneGlobalBuffer            scene_buf_;
-        ViewBuffer                   view_buf_;
+        SceneGlobalBuffer scene_buf_;
+        ViewBuffer view_buf_;
 
-        std::vector<VkDescriptorSet> descriptor_sets_;  // size = FIF, both bindings bound
+        std::vector<VkDescriptorSet> descriptor_sets_; // size = FIF, both bindings bound
     };
 
 } // namespace lux::render

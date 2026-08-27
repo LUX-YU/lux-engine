@@ -13,7 +13,7 @@
 // ============================================================================
 
 #include <lux/engine/render/resources/ShaderResources.hpp>
-#include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>   // resolveShaderStage / EBuiltinShader
+#include <lux/engine/render/resources/BuiltinShaderRegistry.hpp> // resolveShaderStage / EBuiltinShader
 
 #include <cstddef>
 #include <cstdint>
@@ -39,36 +39,32 @@ namespace lux::render
     // ========================================================================
 
     /// 一个 CommConfig 着色器字段的回填/校验描述。
-    template <class Config>
-    struct BuiltinShaderFill
+    template <class Config> struct BuiltinShaderFill
     {
-        ShaderHandle Config::* field;            ///< CommConfig 里的句柄成员
-        bool                   fill{true};       ///< false = 不回填(纯校验,如 Graph 族)
-        EBuiltinShader         builtin{};        ///< 回填用的默认内置
+        ShaderHandle Config::* field; ///< CommConfig 里的句柄成员
+        bool fill{true};              ///< false = 不回填(纯校验,如 Graph 族)
+        EBuiltinShader builtin{};     ///< 回填用的默认内置
         /// Non-empty = conditional entry: pick builtin_alt when extension_flags
         /// contains these bits.
-        GpuDrivenMeshExtFlags  flag_mask{};
-        EBuiltinShader         builtin_alt{};
-        bool                   optional{false};  ///< true = 空即合法;非空必须可解析
+        GpuDrivenMeshExtFlags flag_mask{};
+        EBuiltinShader builtin_alt{};
+        bool optional{false}; ///< true = 空即合法;非空必须可解析
     };
 
     /// 按表回填 + 校验。任一必填字段解析不出模块(或可选字段非空却解析不出)即报错,
     /// 实参带上是哪个内置着色器 —— 这是三个 mesh 族 handler 共用的唯一回填入口。
     template <class Config, std::size_t N>
-    [[nodiscard]] Expected<void> fillAndValidateBuiltinShaders(
-        ShaderResources&                   shaders,
-        Config&                            cc,
-        const BuiltinShaderFill<Config> (&table)[N])
+    [[nodiscard]] Expected<void>
+    fillAndValidateBuiltinShaders(ShaderResources& shaders, Config& cc, const BuiltinShaderFill<Config> (&table)[N])
     {
         for (const BuiltinShaderFill<Config>& entry : table)
         {
             ShaderHandle& handle = cc.*(entry.field);
 
             // 条件条目:扩展旗标命中时换用备选内置(HZB 变体就是这么选的)。
-            const EBuiltinShader builtin =
-                (!entry.flag_mask.empty() && cc.extension_flags.containsAny(entry.flag_mask))
-                    ? entry.builtin_alt
-                    : entry.builtin;
+            const EBuiltinShader builtin = (!entry.flag_mask.empty() && cc.extension_flags.containsAny(entry.flag_mask))
+                                               ? entry.builtin_alt
+                                               : entry.builtin;
 
             if (entry.fill)
             {
@@ -82,8 +78,7 @@ namespace lux::render
             if (entry.optional && handle.isNull())
                 continue;
             if (shaders.get(handle) == nullptr)
-                return renderFailure<err::shader::BuiltinUnavailable>(
-                    static_cast<std::uint32_t>(builtin));
+                return renderFailure<err::shader::BuiltinUnavailable>(static_cast<std::uint32_t>(builtin));
         }
         return {};
     }
@@ -92,8 +87,8 @@ namespace lux::render
     /// 初始化写出字段名,传反就看得见了。
     struct MeshCommConfigExpectation
     {
-        std::uint32_t         comm_version{};
-        std::uint32_t         descriptor_layout_version{};
+        std::uint32_t comm_version{};
+        std::uint32_t descriptor_layout_version{};
         GpuDrivenMeshExtFlags known_ext_flags{};
     };
 
@@ -112,31 +107,33 @@ namespace lux::render
      *        CommConfig does, and a future one that doesn't fails to compile here.
      */
     template <class Config>
-    [[nodiscard]] Expected<void> validateMeshCommConfig(const void*  param,
-                                                        std::size_t  param_size,
-                                                        const MeshCommConfigExpectation& expected,
-                                                        Config&      out_cc)
+    [[nodiscard]] Expected<void> validateMeshCommConfig(
+        const void* param,
+        std::size_t param_size,
+        const MeshCommConfigExpectation& expected,
+        Config& out_cc
+    )
     {
         if (param == nullptr || param_size != sizeof(Config))
             return renderFailure<err::comm::PayloadSizeMismatch>(
                 static_cast<std::uint32_t>(sizeof(Config)),
-                static_cast<std::uint32_t>(param_size));
+                static_cast<std::uint32_t>(param_size)
+            );
 
         out_cc = *static_cast<const Config*>(param);
 
         if (out_cc.comm_config_version != expected.comm_version)
-            return renderFailure<err::comm::ConfigVersionMismatch>(
-                expected.comm_version, out_cc.comm_config_version);
+            return renderFailure<err::comm::ConfigVersionMismatch>(expected.comm_version, out_cc.comm_config_version);
 
         if (out_cc.descriptor_layout_version != expected.descriptor_layout_version)
             return renderFailure<err::comm::DescriptorLayoutVersionMismatch>(
-                expected.descriptor_layout_version, out_cc.descriptor_layout_version);
+                expected.descriptor_layout_version,
+                out_cc.descriptor_layout_version
+            );
 
-        const GpuDrivenMeshExtFlags unknown =
-            out_cc.extension_flags.withoutBitsIn(expected.known_ext_flags);
+        const GpuDrivenMeshExtFlags unknown = out_cc.extension_flags.withoutBitsIn(expected.known_ext_flags);
         if (!unknown.empty())
-            return renderFailure<err::comm::UnknownExtensionFlags>(
-                static_cast<std::uint32_t>(unknown.bits()));
+            return renderFailure<err::comm::UnknownExtensionFlags>(static_cast<std::uint32_t>(unknown.bits()));
 
         return {};
     }
@@ -146,11 +143,12 @@ namespace lux::render
     /// 出口就少一个"忘了把错误传下去"的地方。
     template <class Config, std::size_t N>
     [[nodiscard]] Expected<Config> prepareMeshCommConfig(
-        ShaderResources&                 shaders,
-        const void*                      param,
-        std::size_t                      param_size,
+        ShaderResources& shaders,
+        const void* param,
+        std::size_t param_size,
         const MeshCommConfigExpectation& expected,
-        const BuiltinShaderFill<Config> (&shader_fills)[N])
+        const BuiltinShaderFill<Config> (&shader_fills)[N]
+    )
     {
         Config cc{};
         if (auto validated = validateMeshCommConfig(param, param_size, expected, cc); !validated)

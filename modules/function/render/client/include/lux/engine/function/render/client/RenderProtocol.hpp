@@ -8,7 +8,8 @@
 
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
-#include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp>  // MeshUploadedReply / ReplyMeshUploaded
+#include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp>
+// MeshUploadedReply / ReplyMeshUploaded
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>
 #include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
@@ -78,21 +79,24 @@ namespace lux::render
         // domain (SkinningOperation.hpp, dynamic ids via register_ops_fn). The core
         // protocol no longer names skinning. Ids 25/26 left unused (not reissued, so
         // any stale serialized command fails closed rather than mis-dispatching).
-        inline constexpr TypeId ReadbackTarget      = 27;  ///< GPU->CPU offscreen-target color readback
-        inline constexpr TypeId ReadbackTargetAsync = 28;  ///< deferred GPU->CPU readback (reply by request_id)
-        inline constexpr TypeId DumpRenderGraph   = 29;  ///< debug: copy the scene's compiled render graph text into a caller buffer (dst_ptr)
-        inline constexpr TypeId QueryFeatureParams = 30; ///< enumerate the scene's features + their reflectable params into a caller buffer (dst_ptr)
-        inline constexpr TypeId QueryDeviceCaps    = 37; ///< copy the created device's DeviceCaps into a caller buffer (dst_ptr)
-        inline constexpr TypeId RebaseSceneOrigin  = 38;
-        inline constexpr TypeId QueryGpuTiming     = 39; ///< copy latest fence-retired per-view GPU timing JSON
+        inline constexpr TypeId ReadbackTarget = 27;      ///< GPU->CPU offscreen-target color readback
+        inline constexpr TypeId ReadbackTargetAsync = 28; ///< deferred GPU->CPU readback (reply by request_id)
+        inline constexpr TypeId DumpRenderGraph =
+            29; ///< debug: copy the scene's compiled render graph text into a caller buffer (dst_ptr)
+        inline constexpr TypeId QueryFeatureParams =
+            30; ///< enumerate the scene's features + their reflectable params into a caller buffer (dst_ptr)
+        inline constexpr TypeId QueryDeviceCaps =
+            37; ///< copy the created device's DeviceCaps into a caller buffer (dst_ptr)
+        inline constexpr TypeId RebaseSceneOrigin = 38;
+        inline constexpr TypeId QueryGpuTiming = 39; ///< copy latest fence-retired per-view GPU timing JSON
 
         // ---- RenderTarget 一等化命令面(设计 §1)----
-        inline constexpr TypeId CreateOffscreenTarget = 31;  ///< 建 Offscreen 目标 → ReplyTargetReady
-        inline constexpr TypeId DestroyTarget         = 32;  ///< 两阶段销毁受理 → ReplyTargetReleased(Surface 延迟回执)
-        inline constexpr TypeId SetLayer              = 33;  ///< target 合成链 set/replace 一层
-        inline constexpr TypeId RemoveLayer           = 34;  ///< target 合成链摘一层
-        inline constexpr TypeId ResizeTarget          = 35;  ///< Offscreen 目标改尺寸(直达池)
-        inline constexpr TypeId CreateSurfaceTarget   = 36;  ///< 建 Surface 目标(原生窗口句柄)→ ReplyTargetReady
+        inline constexpr TypeId CreateOffscreenTarget = 31; ///< 建 Offscreen 目标 → ReplyTargetReady
+        inline constexpr TypeId DestroyTarget = 32;         ///< 两阶段销毁受理 → ReplyTargetReleased(Surface 延迟回执)
+        inline constexpr TypeId SetLayer = 33;              ///< target 合成链 set/replace 一层
+        inline constexpr TypeId RemoveLayer = 34;           ///< target 合成链摘一层
+        inline constexpr TypeId ResizeTarget = 35;          ///< Offscreen 目标改尺寸(直达池)
+        inline constexpr TypeId CreateSurfaceTarget = 36;   ///< 建 Surface 目标(原生窗口句柄)→ ReplyTargetReady
 
         // ---- BulkData domain ----
         // 1 was TransformWrite — moved to the StandardMeshStack feature
@@ -123,30 +127,31 @@ namespace lux::render
         // feature-scoped createLight; value reserved). Core no longer names light.
         inline constexpr TypeId ReplyShaderCompiled = 15;
         inline constexpr TypeId ReplyReadbackTarget = 20;
-        inline constexpr TypeId ReplyTextureRegionsApplied = 23;   ///< U2-00 region-batch ack
+        inline constexpr TypeId ReplyTextureRegionsApplied = 23; ///< U2-00 region-batch ack
         inline constexpr TypeId ReplyTextureMipRangeReplaced = 29;
         inline constexpr TypeId ReplyTextureMipDemands = 30;
 
         // ---- Name-based TypeId query ----
-        inline constexpr TypeId QueryTypeId      = 22;
+        inline constexpr TypeId QueryTypeId = 22;
         inline constexpr TypeId ReplyQueryTypeId = 17;
 
         // ---- Debug ----
         inline constexpr TypeId ReplyRenderGraphDump = 21;
-        inline constexpr TypeId ReplyQueryFeatureParams = 22;  ///< NOTE: reply-id space is separate from the command-id space (QueryTypeId command=22)
+        inline constexpr TypeId ReplyQueryFeatureParams =
+            22; ///< NOTE: reply-id space is separate from the command-id space (QueryTypeId command=22)
 
         // ---- Device capability query ----
         inline constexpr TypeId ReplyDeviceCaps = 26;
         inline constexpr TypeId ReplyGpuTiming = 31;
 
         // ---- 渲染线程自发上报(无对应请求,request_id = kInvalidRequestId)----
-        inline constexpr TypeId ReplyErrorEventBatch = 27;  ///< 一批的封面{count, dropped}
-        inline constexpr TypeId ReplyErrorEvent      = 28;  ///< 批内的一条 RenderErrorEvent
+        inline constexpr TypeId ReplyErrorEventBatch = 27; ///< 一批的封面{count, dropped}
+        inline constexpr TypeId ReplyErrorEvent = 28;      ///< 批内的一条 RenderErrorEvent
 
         // ---- Swapchain-scene binding ----
         // 19 was ReplySwapchainBound — 随 RequestSwapchainScene 消亡(不复用)。
-        inline constexpr TypeId ReplyTargetReady    = 24;  ///< RenderTarget 创建回执{target_id}
-        inline constexpr TypeId ReplyTargetReleased = 25;  ///< DestroyTarget 回执(Surface 两阶段延迟)
+        inline constexpr TypeId ReplyTargetReady = 24;    ///< RenderTarget 创建回执{target_id}
+        inline constexpr TypeId ReplyTargetReleased = 25; ///< DestroyTarget 回执(Surface 两阶段延迟)
 
         // ---- Generic dispatch failure ----
         // Emitted by the dispatcher for ANY reply-expecting command that fails to
@@ -235,7 +240,7 @@ namespace lux::render
     struct CreateOffscreenTargetPayload
     {
         lux::math::Extent2u extent{};
-        uint32_t       flags{0};
+        uint32_t flags{0};
     };
     static_assert(std::is_trivially_copyable_v<CreateOffscreenTargetPayload>);
     inline constexpr uint32_t kTargetFlagSampled = 1u << 0;
@@ -245,7 +250,7 @@ namespace lux::render
     /// 的 framebuffer 初始尺寸;此后由 swapchain rebuild 按 caps 跟随。
     struct CreateSurfaceTargetPayload
     {
-        uint64_t       native_window_handle{0};  ///< Win32 = HWND;Android 口子留待实机
+        uint64_t native_window_handle{0}; ///< Win32 = HWND;Android 口子留待实机
         lux::math::Extent2u extent{};
     };
     static_assert(std::is_trivially_copyable_v<CreateSurfaceTargetPayload>);
@@ -263,7 +268,7 @@ namespace lux::render
     struct TargetReleasedReply
     {
         RenderTargetId target{};
-        uint32_t       status{0};   ///< 0 = released;1 = 目标不存在(幂等)
+        uint32_t status{0}; ///< 0 = released;1 = 目标不存在(幂等)
     };
     static_assert(std::is_trivially_copyable_v<TargetReleasedReply>);
 
@@ -272,16 +277,16 @@ namespace lux::render
     struct SetLayerPayload
     {
         RenderTargetId target{};
-        uint32_t       order{0};
-        RenderSceneId  scene_id{};
-        ViewHandle     view{};
+        uint32_t order{0};
+        RenderSceneId scene_id{};
+        ViewHandle view{};
     };
     static_assert(std::is_trivially_copyable_v<SetLayerPayload>);
 
     struct RemoveLayerPayload
     {
         RenderTargetId target{};
-        uint32_t       order{0};
+        uint32_t order{0};
     };
     static_assert(std::is_trivially_copyable_v<RemoveLayerPayload>);
 
@@ -295,7 +300,7 @@ namespace lux::render
     struct TargetReadyReply
     {
         RenderTargetId target{};
-        uint32_t       status{0};   ///< 0 = ok
+        uint32_t status{0}; ///< 0 = ok
     };
     static_assert(std::is_trivially_copyable_v<TargetReadyReply>);
 
@@ -312,16 +317,16 @@ namespace lux::render
     struct DumpRenderGraphPayload
     {
         RenderSceneId scene_id{};
-        uint64_t      dst_ptr{0};       ///< reinterpret_cast<uintptr_t> of caller buffer
-        uint64_t      dst_capacity{0};  ///< bytes available at dst_ptr
+        uint64_t dst_ptr{0};      ///< reinterpret_cast<uintptr_t> of caller buffer
+        uint64_t dst_capacity{0}; ///< bytes available at dst_ptr
     };
     static_assert(std::is_trivially_copyable_v<DumpRenderGraphPayload>);
 
     struct QueryGpuTimingPayload
     {
         RenderSceneId scene_id{};
-        uint64_t      dst_ptr{0};
-        uint64_t      dst_capacity{0};
+        uint64_t dst_ptr{0};
+        uint64_t dst_capacity{0};
     };
     static_assert(std::is_trivially_copyable_v<QueryGpuTimingPayload>);
 
@@ -337,8 +342,8 @@ namespace lux::render
     struct QueryFeatureParamsPayload
     {
         RenderSceneId scene_id{};
-        uint64_t      dst_ptr{0};       ///< reinterpret_cast<uintptr_t> of caller buffer
-        uint64_t      dst_capacity{0};  ///< bytes available at dst_ptr
+        uint64_t dst_ptr{0};      ///< reinterpret_cast<uintptr_t> of caller buffer
+        uint64_t dst_capacity{0}; ///< bytes available at dst_ptr
     };
     static_assert(std::is_trivially_copyable_v<QueryFeatureParamsPayload>);
 
@@ -349,8 +354,8 @@ namespace lux::render
     /// 因为 `DeviceCaps` 会随适配面持续长大,塞进回复迟早撞上载荷上限。
     struct QueryDeviceCapsPayload
     {
-        uint64_t dst_ptr{0};       ///< reinterpret_cast<uintptr_t> of caller's DeviceCaps
-        uint64_t dst_capacity{0};  ///< bytes available at dst_ptr
+        uint64_t dst_ptr{0};      ///< reinterpret_cast<uintptr_t> of caller's DeviceCaps
+        uint64_t dst_capacity{0}; ///< bytes available at dst_ptr
     };
     static_assert(std::is_trivially_copyable_v<QueryDeviceCapsPayload>);
 
@@ -362,9 +367,9 @@ namespace lux::render
     struct ReadbackTargetPayload
     {
         RenderTargetId target{};
-        uint64_t       dst_ptr{0};       ///< reinterpret_cast<uintptr_t> of caller buffer
-        uint64_t       dst_capacity{0};  ///< bytes available at dst_ptr
-        uint8_t        slot{0};          ///< TargetSlot to read back (0 = SceneColor)
+        uint64_t dst_ptr{0};      ///< reinterpret_cast<uintptr_t> of caller buffer
+        uint64_t dst_capacity{0}; ///< bytes available at dst_ptr
+        uint8_t slot{0};          ///< TargetSlot to read back (0 = SceneColor)
     };
     static_assert(std::is_trivially_copyable_v<ReadbackTargetPayload>);
 
@@ -378,10 +383,10 @@ namespace lux::render
     struct ReadbackTargetAsyncPayload
     {
         RenderTargetId target{};
-        uint64_t       dst_ptr{0};        ///< reinterpret_cast<uintptr_t> of caller buffer
-        uint64_t       dst_capacity{0};   ///< bytes available at dst_ptr
-        uint32_t       settle_frames{3};  ///< render ticks before the copy is submitted
-        uint8_t        slot{0};           ///< TargetSlot to read back (0 = SceneColor)
+        uint64_t dst_ptr{0};       ///< reinterpret_cast<uintptr_t> of caller buffer
+        uint64_t dst_capacity{0};  ///< bytes available at dst_ptr
+        uint32_t settle_frames{3}; ///< render ticks before the copy is submitted
+        uint8_t slot{0};           ///< TargetSlot to read back (0 = SceneColor)
     };
     static_assert(std::is_trivially_copyable_v<ReadbackTargetAsyncPayload>);
 
@@ -416,9 +421,9 @@ namespace lux::render
 
     struct AddFeaturePayload
     {
-        RenderSceneId   scene_id{};
-        std::uint32_t   feature_type_id{0}; // assigned by RegisterFeatureType reply
-        std::uint32_t   attachment_index{0}; // index into AttachmentRecord table (cold path)
+        RenderSceneId scene_id{};
+        std::uint32_t feature_type_id{0};  // assigned by RegisterFeatureType reply
+        std::uint32_t attachment_index{0}; // index into AttachmentRecord table (cold path)
     };
     static_assert(std::is_trivially_copyable_v<AddFeaturePayload>);
 
@@ -450,7 +455,7 @@ namespace lux::render
 
     struct SubmitImGuiDrawDataPayload
     {
-        RenderSceneId scene_id{};      ///< Which ImGui scene to render to
+        RenderSceneId scene_id{};          ///< Which ImGui scene to render to
         std::uint32_t attachment_index{0}; ///< Index into AttachmentRecord (ImDrawDataSnapshot)
     };
     static_assert(std::is_trivially_copyable_v<SubmitImGuiDrawDataPayload>);
@@ -459,7 +464,7 @@ namespace lux::render
 
     struct QueryTypeIdPayload
     {
-        char name[64]{};               ///< Pre-agreed handler name to look up
+        char name[64]{}; ///< Pre-agreed handler name to look up
     };
     static_assert(std::is_trivially_copyable_v<QueryTypeIdPayload>);
 
@@ -491,14 +496,14 @@ namespace lux::render
     struct SceneCreatedReply
     {
         RenderSceneId scene_id{};
-        RenderError   error{};
+        RenderError error{};
     };
     static_assert(std::is_trivially_copyable_v<SceneCreatedReply>);
 
     /// AddView 回执。`view` 无效时 `error` 说明原因;成功时 `error.ok()`。
     struct ViewCreatedReply
     {
-        ViewHandle  view{};
+        ViewHandle view{};
         RenderError error{};
     };
     static_assert(std::is_trivially_copyable_v<ViewCreatedReply>);
@@ -508,12 +513,12 @@ namespace lux::render
 
     struct ReadbackTargetReply
     {
-        uint32_t status{0};           ///< 0 = success; non-zero = error code
+        uint32_t status{0}; ///< 0 = success; non-zero = error code
         uint32_t width{0};
         uint32_t height{0};
         uint32_t bytes_per_pixel{0};
         uint64_t bytes_written{0};
-        uint32_t format{0};           ///< lux::rdesc::ETextureFormat of written pixels
+        uint32_t format{0}; ///< lux::rdesc::ETextureFormat of written pixels
     };
     static_assert(std::is_trivially_copyable_v<ReadbackTargetReply>);
 
@@ -522,9 +527,9 @@ namespace lux::render
     /// If needed > capacity the caller should resize to `needed` and re-issue.
     struct RenderGraphDumpReply
     {
-        uint32_t status{0};    ///< 0 = ok; non-zero = error (e.g. scene not found)
-        uint32_t needed{0};    ///< full dump size in bytes
-        uint32_t written{0};   ///< bytes copied into the caller buffer
+        uint32_t status{0};  ///< 0 = ok; non-zero = error (e.g. scene not found)
+        uint32_t needed{0};  ///< full dump size in bytes
+        uint32_t written{0}; ///< bytes copied into the caller buffer
     };
     static_assert(std::is_trivially_copyable_v<RenderGraphDumpReply>);
 
@@ -542,10 +547,10 @@ namespace lux::render
     /// (count = written = 0) — resize to `needed` and re-issue.
     struct QueryFeatureParamsReply
     {
-        uint32_t status{0};    ///< 0 = ok; non-zero = error (e.g. scene not found)
-        uint32_t needed{0};    ///< full packed size in bytes
-        uint32_t written{0};   ///< bytes copied into the caller buffer
-        uint32_t count{0};     ///< number of feature records written
+        uint32_t status{0};  ///< 0 = ok; non-zero = error (e.g. scene not found)
+        uint32_t needed{0};  ///< full packed size in bytes
+        uint32_t written{0}; ///< bytes copied into the caller buffer
+        uint32_t count{0};   ///< number of feature records written
     };
     static_assert(std::is_trivially_copyable_v<QueryFeatureParamsReply>);
 
@@ -555,10 +560,10 @@ namespace lux::render
     struct DeviceCapsReply
     {
         RenderError error{};
-        uint32_t    version{0};
-        uint32_t    needed{0};
-        uint32_t    written{0};
-        uint32_t    feature_level{0};   ///< EFeatureLevel:引擎按 caps 归纳出的分级
+        uint32_t version{0};
+        uint32_t needed{0};
+        uint32_t written{0};
+        uint32_t feature_level{0}; ///< EFeatureLevel:引擎按 caps 归纳出的分级
     };
     static_assert(std::is_trivially_copyable_v<DeviceCapsReply>);
 
@@ -607,7 +612,7 @@ namespace lux::render
     struct TextureRegionsAppliedReply
     {
         uint64_t content_revision{0};
-        uint32_t status{0};   ///< numeric ERegionUploadStatus
+        uint32_t status{0}; ///< numeric ERegionUploadStatus
         uint32_t reserved_{0};
     };
     static_assert(std::is_trivially_copyable_v<TextureRegionsAppliedReply>);
@@ -639,13 +644,13 @@ namespace lux::render
     struct FeatureAddedReply
     {
         FeatureHandle feature{};
-        RenderError   error{};
+        RenderError error{};
     };
     static_assert(std::is_trivially_copyable_v<FeatureAddedReply>);
 
     struct FeatureTypeRegisteredReply
     {
-        std::uint32_t feature_type_id{0};   ///< >=1 on success, 0 on failure (see `error`)
+        std::uint32_t feature_type_id{0}; ///< >=1 on success, 0 on failure (see `error`)
         std::uint32_t op_count{0};
         TypeId ops[16]{};
         /// EFeatureTypeRegisterStatus on success (0 = Registered, 1 = AlreadyRegistered).
@@ -655,7 +660,7 @@ namespace lux::render
         /// feature_type_id == 0 时说明为什么(服务器未初始化、工厂没有 create_fn、
         /// 稳定类型 id 撞车……)。此前这个原因只打在服务端 stderr 上,客户端拿到的
         /// 只有一个 0。
-        RenderError   error{};
+        RenderError error{};
     };
     static_assert(std::is_trivially_copyable_v<FeatureTypeRegisteredReply>);
 
@@ -663,16 +668,14 @@ namespace lux::render
     //  CommandTraits specializations — commands that produce replies
     // =============================================================================
 
-    template <>
-    struct CommandTraits<CreateScenePayload>
+    template <> struct CommandTraits<CreateScenePayload>
     {
         using Reply = SceneCreatedReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplySceneCreated;
     };
 
-    template <>
-    struct CommandTraits<AddViewPayload>
+    template <> struct CommandTraits<AddViewPayload>
     {
         using Reply = ViewCreatedReply;
         static constexpr bool has_reply = true;
@@ -684,80 +687,70 @@ namespace lux::render
     // 而不是向 destroyTexture(全局资源、无界池)看齐。会被拒的方式:场景不存在
     // (句柄陈旧/已销毁)、视图不可摘(重复摘/已在销毁中)。此前即发即忘,被拒时
     // 客户端毫不知情 —— 有界的视图池摘没摘掉,它只能猜。
-    template <>
-    struct CommandTraits<RemoveViewPayload>
+    template <> struct CommandTraits<RemoveViewPayload>
     {
         using Reply = GenericOkReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyGenericOk;
     };
 
-    template <>
-    struct CommandTraits<CreateOffscreenTargetPayload>
+    template <> struct CommandTraits<CreateOffscreenTargetPayload>
     {
         using Reply = TargetReadyReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyTargetReady;
     };
 
-    template <>
-    struct CommandTraits<CreateSurfaceTargetPayload>
+    template <> struct CommandTraits<CreateSurfaceTargetPayload>
     {
         using Reply = TargetReadyReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyTargetReady;
     };
 
-    template <>
-    struct CommandTraits<DestroyTargetPayload>
+    template <> struct CommandTraits<DestroyTargetPayload>
     {
         using Reply = TargetReleasedReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyTargetReleased;
     };
 
-    template <>
-    struct CommandTraits<ReadbackTargetPayload>
+    template <> struct CommandTraits<ReadbackTargetPayload>
     {
         using Reply = ReadbackTargetReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyReadbackTarget;
     };
 
-    template <>
-    struct CommandTraits<ReadbackTargetAsyncPayload>
+    template <> struct CommandTraits<ReadbackTargetAsyncPayload>
     {
         using Reply = ReadbackTargetReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyReadbackTarget;
     };
 
-    template <>
-    struct CommandTraits<DumpRenderGraphPayload>
+    template <> struct CommandTraits<DumpRenderGraphPayload>
     {
         using Reply = RenderGraphDumpReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyRenderGraphDump;
     };
 
-    template <>
-    struct CommandTraits<QueryGpuTimingPayload>
+    template <> struct CommandTraits<QueryGpuTimingPayload>
     {
         using Reply = GpuTimingReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyGpuTiming;
     };
 
-    template <>
-    struct CommandTraits<QueryFeatureParamsPayload>
+    template <> struct CommandTraits<QueryFeatureParamsPayload>
     {
         using Reply = QueryFeatureParamsReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyQueryFeatureParams;
     };
 
-    template <>
-    struct CommandTraits<QueryDeviceCapsPayload>
+    template <> struct CommandTraits<QueryDeviceCapsPayload>
     {
         using Reply = DeviceCapsReply;
         static constexpr bool has_reply = true;
@@ -768,16 +761,14 @@ namespace lux::render
     // (the feature owns the add-instance reply contract; reply_type_id is now
     // derived from the Reply type, not the core ReplyMeshSlot tag).
 
-    template <>
-    struct CommandTraits<AddFeaturePayload>
+    template <> struct CommandTraits<AddFeaturePayload>
     {
         using Reply = FeatureAddedReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyFeatureAdded;
     };
 
-    template <>
-    struct CommandTraits<SetActiveScenePayload>
+    template <> struct CommandTraits<SetActiveScenePayload>
     {
         using Reply = GenericOkReply;
         static constexpr bool has_reply = true;
@@ -787,32 +778,28 @@ namespace lux::render
     // 卸载 / 启停都会被拒:反向依赖挡着、句柄过期、特性声明了不可运行期关闭。
     // 此前两者都是 fire-and-forget,被拒时客户端毫不知情 —— 它以为特性已经没了
     // 或者已经关了,后续的判断全建立在这个错误认知上。
-    template <>
-    struct CommandTraits<RemoveFeaturePayload>
+    template <> struct CommandTraits<RemoveFeaturePayload>
     {
         using Reply = GenericOkReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyGenericOk;
     };
 
-    template <>
-    struct CommandTraits<SetFeatureEnabledPayload>
+    template <> struct CommandTraits<SetFeatureEnabledPayload>
     {
         using Reply = GenericOkReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyGenericOk;
     };
 
-    template <>
-    struct CommandTraits<RegisterFeatureTypePayload>
+    template <> struct CommandTraits<RegisterFeatureTypePayload>
     {
         using Reply = FeatureTypeRegisteredReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyFeatureTypeRegistered;
     };
 
-    template <>
-    struct CommandTraits<UnregisterFeatureTypePayload>
+    template <> struct CommandTraits<UnregisterFeatureTypePayload>
     {
         using Reply = GenericOkReply;
         static constexpr bool has_reply = true;
@@ -824,50 +811,42 @@ namespace lux::render
     // CommandTraits<UploadMeshPayload> moved to MeshStackOperation.hpp (the payload is a
     // feature type now; it reuses the shared-infra reply_type_id ReplyMeshUploaded).
 
-    template <>
-    struct CommandTraits<CreateTexture2DPayload>
+    template <> struct CommandTraits<CreateTexture2DPayload>
     {
         using Reply = Texture2DCreatedReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyTexture2DCreated;
     };
 
-    template <>
-    struct CommandTraits<UpdateTexture2DPayload>
+    template <> struct CommandTraits<UpdateTexture2DPayload>
     {
         using Reply = GenericOkReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyGenericOk;
     };
 
-    template <>
-    struct CommandTraits<ReplaceTexture2DMipRangePayload>
+    template <> struct CommandTraits<ReplaceTexture2DMipRangePayload>
     {
         using Reply = TextureMipRangeReplacedReply;
         static constexpr bool has_reply = true;
-        static constexpr TypeId reply_type_id =
-            type_ids::ReplyTextureMipRangeReplaced;
+        static constexpr TypeId reply_type_id = type_ids::ReplyTextureMipRangeReplaced;
     };
 
-    template <>
-    struct CommandTraits<QueryTextureMipDemandsPayload>
+    template <> struct CommandTraits<QueryTextureMipDemandsPayload>
     {
         using Reply = TextureMipDemandsReply;
         static constexpr bool has_reply = true;
-        static constexpr TypeId reply_type_id =
-            type_ids::ReplyTextureMipDemands;
+        static constexpr TypeId reply_type_id = type_ids::ReplyTextureMipDemands;
     };
 
-    template <>
-    struct CommandTraits<CreateCubeTexturePayload>
+    template <> struct CommandTraits<CreateCubeTexturePayload>
     {
         using Reply = CubeTextureCreatedReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyCubeTextureCreated;
     };
 
-    template <>
-    struct CommandTraits<CreatePersistentTexture2DPayload>
+    template <> struct CommandTraits<CreatePersistentTexture2DPayload>
     {
         // Same reply shape as any texture create: {handle, status}. status carries
         // ERegionUploadStatus (including retryable CapacityExhausted).
@@ -876,16 +855,14 @@ namespace lux::render
         static constexpr TypeId reply_type_id = type_ids::ReplyTexture2DCreated;
     };
 
-    template <>
-    struct CommandTraits<UpdateTextureRegionsPayload>
+    template <> struct CommandTraits<UpdateTextureRegionsPayload>
     {
         using Reply = TextureRegionsAppliedReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyTextureRegionsApplied;
     };
 
-    template <>
-    struct CommandTraits<UpdateCubeTexturePayload>
+    template <> struct CommandTraits<UpdateCubeTexturePayload>
     {
         using Reply = GenericOkReply;
         static constexpr bool has_reply = true;
@@ -901,16 +878,14 @@ namespace lux::render
     // CommandTraits<CreateLightPayload> moved to LightOperation.hpp (the light
     // create op is feature-scoped; its reply binding travels with the payload).
 
-    template <>
-    struct CommandTraits<CompileShaderPayload>
+    template <> struct CommandTraits<CompileShaderPayload>
     {
         using Reply = ShaderCompiledReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyShaderCompiled;
     };
 
-    template <>
-    struct CommandTraits<QueryTypeIdPayload>
+    template <> struct CommandTraits<QueryTypeIdPayload>
     {
         using Reply = QueryTypeIdReply;
         static constexpr bool has_reply = true;

@@ -105,7 +105,7 @@ namespace lux::rdesc
 
     /**
      * @brief Structure containing basic texture information.
-     * 
+     *
      * This structure holds the fundamental properties of a texture,
      * including its dimensions and color channel information.
      */
@@ -131,9 +131,9 @@ namespace lux::rdesc
     // for serialization/deserialization (POD – written directly into .luxasset)
     struct TextureAssetInfo
     {
-        int32_t width{0};    ///< Width of the texture in pixels
-        int32_t height{0};   ///< Height of the texture in pixels
-        int32_t channel{0};  ///< Number of colour channels (e.g. 4 for RGBA)
+        int32_t width{0};   ///< Width of the texture in pixels
+        int32_t height{0};  ///< Height of the texture in pixels
+        int32_t channel{0}; ///< Number of colour channels (e.g. 4 for RGBA)
         uint32_t layers{1};
         uint32_t mip_count{1};
         uint32_t pixel_format{static_cast<uint32_t>(ETexturePixelFormat::RGBA8_SRGB)};
@@ -146,7 +146,7 @@ namespace lux::rdesc
 
     /**
      * @brief Represents a loaded texture resource.
-     * 
+     *
      * The Texture class encapsulates texture data and provides access to
      * texture properties such as dimensions and pixel data. It manages
      * the lifetime of texture data and provides copy/move semantics.
@@ -181,15 +181,17 @@ namespace lux::rdesc
          * @brief Gets the width of the texture.
          * @return Width in pixels
          */
-        [[nodiscard]] int width() const {
-			return info_.width;
-		}
+        [[nodiscard]] int width() const
+        {
+            return info_.width;
+        }
 
         /**
          * @brief Gets the height of the texture.
          * @return Height in pixels
          */
-        [[nodiscard]] int height() const {
+        [[nodiscard]] int height() const
+        {
             return info_.height;
         }
 
@@ -197,37 +199,45 @@ namespace lux::rdesc
          * @brief Gets the number of color channels.
          * @return Number of channels (e.g., 3 for RGB, 4 for RGBA)
          */
-        [[nodiscard]] int channel() const {
-			return info_.channel;
-		}
+        [[nodiscard]] int channel() const
+        {
+            return info_.channel;
+        }
 
-        [[nodiscard]] ETexturePixelFormat pixelFormat() const {
+        [[nodiscard]] ETexturePixelFormat pixelFormat() const
+        {
             return info_.pixel_format;
         }
 
-        [[nodiscard]] ETextureColorSpace colorSpace() const {
+        [[nodiscard]] ETextureColorSpace colorSpace() const
+        {
             return info_.color_space;
         }
 
-        [[nodiscard]] uint32_t layers() const {
+        [[nodiscard]] uint32_t layers() const
+        {
             return info_.layers;
         }
 
-        [[nodiscard]] uint32_t mipCount() const {
+        [[nodiscard]] uint32_t mipCount() const
+        {
             return info_.mip_count;
         }
 
-        [[nodiscard]] uint32_t flags() const {
+        [[nodiscard]] uint32_t flags() const
+        {
             return info_.flags;
         }
 
-        [[nodiscard]] const TextureMipRange& mipRange(uint32_t level) const {
+        [[nodiscard]] const TextureMipRange& mipRange(uint32_t level) const
+        {
             if (level >= kTextureMaxMipCount)
                 level = 0;
             return info_.mip_ranges[level];
         }
 
-        [[nodiscard]] const TextureInfo& info() const {
+        [[nodiscard]] const TextureInfo& info() const
+        {
             return info_;
         }
 
@@ -235,13 +245,15 @@ namespace lux::rdesc
          * @brief Gets a const pointer to the texture data.
          * @return Const pointer to the pixel data
          */
-        [[nodiscard]] const void* data() const {
-			return pixels_.data();
-		}
+        [[nodiscard]] const void* data() const
+        {
+            return pixels_.data();
+        }
 
-        [[nodiscard]] size_t size() const {
-			return pixels_.size();
-		}
+        [[nodiscard]] size_t size() const
+        {
+            return pixels_.size();
+        }
 
         [[nodiscard]] const lux::cxx::SharedBytes<>& pixels() const noexcept
         {
@@ -251,7 +263,8 @@ namespace lux::rdesc
     private:
         Texture(TextureInfo info, lux::cxx::SharedBytes<> pixels) noexcept
             : info_(std::move(info)), pixels_(std::move(pixels))
-        {}
+        {
+        }
 
         TextureInfo info_{};
         lux::cxx::SharedBytes<> pixels_;

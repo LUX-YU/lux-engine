@@ -42,27 +42,36 @@ namespace lux::render
     // =========================================================================
     //  Type tags — empty structs used solely to distinguish handle types.
     // =========================================================================
-    struct MeshTag{};
-    struct MaterialTag{};
-    struct TextureTag{};
-    struct LightTag{};
-    struct AABBHandleTag{};
+    struct MeshTag
+    {
+    };
+    struct MaterialTag
+    {
+    };
+    struct TextureTag
+    {
+    };
+    struct LightTag
+    {
+    };
+    struct AABBHandleTag
+    {
+    };
 
     // =========================================================================
     //  RenderResourceHandle<Tag> — alias to lux::cxx::SlotKey<Tag>
     // =========================================================================
 
-    template <typename Tag>
-    using RenderResourceHandle = lux::cxx::SlotKey<Tag>;
+    template <typename Tag> using RenderResourceHandle = lux::cxx::SlotKey<Tag>;
 
     // =========================================================================
     //  Concrete handle aliases
     // =========================================================================
-    using RMeshHandle     = RenderResourceHandle<MeshTag>;
+    using RMeshHandle = RenderResourceHandle<MeshTag>;
     using RMaterialHandle = RenderResourceHandle<MaterialTag>;
-    using RTextureHandle  = RenderResourceHandle<TextureTag>;
-    using RLightHandle    = RenderResourceHandle<LightTag>;
-    using RAABBHandle     = RenderResourceHandle<AABBHandleTag>;
+    using RTextureHandle = RenderResourceHandle<TextureTag>;
+    using RLightHandle = RenderResourceHandle<LightTag>;
+    using RAABBHandle = RenderResourceHandle<AABBHandleTag>;
 
     // =========================================================================
     //  跨线句柄 ↔ 内部句柄 的转换
@@ -73,8 +82,10 @@ namespace lux::render
     /// 它此前住在 L5 的**私有** RenderServerImpl.hpp 里 —— 于是每个只想转个
     /// 句柄的装配 TU 都得 include 整个服务端 Impl 头,把 Impl 的每个字段一并
     /// 拉进自己的可见范围。一个三行的类型工具不该有这种影响半径。
-    template<typename To, typename From>
-    constexpr To handle_cast(From h) noexcept { return To{h.index, h.gen}; }
+    template <typename To, typename From> constexpr To handle_cast(From h) noexcept
+    {
+        return To{h.index, h.gen};
+    }
 
 } // namespace lux::render
 
@@ -83,8 +94,7 @@ namespace lux::render
 // =============================================================================
 namespace std
 {
-    template <typename Tag, typename I, typename G>
-    struct hash<lux::cxx::SlotKey<Tag, I, G>>
+    template <typename Tag, typename I, typename G> struct hash<lux::cxx::SlotKey<Tag, I, G>>
     {
         size_t operator()(const lux::cxx::SlotKey<Tag, I, G>& h) const noexcept
         {

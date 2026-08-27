@@ -76,63 +76,89 @@ namespace lux::render
         /// Immediately destroy all queued resources (call at shutdown).
         void flushAll();
 
-        [[nodiscard]] uint64_t currentSerial() const noexcept { return current_serial_; }
-        [[nodiscard]] size_t pendingCount() const noexcept { return pending_count_; }
+        [[nodiscard]] uint64_t currentSerial() const noexcept
+        {
+            return current_serial_;
+        }
+        [[nodiscard]] size_t pendingCount() const noexcept
+        {
+            return pending_count_;
+        }
 
     private:
-        enum class PendingType : uint8_t { Buffer, RawBuffer, DescriptorSet, Image, ImageView, Sampler, DeviceMemory, Semaphore };
+        enum class PendingType : uint8_t
+        {
+            Buffer,
+            RawBuffer,
+            DescriptorSet,
+            Image,
+            ImageView,
+            Sampler,
+            DeviceMemory,
+            Semaphore
+        };
 
-        struct BufferPayload {
-            VkBuffer      buffer;
+        struct BufferPayload
+        {
+            VkBuffer buffer;
             VmaAllocation allocation;
         };
 
-        struct RawBufferPayload {
-            VkBuffer      buffer;
+        struct RawBufferPayload
+        {
+            VkBuffer buffer;
         };
 
-        struct DescSetPayload {
+        struct DescSetPayload
+        {
             VkDescriptorPool pool;
-            VkDescriptorSet  set;
+            VkDescriptorSet set;
         };
 
-        struct ImagePayload {
-            VkImage       image;
+        struct ImagePayload
+        {
+            VkImage image;
             VmaAllocation allocation;
         };
 
-        struct ImageViewPayload {
-            VkImageView   view;
+        struct ImageViewPayload
+        {
+            VkImageView view;
         };
 
-        struct SamplerPayload {
-            VkSampler     sampler;
+        struct SamplerPayload
+        {
+            VkSampler sampler;
         };
 
-        struct DeviceMemoryPayload {
+        struct DeviceMemoryPayload
+        {
             VkDeviceMemory memory;
         };
 
-        struct SemaphorePayload {
-            VkSemaphore   semaphore;
+        struct SemaphorePayload
+        {
+            VkSemaphore semaphore;
         };
 
-        union Payload {
-            BufferPayload       buffer;
-            RawBufferPayload    raw_buffer;
-            DescSetPayload      desc_set;
-            ImagePayload        image;
-            ImageViewPayload    image_view;
-            SamplerPayload      sampler;
+        union Payload
+        {
+            BufferPayload buffer;
+            RawBufferPayload raw_buffer;
+            DescSetPayload desc_set;
+            ImagePayload image;
+            ImageViewPayload image_view;
+            SamplerPayload sampler;
             DeviceMemoryPayload device_memory;
-            SemaphorePayload    semaphore;
+            SemaphorePayload semaphore;
         };
 
-        struct PendingDestroy {
-            uint64_t    retire_serial;
+        struct PendingDestroy
+        {
+            uint64_t retire_serial;
             PendingType type;
-            Payload     payload;
-            bool        active{false};
+            Payload payload;
+            bool active{false};
         };
 
         void enqueue(PendingDestroy&& pending);
@@ -140,8 +166,8 @@ namespace lux::render
         void destroy(PendingDestroy& p);
 
         VmaAllocator allocator_ = VK_NULL_HANDLE;
-        VkDevice     device_    = VK_NULL_HANDLE;
-        uint64_t     current_serial_ = 0;
+        VkDevice device_ = VK_NULL_HANDLE;
+        uint64_t current_serial_ = 0;
 
         std::vector<PendingDestroy> entries_;
         std::vector<uint32_t> free_entries_;
@@ -159,4 +185,3 @@ namespace lux::render
     };
 
 } // namespace lux::render
-

@@ -8,7 +8,7 @@ namespace lux::math
      */
     struct Ray
     {
-        Eigen::Vector3f origin    = Eigen::Vector3f::Zero();
+        Eigen::Vector3f origin = Eigen::Vector3f::Zero();
         Eigen::Vector3f direction = Eigen::Vector3f::UnitZ(); ///< Must be normalized
 
         /// Evaluate a point along the ray: origin + t * direction.

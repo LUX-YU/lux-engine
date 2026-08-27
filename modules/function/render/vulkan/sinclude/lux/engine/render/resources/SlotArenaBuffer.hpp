@@ -50,43 +50,47 @@
 namespace lux::render
 {
     /// @tparam ElemT 槽位里的元素类型(顶点 / 点),只用于 sizeof 与 span 类型。
-    template <typename ElemT>
-    class SlotArenaBuffer
+    template <typename ElemT> class SlotArenaBuffer
     {
     public:
         /// 一个槽位在竞技场里的位置。字段用中性名:两个领域曾各自叫
         /// first_vertex/vertex_count 与 first_point/point_count,同一个概念两套名字。
         struct Slot
         {
-            uint32_t first{0};      ///< 起始元素下标
-            uint32_t capacity{0};   ///< 已分配容量(>= count)
-            uint32_t count{0};      ///< 实际存活元素数(供绘制用)
+            uint32_t first{0};    ///< 起始元素下标
+            uint32_t capacity{0}; ///< 已分配容量(>= count)
+            uint32_t count{0};    ///< 实际存活元素数(供绘制用)
         };
 
         /// "无此 id" / "分配失败" 的哨兵。
         static constexpr uint32_t kInvalidId = ~uint32_t{0};
 
         SlotArenaBuffer() = default;
-        ~SlotArenaBuffer() { shutdown(); }
+        ~SlotArenaBuffer()
+        {
+            shutdown();
+        }
 
-        SlotArenaBuffer(const SlotArenaBuffer&)            = delete;
+        SlotArenaBuffer(const SlotArenaBuffer&) = delete;
         SlotArenaBuffer& operator=(const SlotArenaBuffer&) = delete;
-        SlotArenaBuffer(SlotArenaBuffer&&)                 = delete;
-        SlotArenaBuffer& operator=(SlotArenaBuffer&&)      = delete;
+        SlotArenaBuffer(SlotArenaBuffer&&) = delete;
+        SlotArenaBuffer& operator=(SlotArenaBuffer&&) = delete;
 
         // ── 生命周期 ────────────────────────────────────────────────────
 
         bool init(VmaAllocator allocator, uint32_t max_elements)
         {
-            if (isInitialized()) return true;
-            if (!allocator || max_elements == 0) return false;
+            if (isInitialized())
+                return true;
+            if (!allocator || max_elements == 0)
+                return false;
 
-            allocator_    = allocator;
+            allocator_ = allocator;
             max_elements_ = max_elements;
 
             if (!createBuffer(max_elements_, buffer_, allocation_))
             {
-                buffer_     = VK_NULL_HANDLE;
+                buffer_ = VK_NULL_HANDLE;
                 allocation_ = VK_NULL_HANDLE;
                 return false;
             }
@@ -98,23 +102,36 @@ namespace lux::render
 
         void shutdown()
         {
-            if (!isInitialized()) return;
+            if (!isInitialized())
+                return;
 
             vmaDestroyBuffer(allocator_, buffer_, allocation_);
-            buffer_       = VK_NULL_HANDLE;
-            allocation_   = VK_NULL_HANDLE;
-            allocator_    = nullptr;
+            buffer_ = VK_NULL_HANDLE;
+            allocation_ = VK_NULL_HANDLE;
+            allocator_ = nullptr;
             max_elements_ = 0;
 
             slots_.clear();
             free_list_.clear();
         }
 
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept { deferred_queue_ = q; }
-        void setRetireScheduler(FrameRetireScheduler* rs) noexcept { retire_scheduler_ = rs; }
-        void setRetireOwnerToken(FrameRetireScheduler::OwnerToken t) noexcept { retire_owner_token_ = t; }
+        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
+        {
+            deferred_queue_ = q;
+        }
+        void setRetireScheduler(FrameRetireScheduler* rs) noexcept
+        {
+            retire_scheduler_ = rs;
+        }
+        void setRetireOwnerToken(FrameRetireScheduler::OwnerToken t) noexcept
+        {
+            retire_owner_token_ = t;
+        }
 
-        [[nodiscard]] bool isInitialized() const noexcept { return buffer_ != VK_NULL_HANDLE; }
+        [[nodiscard]] bool isInitialized() const noexcept
+        {
+            return buffer_ != VK_NULL_HANDLE;
+        }
 
         // ── 槽位管理(仅渲染线程) ───────────────────────────────────────
 
@@ -123,11 +140,14 @@ namespace lux::render
         bool reserveSlot(uint32_t id, uint32_t capacity)
         {
             assert(isInitialized());
-            if (capacity == 0) return false;
-            if (slots_.contains(id)) return true;
+            if (capacity == 0)
+                return false;
+            if (slots_.contains(id))
+                return true;
 
             const uint32_t first = tryAllocFromFreeList(capacity);
-            if (first == kInvalidId) return false;
+            if (first == kInvalidId)
+                return false;
 
             slots_.insert(id, Slot{first, capacity, 0});
             return true;
@@ -138,7 +158,8 @@ namespace lux::render
         /// 同一轮 free-then-upload 复用该区间并 vkCmdCopyBuffer 覆盖在读数据。
         void freeSlot(uint32_t id)
         {
-            if (!slots_.contains(id)) return;
+            if (!slots_.contains(id))
+                return;
             const auto slot = slots_.at(id);
             (void)slots_.erase(id);
             deferReturn(slot.first, slot.capacity);
@@ -152,16 +173,19 @@ namespace lux::render
             const std::size_t n = vals.size();
             const auto serial = deferred_queue_->currentSerial();
             for (std::size_t i = 0; i < n; ++i)
-                retire_scheduler_->defer(serial, retire_owner_token_,
-                    [this, first = vals[i].first, cap = vals[i].capacity]
-                    { returnToFreeList(first, cap); });
+                retire_scheduler_->defer(
+                    serial,
+                    retire_owner_token_,
+                    [this, first = vals[i].first, cap = vals[i].capacity] { returnToFreeList(first, cap); }
+                );
             slots_.clear();
         }
 
         /// 把存活计数清零,保留槽位分配(无需 GPU 工作)。
         void resetSlot(uint32_t id) noexcept
         {
-            if (!slots_.contains(id)) return;
+            if (!slots_.contains(id))
+                return;
             slots_.at(id).count = 0;
         }
 
@@ -169,7 +193,8 @@ namespace lux::render
         /// 不钳的那侧能把 count 设到容量之外,绘制时就是越界读。
         void setCount(uint32_t id, uint32_t count) noexcept
         {
-            if (!slots_.contains(id)) return;
+            if (!slots_.contains(id))
+                return;
             auto& slot = slots_.at(id);
             slot.count = std::min(count, slot.capacity);
         }
@@ -178,26 +203,36 @@ namespace lux::render
 
         [[nodiscard]] std::optional<Slot> getSlot(uint32_t id) const noexcept
         {
-            if (!slots_.contains(id)) return std::nullopt;
+            if (!slots_.contains(id))
+                return std::nullopt;
             return slots_.at(id);
         }
 
-        [[nodiscard]] bool hasSlot(uint32_t id) const noexcept { return slots_.contains(id); }
-        [[nodiscard]] VkBuffer buffer() const noexcept { return buffer_; }
-        [[nodiscard]] uint32_t maxElements() const noexcept { return max_elements_; }
+        [[nodiscard]] bool hasSlot(uint32_t id) const noexcept
+        {
+            return slots_.contains(id);
+        }
+        [[nodiscard]] VkBuffer buffer() const noexcept
+        {
+            return buffer_;
+        }
+        [[nodiscard]] uint32_t maxElements() const noexcept
+        {
+            return max_elements_;
+        }
 
         [[nodiscard]] uint32_t usedElements() const noexcept
         {
             uint32_t free = 0;
-            for (const auto& r : free_list_) free += r.capacity;
+            for (const auto& r : free_list_)
+                free += r.capacity;
             return max_elements_ - free;
         }
 
         /// 遍历全部活跃槽位。回调:void fn(uint32_t id, const Slot&)
-        template <typename Fn>
-        void forEachSlot(Fn&& fn) const
+        template <typename Fn> void forEachSlot(Fn&& fn) const
         {
-            const auto& keys   = slots_.keys();
+            const auto& keys = slots_.keys();
             const auto& values = slots_.values();
             const std::size_t n = std::min(keys.size(), values.size());
             for (std::size_t i = 0; i < n; ++i)
@@ -209,8 +244,10 @@ namespace lux::render
         /// 覆盖写入一个已存在的槽位,并把 count 设为 data.size()。
         bool upload(uint32_t id, std::span<const ElemT> data, TransferScheduler& scheduler)
         {
-            if (data.empty()) return false;
-            if (!slots_.contains(id)) return false;
+            if (data.empty())
+                return false;
+            if (!slots_.contains(id))
+                return false;
 
             Slot& slot = slots_.at(id);
             const uint32_t count = static_cast<uint32_t>(data.size());
@@ -222,21 +259,23 @@ namespace lux::render
                 return false;
 
             const VkDeviceSize byte_offset = elemBytes(slot.first);
-            const VkDeviceSize byte_size   = elemBytes(count);
+            const VkDeviceSize byte_size = elemBytes(count);
 
             StagingAlloc stg = scheduler.allocateStaging(byte_size);
-            if (!stg.mapped) return false;
+            if (!stg.mapped)
+                return false;
 
             std::memcpy(stg.mapped, data.data(), byte_size);
             scheduler.submitBufferCopy({
-                .src        = stg.buffer,
+                .src = stg.buffer,
                 .src_offset = stg.srcOffset,
-                .dst        = buffer_,
+                .dst = buffer_,
                 .dst_offset = byte_offset,
-                .size       = byte_size,
-                .domain     = EBufferDomain::VertexInput_CS,
-                .priority   = 0,
-            });
+                .size = byte_size,
+                .domain = EBufferDomain::VertexInput_CS,
+                .priority = 0,
+            }
+            );
 
             slot.count = count;
             return true;
@@ -266,7 +305,7 @@ namespace lux::render
                         free_list_.erase(it);
                     else
                     {
-                        it->first    += capacity;
+                        it->first += capacity;
                         it->capacity -= capacity;
                     }
                     return first;
@@ -278,8 +317,11 @@ namespace lux::render
         /// 按起始偏移有序插入,并与前后相邻区间合并。
         void returnToFreeList(uint32_t first, uint32_t capacity)
         {
-            auto pos = std::lower_bound(free_list_.begin(), free_list_.end(), first,
-                [](const FreeRegion& r, uint32_t v) { return r.first < v; });
+            auto pos =
+                std::lower_bound(free_list_.begin(), free_list_.end(), first, [](const FreeRegion& r, uint32_t v) {
+                    return r.first < v;
+                }
+                );
             auto it = free_list_.insert(pos, {first, capacity});
 
             auto next = std::next(it);
@@ -302,8 +344,10 @@ namespace lux::render
         /// 延迟归还一个区间(见 freeSlot 的注释)。
         void deferReturn(uint32_t first, uint32_t capacity)
         {
-            retire_scheduler_->defer(deferred_queue_->currentSerial(), retire_owner_token_,
-                [this, first, capacity] { returnToFreeList(first, capacity); });
+            retire_scheduler_->defer(deferred_queue_->currentSerial(), retire_owner_token_, [this, first, capacity] {
+                returnToFreeList(first, capacity);
+            }
+            );
         }
 
         /// 先试 freelist;不够就整缓冲扩容再试一次。
@@ -332,38 +376,46 @@ namespace lux::render
             while (new_capacity < min_required)
             {
                 const uint64_t doubled = new_capacity * 2ull;
-                if (doubled <= new_capacity) { new_capacity = kU32Max; break; }
+                if (doubled <= new_capacity)
+                {
+                    new_capacity = kU32Max;
+                    break;
+                }
                 new_capacity = doubled;
             }
 
             if (new_capacity == static_cast<uint64_t>(max_elements_))
-                new_capacity = std::min<uint64_t>(kU32Max,
-                    std::max<uint64_t>(static_cast<uint64_t>(max_elements_) * 2ull,
-                                       static_cast<uint64_t>(max_elements_) + min_required));
+                new_capacity = std::min<uint64_t>(
+                    kU32Max,
+                    std::max<uint64_t>(
+                        static_cast<uint64_t>(max_elements_) * 2ull,
+                        static_cast<uint64_t>(max_elements_) + min_required)
+                );
 
             if (new_capacity > kU32Max)
                 new_capacity = kU32Max;
             if (new_capacity <= static_cast<uint64_t>(max_elements_))
                 return false;
 
-            VkBuffer      new_buffer     = VK_NULL_HANDLE;
+            VkBuffer new_buffer = VK_NULL_HANDLE;
             VmaAllocation new_allocation = VK_NULL_HANDLE;
             if (!createBuffer(static_cast<uint32_t>(new_capacity), new_buffer, new_allocation))
                 return false;
 
             scheduler.submitBufferCopy({
-                .src        = buffer_,
+                .src = buffer_,
                 .src_offset = 0,
-                .dst        = new_buffer,
+                .dst = new_buffer,
                 .dst_offset = 0,
-                .size       = elemBytes(max_elements_),
-                .domain     = EBufferDomain::TransferDst,
-                .priority   = -1,
-            });
+                .size = elemBytes(max_elements_),
+                .domain = EBufferDomain::TransferDst,
+                .priority = -1,
+            }
+            );
 
             deferred_queue_->retireBuffer(buffer_, allocation_);
 
-            buffer_     = new_buffer;
+            buffer_ = new_buffer;
             allocation_ = new_allocation;
             returnToFreeList(max_elements_, static_cast<uint32_t>(new_capacity) - max_elements_);
             max_elements_ = static_cast<uint32_t>(new_capacity);
@@ -375,11 +427,9 @@ namespace lux::render
         bool createBuffer(uint32_t elements, VkBuffer& out_buf, VmaAllocation& out_alloc) const
         {
             VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            bci.size        = elemBytes(elements);
-            bci.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-                            | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                            | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                            | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            bci.size = elemBytes(elements);
+            bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
             bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
             VmaAllocationCreateInfo aci{};
@@ -388,16 +438,16 @@ namespace lux::render
             return vmaCreateBuffer(allocator_, &bci, &aci, &out_buf, &out_alloc, nullptr) == VK_SUCCESS;
         }
 
-        VmaAllocator  allocator_{nullptr};
-        VkBuffer      buffer_{VK_NULL_HANDLE};
+        VmaAllocator allocator_{nullptr};
+        VkBuffer buffer_{VK_NULL_HANDLE};
         VmaAllocation allocation_{VK_NULL_HANDLE};
-        uint32_t      max_elements_{0};
+        uint32_t max_elements_{0};
 
         lux::cxx::OffsetSparseSet<uint32_t, Slot> slots_;
-        std::vector<FreeRegion>                   free_list_;   ///< 按 first 有序
-        DeferredDestroyQueue*                     deferred_queue_{nullptr};
-        FrameRetireScheduler*                     retire_scheduler_{nullptr};
-        FrameRetireScheduler::OwnerToken          retire_owner_token_{0};
+        std::vector<FreeRegion> free_list_; ///< 按 first 有序
+        DeferredDestroyQueue* deferred_queue_{nullptr};
+        FrameRetireScheduler* retire_scheduler_{nullptr};
+        FrameRetireScheduler::OwnerToken retire_owner_token_{0};
     };
 
 } // namespace lux::render

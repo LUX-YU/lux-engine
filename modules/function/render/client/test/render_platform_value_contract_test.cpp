@@ -4,7 +4,8 @@
 #include <cstddef>
 #include <type_traits>
 
-int main()
+int
+main()
 {
     using namespace lux::render;
 

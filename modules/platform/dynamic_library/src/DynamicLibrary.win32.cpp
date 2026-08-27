@@ -12,7 +12,7 @@
 #include <Windows.h>
 
 #if defined(LUX_DYNAMIC_LIBRARY_USE_MEMORY_MODULE)
-#  include "MemoryModule.h"   // bundled third-party (modules/platform/dynamic_library/third_party/MemoryModule)
+#include "MemoryModule.h" // bundled third-party (modules/platform/dynamic_library/third_party/MemoryModule)
 #endif
 
 namespace lux::engine::platform
@@ -22,7 +22,8 @@ namespace lux::engine::platform
         std::string lastWin32Error()
         {
             const DWORD err = ::GetLastError();
-            if (err == 0) return {};
+            if (err == 0)
+                return {};
 
             LPSTR buf = nullptr;
             const DWORD len = ::FormatMessageA(
@@ -32,10 +33,12 @@ namespace lux::engine::platform
                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                 reinterpret_cast<LPSTR>(&buf),
                 0,
-                nullptr);
+                nullptr
+            );
 
             std::string msg = (len > 0 && buf != nullptr) ? std::string(buf, len) : std::string{};
-            if (buf) ::LocalFree(buf);
+            if (buf)
+                ::LocalFree(buf);
 
             while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r'))
                 msg.pop_back();
@@ -60,20 +63,25 @@ namespace lux::engine::platform
             std::error_code ec;
             for (const auto& entry : std::filesystem::directory_iterator(lux_root, ec))
             {
-                if (!entry.is_directory(ec)) continue;
+                if (!entry.is_directory(ec))
+                    continue;
 
                 const std::wstring name = entry.path().filename().wstring();
                 DWORD pid = 0;
                 for (const wchar_t c : name)
                 {
-                    if (c < L'0' || c > L'9') { pid = 0; break; }
+                    if (c < L'0' || c > L'9')
+                    {
+                        pid = 0;
+                        break;
+                    }
                     pid = pid * 10u + static_cast<DWORD>(c - L'0');
                 }
-                if (pid == 0 || pid == ::GetCurrentProcessId()) continue;
+                if (pid == 0 || pid == ::GetCurrentProcessId())
+                    continue;
 
                 bool alive = false;
-                if (HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
-                                             FALSE, pid))
+                if (HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid))
                 {
                     DWORD code = 0;
                     alive = ::GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
@@ -94,9 +102,8 @@ namespace lux::engine::platform
         {
             wchar_t temp_dir[MAX_PATH];
             const DWORD n = ::GetTempPathW(MAX_PATH, temp_dir);
-            std::filesystem::path base = (n > 0)
-                ? std::filesystem::path(std::wstring(temp_dir, n))
-                : std::filesystem::path(L".");
+            std::filesystem::path base =
+                (n > 0) ? std::filesystem::path(std::wstring(temp_dir, n)) : std::filesystem::path(L".");
             base /= L"lux";
 
             static std::once_flag s_sweep_once;
@@ -109,14 +116,19 @@ namespace lux::engine::platform
             std::wstring stem = L"lux_script_";
             for (char c : hint)
             {
-                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                    (c >= '0' && c <= '9') || c == '_' || c == '-')
+                const bool is_lowercase = c >= 'a' && c <= 'z';
+                const bool is_uppercase = c >= 'A' && c <= 'Z';
+                const bool is_digit = c >= '0' && c <= '9';
+                const bool is_allowed_symbol = c == '_' || c == '-';
+                const bool is_valid_character = is_lowercase || is_uppercase || is_digit || is_allowed_symbol;
+                if (is_valid_character)
                     stem.push_back(static_cast<wchar_t>(c));
             }
-            if (stem == L"lux_script_") stem = L"lux_script";
+            if (stem == L"lux_script_")
+                stem = L"lux_script";
 
             // Suffix with a counter so multiple loads in one process do not collide.
-            static std::atomic<unsigned> s_seq{ 0u };
+            static std::atomic<unsigned> s_seq{0u};
             stem += L"_";
             stem += std::to_wstring(s_seq.fetch_add(1u, std::memory_order_relaxed));
             stem += L".dll";
@@ -130,7 +142,7 @@ namespace lux::engine::platform
         // Either a path (default Windows path) or a MemoryModule handle.
         std::filesystem::path scratch_path;
 #if defined(LUX_DYNAMIC_LIBRARY_USE_MEMORY_MODULE)
-        HMEMORYMODULE         mm_handle   = nullptr;
+        HMEMORYMODULE mm_handle = nullptr;
 #endif
 
         ~MemoryBacking()
@@ -147,16 +159,17 @@ namespace lux::engine::platform
     };
 
     DynamicLibrary::DynamicLibrary() noexcept = default;
-    DynamicLibrary::~DynamicLibrary() { unload(); }
+    DynamicLibrary::~DynamicLibrary()
+    {
+        unload();
+    }
 
     DynamicLibrary::DynamicLibrary(DynamicLibrary&& other) noexcept
-        : handle_(other.handle_),
-          last_error_(std::move(other.last_error_)),
-          backing_(std::move(other.backing_)),
+        : handle_(other.handle_), last_error_(std::move(other.last_error_)), backing_(std::move(other.backing_)),
           uses_memory_module_(other.uses_memory_module_)
     {
-        other.handle_              = nullptr;
-        other.uses_memory_module_  = false;
+        other.handle_ = nullptr;
+        other.uses_memory_module_ = false;
     }
 
     DynamicLibrary& DynamicLibrary::operator=(DynamicLibrary&& other) noexcept
@@ -164,12 +177,12 @@ namespace lux::engine::platform
         if (this != &other)
         {
             unload();
-            handle_              = other.handle_;
-            last_error_          = std::move(other.last_error_);
-            backing_             = std::move(other.backing_);
-            uses_memory_module_  = other.uses_memory_module_;
-            other.handle_              = nullptr;
-            other.uses_memory_module_  = false;
+            handle_ = other.handle_;
+            last_error_ = std::move(other.last_error_);
+            backing_ = std::move(other.backing_);
+            uses_memory_module_ = other.uses_memory_module_;
+            other.handle_ = nullptr;
+            other.uses_memory_module_ = false;
         }
         return *this;
     }
@@ -189,12 +202,12 @@ namespace lux::engine::platform
             effective = decorate(path.string());
 
         handle_ = ::LoadLibraryExW(effective.wstring().c_str(), nullptr, toWin32Flags(mode));
-        if (!handle_) last_error_ = lastWin32Error();
+        if (!handle_)
+            last_error_ = lastWin32Error();
         return handle_ != nullptr;
     }
 
-    bool DynamicLibrary::load_from_memory(std::span<const std::byte> image,
-                                          std::string_view hint_name)
+    bool DynamicLibrary::load_from_memory(std::span<const std::byte> image, std::string_view hint_name)
     {
         unload();
         last_error_.clear();
@@ -211,13 +224,14 @@ namespace lux::engine::platform
         if (!mm)
         {
             last_error_ = lastWin32Error();
-            if (last_error_.empty()) last_error_ = "MemoryLoadLibrary failed";
+            if (last_error_.empty())
+                last_error_ = "MemoryLoadLibrary failed";
             return false;
         }
-        backing_                 = std::make_unique<MemoryBacking>();
-        backing_->mm_handle      = mm;
-        handle_                  = reinterpret_cast<NativeHandle>(mm);
-        uses_memory_module_      = true;
+        backing_ = std::make_unique<MemoryBacking>();
+        backing_->mm_handle = mm;
+        handle_ = reinterpret_cast<NativeHandle>(mm);
+        uses_memory_module_ = true;
         return true;
 #else
         // Default Windows path: write the image to a per-process scratch
@@ -241,7 +255,8 @@ namespace lux::engine::platform
             nullptr,
             CREATE_ALWAYS,
             FILE_ATTRIBUTE_TEMPORARY,
-            nullptr);
+            nullptr
+        );
         if (fh == INVALID_HANDLE_VALUE)
         {
             last_error_ = lastWin32Error();
@@ -253,8 +268,7 @@ namespace lux::engine::platform
         std::size_t remaining = image.size();
         while (remaining > 0)
         {
-            const DWORD chunk = static_cast<DWORD>(
-                remaining > 0x4000'0000ull ? 0x4000'0000ull : remaining);
+            const DWORD chunk = static_cast<DWORD>(remaining > 0x4000'0000ull ? 0x4000'0000ull : remaining);
             DWORD written = 0;
             if (!::WriteFile(fh, p, chunk, &written, nullptr) || written != chunk)
             {
@@ -264,14 +278,13 @@ namespace lux::engine::platform
                 std::filesystem::remove(path, ec);
                 return false;
             }
-            p         += written;
+            p += written;
             remaining -= written;
         }
         ::FlushFileBuffers(fh);
-        ::CloseHandle(fh);   // release WRITE access BEFORE the loader opens it
+        ::CloseHandle(fh); // release WRITE access BEFORE the loader opens it
 
-        handle_ = ::LoadLibraryExW(path.wstring().c_str(), nullptr,
-                                   LOAD_WITH_ALTERED_SEARCH_PATH);
+        handle_ = ::LoadLibraryExW(path.wstring().c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
         if (!handle_)
         {
             last_error_ = lastWin32Error();
@@ -280,7 +293,7 @@ namespace lux::engine::platform
             return false;
         }
 
-        backing_               = std::make_unique<MemoryBacking>();
+        backing_ = std::make_unique<MemoryBacking>();
         backing_->scratch_path = std::move(path);
         return true;
 #endif
@@ -298,7 +311,7 @@ namespace lux::engine::platform
 #else
             ::FreeLibrary(reinterpret_cast<HMODULE>(handle_));
 #endif
-            handle_             = nullptr;
+            handle_ = nullptr;
             uses_memory_module_ = false;
         }
         backing_.reset();
@@ -306,16 +319,15 @@ namespace lux::engine::platform
 
     void* DynamicLibrary::get_symbol(const char* name) const noexcept
     {
-        if (!handle_ || !name) return nullptr;
+        if (!handle_ || !name)
+            return nullptr;
 #if defined(LUX_DYNAMIC_LIBRARY_USE_MEMORY_MODULE)
         if (uses_memory_module_)
         {
-            return reinterpret_cast<void*>(
-                ::MemoryGetProcAddress(reinterpret_cast<HMEMORYMODULE>(handle_), name));
+            return reinterpret_cast<void*>(::MemoryGetProcAddress(reinterpret_cast<HMEMORYMODULE>(handle_), name));
         }
 #endif
-        return reinterpret_cast<void*>(
-            ::GetProcAddress(reinterpret_cast<HMODULE>(handle_), name));
+        return reinterpret_cast<void*>(::GetProcAddress(reinterpret_cast<HMODULE>(handle_), name));
     }
 
     std::filesystem::path decorate(std::string_view base)

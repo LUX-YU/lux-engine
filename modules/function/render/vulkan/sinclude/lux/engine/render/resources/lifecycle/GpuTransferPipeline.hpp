@@ -39,9 +39,9 @@
 #include <vector>
 
 struct VmaAllocator_T;
-using VmaAllocator = VmaAllocator_T *;
+using VmaAllocator = VmaAllocator_T*;
 struct VmaAllocation_T;
-using VmaAllocation = VmaAllocation_T *;
+using VmaAllocation = VmaAllocation_T*;
 
 namespace lux::render
 {
@@ -52,7 +52,7 @@ namespace lux::render
     struct TextureTransferMipRef
     {
         std::shared_ptr<const void> owner{};
-        const std::byte *data{nullptr};
+        const std::byte* data{nullptr};
         std::size_t bytes{0};
         int32_t width{0};
         int32_t height{0};
@@ -82,12 +82,12 @@ namespace lux::render
         VkBuffer vbo_buf;
         VkDeviceSize vbo_offset;
         VkDeviceSize vbo_bytes;
-        const std::byte *vbo_data;
+        const std::byte* vbo_data;
 
         VkBuffer ibo_buf;
         VkDeviceSize ibo_offset;
         VkDeviceSize ibo_bytes;
-        const std::byte *ibo_data;
+        const std::byte* ibo_data;
 
         // Pins the source vertex/index memory until the worker thread finishes
         // its async copy. vbo_data/ibo_data point INTO this owner (a shared copy
@@ -97,7 +97,7 @@ namespace lux::render
         std::shared_ptr<const void> data_owner{};
 
         uint32_t request_id{UINT32_MAX}; ///< Deferred reply: original client RequestId
-        uint32_t resource_gen{0};            ///< Handle generation for typed reply
+        uint32_t resource_gen{0};        ///< Handle generation for typed reply
     };
 
     struct TextureTransferTask
@@ -117,7 +117,7 @@ namespace lux::render
         VkDeviceSize total_bytes{0};
 
         uint32_t request_id{UINT32_MAX}; ///< Deferred reply: original client RequestId
-        uint32_t resource_gen{0};            ///< Handle generation for typed reply
+        uint32_t resource_gen{0};        ///< Handle generation for typed reply
     };
 
     struct CubeTransferTask
@@ -133,12 +133,12 @@ namespace lux::render
         struct FaceRef
         {
             std::shared_ptr<const void> owner{};
-            const std::byte *data{nullptr};
+            const std::byte* data{nullptr};
         };
         FaceRef faces[6];
 
         uint32_t request_id{UINT32_MAX}; ///< Deferred reply: original client RequestId
-        uint32_t resource_gen{0};            ///< Handle generation for typed reply
+        uint32_t resource_gen{0};        ///< Handle generation for typed reply
     };
     // =========================================================================
 
@@ -253,10 +253,7 @@ namespace lux::render
     };
 
     // =========================================================================
-    using UploadJob = std::variant<
-        MeshTransferTask,
-        TextureTransferTask,
-        CubeTransferTask>;
+    using UploadJob = std::variant<MeshTransferTask, TextureTransferTask, CubeTransferTask>;
 
     using GpuTransferResult = std::variant<RecordedBatch, TransferCompletion>;
 
@@ -280,10 +277,9 @@ namespace lux::render
                 TransferCompletion::Kind,
                 std::uint32_t,
                 std::uint32_t,
-                EUploadLifecycleState
-            ) noexcept;
+                EUploadLifecycleState) noexcept;
 
-            DeviceContext *device_ctx = nullptr;
+            DeviceContext* device_ctx = nullptr;
             uint32_t queue_capacity = 64;
             uint32_t result_capacity = 1024;
             uint32_t batch_slot_count = 4;
@@ -295,11 +291,10 @@ namespace lux::render
 
         ~GpuTransferPipeline();
 
-        [[nodiscard]] static Expected<
-            std::unique_ptr<GpuTransferPipeline>> create(const Config& config);
+        [[nodiscard]] static Expected<std::unique_ptr<GpuTransferPipeline>> create(const Config& config);
 
-        GpuTransferPipeline(const GpuTransferPipeline &) = delete;
-        GpuTransferPipeline &operator=(const GpuTransferPipeline &) = delete;
+        GpuTransferPipeline(const GpuTransferPipeline&) = delete;
+        GpuTransferPipeline& operator=(const GpuTransferPipeline&) = delete;
 
         // ── Render-thread handler API ───────────────────────────────────
 
@@ -323,7 +318,7 @@ namespace lux::render
 
         /// Drain the sole transfer→render SPSC. In RECORD_ONLY mode this also
         /// submits recorded command buffers on the render-owned graphics queue.
-        uint32_t drainResults(TransferCompletion *out, uint32_t max);
+        uint32_t drainResults(TransferCompletion* out, uint32_t max);
 
         /// Submit a render-thread-recorded graphics finalize batch and arrange
         /// an epoch wake when its timeline value retires.
@@ -333,11 +328,23 @@ namespace lux::render
         /// graphics queue-family acquire has been successfully queued.
         void releaseAfterGraphicsAcquire(uint32_t batch_slot) noexcept;
 
-        [[nodiscard]] VkSemaphore timelineSemaphore() const noexcept { return timeline_sem_; }
+        [[nodiscard]] VkSemaphore timelineSemaphore() const noexcept
+        {
+            return timeline_sem_;
+        }
         [[nodiscard]] bool needsQueueFamilyOwnershipTransfer() const noexcept;
-        [[nodiscard]] uint32_t transferFamily() const noexcept { return transfer_family_; }
-        [[nodiscard]] uint32_t graphicsFamily() const noexcept { return graphics_family_; }
-        [[nodiscard]] EGpuTransferMode mode() const noexcept { return mode_; }
+        [[nodiscard]] uint32_t transferFamily() const noexcept
+        {
+            return transfer_family_;
+        }
+        [[nodiscard]] uint32_t graphicsFamily() const noexcept
+        {
+            return graphics_family_;
+        }
+        [[nodiscard]] EGpuTransferMode mode() const noexcept
+        {
+            return mode_;
+        }
         [[nodiscard]] std::uint64_t stagingCopiedBytes() const noexcept
         {
             return staging_copied_bytes_.load(std::memory_order_relaxed);
@@ -366,8 +373,7 @@ namespace lux::render
 
             [[nodiscard]] bool stopRequested() const noexcept
             {
-                return requested != nullptr &&
-                    requested->load(std::memory_order_acquire);
+                return requested != nullptr && requested->load(std::memory_order_acquire);
             }
         };
 
@@ -387,7 +393,7 @@ namespace lux::render
         {
             VkBuffer buf{VK_NULL_HANDLE};
             VmaAllocation alloc{nullptr};
-            void *mapped{nullptr};
+            void* mapped{nullptr};
         };
 
         StagingResult allocStagingBuffer(VkDeviceSize bytes);
@@ -396,7 +402,7 @@ namespace lux::render
         /// finalized (a packet dropped on a closed pending-submit ring, or left
         /// un-submitted at shutdown). Frees staging + (for textures) the
         /// per-task image/view/sampler so teardown leaks nothing.
-        void freeUnsubmittedCompletion(TransferCompletion &c);
+        void freeUnsubmittedCompletion(TransferCompletion& c);
 
         /// Publish a FAILURE terminal state for a worker task that bailed out
         /// (cancel / invalid data / unknown format / Vulkan/VMA/staging failure).
@@ -405,9 +411,13 @@ namespace lux::render
         /// the client request with status!=0 and reclaims the reserved bindless
         /// slot, instead of leaking it and hanging the request forever. Meshes
         /// pass slot_index = mesh_index.
-        void pushFailure(TransferCompletion::Kind kind, uint32_t request_id,
-                         uint32_t slot_index, uint32_t resource_gen,
-                         uint32_t logical_base_mip = 0u);
+        void pushFailure(
+            TransferCompletion::Kind kind,
+            uint32_t request_id,
+            uint32_t slot_index,
+            uint32_t resource_gen,
+            uint32_t logical_base_mip = 0u
+        );
         void notifyLifecycle(
             std::uint32_t request_id,
             TransferCompletion::Kind kind,

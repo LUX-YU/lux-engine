@@ -1,6 +1,7 @@
 #include <lux/engine/ui/UI.hpp>
 
-int main()
+int
+main()
 {
     lux::ui::CommandRouter router;
     lux::ui::CommandHandle handle;

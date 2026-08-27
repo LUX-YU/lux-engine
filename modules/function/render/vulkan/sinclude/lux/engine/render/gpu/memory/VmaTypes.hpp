@@ -40,10 +40,22 @@ namespace lux::render
         VmaBuffer(const VmaBuffer&) = delete;
         VmaBuffer& operator=(const VmaBuffer&) = delete;
 
-        [[nodiscard]] VkBuffer      buffer()     const noexcept { return buffer_; }
-        [[nodiscard]] VmaAllocation allocation() const noexcept { return allocation_; }
-        [[nodiscard]] bool          valid()      const noexcept { return buffer_ != VK_NULL_HANDLE; }
-        explicit operator bool()                 const noexcept { return valid(); }
+        [[nodiscard]] VkBuffer buffer() const noexcept
+        {
+            return buffer_;
+        }
+        [[nodiscard]] VmaAllocation allocation() const noexcept
+        {
+            return allocation_;
+        }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return buffer_ != VK_NULL_HANDLE;
+        }
+        explicit operator bool() const noexcept
+        {
+            return valid();
+        }
 
         /// Map the allocation for CPU access.  Returns nullptr on failure.
         [[nodiscard]] void* map();
@@ -54,9 +66,9 @@ namespace lux::render
         void reset() noexcept;
 
     private:
-        VmaAllocator  allocator_  {VK_NULL_HANDLE};
-        VkBuffer      buffer_     {VK_NULL_HANDLE};
-        VmaAllocation allocation_ {VK_NULL_HANDLE};
+        VmaAllocator allocator_{VK_NULL_HANDLE};
+        VkBuffer buffer_{VK_NULL_HANDLE};
+        VmaAllocation allocation_{VK_NULL_HANDLE};
     };
 
     // =====================================================================
@@ -82,18 +94,30 @@ namespace lux::render
         VmaImage(const VmaImage&) = delete;
         VmaImage& operator=(const VmaImage&) = delete;
 
-        [[nodiscard]] VkImage       image()      const noexcept { return image_; }
-        [[nodiscard]] VmaAllocation allocation() const noexcept { return allocation_; }
-        [[nodiscard]] bool          valid()      const noexcept { return image_ != VK_NULL_HANDLE; }
-        explicit operator bool()                 const noexcept { return valid(); }
+        [[nodiscard]] VkImage image() const noexcept
+        {
+            return image_;
+        }
+        [[nodiscard]] VmaAllocation allocation() const noexcept
+        {
+            return allocation_;
+        }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return image_ != VK_NULL_HANDLE;
+        }
+        explicit operator bool() const noexcept
+        {
+            return valid();
+        }
 
         /// Explicitly release the allocation (idempotent).
         void reset() noexcept;
 
     private:
-        VmaAllocator  allocator_  {VK_NULL_HANDLE};
-        VkImage       image_      {VK_NULL_HANDLE};
-        VmaAllocation allocation_ {VK_NULL_HANDLE};
+        VmaAllocator allocator_{VK_NULL_HANDLE};
+        VkImage image_{VK_NULL_HANDLE};
+        VmaAllocation allocation_{VK_NULL_HANDLE};
     };
 
 } // namespace lux::render

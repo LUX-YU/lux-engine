@@ -24,18 +24,14 @@ namespace lux::script
     struct LUX_FUNCTION_PUBLIC ScriptFailure
     {
         EScriptError code = EScriptError::INVALID_ARGUMENT;
-        std::string  detail;
+        std::string detail;
 
         friend bool operator==(const ScriptFailure&, const ScriptFailure&) = default;
     };
 
-    template<class T>
-    using ScriptResult = lux::cxx::expected<T, ScriptFailure>;
+    template <class T> using ScriptResult = lux::cxx::expected<T, ScriptFailure>;
 
-    [[nodiscard]] inline ScriptFailure scriptFailure(
-        EScriptError code,
-        std::string detail
-    )
+    [[nodiscard]] inline ScriptFailure scriptFailure(EScriptError code, std::string detail)
     {
         return ScriptFailure{code, std::move(detail)};
     }

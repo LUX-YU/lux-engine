@@ -26,14 +26,12 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<RenderSpatialTransform3D>);
     static_assert(sizeof(RenderSpatialTransform3D) == 64u);
 
-    [[nodiscard]] inline bool canRebaseRenderPageDelta(
-        const std::int32_t page_delta[3],
-        const std::int64_t origin_delta[3]) noexcept
+    [[nodiscard]] inline bool
+    canRebaseRenderPageDelta(const std::int32_t page_delta[3], const std::int64_t origin_delta[3]) noexcept
     {
         for (std::size_t axis = 0u; axis < 3u; ++axis)
         {
-            const auto rebased = static_cast<std::int64_t>(
-                page_delta[axis]) - origin_delta[axis];
+            const auto rebased = static_cast<std::int64_t>(page_delta[axis]) - origin_delta[axis];
             if (rebased < std::numeric_limits<std::int32_t>::min() ||
                 rebased > std::numeric_limits<std::int32_t>::max())
             {
@@ -43,26 +41,21 @@ namespace lux::render
         return true;
     }
 
-    inline void rebaseRenderPageDelta(
-        std::int32_t page_delta[3],
-        const std::int64_t origin_delta[3]) noexcept
+    inline void rebaseRenderPageDelta(std::int32_t page_delta[3], const std::int64_t origin_delta[3]) noexcept
     {
         for (std::size_t axis = 0u; axis < 3u; ++axis)
         {
-            page_delta[axis] = static_cast<std::int32_t>(
-                static_cast<std::int64_t>(page_delta[axis]) -
-                origin_delta[axis]);
+            page_delta[axis] =
+                static_cast<std::int32_t>(static_cast<std::int64_t>(page_delta[axis]) - origin_delta[axis]);
         }
     }
 
-    [[nodiscard]] inline bool canRebaseRenderPageDelta2D(
-        const std::int32_t page_delta[2],
-        const std::int64_t origin_delta[3]) noexcept
+    [[nodiscard]] inline bool
+    canRebaseRenderPageDelta2D(const std::int32_t page_delta[2], const std::int64_t origin_delta[3]) noexcept
     {
         for (std::size_t axis = 0u; axis < 2u; ++axis)
         {
-            const auto rebased = static_cast<std::int64_t>(
-                page_delta[axis]) - origin_delta[axis];
+            const auto rebased = static_cast<std::int64_t>(page_delta[axis]) - origin_delta[axis];
             if (rebased < std::numeric_limits<std::int32_t>::min() ||
                 rebased > std::numeric_limits<std::int32_t>::max())
             {
@@ -72,15 +65,12 @@ namespace lux::render
         return true;
     }
 
-    inline void rebaseRenderPageDelta2D(
-        std::int32_t page_delta[2],
-        const std::int64_t origin_delta[3]) noexcept
+    inline void rebaseRenderPageDelta2D(std::int32_t page_delta[2], const std::int64_t origin_delta[3]) noexcept
     {
         for (std::size_t axis = 0u; axis < 2u; ++axis)
         {
-            page_delta[axis] = static_cast<std::int32_t>(
-                static_cast<std::int64_t>(page_delta[axis]) -
-                origin_delta[axis]);
+            page_delta[axis] =
+                static_cast<std::int32_t>(static_cast<std::int64_t>(page_delta[axis]) - origin_delta[axis]);
         }
     }
 
@@ -92,14 +82,10 @@ namespace lux::render
         RenderSpatialTransform3D result{};
         for (std::size_t column = 0; column != 3u; ++column)
         {
-            result.basis_local[column * 4u + 0u] =
-                local_matrix[column * 4u + 0u];
-            result.basis_local[column * 4u + 1u] =
-                local_matrix[column * 4u + 1u];
-            result.basis_local[column * 4u + 2u] =
-                local_matrix[column * 4u + 2u];
-            result.basis_local[column * 4u + 3u] =
-                local_matrix[12u + column];
+            result.basis_local[column * 4u + 0u] = local_matrix[column * 4u + 0u];
+            result.basis_local[column * 4u + 1u] = local_matrix[column * 4u + 1u];
+            result.basis_local[column * 4u + 2u] = local_matrix[column * 4u + 2u];
+            result.basis_local[column * 4u + 3u] = local_matrix[12u + column];
         }
         return result;
     }

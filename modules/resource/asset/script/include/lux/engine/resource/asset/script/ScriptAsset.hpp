@@ -12,8 +12,7 @@
 
 namespace lux::asset
 {
-    inline constexpr std::string_view ScriptAssetCanonicalName{
-        "lux.script.asset"};
+    inline constexpr std::string_view ScriptAssetCanonicalName{"lux.script.asset"};
     inline constexpr std::uint32_t ScriptAssetPrimaryMagic{0x4153584CU};
 
     struct ScriptAssetContent final

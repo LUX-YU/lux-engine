@@ -22,7 +22,7 @@
  * 引擎常量表,所以名字不需要过线。
  */
 
-#include <lux/cxx/container/SlotMap.hpp>   // lux::cxx::SlotKey
+#include <lux/cxx/container/SlotMap.hpp> // lux::cxx::SlotKey
 
 #include <array>
 #include <concepts>
@@ -32,7 +32,9 @@
 
 namespace lux::render
 {
-    struct ErrorTypeTag {};
+    struct ErrorTypeTag
+    {
+    };
 
     /// 错误类型句柄(index + generation),与 FeatureHandle / ViewHandle 同一族:
     /// 8 字节、trivially copyable、跨 comm 通道直接序列化。generation 保证动态
@@ -43,25 +45,25 @@ namespace lux::render
     /// 一个不认识该错误类型的通用客户端(编辑器 / 门禁)靠它就能决定如何反应。
     enum class ERecovery : std::uint8_t
     {
-        Permanent,   ///< 同样的输入再来一次还是错,别重试
-        Retryable,   ///< 瞬时:池满、环满、本帧资源不够;稍后重试可能成功
-        NeedsInput,  ///< 需要改输入:重烘焙资产、改配置、换 feature 组合
-        Bug,         ///< 引擎内部契约被破坏,该上报而不该由用户处理
+        Permanent,  ///< 同样的输入再来一次还是错,别重试
+        Retryable,  ///< 瞬时:池满、环满、本帧资源不够;稍后重试可能成功
+        NeedsInput, ///< 需要改输入:重烘焙资产、改配置、换 feature 组合
+        Bug,        ///< 引擎内部契约被破坏,该上报而不该由用户处理
     };
 
     /// 一个实参槽的解释方式。新增一种索引类型时,同时在 formatRenderError 里补上它的
     /// 解析分支 —— 枚举与解析能力一起长,不允许出现「声明了但格式化器不认识」的槽。
     enum class EErrorArg : std::uint8_t
     {
-        None = 0,          ///< 该槽未使用
-        Uint,              ///< 十进制计数:个数、容量、序号、句柄索引
-        Hex,               ///< 十六进制:usage / flag 掩码
-        VkResult,          ///< VkResult 的位模式(见 encodeVkResult)
-        VkFormat,          ///< VkFormat 的数值
-        BuiltinShader,     ///< EBuiltinShader 枚举值 → 内置着色器名
-        LogicalResource,   ///< rdesc::logicalResourceIndex 的下标 → 契约资源名 + 它的规范位置
-        DescriptorSlot,    ///< EDescriptorSetSlot → 引擎描述符槽名
-        BindFrequency,     ///< rdesc::EBindFrequency → 域名
+        None = 0,        ///< 该槽未使用
+        Uint,            ///< 十进制计数:个数、容量、序号、句柄索引
+        Hex,             ///< 十六进制:usage / flag 掩码
+        VkResult,        ///< VkResult 的位模式(见 encodeVkResult)
+        VkFormat,        ///< VkFormat 的数值
+        BuiltinShader,   ///< EBuiltinShader 枚举值 → 内置着色器名
+        LogicalResource, ///< rdesc::logicalResourceIndex 的下标 → 契约资源名 + 它的规范位置
+        DescriptorSlot,  ///< EDescriptorSetSlot → 引擎描述符槽名
+        BindFrequency,   ///< rdesc::EBindFrequency → 域名
         /// `FeatureTypeId`(featureId() 的 FNV-1a 哈希)**的低 32 位**。
         ///
         /// 截断是实参槽只有 32 位所致。之所以仍然值得带上:这类错误说的是"另一个
@@ -93,21 +95,22 @@ namespace lux::render
     /// 一次失败。
     struct RenderError
     {
-        ErrorTypeId                              type{};
+        ErrorTypeId type{};
         std::array<std::uint32_t, kErrorArgCount> args{};
 
         /// 无错误。默认构造的 RenderError 表示成功。
-        [[nodiscard]] constexpr bool ok() const noexcept { return type.isNull(); }
+        [[nodiscard]] constexpr bool ok() const noexcept
+        {
+            return type.isNull();
+        }
     };
 
     static_assert(sizeof(RenderError) == 20);
     static_assert(std::is_trivially_copyable_v<RenderError>);
 
     /// 组装一个失败值。实参按位置对应错误类型声明的 args 槽。
-    [[nodiscard]] constexpr RenderError makeError(ErrorTypeId   type,
-                                                  std::uint32_t arg0 = 0,
-                                                  std::uint32_t arg1 = 0,
-                                                  std::uint32_t arg2 = 0) noexcept
+    [[nodiscard]] constexpr RenderError
+    makeError(ErrorTypeId type, std::uint32_t arg0 = 0, std::uint32_t arg1 = 0, std::uint32_t arg2 = 0) noexcept
     {
         return RenderError{type, {arg0, arg1, arg2}};
     }
@@ -124,10 +127,10 @@ namespace lux::render
     /// copyable —— 查询返回拷贝而不是指针,调用方不必关心注册表内部的存储重排。
     struct ErrorTypeDesc
     {
-        const char* name{nullptr};      ///< 跨会话稳定的标识,点分层级,如 "memory.out_of_memory"
-        const char* message{nullptr};   ///< 人读消息模板,{0}/{1}/{2} 引用实参槽
-        ERecovery   recovery{ERecovery::Permanent};
-        ErrorArgs   args{};             ///< 每个实参槽的语义
+        const char* name{nullptr};    ///< 跨会话稳定的标识,点分层级,如 "memory.out_of_memory"
+        const char* message{nullptr}; ///< 人读消息模板,{0}/{1}/{2} 引用实参槽
+        ERecovery recovery{ERecovery::Permanent};
+        ErrorArgs args{}; ///< 每个实参槽的语义
     };
 
     static_assert(std::is_trivially_copyable_v<ErrorTypeDesc>);
@@ -166,20 +169,16 @@ namespace lux::render
     /// 最后一条约束是**消息占位符与实参槽必须逐一对应**:多写一个 {n}、或者声明了一槽
     /// 却没在消息里用,都在 errorType<T>() 处编译失败,而不是在运行期打出一条含未替换
     /// "{2}" 的消息。
-    template<typename T>
-    concept ErrorType =
-        std::is_empty_v<T>
-        && requires {
-            { T::name }     -> std::convertible_to<const char*>;
-            { T::message }  -> std::convertible_to<const char*>;
-            { T::recovery } -> std::convertible_to<ERecovery>;
-            { T::args }     -> std::convertible_to<ErrorArgs>;
-        }
-        && (detail::errorMessageArgMask(T::message) == detail::errorDeclaredArgMask(T::args));
+    template <typename T>
+    concept ErrorType = std::is_empty_v<T> && requires {
+        { T::name } -> std::convertible_to<const char*>;
+        { T::message } -> std::convertible_to<const char*>;
+        { T::recovery } -> std::convertible_to<ERecovery>;
+        { T::args } -> std::convertible_to<ErrorArgs>;
+    } && (detail::errorMessageArgMask(T::message) == detail::errorDeclaredArgMask(T::args));
 
     /// 从错误类型取出它的描述。
-    template<ErrorType T>
-    [[nodiscard]] constexpr ErrorTypeDesc errorTypeDesc() noexcept
+    template <ErrorType T> [[nodiscard]] constexpr ErrorTypeDesc errorTypeDesc() noexcept
     {
         return ErrorTypeDesc{T::name, T::message, T::recovery, T::args};
     }

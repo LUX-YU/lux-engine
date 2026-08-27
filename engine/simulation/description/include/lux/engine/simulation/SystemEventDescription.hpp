@@ -37,13 +37,7 @@ namespace lux::simulation
     {
         if constexpr (std::is_void_v<Payload>)
         {
-            return SystemEventDescription{
-                name,
-                dispatch_hook.name,
-                target,
-                {},
-                0U,
-                lux::cxx::typeToken<void>()};
+            return SystemEventDescription{name, dispatch_hook.name, target, {}, 0U, lux::cxx::typeToken<void>()};
         }
         else
         {

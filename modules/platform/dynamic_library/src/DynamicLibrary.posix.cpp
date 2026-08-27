@@ -14,11 +14,11 @@
 #include <dlfcn.h>
 
 #if defined(__linux__)
-#  include <sys/mman.h>
-#  include <sys/syscall.h>
-#  ifndef MFD_CLOEXEC
-#    define MFD_CLOEXEC 0x0001U
-#  endif
+#include <sys/mman.h>
+#include <sys/syscall.h>
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
 #endif
 
 namespace lux::engine::platform
@@ -28,10 +28,14 @@ namespace lux::engine::platform
         int dlopenFlags(LoadMode mode)
         {
             int flags = 0;
-            if (any(mode & LoadMode::RTLD_Lazy))   flags |= RTLD_LAZY;
-            if (any(mode & LoadMode::RTLD_Now))    flags |= RTLD_NOW;
-            if (any(mode & LoadMode::RTLD_Global)) flags |= RTLD_GLOBAL;
-            if (flags == 0) flags = RTLD_NOW | RTLD_LOCAL;
+            if (any(mode & LoadMode::RTLD_Lazy))
+                flags |= RTLD_LAZY;
+            if (any(mode & LoadMode::RTLD_Now))
+                flags |= RTLD_NOW;
+            if (any(mode & LoadMode::RTLD_Global))
+                flags |= RTLD_GLOBAL;
+            if (flags == 0)
+                flags = RTLD_NOW | RTLD_LOCAL;
             return flags;
         }
 
@@ -42,20 +46,21 @@ namespace lux::engine::platform
 // Invoking an undefined function-like macro in #if is ill-formed, so the
 // defined() check cannot share a line with the invocation — clang/bionic
 // (Android, no __GLIBC_PREREQ at all) rejects the combined form. Nest it.
-#  if defined(__GLIBC_PREREQ)
-#    if __GLIBC_PREREQ(2, 27)
-#      define LUX_HAVE_MEMFD_CREATE_WRAPPER 1
-#    endif
-#  endif
-#  if defined(LUX_HAVE_MEMFD_CREATE_WRAPPER)
+#if defined(__GLIBC_PREREQ)
+#if __GLIBC_PREREQ(2, 27)
+#define LUX_HAVE_MEMFD_CREATE_WRAPPER 1
+#endif
+#endif
+#if defined(LUX_HAVE_MEMFD_CREATE_WRAPPER)
             return ::memfd_create(name, flags);
-#  elif defined(SYS_memfd_create)
+#elif defined(SYS_memfd_create)
             return static_cast<int>(::syscall(SYS_memfd_create, name, flags));
-#  else
-            (void)name; (void)flags;
+#else
+            (void)name;
+            (void)flags;
             errno = ENOSYS;
             return -1;
-#  endif
+#endif
         }
 #endif
 
@@ -66,8 +71,12 @@ namespace lux::engine::platform
             out = "lux_script_";
             for (char c : hint)
             {
-                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                    (c >= '0' && c <= '9') || c == '_' || c == '-')
+                const bool is_lowercase = c >= 'a' && c <= 'z';
+                const bool is_uppercase = c >= 'A' && c <= 'Z';
+                const bool is_digit = c >= '0' && c <= '9';
+                const bool is_allowed_symbol = c == '_' || c == '-';
+                const bool is_valid_character = is_lowercase || is_uppercase || is_digit || is_allowed_symbol;
+                if (is_valid_character)
                     out.push_back(c);
             }
             return out;
@@ -77,28 +86,30 @@ namespace lux::engine::platform
     // POSIX backend: either a memfd (Linux fast path) or a tmp-file (macOS / fallback).
     struct DynamicLibrary::MemoryBacking
     {
-        int         fd        = -1;
-        std::string scratch_path;   // non-empty when a real path was used (mkstemp / shm).
-        bool        unlinked  = false;
+        int fd = -1;
+        std::string scratch_path; // non-empty when a real path was used (mkstemp / shm).
+        bool unlinked = false;
 
         ~MemoryBacking()
         {
-            if (fd >= 0) ::close(fd);
+            if (fd >= 0)
+                ::close(fd);
             if (!scratch_path.empty() && !unlinked)
                 ::unlink(scratch_path.c_str());
         }
     };
 
     DynamicLibrary::DynamicLibrary() noexcept = default;
-    DynamicLibrary::~DynamicLibrary() { unload(); }
+    DynamicLibrary::~DynamicLibrary()
+    {
+        unload();
+    }
 
     DynamicLibrary::DynamicLibrary(DynamicLibrary&& other) noexcept
-        : handle_(other.handle_),
-          last_error_(std::move(other.last_error_)),
-          backing_(std::move(other.backing_)),
+        : handle_(other.handle_), last_error_(std::move(other.last_error_)), backing_(std::move(other.backing_)),
           uses_memory_module_(other.uses_memory_module_)
     {
-        other.handle_             = nullptr;
+        other.handle_ = nullptr;
         other.uses_memory_module_ = false;
     }
 
@@ -107,11 +118,11 @@ namespace lux::engine::platform
         if (this != &other)
         {
             unload();
-            handle_             = other.handle_;
-            last_error_         = std::move(other.last_error_);
-            backing_            = std::move(other.backing_);
+            handle_ = other.handle_;
+            last_error_ = std::move(other.last_error_);
+            backing_ = std::move(other.backing_);
             uses_memory_module_ = other.uses_memory_module_;
-            other.handle_             = nullptr;
+            other.handle_ = nullptr;
             other.uses_memory_module_ = false;
         }
         return *this;
@@ -140,8 +151,7 @@ namespace lux::engine::platform
         return handle_ != nullptr;
     }
 
-    bool DynamicLibrary::load_from_memory(std::span<const std::byte> image,
-                                          std::string_view hint_name)
+    bool DynamicLibrary::load_from_memory(std::span<const std::byte> image, std::string_view hint_name)
     {
         unload();
         last_error_.clear();
@@ -159,63 +169,65 @@ namespace lux::engine::platform
         // Extra braces scope this fd so it does not clash with the fallback fd below
         // (both paths are compiled on Linux, unlike Windows where only one is).
         {
-        int fd = memfdCreateCompat(sanitized.c_str(), MFD_CLOEXEC);
-        if (fd >= 0)
-        {
-            const std::byte* p = image.data();
-            std::size_t      n = image.size();
-            while (n > 0)
+            int fd = memfdCreateCompat(sanitized.c_str(), MFD_CLOEXEC);
+            if (fd >= 0)
             {
-                const ssize_t w = ::write(fd, p, n);
-                if (w <= 0)
+                const std::byte* p = image.data();
+                std::size_t n = image.size();
+                while (n > 0)
                 {
-                    if (errno == EINTR) continue;
-                    last_error_ = std::strerror(errno);
+                    const ssize_t w = ::write(fd, p, n);
+                    if (w <= 0)
+                    {
+                        if (errno == EINTR)
+                            continue;
+                        last_error_ = std::strerror(errno);
+                        ::close(fd);
+                        return false;
+                    }
+                    p += w;
+                    n -= static_cast<std::size_t>(w);
+                }
+
+                const auto proc_path = lux::format("/proc/self/fd/{}", fd);
+
+                void* h = ::dlopen(proc_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+                if (!h)
+                {
+                    const char* err = ::dlerror();
+                    last_error_ = err ? err : "dlopen(/proc/self/fd) failed";
                     ::close(fd);
                     return false;
                 }
-                p += w;
-                n -= static_cast<std::size_t>(w);
+
+                auto backing = std::make_unique<MemoryBacking>();
+                backing->fd = fd; // keep alive; dlclose will release the mapping.
+                backing_ = std::move(backing);
+                handle_ = h;
+                return true;
             }
-
-            const auto proc_path = lux::format("/proc/self/fd/{}", fd);
-
-            void* h = ::dlopen(proc_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-            if (!h)
-            {
-                const char* err = ::dlerror();
-                last_error_ = err ? err : "dlopen(/proc/self/fd) failed";
-                ::close(fd);
-                return false;
-            }
-
-            auto backing = std::make_unique<MemoryBacking>();
-            backing->fd = fd;   // keep alive; dlclose will release the mapping.
-            backing_    = std::move(backing);
-            handle_     = h;
-            return true;
-        }
-        }   // end memfd scope
+        } // end memfd scope
         // memfd_create failed (old kernel, sandbox, etc.) → fall through to tmp file.
 #endif
 
         // Fallback / macOS path: write to a temp file, dlopen, then unlink so
         // the directory entry disappears even though dyld keeps the mapping.
         const char* tmpdir = std::getenv("TMPDIR");
-        if (!tmpdir || !*tmpdir) tmpdir = "/tmp";
+        if (!tmpdir || !*tmpdir)
+            tmpdir = "/tmp";
 
         std::string tmpl;
         tmpl.reserve(std::strlen(tmpdir) + sanitized.size() + 32);
-        tmpl  = tmpdir;
+        tmpl = tmpdir;
         tmpl += '/';
         tmpl += sanitized;
         tmpl += "_XXXXXX";
 #if defined(__APPLE__)
         tmpl += ".dylib";
-        const int fd = ::mkstemps(&tmpl[0], 6);   // 6 = strlen(".dylib")
+        const int fd = ::mkstemps(&tmpl[0], 6); // 6 = strlen(".dylib")
 #else
         tmpl += ".so";
-        const int fd = ::mkstemps(&tmpl[0], 3);   // 3 = strlen(".so")
+        const int fd = ::mkstemps(&tmpl[0], 3); // 3 = strlen(".so")
 #endif
         if (fd < 0)
         {
@@ -224,13 +236,14 @@ namespace lux::engine::platform
         }
 
         const std::byte* p = image.data();
-        std::size_t      n = image.size();
+        std::size_t n = image.size();
         while (n > 0)
         {
             const ssize_t w = ::write(fd, p, n);
             if (w <= 0)
             {
-                if (errno == EINTR) continue;
+                if (errno == EINTR)
+                    continue;
                 last_error_ = std::strerror(errno);
                 ::close(fd);
                 ::unlink(tmpl.c_str());
@@ -253,11 +266,11 @@ namespace lux::engine::platform
         // Unlink immediately: the loader has already mmap'd the file.
         ::unlink(tmpl.c_str());
         auto backing = std::make_unique<MemoryBacking>();
-        backing->fd           = fd;
+        backing->fd = fd;
         backing->scratch_path = std::move(tmpl);
-        backing->unlinked     = true;
-        backing_              = std::move(backing);
-        handle_               = h;
+        backing->unlinked = true;
+        backing_ = std::move(backing);
+        handle_ = h;
         return true;
     }
 
@@ -273,7 +286,8 @@ namespace lux::engine::platform
 
     void* DynamicLibrary::get_symbol(const char* name) const noexcept
     {
-        if (!handle_ || !name) return nullptr;
+        if (!handle_ || !name)
+            return nullptr;
         return ::dlsym(handle_, name);
     }
 

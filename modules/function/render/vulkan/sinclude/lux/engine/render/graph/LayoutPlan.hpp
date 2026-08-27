@@ -25,7 +25,7 @@
 // =============================================================================
 
 #include <lux/engine/description/LayoutContract.hpp>
-#include <lux/engine/function/render/client/core/Errors.hpp>   // RenderError(warnings)
+#include <lux/engine/function/render/client/core/Errors.hpp> // RenderError(warnings)
 
 #include <vulkan/vulkan.h>
 
@@ -41,15 +41,15 @@ namespace lux::render
     /// union).
     struct PlannedBinding
     {
-        uint32_t             binding{0};
-        VkDescriptorType     type{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER};
-        uint32_t             count{1};
-        VkShaderStageFlags   stages{0};
+        uint32_t binding{0};
+        VkDescriptorType type{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER};
+        uint32_t count{1};
+        VkShaderStageFlags stages{0};
         VkDescriptorBindingFlags binding_flags{0};
         /// Logical resource name (the contract reconciliation key; for
         /// pass-local resources this is the variable name as seen by
         /// reflection).
-        std::string          name;
+        std::string name;
     };
 
     /// The ownership category of a set — determines who decides its shape,
@@ -100,23 +100,23 @@ namespace lux::render
         /// Computing the offset from size() would let the next set overlap
         /// it.
         rdesc::EBindFrequency domain{rdesc::EBindFrequency::PASS_LOCAL};
-        uint32_t              domain_binding_offset{0};
-        uint32_t              domain_binding_count{0};
+        uint32_t domain_binding_offset{0};
+        uint32_t domain_binding_count{0};
 
-        uint32_t                                set{0};   ///< Slot number within its owning pipeline.
-        EPlannedSetKind                         kind{EPlannedSetKind::PipelinePrivate};
+        uint32_t set{0}; ///< Slot number within its owning pipeline.
+        EPlannedSetKind kind{EPlannedSetKind::PipelinePrivate};
         /// Owning-pipeline identity for PipelinePrivate sets (the graphics
         /// template's or compute pipeline's handle index, plus a category
         /// bit to disambiguate them); always 0 for EngineShared.
-        uint64_t                                owner_key{0};
-        rdesc::EBindFrequency                   frequency{rdesc::EBindFrequency::PASS_LOCAL};
+        uint64_t owner_key{0};
+        rdesc::EBindFrequency frequency{rdesc::EBindFrequency::PASS_LOCAL};
         lux::cxx::SmallVector<PlannedBinding, 8> bindings;
         /// This set's VkDescriptorSetLayout (built/reused during the
         /// allocation stage, consumed by all three parties).
-        VkDescriptorSetLayout                   layout{VK_NULL_HANDLE};
+        VkDescriptorSetLayout layout{VK_NULL_HANDLE};
         /// Whether the UPDATE_AFTER_BIND pool flag is needed (true if any
         /// binding carries UAB).
-        bool                                    update_after_bind{false};
+        bool update_after_bind{false};
     };
 
     // ── Ownership key ────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ namespace lux::render
     //  handle-index families are unrelated, so without a tag bit they would
     //  collide.
     inline constexpr uint64_t kGraphicsOwnerTag = 1ull << 62;
-    inline constexpr uint64_t kComputeOwnerTag  = 1ull << 63;
+    inline constexpr uint64_t kComputeOwnerTag = 1ull << 63;
 
     [[nodiscard]] inline constexpr uint64_t graphicsOwnerKey(uint32_t index) noexcept
     {
@@ -248,13 +248,13 @@ namespace lux::render
         {
             uint32_t uniform_buffer{0};
             uint32_t storage_buffer{0};
-            uint32_t sampled_image{0};   ///< Includes COMBINED_IMAGE_SAMPLER.
+            uint32_t sampled_image{0}; ///< Includes COMBINED_IMAGE_SAMPLER.
             uint32_t storage_image{0};
             uint32_t total{0};
         };
         /// The reading for the single heaviest stage (**before merging**,
         /// i.e. the current state).
-        StageUsage  worst_stage{};
+        StageUsage worst_stage{};
         /// The same reading after merging.
         ///
         /// Why this must be computed separately: merging sets isn't free —
@@ -267,7 +267,7 @@ namespace lux::render
         ///
         /// This is the real cost of the ≤4-set approach, and it's what
         /// determines whether the approach actually holds up.
-        StageUsage  worst_stage_merged{};
+        StageUsage worst_stage_merged{};
         const char* worst_stage_merged_name{nullptr};
         /// Which stage this is (VERTEX/FRAGMENT/COMPUTE); null means nothing
         /// was measured.
@@ -311,7 +311,7 @@ namespace lux::render
         struct PipelineSlotDiag
         {
             uint32_t slot{0};
-            char     kind{'P'};
+            char kind{'P'};
             /// For E/H: the canonical set number (H's sentinel value
             /// denotes a semantically-empty placeholder hole in domain
             /// mode); for D: the domain enum value; for X/P: the slot
@@ -324,8 +324,8 @@ namespace lux::render
         struct PipelineDiag
         {
             std::string name;
-            bool        merged{false};   ///< Already switched to the domain-merged layout (the merged flag).
-            bool        legacy{false};   ///< A legacy pipeline: brings its own layout, has no slot table.
+            bool merged{false}; ///< Already switched to the domain-merged layout (the merged flag).
+            bool legacy{false}; ///< A legacy pipeline: brings its own layout, has no slot table.
             /// An identity pipeline: its reflection contains no engine
             /// resource that *would move* (e.g. one that only uses the
             /// Scene's Grid/LineList, or a purely-private Tonemap/Blur).
@@ -334,7 +334,7 @@ namespace lux::render
             /// unset — merged or not is physically the same shape here, so
             /// this isn't "not yet migrated"; a retirement audit should
             /// treat it the same as [migrated].
-            bool        identity{false};
+            bool identity{false};
             lux::cxx::SmallVector<PipelineSlotDiag, 8> slots;
         };
         std::vector<PipelineDiag> pipelines;
@@ -354,16 +354,14 @@ namespace lux::render
 
         /// Look up by logical identity. For an engine set, just pass its
         /// canonical number (owner_key is always 0).
-        [[nodiscard]] const PlannedSet* find(uint32_t set,
-                                             EPlannedSetKind kind = EPlannedSetKind::EngineShared,
-                                             uint64_t owner_key = 0) const noexcept
+        [[nodiscard]] const PlannedSet*
+        find(uint32_t set, EPlannedSetKind kind = EPlannedSetKind::EngineShared, uint64_t owner_key = 0) const noexcept
         {
             for (const auto& s : sets)
                 if (s.set == set && s.kind == kind && s.owner_key == owner_key)
                     return &s;
             return nullptr;
         }
-
     };
 
 } // namespace lux::render

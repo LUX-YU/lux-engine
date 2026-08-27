@@ -8,8 +8,7 @@ namespace lux::render
     //  容器
     // ─────────────────────────────────────────────────────────────────────
 
-    FeatureHandle RenderFeatureSet::insertSlot(
-        std::unique_ptr<RenderFeature> feature)
+    FeatureHandle RenderFeatureSet::insertSlot(std::unique_ptr<RenderFeature> feature)
     {
         // 只插入并返回句柄 —— feature->feature_id_ 是私有的,由持 friend 权限的
         // RenderScene 回填。
@@ -73,8 +72,8 @@ namespace lux::render
         return nullptr;
     }
 
-    const RenderFeature* RenderFeatureSet::firstRequiring(
-        FeatureTypeId type, const RenderFeature* exclude) const noexcept
+    const RenderFeature*
+    RenderFeatureSet::firstRequiring(FeatureTypeId type, const RenderFeature* exclude) const noexcept
     {
         if (type == kInvalidFeatureTypeId)
             return nullptr;
@@ -96,19 +95,21 @@ namespace lux::render
         for (const auto& slot : features_.values())
         {
             const auto* f = slot.feature.get();
-            if (!f) continue;
+            if (!f)
+                continue;
             const std::string_view sn = f->paramStructName();
-            const bool  has_params = !sn.empty();
-            const void* data       = has_params ? const_cast<RenderFeature*>(f)->paramData() : nullptr;
+            const bool has_params = !sn.empty();
+            const void* data = has_params ? const_cast<RenderFeature*>(f)->paramData() : nullptr;
             // data/size 一致性:空指针一律报 size 0,免得打包枚举流声称了它拿不出的字节。
             const std::size_t size = (has_params && data) ? f->paramSize() : 0;
             descs.push_back(FeatureParamDesc{
-                f->featureId(),               // 完整句柄(5-5)
+                f->featureId(), // 完整句柄(5-5)
                 f->isEnabled(),
                 f->name(),
                 sn,
                 data,
-                size});
+                size}
+            );
         }
         return descs;
     }
@@ -119,7 +120,8 @@ namespace lux::render
 
     void RenderFeatureSet::rebuildEnabledCacheIfNeeded() const
     {
-        if (!cache_dirty_) return;
+        if (!cache_dirty_)
+            return;
 
         // 一次遍历产出两份稠密视图,互为子集、顺序一致。它们只在这里被写。
         all_dense_.clear();
@@ -130,7 +132,8 @@ namespace lux::render
         for (const auto& slot : features_.values())
         {
             auto* f = slot.feature.get();
-            if (!f) continue;
+            if (!f)
+                continue;
             all_dense_.push_back(f);
             if (f->isEnabled())
                 enabled_dense_.push_back(f);
@@ -192,7 +195,7 @@ namespace lux::render
         if (it == view_states_.end())
             return out;
         out.assign(it->second.begin(), it->second.end());
-        return out;   // 刻意不改动账本 —— 见头文件说明
+        return out; // 刻意不改动账本 —— 见头文件说明
     }
 
     void RenderFeatureSet::forgetAllViewState(uint32_t feature_index) noexcept

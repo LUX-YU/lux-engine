@@ -6,10 +6,10 @@
 // minwindef.h (pulled in by windows.h) and glfw3.h both define APIENTRY; whichever
 // comes second triggers C4005.  Windows SDK headers must win.
 #ifdef _WIN32
-#   ifndef WIN32_LEAN_AND_MEAN
-#       define WIN32_LEAN_AND_MEAN
-#   endif
-#   include <windows.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #endif
 
 // vulkan.h must precede glfw3.h so GLFW exposes glfwCreateWindowSurface
@@ -20,13 +20,13 @@
 // #include "lux/engine/window/VulkanContext.hpp"
 #include <cassert>
 #ifdef __PLATFORM_WIN32__
-#   define GLFW_EXPOSE_NATIVE_WIN32
-#   include <GLFW/glfw3native.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 #endif
 
 namespace lux::window
 {
-    void LuxWindow::window_close_callback(GLFWwindow* window) 
+    void LuxWindow::window_close_callback(GLFWwindow* window)
     {
         // hide the window
         LuxWindow* window_impl = (LuxWindow*)glfwGetWindowUserPointer(window);
@@ -35,7 +35,7 @@ namespace lux::window
         {
             return;
         }
-        else if(window_impl->_exit_behavior == EExitBehavior::HIDE)
+        else if (window_impl->_exit_behavior == EExitBehavior::HIDE)
         {
             glfwSetWindowShouldClose(window, false);
             glfwHideWindow(window);
@@ -45,14 +45,12 @@ namespace lux::window
     /**
      * Start LuxWindow Defination
      */
-    LuxWindow::LuxWindow(int width, int height, std::string title)
-        : _parameter{ width, height, std::move(title) }
+    LuxWindow::LuxWindow(int width, int height, std::string title) : _parameter{width, height, std::move(title)}
     {
         _init = init();
     }
 
-    LuxWindow::LuxWindow(const InitParameter& parameter)
-        : _parameter{ parameter }
+    LuxWindow::LuxWindow(const InitParameter& parameter) : _parameter{parameter}
     {
         _init = init();
     }
@@ -88,10 +86,7 @@ namespace lux::window
 
         auto* cw = glfwGetCurrentContext();
 
-        _glfw_window = glfwCreateWindow(
-            _parameter.width, _parameter.height,
-            _parameter.title.c_str(), nullptr, cw
-        );
+        _glfw_window = glfwCreateWindow(_parameter.width, _parameter.height, _parameter.title.c_str(), nullptr, cw);
 
         if (!_glfw_window)
         {
@@ -123,9 +118,11 @@ namespace lux::window
         return glfwVulkanSupported();
     }
 
-    bool LuxWindow::createVulkanSurface(VkInstance instance,
-                                        const VkAllocationCallbacks* allocator,
-                                        VkSurfaceKHR* out_surface)
+    bool LuxWindow::createVulkanSurface(
+        VkInstance instance,
+        const VkAllocationCallbacks* allocator,
+        VkSurfaceKHR* out_surface
+    )
     {
         *out_surface = VK_NULL_HANDLE;
         if (!_init || _glfw_window == nullptr)
@@ -143,7 +140,7 @@ namespace lux::window
 
     std::span<const char* const> LuxWindow::requiredVulkanInstanceExtensions()
     {
-        if (glfwInit() != GLFW_TRUE)  // idempotent when already initialized
+        if (glfwInit() != GLFW_TRUE) // idempotent when already initialized
         {
             return {};
         }
@@ -173,10 +170,7 @@ namespace lux::window
 
     void LuxWindow::hideCursor(bool enable)
     {
-        glfwSetInputMode(
-            _glfw_window, GLFW_CURSOR,
-            enable ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL
-        );
+        glfwSetInputMode(_glfw_window, GLFW_CURSOR, enable ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
     }
 
     bool LuxWindow::setRawMouseMotion(bool enable)
@@ -214,10 +208,7 @@ namespace lux::window
         return glfwGetTime();
     }
 
-    void LuxWindow::size(
-        std::uint32_t& width,
-        std::uint32_t& height
-    ) const
+    void LuxWindow::size(std::uint32_t& width, std::uint32_t& height) const
     {
         int native_width = 0;
         int native_height = 0;
@@ -234,147 +225,111 @@ namespace lux::window
 
     void LuxWindow::subscribeKeyEvent()
     {
-        glfwSetKeyCallback(
-            _glfw_window,
-            [](GLFWwindow* window, int key, int scancode, int action, int mods) {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                WindowKeyEvent event{
-                    key,
-                    scancode,
-                    action,
-                    mods
-                };
-                self->pending_input_events_.emplace_back(event);
-                if (self->on_key)
-                {
-                    self->on_key(event);
-                }
+        glfwSetKeyCallback(_glfw_window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            WindowKeyEvent event{key, scancode, action, mods};
+            self->pending_input_events_.emplace_back(event);
+            if (self->on_key)
+            {
+                self->on_key(event);
             }
+        }
         );
     }
 
     void LuxWindow::subscribeCursorPositionCallback()
     {
-        glfwSetCursorPosCallback(
-            _glfw_window,
-            [](GLFWwindow* window, double xpos, double ypos)
+        glfwSetCursorPosCallback(_glfw_window, [](GLFWwindow* window, double xpos, double ypos) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            if (self->on_cursor_move)
             {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                if (self->on_cursor_move)
-                {
-                    self->on_cursor_move(CursorMoveEvent{xpos, ypos});
-                }
+                self->on_cursor_move(CursorMoveEvent{xpos, ypos});
             }
+        }
         );
     }
 
     void LuxWindow::subscribeScrollCallback()
     {
-        glfwSetScrollCallback(
-            _glfw_window,
-            [](GLFWwindow* window, double xoffset, double yoffset)
+        glfwSetScrollCallback(_glfw_window, [](GLFWwindow* window, double xoffset, double yoffset) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            const WindowScrollEvent event{xoffset, yoffset};
+            self->pending_input_events_.emplace_back(event);
+            if (self->on_mouse_scroll)
             {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                const WindowScrollEvent event{xoffset, yoffset};
-                self->pending_input_events_.emplace_back(event);
-                if (self->on_mouse_scroll)
-                {
-                    self->on_mouse_scroll(event);
-                }
+                self->on_mouse_scroll(event);
             }
+        }
         );
     }
 
     void LuxWindow::subscribeDropCallback()
     {
-        glfwSetDropCallback(
-            _glfw_window,
-            [](GLFWwindow* window, int count, const char** paths)
+        glfwSetDropCallback(_glfw_window, [](GLFWwindow* window, int count, const char** paths) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            FileDropEvent ev;
+            ev.paths.reserve(static_cast<size_t>(count));
+            for (int i = 0; i < count; ++i)
             {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                FileDropEvent ev;
-                ev.paths.reserve(static_cast<size_t>(count));
-                for (int i = 0; i < count; ++i)
-                {
-                    ev.paths.emplace_back(paths[i]); // GLFW gives absolute paths
-                }
-                if (self->on_file_drop)
-                {
-                    self->on_file_drop(ev);
-                }
+                ev.paths.emplace_back(paths[i]); // GLFW gives absolute paths
             }
+            if (self->on_file_drop)
+            {
+                self->on_file_drop(ev);
+            }
+        }
         );
     }
 
     void LuxWindow::subscribeCharCallback()
     {
-        glfwSetCharCallback(
-            _glfw_window,
-            [](GLFWwindow* window, unsigned int codepoint)
-            {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->pending_input_events_.emplace_back(
-                    WindowTextEvent{.codepoint=codepoint}
-                );
-            }
+        glfwSetCharCallback(_glfw_window, [](GLFWwindow* window, unsigned int codepoint) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            self->pending_input_events_.emplace_back(WindowTextEvent{.codepoint = codepoint});
+        }
         );
     }
 
     void LuxWindow::subscribeMouseButtonCallback()
     {
-        glfwSetMouseButtonCallback(
-            _glfw_window,
-            [](GLFWwindow* window, int button, int action, int mods)
-            {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+        glfwSetMouseButtonCallback(_glfw_window, [](GLFWwindow* window, int button, int action, int mods) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
 
-                WindowMouseButtonEvent event{
-                    button,
-                    action,
-                    mods
-                };
-                self->pending_input_events_.emplace_back(event);
-                if (self->on_mouse_button)
-                {
-                    self->on_mouse_button(event);
-                }
+            WindowMouseButtonEvent event{button, action, mods};
+            self->pending_input_events_.emplace_back(event);
+            if (self->on_mouse_button)
+            {
+                self->on_mouse_button(event);
             }
+        }
         );
     }
 
     void LuxWindow::subscribeWindowSizeChangeCallback()
     {
-        glfwSetWindowSizeCallback(
-            _glfw_window,
-            [](GLFWwindow* window, int width, int height)
+        glfwSetWindowSizeCallback(_glfw_window, [](GLFWwindow* window, int width, int height) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            if (self->on_resize)
             {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                if (self->on_resize)
-                {
-                    self->on_resize(WindowResizeEvent{
-                        static_cast<std::uint32_t>(width),
-                        static_cast<std::uint32_t>(height)
-                    });
-                }
+                self->on_resize(
+                    WindowResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
+                );
             }
+        }
         );
     }
 
     void LuxWindow::subscribeFramebufferSizeChangeCallback()
     {
-        glfwSetFramebufferSizeCallback(
-            _glfw_window,
-            [](GLFWwindow* window, int width, int height)
+        glfwSetFramebufferSizeCallback(_glfw_window, [](GLFWwindow* window, int width, int height) {
+            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            if (self->on_framebuffer_resize)
             {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                if (self->on_framebuffer_resize)
-                {
-                    self->on_framebuffer_resize(FramebufferResizeEvent{
-                        static_cast<std::uint32_t>(width),
-                        static_cast<std::uint32_t>(height)
-                    });
-                }
+                self->on_framebuffer_resize(
+                    FramebufferResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
+                );
             }
+        }
         );
     }
 
@@ -383,24 +338,17 @@ namespace lux::window
         return _delta_time;
     }
 
-    void LuxWindow::framebufferSize(
-        std::uint32_t& width,
-        std::uint32_t& height
-    ) const
+    void LuxWindow::framebufferSize(std::uint32_t& width, std::uint32_t& height) const
     {
         int native_width = 0;
         int native_height = 0;
-        glfwGetFramebufferSize(
-            _glfw_window,
-            &native_width,
-            &native_height
-        );
+        glfwGetFramebufferSize(_glfw_window, &native_width, &native_height);
         width = static_cast<std::uint32_t>(native_width);
         height = static_cast<std::uint32_t>(native_height);
     }
 
 #ifdef __PLATFORM_WIN32__
-    void*  LuxWindow::win32Handle()
+    void* LuxWindow::win32Handle()
     {
         return (void*)glfwGetWin32Window(_glfw_window);
     }
@@ -431,8 +379,8 @@ namespace lux::window
         while (!glfwWindowShouldClose(_glfw_window))
         {
             float current_time = timeAfterFirstInitialization();
-            _delta_time        = current_time - _last_frame_time;
-            _last_frame_time   = current_time;
+            _delta_time = current_time - _last_frame_time;
+            _last_frame_time = current_time;
 
             glfwPollEvents();
 
@@ -468,7 +416,9 @@ namespace lux::window
         _exit_behavior = behavior;
     }
 
-    void LuxWindow::newFrame(){}
+    void LuxWindow::newFrame()
+    {
+    }
 
     std::vector<WindowInputEvent> LuxWindow::drainInputEvents()
     {

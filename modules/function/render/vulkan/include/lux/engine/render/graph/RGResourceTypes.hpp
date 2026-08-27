@@ -20,7 +20,7 @@ namespace lux::render
 
     /// Output-style getter: write up to `capacity` handles into `out_*`.
     /// Return value is the number of valid entries written.
-    using ExternalImageGetter  = std::function<uint32_t(VkImage* out_images, uint32_t capacity)>;
+    using ExternalImageGetter = std::function<uint32_t(VkImage* out_images, uint32_t capacity)>;
     using ExternalBufferGetter = std::function<uint32_t(VkBuffer* out_buffers, uint32_t capacity)>;
 
     // ========== Imported Resource Info ==========
@@ -30,14 +30,14 @@ namespace lux::render
         ExternalImageGetter image_getter = nullptr;
         uint32_t update_group = static_cast<uint32_t>(RGUpdateGroup::GROUP_NONE);
 
-        VkImageLayout       initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-        VkImageLayout       final_layout   = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkImageLayout final_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        VkAccessFlags2       initial_access = 0;
-        VkAccessFlags2       final_access   = 0;
+        VkAccessFlags2 initial_access = 0;
+        VkAccessFlags2 final_access = 0;
 
         VkPipelineStageFlags2 initial_stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-        VkPipelineStageFlags2 final_stage   = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+        VkPipelineStageFlags2 final_stage = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
 
         /// Slot assignment — when set, the compiler registers this resource in
         /// RGCompiledGraph::slot_resource_idx so the recorder can inject per-frame
@@ -55,34 +55,34 @@ namespace lux::render
         ExternalBufferGetter buffer_getter = nullptr;
         uint32_t update_group = static_cast<uint32_t>(RGUpdateGroup::GROUP_NONE);
 
-        VkAccessFlags2        initial_access = 0;
-        VkAccessFlags2        final_access   = 0;
+        VkAccessFlags2 initial_access = 0;
+        VkAccessFlags2 final_access = 0;
 
         VkPipelineStageFlags2 initial_stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-        VkPipelineStageFlags2 final_stage   = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+        VkPipelineStageFlags2 final_stage = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
     };
 
     // ========== Texture Description ==========
 
     struct RGTextureDescription
     {
-        ERGSizeMode             sizing_mode  = ERGSizeMode::ABSOLUTE_MODE;
-        float                   width_scale  = 1.0f;
-        float                   height_scale = 1.0f;
+        ERGSizeMode sizing_mode = ERGSizeMode::ABSOLUTE_MODE;
+        float width_scale = 1.0f;
+        float height_scale = 1.0f;
 
-        uint32_t                width        = 1;
-        uint32_t                height       = 1;
-        uint32_t                depth        = 1;
-        uint32_t                mip_levels   = 1;
-        uint32_t                array_layers = 1;
+        uint32_t width = 1;
+        uint32_t height = 1;
+        uint32_t depth = 1;
+        uint32_t mip_levels = 1;
+        uint32_t array_layers = 1;
 
-        lux::rdesc::ETextureDimension     dimension{ lux::rdesc::ETextureDimension::TEX_2D };
-        lux::rdesc::ETextureFormat        format{ lux::rdesc::ETextureFormat::RGBA8_UNORM };
+        lux::rdesc::ETextureDimension dimension{lux::rdesc::ETextureDimension::TEX_2D};
+        lux::rdesc::ETextureFormat format{lux::rdesc::ETextureFormat::RGBA8_UNORM};
 
-        uint32_t                sample{ 1 };
-        ERGTextureUsageFlags    usage{ 0 };
+        uint32_t sample{1};
+        ERGTextureUsageFlags usage{0};
 
-        bool                    allow_aliasing = true;
+        bool allow_aliasing = true;
 
         /// 创建者主权开关。置位 = 本资源承诺仅作附件类用途
         /// (COLOR/DEPTH_STENCIL/INPUT_ATTACHMENT),编译期的用途并集不得把它
@@ -90,18 +90,26 @@ namespace lux::render
         /// 非附件角色会被**丢弃并告警**(该 pass 将无法合法访问本资源)。
         /// 默认关:下游按角色需要什么用途,并集就补什么 —— 功能正确优先,
         /// 显存代价由创建者用本开关显式拒绝。
-        bool                    keep_transient = false;
+        bool keep_transient = false;
 
-        static RGTextureDescription Absolute(uint32_t w, uint32_t h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM) {
+        static RGTextureDescription
+        Absolute(uint32_t w, uint32_t h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM)
+        {
             RGTextureDescription d;
-            d.width = w; d.height = h; d.format = fmt;
+            d.width = w;
+            d.height = h;
+            d.format = fmt;
             d.sizing_mode = ERGSizeMode::ABSOLUTE_MODE;
             return d;
         }
 
-        static RGTextureDescription Relative(float scale_w, float scale_h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM) {
+        static RGTextureDescription
+        Relative(float scale_w, float scale_h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM)
+        {
             RGTextureDescription d;
-            d.width_scale = scale_w; d.height_scale = scale_h; d.format = fmt;
+            d.width_scale = scale_w;
+            d.height_scale = scale_h;
+            d.format = fmt;
             d.sizing_mode = ERGSizeMode::RELATIVE_MODE;
             return d;
         }
@@ -111,13 +119,13 @@ namespace lux::render
 
     struct RGBufferDescription
     {
-        uint64_t                size;
-        uint32_t                stride;
-        uint32_t                element_count;
+        uint64_t size;
+        uint32_t stride;
+        uint32_t element_count;
 
-        ERGBufferUsageFlags     usage;
-        ERGMemoryUsage          memory_usage;
-        bool                    allow_aliasing = true;
+        ERGBufferUsageFlags usage;
+        ERGMemoryUsage memory_usage;
+        bool allow_aliasing = true;
     };
 
     // ========== Aggregate Resource Description ==========
@@ -126,22 +134,22 @@ namespace lux::render
 
     struct RGResourceDescription
     {
-        std::string             name;
-        uint64_t                name_hash{ 0 };
-        ERGResourceType         type{ ERGResourceType::TEXTURE };
-        ERGResourceLifetime     lifetime{ ERGResourceLifetime::PERSISTENT };
+        std::string name;
+        uint64_t name_hash{0};
+        ERGResourceType type{ERGResourceType::TEXTURE};
+        ERGResourceLifetime lifetime{ERGResourceLifetime::PERSISTENT};
 
-        VRGResourceDescription  desc;
+        VRGResourceDescription desc;
 
         std::unique_ptr<RGImportedResourceInfo> import_info;
-        std::unique_ptr<RGImportedBufferInfo>   import_buffer_info;
+        std::unique_ptr<RGImportedBufferInfo> import_buffer_info;
 
         // PING_PONG ring info. The CURRENT resource (ring_phase 0) owns the
         // physical copies; a PREVIOUS/history resource (ring_phase>0) allocates
         // nothing and resolves to pingpong_peer's copy `ring_phase` frames earlier.
         uint32_t ring_size{1};
         uint32_t ring_phase{0};
-        int32_t  pingpong_peer{-1};
+        int32_t pingpong_peer{-1};
 
         // For FORWARD_REFERENCE resources: required vs optional dependency. A
         // required reference left unresolved at compile time (no producer with this
@@ -153,29 +161,32 @@ namespace lux::render
         RGResourceDescription& operator=(RGResourceDescription&&) = default;
 
         RGResourceDescription(const RGResourceDescription& other)
-            : name(other.name)
-            , name_hash(other.name_hash)
-            , type(other.type)
-            , lifetime(other.lifetime)
-            , desc(other.desc)
-            , import_info(other.import_info ? std::make_unique<RGImportedResourceInfo>(*other.import_info) : nullptr)
-            , import_buffer_info(other.import_buffer_info ? std::make_unique<RGImportedBufferInfo>(*other.import_buffer_info) : nullptr)
-            , ring_size(other.ring_size)
-            , ring_phase(other.ring_phase)
-            , pingpong_peer(other.pingpong_peer)
-            , reference_mode(other.reference_mode)
-        {}
+            : name(other.name), name_hash(other.name_hash), type(other.type), lifetime(other.lifetime),
+              desc(other.desc),
+              import_info(other.import_info ? std::make_unique<RGImportedResourceInfo>(*other.import_info) : nullptr),
+              import_buffer_info(
+                  other.import_buffer_info ? std::make_unique<RGImportedBufferInfo>(*other.import_buffer_info)
+                                           : nullptr
+              ),
+              ring_size(other.ring_size), ring_phase(other.ring_phase), pingpong_peer(other.pingpong_peer),
+              reference_mode(other.reference_mode)
+        {
+        }
 
         RGResourceDescription& operator=(const RGResourceDescription& other)
         {
-            if (this != &other) {
+            if (this != &other)
+            {
                 name = other.name;
                 name_hash = other.name_hash;
                 type = other.type;
                 lifetime = other.lifetime;
                 desc = other.desc;
-                import_info = other.import_info ? std::make_unique<RGImportedResourceInfo>(*other.import_info) : nullptr;
-                import_buffer_info = other.import_buffer_info ? std::make_unique<RGImportedBufferInfo>(*other.import_buffer_info) : nullptr;
+                import_info =
+                    other.import_info ? std::make_unique<RGImportedResourceInfo>(*other.import_info) : nullptr;
+                import_buffer_info = other.import_buffer_info
+                                         ? std::make_unique<RGImportedBufferInfo>(*other.import_buffer_info)
+                                         : nullptr;
                 ring_size = other.ring_size;
                 ring_phase = other.ring_phase;
                 pingpong_peer = other.pingpong_peer;

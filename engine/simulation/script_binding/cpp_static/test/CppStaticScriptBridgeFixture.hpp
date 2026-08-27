@@ -18,7 +18,7 @@ namespace lux::simulation::test
 
     class LUX_TYPE_INFO(runtime) BridgeBehavior final : public EntityBehavior
     {
-      public:
+    public:
         LUX_METHOD()
         void onValue(float value) noexcept
         {
@@ -42,9 +42,7 @@ namespace lux::simulation::test
         }
     };
 
-    inline std::int32_t LUX_FUNC() bridgeFreeFunction(
-        std::int32_t value
-    ) noexcept
+    inline std::int32_t LUX_FUNC() bridgeFreeFunction(std::int32_t value) noexcept
     {
         return value + 1;
     }

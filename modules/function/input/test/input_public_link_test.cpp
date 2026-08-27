@@ -2,7 +2,8 @@
 
 #include <cassert>
 
-int main()
+int
+main()
 {
     lux::input::Input input;
     assert(&input.actionRegistry() == &input.mapper().actionRegistry());

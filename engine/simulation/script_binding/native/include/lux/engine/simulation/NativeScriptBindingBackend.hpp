@@ -15,15 +15,14 @@ namespace lux::simulation
             void* context,
             std::uint64_t type_id,
             std::string_view canonical_name,
-            lux_script_type_desc& result
-        ) noexcept{};
+            lux_script_type_desc& result) noexcept {};
     };
 
     struct ResolvedNativeModule final
     {
         const lux::script::NativeModule* module{};
         void* lease{};
-        void (*release)(void* lease) noexcept{};
+        void (*release)(void* lease) noexcept {};
     };
 
     struct NativeModuleResolver final
@@ -33,14 +32,12 @@ namespace lux::simulation
             void* context,
             const lux::asset::AssetId& asset,
             const lux::asset::ScriptAssetContent& content,
-            ResolvedNativeModule& result
-        ) noexcept{};
+            ResolvedNativeModule& result) noexcept {};
     };
 
-    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_NATIVE_PUBLIC
-        NativeScriptBindingBackend final
+    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_NATIVE_PUBLIC NativeScriptBindingBackend final
     {
-      public:
+    public:
         NativeScriptBindingBackend(
             NativeModuleResolver resolver,
             std::size_t module_capacity,
@@ -50,18 +47,14 @@ namespace lux::simulation
         ~NativeScriptBindingBackend();
 
         NativeScriptBindingBackend(NativeScriptBindingBackend&&) noexcept;
-        NativeScriptBindingBackend& operator=(
-            NativeScriptBindingBackend&&
-        ) noexcept;
+        NativeScriptBindingBackend& operator=(NativeScriptBindingBackend&&) noexcept;
         NativeScriptBindingBackend(const NativeScriptBindingBackend&) = delete;
-        NativeScriptBindingBackend& operator=(
-            const NativeScriptBindingBackend&
-        ) = delete;
+        NativeScriptBindingBackend& operator=(const NativeScriptBindingBackend&) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
 
-      private:
+    private:
         struct State;
         std::unique_ptr<State> state_;
     };

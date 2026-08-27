@@ -21,26 +21,16 @@ namespace lux::render
         ViewCameraUpdatePayload payload{};
         payload.scene_id = scene_id;
         payload.view = view;
-        std::memcpy(
-            payload.view_matrix,
-            view_matrix,
-            sizeof(payload.view_matrix)
-        );
+        std::memcpy(payload.view_matrix, view_matrix, sizeof(payload.view_matrix));
         // The GPU contract carries only camera rotation. Translation is
         // reconstructed from render_origin in page space.
         payload.view_matrix[12] = 0.0f;
         payload.view_matrix[13] = 0.0f;
         payload.view_matrix[14] = 0.0f;
-        std::memcpy(
-            payload.proj_matrix,
-            proj_matrix,
-            sizeof(payload.proj_matrix)
-        );
+        std::memcpy(payload.proj_matrix, proj_matrix, sizeof(payload.proj_matrix));
         payload.render_origin = render_origin;
         payload.coordinate_page_size = coordinate_page_size;
-        proxy.update(
-            std::span<const ViewCameraUpdatePayload>{&payload, 1}
-        );
+        proxy.update(std::span<const ViewCameraUpdatePayload>{&payload, 1});
     }
 
     void viewCameraUpdateTransient(
@@ -64,17 +54,8 @@ namespace lux::render
                 return;
             }
             origin.page_delta[axis] = static_cast<std::int32_t>(page);
-            origin.local[axis] = static_cast<float>(
-                value - page * static_cast<double>(coordinate_page_size));
+            origin.local[axis] = static_cast<float>(value - page * static_cast<double>(coordinate_page_size));
         }
-        viewCameraUpdate(
-            proxy,
-            scene_id,
-            view,
-            view_matrix,
-            proj_matrix,
-            origin,
-            coordinate_page_size
-        );
+        viewCameraUpdate(proxy, scene_id, view, view_matrix, proj_matrix, origin, coordinate_page_size);
     }
 } // namespace lux::render

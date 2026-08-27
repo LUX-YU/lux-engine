@@ -6,9 +6,9 @@
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>
-#include <lux/engine/render/renderer/FeatureTypeRegistry.hpp>   // sunk feature-type registry
+#include <lux/engine/render/renderer/FeatureTypeRegistry.hpp> // sunk feature-type registry
 #include <lux/cxx/container/SparseSet.hpp>
-#include <lux/cxx/container/BasicSparseSet.hpp>   // SlotKeyAutoSparseSet (generational)
+#include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet (generational)
 
 #include <cstdint>
 #include <chrono>
@@ -45,8 +45,8 @@ namespace lux::render
         explicit Renderer(std::shared_ptr<RenderContext> ctx);
         ~Renderer();
 
-        Renderer(const Renderer &) = delete;
-        Renderer &operator=(const Renderer &) = delete;
+        Renderer(const Renderer&) = delete;
+        Renderer& operator=(const Renderer&) = delete;
 
         // ================================================================
         //  Scene lifecycle
@@ -69,7 +69,7 @@ namespace lux::render
         /// on non-submitting ticks, so arithmetic over-claims completion.
         void setGpuCompletedSerial(uint64_t serial) noexcept
         {
-            gpu_completed_serial_     = serial;
+            gpu_completed_serial_ = serial;
             has_gpu_completed_serial_ = true;
         }
 
@@ -95,29 +95,33 @@ namespace lux::render
         ///        current frame; >0 for subsequent views.  The recorder uses
         ///        this to patch imported-resource first-touch barriers.
         void renderSingleView(
-            RenderScene &scene, View &view,
-            const RenderTargetBinding &binding,
-            FrameRuntime &rt,
-            uint32_t cross_view_index = 0);
+            RenderScene& scene,
+            View& view,
+            const RenderTargetBinding& binding,
+            FrameRuntime& rt,
+            uint32_t cross_view_index = 0
+        );
 
         // ================================================================
         //  Accessors
         // ================================================================
 
-        [[nodiscard]] RenderContext &renderContext() noexcept;
+        [[nodiscard]] RenderContext& renderContext() noexcept;
         [[nodiscard]] uint32_t framesInFlight() const noexcept;
 
         /// Direct access to a scene by ID (render thread only).
-        [[nodiscard]] RenderScene *getScene(RenderSceneId id) noexcept;
+        [[nodiscard]] RenderScene* getScene(RenderSceneId id) noexcept;
 
         /// Registry of feature TYPES (factories + descriptors). The comm layer
         /// registers types into it; dependency resolution resolves declared deps
         /// against it (FeatureTypeRegistry::findByStableType). Render thread only.
-        [[nodiscard]] FeatureTypeRegistry &featureTypeRegistry() noexcept { return feature_type_registry_; }
+        [[nodiscard]] FeatureTypeRegistry& featureTypeRegistry() noexcept
+        {
+            return feature_type_registry_;
+        }
 
         /// Iterate all live scenes (render thread only).
-        template<typename Fn>
-        void forEachScene(Fn&& fn)
+        template <typename Fn> void forEachScene(Fn&& fn)
         {
             for (auto& scene_ptr : scenes_.values())
             {
@@ -126,8 +130,7 @@ namespace lux::render
             }
         }
 
-        template<typename Fn>
-        void forEachScene(Fn&& fn) const
+        template <typename Fn> void forEachScene(Fn&& fn) const
         {
             for (const auto& scene_ptr : scenes_.values())
             {
@@ -139,19 +142,21 @@ namespace lux::render
     private:
         /// Ensure graph is compiled + sized, upload pending CPU→GPU data.
         /// Returns false if rendering should be skipped (graph invalid, etc.).
-        bool prepareSceneForRender(
-            RenderScene &scene, const RenderTargetLayout &layout);
+        bool prepareSceneForRender(RenderScene& scene, const RenderTargetLayout& layout);
 
         /// Ensure the view's per-view GPU resources are allocated and correctly sized.
         /// Returns false if allocation failed (rendering should be skipped).
-        bool prepareViewForRender(
-            RenderScene &scene, View &view,
-            const RenderTargetBinding &binding, FrameRuntime &rt);
+        bool prepareViewForRender(RenderScene& scene, View& view, const RenderTargetBinding& binding, FrameRuntime& rt);
 
         /// Record graph for a single view.
-        void renderView(RenderScene &scene, SceneGraphState &gs, View &view,
-                        const DrawRequest &req, FrameRuntime &rt,
-                        uint32_t cross_view_index = 0);
+        void renderView(
+            RenderScene& scene,
+            SceneGraphState& gs,
+            View& view,
+            const DrawRequest& req,
+            FrameRuntime& rt,
+            uint32_t cross_view_index = 0
+        );
 
         /// Reclaim scenes retired via removeScene() whose GPU work is
         /// FENCE-PROVEN drained (retire_serial <= the completion watermark fed
@@ -160,10 +165,8 @@ namespace lux::render
         void collectRetiredScenes(uint64_t frame_serial);
 
         FrameStamp current_stamp_{}; ///< Authoritative stamp set by beginFrame().
-        std::chrono::steady_clock::time_point scene_clock_start_{
-            std::chrono::steady_clock::now()};
-        std::chrono::steady_clock::time_point scene_clock_previous_{
-            scene_clock_start_};
+        std::chrono::steady_clock::time_point scene_clock_start_{std::chrono::steady_clock::now()};
+        std::chrono::steady_clock::time_point scene_clock_previous_{scene_clock_start_};
 
         std::shared_ptr<RenderContext> ctx_;
         // ── Feature-type registry (sunk from comm Impl) ──────
@@ -182,7 +185,7 @@ namespace lux::render
         struct RetiredScene
         {
             std::unique_ptr<RenderScene> scene;
-            uint64_t                     retire_serial{0};
+            uint64_t retire_serial{0};
         };
         std::vector<RetiredScene> retired_scenes_;
 
@@ -190,7 +193,7 @@ namespace lux::render
         // gates the driverless fallback: headless no-driver ticks never submit
         // GPU work, so the old arithmetic is vacuously safe there.
         uint64_t gpu_completed_serial_{0};
-        bool     has_gpu_completed_serial_{false};
+        bool has_gpu_completed_serial_{false};
 
         [[nodiscard]] uint64_t completedSerialOr(uint64_t fallback) const noexcept
         {

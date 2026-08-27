@@ -24,92 +24,92 @@
 namespace lux::render
 {
 
-// Defined in RenderServer.cpp
-RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
+    // Defined in RenderServer.cpp
+    RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
 
-namespace
-{
-    using Dispatcher = GeneralRenderServer::Dispatcher;
-    using Ctx        = Dispatcher::Ctx;
-
-    // ── Point cloud command handlers ────────────────────────────────────
-
-    void handleUploadPointCloudChunk(Ctx& ctx, const UploadPointCloudChunkPayload& p)
+    namespace
     {
-        auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
-        if (!pc_res || !pc_res->isInitialized()) {
-            replyToCurrent<UploadPointCloudChunkPayload>(ctx,
-                PointCloudChunkUploadedReply{p.chunk_id, 1u});
-            return;
-        }
+        using Dispatcher = GeneralRenderServer::Dispatcher;
+        using Ctx = Dispatcher::Ctx;
 
-        auto blob = resolveBlob(ctx.program, p.point_data);
-        assert(blob.size() == p.point_count * sizeof(GpuPointVertex));
-        assert((reinterpret_cast<std::uintptr_t>(blob.data()) % alignof(GpuPointVertex)) == 0);
+        // ── Point cloud command handlers ────────────────────────────────────
 
-        auto points = std::span<const GpuPointVertex>(
-            reinterpret_cast<const GpuPointVertex*>(blob.data()),
-            p.point_count);
-
-        pc_res->queueUpload(p.chunk_id, points);
-        replyToCurrent<UploadPointCloudChunkPayload>(ctx,
-            PointCloudChunkUploadedReply{p.chunk_id, 0u});
-    }
-
-    void handleRemovePointCloudChunk(Ctx& ctx, const RemovePointCloudChunkPayload& p)
-    {
-        auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
-        if (!pc_res || !pc_res->isInitialized()) return;
-        pc_res->globalBuffer().freeSlot(p.chunk_id);
-        pc_res->nodeBuffer().removeNode(p.chunk_id);
-    }
-
-    void handleClearAllPointCloud(Ctx& ctx, const ClearAllPointCloudPayload& p)
-    {
-        auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
-        if (!pc_res || !pc_res->isInitialized())
+        void handleUploadPointCloudChunk(Ctx& ctx, const UploadPointCloudChunkPayload& p)
         {
-            replyToCurrent<ClearAllPointCloudPayload>(ctx, GenericOkReply{1u});
-            return;
-        }
-        pc_res->queueClearAll();
-        replyToCurrent<ClearAllPointCloudPayload>(ctx, GenericOkReply{0u});
-    }
+            auto* sc = lookupScene(ctx.user_state, p.scene_id);
+            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            if (!pc_res || !pc_res->isInitialized())
+            {
+                replyToCurrent<UploadPointCloudChunkPayload>(ctx, PointCloudChunkUploadedReply{p.chunk_id, 1u});
+                return;
+            }
 
-    void handleClearPointCloudChunk(Ctx& ctx, const ClearPointCloudChunkPayload& p)
-    {
-        auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
-        if (!pc_res || !pc_res->isInitialized())
+            auto blob = resolveBlob(ctx.program, p.point_data);
+            assert(blob.size() == p.point_count * sizeof(GpuPointVertex));
+            assert((reinterpret_cast<std::uintptr_t>(blob.data()) % alignof(GpuPointVertex)) == 0);
+
+            auto points =
+                std::span<const GpuPointVertex>(reinterpret_cast<const GpuPointVertex*>(blob.data()), p.point_count);
+
+            pc_res->queueUpload(p.chunk_id, points);
+            replyToCurrent<UploadPointCloudChunkPayload>(ctx, PointCloudChunkUploadedReply{p.chunk_id, 0u});
+        }
+
+        void handleRemovePointCloudChunk(Ctx& ctx, const RemovePointCloudChunkPayload& p)
         {
-            replyToCurrent<ClearPointCloudChunkPayload>(ctx, GenericOkReply{1u});
-            return;
+            auto* sc = lookupScene(ctx.user_state, p.scene_id);
+            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            if (!pc_res || !pc_res->isInitialized())
+                return;
+            pc_res->globalBuffer().freeSlot(p.chunk_id);
+            pc_res->nodeBuffer().removeNode(p.chunk_id);
         }
-        pc_res->queueResetChunk(p.chunk_id);
-        replyToCurrent<ClearPointCloudChunkPayload>(ctx, GenericOkReply{0u});
-    }
 
-    void handleSetPointCloudPointSize(Ctx& ctx, const SetPointCloudPointSizePayload& p)
-    {
-        auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        if (!sc) return;
-        if (auto* f = sc->getFeatureAs<IPointCloudFeature>(p.feature))
-            f->setPointSize(p.point_size);
-    }
+        void handleClearAllPointCloud(Ctx& ctx, const ClearAllPointCloudPayload& p)
+        {
+            auto* sc = lookupScene(ctx.user_state, p.scene_id);
+            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            if (!pc_res || !pc_res->isInitialized())
+            {
+                replyToCurrent<ClearAllPointCloudPayload>(ctx, GenericOkReply{1u});
+                return;
+            }
+            pc_res->queueClearAll();
+            replyToCurrent<ClearAllPointCloudPayload>(ctx, GenericOkReply{0u});
+        }
 
-} // anonymous namespace
+        void handleClearPointCloudChunk(Ctx& ctx, const ClearPointCloudChunkPayload& p)
+        {
+            auto* sc = lookupScene(ctx.user_state, p.scene_id);
+            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            if (!pc_res || !pc_res->isInitialized())
+            {
+                replyToCurrent<ClearPointCloudChunkPayload>(ctx, GenericOkReply{1u});
+                return;
+            }
+            pc_res->queueResetChunk(p.chunk_id);
+            replyToCurrent<ClearPointCloudChunkPayload>(ctx, GenericOkReply{0u});
+        }
+
+        void handleSetPointCloudPointSize(Ctx& ctx, const SetPointCloudPointSizePayload& p)
+        {
+            auto* sc = lookupScene(ctx.user_state, p.scene_id);
+            if (!sc)
+                return;
+            if (auto* f = sc->getFeatureAs<IPointCloudFeature>(p.feature))
+                f->setPointSize(p.point_size);
+        }
+
+    } // anonymous namespace
 
     // Typed-op: register/unregister generated from the op list. Shared by the 4
     // accumulating modes (Simple / GPUDriven / LOD / Splatting). The 5 handlers above are
     // the only hand-written pieces.
     using PCOps = FeatureOpRegistrar<
-        ServerOp<PointCloudUploadOp,  &handleUploadPointCloudChunk>,
-        ServerOp<PointCloudRemoveOp,  &handleRemovePointCloudChunk>,
-        ServerOp<PointCloudClearAllOp,     &handleClearAllPointCloud>,
-        ServerOp<PointCloudClearChunkOp,   &handleClearPointCloudChunk>,
+        ServerOp<PointCloudUploadOp, &handleUploadPointCloudChunk>,
+        ServerOp<PointCloudRemoveOp, &handleRemovePointCloudChunk>,
+        ServerOp<PointCloudClearAllOp, &handleClearAllPointCloud>,
+        ServerOp<PointCloudClearChunkOp, &handleClearPointCloudChunk>,
         ServerOp<PointCloudSetPointSizeOp, &handleSetPointCloudPointSize>>;
 
     // =====================================================================
@@ -126,11 +126,11 @@ namespace
         const PCSimpleCommConfig& cc = *decoded;
 
         PCFeatureSimple::Config cfg{};
-        cfg.vertex_shader      = cc.vertex_shader;
-        cfg.fragment_shader    = cc.fragment_shader;
+        cfg.vertex_shader = cc.vertex_shader;
+        cfg.fragment_shader = cc.fragment_shader;
         cfg.initial_point_size = cc.initial_point_size;
-        cfg.max_global_points  = cc.max_global_points;
-        cfg.max_octree_nodes   = cc.max_octree_nodes;
+        cfg.max_global_points = cc.max_global_points;
+        cfg.max_octree_nodes = cc.max_octree_nodes;
         return sc->addFeature<PCFeatureSimple>(cfg);
     }
 
@@ -161,11 +161,11 @@ namespace
         const PCGPUDrivenCommConfig& cc = *decoded;
 
         PCFeatureGPUDriven::Config cfg{};
-        cfg.compute_shader     = cc.compute_shader;
-        cfg.vertex_shader      = cc.vertex_shader;
-        cfg.fragment_shader    = cc.fragment_shader;
+        cfg.compute_shader = cc.compute_shader;
+        cfg.vertex_shader = cc.vertex_shader;
+        cfg.fragment_shader = cc.fragment_shader;
         cfg.initial_point_size = cc.initial_point_size;
-        cfg.max_nodes          = cc.max_nodes;
+        cfg.max_nodes = cc.max_nodes;
         return sc->addFeature<PCFeatureGPUDriven>(cfg);
     }
 
@@ -196,13 +196,13 @@ namespace
         const PCLODCommConfig& cc = *decoded;
 
         PCFeatureLOD::Config cfg{};
-        cfg.compute_shader   = cc.compute_shader;
-        cfg.vertex_shader    = cc.vertex_shader;
-        cfg.fragment_shader  = cc.fragment_shader;
+        cfg.compute_shader = cc.compute_shader;
+        cfg.vertex_shader = cc.vertex_shader;
+        cfg.fragment_shader = cc.fragment_shader;
         cfg.point_size_world = cc.point_size_world;
-        cfg.min_size         = cc.min_size;
-        cfg.max_size         = cc.max_size;
-        cfg.max_nodes        = cc.max_nodes;
+        cfg.min_size = cc.min_size;
+        cfg.max_size = cc.max_size;
+        cfg.max_nodes = cc.max_nodes;
         return sc->addFeature<PCFeatureLOD>(cfg);
     }
 
@@ -233,13 +233,13 @@ namespace
         const PCSplattingCommConfig& cc = *decoded;
 
         PCFeatureSplatting::Config cfg{};
-        cfg.compute_shader   = cc.compute_shader;
-        cfg.vertex_shader    = cc.vertex_shader;
-        cfg.fragment_shader  = cc.fragment_shader;
+        cfg.compute_shader = cc.compute_shader;
+        cfg.vertex_shader = cc.vertex_shader;
+        cfg.fragment_shader = cc.fragment_shader;
         cfg.point_size_world = cc.point_size_world;
-        cfg.min_size         = cc.min_size;
-        cfg.max_size         = cc.max_size;
-        cfg.max_nodes        = cc.max_nodes;
+        cfg.min_size = cc.min_size;
+        cfg.max_size = cc.max_size;
+        cfg.max_nodes = cc.max_nodes;
         return sc->addFeature<PCFeatureSplatting>(cfg);
     }
 
@@ -260,46 +260,42 @@ namespace
     //  PCFeatureTransient factory
     // =====================================================================
 
-namespace
-{
-    // ── Transient-specific handler: replace (not accumulate) ─────────────
-
-    void handleReplaceTransientPoints(Ctx& ctx, const UploadPointCloudChunkPayload& p)
+    namespace
     {
-        auto* sc  = lookupScene(ctx.user_state, p.scene_id);
-        auto* buf = sc ? sc->sceneRegistry().find<TransientPointCloudBuffer>() : nullptr;
-        if (!buf) {
-            replyToCurrent<UploadPointCloudChunkPayload>(ctx,
-                PointCloudChunkUploadedReply{p.chunk_id, 1u});
-            return;
+        // ── Transient-specific handler: replace (not accumulate) ─────────────
+
+        void handleReplaceTransientPoints(Ctx& ctx, const UploadPointCloudChunkPayload& p)
+        {
+            auto* sc = lookupScene(ctx.user_state, p.scene_id);
+            auto* buf = sc ? sc->sceneRegistry().find<TransientPointCloudBuffer>() : nullptr;
+            if (!buf)
+            {
+                replyToCurrent<UploadPointCloudChunkPayload>(ctx, PointCloudChunkUploadedReply{p.chunk_id, 1u});
+                return;
+            }
+
+            auto blob = resolveBlob(ctx.program, p.point_data);
+            assert(blob.size() == p.point_count * sizeof(GpuPointVertex));
+
+            buf->replace(reinterpret_cast<const GpuPointVertex*>(blob.data()), p.point_count);
+
+            replyToCurrent<UploadPointCloudChunkPayload>(ctx, PointCloudChunkUploadedReply{p.chunk_id, 0u});
         }
 
-        auto blob = resolveBlob(ctx.program, p.point_data);
-        assert(blob.size() == p.point_count * sizeof(GpuPointVertex));
-
-        buf->replace(
-            reinterpret_cast<const GpuPointVertex*>(blob.data()),
-            p.point_count);
-
-        replyToCurrent<UploadPointCloudChunkPayload>(ctx,
-            PointCloudChunkUploadedReply{p.chunk_id, 0u});
-    }
-
-} // anonymous namespace
+    } // anonymous namespace
 
     // Transient shares the 5-op layout but uses the REPLACE upload handler at slot 0; the
     // remove/clear handlers no-op for transient (no PointCloudResources), so they register
     // uniformly rather than as placeholder slots (a stray remove/clear just gets a graceful
     // error reply instead of a hung request).
     using PCTransientOps = FeatureOpRegistrar<
-        ServerOp<PointCloudUploadOp,  &handleReplaceTransientPoints>,
-        ServerOp<PointCloudRemoveOp,  &handleRemovePointCloudChunk>,
-        ServerOp<PointCloudClearAllOp,     &handleClearAllPointCloud>,
-        ServerOp<PointCloudClearChunkOp,   &handleClearPointCloudChunk>,
+        ServerOp<PointCloudUploadOp, &handleReplaceTransientPoints>,
+        ServerOp<PointCloudRemoveOp, &handleRemovePointCloudChunk>,
+        ServerOp<PointCloudClearAllOp, &handleClearAllPointCloud>,
+        ServerOp<PointCloudClearChunkOp, &handleClearPointCloudChunk>,
         ServerOp<PointCloudSetPointSizeOp, &handleSetPointCloudPointSize>>;
 
-    static Expected<FeatureHandle> pcTransientCreateFn(void* scene_ptr,
-                                        const void* param, size_t param_size)
+    static Expected<FeatureHandle> pcTransientCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 
@@ -309,10 +305,10 @@ namespace
         const PCTransientCommConfig& cc = *decoded;
 
         PCFeatureTransient::Config cfg{};
-        cfg.vertex_shader   = cc.vertex_shader;
+        cfg.vertex_shader = cc.vertex_shader;
         cfg.fragment_shader = cc.fragment_shader;
-        cfg.point_size      = cc.point_size;
-        cfg.max_points      = cc.max_points;
+        cfg.point_size = cc.point_size;
+        cfg.max_points = cc.max_points;
         return sc->addFeature<PCFeatureTransient>(cfg);
     }
 

@@ -32,17 +32,17 @@ namespace lux::render
     /// 可被外部 API(CUDA 等)导入的缓冲:Vulkan 侧句柄 + 平台外部句柄。
     struct ExportableBuffer
     {
-        VkBuffer       buffer{};             // forward-declared in core/vk_fwd.hpp
+        VkBuffer buffer{}; // forward-declared in core/vk_fwd.hpp
         VkDeviceMemory memory{};
-        uint64_t       external_handle{0};   // Win32 HANDLE / POSIX fd widened to u64
-        uint64_t       actual_size{0};       // >= requested (driver may round up)
+        uint64_t external_handle{0}; // Win32 HANDLE / POSIX fd widened to u64
+        uint64_t actual_size{0};     // >= requested (driver may round up)
     };
 
     /// 可被外部 API 导入的时间线信号量。
     struct ExportableTimelineSemaphore
     {
         VkSemaphore semaphore{};
-        uint64_t    external_handle{0};
+        uint64_t external_handle{0};
     };
 
 } // namespace lux::render

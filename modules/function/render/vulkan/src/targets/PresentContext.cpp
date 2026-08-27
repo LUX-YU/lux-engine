@@ -1,6 +1,6 @@
 #include <lux/engine/render/targets/PresentContext.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
-#include <lux/engine/render/gpu/VulkanContext.hpp>   // ResourceContext / DeviceContext / InstanceContext
+#include <lux/engine/render/gpu/VulkanContext.hpp> // ResourceContext / DeviceContext / InstanceContext
 
 #include <algorithm>
 #include <limits>
@@ -11,10 +11,7 @@ namespace lux::render
 {
     namespace detail
     {
-        Expected<void> waitPresentQueueIdle(
-            VkQueue queue,
-            PFN_vkQueueWaitIdle wait_idle
-        ) noexcept
+        Expected<void> waitPresentQueueIdle(VkQueue queue, PFN_vkQueueWaitIdle wait_idle) noexcept
         {
             if (queue == VK_NULL_HANDLE || wait_idle == nullptr)
                 return renderFailure<err::internal::InvalidArgument>();
@@ -22,9 +19,7 @@ namespace lux::render
             const VkResult result = wait_idle(queue);
             if (result != VK_SUCCESS)
             {
-                return renderFailure<err::device::VulkanCallFailed>(
-                    encodeVkResult(result)
-                );
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
             }
             return {};
         }
@@ -52,8 +47,7 @@ namespace lux::render
         PresentSemaphoreCreateCandidate::PresentSemaphoreCreateCandidate(
             PresentSemaphoreCreateCandidate&& other
         ) noexcept
-            : device_(std::exchange(other.device_, VkDevice{})),
-              ops_(other.ops_),
+            : device_(std::exchange(other.device_, VkDevice{})), ops_(other.ops_),
               acquire_semaphores_(std::move(other.acquire_semaphores_)),
               present_semaphores_(std::move(other.present_semaphores_))
         {
@@ -62,9 +56,7 @@ namespace lux::render
         }
 
         PresentSemaphoreCreateCandidate&
-        PresentSemaphoreCreateCandidate::operator=(
-            PresentSemaphoreCreateCandidate&& other
-        ) noexcept
+        PresentSemaphoreCreateCandidate::operator=(PresentSemaphoreCreateCandidate&& other) noexcept
         {
             if (this == &other)
                 return *this;
@@ -79,8 +71,7 @@ namespace lux::render
             return *this;
         }
 
-        Expected<PresentSemaphoreCreateCandidate>
-        PresentSemaphoreCreateCandidate::create(
+        Expected<PresentSemaphoreCreateCandidate> PresentSemaphoreCreateCandidate::create(
             VkDevice device,
             std::uint32_t acquire_count,
             std::uint32_t present_count,
@@ -100,18 +91,11 @@ namespace lux::render
                 .flags = 0,
             };
 
-            auto create_batch = [&](std::vector<VkSemaphore>& destination,
-                                    std::uint32_t count) -> Expected<void>
-            {
+            auto create_batch = [&](std::vector<VkSemaphore>& destination, std::uint32_t count) -> Expected<void> {
                 for (std::uint32_t i = 0; i < count; ++i)
                 {
                     VkSemaphore semaphore = VK_NULL_HANDLE;
-                    const VkResult result = ops.create_semaphore(
-                        device,
-                        &create_info,
-                        nullptr,
-                        &semaphore
-                    );
+                    const VkResult result = ops.create_semaphore(device, &create_info, nullptr, &semaphore);
                     if (result != VK_SUCCESS)
                     {
                         // Vulkan normally creates no object on failure. Still
@@ -119,9 +103,7 @@ namespace lux::render
                         // transaction cannot leak a handle it was handed.
                         if (semaphore != VK_NULL_HANDLE)
                             ops.destroy_semaphore(device, semaphore, nullptr);
-                        return renderFailure<err::device::VulkanCallFailed>(
-                            encodeVkResult(result)
-                        );
+                        return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
                     }
                     if (semaphore == VK_NULL_HANDLE)
                         return renderFailure<err::device::VulkanObjectCreationFailed>();
@@ -130,17 +112,11 @@ namespace lux::render
                 return {};
             };
 
-            auto acquired = create_batch(
-                candidate.acquire_semaphores_,
-                acquire_count
-            );
+            auto acquired = create_batch(candidate.acquire_semaphores_, acquire_count);
             if (!acquired)
                 return lux::cxx::unexpected<RenderError>(acquired.error());
 
-            auto presented = create_batch(
-                candidate.present_semaphores_,
-                present_count
-            );
+            auto presented = create_batch(candidate.present_semaphores_, present_count);
             if (!presented)
                 return lux::cxx::unexpected<RenderError>(presented.error());
 
@@ -154,13 +130,11 @@ namespace lux::render
 
         void PresentSemaphoreCreateCandidate::rollback() noexcept
         {
-            for (auto it = present_semaphores_.rbegin();
-                 it != present_semaphores_.rend(); ++it)
+            for (auto it = present_semaphores_.rbegin(); it != present_semaphores_.rend(); ++it)
             {
                 ops_.destroy_semaphore(device_, *it, nullptr);
             }
-            for (auto it = acquire_semaphores_.rbegin();
-                 it != acquire_semaphores_.rend(); ++it)
+            for (auto it = acquire_semaphores_.rbegin(); it != acquire_semaphores_.rend(); ++it)
             {
                 ops_.destroy_semaphore(device_, *it, nullptr);
             }
@@ -183,30 +157,25 @@ namespace lux::render
         };
     } // namespace
 
-    PresentContext::PresentContext(
-        ConstructionKey,
-        ResourceContext& res_ctx,
-        RenderSurface&& surface
-    )
+    PresentContext::PresentContext(ConstructionKey, ResourceContext& res_ctx, RenderSurface&& surface)
         : res_ctx_(res_ctx), surface_(std::move(surface))
     {
     }
 
     Expected<std::unique_ptr<PresentContext>> PresentContext::create(
-        ResourceContext& res_ctx, RenderSurface&& surface,
-        VkExtent2D initial_extent, bool enable_vsync,
-        bool enable_present_scaling)
+        ResourceContext& res_ctx,
+        RenderSurface&& surface,
+        VkExtent2D initial_extent,
+        bool enable_vsync,
+        bool enable_present_scaling
+    )
     {
-        auto ctx = std::make_unique<PresentContext>(
-            ConstructionKey{},
-            res_ctx,
-            std::move(surface)
-        );
+        auto ctx = std::make_unique<PresentContext>(ConstructionKey{}, res_ctx, std::move(surface));
 
         SwapchainProvider::Config sc_cfg{};
-        sc_cfg.width                 = (initial_extent.width  > 0) ? initial_extent.width  : 1u;
-        sc_cfg.height                = (initial_extent.height > 0) ? initial_extent.height : 1u;
-        sc_cfg.enable_vsync          = enable_vsync;
+        sc_cfg.width = (initial_extent.width > 0) ? initial_extent.width : 1u;
+        sc_cfg.height = (initial_extent.height > 0) ? initial_extent.height : 1u;
+        sc_cfg.enable_vsync = enable_vsync;
         sc_cfg.enable_present_scaling = enable_present_scaling;
 
         // Every early return below just drops `ctx`; the surface owns itself and
@@ -227,9 +196,8 @@ namespace lux::render
     {
         if (close_required_ && !closed_)
         {
-            renderFatal(
-                "PresentContext destroyed without a successful close(); "
-                "presentation completion was not proven"
+            renderFatal("PresentContext destroyed without a successful close(); "
+                        "presentation completion was not proven"
             );
         }
         // Member order performs the complete teardown: provider_ (swapchain),
@@ -243,12 +211,8 @@ namespace lux::render
 
         Expected<void> waited{};
         {
-            const std::scoped_lock queue_lock(
-                res_ctx_.deviceContext().graphicsQueueMutex());
-            waited = detail::waitPresentQueueIdle(
-                res_ctx_.deviceContext().graphicsQueue(),
-                &vkQueueWaitIdle
-            );
+            const std::scoped_lock queue_lock(res_ctx_.deviceContext().graphicsQueueMutex());
+            waited = detail::waitPresentQueueIdle(res_ctx_.deviceContext().graphicsQueue(), &vkQueueWaitIdle);
         }
         if (!waited)
             return lux::cxx::unexpected<RenderError>(waited.error());
@@ -263,12 +227,9 @@ namespace lux::render
         const uint32_t image_count = provider_ ? provider_->imageCount() : 0u;
 
         if (image_count == 0u)
-            return renderFailure<
-                err::device::SwapchainBuildContractViolated>(
-                    gapi::vk::encodeSwapchainBuildStage(
-                        gapi::vk::ESwapchainBuildStage::ENUMERATE_IMAGES
-                    )
-                );
+            return renderFailure<err::device::SwapchainBuildContractViolated>(
+                gapi::vk::encodeSwapchainBuildStage(gapi::vk::ESwapchainBuildStage::ENUMERATE_IMAGES)
+            );
         if (image_count == (std::numeric_limits<std::uint32_t>::max)())
             return renderFailure<err::internal::InvalidArgument>();
 
@@ -277,33 +238,21 @@ namespace lux::render
         // 上一轮 present 消费。
         const uint32_t ring = image_count + 1u;
         const bool existing_set_valid =
-            acquire_ring_.size() == ring
-            && present_per_image_.size() == image_count
-            && std::all_of(
+            acquire_ring_.size() == ring && present_per_image_.size() == image_count &&
+            std::all_of(
                 acquire_ring_.begin(),
                 acquire_ring_.end(),
-                [](const gapi::vk::Semaphore& semaphore)
-                {
-                    return semaphore.handle() != VK_NULL_HANDLE;
-                }
-            )
-            && std::all_of(
-                present_per_image_.begin(),
-                present_per_image_.end(),
-                [](const gapi::vk::Semaphore& semaphore)
-                {
-                    return semaphore.handle() != VK_NULL_HANDLE;
-                }
+                [](const gapi::vk::Semaphore& semaphore) { return semaphore.handle() != VK_NULL_HANDLE; }
+            ) &&
+            std::all_of(present_per_image_.begin(), present_per_image_.end(), [](const gapi::vk::Semaphore& semaphore) {
+                return semaphore.handle() != VK_NULL_HANDLE;
+            }
             );
         if (existing_set_valid)
             return {};
 
-        auto candidate = detail::PresentSemaphoreCreateCandidate::create(
-            dev,
-            ring,
-            image_count,
-            kPresentSemaphoreCreateOps
-        );
+        auto candidate =
+            detail::PresentSemaphoreCreateCandidate::create(dev, ring, image_count, kPresentSemaphoreCreateOps);
         if (!candidate)
             return lux::cxx::unexpected<RenderError>(candidate.error());
 
@@ -313,21 +262,11 @@ namespace lux::render
         next_present.reserve(image_count);
         for (std::uint32_t i = 0; i < ring; ++i)
         {
-            next_acquire.emplace_back(
-                gapi::vk::Semaphore::adopt(
-                    dev,
-                    candidate->acquireSemaphore(i)
-                )
-            );
+            next_acquire.emplace_back(gapi::vk::Semaphore::adopt(dev, candidate->acquireSemaphore(i)));
         }
         for (std::uint32_t i = 0; i < image_count; ++i)
         {
-            next_present.emplace_back(
-                gapi::vk::Semaphore::adopt(
-                    dev,
-                    candidate->presentSemaphore(i)
-                )
-            );
+            next_present.emplace_back(gapi::vk::Semaphore::adopt(dev, candidate->presentSemaphore(i)));
         }
         candidate->commit();
 
@@ -353,12 +292,8 @@ namespace lux::render
         // old swapchain and semaphore set.
         Expected<void> waited{};
         {
-            const std::scoped_lock queue_lock(
-                res_ctx_.deviceContext().graphicsQueueMutex());
-            waited = detail::waitPresentQueueIdle(
-                res_ctx_.deviceContext().graphicsQueue(),
-                &vkQueueWaitIdle
-            );
+            const std::scoped_lock queue_lock(res_ctx_.deviceContext().graphicsQueueMutex());
+            waited = detail::waitPresentQueueIdle(res_ctx_.deviceContext().graphicsQueue(), &vkQueueWaitIdle);
         }
         if (!waited)
             return lux::cxx::unexpected<RenderError>(waited.error());
@@ -384,7 +319,7 @@ namespace lux::render
         if (!acquired)
             return lux::cxx::unexpected<RenderError>(acquired.error());
         if (!acquired->valid)
-            return out;   // sem 未被消费,环不轮转——原位复用,不错位
+            return out; // sem 未被消费,环不轮转——原位复用,不错位
 
         if (acquired->image_index >= present_per_image_.size())
             return renderFailure<err::internal::Unspecified>();
@@ -394,11 +329,11 @@ namespace lux::render
 
         acquire_cursor_ = (acquire_cursor_ + 1u) % static_cast<uint32_t>(acquire_ring_.size());
 
-        out.valid       = true;
+        out.valid = true;
         out.image_index = acquired->image_index;
-        out.image       = acquired->image;
-        out.view        = acquired->view;
-        out.extent      = acquired->extent;
+        out.image = acquired->image;
+        out.view = acquired->view;
+        out.extent = acquired->extent;
         out.acquire_sem = sem;
         out.present_sem = present_sem;
         return out;
@@ -411,10 +346,7 @@ namespace lux::render
             return lux::cxx::unexpected<RenderError>(opened.error());
 
         VkResult pr = provider_->present(image_index, wait_sem);
-        auto disposition = detail::classifySwapchainPresentResult(
-            pr,
-            provider_->presentScalingEnabled()
-        );
+        auto disposition = detail::classifySwapchainPresentResult(pr, provider_->presentScalingEnabled());
         if (!disposition)
             return lux::cxx::unexpected<RenderError>(disposition.error());
         if (disposition->mark_rebuild)

@@ -42,18 +42,16 @@ namespace lux::engine::platform
         DynamicLibrary() noexcept;
         ~DynamicLibrary();
 
-        DynamicLibrary(const DynamicLibrary&)            = delete;
+        DynamicLibrary(const DynamicLibrary&) = delete;
         DynamicLibrary& operator=(const DynamicLibrary&) = delete;
 
         DynamicLibrary(DynamicLibrary&& other) noexcept;
         DynamicLibrary& operator=(DynamicLibrary&& other) noexcept;
 
         /// Construct + load. Check is_loaded() afterwards.
-        explicit DynamicLibrary(const std::filesystem::path& path,
-                                LoadMode mode = LoadMode::Default);
+        explicit DynamicLibrary(const std::filesystem::path& path, LoadMode mode = LoadMode::Default);
 
-        bool load(const std::filesystem::path& path,
-                  LoadMode mode = LoadMode::Default);
+        bool load(const std::filesystem::path& path, LoadMode mode = LoadMode::Default);
 
         /**
          * @brief Load a shared library directly from an in-memory image.
@@ -61,31 +59,38 @@ namespace lux::engine::platform
          * @param hint_name Used only for diagnostics / temp-file naming.
          * @return true on success; on failure `last_error()` is populated.
          */
-        bool load_from_memory(std::span<const std::byte> image,
-                              std::string_view hint_name = {});
+        bool load_from_memory(std::span<const std::byte> image, std::string_view hint_name = {});
 
         void unload() noexcept;
 
-        bool         is_loaded() const noexcept { return handle_ != nullptr; }
-        NativeHandle native_handle() const noexcept { return handle_; }
+        bool is_loaded() const noexcept
+        {
+            return handle_ != nullptr;
+        }
+        NativeHandle native_handle() const noexcept
+        {
+            return handle_;
+        }
 
         /// Raw symbol lookup. Returns nullptr if not found.
         void* get_symbol(const char* name) const noexcept;
 
-        template <typename T>
-        T* get_symbol(const char* name) const noexcept
+        template <typename T> T* get_symbol(const char* name) const noexcept
         {
             return reinterpret_cast<T*>(get_symbol(name));
         }
 
-        const std::string& last_error() const noexcept { return last_error_; }
+        const std::string& last_error() const noexcept
+        {
+            return last_error_;
+        }
 
         struct MemoryBacking;
 
     private:
-        NativeHandle                   handle_ = nullptr;
-        std::string                    last_error_;
+        NativeHandle handle_ = nullptr;
+        std::string last_error_;
         std::unique_ptr<MemoryBacking> backing_;
-        bool                           uses_memory_module_ = false;
+        bool uses_memory_module_ = false;
     };
 }

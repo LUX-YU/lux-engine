@@ -54,18 +54,18 @@ namespace lux::render
     public:
         struct InitInfo
         {
-            DeviceContext*        device_context{nullptr};
+            DeviceContext* device_context{nullptr};
             DeferredDestroyQueue* deferred_queue{nullptr};
-            uint32_t              frames_in_flight{2};      ///< Determines the mask ring's slot count (FIF+1)
-            uint32_t              initial_capacity{4096};   ///< Pre-allocated per-slot mask element count
-            float                 cell_size{128.0f};        ///< Cell edge length (world units; engine default ~128m)
-            float                 cull_distance{512.0f};    ///< Cull distance (a cell beyond this from the camera -> dormant)
+            uint32_t frames_in_flight{2};    ///< Determines the mask ring's slot count (FIF+1)
+            uint32_t initial_capacity{4096}; ///< Pre-allocated per-slot mask element count
+            float cell_size{128.0f};         ///< Cell edge length (world units; engine default ~128m)
+            float cull_distance{512.0f};     ///< Cull distance (a cell beyond this from the camera -> dormant)
         };
 
         SpatialCullGrid() = default;
         ~SpatialCullGrid();
 
-        SpatialCullGrid(const SpatialCullGrid&)            = delete;
+        SpatialCullGrid(const SpatialCullGrid&) = delete;
         SpatialCullGrid& operator=(const SpatialCullGrid&) = delete;
 
         void init(const InitInfo& info);
@@ -79,8 +79,8 @@ namespace lux::render
         struct InstanceXY
         {
             uint32_t slot;
-            float    x;
-            float    y;
+            float x;
+            float y;
         };
 
         /// Per frame: assigns instances to cells by world bsphere center,
@@ -94,18 +94,18 @@ namespace lux::render
         /// the current behavior).
         /// Naturally friendly to dynamic instances: cell membership uses a
         /// hash, so a moving instance is an O(1) rehash (rebuilt every frame).
-        void update(uint64_t                                  serial,
-                    std::span<const std::array<float, 3>>     cameras,
-                    const InstanceResources&                  instances);
+        void update(uint64_t serial, std::span<const std::array<float, 3>> cameras, const InstanceResources& instances);
 
         /// Low-level update: fed directly with alive instances' (slot, world
         /// xy). The convenience overload extracts bsphere data from
         /// InstanceResources and delegates here; serial de-duplication, ring
         /// advance, and mask upload all happen in this function.
-        void update(uint64_t                                  serial,
-                    std::span<const std::array<float, 3>>     cameras,
-                    std::span<const InstanceXY>               alive,
-                    uint32_t                                  slot_count);
+        void update(
+            uint64_t serial,
+            std::span<const std::array<float, 3>> cameras,
+            std::span<const InstanceXY> alive,
+            uint32_t slot_count
+        );
 
         /// Current frame's per-slot active mask buffer (uint per slot;
         /// active=1 / dormant=0). Kept for tests / compatibility. After
@@ -123,7 +123,10 @@ namespace lux::render
         [[nodiscard]] uint64_t activeMaskAddress() const noexcept;
 
         /// Number of slots covered by the mask (= instances.slotCount() from the last update()).
-        [[nodiscard]] uint32_t maskSlotCount() const noexcept { return mask_slot_count_; }
+        [[nodiscard]] uint32_t maskSlotCount() const noexcept
+        {
+            return mask_slot_count_;
+        }
 
         /// Reads back the current ring slot's host-mapped mask (active=1 /
         /// dormant=0), for tests to verify GPU upload contents only.
@@ -134,28 +137,57 @@ namespace lux::render
         // ── Runtime-tunable ──
         void setCellSize(float s) noexcept;
         void setCullDistance(float r) noexcept;
-        void setEnabled(bool e) noexcept { enabled_ = e; }   ///< off -> everything active (baseline for measuring coarse-cull gains)
+        void setEnabled(bool e) noexcept
+        {
+            enabled_ = e;
+        } ///< off -> everything active (baseline for measuring coarse-cull gains)
 
-        [[nodiscard]] bool  enabled() const noexcept       { return enabled_; }
-        [[nodiscard]] float cellSize() const noexcept      { return cell_size_; }
-        [[nodiscard]] float cullDistance() const noexcept  { return cull_distance_; }
+        [[nodiscard]] bool enabled() const noexcept
+        {
+            return enabled_;
+        }
+        [[nodiscard]] float cellSize() const noexcept
+        {
+            return cell_size_;
+        }
+        [[nodiscard]] float cullDistance() const noexcept
+        {
+            return cull_distance_;
+        }
 
         // ── Pure-function core (no GPU / no state dependency; unit-testable on CPU) ──
         /// World XY coordinates -> integer cell coordinates (the hash part of the spatial hash, not a tree).
-        static void cellCoord(float world_x, float world_y, float cell_size,
-                              int32_t& out_cx, int32_t& out_cy) noexcept;
+        static void cellCoord(float world_x, float world_y, float cell_size, int32_t& out_cx, int32_t& out_cy) noexcept;
         /// Whether cell (cx,cy) is within cull range of any camera. Range =
         /// cull_distance + one cell of margin (conservative: uses 2D distance
         /// to the cell center, preferring to over-activate rather than
         /// mis-cull). Empty cameras -> true (no culling).
-        static bool cellInRange(int32_t cx, int32_t cy, float cell_size, float cull_distance,
-                                std::span<const std::array<float, 3>> cameras) noexcept;
+        static bool cellInRange(
+            int32_t cx,
+            int32_t cy,
+            float cell_size,
+            float cull_distance,
+            std::span<const std::array<float, 3>> cameras
+        ) noexcept;
 
-        // ── Debug stats (results from the last update(); used to verify coarse culling: active instance count drops as the camera moves away) ──
-        [[nodiscard]] uint32_t activeInstanceCount() const noexcept { return stat_active_instances_; }
-        [[nodiscard]] uint32_t totalInstanceCount()  const noexcept { return stat_total_instances_; }
-        [[nodiscard]] uint32_t activeCellCount()     const noexcept { return stat_active_cells_; }
-        [[nodiscard]] uint32_t totalCellCount()      const noexcept { return stat_total_cells_; }
+        // ── Debug stats (results from the last update(); used to verify coarse culling: active instance count drops as
+        // the camera moves away) ──
+        [[nodiscard]] uint32_t activeInstanceCount() const noexcept
+        {
+            return stat_active_instances_;
+        }
+        [[nodiscard]] uint32_t totalInstanceCount() const noexcept
+        {
+            return stat_total_instances_;
+        }
+        [[nodiscard]] uint32_t activeCellCount() const noexcept
+        {
+            return stat_active_cells_;
+        }
+        [[nodiscard]] uint32_t totalCellCount() const noexcept
+        {
+            return stat_total_cells_;
+        }
 
     private:
         // Cell coordinate key (2D XY integer grid).
@@ -170,29 +202,32 @@ namespace lux::render
             std::size_t operator()(const CellKey& k) const noexcept
             {
                 return std::hash<std::uint64_t>{}(
-                    (static_cast<std::uint64_t>(static_cast<std::uint32_t>(k.x)) << 32)
-                    | static_cast<std::uint32_t>(k.y));
+                    (static_cast<std::uint64_t>(static_cast<std::uint32_t>(k.x)) << 32) |
+                    static_cast<std::uint32_t>(k.y));
             }
         };
 
-        void recomputeMask(std::span<const std::array<float, 3>> cameras,
-                           std::span<const InstanceXY>           alive,
-                           uint32_t                              slot_count);
-        void uploadMask();         ///< Grows the current ring slot's buffer if needed, then memcpy's mask_
+        void recomputeMask(
+            std::span<const std::array<float, 3>> cameras,
+            std::span<const InstanceXY> alive,
+            uint32_t slot_count
+        );
+        void uploadMask(); ///< Grows the current ring slot's buffer if needed, then memcpy's mask_
         void destroyRing() noexcept;
 
-        DeviceContext*        device_ctx_{nullptr};
+        DeviceContext* device_ctx_{nullptr};
         DeferredDestroyQueue* deferred_queue_{nullptr};
 
         float cell_size_{128.0f};
         float cull_distance_{512.0f};
-        bool  enabled_{true};
-        bool  initialized_{false};
+        bool enabled_{true};
+        bool initialized_{false};
 
         // ── CPU mask + cell-active cache (rebuilt every frame) ──
-        std::vector<uint32_t>                              mask_;            ///< per-slot active flag
-        std::unordered_map<CellKey, uint8_t, CellKeyHash>  cell_active_;     ///< Lazy cell -> active cache
-        std::vector<InstanceXY>                            extract_scratch_; ///< Reused scratch buffer for the convenience update() overload's alive-instance extraction
+        std::vector<uint32_t> mask_;                                    ///< per-slot active flag
+        std::unordered_map<CellKey, uint8_t, CellKeyHash> cell_active_; ///< Lazy cell -> active cache
+        std::vector<InstanceXY> extract_scratch_; ///< Reused scratch buffer for the convenience update() overload's
+                                                  ///< alive-instance extraction
         uint32_t mask_slot_count_{0};
 
         // ── per-FIF active-mask GPU ring ──
@@ -201,10 +236,10 @@ namespace lux::render
         // slot was last written at least (FIF+1) frames ago -> the GPU is
         // idle with it, so writing it can't tear an in-flight frame. See the
         // InstanceResources mdc_info ring for the same pattern.
-        std::vector<VkBuffer>      ring_buffers_;
+        std::vector<VkBuffer> ring_buffers_;
         std::vector<VmaAllocation> ring_allocs_;
-        std::vector<void*>         ring_mapped_;
-        std::vector<VkDeviceSize>  ring_sizes_;
+        std::vector<void*> ring_mapped_;
+        std::vector<VkDeviceSize> ring_sizes_;
         uint32_t ring_cursor_{0};
         uint32_t current_slot_{0};
         uint64_t last_upload_serial_{~0ull};

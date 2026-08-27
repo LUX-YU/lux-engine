@@ -32,11 +32,11 @@ namespace lux::render
      */
     enum class EPointCloudMode : uint8_t
     {
-        SIMPLE      = 1,  ///< Global SSBO, multi-draw (default)
-        GPU_DRIVEN  = 2,  ///< Compute-shader frustum cull + single indirect draw
-        LOD         = 3,  ///< Depth-scaled point size
-        SPLATTING   = 4,  ///< Gaussian soft-splat rasterization
-        TRANSIENT   = 5,  ///< Current-frame-only, zero-accumulation rendering
+        SIMPLE = 1,     ///< Global SSBO, multi-draw (default)
+        GPU_DRIVEN = 2, ///< Compute-shader frustum cull + single indirect draw
+        LOD = 3,        ///< Depth-scaled point size
+        SPLATTING = 4,  ///< Gaussian soft-splat rasterization
+        TRANSIENT = 5,  ///< Current-frame-only, zero-accumulation rendering
     };
 
     // =========================================================================
@@ -52,7 +52,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC IPointCloudFeature : public RenderFeature
     {
     public:
-        using RenderFeature::RenderFeature;  // forward config ctor
+        using RenderFeature::RenderFeature; // forward config ctor
 
         /// The mode this feature implements.
         [[nodiscard]] virtual EPointCloudMode mode() const noexcept = 0;

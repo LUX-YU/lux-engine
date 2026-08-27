@@ -4,7 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 
-int main()
+int
+main()
 {
     using lux::render::StableRecordPages;
 
@@ -19,8 +20,7 @@ int main()
         records.push_back(static_cast<std::uint64_t>(i));
 
     assert(records.size() == kRecordCount);
-    assert(records.pageCount() ==
-        (kRecordCount + kPageSize - 1u) / kPageSize);
+    assert(records.pageCount() == (kRecordCount + kPageSize - 1u) / kPageSize);
     assert(records.capacity() >= kRecordCount);
     assert(&records[0u] == first_record);
     assert(records[0u] == 0x1234u);

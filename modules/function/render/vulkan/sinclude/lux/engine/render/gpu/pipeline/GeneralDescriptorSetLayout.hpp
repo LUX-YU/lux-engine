@@ -13,7 +13,10 @@
 // so a forward declaration is enough (see the note on EngineSetShape below:
 // this header is transitively included by a huge number of translation
 // units, so it shouldn't drag in the whole LayoutContract chain).
-namespace lux::rdesc { enum class EBindFrequency : uint8_t; }
+namespace lux::rdesc
+{
+    enum class EBindFrequency : uint8_t;
+}
 
 namespace lux::render
 {
@@ -23,21 +26,21 @@ namespace lux::render
     // ---------------------------------------------------------------
     struct SetSlotMapping
     {
-        uint32_t        set_index;
+        uint32_t set_index;
         EGPUResourceType resource_type;
     };
 
     /// Central mapping table: descriptor set slot → GPU resource type.
     /// Order matches EDescriptorSetSlot values.
     inline constexpr std::array<SetSlotMapping, kDescriptorSetCount> kSetSlotMappings = {{
-        { static_cast<uint32_t>(EDescriptorSetSlot::Scene),      EGPUResourceType::Scene },
-        { static_cast<uint32_t>(EDescriptorSetSlot::Instance),   EGPUResourceType::Instance },
-        { static_cast<uint32_t>(EDescriptorSetSlot::Texture),    EGPUResourceType::Texture },
-        { static_cast<uint32_t>(EDescriptorSetSlot::Light),      EGPUResourceType::Light },
-        { static_cast<uint32_t>(EDescriptorSetSlot::Material),   EGPUResourceType::Material },
-        { static_cast<uint32_t>(EDescriptorSetSlot::Particle),   EGPUResourceType::Particle },
-        { static_cast<uint32_t>(EDescriptorSetSlot::Compute),    EGPUResourceType::Compute },
-        { static_cast<uint32_t>(EDescriptorSetSlot::VertexPool), EGPUResourceType::VertexPool },
+        {static_cast<uint32_t>(EDescriptorSetSlot::Scene), EGPUResourceType::Scene},
+        {static_cast<uint32_t>(EDescriptorSetSlot::Instance), EGPUResourceType::Instance},
+        {static_cast<uint32_t>(EDescriptorSetSlot::Texture), EGPUResourceType::Texture},
+        {static_cast<uint32_t>(EDescriptorSetSlot::Light), EGPUResourceType::Light},
+        {static_cast<uint32_t>(EDescriptorSetSlot::Material), EGPUResourceType::Material},
+        {static_cast<uint32_t>(EDescriptorSetSlot::Particle), EGPUResourceType::Particle},
+        {static_cast<uint32_t>(EDescriptorSetSlot::Compute), EGPUResourceType::Compute},
+        {static_cast<uint32_t>(EDescriptorSetSlot::VertexPool), EGPUResourceType::VertexPool},
     }};
 
     /**
@@ -76,7 +79,9 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC GeneralDescriptorSetLayout
     {
     public:
-        GeneralDescriptorSetLayout(DeviceContext& device_context) : device_context_(device_context){}
+        GeneralDescriptorSetLayout(DeviceContext& device_context) : device_context_(device_context)
+        {
+        }
         ~GeneralDescriptorSetLayout();
 
         // Non-copyable, movable
@@ -84,8 +89,7 @@ namespace lux::render
         GeneralDescriptorSetLayout& operator=(const GeneralDescriptorSetLayout& other) = delete;
 
         GeneralDescriptorSetLayout(GeneralDescriptorSetLayout&& other) noexcept
-            : device_context_(other.device_context_)
-            , layouts_(other.layouts_)
+            : device_context_(other.device_context_), layouts_(other.layouts_)
         {
             other.layouts_.fill(VK_NULL_HANDLE);
         }
@@ -101,7 +105,8 @@ namespace lux::render
         /**
          * @brief Retrieves a descriptor set layout by slot enum.
          */
-        VkDescriptorSetLayout getLayout(EDescriptorSetSlot slot) const {
+        VkDescriptorSetLayout getLayout(EDescriptorSetSlot slot) const
+        {
             auto idx = static_cast<uint32_t>(slot);
             return (idx < kDescriptorSetCount) ? layouts_[idx] : VK_NULL_HANDLE;
         }
@@ -112,7 +117,8 @@ namespace lux::render
          * @param set_index The index of the set (0 .. kDescriptorSetCount-1).
          * @return VkDescriptorSetLayout The requested layout, or VK_NULL_HANDLE if invalid.
          */
-        VkDescriptorSetLayout getLayout(uint32_t set_index) const {
+        VkDescriptorSetLayout getLayout(uint32_t set_index) const
+        {
             return (set_index < kDescriptorSetCount) ? layouts_[set_index] : VK_NULL_HANDLE;
         }
 
@@ -136,10 +142,12 @@ namespace lux::render
         /// exactly those two points. A divergence like that shows up as
         /// misaligned descriptors, with no Vulkan error at all. So there is
         /// only ever this one implementation.
-        void expandEngineSet(const EngineSetShape& shape,
-                             uint32_t binding_offset,
-                             std::vector<VkDescriptorSetLayoutBinding>& bindings,
-                             std::vector<VkDescriptorBindingFlags>&     flags) const;
+        void expandEngineSet(
+            const EngineSetShape& shape,
+            uint32_t binding_offset,
+            std::vector<VkDescriptorSetLayoutBinding>& bindings,
+            std::vector<VkDescriptorBindingFlags>& flags
+        ) const;
 
         /// The domain-merged layout: the layout obtained by folding all
         /// engine sets of the same frequency domain into one set.
@@ -173,15 +181,21 @@ namespace lux::render
         // derivation that differs by even one clamp produces
         // VK_ERROR_OUT_OF_POOL_MEMORY on any driver that accounts strictly —
         // and nothing at all on one that doesn't, which is how it hides.
-        [[nodiscard]] uint32_t bindless2DCount()   const noexcept { return bindless_2d_count_; }
-        [[nodiscard]] uint32_t bindlessCubeCount() const noexcept { return bindless_cube_count_; }
+        [[nodiscard]] uint32_t bindless2DCount() const noexcept
+        {
+            return bindless_2d_count_;
+        }
+        [[nodiscard]] uint32_t bindlessCubeCount() const noexcept
+        {
+            return bindless_cube_count_;
+        }
 
         /// Addressable-range ceilings, applied on top of the device budget.
         /// A few thousand textures is a realistic working set; the raw device
         /// limit (~1M desktop, ~16.7M on Adreno) would have the bindless
         /// bookkeeping reserve host-side slot arrays for nothing.
         static constexpr uint32_t kBindlessTex2DCeiling = 64u * 1024u;
-        static constexpr uint32_t kBindlessCubeCeiling  = 256u;
+        static constexpr uint32_t kBindlessCubeCeiling = 256u;
 
     private:
         /// Builds the three domain layouts (GLOBAL / BINDLESS / FEATURE).

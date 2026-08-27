@@ -27,15 +27,21 @@ namespace lux::input
         TriggerRuntimeState& rt,
         const InputValue& value,
         float dt,
-        const std::function<bool(ActionId)>& isActionActive = nullptr)
+        const std::function<bool(ActionId)>& isActionActive = nullptr
+    )
     {
         // Helper: is the value "actuated" (exceeds threshold)?
         const float magnitude = [&]() -> float {
-            switch (value.type) {
-            case EInputValueType::BOOL:   return std::fabs(value.v.x);
-            case EInputValueType::AXIS_1D: return std::fabs(value.v.x);
-            case EInputValueType::AXIS_2D: return std::sqrt(value.v.x * value.v.x + value.v.y * value.v.y);
-            case EInputValueType::AXIS_3D: return std::sqrt(value.v.x * value.v.x + value.v.y * value.v.y + value.v.z * value.v.z);
+            switch (value.type)
+            {
+            case EInputValueType::BOOL:
+                return std::fabs(value.v.x);
+            case EInputValueType::AXIS_1D:
+                return std::fabs(value.v.x);
+            case EInputValueType::AXIS_2D:
+                return std::sqrt(value.v.x * value.v.x + value.v.y * value.v.y);
+            case EInputValueType::AXIS_3D:
+                return std::sqrt(value.v.x * value.v.x + value.v.y * value.v.y + value.v.z * value.v.z);
             }
             return 0.0f;
         }();
@@ -56,7 +62,8 @@ namespace lux::input
             return (!actuated && was_actuated) ? ETriggerState::TRIGGERED : ETriggerState::NONE;
 
         case ETriggerKind::HOLD:
-            if (actuated) {
+            if (actuated)
+            {
                 rt.elapsed += dt;
                 if (rt.elapsed >= desc.hold_time_seconds)
                     return ETriggerState::TRIGGERED;
@@ -66,11 +73,13 @@ namespace lux::input
             return ETriggerState::NONE;
 
         case ETriggerKind::HOLD_AND_RELEASE:
-            if (actuated) {
+            if (actuated)
+            {
                 rt.elapsed += dt;
                 return ETriggerState::ONGOING;
             }
-            if (was_actuated && rt.elapsed >= desc.hold_time_seconds) {
+            if (was_actuated && rt.elapsed >= desc.hold_time_seconds)
+            {
                 rt.elapsed = 0.0f;
                 return ETriggerState::TRIGGERED;
             }
@@ -78,25 +87,30 @@ namespace lux::input
             return ETriggerState::NONE;
 
         case ETriggerKind::TAP:
-            if (actuated && !was_actuated) {
+            if (actuated && !was_actuated)
+            {
                 rt.elapsed = 0.0f;
             }
-            if (actuated) {
+            if (actuated)
+            {
                 rt.elapsed += dt;
                 if (rt.elapsed > desc.tap_time_seconds)
                     return ETriggerState::NONE; // Held too long — not a tap
                 return ETriggerState::ONGOING;
             }
-            if (was_actuated && rt.elapsed <= desc.tap_time_seconds) {
+            if (was_actuated && rt.elapsed <= desc.tap_time_seconds)
+            {
                 rt.elapsed = 0.0f;
                 return ETriggerState::TRIGGERED;
             }
             return ETriggerState::NONE;
 
         case ETriggerKind::PULSE:
-            if (actuated) {
+            if (actuated)
+            {
                 rt.elapsed += dt;
-                if (rt.elapsed >= desc.pulse_interval) {
+                if (rt.elapsed >= desc.pulse_interval)
+                {
                     rt.elapsed -= desc.pulse_interval;
                     return ETriggerState::TRIGGERED;
                 }
@@ -137,7 +151,8 @@ namespace lux::input
         std::vector<TriggerRuntimeState>& rts,
         const InputValue& value,
         float dt,
-        const std::function<bool(ActionId)>& isActionActive = nullptr)
+        const std::function<bool(ActionId)>& isActionActive = nullptr
+    )
     {
         if (descs.empty())
             return ETriggerState::TRIGGERED; // No triggers = always pass
@@ -146,13 +161,14 @@ namespace lux::input
         if (rts.size() < descs.size())
             rts.resize(descs.size());
 
-        bool has_explicit  = false;
-        bool any_explicit  = false;
-        bool has_implicit  = false;
-        bool all_implicit  = true;
-        bool any_ongoing   = false;
+        bool has_explicit = false;
+        bool any_explicit = false;
+        bool has_implicit = false;
+        bool all_implicit = true;
+        bool any_ongoing = false;
 
-        for (size_t i = 0; i < descs.size(); ++i) {
+        for (size_t i = 0; i < descs.size(); ++i)
+        {
             ETriggerState result = evaluateTrigger(descs[i], rts[i], value, dt, isActionActive);
 
             switch (descs[i].logic)

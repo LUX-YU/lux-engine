@@ -74,7 +74,7 @@ namespace lux::log
 
     /// Runtime level filter — records below @p lv are dropped at the CALL
     /// SITE (before packing).
-    LUX_CORE_PUBLIC void   setMinLevel(ELevel lv) noexcept;
+    LUX_CORE_PUBLIC void setMinLevel(ELevel lv) noexcept;
     LUX_CORE_PUBLIC ELevel minLevel() noexcept;
 
     // ── Consumer-side helpers (subscribers / fallback) ─────────────────
@@ -82,8 +82,7 @@ namespace lux::log
     /// Decode + format @p r into @p out (no trailing newline). Returns the
     /// number of chars written (≤ cap; longer output truncates). Allocation-
     /// free. Runs the call-site decoder — the record must be intact.
-    LUX_CORE_PUBLIC std::size_t formatRecord(const LogRecord& r,
-                                             char* out, std::size_t cap) noexcept;
+    LUX_CORE_PUBLIC std::size_t formatRecord(const LogRecord& r, char* out, std::size_t cap) noexcept;
 
     /// Format + write "[level][category] text\n" to stderr — the line shape
     /// every host's terminal outlet shares (drift here is what the shared
@@ -97,8 +96,7 @@ namespace lux::log
 #if defined(__ANDROID__)
     /// __android_log_print under @p tag — the Android host's outlet (its
     /// shell wires setOutput straight to this until it grows a bus).
-    LUX_CORE_PUBLIC void writeRecordToLogcat(const LogRecord& r,
-                                             const char* tag) noexcept;
+    LUX_CORE_PUBLIC void writeRecordToLogcat(const LogRecord& r, const char* tag) noexcept;
 #endif
 
     // ── Front end (any thread) ─────────────────────────────────────────
@@ -112,48 +110,41 @@ namespace lux::log
     /// (std::format_args is a stack reference — it cannot be deferred, so
     /// this one formats in place and emits the text as a pre-formatted
     /// record). Callers normally use trace/info/warn/error.
-    LUX_CORE_PUBLIC void vlog(ELevel lv, const char* category,
-                              std::string_view fmt, std::format_args args) noexcept;
+    LUX_CORE_PUBLIC void vlog(ELevel lv, const char* category, std::string_view fmt, std::format_args args) noexcept;
 
     /// Level chosen at run time (diagnostic bridges that map a foreign
     /// severity onto ours — Vulkan's debug messenger, the render error sink).
     template <class... Args>
-    void logf(ELevel lv, const char* category,
-              std::format_string<Args...> fmt, Args&&... args) noexcept
+    void logf(ELevel lv, const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
-        if (static_cast<std::uint8_t>(lv) <
-            static_cast<std::uint8_t>(minLevel()))
+        if (static_cast<std::uint8_t>(lv) < static_cast<std::uint8_t>(minLevel()))
             return;
         using Codec = detail::Codec<std::remove_cvref_t<Args>...>;
         LogRecord r;
-        r.format     = fmt.get().data();
+        r.format = fmt.get().data();
         r.format_len = static_cast<std::uint32_t>(fmt.get().size());
-        r.category   = category ? category : "?";
-        r.decode     = &Codec::decode;
-        r.level      = lv;
-        r.truncated  = false;
-        r.arg_bytes  = 0;
-        Codec::pack(r, args...);   // memcpy 级;tid/seq/ts 由 emitRecord 赋
+        r.category = category ? category : "?";
+        r.decode = &Codec::decode;
+        r.level = lv;
+        r.truncated = false;
+        r.arg_bytes = 0;
+        Codec::pack(r, args...); // memcpy 级;tid/seq/ts 由 emitRecord 赋
         emitRecord(r);
     }
 
-    template <class... Args>
-    void trace(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
+    template <class... Args> void trace(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
         logf(ELevel::Trace, category, fmt, std::forward<Args>(args)...);
     }
-    template <class... Args>
-    void info(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
+    template <class... Args> void info(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
         logf(ELevel::Info, category, fmt, std::forward<Args>(args)...);
     }
-    template <class... Args>
-    void warn(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
+    template <class... Args> void warn(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
         logf(ELevel::Warn, category, fmt, std::forward<Args>(args)...);
     }
-    template <class... Args>
-    void error(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
+    template <class... Args> void error(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
         logf(ELevel::Error, category, fmt, std::forward<Args>(args)...);
     }

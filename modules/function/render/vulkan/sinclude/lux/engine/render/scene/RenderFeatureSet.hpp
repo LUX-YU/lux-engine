@@ -31,7 +31,7 @@
  */
 
 #include <lux/engine/render/RenderFeature.hpp>
-#include <lux/cxx/container/BasicSparseSet.hpp>   // SlotKeyAutoSparseSet
+#include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet
 
 #include <cstddef>
 #include <cstdint>
@@ -53,41 +53,38 @@ namespace lux::render
         /// 为空/null/0。所有视图指向渲染线程拥有的存储,仅在调用期间有效。
         struct FeatureParamDesc
         {
-            FeatureHandle    id;   // 完整代数句柄(5-5),不只是 .index ——
-                                   // 否则编辑器的陈旧选择可能别名到被复用的槽
-            bool             enabled;
+            FeatureHandle id; // 完整代数句柄(5-5),不只是 .index ——
+                              // 否则编辑器的陈旧选择可能别名到被复用的槽
+            bool enabled;
             std::string_view name;
             std::string_view struct_name;
-            const void*      data;
-            std::size_t      size;
+            const void* data;
+            std::size_t size;
         };
 
         RenderFeatureSet() = default;
         ~RenderFeatureSet() = default;
 
-        RenderFeatureSet(const RenderFeatureSet&)            = delete;
+        RenderFeatureSet(const RenderFeatureSet&) = delete;
         RenderFeatureSet& operator=(const RenderFeatureSet&) = delete;
-        RenderFeatureSet(RenderFeatureSet&&)                 = delete;
-        RenderFeatureSet& operator=(RenderFeatureSet&&)      = delete;
+        RenderFeatureSet(RenderFeatureSet&&) = delete;
+        RenderFeatureSet& operator=(RenderFeatureSet&&) = delete;
 
         // ── 容器 ────────────────────────────────────────────────────────
         /// 插入并返回代数句柄。**不**回填 feature->feature_id_ —— 那是私有字段,
         /// 由持有 friend 权限的 RenderScene 写。
         ///
-        template <typename T>
-        [[nodiscard]] FeatureHandle insert(std::unique_ptr<T> feature)
+        template <typename T> [[nodiscard]] FeatureHandle insert(std::unique_ptr<T> feature)
         {
-            static_assert(
-                std::is_base_of_v<RenderFeature, T>,
-                "only RenderFeature values can be installed");
+            static_assert(std::is_base_of_v<RenderFeature, T>, "only RenderFeature values can be installed");
             return insertSlot(std::move(feature));
         }
-        bool  erase(FeatureHandle handle);
-        void  clear();
+        bool erase(FeatureHandle handle);
+        void clear();
 
         [[nodiscard]] RenderFeature* get(FeatureHandle handle) const;
-        [[nodiscard]] bool         contains(FeatureHandle handle) const noexcept;
-        [[nodiscard]] std::size_t  size() const noexcept;
+        [[nodiscard]] bool contains(FeatureHandle handle) const noexcept;
+        [[nodiscard]] std::size_t size() const noexcept;
 
         // ── 查询 ────────────────────────────────────────────────────────
         /// 是否已有该稳定类型的活特性(kInvalidFeatureTypeId 永不匹配 —— 未声明
@@ -98,7 +95,8 @@ namespace lux::render
 
         /// 第一个仍**非可选地**依赖 @p type 的特性(跳过 @p exclude);无则 nullptr。
         /// 供卸载守卫用:另一个已装特性还要求它时,拒绝卸载。
-        [[nodiscard]] const RenderFeature* firstRequiring(FeatureTypeId type, const RenderFeature* exclude) const noexcept;
+        [[nodiscard]] const RenderFeature*
+        firstRequiring(FeatureTypeId type, const RenderFeature* exclude) const noexcept;
 
         [[nodiscard]] std::vector<FeatureParamDesc> queryParamDescs() const;
 
@@ -112,7 +110,10 @@ namespace lux::render
         /// 已启用的特性。
         [[nodiscard]] std::span<RenderFeature* const> enabled() const;
 
-        void markCacheDirty() noexcept { cache_dirty_ = true; }
+        void markCacheDirty() noexcept
+        {
+            cache_dirty_ = true;
+        }
 
         // ── 向渲染图贡献 pass ───────────────────────────────────────────
         /// Ask each enabled capability to contribute passes in installation
@@ -132,8 +133,7 @@ namespace lux::render
         void clearLedger() noexcept;
 
     private:
-        [[nodiscard]] FeatureHandle insertSlot(
-            std::unique_ptr<RenderFeature> feature);
+        [[nodiscard]] FeatureHandle insertSlot(std::unique_ptr<RenderFeature> feature);
 
         void rebuildEnabledCacheIfNeeded() const;
 
@@ -151,9 +151,9 @@ namespace lux::render
         /// 按特性 index 键控(代数在 features_ 查找边界校验)。
         std::unordered_map<uint32_t, std::unordered_set<uint32_t>> view_states_;
 
-        mutable std::vector<RenderFeature*>  all_dense_{};
-        mutable std::vector<RenderFeature*>  enabled_dense_{};
-        mutable bool                        cache_dirty_{true};
+        mutable std::vector<RenderFeature*> all_dense_{};
+        mutable std::vector<RenderFeature*> enabled_dense_{};
+        mutable bool cache_dirty_{true};
     };
 
 } // namespace lux::render

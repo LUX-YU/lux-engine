@@ -10,16 +10,12 @@ namespace lux::object::test
     inline int constructions = 0;
     inline int destructions = 0;
 
-    inline std::int32_t LUX_FUNC() reflectedFreeNoexcept(
-        std::int32_t value
-    ) noexcept
+    inline std::int32_t LUX_FUNC() reflectedFreeNoexcept(std::int32_t value) noexcept
     {
         return value + 1;
     }
 
-    inline std::int32_t LUX_FUNC() reflectedFreeThrowing(
-        std::int32_t value
-    )
+    inline std::int32_t LUX_FUNC() reflectedFreeThrowing(std::int32_t value)
     {
         return value + 2;
     }
@@ -27,15 +23,15 @@ namespace lux::object::test
     struct ReflectedMoveOnly final
     {
         ReflectedMoveOnly() = default;
-        ReflectedMoveOnly(const ReflectedMoveOnly &) = delete;
-        ReflectedMoveOnly &operator=(const ReflectedMoveOnly &) = delete;
-        ReflectedMoveOnly(ReflectedMoveOnly &&) noexcept = default;
-        ReflectedMoveOnly &operator=(ReflectedMoveOnly &&) noexcept = default;
+        ReflectedMoveOnly(const ReflectedMoveOnly&) = delete;
+        ReflectedMoveOnly& operator=(const ReflectedMoveOnly&) = delete;
+        ReflectedMoveOnly(ReflectedMoveOnly&&) noexcept = default;
+        ReflectedMoveOnly& operator=(ReflectedMoveOnly&&) noexcept = default;
     };
 
     class LUX_OBJECT() ReflectedObject final : public Object<ReflectedObject>
     {
-      public:
+    public:
         ReflectedObject()
         {
             ++constructions;
@@ -59,13 +55,13 @@ namespace lux::object::test
         }
 
         LUX_METHOD(connectable = true)
-        void onChanged(const int &value) noexcept
+        void onChanged(const int& value) noexcept
         {
             last_value = value;
         }
 
         LUX_METHOD(connectable = true)
-        void onWrongPayload(const float &) noexcept
+        void onWrongPayload(const float&) noexcept
         {
         }
 
@@ -76,12 +72,12 @@ namespace lux::object::test
         }
 
         LUX_METHOD(connectable = true)
-        void onMoveOnly(const ReflectedMoveOnly &) noexcept
+        void onMoveOnly(const ReflectedMoveOnly&) noexcept
         {
         }
 
         LUX_METHOD(connectable = true)
-        void onThrowing(const int &)
+        void onThrowing(const int&)
         {
         }
 
@@ -104,7 +100,7 @@ namespace lux::object::test
 
     class LUX_OBJECT() NonDefaultObject final : public Object<NonDefaultObject>
     {
-      public:
+    public:
         explicit NonDefaultObject(int)
         {
         }
@@ -112,13 +108,13 @@ namespace lux::object::test
 
     class LUX_OBJECT() ReflectedBase : public Object<ReflectedBase>
     {
-      public:
+    public:
         static const signal_type<int> baseChanged;
     };
 
     class LUX_OBJECT() ReflectedDerived final : public Object<ReflectedDerived, ReflectedBase>
     {
-      public:
+    public:
         static const signal_type<int> derivedChanged;
     };
 } // namespace lux::object::test

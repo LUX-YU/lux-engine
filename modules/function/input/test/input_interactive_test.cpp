@@ -31,38 +31,45 @@ using namespace lux::window;
 //  Action definitions — runtime-allocated by InputActionRegistry            //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-namespace Act {
-    ActionId Jump          = InvalidActionId;
-    ActionId Move          = InvalidActionId;
-    ActionId Look          = InvalidActionId;
-    ActionId Fire          = InvalidActionId;
-    ActionId Aim           = InvalidActionId;
-    ActionId Sprint        = InvalidActionId;
-    ActionId Zoom          = InvalidActionId;
+namespace Act
+{
+    ActionId Jump = InvalidActionId;
+    ActionId Move = InvalidActionId;
+    ActionId Look = InvalidActionId;
+    ActionId Fire = InvalidActionId;
+    ActionId Aim = InvalidActionId;
+    ActionId Sprint = InvalidActionId;
+    ActionId Zoom = InvalidActionId;
 
     // ── Advanced trigger tests ──
-    ActionId QuickTap      = InvalidActionId;
+    ActionId QuickTap = InvalidActionId;
     ActionId ChargeRelease = InvalidActionId;
-    ActionId AutoFire      = InvalidActionId;
-    ActionId SprintFire    = InvalidActionId;
+    ActionId AutoFire = InvalidActionId;
+    ActionId SprintFire = InvalidActionId;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════ //
 //  Helpers                                                                  //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-struct ActionEntry { const char* name; ActionId id; };
+struct ActionEntry
+{
+    const char* name;
+    ActionId id;
+};
 
 /// Format an InputValue for display.
-static const char* fmtValue(const InputValue& v)
+static const char*
+fmtValue(const InputValue& v)
 {
     // Two alternating buffers so we can format two values in the same printf.
     static std::string bufs[2];
-    static int  idx = 0;
+    static int idx = 0;
     std::string& buf = bufs[idx];
     idx = 1 - idx;
 
-    switch (v.type) {
+    switch (v.type)
+    {
     case EInputValueType::BOOL:
         buf = lux::format("{}", v.asBool() ? "true" : "false");
         break;
@@ -73,28 +80,29 @@ static const char* fmtValue(const InputValue& v)
         buf = lux::format("({:.2f}, {:.2f})", v.as2D().x, v.as2D().y);
         break;
     case EInputValueType::AXIS_3D:
-        buf = lux::format(
-            "({:.2f}, {:.2f}, {:.2f})",
-            v.as3D().x,
-            v.as3D().y,
-            v.as3D().z
-        );
+        buf = lux::format("({:.2f}, {:.2f}, {:.2f})", v.as3D().x, v.as3D().y, v.as3D().z);
         break;
     }
     return buf.c_str();
 }
 
 /// Build a compact event string from ActionState::events bitfield.
-static const char* fmtEvents(uint8_t events)
+static const char*
+fmtEvents(uint8_t events)
 {
     static char buf[128];
     buf[0] = '\0';
 
-    if (events & ActionEvent_Started)   std::strcat(buf, "STARTED ");
-    if (events & ActionEvent_Ongoing)   std::strcat(buf, "ONGOING ");
-    if (events & ActionEvent_Triggered) std::strcat(buf, "TRIGGERED ");
-    if (events & ActionEvent_Completed) std::strcat(buf, "COMPLETED ");
-    if (events & ActionEvent_Canceled)  std::strcat(buf, "CANCELED ");
+    if (events & ActionEvent_Started)
+        std::strcat(buf, "STARTED ");
+    if (events & ActionEvent_Ongoing)
+        std::strcat(buf, "ONGOING ");
+    if (events & ActionEvent_Triggered)
+        std::strcat(buf, "TRIGGERED ");
+    if (events & ActionEvent_Completed)
+        std::strcat(buf, "COMPLETED ");
+    if (events & ActionEvent_Canceled)
+        std::strcat(buf, "CANCELED ");
 
     // Remove trailing space.
     size_t len = std::strlen(buf);
@@ -108,29 +116,28 @@ static const char* fmtEvents(uint8_t events)
 //  Setup                                                                    //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-static void registerActions(InputActionRegistry& reg)
+static void
+registerActions(InputActionRegistry& reg)
 {
-    Act::Jump   = reg.registerAction({0, "jump",   EInputValueType::BOOL});
-    Act::Fire   = reg.registerAction({0, "fire",   EInputValueType::BOOL});
+    Act::Jump = reg.registerAction({0, "jump", EInputValueType::BOOL});
+    Act::Fire = reg.registerAction({0, "fire", EInputValueType::BOOL});
     Act::Sprint = reg.registerAction({0, "sprint", EInputValueType::BOOL});
-    Act::Zoom   = reg.registerAction({0, "zoom",   EInputValueType::AXIS_1D});
-    Act::Look   = reg.registerAction({0, "look",   EInputValueType::AXIS_2D});
+    Act::Zoom = reg.registerAction({0, "zoom", EInputValueType::AXIS_1D});
+    Act::Look = reg.registerAction({0, "look", EInputValueType::AXIS_2D});
 
     {
         InputActionDesc d;
-        d.name       = "move";
+        d.name = "move";
         d.value_type = EInputValueType::AXIS_2D;
         d.action_modifiers = {{EModifierKind::NORMALIZE_2D}};
         Act::Move = reg.registerAction(d);
     }
     {
         InputActionDesc d;
-        d.name       = "aim";
+        d.name = "aim";
         d.value_type = EInputValueType::BOOL;
         // Hold 0.5s before triggering.
-        d.action_triggers = {
-            {ETriggerKind::HOLD, ETriggerLogicType::EXPLICIT, 0.5f, 0.5f}
-        };
+        d.action_triggers = {{ETriggerKind::HOLD, ETriggerLogicType::EXPLICIT, 0.5f, 0.5f}};
         Act::Aim = reg.registerAction(d);
     }
 
@@ -147,81 +154,93 @@ static void registerActions(InputActionRegistry& reg)
     Act::SprintFire = reg.registerAction({0, "sprint_fire", EInputValueType::BOOL});
 }
 
-static void setupBindings(ActionMap& am)
+static void
+setupBindings(ActionMap& am)
 {
     // Jump: Space
-    am.bindKey(Act::Jump, EKey::KEY_SPACE,
-               InputValue::makeBool(true));
+    am.bindKey(Act::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     // Move: WASD → Axis2D
-    am.bindKey(Act::Move, EKey::KEY_W, InputValue::makeAxis2D( 0.f,  1.f));
-    am.bindKey(Act::Move, EKey::KEY_S, InputValue::makeAxis2D( 0.f, -1.f));
-    am.bindKey(Act::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f,  0.f));
-    am.bindKey(Act::Move, EKey::KEY_D, InputValue::makeAxis2D( 1.f,  0.f));
+    am.bindKey(Act::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f, 1.f));
+    am.bindKey(Act::Move, EKey::KEY_S, InputValue::makeAxis2D(0.f, -1.f));
+    am.bindKey(Act::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f, 0.f));
+    am.bindKey(Act::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f, 0.f));
 
     // Look: mouse delta → Axis2D
-    am.bindMouseAxis(Act::Look, MouseAxisInput::EAxis::DELTA_X,
-                     InputValue::makeAxis2D(1.f, 0.f));
-    am.bindMouseAxis(Act::Look, MouseAxisInput::EAxis::DELTA_Y,
-                     InputValue::makeAxis2D(0.f, 1.f));
+    am.bindMouseAxis(Act::Look, MouseAxisInput::EAxis::DELTA_X, InputValue::makeAxis2D(1.f, 0.f));
+    am.bindMouseAxis(Act::Look, MouseAxisInput::EAxis::DELTA_Y, InputValue::makeAxis2D(0.f, 1.f));
 
     // Fire: left click
-    am.bindMouseButton(Act::Fire, EMouseButton::MOUSE_BUTTON_LEFT,
-                       InputValue::makeBool(true));
+    am.bindMouseButton(Act::Fire, EMouseButton::MOUSE_BUTTON_LEFT, InputValue::makeBool(true));
 
     // Aim: right click (Hold 0.5s trigger defined on the action)
-    am.bindMouseButton(Act::Aim, EMouseButton::MOUSE_BUTTON_RIGHT,
-                       InputValue::makeBool(true));
+    am.bindMouseButton(Act::Aim, EMouseButton::MOUSE_BUTTON_RIGHT, InputValue::makeBool(true));
 
     // Sprint: left shift
-    am.bindKey(Act::Sprint, EKey::KEY_LEFT_SHIFT,
-               InputValue::makeBool(true));
+    am.bindKey(Act::Sprint, EKey::KEY_LEFT_SHIFT, InputValue::makeBool(true));
 
     // Zoom: scroll wheel → Axis1D
-    am.bindMouseAxis(Act::Zoom, MouseAxisInput::EAxis::SCROLL_Y,
-                     InputValue::makeAxis1D(1.f));
+    am.bindMouseAxis(Act::Zoom, MouseAxisInput::EAxis::SCROLL_Y, InputValue::makeAxis1D(1.f));
 
     // ── Advanced trigger bindings ──
 
     // QuickTap: Q key, Tap trigger (must release within 0.3s)
-    am.bindKey(Act::QuickTap, EKey::KEY_Q,
-               InputValue::makeBool(true), {},
-               {{ETriggerKind::TAP, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.3f}});
+    am.bindKey(
+        Act::QuickTap,
+        EKey::KEY_Q,
+        InputValue::makeBool(true),
+        {},
+        {{ETriggerKind::TAP, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.3f}}
+    );
 
     // ChargeRelease: E key, HoldAndRelease trigger (hold ≥ 0.4s then release)
-    am.bindKey(Act::ChargeRelease, EKey::KEY_E,
-               InputValue::makeBool(true), {},
-               {{ETriggerKind::HOLD_AND_RELEASE, ETriggerLogicType::EXPLICIT, 0.5f, 0.4f}});
+    am.bindKey(
+        Act::ChargeRelease,
+        EKey::KEY_E,
+        InputValue::makeBool(true),
+        {},
+        {{ETriggerKind::HOLD_AND_RELEASE, ETriggerLogicType::EXPLICIT, 0.5f, 0.4f}}
+    );
 
     // AutoFire: R key, Pulse trigger (fires every 0.2s while held)
-    am.bindKey(Act::AutoFire, EKey::KEY_R,
-               InputValue::makeBool(true), {},
-               {{ETriggerKind::PULSE, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.2f, 0.2f}});
+    am.bindKey(
+        Act::AutoFire,
+        EKey::KEY_R,
+        InputValue::makeBool(true),
+        {},
+        {{ETriggerKind::PULSE, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.2f, 0.2f}}
+    );
 
     // SprintFire: F key, ChordAction trigger (requires Sprint to be active)
-    am.bindKey(Act::SprintFire, EKey::KEY_F,
-               InputValue::makeBool(true), {},
-               {{ETriggerKind::CHORD_ACTION, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.2f, 0.1f, Act::Sprint}});
+    am.bindKey(
+        Act::SprintFire,
+        EKey::KEY_F,
+        InputValue::makeBool(true),
+        {},
+        {{ETriggerKind::CHORD_ACTION, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.2f, 0.1f, Act::Sprint}}
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════ //
 //  Main                                                                     //
 // ═══════════════════════════════════════════════════════════════════════════ //
 
-int main()
+int
+main()
 {
     // ── GLFW init ───────────────────────────────────────────────────── //
     GlfwRuntime runtime;
-    if (!runtime.valid()) {
+    if (!runtime.valid())
+    {
         std::fprintf(stderr, "FATAL: glfwInit() failed\n");
         return 1;
     }
 
     // ── Window ──────────────────────────────────────────────────────── //
     LuxWindow window(960, 540, "[ Input System Test ] - Focus this window");
-    if (!window.init()) {
-        std::fprintf(stderr,
-            "FATAL: window.init() failed (Vulkan not available?)\n");
+    if (!window.init())
+    {
+        std::fprintf(stderr, "FATAL: window.init() failed (Vulkan not available?)\n");
         return 1;
     }
 
@@ -237,16 +256,16 @@ int main()
     // ── Action tracking ─────────────────────────────────────────────── //
     constexpr int kNumActions = 11;
     ActionEntry entries[kNumActions] = {
-        {"Jump",       Act::Jump},
-        {"Move",       Act::Move},
-        {"Look",       Act::Look},
-        {"Fire",       Act::Fire},
-        {"Aim",        Act::Aim},
-        {"Sprint",     Act::Sprint},
-        {"Zoom",       Act::Zoom},
-        {"QuickTap",   Act::QuickTap},
-        {"ChrgRel",    Act::ChargeRelease},
-        {"AutoFire",   Act::AutoFire},
+        {"Jump", Act::Jump},
+        {"Move", Act::Move},
+        {"Look", Act::Look},
+        {"Fire", Act::Fire},
+        {"Aim", Act::Aim},
+        {"Sprint", Act::Sprint},
+        {"Zoom", Act::Zoom},
+        {"QuickTap", Act::QuickTap},
+        {"ChrgRel", Act::ChargeRelease},
+        {"AutoFire", Act::AutoFire},
         {"SprintFire", Act::SprintFire},
     };
 
@@ -254,31 +273,30 @@ int main()
     uint8_t prev_events[kNumActions] = {};
 
     // ── Print instructions ──────────────────────────────────────────── //
-    std::printf(
-        "===================================================\n"
-        "  Interactive Input System Test\n"
-        "===================================================\n"
-        "  Focus the window, then:\n"
-        "\n"
-        "  SPACE         -> Jump    (Bool)\n"
-        "  W/A/S/D       -> Move    (Axis2D, Normalized)\n"
-        "  Mouse move    -> Look    (Axis2D)\n"
-        "  Left click    -> Fire    (Bool)\n"
-        "  Right hold    -> Aim     (Bool, Hold 0.5s)\n"
-        "  Left Shift    -> Sprint  (Bool)\n"
-        "  Scroll wheel  -> Zoom    (Axis1D)\n"
-        "\n"
-        "  --- Advanced Triggers ---\n"
-        "  Q (tap)       -> QuickTap     (Tap: release within 0.3s)\n"
-        "  E (hold+rel)  -> ChargeRelease(HoldAndRelease: hold>=0.4s)\n"
-        "  R (hold)      -> AutoFire     (Pulse: every 0.2s)\n"
-        "  Shift + F     -> SprintFire   (ChordAction: Sprint active)\n"
-        "\n"
-        "  ESC           -> Exit\n"
-        "===================================================\n"
-        "\n"
-        "  Output: only printed when action events change.\n"
-        "\n"
+    std::printf("===================================================\n"
+                "  Interactive Input System Test\n"
+                "===================================================\n"
+                "  Focus the window, then:\n"
+                "\n"
+                "  SPACE         -> Jump    (Bool)\n"
+                "  W/A/S/D       -> Move    (Axis2D, Normalized)\n"
+                "  Mouse move    -> Look    (Axis2D)\n"
+                "  Left click    -> Fire    (Bool)\n"
+                "  Right hold    -> Aim     (Bool, Hold 0.5s)\n"
+                "  Left Shift    -> Sprint  (Bool)\n"
+                "  Scroll wheel  -> Zoom    (Axis1D)\n"
+                "\n"
+                "  --- Advanced Triggers ---\n"
+                "  Q (tap)       -> QuickTap     (Tap: release within 0.3s)\n"
+                "  E (hold+rel)  -> ChargeRelease(HoldAndRelease: hold>=0.4s)\n"
+                "  R (hold)      -> AutoFire     (Pulse: every 0.2s)\n"
+                "  Shift + F     -> SprintFire   (ChordAction: Sprint active)\n"
+                "\n"
+                "  ESC           -> Exit\n"
+                "===================================================\n"
+                "\n"
+                "  Output: only printed when action events change.\n"
+                "\n"
     );
 
     // ── Main loop ───────────────────────────────────────────────────── //
@@ -290,7 +308,8 @@ int main()
         input.sample(window);
         const auto& snap = input.snapshot();
 
-        if (snap.isKeyJustPressed(EKey::KEY_ESCAPE)) {
+        if (snap.isKeyJustPressed(EKey::KEY_ESCAPE))
+        {
             window.exit();
             break;
         }
@@ -301,7 +320,8 @@ int main()
         ++frame;
 
         // Print only when events change for an action.
-        for (int i = 0; i < kNumActions; ++i) {
+        for (int i = 0; i < kNumActions; ++i)
+        {
             const auto& st = input.mapper().state(entries[i].id);
 
             if (st.events == ActionEvent_None && prev_events[i] == ActionEvent_None)
@@ -311,13 +331,16 @@ int main()
                 continue; // Same event pattern as last frame — skip.
 
             // Events changed — print this line.
-            if (st.events != ActionEvent_None) {
-                std::printf("[frame %05d] %-12s  %-30s  value=%-20s  held=%.2fs\n",
-                            frame,
-                            entries[i].name,
-                            fmtEvents(st.events),
-                            fmtValue(st.value),
-                            st.held_seconds);
+            if (st.events != ActionEvent_None)
+            {
+                std::printf(
+                    "[frame %05d] %-12s  %-30s  value=%-20s  held=%.2fs\n",
+                    frame,
+                    entries[i].name,
+                    fmtEvents(st.events),
+                    fmtValue(st.value),
+                    st.held_seconds
+                );
             }
 
             prev_events[i] = st.events;

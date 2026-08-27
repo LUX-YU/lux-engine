@@ -13,25 +13,22 @@
 
 namespace lux::render
 {
-    struct CapacityDomainIdTag final {};
+    struct CapacityDomainIdTag final
+    {
+    };
     using CapacityDomainIdView = lux::cxx::StableNameIdView<CapacityDomainIdTag>;
     using CapacityDomainId = lux::cxx::StableNameId<CapacityDomainIdTag>;
 
-    [[nodiscard]] constexpr CapacityDomainIdView capacityId(
-        std::string_view name) noexcept
+    [[nodiscard]] constexpr CapacityDomainIdView capacityId(std::string_view name) noexcept
     {
         return CapacityDomainIdView{name};
     }
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC bool isValidCapacityDomainName(
-        std::string_view name) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC bool isValidCapacityDomainName(std::string_view name) noexcept;
 
-    inline constexpr auto kActiveInstancesCapacity =
-        capacityId("lux.render.instances");
-    inline constexpr auto kClassicMeshRecordsCapacity =
-        capacityId("lux.render.classic_mesh.records");
-    inline constexpr auto kClassicMeshGeometryBytesCapacity =
-        capacityId("lux.render.classic_mesh.geometry_bytes");
+    inline constexpr auto kActiveInstancesCapacity = capacityId("lux.render.instances");
+    inline constexpr auto kClassicMeshRecordsCapacity = capacityId("lux.render.classic_mesh.records");
+    inline constexpr auto kClassicMeshGeometryBytesCapacity = capacityId("lux.render.classic_mesh.geometry_bytes");
 
     enum class CapacityRequestMode : std::uint8_t
     {
@@ -70,14 +67,12 @@ namespace lux::render
         CapacityRequestMode mode{CapacityRequestMode::AUTO};
         std::uint64_t value{0u};
 
-        [[nodiscard]] static constexpr CapacityValue automatic()
-            noexcept
+        [[nodiscard]] static constexpr CapacityValue automatic() noexcept
         {
             return {};
         }
 
-        [[nodiscard]] static constexpr CapacityValue exact(
-            std::uint64_t requested) noexcept
+        [[nodiscard]] static constexpr CapacityValue exact(std::uint64_t requested) noexcept
         {
             return {CapacityRequestMode::EXPLICIT, requested};
         }
@@ -95,12 +90,8 @@ namespace lux::render
     {
         std::vector<CapacityRequestEntry> domains;
 
-        LUX_FUNCTION_PUBLIC void set(
-            CapacityDomainIdView domain,
-            CapacityValue value);
-        [[nodiscard]] LUX_FUNCTION_PUBLIC
-        const CapacityValue* find(
-            CapacityDomainIdView domain) const noexcept;
+        LUX_FUNCTION_PUBLIC void set(CapacityDomainIdView domain, CapacityValue value);
+        [[nodiscard]] LUX_FUNCTION_PUBLIC const CapacityValue* find(CapacityDomainIdView domain) const noexcept;
     };
 
     /// Raw device facts. Domain-specific limits are contributed separately to
@@ -131,10 +122,8 @@ namespace lux::render
     {
     public:
         [[nodiscard]] lux::cxx::expected<void, CapacityCatalogError> add(CapacityDomainDescriptor descriptor);
-        [[nodiscard]] const CapacityDomainDescriptor* find(
-            CapacityDomainIdView id) const noexcept;
-        [[nodiscard]] std::span<const CapacityDomainDescriptor> all()
-            const noexcept
+        [[nodiscard]] const CapacityDomainDescriptor* find(CapacityDomainIdView id) const noexcept;
+        [[nodiscard]] std::span<const CapacityDomainDescriptor> all() const noexcept
         {
             return descriptors_;
         }
@@ -159,12 +148,8 @@ namespace lux::render
         CapacityDeviceFacts device{};
         std::vector<CapacityDomainPlan> domains;
 
-        [[nodiscard]] LUX_FUNCTION_PUBLIC
-        const CapacityDomainPlan* find(
-            CapacityDomainIdView domain) const noexcept;
-        [[nodiscard]] LUX_FUNCTION_PUBLIC
-        std::uint64_t effective(
-            CapacityDomainIdView domain) const noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC const CapacityDomainPlan* find(CapacityDomainIdView domain) const noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC std::uint64_t effective(CapacityDomainIdView domain) const noexcept;
     };
 
     struct CapacityShortfall final
@@ -194,8 +179,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<CapacityShortfallWire>);
 
-    [[nodiscard]] inline CapacityShortfallWire capacityShortfallWire(
-        const CapacityShortfall& shortfall) noexcept
+    [[nodiscard]] inline CapacityShortfallWire capacityShortfallWire(const CapacityShortfall& shortfall) noexcept
     {
         return {
             shortfall.domain.hash(),
@@ -211,10 +195,6 @@ namespace lux::render
     /// Resolve every registered domain. Explicit requests are admitted first
     /// and never clamp. AUTO domains may shrink proportionally, but never below
     /// their registered minimum. Results are sorted by canonical domain name.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC
-    lux::cxx::expected<CapacityPlan, CapacityShortfall>
-    makeCapacityPlan(
-        const CapacityRequest& request,
-        const CapacityDeviceFacts& device,
-        const CapacityCatalog& catalog);
+    [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<CapacityPlan, CapacityShortfall>
+    makeCapacityPlan(const CapacityRequest& request, const CapacityDeviceFacts& device, const CapacityCatalog& catalog);
 } // namespace lux::render

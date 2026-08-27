@@ -19,7 +19,7 @@
 // ============================================================================
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>
-#include <lux/engine/function/render/client/RenderTargetLayout.hpp>   // TargetSlot
+#include <lux/engine/function/render/client/RenderTargetLayout.hpp> // TargetSlot
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
 #include <lux/engine/function/render/client/genops/SsaoOperation.ops.hpp>
 #include <lux/engine/function/visibility.h>
@@ -29,39 +29,44 @@
 namespace lux::render
 {
 
-class LightResources;
+    class LightResources;
 
-class LUX_FUNCTION_PUBLIC SsaoFeature : public RenderFeature
-{
-public:
-    /// 空 tag 生成约定:createFn 用 `SsaoFeature::Config{}` 构造特性,
-    /// 无参数也要有这个名字(Hzb 同款)。
-    struct Config
+    class LUX_FUNCTION_PUBLIC SsaoFeature : public RenderFeature
     {
+    public:
+        /// 空 tag 生成约定:createFn 用 `SsaoFeature::Config{}` 构造特性,
+        /// 无参数也要有这个名字(Hzb 同款)。
+        struct Config
+        {
+        };
+
+        SsaoFeature() = default;
+        explicit SsaoFeature(Config)
+        {
+        }
+
+        std::string_view name() const override
+        {
+            return "Ssao";
+        }
+
+        /// 声明读 LinearDepth 槽(生产者是 LinearDepthFeature;本特性只添
+        /// SAMPLED 用途)。SceneDepth 不需要 —— 线性化已由生产者做完。
+        uint32_t requiredTargetSlots() const override
+        {
+            return 1u << static_cast<uint32_t>(TargetSlot::LINEAR_DEPTH);
+        }
+
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
+        void onDetachFromScene(RenderScene& scene) override;
+        void addPasses(RGBuilder& builder) override;
+
+    private:
+        GraphicsPipelineHandle pipeline_{kInvalidPipelineHandle};
+        VkDescriptorSetLayout input_ds_layout_{VK_NULL_HANDLE}; ///< set1:uLinearDepth(反射布局)
+        VkSampler input_sampler_{VK_NULL_HANDLE};               ///< 服务缓存句柄
+        LightResources* light_res_{nullptr};                    ///< b11 的接收端(场景注册表)
+        VkImageView provided_view_{VK_NULL_HANDLE};             ///< 上次交给 b11 的 view(变化检测)
     };
-
-    SsaoFeature() = default;
-    explicit SsaoFeature(Config) {}
-
-    std::string_view name() const override { return "Ssao"; }
-
-    /// 声明读 LinearDepth 槽(生产者是 LinearDepthFeature;本特性只添
-    /// SAMPLED 用途)。SceneDepth 不需要 —— 线性化已由生产者做完。
-    uint32_t requiredTargetSlots() const override
-    {
-        return 1u << static_cast<uint32_t>(TargetSlot::LINEAR_DEPTH);
-    }
-
-    lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
-    void onDetachFromScene(RenderScene& scene) override;
-    void addPasses(RGBuilder& builder) override;
-
-private:
-    GraphicsPipelineHandle pipeline_{kInvalidPipelineHandle};
-    VkDescriptorSetLayout  input_ds_layout_{VK_NULL_HANDLE};  ///< set1:uLinearDepth(反射布局)
-    VkSampler              input_sampler_{VK_NULL_HANDLE};    ///< 服务缓存句柄
-    LightResources*        light_res_{nullptr};               ///< b11 的接收端(场景注册表)
-    VkImageView            provided_view_{VK_NULL_HANDLE};    ///< 上次交给 b11 的 view(变化检测)
-};
 
 } // namespace lux::render

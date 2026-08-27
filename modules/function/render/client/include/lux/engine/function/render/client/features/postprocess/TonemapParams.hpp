@@ -23,16 +23,26 @@ namespace lux::render
     // TonemapPassParams.hpp 的 include + PARSE_INCLUDED_MARKED 可见)。
     struct LUX_TYPE_INFO(runtime) LUX_PASS_SCALARS() TonemapParams
     {
-        LUX_MEMBER(display_name=Exposure, min=0.0, max=16.0, tooltip=HDR exposure multiplier applied before tone mapping)
+        LUX_MEMBER(
+            display_name = Exposure,
+            min = 0.0,
+            max = 16.0,
+            tooltip = HDR exposure multiplier applied before tone mapping
+        )
         float exposure = 1.0f;
 
-        LUX_MEMBER(display_name=Gamma, min=1.0, max=3.0, tooltip=Output gamma encoding (sRGB is ~2.2))
+        LUX_MEMBER(display_name = Gamma, min = 1.0, max = 3.0, tooltip = Output gamma encoding(sRGB is ~2.2))
         float gamma = 2.2f;
 
         // Tone-map operator: 0=Reinhard, 1=ACES Filmic, 2=Uncharted2, 3=None.
         // Mirrors EToneMapOperator (TonemapFeature.hpp); a plain uint32 here so a
         // generic combo widget can drive it (INC-3 adds the labelled dropdown).
-        LUX_MEMBER(display_name=Operator, min=0, max=3, tooltip=Tone-mapping curve: 0 Reinhard / 1 ACES / 2 Uncharted2 / 3 None)
+        LUX_MEMBER(
+            display_name = Operator,
+            min = 0,
+            max = 3,
+            tooltip = Tone - mapping curve : 0 Reinhard / 1 ACES / 2 Uncharted2 / 3 None
+        )
         std::uint32_t tone_map_op = 1u;
     };
 

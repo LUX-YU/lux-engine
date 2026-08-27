@@ -13,8 +13,8 @@
  */
 
 #include <cstdint>
-#include <lux/engine/render/core/vk_fwd.hpp>            // VkSampler (forward-declared handle)
-#include <lux/engine/function/render/graph/RGForwardDecls.hpp>   // RGResourceHandle
+#include <lux/engine/render/core/vk_fwd.hpp>                   // VkSampler (forward-declared handle)
+#include <lux/engine/function/render/graph/RGForwardDecls.hpp> // RGResourceHandle
 
 namespace lux::render
 {
@@ -49,19 +49,22 @@ namespace lux::render
     /// per-view per-frame when the recorder allocates the transient DS.
     struct RGDescriptorWrite
     {
-        uint32_t         binding;
-        EDescriptorType  descriptor_type;
-        RGResourceHandle resource;                                  ///< RG transient or imported resource
-        VkSampler        sampler      = {};                         ///< {} == VK_NULL_HANDLE
-        EImageLayout     image_layout = EImageLayout::SHADER_READ_ONLY_OPTIMAL;
-        uint32_t         mip_level    = ~0u;                        ///< ~0u = full-mip view; else a single per-mip view
+        uint32_t binding;
+        EDescriptorType descriptor_type;
+        RGResourceHandle resource; ///< RG transient or imported resource
+        VkSampler sampler = {};    ///< {} == VK_NULL_HANDLE
+        EImageLayout image_layout = EImageLayout::SHADER_READ_ONLY_OPTIMAL;
+        uint32_t mip_level = ~0u; ///< ~0u = full-mip view; else a single per-mip view
     };
 
     /// Opaque handle referencing a transient DS description in the graph.
     struct RGTransientDSHandle
     {
         uint32_t index = ~0u;
-        [[nodiscard]] bool valid() const noexcept { return index != ~0u; }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return index != ~0u;
+        }
     };
 
 } // namespace lux::render

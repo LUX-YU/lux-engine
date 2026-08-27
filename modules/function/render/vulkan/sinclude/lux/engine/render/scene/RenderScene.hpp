@@ -22,15 +22,15 @@
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
 
-#include <iosfwd>   // std::ostream (dumpCompiledGraph)
+#include <iosfwd> // std::ostream (dumpCompiledGraph)
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/render/core/FrameRetireScheduler.hpp>
-#include <lux/engine/function/render/client/core/RenderSceneId.hpp>   // sceneId()
-#include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp> // sceneId()
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>   // lux::math::Extent2u
 #include <lux/engine/render/scene/View.hpp>
-#include <lux/engine/render/scene/SceneGraphCache.hpp>   // SceneGraphState + 图缓存组件
-#include <lux/engine/render/scene/SceneViewSet.hpp>      // ViewCreateInfo + 视图集合组件
-#include <lux/engine/render/scene/RenderFeatureSet.hpp>   // 特性容器 + 查询 + 每(特性,视图)账本
+#include <lux/engine/render/scene/SceneGraphCache.hpp>  // SceneGraphState + 图缓存组件
+#include <lux/engine/render/scene/SceneViewSet.hpp>     // ViewCreateInfo + 视图集合组件
+#include <lux/engine/render/scene/RenderFeatureSet.hpp> // 特性容器 + 查询 + 每(特性,视图)账本
 #include <lux/engine/render/scene/PipelineConfig.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
@@ -38,7 +38,7 @@
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <lux/engine/math/AABB.hpp>
 #include <lux/cxx/container/SparseSet.hpp>
-#include <lux/cxx/container/BasicSparseSet.hpp>   // SlotKeyAutoSparseSet (generational views)
+#include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet (generational views)
 
 #include <Eigen/Core>
 
@@ -56,7 +56,7 @@
 
 // Forward declarations — avoid pulling in heavy headers
 struct VkCommandBuffer_T; // Vulkan opaque handle
-using VkCommandBuffer = VkCommandBuffer_T *;
+using VkCommandBuffer = VkCommandBuffer_T*;
 
 namespace lux::render
 {
@@ -101,13 +101,13 @@ namespace lux::render
         /// Construct from a fully-initialized RenderContext (RAII).
         /// Creates per-scene render-graph infrastructure internally.
         explicit RenderScene(std::shared_ptr<RenderContext> ctx);
-        RenderScene(std::shared_ptr<RenderContext> ctx, const Config &cfg);
+        RenderScene(std::shared_ptr<RenderContext> ctx, const Config& cfg);
         ~RenderScene();
 
-        RenderScene(const RenderScene &) = delete;
-        RenderScene &operator=(const RenderScene &) = delete;
-        RenderScene(RenderScene &&) = delete;
-        RenderScene &operator=(RenderScene &&) = delete;
+        RenderScene(const RenderScene&) = delete;
+        RenderScene& operator=(const RenderScene&) = delete;
+        RenderScene(RenderScene&&) = delete;
+        RenderScene& operator=(RenderScene&&) = delete;
 
         // ================================================================
         //  Shutdown
@@ -127,8 +127,7 @@ namespace lux::render
          * The caller must save the returned id for later access via
          * getFeature() / getFeatureAs<T>().
          */
-        template <typename T, typename... Args>
-        Expected<FeatureHandle> addFeature(Args &&...args)
+        template <typename T, typename... Args> Expected<FeatureHandle> addFeature(Args&&... args)
         {
             return installFeature(std::make_unique<T>(std::forward<Args>(args)...));
         }
@@ -153,11 +152,9 @@ namespace lux::render
          * 拆成三段而不是把一个 RenderFeature* 标志参数塞进单一函数 —— 后者要调用
          * 方替容器算它自己的事,签名也说不清那个参数和第一个参数是同一个对象。
          */
-        template <typename T>
-        Expected<FeatureHandle> installFeature(std::unique_ptr<T> feature)
+        template <typename T> Expected<FeatureHandle> installFeature(std::unique_ptr<T> feature)
         {
-            static_assert(std::is_base_of_v<RenderFeature, T>,
-                          "只能装入 RenderFeature 及其派生类");
+            static_assert(std::is_base_of_v<RenderFeature, T>, "只能装入 RenderFeature 及其派生类");
             if (auto begun = beginInstall(*feature); !begun)
                 return lux::cxx::unexpected(begun.error());
 
@@ -167,13 +164,12 @@ namespace lux::render
         }
 
         /// O(1) lookup by handle.  Returns nullptr if the handle is invalid or stale.
-        [[nodiscard]] RenderFeature *getFeature(FeatureHandle feature_id) const;
+        [[nodiscard]] RenderFeature* getFeature(FeatureHandle feature_id) const;
 
         /// Typed convenience — static_cast after O(1) lookup.
-        template <typename T>
-        T *getFeatureAs(FeatureHandle feature_id) const
+        template <typename T> T* getFeatureAs(FeatureHandle feature_id) const
         {
-            return static_cast<T *>(getFeature(feature_id));
+            return static_cast<T*>(getFeature(feature_id));
         }
 
         Expected<void> removeFeature(FeatureHandle feature_id);
@@ -194,11 +190,17 @@ namespace lux::render
         class FeatureInstallScope
         {
         public:
-            FeatureInstallScope(RenderScene& scene, const FeatureDescriptor& desc) noexcept
-                : scene_(scene) { scene_.pending_install_descriptor_ = &desc; }
-            ~FeatureInstallScope() { scene_.pending_install_descriptor_ = nullptr; }
-            FeatureInstallScope(const FeatureInstallScope&)            = delete;
+            FeatureInstallScope(RenderScene& scene, const FeatureDescriptor& desc) noexcept : scene_(scene)
+            {
+                scene_.pending_install_descriptor_ = &desc;
+            }
+            ~FeatureInstallScope()
+            {
+                scene_.pending_install_descriptor_ = nullptr;
+            }
+            FeatureInstallScope(const FeatureInstallScope&) = delete;
             FeatureInstallScope& operator=(const FeatureInstallScope&) = delete;
+
         private:
             RenderScene& scene_;
         };
@@ -252,9 +254,7 @@ namespace lux::render
         //  ——而不是翻一个没人读的枚举。)
 
         /// Mark the render graph as invalid so it will be recompiled next frame.
-        void invalidateGraph(
-            EGraphInvalidationReason reason =
-                EGraphInvalidationReason::UNKNOWN) noexcept;
+        void invalidateGraph(EGraphInvalidationReason reason = EGraphInvalidationReason::UNKNOWN) noexcept;
 
         /// Debug: write a human-readable dump of the CURRENT compiled render
         /// graph (execution order + per-pass reads/writes/barriers) to @p os.
@@ -269,19 +269,31 @@ namespace lux::render
         /// Suppress automatic graph recompilation during batch feature changes.
         /// While suppressed, `prepareSceneForRender` will skip recompile even if
         /// the graph is invalid.  Call `resumeGraphRecompile()` when done.
-        void suppressGraphRecompile() noexcept { recompile_suppressed_ = true; }
+        void suppressGraphRecompile() noexcept
+        {
+            recompile_suppressed_ = true;
+        }
 
         /// Resume automatic graph recompilation.
-        void resumeGraphRecompile() noexcept { recompile_suppressed_ = false; }
+        void resumeGraphRecompile() noexcept
+        {
+            recompile_suppressed_ = false;
+        }
 
         /// Whether graph recompilation is currently suppressed.
-        [[nodiscard]] bool isGraphRecompileSuppressed() const noexcept { return recompile_suppressed_; }
+        [[nodiscard]] bool isGraphRecompileSuppressed() const noexcept
+        {
+            return recompile_suppressed_;
+        }
 
         // ================================================================
         //  Pipeline Configuration
         // ================================================================
 
-        [[nodiscard]] const PipelineConfig &pipelineConfig() const noexcept { return pipeline_config_; }
+        [[nodiscard]] const PipelineConfig& pipelineConfig() const noexcept
+        {
+            return pipeline_config_;
+        }
         [[nodiscard]] double spatialTileSize() const noexcept
         {
             return config_.coordinate_page_size;
@@ -290,8 +302,7 @@ namespace lux::render
         {
             return config_.scene_origin_page;
         }
-        [[nodiscard]] Expected<void> rebaseSceneOrigin(
-            const std::int64_t scene_origin_page[3]) noexcept;
+        [[nodiscard]] Expected<void> rebaseSceneOrigin(const std::int64_t scene_origin_page[3]) noexcept;
 
         /// Replace the pipeline configuration.  Invalidates the render graph.
         void setPipelineConfig(PipelineConfig cfg) noexcept
@@ -307,7 +318,10 @@ namespace lux::render
             scene_delta_time_ = delta;
             scene_total_frames_ = frame_number;
         }
-        [[nodiscard]] float sceneTime() const noexcept { return scene_time_; }
+        [[nodiscard]] float sceneTime() const noexcept
+        {
+            return scene_time_;
+        }
         [[nodiscard]] std::uint64_t sceneFrameNumber() const noexcept
         {
             return scene_total_frames_;
@@ -321,23 +335,23 @@ namespace lux::render
         //  View Management
         // ================================================================
 
-        [[nodiscard]] ViewHandle addView(const ViewCreateInfo &info);
+        [[nodiscard]] ViewHandle addView(const ViewCreateInfo& info);
         /// 返回 false = 幂等守卫拒绝(句柄陈旧 / 已在销毁中),什么都没做。
         /// comm handler 据此回 GenericOkReply 的失败码;服务端内部调用方
         /// (UIRenderServer 的 swapchain 链)对重复摘不在乎,(void) 掉即可。
         bool removeView(ViewHandle handle);
-        [[nodiscard]] View *getView(ViewHandle handle) noexcept;
-        [[nodiscard]] const View *getView(ViewHandle handle) const noexcept;
+        [[nodiscard]] View* getView(ViewHandle handle) noexcept;
+        [[nodiscard]] const View* getView(ViewHandle handle) const noexcept;
 
-        void forEachActiveView(auto &&fn)
+        void forEachActiveView(auto&& fn)
         {
-            for (auto *view : view_set_.active())
+            for (auto* view : view_set_.active())
                 fn(*view);
         }
 
-        void forEachActiveView(auto &&fn) const
+        void forEachActiveView(auto&& fn) const
         {
-            for (auto *view : view_set_.active())
+            for (auto* view : view_set_.active())
                 fn(*view);
         }
 
@@ -345,7 +359,10 @@ namespace lux::render
 
         // ── Domain-neutral per-frame primitives (general; no domain knowledge) ──
         // The monotonic frame serial of the frame currently being recorded.
-        [[nodiscard]] uint64_t frameSerial() const noexcept { return current_stamp_.serial; }
+        [[nodiscard]] uint64_t frameSerial() const noexcept
+        {
+            return current_stamp_.serial;
+        }
 
         /// Per-frame "instance cull-enable mask" GPU address (buffer-device-address;
         /// 0 = none). A general primitive the GPU-driven mesh cull reads to skip
@@ -354,8 +371,14 @@ namespace lux::render
         /// to 0 at the start of every beginFrame, so a scene with no provider gets 0
         /// (= every instance active). This is the decoupling seam that keeps the core
         /// free of SpatialCullGrid / large-world concepts.
-        void setInstanceCullMaskAddress(uint64_t addr) noexcept { instance_cull_mask_addr_ = addr; }
-        [[nodiscard]] uint64_t instanceCullMaskAddress() const noexcept { return instance_cull_mask_addr_; }
+        void setInstanceCullMaskAddress(uint64_t addr) noexcept
+        {
+            instance_cull_mask_addr_ = addr;
+        }
+        [[nodiscard]] uint64_t instanceCullMaskAddress() const noexcept
+        {
+            return instance_cull_mask_addr_;
+        }
 
         // ── View lifecycle (all View state is driven by Scene) ──────────
 
@@ -367,13 +390,16 @@ namespace lux::render
         //  Per-Frame Lifecycle (render thread)
         // ================================================================
 
-        void beginFrame(const FrameStamp &stamp);
+        void beginFrame(const FrameStamp& stamp);
 
         /// Record scene-local uploads for this tick (instance/point-cloud/trajectory/scene buffers).
-        void recordUploads(VkCommandBuffer cmd, const FrameStamp &stamp);
+        void recordUploads(VkCommandBuffer cmd, const FrameStamp& stamp);
 
         /// Convenience entry — forwards to recordUploads().
-        void record(VkCommandBuffer cmd, const FrameStamp &stamp) { recordUploads(cmd, stamp); }
+        void record(VkCommandBuffer cmd, const FrameStamp& stamp)
+        {
+            recordUploads(cmd, stamp);
+        }
 
         // (updateView removed — the View type no longer bakes in 3D-specific
         // concepts: per-view camera data is now a feature domain.
@@ -385,8 +411,8 @@ namespace lux::render
         // ================================================================
         //  Render-Graph / Pass Infrastructure
         // ================================================================
-        RGVulkanResourceAllocator&  graphAllocator() noexcept;
-        RGVulkanRecorder&           graphRecorder() noexcept;
+        RGVulkanResourceAllocator& graphAllocator() noexcept;
+        RGVulkanRecorder& graphRecorder() noexcept;
 
         /// Access the (possibly invalid) scene-level compiled graph.
         [[nodiscard]] SceneGraphState& graphState() noexcept;
@@ -405,15 +431,21 @@ namespace lux::render
          * into the compiled graph; actual per-frame VkImage handles are supplied
          * through RenderRequest::target at record time.
          */
-        void compileGraphTemplate(const RenderTargetLayout &layout);
+        void compileGraphTemplate(const RenderTargetLayout& layout);
 
         /// 调试名(诊断打印用;格式异构报错点名)。
-        [[nodiscard]] const std::string &debugName() const noexcept { return debug_name_; }
+        [[nodiscard]] const std::string& debugName() const noexcept
+        {
+            return debug_name_;
+        }
 
         /// 本场景在 Renderer 里的生成式 id。Renderer::addScene 在插入后回填 ——
         /// 场景此前不知道自己的 id,于是它自发上报的诊断没法说清是**哪个**场景的
         /// (诊断面板上「有个场景没有 SceneColor」等于没说)。
-        [[nodiscard]] RenderSceneId sceneId() const noexcept { return scene_id_; }
+        [[nodiscard]] RenderSceneId sceneId() const noexcept
+        {
+            return scene_id_;
+        }
         void setSceneId(RenderSceneId id) noexcept
         {
             scene_id_ = id;
@@ -427,16 +459,19 @@ namespace lux::render
 
         /// Defer destruction of a previous per-view RG resource state.
         /// Used when resizing or swapping view resources while old GPU work may still be in flight.
-        void retireViewResourceState(RGResourceState &&state, const RGGraphDescription* source_graph);
+        void retireViewResourceState(RGResourceState&& state, const RGGraphDescription* source_graph);
 
         // ================================================================
         //  Scene Data
         // ================================================================
-        RenderContext &renderContext() noexcept;
-        const RenderContext &renderContext() const noexcept;
+        RenderContext& renderContext() noexcept;
+        const RenderContext& renderContext() const noexcept;
 
         /// SoA slot index for this scene's entry in SceneResources::SceneGlobalBuffer.
-        [[nodiscard]] SlotHandle sceneGlobalSlot() const noexcept { return scene_global_slot_; }
+        [[nodiscard]] SlotHandle sceneGlobalSlot() const noexcept
+        {
+            return scene_global_slot_;
+        }
         [[nodiscard]] FrameRetireScheduler::OwnerToken retireOwnerToken() const noexcept
         {
             return retire_owner_token_;
@@ -450,17 +485,26 @@ namespace lux::render
         //  Scene Resource Registry
         // ================================================================
 
-        [[nodiscard]] ResourceRegistry &sceneRegistry() noexcept { return scene_registry_; }
-        [[nodiscard]] const ResourceRegistry &sceneRegistry() const noexcept { return scene_registry_; }
+        [[nodiscard]] ResourceRegistry& sceneRegistry() noexcept
+        {
+            return scene_registry_;
+        }
+        [[nodiscard]] const ResourceRegistry& sceneRegistry() const noexcept
+        {
+            return scene_registry_;
+        }
 
         /// Per-scene growable descriptor-pool chain backing this scene's
         /// persistent descriptor sets (light/scene/instance/vertex-pool/shadow/
         /// skinning). Layouts stay global; only set allocation is per-scene.
-        [[nodiscard]] SceneDescriptorArena &descriptorArena() noexcept { return scene_descriptor_arena_; }
+        [[nodiscard]] SceneDescriptorArena& descriptorArena() noexcept
+        {
+            return scene_descriptor_arena_;
+        }
 
         /// The descriptor set merged by bind-frequency domain. During the
         /// transition it coexists alongside the older per-set batch.
-        [[nodiscard]] SceneDomainDescriptorSets *domainDescriptorSets() noexcept
+        [[nodiscard]] SceneDomainDescriptorSets* domainDescriptorSets() noexcept
         {
             return scene_domain_sets_.get();
         }
@@ -468,7 +512,11 @@ namespace lux::render
         /// Per-scene transfer scheduler — a feature registers its per-scene SSBO as a
         /// contributor (makeTransferContributor) so it flushes before draw. Used by
         /// LightFeature for its LightResources (the scene ctor no longer knows light).
-        [[nodiscard]] TransferScheduler &transferScheduler() noexcept { return transfer_scheduler_; }
+        [[nodiscard]] TransferScheduler& transferScheduler() noexcept
+        {
+            return transfer_scheduler_;
+        }
+
     private:
         /// 只看 FeatureDescriptor 声明的关系:多重性、冲突、必需依赖、特性等级档案。
         /// 四道闸全在 attach 之前,拒绝时没有任何东西要回滚。
@@ -568,7 +616,7 @@ namespace lux::render
         // Domain-neutral instance cull-enable mask GPU address for the current
         // frame (0 = none). Set by a provider feature in onFrameBegin, reset to 0
         // at beginFrame start. See setInstanceCullMaskAddress().
-        uint64_t   instance_cull_mask_addr_{0};
+        uint64_t instance_cull_mask_addr_{0};
 
         bool initialized_{false};
         std::string debug_name_;

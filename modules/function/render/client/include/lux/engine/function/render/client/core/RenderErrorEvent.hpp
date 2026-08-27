@@ -28,7 +28,7 @@ namespace lux::render
     /// 一条自发上报。
     struct RenderErrorEvent
     {
-        RenderError   error{};
+        RenderError error{};
         /// 关联场景的槽位下标;与场景无关时为 kNoScene。
         std::uint32_t scene_index{0};
         /// 本批内同类合并的次数。取代了各资源类里手写的幂次限流 ——
@@ -46,7 +46,7 @@ namespace lux::render
     struct ErrorEventBatchReply
     {
         /// 恒 ok() —— 这个回复本身不是某次操作的结果,它是一批事件的封面。
-        RenderError   error{};
+        RenderError error{};
         std::uint32_t count{0};
         /// 自上次推送以来因环满丢弃的条数。**必须上报**:一个会静默丢事件的
         /// 诊断通道,本身就是这套设计要消灭的东西。

@@ -2,12 +2,10 @@
 
 #include <cassert>
 
-int main()
+int
+main()
 {
-    const auto content = lux::render::builtinShaderContent(
-        lux::render::EBuiltinShader{}
-    );
+    const auto content = lux::render::builtinShaderContent(lux::render::EBuiltinShader{});
     assert(!content);
-    assert(content.error() ==
-        lux::render::EBuiltinContentError::BUILTIN_CONTENT_UNAVAILABLE);
+    assert(content.error() == lux::render::EBuiltinContentError::BUILTIN_CONTENT_UNAVAILABLE);
 }

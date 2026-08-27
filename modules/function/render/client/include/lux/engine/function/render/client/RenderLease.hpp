@@ -27,11 +27,9 @@ namespace lux::render
 {
     class RenderControlSession;
 
-    using RenderViewReleaseObserver =
-        lux::cxx::move_only_function<void(const GenericOkReply&)>;
+    using RenderViewReleaseObserver = lux::cxx::move_only_function<void(const GenericOkReply&)>;
 
-    using RenderTargetReleaseObserver =
-        lux::cxx::move_only_function<void(const TargetReleasedReply&)>;
+    using RenderTargetReleaseObserver = lux::cxx::move_only_function<void(const TargetReleasedReply&)>;
 
     enum class ERenderTargetCloseError
     {
@@ -55,13 +53,16 @@ namespace lux::render
         RenderSceneLease() noexcept = default;
         ~RenderSceneLease() noexcept;
 
-        RenderSceneLease(const RenderSceneLease&)            = delete;
+        RenderSceneLease(const RenderSceneLease&) = delete;
         RenderSceneLease& operator=(const RenderSceneLease&) = delete;
 
         RenderSceneLease(RenderSceneLease&& other) noexcept;
         RenderSceneLease& operator=(RenderSceneLease&& other) noexcept;
 
-        [[nodiscard]] RenderSceneId id() const noexcept { return id_; }
+        [[nodiscard]] RenderSceneId id() const noexcept
+        {
+            return id_;
+        }
         [[nodiscard]] explicit operator bool() const noexcept
         {
             return session_ != nullptr && id_.isValid();
@@ -75,15 +76,14 @@ namespace lux::render
     private:
         friend class RenderControlSession;
 
-        RenderSceneLease(RenderControlSession& session, RenderSceneId id) noexcept
-            : session_(&session), id_(id)
+        RenderSceneLease(RenderControlSession& session, RenderSceneId id) noexcept : session_(&session), id_(id)
         {
         }
 
         void deferOwnedRelease() noexcept;
 
         RenderControlSession* session_{nullptr};
-        RenderSceneId  id_{};
+        RenderSceneId id_{};
     };
 
     /// Unique client-side responsibility for one view inside a render scene.
@@ -94,18 +94,23 @@ namespace lux::render
         RenderViewLease() noexcept = default;
         ~RenderViewLease() noexcept;
 
-        RenderViewLease(const RenderViewLease&)            = delete;
+        RenderViewLease(const RenderViewLease&) = delete;
         RenderViewLease& operator=(const RenderViewLease&) = delete;
 
         RenderViewLease(RenderViewLease&& other) noexcept;
         RenderViewLease& operator=(RenderViewLease&& other) noexcept;
 
-        [[nodiscard]] RenderSceneId scene() const noexcept { return scene_id_; }
-        [[nodiscard]] ViewHandle id() const noexcept { return view_; }
+        [[nodiscard]] RenderSceneId scene() const noexcept
+        {
+            return scene_id_;
+        }
+        [[nodiscard]] ViewHandle id() const noexcept
+        {
+            return view_;
+        }
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return session_ != nullptr &&
-                   scene_id_.isValid() && view_.isValid();
+            return session_ != nullptr && scene_id_.isValid() && view_.isValid();
         }
 
         /// Consume this lease and publish removeView through the control lane.
@@ -114,20 +119,21 @@ namespace lux::render
     private:
         friend class RenderControlSession;
 
-        RenderViewLease(RenderControlSession& session,
-                        RenderSceneId scene_id,
-                        ViewHandle view,
-                        RenderViewReleaseObserver observer) noexcept
-            : session_(&session), scene_id_(scene_id), view_(view),
-              observer_(std::move(observer))
+        RenderViewLease(
+            RenderControlSession& session,
+            RenderSceneId scene_id,
+            ViewHandle view,
+            RenderViewReleaseObserver observer
+        ) noexcept
+            : session_(&session), scene_id_(scene_id), view_(view), observer_(std::move(observer))
         {
         }
 
         void deferOwnedRelease() noexcept;
 
         RenderControlSession* session_{nullptr};
-        RenderSceneId  scene_id_{};       // observation; parent scene outlives us
-        ViewHandle     view_{};
+        RenderSceneId scene_id_{}; // observation; parent scene outlives us
+        ViewHandle view_{};
         RenderViewReleaseObserver observer_{};
     };
 
@@ -144,17 +150,19 @@ namespace lux::render
         RenderTargetLease() noexcept = default;
         ~RenderTargetLease() noexcept;
 
-        RenderTargetLease(const RenderTargetLease&)            = delete;
+        RenderTargetLease(const RenderTargetLease&) = delete;
         RenderTargetLease& operator=(const RenderTargetLease&) = delete;
 
         RenderTargetLease(RenderTargetLease&& other) noexcept;
         RenderTargetLease& operator=(RenderTargetLease&& other) noexcept;
 
-        [[nodiscard]] RenderTargetId id() const noexcept { return target_; }
+        [[nodiscard]] RenderTargetId id() const noexcept
+        {
+            return target_;
+        }
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return session_ != nullptr &&
-                   target_.isValid();
+            return session_ != nullptr && target_.isValid();
         }
 
         /// Consume this lease and record DestroyTarget. Failure does not
@@ -164,8 +172,11 @@ namespace lux::render
     private:
         friend class RenderControlSession;
 
-        RenderTargetLease(RenderControlSession& session, RenderTargetId target,
-                          RenderTargetReleaseObserver observer) noexcept
+        RenderTargetLease(
+            RenderControlSession& session,
+            RenderTargetId target,
+            RenderTargetReleaseObserver observer
+        ) noexcept
             : session_(&session), target_(target), observer_(std::move(observer))
         {
         }

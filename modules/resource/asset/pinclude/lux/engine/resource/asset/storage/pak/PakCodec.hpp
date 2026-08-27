@@ -25,20 +25,18 @@
 
 namespace lux::asset::detail
 {
-    inline constexpr std::uint32_t pakFourcc(
-        char a, char b, char c, char d) noexcept
+    inline constexpr std::uint32_t pakFourcc(char a, char b, char c, char d) noexcept
     {
         return static_cast<std::uint32_t>(static_cast<unsigned char>(a)) |
-            (static_cast<std::uint32_t>(static_cast<unsigned char>(b)) << 8u) |
-            (static_cast<std::uint32_t>(static_cast<unsigned char>(c)) << 16u) |
-            (static_cast<std::uint32_t>(static_cast<unsigned char>(d)) << 24u);
+               (static_cast<std::uint32_t>(static_cast<unsigned char>(b)) << 8u) |
+               (static_cast<std::uint32_t>(static_cast<unsigned char>(c)) << 16u) |
+               (static_cast<std::uint32_t>(static_cast<unsigned char>(d)) << 24u);
     }
 
-    inline constexpr std::uint8_t kPakFileMagic[8] = {
-        'L', 'U', 'X', 'P', 'A', 'K', '\0', '\0'};
+    inline constexpr std::uint8_t kPakFileMagic[8] = {'L', 'U', 'X', 'P', 'A', 'K', '\0', '\0'};
     inline constexpr std::uint32_t kPakEndianTag = 0x01020304u;
     inline constexpr std::uint32_t kPakVersion = 2u;
-    inline constexpr std::uint32_t kPakPageMagic = pakFourcc('L','P','G','2');
+    inline constexpr std::uint32_t kPakPageMagic = pakFourcc('L', 'P', 'G', '2');
     inline constexpr std::uint32_t kPakPageSize = 4096u;
     inline constexpr std::uint64_t kPakPayloadAlign = 16u;
     inline constexpr std::uint8_t kPakCompressionNone = 0u;
@@ -135,47 +133,36 @@ namespace lux::asset::detail
         const std::filesystem::path& out_pak,
         std::vector<PakWriteEntry> entries,
         std::string_view mount_hint,
-        std::string* error_out = nullptr);
+        std::string* error_out = nullptr
+    );
 
-    LUX_ASSET_PUBLIC bool readPakHeader(
-        std::istream& stream,
-        std::uint64_t file_size,
-        PakHeader& output,
-        std::string* error_out = nullptr);
+    LUX_ASSET_PUBLIC bool
+    readPakHeader(std::istream& stream, std::uint64_t file_size, PakHeader& output, std::string* error_out = nullptr);
 
     LUX_ASSET_PUBLIC bool readPakPage(
         std::istream& stream,
         std::uint64_t file_size,
         std::uint64_t offset,
         PakPage& output,
-        std::string* error_out = nullptr);
+        std::string* error_out = nullptr
+    );
 
-    [[nodiscard]] LUX_ASSET_PUBLIC bool verifyPakPageDigest(
-        const PakPage& page,
-        const lux::cxx::algorithm::Sha256Digest& expected) noexcept;
+    [[nodiscard]] LUX_ASSET_PUBLIC bool
+    verifyPakPageDigest(const PakPage& page, const lux::cxx::algorithm::Sha256Digest& expected) noexcept;
 
-    [[nodiscard]] LUX_ASSET_PUBLIC PakPageHeader pakPageHeader(
-        const PakPage& page) noexcept;
+    [[nodiscard]] LUX_ASSET_PUBLIC PakPageHeader pakPageHeader(const PakPage& page) noexcept;
 
-    LUX_ASSET_PUBLIC bool decodeEntryLeaf(
-        const PakPage& page,
-        std::vector<PakEntry>& output,
-        std::string* error_out = nullptr);
+    LUX_ASSET_PUBLIC bool
+    decodeEntryLeaf(const PakPage& page, std::vector<PakEntry>& output, std::string* error_out = nullptr);
 
-    LUX_ASSET_PUBLIC bool decodeEntryInternal(
-        const PakPage& page,
-        std::vector<PakEntryChild>& output,
-        std::string* error_out = nullptr);
+    LUX_ASSET_PUBLIC bool
+    decodeEntryInternal(const PakPage& page, std::vector<PakEntryChild>& output, std::string* error_out = nullptr);
 
-    LUX_ASSET_PUBLIC bool decodePathLeaf(
-        const PakPage& page,
-        std::vector<PakPathRow>& output,
-        std::string* error_out = nullptr);
+    LUX_ASSET_PUBLIC bool
+    decodePathLeaf(const PakPage& page, std::vector<PakPathRow>& output, std::string* error_out = nullptr);
 
-    LUX_ASSET_PUBLIC bool decodePathInternal(
-        const PakPage& page,
-        std::vector<PakPathChild>& output,
-        std::string* error_out = nullptr);
+    LUX_ASSET_PUBLIC bool
+    decodePathInternal(const PakPage& page, std::vector<PakPathChild>& output, std::string* error_out = nullptr);
 
     /// Explicit inspection path. Unlike normal Provider startup this walks
     /// the complete Entry tree, but still verifies every parent/child digest.
@@ -184,5 +171,6 @@ namespace lux::asset::detail
         std::uint64_t file_size,
         const PakHeader& header,
         std::vector<PakEntry>& output,
-        std::string* error_out = nullptr);
+        std::string* error_out = nullptr
+    );
 } // namespace lux::asset::detail

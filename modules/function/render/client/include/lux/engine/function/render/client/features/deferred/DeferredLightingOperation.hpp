@@ -33,13 +33,13 @@ namespace lux::render
     /// The stem alone resolves to nothing.
     inline constexpr std::string_view kDeferredLightingFragShaderName = "deferred_lighting.frag";
 
-    inline constexpr std::string_view kClusterBuildShaderName         = "cluster_build.comp";
-    inline constexpr std::string_view kClusterCountShaderName         = "cluster_count.comp";
-    inline constexpr std::string_view kClusterScanShaderName          = "cluster_scan.comp";
-    inline constexpr std::string_view kClusterFillShaderName          = "cluster_fill.comp";
-    inline constexpr std::string_view kClusterClearShaderName         = "clear_count_buffers.comp";
+    inline constexpr std::string_view kClusterBuildShaderName = "cluster_build.comp";
+    inline constexpr std::string_view kClusterCountShaderName = "cluster_count.comp";
+    inline constexpr std::string_view kClusterScanShaderName = "cluster_scan.comp";
+    inline constexpr std::string_view kClusterFillShaderName = "cluster_fill.comp";
+    inline constexpr std::string_view kClusterClearShaderName = "clear_count_buffers.comp";
 
-    inline constexpr uint32_t kDeferredLightingCommConfigVersion = 2u;  // v2: 删 ELightingReadMode::AUTO
+    inline constexpr uint32_t kDeferredLightingCommConfigVersion = 2u; // v2: 删 ELightingReadMode::AUTO
 
     /// G-buffer 读路径。comm 层公开定义(uint8_t 底型,wire 稳定)——
     /// 客户端(orchestrator 等)用枚举名而非裸数字,server 侧
@@ -52,8 +52,8 @@ namespace lux::render
     /// `err::lighting::LocalReadUnsupported`,不再无声换路。
     enum class ELightingReadMode : uint8_t
     {
-        SAMPLED          = 0,  ///< 路径 A:独立 pass,texture() 采样。默认值。
-        INPUT_ATTACHMENT = 1,  ///< 路径 B:local-read 合并作用域,subpassLoad()
+        SAMPLED = 0,          ///< 路径 A:独立 pass,texture() 采样。默认值。
+        INPUT_ATTACHMENT = 1, ///< 路径 B:local-read 合并作用域,subpassLoad()
     };
 
     /// Comm-layer config for DeferredLightingFeature.
@@ -61,31 +61,33 @@ namespace lux::render
     /// 顺序敏感**的依赖(`?` 尾缀)——本特性 attach 时扫 scene.features() 做
     /// 阴影技术匹配校验,排在 ShadowMap 前面就扫不到、校验静默空转
     /// (DeferredLightingFeature.cpp 的注释自证)。
-    struct LUX_COMM_CONFIG(prefix=DeferredLighting, id=lux.render.deferred_lighting.v1, display=DeferredLighting,
-                           requires="lux.render.deferred_gbuffer.v1,lux.render.shadow_map.v1?",
-                           custom_create=true)
-    DeferredLightingCommConfig
+    struct LUX_COMM_CONFIG(
+        prefix = DeferredLighting,
+        id = lux.render.deferred_lighting.v1,
+        display = DeferredLighting,
+        requires = "lux.render.deferred_gbuffer.v1,lux.render.shadow_map.v1?",
+        custom_create = true) DeferredLightingCommConfig
     {
-        uint32_t            comm_config_version{kDeferredLightingCommConfigVersion};
-        ShaderHandle        vertex_shader{};     ///< fullscreen triangle
-        ShaderHandle        fragment_shader{};   ///< deferred_lighting.frag (variant chosen by `technique` if empty)
-        ELightingReadMode   read_mode{ELightingReadMode::SAMPLED};
+        uint32_t comm_config_version{kDeferredLightingCommConfigVersion};
+        ShaderHandle vertex_shader{};   ///< fullscreen triangle
+        ShaderHandle fragment_shader{}; ///< deferred_lighting.frag (variant chosen by `technique` if empty)
+        ELightingReadMode read_mode{ELightingReadMode::SAMPLED};
 
-        ShaderHandle        cluster_build_shader{};
-        ShaderHandle        cluster_count_shader{};
-        ShaderHandle        cluster_scan_shader{};
-        ShaderHandle        cluster_fill_shader{};
-        ShaderHandle        cluster_clear_shader{};
-        uint32_t            enable_clustered{0};
-        uint32_t            cluster_x{16};
-        uint32_t            cluster_y{9};
-        uint32_t            cluster_z{24};
-        uint32_t            max_cluster_indices{1'048'576};
+        ShaderHandle cluster_build_shader{};
+        ShaderHandle cluster_count_shader{};
+        ShaderHandle cluster_scan_shader{};
+        ShaderHandle cluster_fill_shader{};
+        ShaderHandle cluster_clear_shader{};
+        uint32_t enable_clustered{0};
+        uint32_t cluster_x{16};
+        uint32_t cluster_y{9};
+        uint32_t cluster_z{24};
+        uint32_t max_cluster_indices{1'048'576};
         /// Shadow technique whose lighting SPIR-V variant to bind. MUST match
         /// `ShadowMapCommConfig::default_technique` or lighting will sample
         /// the wrong atlas (PCF D32 vs EVSM RGBA16F).
-        EShadowTechnique    technique{EShadowTechnique::PCF};
-        uint8_t             _pad[7]{};
+        EShadowTechnique technique{EShadowTechnique::PCF};
+        uint8_t _pad[7]{};
     };
     static_assert(std::is_trivially_copyable_v<DeferredLightingCommConfig>);
 

@@ -1,8 +1,8 @@
 #include <lux/engine/render/scene/SpatialCullGrid.hpp>
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
-#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>           // create/destroyGpuBufferVmaBuffer
+#include <lux/engine/render/gpu/memory/GPUBuffer.hpp> // create/destroyGpuBufferVmaBuffer
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
-#include <lux/engine/render/gpu/VulkanContext.hpp>                   // DeviceContext::vmaAllocator()
+#include <lux/engine/render/gpu/VulkanContext.hpp> // DeviceContext::vmaAllocator()
 
 #include <algorithm>
 #include <cmath>
@@ -22,20 +22,20 @@ namespace lux::render
     void SpatialCullGrid::init(const InitInfo& info)
     {
         if (initialized_)
-            return;   // idempotent
+            return; // idempotent
 
-        device_ctx_     = info.device_context;
+        device_ctx_ = info.device_context;
         deferred_queue_ = info.deferred_queue;
-        cell_size_      = (info.cell_size > 0.0f)     ? info.cell_size     : 128.0f;
-        cull_distance_  = (info.cull_distance > 0.0f) ? info.cull_distance : 512.0f;
+        cell_size_ = (info.cell_size > 0.0f) ? info.cell_size : 128.0f;
+        cull_distance_ = (info.cull_distance > 0.0f) ? info.cull_distance : 512.0f;
 
         const uint32_t ring = std::max(info.frames_in_flight, 1u) + 1u;
         ring_buffers_.assign(ring, VK_NULL_HANDLE);
         ring_allocs_.assign(ring, nullptr);
         ring_mapped_.assign(ring, nullptr);
         ring_sizes_.assign(ring, VkDeviceSize{0});
-        ring_cursor_        = 0;
-        current_slot_       = 0;
+        ring_cursor_ = 0;
+        current_slot_ = 0;
         last_upload_serial_ = ~0ull;
 
         // Pre-allocate every ring slot and fill it with all-active (0xFF) so
@@ -47,20 +47,24 @@ namespace lux::render
         {
             for (uint32_t i = 0; i < ring; ++i)
             {
-                VkBuffer      buf{VK_NULL_HANDLE};
+                VkBuffer buf{VK_NULL_HANDLE};
                 VmaAllocation alloc{nullptr};
-                void*         mapped{nullptr};
-                if (createGpuBufferVmaBuffer(device_ctx_->vmaAllocator(), init_size,
-                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                                                 | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                             /*cpu_writable=*/true, &buf, &alloc, &mapped)
-                    && buf != VK_NULL_HANDLE && mapped != nullptr)
+                void* mapped{nullptr};
+                if (createGpuBufferVmaBuffer(
+                        device_ctx_->vmaAllocator(),
+                        init_size,
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                        /*cpu_writable=*/true,
+                        &buf,
+                        &alloc,
+                        &mapped) &&
+                    buf != VK_NULL_HANDLE && mapped != nullptr)
                 {
                     std::memset(mapped, 0xFF, static_cast<std::size_t>(init_size));
                     ring_buffers_[i] = buf;
-                    ring_allocs_[i]  = alloc;
-                    ring_mapped_[i]  = mapped;
-                    ring_sizes_[i]   = init_size;
+                    ring_allocs_[i] = alloc;
+                    ring_mapped_[i] = mapped;
+                    ring_sizes_[i] = init_size;
                 }
             }
         }
@@ -77,9 +81,9 @@ namespace lux::render
         mask_.shrink_to_fit();
         cell_active_.clear();
         mask_slot_count_ = 0;
-        device_ctx_      = nullptr;
-        deferred_queue_  = nullptr;
-        initialized_     = false;
+        device_ctx_ = nullptr;
+        deferred_queue_ = nullptr;
+        initialized_ = false;
     }
 
     void SpatialCullGrid::destroyRing() noexcept
@@ -90,8 +94,7 @@ namespace lux::render
             // destroy is safe — no in-flight frame can still be reading these.
             for (std::size_t i = 0; i < ring_buffers_.size(); ++i)
             {
-                destroyGpuBufferVmaBuffer(device_ctx_->vmaAllocator(),
-                                          ring_buffers_[i], ring_allocs_[i]);
+                destroyGpuBufferVmaBuffer(device_ctx_->vmaAllocator(), ring_buffers_[i], ring_allocs_[i]);
             }
         }
         ring_buffers_.clear();
@@ -102,33 +105,40 @@ namespace lux::render
 
     void SpatialCullGrid::setCellSize(float s) noexcept
     {
-        if (s > 0.0f) cell_size_ = s;
+        if (s > 0.0f)
+            cell_size_ = s;
     }
 
     void SpatialCullGrid::setCullDistance(float r) noexcept
     {
-        if (r > 0.0f) cull_distance_ = r;
+        if (r > 0.0f)
+            cull_distance_ = r;
     }
 
     // =========================================================================
     //  Pure cell math (no GPU / no state — CPU-unit-testable)
     // =========================================================================
-    void SpatialCullGrid::cellCoord(float world_x, float world_y, float cell_size,
-                                   int32_t& out_cx, int32_t& out_cy) noexcept
+    void
+    SpatialCullGrid::cellCoord(float world_x, float world_y, float cell_size, int32_t& out_cx, int32_t& out_cy) noexcept
     {
         const float inv = 1.0f / cell_size;
         out_cx = static_cast<int32_t>(std::floor(world_x * inv));
         out_cy = static_cast<int32_t>(std::floor(world_y * inv));
     }
 
-    bool SpatialCullGrid::cellInRange(int32_t cx, int32_t cy, float cell_size, float cull_distance,
-                                     std::span<const std::array<float, 3>> cameras) noexcept
+    bool SpatialCullGrid::cellInRange(
+        int32_t cx,
+        int32_t cy,
+        float cell_size,
+        float cull_distance,
+        std::span<const std::array<float, 3>> cameras
+    ) noexcept
     {
         if (cameras.empty())
-            return true;   // no cull source → keep active (never over-cull)
-        const float ccx  = (static_cast<float>(cx) + 0.5f) * cell_size;
-        const float ccz  = (static_cast<float>(cy) + 0.5f) * cell_size;
-        const float eff  = cull_distance + cell_size;   // one-cell slack
+            return true; // no cull source → keep active (never over-cull)
+        const float ccx = (static_cast<float>(cx) + 0.5f) * cell_size;
+        const float ccz = (static_cast<float>(cy) + 0.5f) * cell_size;
+        const float eff = cull_distance + cell_size; // one-cell slack
         const float eff2 = eff * eff;
         for (const auto& cam : cameras)
         {
@@ -146,9 +156,11 @@ namespace lux::render
     // =========================================================================
     //  Per-frame update
     // =========================================================================
-    void SpatialCullGrid::update(uint64_t                              serial,
-                                std::span<const std::array<float, 3>> cameras,
-                                const InstanceResources&              instances)
+    void SpatialCullGrid::update(
+        uint64_t serial,
+        std::span<const std::array<float, 3>> cameras,
+        const InstanceResources& instances
+    )
     {
         if (!initialized_)
             return;
@@ -176,15 +188,18 @@ namespace lux::render
             extract_scratch_.push_back(InstanceXY{
                 slot,
                 static_cast<float>(cull.bsphere_page[0]) * page_size + cull.bsphere[0],
-                static_cast<float>(cull.bsphere_page[2]) * page_size + cull.bsphere[2]});
+                static_cast<float>(cull.bsphere_page[2]) * page_size + cull.bsphere[2]}
+            );
         }
         update(serial, cameras, extract_scratch_, slot_count);
     }
 
-    void SpatialCullGrid::update(uint64_t                              serial,
-                                std::span<const std::array<float, 3>> cameras,
-                                std::span<const InstanceXY>           alive,
-                                uint32_t                              slot_count)
+    void SpatialCullGrid::update(
+        uint64_t serial,
+        std::span<const std::array<float, 3>> cameras,
+        std::span<const InstanceXY> alive,
+        uint32_t slot_count
+    )
     {
         if (!initialized_)
             return;
@@ -206,17 +221,19 @@ namespace lux::render
         uploadMask();
     }
 
-    void SpatialCullGrid::recomputeMask(std::span<const std::array<float, 3>> cameras,
-                                       std::span<const InstanceXY>           alive,
-                                       uint32_t                              slot_count)
+    void SpatialCullGrid::recomputeMask(
+        std::span<const std::array<float, 3>> cameras,
+        std::span<const InstanceXY> alive,
+        uint32_t slot_count
+    )
     {
-        mask_.assign(slot_count, 1u);   // default active — never over-cull an unclassified slot
+        mask_.assign(slot_count, 1u); // default active — never over-cull an unclassified slot
         mask_slot_count_ = slot_count;
 
-        stat_total_instances_  = static_cast<uint32_t>(alive.size());
+        stat_total_instances_ = static_cast<uint32_t>(alive.size());
         stat_active_instances_ = 0;
-        stat_active_cells_     = 0;
-        stat_total_cells_      = 0;
+        stat_active_cells_ = 0;
+        stat_total_cells_ = 0;
 
         // Disabled or no cull source → everything active (equivalent to the
         // pre-partition behaviour; lets the editor toggle the coarse cull off).
@@ -232,8 +249,7 @@ namespace lux::render
         // (the same logic is covered by CPU unit tests); this just adds a
         // per-cell cache on top, so multiple instances in the same cell don't
         // redundantly recompute the distance to the cameras.
-        auto cellActive = [&](CellKey key) -> bool
-        {
+        auto cellActive = [&](CellKey key) -> bool {
             const auto it = cell_active_.find(key);
             if (it != cell_active_.end())
                 return it->second != 0u;
@@ -251,14 +267,15 @@ namespace lux::render
             if (cellActive(key))
                 ++stat_active_instances_;
             else
-                mask_[inst.slot] = 0u;   // dormant cell → masked out of every GPU cull dispatch
+                mask_[inst.slot] = 0u; // dormant cell → masked out of every GPU cull dispatch
         }
 
         stat_total_cells_ = static_cast<uint32_t>(cell_active_.size());
         for (const auto& [k, v] : cell_active_)
         {
             (void)k;
-            if (v) ++stat_active_cells_;
+            if (v)
+                ++stat_active_cells_;
         }
     }
 
@@ -266,9 +283,8 @@ namespace lux::render
     {
         if (ring_buffers_.empty())
             return;
-        const uint32_t     slot     = current_slot_;
-        const VkDeviceSize required =
-            static_cast<VkDeviceSize>(std::max(mask_slot_count_, 1u)) * sizeof(uint32_t);
+        const uint32_t slot = current_slot_;
+        const VkDeviceSize required = static_cast<VkDeviceSize>(std::max(mask_slot_count_, 1u)) * sizeof(uint32_t);
 
         // Grow this slot's buffer if the instance count outgrew it. The slot is
         // GPU-idle (last written `ring` frames ago) but still route the free through
@@ -280,23 +296,26 @@ namespace lux::render
                 if (deferred_queue_ != nullptr)
                     deferred_queue_->retireBuffer(ring_buffers_[slot], ring_allocs_[slot]);
                 else
-                    destroyGpuBufferVmaBuffer(device_ctx_->vmaAllocator(),
-                                              ring_buffers_[slot], ring_allocs_[slot]);
+                    destroyGpuBufferVmaBuffer(device_ctx_->vmaAllocator(), ring_buffers_[slot], ring_allocs_[slot]);
                 ring_buffers_[slot] = VK_NULL_HANDLE;
-                ring_allocs_[slot]  = nullptr;
-                ring_mapped_[slot]  = nullptr;
-                ring_sizes_[slot]   = 0;
+                ring_allocs_[slot] = nullptr;
+                ring_mapped_[slot] = nullptr;
+                ring_sizes_[slot] = 0;
             }
 
             const VkDeviceSize alloc_size = required * 2u;
-            VkBuffer      buf{VK_NULL_HANDLE};
+            VkBuffer buf{VK_NULL_HANDLE};
             VmaAllocation alloc{nullptr};
-            void*         mapped{nullptr};
-            if (!createGpuBufferVmaBuffer(device_ctx_->vmaAllocator(), alloc_size,
-                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                                              | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                          /*cpu_writable=*/true, &buf, &alloc, &mapped)
-                || buf == VK_NULL_HANDLE || mapped == nullptr)
+            void* mapped{nullptr};
+            if (!createGpuBufferVmaBuffer(
+                    device_ctx_->vmaAllocator(),
+                    alloc_size,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                    /*cpu_writable=*/true,
+                    &buf,
+                    &alloc,
+                    &mapped) ||
+                buf == VK_NULL_HANDLE || mapped == nullptr)
             {
                 // Leave the slot null rather than publishing a half-built handle.
                 if (buf != VK_NULL_HANDLE)
@@ -306,16 +325,15 @@ namespace lux::render
             // Fill all-active so the tail past mask_ (unread by cull) never reads 0.
             std::memset(mapped, 0xFF, static_cast<std::size_t>(alloc_size));
             ring_buffers_[slot] = buf;
-            ring_allocs_[slot]  = alloc;
-            ring_mapped_[slot]  = mapped;
-            ring_sizes_[slot]   = alloc_size;
+            ring_allocs_[slot] = alloc;
+            ring_mapped_[slot] = mapped;
+            ring_sizes_[slot] = alloc_size;
         }
 
         // Persistent host-coherent mapping; the implicit host-write barrier at queue
         // submit makes the memcpy visible to this frame's cull dispatch.
         if (ring_mapped_[slot] != nullptr && !mask_.empty())
-            std::memcpy(ring_mapped_[slot], mask_.data(),
-                        static_cast<std::size_t>(mask_.size()) * sizeof(uint32_t));
+            std::memcpy(ring_mapped_[slot], mask_.data(), static_cast<std::size_t>(mask_.size()) * sizeof(uint32_t));
     }
 
     VkBuffer SpatialCullGrid::activeMaskBuffer() const noexcept
@@ -327,14 +345,13 @@ namespace lux::render
 
     uint64_t SpatialCullGrid::activeMaskAddress() const noexcept
     {
-        if (device_ctx_ == nullptr || ring_buffers_.empty()
-            || current_slot_ >= ring_buffers_.size())
+        if (device_ctx_ == nullptr || ring_buffers_.empty() || current_slot_ >= ring_buffers_.size())
             return 0ull;
         const VkBuffer buf = ring_buffers_[current_slot_];
         if (buf == VK_NULL_HANDLE)
             return 0ull;
         VkBufferDeviceAddressInfo info{};
-        info.sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         info.buffer = buf;
         // Buffers are created with VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT and the
         // allocator with VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT (VulkanContext),

@@ -11,7 +11,8 @@ namespace lux::render
     // 按名查资源用异构 map:键存 string,查表直接吃 string_view,不构造临时。
     // 这里原先手写了一对 StringHash/StringEqual —— 与 lux::cxx 里的
     // transparent_string_hash 是同一件东西,换成公共的那份。
-    namespace {
+    namespace
+    {
         using LocalResourceMap = lux::cxx::heterogeneous_map<uint32_t>;
     } // namespace
 
@@ -24,23 +25,34 @@ namespace lux::render
     struct RGBuilder::Impl
     {
         RGGraphDescription graph;
-        LocalResourceMap   resource_name_to_index;
+        LocalResourceMap resource_name_to_index;
 
         /// 当前打开的条件链(见 RGBuilder::conditionChain)。tag == 0 表示没有。
         /// 作用域存续期间,addPass 出来的每个 pass 都自动继承这两个字段 ——
         /// 链的边界因此是**作用域**,而不是散落在若干处的 setCondition 调用。
         PassConditionFn active_condition{};
-        std::uint64_t   active_chain_tag{0};
+        std::uint64_t active_chain_tag{0};
     };
 
-    RGBuilder::RGBuilder() : impl_(std::make_unique<Impl>()) {}
+    RGBuilder::RGBuilder() : impl_(std::make_unique<Impl>())
+    {
+    }
     RGBuilder::~RGBuilder() = default;
     RGBuilder::RGBuilder(RGBuilder&&) noexcept = default;
     RGBuilder& RGBuilder::operator=(RGBuilder&&) noexcept = default;
 
-    RGGraphDescription&       RGBuilder::graphInternal() noexcept       { return impl_->graph; }
-    const RGGraphDescription& RGBuilder::graphInternal() const noexcept { return impl_->graph; }
-    RGGraphDescription        RGBuilder::build() &&                     { return std::move(impl_->graph); }
+    RGGraphDescription& RGBuilder::graphInternal() noexcept
+    {
+        return impl_->graph;
+    }
+    const RGGraphDescription& RGBuilder::graphInternal() const noexcept
+    {
+        return impl_->graph;
+    }
+    RGGraphDescription RGBuilder::build() &&
+    {
+        return std::move(impl_->graph);
+    }
 
     RGBuilder& RGBuilder::reset() noexcept
     {
@@ -55,16 +67,16 @@ namespace lux::render
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::TEXTURE;
         res.lifetime = ERGResourceLifetime::TRANSIENT;
         res.desc = desc;
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
     RGResourceHandle RGBuilder::createBuffer(std::string_view name, const RGBufferDescription& desc)
@@ -72,16 +84,16 @@ namespace lux::render
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::BUFFER;
         res.lifetime = ERGResourceLifetime::TRANSIENT;
         res.desc = desc;
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
     RGResourceHandle RGBuilder::createPersistentTexture(std::string_view name, const RGTextureDescription& desc)
@@ -89,104 +101,106 @@ namespace lux::render
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::TEXTURE;
         res.lifetime = ERGResourceLifetime::PERSISTENT;
         res.desc = desc;
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
-    RGRingResourceHandle RGBuilder::createPingPong(std::string_view name,
-                                                   const RGTextureDescription& desc,
-                                                   uint32_t ring_size)
+    RGRingResourceHandle
+    RGBuilder::createPingPong(std::string_view name, const RGTextureDescription& desc, uint32_t ring_size)
     {
-        if (ring_size < 2u) ring_size = 2u;
+        if (ring_size < 2u)
+            ring_size = 2u;
 
-        const uint32_t cur_idx  = static_cast<uint32_t>(impl_->graph.resources.size());
+        const uint32_t cur_idx = static_cast<uint32_t>(impl_->graph.resources.size());
         const uint32_t prev_idx = cur_idx + 1u;
 
         // CURRENT: owns the ring_size physical copies (ring_phase 0).
         RGResourceDescription cur{};
-        cur.name          = std::string{ name };
-        cur.name_hash     = lux::cxx::algorithm::fnv1a(cur.name);
-        cur.type          = ERGResourceType::TEXTURE;
-        cur.lifetime      = ERGResourceLifetime::PING_PONG;
-        cur.desc          = desc;
-        cur.ring_size     = ring_size;
-        cur.ring_phase    = 0u;
+        cur.name = std::string{name};
+        cur.name_hash = lux::cxx::algorithm::fnv1a(cur.name);
+        cur.type = ERGResourceType::TEXTURE;
+        cur.lifetime = ERGResourceLifetime::PING_PONG;
+        cur.desc = desc;
+        cur.ring_size = ring_size;
+        cur.ring_phase = 0u;
         cur.pingpong_peer = static_cast<int32_t>(prev_idx);
         impl_->graph.resources.push_back(std::move(cur));
-        impl_->resource_name_to_index[std::string{ name }] = cur_idx;
+        impl_->resource_name_to_index[std::string{name}] = cur_idx;
 
         // PREVIOUS: no allocation (ring_phase 1) — resolves to the current
         // resource's copy from one frame earlier. Distinct name so the lookup
         // table doesn't collide with current.
-        const std::string prev_name = std::string{ name } + ".prev";
+        const std::string prev_name = std::string{name} + ".prev";
         RGResourceDescription prev{};
-        prev.name          = prev_name;
-        prev.name_hash     = lux::cxx::algorithm::fnv1a(prev.name);
-        prev.type          = ERGResourceType::TEXTURE;
-        prev.lifetime      = ERGResourceLifetime::PING_PONG;
-        prev.desc          = desc;
-        prev.ring_size     = ring_size;
-        prev.ring_phase    = 1u;
+        prev.name = prev_name;
+        prev.name_hash = lux::cxx::algorithm::fnv1a(prev.name);
+        prev.type = ERGResourceType::TEXTURE;
+        prev.lifetime = ERGResourceLifetime::PING_PONG;
+        prev.desc = desc;
+        prev.ring_size = ring_size;
+        prev.ring_phase = 1u;
         prev.pingpong_peer = static_cast<int32_t>(cur_idx);
         impl_->graph.resources.push_back(std::move(prev));
         impl_->resource_name_to_index[prev_name] = prev_idx;
 
-        return RGRingResourceHandle{ RGResourceHandle{ cur_idx }, RGResourceHandle{ prev_idx } };
+        return RGRingResourceHandle{RGResourceHandle{cur_idx}, RGResourceHandle{prev_idx}};
     }
 
-    RGRingResourceHandle RGBuilder::createPingPongBuffer(std::string_view name,
-                                                         const RGBufferDescription& desc,
-                                                         uint32_t ring_size)
+    RGRingResourceHandle
+    RGBuilder::createPingPongBuffer(std::string_view name, const RGBufferDescription& desc, uint32_t ring_size)
     {
-        if (ring_size < 2u) ring_size = 2u;
+        if (ring_size < 2u)
+            ring_size = 2u;
 
-        const uint32_t cur_idx  = static_cast<uint32_t>(impl_->graph.resources.size());
+        const uint32_t cur_idx = static_cast<uint32_t>(impl_->graph.resources.size());
         const uint32_t prev_idx = cur_idx + 1u;
 
         RGResourceDescription cur{};
-        cur.name          = std::string{ name };
-        cur.name_hash     = lux::cxx::algorithm::fnv1a(cur.name);
-        cur.type          = ERGResourceType::BUFFER;
-        cur.lifetime      = ERGResourceLifetime::PING_PONG;
-        cur.desc          = desc;
-        cur.ring_size     = ring_size;
-        cur.ring_phase    = 0u;
+        cur.name = std::string{name};
+        cur.name_hash = lux::cxx::algorithm::fnv1a(cur.name);
+        cur.type = ERGResourceType::BUFFER;
+        cur.lifetime = ERGResourceLifetime::PING_PONG;
+        cur.desc = desc;
+        cur.ring_size = ring_size;
+        cur.ring_phase = 0u;
         cur.pingpong_peer = static_cast<int32_t>(prev_idx);
         impl_->graph.resources.push_back(std::move(cur));
-        impl_->resource_name_to_index[std::string{ name }] = cur_idx;
+        impl_->resource_name_to_index[std::string{name}] = cur_idx;
 
-        const std::string prev_name = std::string{ name } + ".prev";
+        const std::string prev_name = std::string{name} + ".prev";
         RGResourceDescription prev{};
-        prev.name          = prev_name;
-        prev.name_hash     = lux::cxx::algorithm::fnv1a(prev.name);
-        prev.type          = ERGResourceType::BUFFER;
-        prev.lifetime      = ERGResourceLifetime::PING_PONG;
-        prev.desc          = desc;
-        prev.ring_size     = ring_size;
-        prev.ring_phase    = 1u;
+        prev.name = prev_name;
+        prev.name_hash = lux::cxx::algorithm::fnv1a(prev.name);
+        prev.type = ERGResourceType::BUFFER;
+        prev.lifetime = ERGResourceLifetime::PING_PONG;
+        prev.desc = desc;
+        prev.ring_size = ring_size;
+        prev.ring_phase = 1u;
         prev.pingpong_peer = static_cast<int32_t>(cur_idx);
         impl_->graph.resources.push_back(std::move(prev));
         impl_->resource_name_to_index[prev_name] = prev_idx;
 
-        return RGRingResourceHandle{ RGResourceHandle{ cur_idx }, RGResourceHandle{ prev_idx } };
+        return RGRingResourceHandle{RGResourceHandle{cur_idx}, RGResourceHandle{prev_idx}};
     }
 
-    RGResourceHandle RGBuilder::importTexture(std::string_view name,
-                                       const RGTextureDescription& desc,
-                                       const RGImportedResourceInfo& import_info)
+    RGResourceHandle RGBuilder::importTexture(
+        std::string_view name,
+        const RGTextureDescription& desc,
+        const RGImportedResourceInfo& import_info
+    )
     {
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::TEXTURE;
         res.lifetime = ERGResourceLifetime::IMPORTED;
@@ -194,14 +208,16 @@ namespace lux::render
         res.import_info = std::make_unique<RGImportedResourceInfo>(import_info);
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
-    RGResourceHandle RGBuilder::importBuffer(std::string_view name,
-                                       const RGBufferDescription& desc,
-                                       const RGImportedBufferInfo& import_info)
+    RGResourceHandle RGBuilder::importBuffer(
+        std::string_view name,
+        const RGBufferDescription& desc,
+        const RGImportedBufferInfo& import_info
+    )
     {
         // 同名复用 —— 与 trackExternalBuffer 的既有契约一致。
         //
@@ -215,21 +231,19 @@ namespace lux::render
         // 本就不会撞名。而撞名在今天是**静默有害**的 —— 会造出两条同源资源,且
         // resource_name_to_index 只留后者,referenceBuffer 按名解析到的和调用者
         // 手上的句柄并非同一条。
-        if (auto it = impl_->resource_name_to_index.find(name);
-            it != impl_->resource_name_to_index.end())
+        if (auto it = impl_->resource_name_to_index.find(name); it != impl_->resource_name_to_index.end())
         {
             const auto& existing = impl_->graph.resources[it->second];
-            if (existing.type == ERGResourceType::BUFFER
-                && existing.lifetime == ERGResourceLifetime::IMPORTED)
+            if (existing.type == ERGResourceType::BUFFER && existing.lifetime == ERGResourceLifetime::IMPORTED)
             {
-                return RGResourceHandle{ it->second };
+                return RGResourceHandle{it->second};
             }
         }
 
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::BUFFER;
         res.lifetime = ERGResourceLifetime::IMPORTED;
@@ -237,15 +251,17 @@ namespace lux::render
         res.import_buffer_info = std::make_unique<RGImportedBufferInfo>(import_info);
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
-    RGResourceHandle RGBuilder::importSlottedTexture(TargetSlot slot,
-                                       std::string_view name,
-                                       const RGTextureDescription& desc,
-                                       RGImportedResourceInfo import_info)
+    RGResourceHandle RGBuilder::importSlottedTexture(
+        TargetSlot slot,
+        std::string_view name,
+        const RGTextureDescription& desc,
+        RGImportedResourceInfo import_info
+    )
     {
         import_info.slot = slot;
         return importTexture(name, desc, import_info);
@@ -255,61 +271,61 @@ namespace lux::render
     {
         // De-dup: many passes may consume the same feature-owned resource.
         if (auto it = impl_->resource_name_to_index.find(name); it != impl_->resource_name_to_index.end())
-            return RGResourceHandle{ it->second };
+            return RGResourceHandle{it->second};
 
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::BUFFER;
         res.lifetime = ERGResourceLifetime::EXTERNAL;
-        res.desc = RGBufferDescription{};   // never allocated — keep variant type consistent with BUFFER
+        res.desc = RGBufferDescription{}; // never allocated — keep variant type consistent with BUFFER
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
     RGResourceHandle RGBuilder::trackExternalTexture(std::string_view name)
     {
         if (auto it = impl_->resource_name_to_index.find(name); it != impl_->resource_name_to_index.end())
-            return RGResourceHandle{ it->second };
+            return RGResourceHandle{it->second};
 
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::TEXTURE;
         res.lifetime = ERGResourceLifetime::EXTERNAL;
         // desc defaults to RGTextureDescription (variant's first alternative) — unused.
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
     RGResourceHandle RGBuilder::findTexture(std::string_view name) const noexcept
     {
         if (auto it = impl_->resource_name_to_index.find(name); it != impl_->resource_name_to_index.end())
-            return RGResourceHandle{ it->second };
-        return RGResourceHandle{};   // invalid ——「没有」是数据
+            return RGResourceHandle{it->second};
+        return RGResourceHandle{}; // invalid ——「没有」是数据
     }
 
     RGResourceHandle RGBuilder::referenceTexture(std::string_view name, ERGReference ref)
     {
         // If the resource already exists, return its handle directly
         if (auto it = impl_->resource_name_to_index.find(name); it != impl_->resource_name_to_index.end())
-            return RGResourceHandle{ it->second };
+            return RGResourceHandle{it->second};
 
         // Create a forward-reference placeholder
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::TEXTURE;
         res.lifetime = ERGResourceLifetime::FORWARD_REFERENCE;
@@ -317,29 +333,29 @@ namespace lux::render
         // desc left default — will be resolved from the actual resource at compile time
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
     RGResourceHandle RGBuilder::referenceBuffer(std::string_view name, ERGReference ref)
     {
         if (auto it = impl_->resource_name_to_index.find(name); it != impl_->resource_name_to_index.end())
-            return RGResourceHandle{ it->second };
+            return RGResourceHandle{it->second};
 
         const uint32_t index = static_cast<uint32_t>(impl_->graph.resources.size());
 
         RGResourceDescription res{};
-        res.name = std::string{ name };
+        res.name = std::string{name};
         res.name_hash = lux::cxx::algorithm::fnv1a(res.name);
         res.type = ERGResourceType::BUFFER;
         res.lifetime = ERGResourceLifetime::FORWARD_REFERENCE;
         res.reference_mode = ref;
 
         impl_->graph.resources.push_back(std::move(res));
-        impl_->resource_name_to_index[std::string{ name }] = index;
+        impl_->resource_name_to_index[std::string{name}] = index;
 
-        return RGResourceHandle{ index };
+        return RGResourceHandle{index};
     }
 
     RGRingResourceHandle RGBuilder::referencePingPong(std::string_view name, ERGReference ref)
@@ -347,9 +363,9 @@ namespace lux::render
         // Mirror createPingPong's naming: "<name>" = current, "<name>.prev" = previous.
         // Both resolve at compile time to the producer's ping-pong pair (or stay
         // forward-refs that the required/optional contract then handles).
-        RGResourceHandle cur  = referenceTexture(name, ref);
-        RGResourceHandle prev = referenceTexture(std::string{ name } + ".prev", ref);
-        return RGRingResourceHandle{ cur, prev };
+        RGResourceHandle cur = referenceTexture(name, ref);
+        RGResourceHandle prev = referenceTexture(std::string{name} + ".prev", ref);
+        return RGRingResourceHandle{cur, prev};
     }
 
     RGResourceHandle RGBuilder::findResource(std::string_view name) const noexcept
@@ -357,7 +373,7 @@ namespace lux::render
         auto it = impl_->resource_name_to_index.find(name);
         if (it != impl_->resource_name_to_index.end())
         {
-            return RGResourceHandle{ it->second };
+            return RGResourceHandle{it->second};
         }
         return invalid_rg_resource_handle;
     }
@@ -374,7 +390,7 @@ namespace lux::render
     RGPassBuilder RGBuilder::addPass(std::string_view name, ERGPassType type)
     {
         RGPassDescription pass{};
-        pass.name = std::string{ name };
+        pass.name = std::string{name};
         pass.name_hash = lux::cxx::algorithm::fnv1a(pass.name);
         pass.type = type;
 
@@ -382,14 +398,14 @@ namespace lux::render
         // 它在 RGPassBuilder 上,发生在这之后。
         if (impl_->active_chain_tag != 0)
         {
-            pass.condition     = impl_->active_condition;
+            pass.condition = impl_->active_condition;
             pass.condition_tag = impl_->active_chain_tag;
         }
 
         const uint32_t index = static_cast<uint32_t>(impl_->graph.passes.size());
         impl_->graph.passes.push_back(std::move(pass));
 
-        return RGPassBuilder{ impl_->graph, index };
+        return RGPassBuilder{impl_->graph, index};
     }
 
     RGBuilder::ConditionChainScope RGBuilder::conditionChain(PassConditionFn condition)
@@ -423,14 +439,13 @@ namespace lux::render
         other.owner_ = nullptr;
     }
 
-    RGBuilder::ConditionChainScope&
-    RGBuilder::ConditionChainScope::operator=(ConditionChainScope&& other) noexcept
+    RGBuilder::ConditionChainScope& RGBuilder::ConditionChainScope::operator=(ConditionChainScope&& other) noexcept
     {
         if (this != &other)
         {
             this->~ConditionChainScope();
             owner_ = other.owner_;
-            tag_   = other.tag_;
+            tag_ = other.tag_;
             other.owner_ = nullptr;
         }
         return *this;
@@ -446,17 +461,19 @@ namespace lux::render
 
     RGPassBuilder& RGPassBuilder::setPipelineVariantFeatures(std::span<const uint32_t> feature_masks)
     {
-        auto& vf = pass().pipeline_variant_features;   // lux::cxx::SmallVector<uint32_t, 4>
+        auto& vf = pass().pipeline_variant_features; // lux::cxx::SmallVector<uint32_t, 4>
         vf.clear();
         vf.reserve(feature_masks.size());
-        for (uint32_t m : feature_masks) vf.push_back(m);
+        for (uint32_t m : feature_masks)
+            vf.push_back(m);
         return *this;
     }
 
     // Helper: resolve array_layers for a texture resource (returns 1 for non-array / non-texture).
     static uint32_t resolveLayerCount(const RGGraphDescription& graph, RGResourceHandle handle)
     {
-        if (handle.index < graph.resources.size()) {
+        if (handle.index < graph.resources.size())
+        {
             const auto* tex = std::get_if<RGTextureDescription>(&graph.resources[handle.index].desc);
             if (tex && tex->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY)
                 return tex->array_layers;
@@ -611,7 +628,8 @@ namespace lux::render
 
     RGPassBuilder& RGPassBuilder::withPhases(std::initializer_list<render_phase_id> phases)
     {
-        for (auto p : phases) pass().phase_mask |= phaseBit(p);
+        for (auto p : phases)
+            pass().phase_mask |= phaseBit(p);
         return *this;
     }
 
@@ -663,7 +681,7 @@ namespace lux::render
 
     RGPassBuilder& RGPassBuilder::setCondition(PassConditionFn cond, uint64_t chain_tag)
     {
-        pass().condition     = std::move(cond);
+        pass().condition = std::move(cond);
         pass().condition_tag = chain_tag;
         return *this;
     }
@@ -688,9 +706,9 @@ namespace lux::render
     RGPassBuilder& RGPassBuilder::bindImmutableDS(uint32_t slot, VkDescriptorSet ds)
     {
         PassDSBinding b;
-        b.slot          = slot;
-        b.source        = EDSBindingSource::Immutable;
-        b.mode          = EDSBindMode::IMMUTABLE;
+        b.slot = slot;
+        b.source = EDSBindingSource::Immutable;
+        b.mode = EDSBindMode::IMMUTABLE;
         b.immutable_set = ds;
         pass().ds_bindings.push_back(b);
         return *this;
@@ -699,34 +717,35 @@ namespace lux::render
     RGPassBuilder& RGPassBuilder::bindSceneDS(uint32_t slot)
     {
         PassDSBinding b;
-        b.slot   = slot;
+        b.slot = slot;
         b.source = EDSBindingSource::Scene;
-        b.mode   = EDSBindMode::VERSIONED;
+        b.mode = EDSBindMode::VERSIONED;
         pass().ds_bindings.push_back(b);
         return *this;
     }
 
     RGTransientDSHandle RGBuilder::createTransientDS(
-        std::string_view              name,
-        VkDescriptorSetLayout         layout,
-        std::vector<RGDescriptorWrite> writes)
+        std::string_view name,
+        VkDescriptorSetLayout layout,
+        std::vector<RGDescriptorWrite> writes
+    )
     {
         RGTransientDSDescription desc;
-        desc.name   = std::string(name);
+        desc.name = std::string(name);
         desc.layout = layout;
         desc.writes = std::move(writes);
 
         const auto idx = static_cast<uint32_t>(impl_->graph.transient_descriptor_sets.size());
         impl_->graph.transient_descriptor_sets.push_back(std::move(desc));
-        return RGTransientDSHandle{ idx };
+        return RGTransientDSHandle{idx};
     }
 
     RGPassBuilder& RGPassBuilder::bindTransientDS(uint32_t slot, RGTransientDSHandle handle)
     {
         PassDSBinding b;
-        b.slot               = slot;
-        b.source             = EDSBindingSource::Transient;
-        b.mode               = EDSBindMode::VERSIONED;
+        b.slot = slot;
+        b.source = EDSBindingSource::Transient;
+        b.mode = EDSBindMode::VERSIONED;
         b.transient_ds_index = handle.index;
         pass().ds_bindings.push_back(b);
         return *this;
@@ -739,7 +758,8 @@ namespace lux::render
         EDSBindMode mode,
         RGResourceHandle declared_consume,
         ERGResourceType consume_type,
-        lux::render::ETextureRole consume_tex_role)
+        lux::render::ETextureRole consume_tex_role
+    )
     {
         PassDSBinding b;
         b.slot = slot;
@@ -767,10 +787,10 @@ namespace lux::render
     RGPassBuilder& RGPassBuilder::bindImmutableDS(EDescriptorSetSlot logical, VkDescriptorSet ds)
     {
         PassDSBinding b;
-        b.slot          = static_cast<uint32_t>(logical);
-        b.logical       = logical;
-        b.source        = EDSBindingSource::Immutable;
-        b.mode          = EDSBindMode::IMMUTABLE;
+        b.slot = static_cast<uint32_t>(logical);
+        b.logical = logical;
+        b.source = EDSBindingSource::Immutable;
+        b.mode = EDSBindMode::IMMUTABLE;
         b.immutable_set = ds;
         pass().ds_bindings.push_back(b);
         return *this;
@@ -779,10 +799,10 @@ namespace lux::render
     RGPassBuilder& RGPassBuilder::bindSceneDS(EDescriptorSetSlot logical)
     {
         PassDSBinding b;
-        b.slot    = static_cast<uint32_t>(logical);
+        b.slot = static_cast<uint32_t>(logical);
         b.logical = logical;
-        b.source  = EDSBindingSource::Scene;
-        b.mode    = EDSBindMode::VERSIONED;
+        b.source = EDSBindingSource::Scene;
+        b.mode = EDSBindMode::VERSIONED;
         pass().ds_bindings.push_back(b);
         return *this;
     }
@@ -791,17 +811,18 @@ namespace lux::render
         EDescriptorSetSlot logical,
         RGResourceHandle declared_consume,
         ERGResourceType consume_type,
-        lux::render::ETextureRole consume_tex_role)
+        lux::render::ETextureRole consume_tex_role
+    )
     {
         PassDSBinding b;
-        b.slot             = static_cast<uint32_t>(logical);
-        b.logical          = logical;
-        b.source           = EDSBindingSource::EngineDomain;
+        b.slot = static_cast<uint32_t>(logical);
+        b.logical = logical;
+        b.source = EDSBindingSource::EngineDomain;
         // 域槽一律强制重绑(见 computeDescriptorBindingPlan 里那段 dedup 事故
         // 说明),PER_FIF 是与之匹配的模式。
-        b.mode             = EDSBindMode::PER_FIF;
+        b.mode = EDSBindMode::PER_FIF;
         b.declared_consume = declared_consume;
-        b.consume_type     = consume_type;
+        b.consume_type = consume_type;
         b.consume_tex_role = consume_tex_role;
         pass().ds_bindings.push_back(b);
         return *this;

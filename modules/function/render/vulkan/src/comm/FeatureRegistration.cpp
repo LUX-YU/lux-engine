@@ -8,9 +8,7 @@
 
 namespace lux::render::detail
 {
-    Expected<FeatureHandle> installFeatureErased(
-        void*                          scene,
-        std::unique_ptr<RenderFeature> feature)
+    Expected<FeatureHandle> installFeatureErased(void* scene, std::unique_ptr<RenderFeature> feature)
     {
         return static_cast<RenderScene*>(scene)->addFeatureErased(std::move(feature));
     }

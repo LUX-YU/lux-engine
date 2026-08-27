@@ -26,7 +26,10 @@ namespace lux::render
     {
     public:
         StaticVertexPoolSet() = default;
-        ~StaticVertexPoolSet() { shutdown(); }
+        ~StaticVertexPoolSet()
+        {
+            shutdown();
+        }
 
         StaticVertexPoolSet(const StaticVertexPoolSet&) = delete;
         StaticVertexPoolSet& operator=(const StaticVertexPoolSet&) = delete;
@@ -41,8 +44,7 @@ namespace lux::render
         {
             if (initialized_)
                 return true;
-            if (info.vertex_pool_registry == nullptr ||
-                info.mesh_resources == nullptr)
+            if (info.vertex_pool_registry == nullptr || info.mesh_resources == nullptr)
             {
                 return false;
             }
@@ -71,12 +73,9 @@ namespace lux::render
             initialized_ = false;
         }
 
-        [[nodiscard]] std::uint32_t ensureRegistered(
-            std::uint16_t vbo_segment,
-            VertexLayoutId layout_id) noexcept
+        [[nodiscard]] std::uint32_t ensureRegistered(std::uint16_t vbo_segment, VertexLayoutId layout_id) noexcept
         {
-            if (!initialized_ ||
-                vbo_segment >= mesh_resources_->vboSegmentCount() ||
+            if (!initialized_ || vbo_segment >= mesh_resources_->vboSegmentCount() ||
                 layout_id == kInvalidVertexLayoutId)
             {
                 return ~0u;
@@ -87,10 +86,7 @@ namespace lux::render
             auto& entry = iterator->second;
             if (inserted)
             {
-                entry.source = std::make_unique<StaticVertexSource>(
-                    *mesh_resources_,
-                    vbo_segment,
-                    layout_id);
+                entry.source = std::make_unique<StaticVertexSource>(*mesh_resources_, vbo_segment, layout_id);
             }
 
             const VkBuffer current = entry.source->buffer();
@@ -98,8 +94,7 @@ namespace lux::render
                 return ~0u;
             if (entry.pool_id == ~0u)
             {
-                entry.pool_id = vertex_pool_registry_->registerSource(
-                    *entry.source);
+                entry.pool_id = vertex_pool_registry_->registerSource(*entry.source);
                 entry.registered_buffer = current;
             }
             else if (current != entry.registered_buffer)
@@ -110,22 +105,18 @@ namespace lux::render
             return entry.pool_id;
         }
 
-        [[nodiscard]] VertexSourceHandle handleForMesh(
-            MeshHandle mesh) noexcept
+        [[nodiscard]] VertexSourceHandle handleForMesh(MeshHandle mesh) noexcept
         {
             if (!initialized_)
                 return kInvalidVertexSourceHandle;
             const auto* record = mesh_resources_->getGpuRecord(mesh);
-            if (record == nullptr ||
-                ensureRegistered(record->vbo_segment, record->layout_id) == ~0u)
+            if (record == nullptr || ensureRegistered(record->vbo_segment, record->layout_id) == ~0u)
             {
                 return kInvalidVertexSourceHandle;
             }
-            const auto iterator = entries_.find(
-                Key{record->vbo_segment, record->layout_id});
-            return iterator == entries_.end()
-                ? kInvalidVertexSourceHandle
-                : iterator->second.source->handleForMesh(mesh);
+            const auto iterator = entries_.find(Key{record->vbo_segment, record->layout_id});
+            return iterator == entries_.end() ? kInvalidVertexSourceHandle
+                                              : iterator->second.source->handleForMesh(mesh);
         }
 
         [[nodiscard]] bool initialized() const noexcept

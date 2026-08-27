@@ -12,8 +12,7 @@ namespace lux::serialization
     class BinaryReader final
     {
     public:
-        explicit BinaryReader(std::span<const std::byte> source) noexcept
-            : source_(source)
+        explicit BinaryReader(std::span<const std::byte> source) noexcept : source_(source)
         {
         }
 
@@ -27,51 +26,39 @@ namespace lux::serialization
             return source_.size() - offset_;
         }
 
-        [[nodiscard]] SerializationResult readBytes(
-            std::span<std::byte> destination
-        ) noexcept
+        [[nodiscard]] SerializationResult readBytes(std::span<std::byte> destination) noexcept
         {
             if (destination.size() > remaining())
             {
-                return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{
-                    ESerializationError::TRUNCATED,
-                    offset_
-                });
+                return lux::cxx::unexpected<SerializationFailure>(
+                    SerializationFailure{ESerializationError::TRUNCATED, offset_}
+                );
             }
-            std::memcpy(
-                destination.data(),
-                source_.data() + offset_,
-                destination.size()
-            );
+            std::memcpy(destination.data(), source_.data() + offset_, destination.size());
             offset_ += destination.size();
             return {};
         }
 
         template <std::unsigned_integral T>
-        [[nodiscard]] lux::cxx::expected<T, SerializationFailure>
-        readUnsigned() noexcept
+        [[nodiscard]] lux::cxx::expected<T, SerializationFailure> readUnsigned() noexcept
         {
             if (sizeof(T) > remaining())
             {
-                return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{
-                    ESerializationError::TRUNCATED,
-                    offset_
-                });
+                return lux::cxx::unexpected<SerializationFailure>(
+                    SerializationFailure{ESerializationError::TRUNCATED, offset_}
+                );
             }
             T value{};
             for (std::size_t index{}; index < sizeof(T); ++index)
             {
-                value |= static_cast<T>(
-                    std::to_integer<std::uint8_t>(source_[offset_ + index])
-                ) << (index * 8U);
+                value |= static_cast<T>(std::to_integer<std::uint8_t>(source_[offset_ + index])) << (index * 8U);
             }
             offset_ += sizeof(T);
             return value;
         }
 
         template <std::signed_integral T>
-        [[nodiscard]] lux::cxx::expected<T, SerializationFailure>
-        readSigned() noexcept
+        [[nodiscard]] lux::cxx::expected<T, SerializationFailure> readSigned() noexcept
         {
             auto value = readUnsigned<std::make_unsigned_t<T>>();
             if (!value)
@@ -81,9 +68,7 @@ namespace lux::serialization
             return static_cast<T>(*value);
         }
 
-        template <std::floating_point T>
-        [[nodiscard]] lux::cxx::expected<T, SerializationFailure>
-        readFloat() noexcept
+        template <std::floating_point T> [[nodiscard]] lux::cxx::expected<T, SerializationFailure> readFloat() noexcept
         {
             if constexpr (sizeof(T) == sizeof(std::uint32_t))
             {

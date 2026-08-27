@@ -34,20 +34,25 @@ namespace lux::object::reflection
     class SignalView;
 
     [[nodiscard]] LUX_CORE_PUBLIC SignalView
-    findDeclaredSignal(const lux::meta::RefClass &object_class, std::string_view name) noexcept;
+    findDeclaredSignal(const lux::meta::RefClass& object_class, std::string_view name) noexcept;
 
-    [[nodiscard]] LUX_CORE_PUBLIC SignalView
-    findSignal(const lux::meta::ReflectionRegistry &registry,
-               const lux::meta::RefClass &object_class, std::string_view name) noexcept;
+    [[nodiscard]] LUX_CORE_PUBLIC SignalView findSignal(
+        const lux::meta::ReflectionRegistry& registry,
+        const lux::meta::RefClass& object_class,
+        std::string_view name
+    ) noexcept;
 
     [[nodiscard]] LUX_CORE_PUBLIC lux::cxx::expected<Connection, EDynamicObserveError> observe(
-        lux::object::LuxObject &sender, SignalView signal, lux::object::LuxObject &receiver,
-        const lux::meta::RefMethod &method,
-        lux::object::EDelivery delivery = lux::object::EDelivery::AUTO);
+        lux::object::LuxObject& sender,
+        SignalView signal,
+        lux::object::LuxObject& receiver,
+        const lux::meta::RefMethod& method,
+        lux::object::EDelivery delivery = lux::object::EDelivery::AUTO
+    );
 
     class SignalView final
     {
-      public:
+    public:
         SignalView() noexcept = default;
 
         [[nodiscard]] explicit operator bool() const noexcept
@@ -61,36 +66,35 @@ namespace lux::object::reflection
         }
         [[nodiscard]] lux::cxx::TypeToken ownerType() const noexcept
         {
-            const auto *value = descriptor();
+            const auto* value = descriptor();
             return value ? value->owner_ : lux::cxx::TypeToken{};
         }
         [[nodiscard]] lux::cxx::TypeToken payloadType() const noexcept
         {
-            const auto *value = descriptor();
+            const auto* value = descriptor();
             return value ? value->payload_ : lux::cxx::TypeToken{};
         }
         [[nodiscard]] bool hasPayload() const noexcept
         {
-            const auto *value = descriptor();
+            const auto* value = descriptor();
             return value && value->payload_ != lux::cxx::typeToken<void>();
         }
 
-      private:
+    private:
         friend struct SignalViewAccess;
 
-        explicit SignalView(const lux::meta::RefStaticField *field) noexcept : field_(field)
+        explicit SignalView(const lux::meta::RefStaticField* field) noexcept : field_(field)
         {
         }
 
-        [[nodiscard]] const detail::SignalDescriptor *descriptor() const noexcept
+        [[nodiscard]] const detail::SignalDescriptor* descriptor() const noexcept
         {
-            return field_ ? reinterpret_cast<const detail::SignalDescriptor *>(field_->address)
-                          : nullptr;
+            return field_ ? reinterpret_cast<const detail::SignalDescriptor*>(field_->address) : nullptr;
         }
 
-        const lux::meta::RefStaticField *field_{nullptr};
+        const lux::meta::RefStaticField* field_{nullptr};
     };
 
-    static_assert(sizeof(SignalView) == sizeof(const lux::meta::RefStaticField *));
+    static_assert(sizeof(SignalView) == sizeof(const lux::meta::RefStaticField*));
 
 } // namespace lux::object::reflection

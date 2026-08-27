@@ -10,10 +10,9 @@ namespace lux::render
     /// before vkCmdFillBuffer/vkCmdUpdateBuffer overwrites the same allocation.
     /// A host fence wait proves completion, but does not replace this device
     /// memory dependency in the new command buffer.
-    template<std::size_t N>
-    inline void synchronizeBeforeBufferTransferWrites(
-        VkCommandBuffer command_buffer,
-        const std::array<VkBuffer, N>& buffers)
+    template <std::size_t N>
+    inline void
+    synchronizeBeforeBufferTransferWrites(VkCommandBuffer command_buffer, const std::array<VkBuffer, N>& buffers)
     {
         std::array<VkBufferMemoryBarrier2, N> barriers{};
         std::uint32_t count = 0u;
@@ -24,9 +23,7 @@ namespace lux::render
             auto& barrier = barriers[count++];
             barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
             barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            barrier.srcAccessMask =
-                VK_ACCESS_2_MEMORY_READ_BIT |
-                VK_ACCESS_2_MEMORY_WRITE_BIT;
+            barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
             barrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
             barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;

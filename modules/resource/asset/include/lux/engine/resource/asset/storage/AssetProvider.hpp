@@ -29,23 +29,18 @@ namespace lux::asset
     {
         lux::cxx::SharedBytes<> bytes;
 
-        [[nodiscard]] static AssetBlob fromSharedArray(
-            std::shared_ptr<const std::byte[]> owner,
-            std::size_t size) noexcept
+        [[nodiscard]] static AssetBlob
+        fromSharedArray(std::shared_ptr<const std::byte[]> owner, std::size_t size) noexcept
         {
             if (!owner || size == 0u)
                 return {};
             const auto* data = owner.get();
             std::shared_ptr<const void> erased{owner, data};
-            auto shared = lux::cxx::SharedBytes<>::fromOwner(
-                std::move(erased),
-                std::span<const std::byte>{data, size}
-            );
+            auto shared = lux::cxx::SharedBytes<>::fromOwner(std::move(erased), std::span<const std::byte>{data, size});
             return shared.empty() ? AssetBlob{} : AssetBlob{std::move(shared)};
         }
 
-        [[nodiscard]] static AssetBlob fromShared(
-            lux::cxx::SharedBytes<> value) noexcept
+        [[nodiscard]] static AssetBlob fromShared(lux::cxx::SharedBytes<> value) noexcept
         {
             return AssetBlob{std::move(value)};
         }
@@ -71,18 +66,14 @@ namespace lux::asset
     public:
         virtual ~IAssetProvider() = default;
 
-        [[nodiscard]] virtual std::optional<AssetId>
-        resolve(std::string_view rel_vpath) const = 0;
+        [[nodiscard]] virtual std::optional<AssetId> resolve(std::string_view rel_vpath) const = 0;
 
         [[nodiscard]] virtual bool contains(const AssetId& id) const = 0;
 
-        [[nodiscard]] virtual lux::cxx::expected<AssetBlob, EAssetStorageError>
-        open(const AssetId& id) const = 0;
+        [[nodiscard]] virtual lux::cxx::expected<AssetBlob, EAssetStorageError> open(const AssetId& id) const = 0;
 
-        virtual void enumerate(
-            const std::function<void(const ProviderEntry&)>& fn) const = 0;
+        virtual void enumerate(const std::function<void(const ProviderEntry&)>& fn) const = 0;
 
-        [[nodiscard]] virtual std::optional<std::string>
-        pathOf(const AssetId& id) const = 0;
+        [[nodiscard]] virtual std::optional<std::string> pathOf(const AssetId& id) const = 0;
     };
 } // namespace lux::asset

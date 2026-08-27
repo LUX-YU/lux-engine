@@ -25,10 +25,13 @@ namespace lux::render
         /// @brief A single sub-allocation within the arena
         struct Allocation
         {
-            uint64_t offset{ 0 };
-            uint64_t size{ 0 };
-            VmaVirtualAllocation handle{ VK_NULL_HANDLE }; ///< VMA handle for free()
-            bool valid() const { return size > 0; }
+            uint64_t offset{0};
+            uint64_t size{0};
+            VmaVirtualAllocation handle{VK_NULL_HANDLE}; ///< VMA handle for free()
+            bool valid() const
+            {
+                return size > 0;
+            }
         };
 
         /// @brief A copy operation for defragmentation
@@ -58,9 +61,7 @@ namespace lux::render
 
         /// Probe whether an allocation fits without publishing it. The virtual
         /// allocation is immediately released, leaving live ownership intact.
-        [[nodiscard]] bool canAllocate(
-            uint64_t size,
-            uint64_t alignment = 1);
+        [[nodiscard]] bool canAllocate(uint64_t size, uint64_t alignment = 1);
 
         /**
          * @brief Free a previously allocated region.
@@ -113,9 +114,9 @@ namespace lux::render
 
         static uint64_t nextPow2(uint64_t v);
 
-        VmaVirtualBlock block_{ nullptr };
-        uint64_t        total_capacity_{ 0 };
-        std::vector<LiveEntry> live_allocs_;  ///< Sorted by offset
+        VmaVirtualBlock block_{nullptr};
+        uint64_t total_capacity_{0};
+        std::vector<LiveEntry> live_allocs_; ///< Sorted by offset
     };
 
 } // namespace lux::render

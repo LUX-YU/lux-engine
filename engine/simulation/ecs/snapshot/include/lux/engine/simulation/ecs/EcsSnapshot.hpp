@@ -14,7 +14,7 @@ namespace lux::simulation::ecs
 {
     class LUX_ENGINE_SIMULATION_ECS_SNAPSHOT_PUBLIC EcsSnapshot final
     {
-      public:
+    public:
         EcsSnapshot() noexcept;
         EcsSnapshot(const EcsSnapshot&) = delete;
         EcsSnapshot& operator=(const EcsSnapshot&) = delete;
@@ -23,21 +23,16 @@ namespace lux::simulation::ecs
         ~EcsSnapshot() noexcept;
 
         [[nodiscard]] static lux::cxx::expected<EcsSnapshot, SnapshotError>
-        capture(
-            const Registry& registry,
-            const ComponentSnapshotSet& components
-        ) noexcept;
+        capture(const Registry& registry, const ComponentSnapshotSet& components) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<std::unique_ptr<Registry>, SnapshotError>
-        instantiate() const noexcept;
+        [[nodiscard]] lux::cxx::expected<std::unique_ptr<Registry>, SnapshotError> instantiate() const noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SnapshotError>
-        restore(Registry& registry) const noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SnapshotError> restore(Registry& registry) const noexcept;
 
         void clear() noexcept;
         [[nodiscard]] bool empty() const noexcept;
 
-      private:
+    private:
         struct Impl;
         explicit EcsSnapshot(std::unique_ptr<Impl> impl) noexcept;
 

@@ -11,9 +11,7 @@ namespace lux::render
 
     namespace
     {
-        WaterFeature* resolveWater(
-            GeneralRenderServer::Dispatcher::Ctx& context,
-            RenderSceneId scene_id)
+        WaterFeature* resolveWater(GeneralRenderServer::Dispatcher::Ctx& context, RenderSceneId scene_id)
         {
             auto* scene = lookupScene(context.user_state, scene_id);
             if (!scene)
@@ -27,21 +25,16 @@ namespace lux::render
         }
     } // namespace
 
-    void handleWaterSurfaceCreate(
-        GeneralRenderServer::Dispatcher::Ctx& context,
-        const WaterSurfaceCreatePayload& payload)
+    void
+    handleWaterSurfaceCreate(GeneralRenderServer::Dispatcher::Ctx& context, const WaterSurfaceCreatePayload& payload)
     {
         auto* water = resolveWater(context, payload.scene_id);
-        const auto reply = water
-            ? water->createSurface(
-                  payload.surface)
-            : WaterSurfaceCreatedReply{{}, 1u};
+        const auto reply = water ? water->createSurface(payload.surface) : WaterSurfaceCreatedReply{{}, 1u};
         replyToCurrent<WaterSurfaceCreatePayload>(context, reply);
     }
 
-    void handleWaterSurfaceUpdate(
-        GeneralRenderServer::Dispatcher::Ctx& context,
-        const WaterSurfaceUpdatePayload& payload)
+    void
+    handleWaterSurfaceUpdate(GeneralRenderServer::Dispatcher::Ctx& context, const WaterSurfaceUpdatePayload& payload)
     {
         if (auto* water = resolveWater(context, payload.scene_id))
             water->updateSurface(payload.handle, payload.surface);
@@ -49,7 +42,8 @@ namespace lux::render
 
     void handleWaterSurfaceBatch(
         GeneralRenderServer::Dispatcher::Ctx& context,
-        std::span<const WaterSurfaceUpdatePayload> payloads)
+        std::span<const WaterSurfaceUpdatePayload> payloads
+    )
     {
         WaterFeature* water = nullptr;
         RenderSceneId scene{};
@@ -67,21 +61,16 @@ namespace lux::render
         }
     }
 
-    void handleWaterSurfaceDestroy(
-        GeneralRenderServer::Dispatcher::Ctx& context,
-        const WaterSurfaceDestroyPayload& payload)
+    void
+    handleWaterSurfaceDestroy(GeneralRenderServer::Dispatcher::Ctx& context, const WaterSurfaceDestroyPayload& payload)
     {
         if (auto* water = resolveWater(context, payload.scene_id))
             water->destroySurface(payload.handle);
     }
 
-    void handleWaterStats(
-        GeneralRenderServer::Dispatcher::Ctx& context,
-        const WaterStatsPayload& payload)
+    void handleWaterStats(GeneralRenderServer::Dispatcher::Ctx& context, const WaterStatsPayload& payload)
     {
         const auto* water = resolveWater(context, payload.scene_id);
-        replyToCurrent<WaterStatsPayload>(
-            context,
-            water ? water->stats() : WaterStatsReply{});
+        replyToCurrent<WaterStatsPayload>(context, water ? water->stats() : WaterStatsReply{});
     }
 } // namespace lux::render

@@ -7,14 +7,15 @@ namespace
 {
     class Receiver final : public lux::object::Object<Receiver>
     {
-      public:
+    public:
         void invoke() noexcept
         {
         }
     };
 } // namespace
 
-int main()
+int
+main()
 {
     lux::ui::CommandRouter router;
     Receiver receiver;
@@ -25,8 +26,7 @@ int main()
     if (!registered)
         return 0;
 
-    std::thread foreign(
-        [registration = std::move(*registered)]() mutable { registration.reset(); });
+    std::thread foreign([registration = std::move(*registered)]() mutable { registration.reset(); });
     foreign.join();
     return 0;
 }

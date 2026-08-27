@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <span>
 
-#include "MetaDef.hpp"        // QualType & compile‑time helpers
+#include "MetaDef.hpp" // QualType & compile‑time helpers
 
 #include <lux/cxx/reflection/runtime/Marker.hpp>
 #include <lux/cxx/algorithm/hash.hpp>
@@ -43,20 +43,19 @@ namespace lux::meta
         uint8_t is_trivially_move_constructible : 1;
     };
 
-    template<typename T> struct type_trait_bits_of
+    template <typename T> struct type_trait_bits_of
     {
         static constexpr TypeTraitBits value{
-            .is_standard_layout                 = std::is_standard_layout_v<T>,
-            .is_trivially_constructible         = std::is_trivially_constructible_v<T>,
-            .is_trivially_copyable              = std::is_trivially_copyable_v<T>,
+            .is_standard_layout = std::is_standard_layout_v<T>,
+            .is_trivially_constructible = std::is_trivially_constructible_v<T>,
+            .is_trivially_copyable = std::is_trivially_copyable_v<T>,
             .is_trivially_default_constructible = std::is_trivially_default_constructible_v<T>,
-            .is_trivially_destructible          = std::is_trivially_destructible_v<T>,
-            .is_trivially_move_assignable       = std::is_trivially_move_assignable_v<T>,
-            .is_trivially_move_constructible    = std::is_trivially_move_constructible_v<T>
-        };
+            .is_trivially_destructible = std::is_trivially_destructible_v<T>,
+            .is_trivially_move_assignable = std::is_trivially_move_assignable_v<T>,
+            .is_trivially_move_constructible = std::is_trivially_move_constructible_v<T>};
     };
 
-    template<typename T> constexpr inline TypeTraitBits type_trait_bits_v = type_trait_bits_of<T>::value;
+    template <typename T> constexpr inline TypeTraitBits type_trait_bits_v = type_trait_bits_of<T>::value;
 
     //--------------------------------------------------------------------------------------------------
     // 1.  Runtime RefType
@@ -67,45 +66,42 @@ namespace lux::meta
      */
     struct RefType
     {
-        QualType          qtype;        //!< Compact 8‑bit type tag.
-        TypeTraitBits     traits;       //!< Type traits (standard layout, trivial, etc.).
-		std::string_view  name;         //!< Human‑readable (qualified) name. for class equals RefClass::full_name.
-        uint64_t          hash{0};      //!< Hash of the type name.
-        std::uint32_t     size{0};      //!< sizeof(type).
-        std::uint32_t     alignment{0}; //!< alignof(type).
-        const void*       ptr{nullptr}; //!< Pointer to the type info (class, enum, etc.).
+        QualType qtype;             //!< Compact 8‑bit type tag.
+        TypeTraitBits traits;       //!< Type traits (standard layout, trivial, etc.).
+        std::string_view name;      //!< Human‑readable (qualified) name. for class equals RefClass::full_name.
+        uint64_t hash{0};           //!< Hash of the type name.
+        std::uint32_t size{0};      //!< sizeof(type).
+        std::uint32_t alignment{0}; //!< alignof(type).
+        const void* ptr{nullptr};   //!< Pointer to the type info (class, enum, etc.).
 
-        bool operator==(const RefType& other) const {
+        bool operator==(const RefType& other) const
+        {
             return hash == other.hash && qtype == other.qtype;
         }
     };
 
-    template<typename T>
-    struct ref_type_of
+    template <typename T> struct ref_type_of
     {
         static constexpr RefType value{
-            .qtype  = __builtin_qual_type<T>,
+            .qtype = __builtin_qual_type<T>,
             .traits = type_trait_bits_v<T>,
-            .name   = lux::cxx::type_name<T>(),
-            .hash   = lux::cxx::type_hash<T>(),
-            .size   = sizeof(T),
-            .alignment = alignof(T)
-        };
+            .name = lux::cxx::type_name<T>(),
+            .hash = lux::cxx::type_hash<T>(),
+            .size = sizeof(T),
+            .alignment = alignof(T)};
     };
 
-    template<>
-    struct ref_type_of<void>
+    template <> struct ref_type_of<void>
     {
         static constexpr RefType value{
             .qtype = __builtin_qual_type<void>,
             .name = lux::cxx::type_name<void>(),
             .size = 0,
-            .alignment = 0
-        };
+            .alignment = 0};
     };
-    template<typename T> constexpr inline auto ref_type_of_v = ref_type_of<T>::value;
+    template <typename T> constexpr inline auto ref_type_of_v = ref_type_of<T>::value;
 
-    template<typename T> constexpr inline const RefType* builtin_ref_type_ptr()
+    template <typename T> constexpr inline const RefType* builtin_ref_type_ptr()
     {
         return &ref_type_of_v<T>;
     }
@@ -113,7 +109,12 @@ namespace lux::meta
     //--------------------------------------------------------------------------------------------------
     // 2.  Auxiliary enums / aliases
     //--------------------------------------------------------------------------------------------------
-    enum class EVisibility { Public, Protected, Private };
+    enum class EVisibility
+    {
+        Public,
+        Protected,
+        Private
+    };
 
     using MethodInvoker = void (*)(void* obj_or_null, void** args, void* ret);
     using CtorFunc = void (*)(void* mem);
@@ -139,42 +140,45 @@ namespace lux::meta
     class AnnotationView
     {
     public:
-        constexpr explicit AnnotationView(const char* raw) noexcept : _raw(raw) {}
-        constexpr AnnotationView() noexcept : _raw(nullptr) {}
+        constexpr explicit AnnotationView(const char* raw) noexcept : _raw(raw)
+        {
+        }
+        constexpr AnnotationView() noexcept : _raw(nullptr)
+        {
+        }
 
         /// Returns the value for @p key, or std::nullopt if not found.
         /// The returned string_view points directly into the .rodata segment –
         /// zero-copy, zero-allocation.
         [[nodiscard]] std::optional<std::string_view> get(std::string_view key) const noexcept
         {
-            if (!_raw) return std::nullopt;
+            if (!_raw)
+                return std::nullopt;
             std::string_view raw(_raw);
             // Skip the marker prefix up to and including the first ", "
             const auto first_comma = raw.find(',');
-            if (first_comma == std::string_view::npos) return std::nullopt;
+            if (first_comma == std::string_view::npos)
+                return std::nullopt;
             raw = raw.substr(first_comma + 1);
             while (!raw.empty())
             {
                 // skip leading whitespace
                 const auto ws = raw.find_first_not_of(" \t");
-                if (ws == std::string_view::npos) break;
+                if (ws == std::string_view::npos)
+                    break;
                 raw = raw.substr(ws);
                 // Match both `key=value` and the whitespace-preserving form
                 // emitted when the source annotation spells `key = value`.
                 // The generator deliberately retains source formatting, so
                 // consumers must not make the semantic key depend on it.
-                if (raw.size() > key.size() &&
-                    raw.substr(0, key.size()) == key)
+                if (raw.size() > key.size() && raw.substr(0, key.size()) == key)
                 {
                     auto remainder = raw.substr(key.size());
-                    const auto separator =
-                        remainder.find_first_not_of(" \t");
-                    if (separator != std::string_view::npos &&
-                        remainder[separator] == '=')
+                    const auto separator = remainder.find_first_not_of(" \t");
+                    if (separator != std::string_view::npos && remainder[separator] == '=')
                     {
                         auto val = remainder.substr(separator + 1);
-                        const auto value_start =
-                            val.find_first_not_of(" \t");
+                        const auto value_start = val.find_first_not_of(" \t");
                         if (value_start == std::string_view::npos)
                             return std::string_view{};
                         val = val.substr(value_start);
@@ -190,51 +194,61 @@ namespace lux::meta
                 }
                 // not this key – skip to next comma
                 const auto next_comma = raw.find(',');
-                if (next_comma == std::string_view::npos) break;
+                if (next_comma == std::string_view::npos)
+                    break;
                 raw = raw.substr(next_comma + 1);
             }
             return std::nullopt;
         }
 
         /// Returns true if @p key exists in the annotation.
-        [[nodiscard]] bool has(std::string_view key) const noexcept { return get(key).has_value(); }
+        [[nodiscard]] bool has(std::string_view key) const noexcept
+        {
+            return get(key).has_value();
+        }
 
         /// Returns true if there is no annotation string.
-        [[nodiscard]] bool empty() const noexcept { return _raw == nullptr || _raw[0] == '\0'; }
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return _raw == nullptr || _raw[0] == '\0';
+        }
 
     private:
-        const char* _raw{ nullptr };
+        const char* _raw{nullptr};
     };
 
     struct RefField
     {
         std::string_view name;
-        RefType          type;
-        EVisibility      visibility{ EVisibility::Public };
-        RefClass*        owner_class{ nullptr };
-        std::uint32_t    offset{ 0 };
-        bool             is_const{ false };
-        bool             is_volatile{ false };
+        RefType type;
+        EVisibility visibility{EVisibility::Public};
+        RefClass* owner_class{nullptr};
+        std::uint32_t offset{0};
+        bool is_const{false};
+        bool is_volatile{false};
 
         /// Points to a static constexpr char[] emitted by the code generator.
         /// nullptr when the field carries no LUX_MEMBER annotation.
-        const char*      annotation_str{ nullptr };
+        const char* annotation_str{nullptr};
 
         /// Returns a lightweight view into the annotation string.
-        [[nodiscard]] AnnotationView annotations() const noexcept { return AnnotationView(annotation_str); }
+        [[nodiscard]] AnnotationView annotations() const noexcept
+        {
+            return AnnotationView(annotation_str);
+        }
     };
 
     struct RefStaticField
     {
         std::string_view name;
-        RefType          type;
+        RefType type;
         std::string_view template_primary;
-        EVisibility      visibility{ EVisibility::Public };
-        RefClass*        owner_class{ nullptr };
-        const void*      address{ nullptr };
-        bool             is_const{ false };
-        bool             is_volatile{ false };
-        const char*      annotation_str{ nullptr };
+        EVisibility visibility{EVisibility::Public};
+        RefClass* owner_class{nullptr};
+        const void* address{nullptr};
+        bool is_const{false};
+        bool is_volatile{false};
+        const char* annotation_str{nullptr};
 
         [[nodiscard]] AnnotationView annotations() const noexcept
         {
@@ -245,44 +259,44 @@ namespace lux::meta
     struct RefParam
     {
         // This is the name of the parameter in the function signature, not the name of type.
-        std::string_view name; 
-        RefType          type;
+        std::string_view name;
+        RefType type;
         std::string_view value_type_name;
-        std::uint64_t    value_type_hash{ 0 };
-        bool             is_out{ false };
+        std::uint64_t value_type_hash{0};
+        bool is_out{false};
     };
 
     struct RefInvokable
     {
         std::string_view name;
         std::string_view full_name;
-        RefType          return_type;
+        RefType return_type;
         std::string_view type_signature;
         std::vector<RefParam> parameters;
 
-        bool             is_variadic{ false };
-        MethodInvoker    invoker{ nullptr };
-        std::size_t      container_index{ 0 };  // Index in the invokable registry
+        bool is_variadic{false};
+        MethodInvoker invoker{nullptr};
+        std::size_t container_index{0}; // Index in the invokable registry
     };
 
     struct RefFunction
     {
-        RefInvokable  invokable;
-        std::size_t   container_index{ 0 };
-        bool          is_noexcept{ false };
+        RefInvokable invokable;
+        std::size_t container_index{0};
+        bool is_noexcept{false};
     };
 
     struct RefMethod
     {
-        RefInvokable  invokable;
-        RefClass*     owner_class{ nullptr };
+        RefInvokable invokable;
+        RefClass* owner_class{nullptr};
 
-        EVisibility   visibility{ EVisibility::Public };
-        bool          is_static{ false };
-        bool          is_virtual{ false };
-        bool          is_const{ false };
-        bool          is_noexcept{ false };
-        const char*   annotation_str{ nullptr };
+        EVisibility visibility{EVisibility::Public};
+        bool is_static{false};
+        bool is_virtual{false};
+        bool is_const{false};
+        bool is_noexcept{false};
+        const char* annotation_str{nullptr};
 
         [[nodiscard]] AnnotationView annotations() const noexcept
         {
@@ -295,53 +309,53 @@ namespace lux::meta
     //--------------------------------------------------------------------------------------------------
     struct RefClass
     {
-        std::string_view            name;
-        std::string_view            full_name;
-        std::uint64_t               hash{ 0 };
-        RefType                     type;
+        std::string_view name;
+        std::string_view full_name;
+        std::uint64_t hash{0};
+        RefType type;
 
-        CtorFunc                    construct{ nullptr };
-        DtorFunc                    destruct{ nullptr };
-        CopyFunc                    copy{ nullptr };
-        CopyFunc                    copy_construct{nullptr};
-        MoveFunc                    move{ nullptr };
-        MoveFunc                    move_construct{nullptr};
+        CtorFunc construct{nullptr};
+        DtorFunc destruct{nullptr};
+        CopyFunc copy{nullptr};
+        CopyFunc copy_construct{nullptr};
+        MoveFunc move{nullptr};
+        MoveFunc move_construct{nullptr};
 
-        std::string_view            construct_symbol;
-        std::string_view            destruct_symbol;
+        std::string_view construct_symbol;
+        std::string_view destruct_symbol;
 
-        std::vector<std::uint64_t>  parent_chain;
+        std::vector<std::uint64_t> parent_chain;
 
-        bool                        is_abstract{ false };
+        bool is_abstract{false};
 
-        std::vector<RefField>       fields;
+        std::vector<RefField> fields;
         std::vector<RefStaticField> static_fields;
-        std::vector<RefMethod>      methods;
+        std::vector<RefMethod> methods;
 
-        std::size_t                 container_index{ 0 };
+        std::size_t container_index{0};
 
         /// Points to a static constexpr char[] emitted by the code generator
         /// (mirrors `RefField::annotation_str`). nullptr when the class
         /// carries no `LUX_TYPE_INFO(runtime, key=value, ...)` arguments.
         /// Format matches AnnotationView: marker prefix then `key=value`
         /// pairs separated by commas.
-        const char*                 annotation_str{ nullptr };
+        const char* annotation_str{nullptr};
 
         /// Lightweight zero-allocation view onto `annotation_str`. Returns
         /// `std::nullopt` from `.get(key)` when the annotation is empty or
         /// missing the key — same semantics as `RefField::annotations()`.
         [[nodiscard]] AnnotationView annotations() const noexcept
-            { return AnnotationView(annotation_str); }
+        {
+            return AnnotationView(annotation_str);
+        }
     };
 
     // constructor and destructor will assign in the generated codes
-    template<typename T> void ref_class_func_gen(T& obj)
+    template <typename T> void ref_class_func_gen(T& obj)
     {
         if constexpr (std::is_copy_assignable_v<T>)
         {
-            obj.copy =
-            [](void* obj, const void* src)
-            {
+            obj.copy = [](void* obj, const void* src) {
                 auto obj_raw = static_cast<T*>(obj);
                 auto src_raw = static_cast<const T*>(src);
                 *obj_raw = *src_raw;
@@ -350,9 +364,7 @@ namespace lux::meta
 
         if constexpr (std::is_copy_constructible_v<T>)
         {
-            obj.copy_construct =
-            [](void* mem, const void* other)
-            {
+            obj.copy_construct = [](void* mem, const void* other) {
                 auto other_raw = static_cast<const T*>(other);
                 new (mem) T(*other_raw);
             };
@@ -360,9 +372,7 @@ namespace lux::meta
 
         if constexpr (std::is_move_assignable_v<T>)
         {
-            obj.move =
-            [](void* obj, void* src)
-            {
+            obj.move = [](void* obj, void* src) {
                 auto obj_raw = static_cast<T*>(obj);
                 auto src_raw = static_cast<T*>(src);
                 *obj_raw = std::move(*src_raw);
@@ -371,24 +381,26 @@ namespace lux::meta
 
         if constexpr (std::is_move_constructible_v<T>)
         {
-            obj.move_construct = 
-            [](void* mem, void* other)
-            {
+            obj.move_construct = [](void* mem, void* other) {
                 auto other_raw = static_cast<T*>(other);
                 new (mem) T(std::move(*other_raw));
             };
         }
     }
 
-    struct RefEnumValue { std::string name; std::int64_t value; };
+    struct RefEnumValue
+    {
+        std::string name;
+        std::int64_t value;
+    };
 
     struct RefEnum
     {
-        std::string_view          name;
-        std::string_view          full_name;
-        bool                      is_scoped{ false };
+        std::string_view name;
+        std::string_view full_name;
+        bool is_scoped{false};
         std::vector<RefEnumValue> values;
-        std::size_t               container_index{ 0 };
+        std::size_t container_index{0};
     };
 
     //--------------------------------------------------------------------------------------------------
@@ -396,8 +408,8 @@ namespace lux::meta
     //--------------------------------------------------------------------------------------------------
     struct RefFunctionKey
     {
-        std::string_view            name;
-        std::vector<std::uint64_t>  param_types;  //!< lux::cxx::type_hash for each param
+        std::string_view name;
+        std::vector<std::uint64_t> param_types; //!< lux::cxx::type_hash for each param
 
         bool operator==(const RefFunctionKey&) const = default;
     };
@@ -417,8 +429,7 @@ namespace lux::meta
     // 6.  ReflectionRegistry – singleton
     //--------------------------------------------------------------------------------------------------
 
-    template<typename T>
-    using MetaPool = lux::cxx::AutoSparseSet<std::unique_ptr<T>>;
+    template <typename T> using MetaPool = lux::cxx::AutoSparseSet<std::unique_ptr<T>>;
 
     enum class EReflectionRegistrationError : std::uint8_t
     {
@@ -436,8 +447,7 @@ namespace lux::meta
 
     struct ReflectionRegistrationFailure final
     {
-        EReflectionRegistrationError error{
-            EReflectionRegistrationError::NONE};
+        EReflectionRegistrationError error{EReflectionRegistrationError::NONE};
         std::string name;
         std::string conflicting_name;
     };
@@ -495,26 +505,36 @@ namespace lux::meta
 
         // -- lookup --------------------------------------------------------------
         [[nodiscard]] const RefClass* findClass(std::string_view full) noexcept;
-        [[nodiscard]] const RefClass* findClassByHash(
-            std::uint64_t hash
-        ) const noexcept;
+        [[nodiscard]] const RefClass* findClassByHash(std::uint64_t hash) const noexcept;
         [[nodiscard]] const RefEnum* findEnum(std::string_view full) noexcept;
-        [[nodiscard]] const RefFunction* findFunction(std::string_view full, std::span<const std::uint64_t> ids = {}) noexcept;
-        
+        [[nodiscard]] const RefFunction*
+        findFunction(std::string_view full, std::span<const std::uint64_t> ids = {}) noexcept;
+
         [[nodiscard]] const RefInvokable* findInvokableByIndex(std::size_t index) const noexcept;
 
-        template<typename... Ts>
-        const RefFunction* findFunctionTyped(std::string_view full) noexcept
+        template <typename... Ts> const RefFunction* findFunctionTyped(std::string_view full) noexcept
         {
-            static constexpr std::uint64_t ids[] = { lux::cxx::type_hash<Ts>()... };
+            static constexpr std::uint64_t ids[] = {lux::cxx::type_hash<Ts>()...};
             return findFunction(full, ids);
         }
 
         // -- iteration -----------------------------------------------------------
-        const auto& classes()   const noexcept { return class_pool_.values(); }
-        const auto& enums()     const noexcept { return enum_pool_.values(); }
-        const auto& functions() const noexcept { return func_pool_.values(); }
-        const auto& invokables() const noexcept { return invokable_registry_; }
+        const auto& classes() const noexcept
+        {
+            return class_pool_.values();
+        }
+        const auto& enums() const noexcept
+        {
+            return enum_pool_.values();
+        }
+        const auto& functions() const noexcept
+        {
+            return func_pool_.values();
+        }
+        const auto& invokables() const noexcept
+        {
+            return invokable_registry_;
+        }
 
     private:
         friend class ReflectionRegistrationDraft;
@@ -524,11 +544,12 @@ namespace lux::meta
         void failRegistration(
             EReflectionRegistrationError error,
             std::string_view name = {},
-            std::string_view conflicting_name = {});
+            std::string_view conflicting_name = {}
+        );
         [[nodiscard]] bool publishDraft(ReflectionRegistry&& draft) noexcept;
         // pool storage
-        MetaPool<RefClass>    class_pool_;
-        MetaPool<RefEnum>     enum_pool_;
+        MetaPool<RefClass> class_pool_;
+        MetaPool<RefEnum> enum_pool_;
         MetaPool<RefFunction> func_pool_;
         std::vector<RefInvokable> invokable_registry_; // Registry for all invokable entities
 
@@ -549,8 +570,7 @@ namespace lux::meta
         std::optional<ReflectionRegistrationFailure> registration_failure_;
 
         // helper for pool insertion
-        template<typename Map, typename Pool, typename Ptr>
-        static std::size_t add(Pool& pool, Map& map, Ptr& meta_ptr)
+        template <typename Map, typename Pool, typename Ptr> static std::size_t add(Pool& pool, Map& map, Ptr& meta_ptr)
         {
             const std::string_view key = meta_ptr->full_name;
             if (auto it = map.find(key); it != map.end())
@@ -562,9 +582,8 @@ namespace lux::meta
             return id;
         }
 
-        template<typename Map, typename Pool>
-        static auto find(Map& map, Pool& pool, std::string_view key) noexcept
-            -> decltype(pool.at(0).get())
+        template <typename Map, typename Pool>
+        static auto find(Map& map, Pool& pool, std::string_view key) noexcept -> decltype(pool.at(0).get())
         {
             auto it = map.find(key);
             return (it == map.end()) ? nullptr : pool.at(it->second).get();
@@ -579,28 +598,18 @@ namespace lux::meta
     public:
         ReflectionRegistrationDraft() noexcept = default;
         ~ReflectionRegistrationDraft() = default;
-        ReflectionRegistrationDraft(const ReflectionRegistrationDraft&) =
-            delete;
-        ReflectionRegistrationDraft& operator=(
-            const ReflectionRegistrationDraft&) = delete;
-        ReflectionRegistrationDraft(
-            ReflectionRegistrationDraft&&) noexcept = default;
-        ReflectionRegistrationDraft& operator=(
-            ReflectionRegistrationDraft&&) noexcept = default;
+        ReflectionRegistrationDraft(const ReflectionRegistrationDraft&) = delete;
+        ReflectionRegistrationDraft& operator=(const ReflectionRegistrationDraft&) = delete;
+        ReflectionRegistrationDraft(ReflectionRegistrationDraft&&) noexcept = default;
+        ReflectionRegistrationDraft& operator=(ReflectionRegistrationDraft&&) noexcept = default;
 
         [[nodiscard]] explicit operator bool() const noexcept;
-        [[nodiscard]] const ReflectionRegistrationFailure& error() const
-            noexcept;
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            ReflectionRegistrationFailure>
-        commit() noexcept;
+        [[nodiscard]] const ReflectionRegistrationFailure& error() const noexcept;
+        [[nodiscard]] lux::cxx::expected<void, ReflectionRegistrationFailure> commit() noexcept;
 
     private:
         friend class ReflectionRegistry;
-        ReflectionRegistrationDraft(
-            ReflectionRegistry* target,
-            std::unique_ptr<ReflectionRegistry> draft) noexcept;
+        ReflectionRegistrationDraft(ReflectionRegistry* target, std::unique_ptr<ReflectionRegistry> draft) noexcept;
 
         ReflectionRegistry* target_{nullptr};
         std::unique_ptr<ReflectionRegistry> draft_;
@@ -615,13 +624,12 @@ namespace lux::meta
     /// — calling meta_module_init() a second time instead would discard every
     /// type registered so far.
     LUX_CORE_PUBLIC void meta_module_drain();
-    [[nodiscard]] LUX_CORE_PUBLIC ReflectionRegistrationDraft
-    meta_module_drain_draft();
+    [[nodiscard]] LUX_CORE_PUBLIC ReflectionRegistrationDraft meta_module_drain_draft();
     LUX_CORE_PUBLIC void meta_module_deinit();
 
-	// Use for generating meta data
+    // Use for generating meta data
     using qual_type_index_fix_list = std::vector<std::pair<std::string_view, lux::meta::RefType*>>;
-	LUX_CORE_PUBLIC void meta_register_qual_type_index_fix(ReflectionRegistry&, qual_type_index_fix_list&);
+    LUX_CORE_PUBLIC void meta_register_qual_type_index_fix(ReflectionRegistry&, qual_type_index_fix_list&);
 
     //--------------------------------------------------------------------------------------------------
     // 8.  MetaModuleRegistrar – zero-overhead static self-registration
@@ -638,7 +646,7 @@ namespace lux::meta
     class LUX_CORE_PUBLIC MetaModuleRegistrar
     {
     public:
-        using InitFn = void(*)(ReflectionRegistry&, qual_type_index_fix_list&);
+        using InitFn = void (*)(ReflectionRegistry&, qual_type_index_fix_list&);
 
         /// Chains @p fn into the pending-init list.  Safe to call before
         /// ReflectionRegistry::initRegistry() (e.g. during DLL load).
@@ -647,13 +655,17 @@ namespace lux::meta
     private:
         friend class ReflectionRegistry;
 
-        struct Node { InitFn fn; Node* next; };
+        struct Node
+        {
+            InitFn fn;
+            Node* next;
+        };
 
         /// Returns a reference to the (magic-static) linked-list head.
         /// Thread-safe by the C++11 magic-static guarantee.
         static Node*& pendingHead() noexcept;
 
-        Node node_;   ///< Storage for this registrar's list node.
+        Node node_; ///< Storage for this registrar's list node.
     };
 
 } // namespace lux::meta

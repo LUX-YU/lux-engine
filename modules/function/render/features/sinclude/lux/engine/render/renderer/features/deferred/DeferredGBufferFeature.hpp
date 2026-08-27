@@ -52,19 +52,25 @@ namespace lux::render
         /// 稳定身份,兄弟特性靠它相认(理由同 ShadowMapFeature::kFeatureName)。
         static constexpr std::string_view kFeatureName = "DeferredGBuffer";
 
-        std::string_view name() const override { return kFeatureName; }
+        std::string_view name() const override
+        {
+            return kFeatureName;
+        }
 
         // =====================================================================
         //  RenderFeature lifecycle
         // =====================================================================
-        lux::render::Expected<void> initAndAttachTo(RenderScene &scene) override;
-        void onDetachFromScene(RenderScene &scene) override;
-        void addPasses(RGBuilder &builder) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
+        void onDetachFromScene(RenderScene& scene) override;
+        void addPasses(RGBuilder& builder) override;
 
         /// G-buffer 是否写进 local-read 合并作用域。DeferredLightingFeature 在自己的
         /// attach 期读它来交叉校验 —— 两边必须同开同关,否则光照那条管线会去
         /// subpassLoad 一组根本没并进同一作用域的附件。
-        [[nodiscard]] bool localReadScope() const noexcept { return local_read_scope_; }
+        [[nodiscard]] bool localReadScope() const noexcept
+        {
+            return local_read_scope_;
+        }
 
     private:
         Expected<void> init();

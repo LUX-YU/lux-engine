@@ -15,12 +15,12 @@
 #include <lux/engine/render/resources/material/MaterialResources.hpp>
 #include <lux/engine/render/resources/TextureResources.hpp>
 #include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>
-#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>     // appendVertexLayoutSpecs / kVtxSpecInputBase
+#include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp> // appendVertexLayoutSpecs / kVtxSpecInputBase
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/render/resources/mesh/MeshResources.hpp>
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <lux/engine/render/resources/mesh/MeshCullCandidateSource.hpp>
-#include <lux/engine/render/resources/hzb/HzbResources.hpp>   // HZB read DS (set 1)
+#include <lux/engine/render/resources/hzb/HzbResources.hpp> // HZB read DS (set 1)
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
@@ -43,20 +43,17 @@ namespace lux::render
         VkDeviceSize size,
         std::uint32_t stride,
         std::uint32_t element_count,
-        InstanceBufferGetter getter)
+        InstanceBufferGetter getter
+    )
     {
         RGBufferDescription description{};
         description.size = size;
         description.stride = stride;
         description.element_count = element_count;
-        description.usage = static_cast<ERGBufferUsageFlags>(
-            ERGBufferUsageBits::STORAGE);
+        description.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
         description.memory_usage = ERGMemoryUsage::GPU_ONLY;
         RGImportedBufferInfo imported{};
-        imported.buffer_getter = [this, getter](
-            VkBuffer* output,
-            std::uint32_t capacity) -> std::uint32_t
-        {
+        imported.buffer_getter = [this, getter](VkBuffer* output, std::uint32_t capacity) -> std::uint32_t {
             if (output == nullptr || capacity == 0u)
                 return 0u;
             output[0] = (instance_res_->*getter)();
@@ -70,11 +67,12 @@ namespace lux::render
     // =========================================================================
 
     Expected<void> GpuDrivenMeshFeatureBase::registerFamilyPipelines(
-        const GraphicsPipelineTemplate&                    base_template,
-        ShaderHandle                                       vertex_shader,
-        VertexLayoutRegistry&                              vlr,
-        VertexLayoutId                                     vp_read_layout,
-        const std::function<ShaderHandle(EShadingModel)>&  resolve_fragment)
+        const GraphicsPipelineTemplate& base_template,
+        ShaderHandle vertex_shader,
+        VertexLayoutRegistry& vlr,
+        VertexLayoutId vp_read_layout,
+        const std::function<ShaderHandle(EShadingModel)>& resolve_fragment
+    )
     {
         auto& pm = renderContext().pipelineManager();
         auto& shaders = renderContext().globalRegistry().must<ShaderResources>();
@@ -89,11 +87,9 @@ namespace lux::render
         //
         // 所有 stage 一次切完,因此不存在「持有 A 的指针时切换 B」的窗口 —— 这条曾经
         // 靠注释维持的纪律现在由调用形状保证。
-        const auto stageKey = [](ShaderHandle h) {
-            return (static_cast<std::uint64_t>(h.index) << 32) | h.gen;
-        };
+        const auto stageKey = [](ShaderHandle h) { return (static_cast<std::uint64_t>(h.index) << 32) | h.gen; };
 
-        std::vector<ShaderHandle>                    family_stages{vertex_shader};
+        std::vector<ShaderHandle> family_stages{vertex_shader};
         std::unordered_map<std::uint64_t, std::size_t> stage_of_source;
         for (const auto& shading : kBuiltinShadingModels)
         {
@@ -101,10 +97,7 @@ namespace lux::render
             if (fs.isNull())
                 continue;
             // 同一个片元着色器可能被多个 shading model 共用 —— 只切一次。
-            if (stage_of_source.try_emplace(
-                    stageKey(fs),
-                    family_stages.size()
-                ).second)
+            if (stage_of_source.try_emplace(stageKey(fs), family_stages.size()).second)
             {
                 family_stages.push_back(fs);
             }
@@ -115,29 +108,29 @@ namespace lux::render
             return lux::cxx::unexpected(switched.error());
 
         // 全部 stage 已在上面切换完毕,这里只按索引取用已经拷贝好的模块与反射。
-        auto regVariant = [&](std::size_t fs_stage,
-                              VkCullModeFlags cull_mode) -> GraphicsPipelineHandle
-        {
+        auto regVariant = [&](std::size_t fs_stage, VkCullModeFlags cull_mode) -> GraphicsPipelineHandle {
             auto tmpl = base_template;
-            tmpl.cull_mode       = cull_mode;
+            tmpl.cull_mode = cull_mode;
             // 一律用切换后的模块,覆盖调用方原先填的那个。
-            tmpl.vertex_shader   = switched->module(0);
+            tmpl.vertex_shader = switched->module(0);
             tmpl.fragment_shader = switched->module(fs_stage);
             // _vp 不消费任何顶点属性 —— 顶点数据经 set 7 读取。
             tmpl.vertex_bindings.clear();
             tmpl.vertex_attributes.clear();
-            if (vlr.hasLayout(vp_read_layout)){
+            if (vlr.hasLayout(vp_read_layout))
+            {
                 appendVertexLayoutSpecs(
                     tmpl.specialization_values,
                     vlr.fetchLayout(vp_read_layout),
-                    VK_SHADER_STAGE_VERTEX_BIT, kVtxSpecInputBase
+                    VK_SHADER_STAGE_VERTEX_BIT,
+                    kVtxSpecInputBase
                 );
             }
 
             const std::array<const lux::rdesc::ShaderInfo*, 2> infos{&switched->info(0), &switched->info(fs_stage)};
             auto built = pm.registerGraphicsTemplate(tmpl, infos);
             if (!built)
-                return GraphicsPipelineHandle{};   // 缺一个变体好过丢掉整个进程
+                return GraphicsPipelineHandle{}; // 缺一个变体好过丢掉整个进程
             return *built;
         };
 
@@ -167,10 +160,10 @@ namespace lux::render
         // 存下构建输入,好让 addPasses 用图材质运行期提交的片元着色器建它自己的 PSO。
         // 模板与反射存的都是**切换后**的 _vp —— 图材质桶 PSO 必须与家族 bootstrap 共享
         // 同一份布局,否则同一 pass 内的变体互不兼容。
-        graph_pso_template_  = std::make_unique<GraphicsPipelineTemplate>(base_template);
+        graph_pso_template_ = std::make_unique<GraphicsPipelineTemplate>(base_template);
         graph_pso_template_->vertex_shader = switched->module(0);
-        graph_pso_vp_info_   = switched->info(0);   // 拷贝:指针会悬垂
-        graph_pso_vlr_       = &vlr;
+        graph_pso_vp_info_ = switched->info(0); // 拷贝:指针会悬垂
+        graph_pso_vlr_ = &vlr;
         graph_pso_vp_layout_ = vp_read_layout;
         graph_pso_cache_.clear();
         return {};
@@ -189,15 +182,14 @@ namespace lux::render
             const auto desc = mat_res->variantBucket(b);
             if (desc.family != ELightingTechnique::Graph)
                 continue;
-            const ShaderHandle h = use_gbuffer ? desc.graph_gbuffer_shader
-                                               : desc.graph_forward_shader;
+            const ShaderHandle h = use_gbuffer ? desc.graph_gbuffer_shader : desc.graph_forward_shader;
             if (h.isNull())
-                continue;  // no per-material shader -> stays on the family bootstrap
+                continue; // no per-material shader -> stays on the family bootstrap
 
             // W3a: a single-sided and a double-sided bucket sharing one frag
             // shader need DISTINCT PSOs (different cull mode), so double_sided is
             // part of the cache identity. Exact composite key (no lossy fold). (C10)
-            const GraphPsoKey key{ h.index, h.gen, desc.graph_double_sided };
+            const GraphPsoKey key{h.index, h.gen, desc.graph_double_sided};
             GraphicsPipelineHandle pso{};
             if (auto it = graph_pso_cache_.find(key); it != graph_pso_cache_.end())
             {
@@ -218,16 +210,17 @@ namespace lux::render
                 // W3a render-state: double_sided -> no back-face cull. (Blend is
                 // deferred — there is no transparent mesh pass yet; a Blend graph
                 // material renders through this opaque path, see submitGraph note.)
-                tmpl.cull_mode       = desc.graph_double_sided ? VK_CULL_MODE_NONE
-                                                               : VK_CULL_MODE_BACK_BIT;
+                tmpl.cull_mode = desc.graph_double_sided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
                 tmpl.fragment_shader = graph_stage->module(0);
                 tmpl.vertex_bindings.clear();
                 tmpl.vertex_attributes.clear();
-                if (graph_pso_vlr_ && graph_pso_vlr_->hasLayout(graph_pso_vp_layout_)){
+                if (graph_pso_vlr_ && graph_pso_vlr_->hasLayout(graph_pso_vp_layout_))
+                {
                     appendVertexLayoutSpecs(
                         tmpl.specialization_values,
                         graph_pso_vlr_->fetchLayout(graph_pso_vp_layout_),
-                        VK_SHADER_STAGE_VERTEX_BIT, kVtxSpecInputBase
+                        VK_SHADER_STAGE_VERTEX_BIT,
+                        kVtxSpecInputBase
                     );
                 }
 
@@ -250,8 +243,7 @@ namespace lux::render
             // The cull tier matches the bucket's render-state (W3a). The PSO above
             // is already built with the matching cull_mode; register it under the
             // tier the draw-time pick() will request for this bucket.
-            bucket_pipelines_.registerBucketPipeline(
-                b, /*two_sided=*/desc.graph_double_sided, pso);
+            bucket_pipelines_.registerBucketPipeline(b, /*two_sided=*/desc.graph_double_sided, pso);
         }
     }
 
@@ -268,7 +260,7 @@ namespace lux::render
     //  Common lifecycle
     // =========================================================================
 
-    void GpuDrivenMeshFeatureBase::onFrameBegin(const FeatureFrameContext & /*ctx*/)
+    void GpuDrivenMeshFeatureBase::onFrameBegin(const FeatureFrameContext& /*ctx*/)
     {
         instance_res_->beginFrame();
 
@@ -284,20 +276,15 @@ namespace lux::render
         const uint64_t current_serial = instance_res_->mdcTable().layoutSerial();
         if (current_serial != last_compiled_mdc_serial_)
         {
-            renderScene().invalidateGraph(
-                EGraphInvalidationReason::MDC_STORAGE_GENERATION);
+            renderScene().invalidateGraph(EGraphInvalidationReason::MDC_STORAGE_GENERATION);
             last_compiled_mdc_serial_ = current_serial;
         }
 
-        const auto* meshes = renderScene().renderContext().globalRegistry().find<
-            MeshResources>();
-        const auto topology_serial = meshes != nullptr
-            ? meshes->iboTopologySerial()
-            : 0u;
+        const auto* meshes = renderScene().renderContext().globalRegistry().find<MeshResources>();
+        const auto topology_serial = meshes != nullptr ? meshes->iboTopologySerial() : 0u;
         if (topology_serial != last_ibo_topology_serial_)
         {
-            renderScene().invalidateGraph(
-                EGraphInvalidationReason::CLASSIC_MESH_SEGMENT_TOPOLOGY);
+            renderScene().invalidateGraph(EGraphInvalidationReason::CLASSIC_MESH_SEGMENT_TOPOLOGY);
             last_ibo_topology_serial_ = topology_serial;
         }
     }
@@ -307,8 +294,7 @@ namespace lux::render
         // §2.6: Use member instead of thread_local, eliminating TLS lookup overhead.
         frame_instance_ext_ = {};
         frame_instance_ext_.slot_count = instance_res_ ? instance_res_->aliveCount() : 0;
-        const auto* candidate_source = renderScene().sceneRegistry().find<
-            MeshCullCandidateSource>();
+        const auto* candidate_source = renderScene().sceneRegistry().find<MeshCullCandidateSource>();
         if (candidate_source != nullptr && candidate_source->active())
         {
             frame_instance_ext_.view_slot_capacity = candidate_source->capacity();
@@ -326,23 +312,17 @@ namespace lux::render
         // per-frame scan over every alive slot, defeating the two-level cluster path.
         // Scenes without a candidate source retain the legacy opt-in mask behavior.
         frame_instance_ext_.active_mask_addr =
-            candidate_source != nullptr && candidate_source->active()
-            ? 0ull
-            : renderScene().instanceCullMaskAddress();
+            candidate_source != nullptr && candidate_source->active() ? 0ull : renderScene().instanceCullMaskAddress();
         auto& global = renderContext().globalRegistry();
         if (const auto* material = global.find<MaterialResources>())
         {
-            frame_instance_ext_.graph_material_addr =
-                material->graphMaterialAddress(frame_ctx.frame_index);
-            frame_instance_ext_.graph_material_capacity =
-                material->graphMaterialCapacity();
+            frame_instance_ext_.graph_material_addr = material->graphMaterialAddress(frame_ctx.frame_index);
+            frame_instance_ext_.graph_material_capacity = material->graphMaterialCapacity();
         }
         if (const auto* textures = global.find<TextureResources>())
         {
-            frame_instance_ext_.wanted_mip_addr =
-                textures->mipFeedbackAddress(frame_ctx.frame_index);
-            frame_instance_ext_.texture_slot_capacity =
-                textures->mipFeedbackCapacity();
+            frame_instance_ext_.wanted_mip_addr = textures->mipFeedbackAddress(frame_ctx.frame_index);
+            frame_instance_ext_.texture_slot_capacity = textures->mipFeedbackCapacity();
         }
         const auto isl = meshInstanceExtSlot();
         if (isl != kInvalidExtSlot)
@@ -353,11 +333,10 @@ namespace lux::render
     //  Initialisation
     // =========================================================================
 
-    Expected<void> GpuDrivenMeshFeatureBase::initCommon(
-        ShaderHandle view_cull_shader_id,
-        GpuDrivenMeshExtFlags extension_flags)
+    Expected<void>
+    GpuDrivenMeshFeatureBase::initCommon(ShaderHandle view_cull_shader_id, GpuDrivenMeshExtFlags extension_flags)
     {
-        auto &ctx = renderContext();
+        auto& ctx = renderContext();
         device_ = ctx.deviceContext().logicalDevice();
         vma_ = ctx.vmaAllocator();
         extension_flags_ = extension_flags;
@@ -380,8 +359,10 @@ namespace lux::render
 
         // ---- View cull compute pipeline ----
         {
-            const VkPushConstantRange pc{VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                                         static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
+            const VkPushConstantRange pc{
+                VK_SHADER_STAGE_COMPUTE_BIT,
+                0,
+                static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
             const std::array pcs{pc};
             std::string debug_name = std::string(name()) + "CullLayout";
 
@@ -394,21 +375,17 @@ namespace lux::render
             {
                 std::array<VkDescriptorSetLayoutBinding, 2> rb{};
                 rb[0] = {0u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-                rb[1] = {1u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+                rb[1] = {1u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
                 DescriptorLayoutDesc rd{};
-                rd.bindings   = std::span<const VkDescriptorSetLayoutBinding>(rb.data(), rb.size());
+                rd.bindings = std::span<const VkDescriptorSetLayoutBinding>(rb.data(), rb.size());
                 rd.debug_name = "HzbReadSet";
-                const VkDescriptorSetLayout hzb_read = ctx.descriptorService().layout(
-                    ctx.descriptorService().registerLayout(rd));
+                const VkDescriptorSetLayout hzb_read =
+                    ctx.descriptorService().layout(ctx.descriptorService().registerLayout(rd));
                 const std::array sl{cull_set_layout_, hzb_read};
                 auto pl_exp = ctx.pipelineLayoutService().getOrCreate(
-                    PipelineLayoutDesc{
-                        .set_layouts = sl,
-                        .push_constants = pcs,
-                        .debug_name = debug_name.c_str()
-                    }
+                    PipelineLayoutDesc{.set_layouts = sl, .push_constants = pcs, .debug_name = debug_name.c_str()}
                 );
-                if (!pl_exp)   // propagate layout-creation failure, don't .value()-throw
+                if (!pl_exp) // propagate layout-creation failure, don't .value()-throw
                     return lux::cxx::unexpected(pl_exp.error());
                 pl_handle = pl_exp.value();
             }
@@ -416,13 +393,9 @@ namespace lux::render
             {
                 const std::array sl{cull_set_layout_};
                 auto pl_exp = ctx.pipelineLayoutService().getOrCreate(
-                    PipelineLayoutDesc{
-                        .set_layouts = sl,
-                        .push_constants = pcs,
-                        .debug_name = debug_name.c_str()
-                    }
+                    PipelineLayoutDesc{.set_layouts = sl, .push_constants = pcs, .debug_name = debug_name.c_str()}
                 );
-                if (!pl_exp)   // propagate layout-creation failure, don't .value()-throw
+                if (!pl_exp) // propagate layout-creation failure, don't .value()-throw
                     return lux::cxx::unexpected(pl_exp.error());
                 pl_handle = pl_exp.value();
             }
@@ -436,22 +409,19 @@ namespace lux::render
             auto* cull_shader = shaders.get(view_cull_shader_id);
             if (!cull_shader)
                 return renderFailure<err::asset::Invalid>();
-            view_cull_pipeline_ = ctx.pipelineManager().registerComputePipeline(
-                cull_shader->module,
-                pl_handle,
-                cull_specs);
+            view_cull_pipeline_ =
+                ctx.pipelineManager().registerComputePipeline(cull_shader->module, pl_handle, cull_specs);
         }
         return {};
     }
 
-    Expected<void> GpuDrivenMeshFeatureBase::initCompactPipeline(
-        ShaderHandle compact_shader_id,
-        std::string_view debug_name)
+    Expected<void>
+    GpuDrivenMeshFeatureBase::initCompactPipeline(ShaderHandle compact_shader_id, std::string_view debug_name)
     {
         auto& ctx = renderContext();
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
         auto* compact_shader = shaders.get(compact_shader_id);
-        if (!compact_shader)   // unresolved builtin / bad handle from config
+        if (!compact_shader) // unresolved builtin / bad handle from config
             return renderFailure<err::asset::Invalid>();
 
         const VkPushConstantRange pc{VK_SHADER_STAGE_COMPUTE_BIT, 0, 4};
@@ -462,13 +432,11 @@ namespace lux::render
             .set_layouts = layouts,
             .push_constants = pcs,
             .debug_name = layout_name.c_str(),
-        });
-        if (!pl)   // propagate layout-creation failure, don't .value()-throw
+        }
+        );
+        if (!pl) // propagate layout-creation failure, don't .value()-throw
             return lux::cxx::unexpected(pl.error());
-        compact_pipeline_ = ctx.pipelineManager().registerComputePipeline(
-            compact_shader->module,
-            pl.value(),
-            {});
+        compact_pipeline_ = ctx.pipelineManager().registerComputePipeline(compact_shader->module, pl.value(), {});
         return {};
     }
 
@@ -476,18 +444,17 @@ namespace lux::render
         RGBuilder& builder,
         std::string_view pass_name,
         std::string_view after_pass,
-        RGTransientDSHandle cull_tds)
+        RGTransientDSHandle cull_tds
+    )
     {
         auto compact_pass = builder.addPass(pass_name, ERGPassType::COMPUTE);
-        compact_pass
-            .setComputePipeline(compact_pipeline_)
+        compact_pass.setComputePipeline(compact_pipeline_)
             .bindTransientDS(0, cull_tds)
             .readWrite(draw_count_rg_, ERGBufferRole::STORAGE)
             .readWrite(draw_indirect_rg_, ERGBufferRole::STORAGE)
             .read(mdc_info_rg_, ERGBufferRole::STORAGE)
             .after(after_pass)
-            .setKernelFn([this](const PassRecordContext& pctx)
-            {
+            .setKernelFn([this](const PassRecordContext& pctx) {
                 if (pctx.pipeline_layout == VK_NULL_HANDLE)
                     return;
 
@@ -500,14 +467,19 @@ namespace lux::render
                     VK_SHADER_STAGE_COMPUTE_BIT,
                     0,
                     sizeof(uint32_t),
-                    &mdc_count);
+                    &mdc_count
+                );
                 vkCmdDispatch(pctx.cmd, (mdc_count + 63u) / 64u, 1u, 1u);
-            })
-            .setKernel("MdcCompact", makeKernelConfig(MdcCompactKernelConfig{
-                .draw_count_rg = draw_count_rg_,
-                .indirect_rg   = draw_indirect_rg_,
-                .mdc_count     = mdcCount(),
-            }));
+            }
+            )
+            .setKernel(
+                "MdcCompact",
+                makeKernelConfig(MdcCompactKernelConfig{
+                    .draw_count_rg = draw_count_rg_,
+                    .indirect_rg = draw_indirect_rg_,
+                    .mdc_count = mdcCount(),
+                })
+            );
     }
 
     void GpuDrivenMeshFeatureBase::destroyCommon() noexcept
@@ -549,9 +521,10 @@ namespace lux::render
 
         auto& ds = renderContext().descriptorService();
         const auto layout_id = ds.registerLayout({
-            .bindings   = bindings,
+            .bindings = bindings,
             .debug_name = std::string(name()) + "_CullLayout",
-        });
+        }
+        );
         cull_set_layout_ = ds.layout(layout_id);
     }
 
@@ -562,8 +535,7 @@ namespace lux::render
     // =========================================================================
     //  Shared mesh index-buffer imports (all GPU-driven mesh draw paths)
     // =========================================================================
-    std::span<const RGResourceHandle>
-        GpuDrivenMeshFeatureBase::importSharedIndexBuffers(RGBuilder& builder)
+    std::span<const RGResourceHandle> GpuDrivenMeshFeatureBase::importSharedIndexBuffers(RGBuilder& builder)
     {
         imported_index_buffers_rg_.clear();
         auto* mesh_res = renderScene().renderContext().globalRegistry().find<MeshResources>();
@@ -573,8 +545,8 @@ namespace lux::render
         RGBufferDescription desc{};
         // size 留 0:存储由 MeshResources 拥有,图既不分配也不据此校验(导入缓冲
         // 只校验 buffer_getter 在场),写一个猜测值反而会骗人。
-        desc.stride       = sizeof(uint32_t);
-        desc.usage        = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::INDEX);
+        desc.stride = sizeof(uint32_t);
+        desc.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::INDEX);
         desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
 
         const auto segment_count = mesh_res->iboSegmentCount();
@@ -582,18 +554,15 @@ namespace lux::render
         for (std::uint16_t segment = 0u; segment < segment_count; ++segment)
         {
             RGImportedBufferInfo imp{};
-            imp.buffer_getter =
-                [mesh_res, segment](VkBuffer* out, uint32_t cap) -> uint32_t
-                {
-                    if (out == nullptr || cap == 0u)
-                        return 0u;
-                    out[0] = mesh_res->indexBuffer(segment);
-                    return 1u;
-                };
-            imported_index_buffers_rg_.push_back(builder.importBuffer(
-                "ClassicMeshIndexBuffer." + std::to_string(segment),
-                desc,
-                imp));
+            imp.buffer_getter = [mesh_res, segment](VkBuffer* out, uint32_t cap) -> uint32_t {
+                if (out == nullptr || cap == 0u)
+                    return 0u;
+                out[0] = mesh_res->indexBuffer(segment);
+                return 1u;
+            };
+            imported_index_buffers_rg_.push_back(
+                builder.importBuffer("ClassicMeshIndexBuffer." + std::to_string(segment), desc, imp)
+            );
         }
         return imported_index_buffers_rg_;
     }
@@ -603,8 +572,7 @@ namespace lux::render
     //  Parameterized by CullCompactParams; MeshShadow keeps its own variant.
     //  (H9 de-dup — was ~150 verbatim lines in each of Forward/Deferred.)
     // =========================================================================
-    void GpuDrivenMeshFeatureBase::addCullAndCompactPasses(
-        RGBuilder& builder, const CullCompactParams& p)
+    void GpuDrivenMeshFeatureBase::addCullAndCompactPasses(RGBuilder& builder, const CullCompactParams& p)
     {
         // ---- Build MDC offsets for this frame ----
         buildMdcOffsets();
@@ -649,8 +617,7 @@ namespace lux::render
             RGBufferDescription desc{};
             desc.size = kViewFrustumStrideBytes;
             desc.stride = sizeof(Frustum::Plane);
-            desc.element_count = static_cast<uint32_t>(
-                kViewFrustumStrideBytes / sizeof(Frustum::Plane));
+            desc.element_count = static_cast<uint32_t>(kViewFrustumStrideBytes / sizeof(Frustum::Plane));
             desc.usage = ERGBufferUsageBits::STORAGE | ERGBufferUsageBits::TRANSFER_DST;
             desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
             frustum_ubo_rg = builder.createBuffer(prefix + "FrustumUBO", desc);
@@ -663,22 +630,24 @@ namespace lux::render
             instance_res_->fieldStorageImportBytes(sizeof(InstanceCullMeta)),
             sizeof(InstanceCullMeta),
             instance_res_->slotCount(),
-            &InstanceResources::cullMetaBuffer);
+            &InstanceResources::cullMetaBuffer
+        );
         const auto property_rg = importInstanceStorageBuffer(
             builder,
             prefix + "Property",
             instance_res_->fieldStorageImportBytes(sizeof(InstanceProperty)),
             sizeof(InstanceProperty),
             instance_res_->slotCount(),
-            &InstanceResources::propertyBuffer);
+            &InstanceResources::propertyBuffer
+        );
         const auto section_table_rg = importInstanceStorageBuffer(
             builder,
             prefix + "SectionTable",
-            static_cast<VkDeviceSize>(instance_res_->capacity()) *
-                sizeof(MeshSectionRecord),
+            static_cast<VkDeviceSize>(instance_res_->capacity()) * sizeof(MeshSectionRecord),
             sizeof(MeshSectionRecord),
             instance_res_->capacity(),
-            &InstanceResources::meshSectionBuffer);
+            &InstanceResources::meshSectionBuffer
+        );
 
         // ---- Import MdcInfo buffer (MDC offsets + section ids, from MdcTable) ----
         // Always imported: the view cull shader statically accesses binding 7.
@@ -688,20 +657,20 @@ namespace lux::render
         {
             const auto& gpu_data = instance_res_->mdcTable().gpuData();
             RGBufferDescription desc{};
-            desc.size          = static_cast<VkDeviceSize>(gpu_data.size()) * sizeof(uint32_t);
-            desc.stride        = sizeof(uint32_t);
+            desc.size = static_cast<VkDeviceSize>(gpu_data.size()) * sizeof(uint32_t);
+            desc.stride = sizeof(uint32_t);
             desc.element_count = static_cast<uint32_t>(gpu_data.size());
-            desc.usage         = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
-            desc.memory_usage  = ERGMemoryUsage::GPU_ONLY;
+            desc.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
+            desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
             RGImportedBufferInfo imp{};
             // Capture the ring slot chosen by buildMdcOffsets() for THIS compile
             // (already ran at the top of addCullAndCompactPasses). A later
             // recompile writes a different slot, so frames still recorded against
             // this graph keep reading their own slot — no overwrite under the GPU.
             const uint32_t mdc_info_slot = instance_res_->currentMdcInfoSlot();
-            imp.buffer_getter = [this, mdc_info_slot](VkBuffer *out, uint32_t cap) -> uint32_t
-            {
-                if (out == nullptr || cap == 0) return 0u;
+            imp.buffer_getter = [this, mdc_info_slot](VkBuffer* out, uint32_t cap) -> uint32_t {
+                if (out == nullptr || cap == 0)
+                    return 0u;
                 out[0] = instance_res_->mdcInfoBufferAt(mdc_info_slot);
                 return 1u;
             };
@@ -711,14 +680,11 @@ namespace lux::render
 
         RGResourceHandle alive_slots_rg{};
         RGResourceHandle candidate_dispatch_rg{};
-        const auto* candidate_source = renderScene().sceneRegistry().find<
-            MeshCullCandidateSource>();
-        const bool use_coarse_candidates = candidate_source &&
-            candidate_source->active();
+        const auto* candidate_source = renderScene().sceneRegistry().find<MeshCullCandidateSource>();
+        const bool use_coarse_candidates = candidate_source && candidate_source->active();
         if (use_coarse_candidates)
         {
-            alive_slots_rg = builder.referenceBuffer(
-                MeshCullCandidateSource::kCandidateSlotsResource);
+            alive_slots_rg = builder.referenceBuffer(MeshCullCandidateSource::kCandidateSlotsResource);
             // Dispatch the bounded candidate capacity directly. The producer
             // pre-fills unused slots with UINT_MAX and the cull shader rejects
             // them before touching instance storage. Work therefore remains
@@ -737,7 +703,8 @@ namespace lux::render
                 static_cast<VkDeviceSize>(safe_alive_count) * sizeof(uint32_t),
                 sizeof(uint32_t),
                 safe_alive_count,
-                &InstanceResources::aliveSlotBuffer);
+                &InstanceResources::aliveSlotBuffer
+            );
         }
 
         // The world-partition active mask is no longer a descriptor binding: its GPU
@@ -760,8 +727,7 @@ namespace lux::render
 
         // ---- Pass 1: view cull (compute) ----
         auto cull_pass = builder.addPass(p.cull_pass_name, ERGPassType::COMPUTE);
-        cull_pass.setComputePipeline(view_cull_pipeline_)
-                 .bindTransientDS(0, cull_tds);
+        cull_pass.setComputePipeline(view_cull_pipeline_).bindTransientDS(0, cull_tds);
         // HZB read DS (set 1) — only when HZB is on, matching the 2-set view-cull
         // pipeline layout. resolveHzbReadDS returns the PREVIOUS ping-pong slot
         // (last frame's pyramid). Absent HzbResources → keep everything (no cull).
@@ -769,11 +735,16 @@ namespace lux::render
         {
             auto* hzb = renderScene().sceneRegistry().find<HzbResources>();
             if (hzb != nullptr)
-                cull_pass.bindResourceDS(1, hzb, &HzbResources::resolveHzbReadDS, EDSBindMode::PER_FIF,
-                                         builder.trackExternalTexture("ext.HzbPyramid"), ERGResourceType::TEXTURE);
+                cull_pass.bindResourceDS(
+                    1,
+                    hzb,
+                    &HzbResources::resolveHzbReadDS,
+                    EDSBindMode::PER_FIF,
+                    builder.trackExternalTexture("ext.HzbPyramid"),
+                    ERGResourceType::TEXTURE
+                );
         }
-        cull_pass
-            .write(draw_indirect_rg_, ERGBufferRole::STORAGE)
+        cull_pass.write(draw_indirect_rg_, ERGBufferRole::STORAGE)
             .write(draw_count_rg_, ERGBufferRole::STORAGE)
             .write(visible_instance_rg_, ERGBufferRole::STORAGE)
             .write(frustum_ubo_rg, ERGBufferRole::STORAGE)
@@ -781,20 +752,22 @@ namespace lux::render
             .read(section_table_rg, ERGBufferRole::STORAGE)
             .read(property_rg, ERGBufferRole::STORAGE)
             .read(alive_slots_rg, ERGBufferRole::STORAGE)
-            .setKernel("MeshCull", makeKernelConfig(MeshCullKernelConfig{
-                .frustum_ubo_rg = frustum_ubo_rg,
-                .draw_count_rg  = draw_count_rg_,
-                .indirect_rg    = draw_indirect_rg_,
-                .dispatch_indirect_rg = candidate_dispatch_rg,
-                .dispatch_indirect_offset =
-                    MeshCullCandidateSource::kDispatchArgsOffset,
-                .pass_mask      = static_cast<uint32_t>(passMaskForPhase(p.phase)),
-                .geometry_mask  = supportedGeometryMask(),
-                .draw_list_count = mdc_count,
-                .descriptor_layout_version = p.descriptor_layout_version,
-                .extension_flags = p.extension_flags.bits(),  // GPU push constant: raw word
-                .mdc_count      = mdcCount(),
-            }));
+            .setKernel(
+                "MeshCull",
+                makeKernelConfig(MeshCullKernelConfig{
+                    .frustum_ubo_rg = frustum_ubo_rg,
+                    .draw_count_rg = draw_count_rg_,
+                    .indirect_rg = draw_indirect_rg_,
+                    .dispatch_indirect_rg = candidate_dispatch_rg,
+                    .dispatch_indirect_offset = MeshCullCandidateSource::kDispatchArgsOffset,
+                    .pass_mask = static_cast<uint32_t>(passMaskForPhase(p.phase)),
+                    .geometry_mask = supportedGeometryMask(),
+                    .draw_list_count = mdc_count,
+                    .descriptor_layout_version = p.descriptor_layout_version,
+                    .extension_flags = p.extension_flags.bits(), // GPU push constant: raw word
+                    .mdc_count = mdcCount(),
+                })
+            );
         if (candidate_dispatch_rg)
         {
             cull_pass.read(candidate_dispatch_rg, ERGBufferRole::INDIRECT);
@@ -840,8 +813,7 @@ namespace lux::render
     VkDeviceSize GpuDrivenMeshFeatureBase::mdcVisibleBufferSize() const noexcept
     {
         const uint32_t cap = instance_res_->mdcTable().totalVisibleCapacity();
-        return static_cast<VkDeviceSize>(std::max(cap, 1u)) *
-            sizeof(GpuVisibleInstance);
+        return static_cast<VkDeviceSize>(std::max(cap, 1u)) * sizeof(GpuVisibleInstance);
     }
 
     // (mdcInfoBufferSize 已删:零调用点,且它只是
@@ -873,8 +845,8 @@ namespace lux::render
         // that registered skinned pipeline variants (ForwardMeshFeature) draw
         // them with the _vp pipeline; those that didn't yet fall back to the
         // static variant (bind pose) — harmless, no crash.
-        return (1u << static_cast<uint32_t>(EGeometryKind::StaticMesh))
-             | (1u << static_cast<uint32_t>(EGeometryKind::SkinnedMesh));
+        return (1u << static_cast<uint32_t>(EGeometryKind::StaticMesh)) |
+               (1u << static_cast<uint32_t>(EGeometryKind::SkinnedMesh));
     }
 
 } // namespace lux::render

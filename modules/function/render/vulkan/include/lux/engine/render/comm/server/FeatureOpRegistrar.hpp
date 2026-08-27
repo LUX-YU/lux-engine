@@ -17,7 +17,8 @@
 
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp>
-#include <lux/engine/function/render/client/protocol/FeatureParamsOperation.hpp> // registerFeatureParamsOp (EOpKind::Param)
+#include <lux/engine/function/render/client/protocol/FeatureParamsOperation.hpp>
+// registerFeatureParamsOp (EOpKind::Param)
 
 #include <array>
 #include <cstddef>
@@ -30,8 +31,7 @@ namespace lux::render
     /// Blob), void(Ctx&, std::span<const Payload>) for Bulk. A Param-kind op uses
     /// the SHARED setParams handler (registerFeatureParamsOp), so its Handler is
     /// omitted — default nullptr.
-    template <FeatureOpDesc Op, auto Handler = nullptr>
-    struct ServerOp
+    template <FeatureOpDesc Op, auto Handler = nullptr> struct ServerOp
     {
         using Desc = Op;
         static constexpr auto handler = Handler;
@@ -40,8 +40,7 @@ namespace lux::render
     /// Generates the factory's register/unregister fns from an ordered op list.
     /// The ops[] order it emits matches FeatureOpIds<Ops...> on the client (both
     /// derive from the same per-feature declaration order).
-    template <class... ServerOps>
-    struct FeatureOpRegistrar
+    template <class... ServerOps> struct FeatureOpRegistrar
     {
         using Dispatcher = GeneralRenderServer::Dispatcher;
 
@@ -53,9 +52,10 @@ namespace lux::render
                 return -1;
             else
             {
-                const std::array<EOpKind, sizeof...(ServerOps)> kinds{ ServerOps::Desc::kind... };
+                const std::array<EOpKind, sizeof...(ServerOps)> kinds{ServerOps::Desc::kind...};
                 for (std::size_t i = 0; i < kinds.size(); ++i)
-                    if (kinds[i] == EOpKind::Param) return static_cast<int>(i);
+                    if (kinds[i] == EOpKind::Param)
+                        return static_cast<int>(i);
                 return -1;
             }
         }();
@@ -71,21 +71,18 @@ namespace lux::render
         static void unregisterAll(void* dispatcher, const TypeId* ops, std::uint32_t op_count)
         {
             auto& d = *static_cast<Dispatcher*>(dispatcher);
-            constexpr std::array<OpCode, sizeof...(ServerOps)> kOpcodes = {
-                opcode_of_v<typename ServerOps::Desc>...
-            };
+            constexpr std::array<OpCode, sizeof...(ServerOps)> kOpcodes = {opcode_of_v<typename ServerOps::Desc>...};
             for (std::uint32_t i = 0; i < op_count && i < kOpcodes.size(); ++i)
                 d.freeSlot(kOpcodes[i], ops[i]);
         }
 
     private:
-        template <class SOp>
-        static TypeId registerOne(Dispatcher& d)
+        template <class SOp> static TypeId registerOne(Dispatcher& d)
         {
             using Op = typename SOp::Desc;
             constexpr OpCode oc = opcode_of_v<Op>;
             if constexpr (Op::kind == EOpKind::Param)
-                return registerFeatureParamsOp(&d);   // shared SetFeatureParams handler (no per-op handler)
+                return registerFeatureParamsOp(&d); // shared SetFeatureParams handler (no per-op handler)
             else if constexpr (Op::kind == EOpKind::Bulk)
                 return d.allocateAndRegisterBulk<typename Op::Payload, SOp::handler>(oc, Op::name);
             else

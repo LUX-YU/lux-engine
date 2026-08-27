@@ -35,7 +35,8 @@ namespace
     }
 } // namespace
 
-int main()
+int
+main()
 {
     // ── 1. 作用域内自动入链,作用域外不沾 ────────────────────────────────
     RGBuilder builder;
@@ -62,21 +63,20 @@ int main()
         (void)builder.addPass("SecondChain", ERGPassType::COMPUTE);
     }
 
-    assert(second_tag != first_tag &&
-           "两条链的 tag 撞了 —— 编译器按 tag 分组,会把它们判成同一条链");
+    assert(second_tag != first_tag && "两条链的 tag 撞了 —— 编译器按 tag 分组,会把它们判成同一条链");
 
     const RGGraphDescription graph = std::move(builder).build();
 
-    const auto* before  = findPass(graph, "BeforeChain");
-    const auto* in_a    = findPass(graph, "InChainA");
-    const auto* in_b    = findPass(graph, "InChainB");
-    const auto* after   = findPass(graph, "AfterChain");
-    const auto* second  = findPass(graph, "SecondChain");
+    const auto* before = findPass(graph, "BeforeChain");
+    const auto* in_a = findPass(graph, "InChainA");
+    const auto* in_b = findPass(graph, "InChainB");
+    const auto* after = findPass(graph, "AfterChain");
+    const auto* second = findPass(graph, "SecondChain");
     assert(before && in_a && in_b && after && second);
 
     // 链外:既没有条件也没有标签。
     assert(before->condition_tag == 0 && !before->condition);
-    assert(after->condition_tag  == 0 && !after->condition);
+    assert(after->condition_tag == 0 && !after->condition);
 
     // 链内:同一个标签,而且条件真的挂上了(不是只有标签)。
     assert(in_a->condition_tag == first_tag);
@@ -92,8 +92,7 @@ int main()
     RGBuilder override_builder;
     {
         auto chain = override_builder.conditionChain([] { return true; });
-        override_builder.addPass("Overridden", ERGPassType::COMPUTE)
-            .setCondition([] { return false; }, 0xABCDu);
+        override_builder.addPass("Overridden", ERGPassType::COMPUTE).setCondition([] { return false; }, 0xABCDu);
     }
     const RGGraphDescription overridden = std::move(override_builder).build();
     const auto* ov = findPass(overridden, "Overridden");

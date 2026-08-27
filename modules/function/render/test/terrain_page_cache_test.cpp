@@ -10,23 +10,21 @@ namespace
     std::vector<std::byte> pageBytes()
     {
         using namespace lux::render;
-        std::vector<std::byte> result(
-            TerrainResources::expectedPageBytes(), std::byte{});
+        std::vector<std::byte> result(TerrainResources::expectedPageBytes(), std::byte{});
         TerrainWirePageDataHeader header;
-        header.height_count =
-            kTerrainWireSampleEdge * kTerrainWireSampleEdge;
+        header.height_count = kTerrainWireSampleEdge * kTerrainWireSampleEdge;
         header.weight_plane_bytes = header.height_count * 4u;
         header.hole_bytes = (header.height_count + 7u) / 8u;
         header.min_max_node_count = kTerrainWireMinMaxNodeCount;
-        constexpr auto fallback_edge =
-            (kTerrainWireQuadEdge / 2u) + 1u;
+        constexpr auto fallback_edge = (kTerrainWireQuadEdge / 2u) + 1u;
         header.fallback_height_count = fallback_edge * fallback_edge;
         std::memcpy(result.data(), &header, sizeof(header));
         return result;
     }
 } // namespace
 
-int main()
+int
+main()
 {
     using namespace lux::render;
     TerrainResources resources{1u};
@@ -60,8 +58,7 @@ int main()
     resources.rebaseSceneOrigin(origin_delta);
     assert(resources.find(first.id)->header.origin.page_delta[0] == 10);
     assert(resources.find(second.id)->header.origin.page_delta[0] == 10);
-    const std::int64_t rejected_delta[3]{
-        std::numeric_limits<std::int64_t>::max(), 0, 0};
+    const std::int64_t rejected_delta[3]{std::numeric_limits<std::int64_t>::max(), 0, 0};
     assert(!resources.canRebaseSceneOrigin(rejected_delta));
     assert(resources.find(first.id)->header.origin.page_delta[0] == 10);
 
@@ -89,26 +86,16 @@ int main()
     // The final min/max pair is the canonical pyramid root. A reversed root
     // is rejected in O(1) before any cache state is published.
     auto invalid_root = bytes;
-    const auto root_offset = sizeof(TerrainWirePageDataHeader) +
-        static_cast<std::size_t>(
-            kTerrainWireSampleEdge * kTerrainWireSampleEdge) *
-            sizeof(std::uint16_t) +
-        static_cast<std::size_t>(
-            kTerrainWireSampleEdge * kTerrainWireSampleEdge * 4u) * 2u +
-        static_cast<std::size_t>(
-            (kTerrainWireSampleEdge * kTerrainWireSampleEdge + 7u) / 8u) +
-        static_cast<std::size_t>(kTerrainWireMinMaxNodeCount - 1u) *
-            sizeof(std::uint16_t) * 2u;
+    const auto root_offset =
+        sizeof(TerrainWirePageDataHeader) +
+        static_cast<std::size_t>(kTerrainWireSampleEdge * kTerrainWireSampleEdge) * sizeof(std::uint16_t) +
+        static_cast<std::size_t>(kTerrainWireSampleEdge * kTerrainWireSampleEdge * 4u) * 2u +
+        static_cast<std::size_t>((kTerrainWireSampleEdge * kTerrainWireSampleEdge + 7u) / 8u) +
+        static_cast<std::size_t>(kTerrainWireMinMaxNodeCount - 1u) * sizeof(std::uint16_t) * 2u;
     const std::uint16_t invalid_min = 2u;
     const std::uint16_t invalid_max = 1u;
-    std::memcpy(
-        invalid_root.data() + root_offset,
-        &invalid_min,
-        sizeof(invalid_min));
-    std::memcpy(
-        invalid_root.data() + root_offset + sizeof(std::uint16_t),
-        &invalid_max,
-        sizeof(invalid_max));
+    std::memcpy(invalid_root.data() + root_offset, &invalid_min, sizeof(invalid_min));
+    std::memcpy(invalid_root.data() + root_offset + sizeof(std::uint16_t), &invalid_max, sizeof(invalid_max));
     second.revision = 3u;
     assert(!resources.upsert(second, invalid_root));
 
@@ -134,23 +121,19 @@ int main()
     child_b.origin.local[0] = 128.0f;
     assert(hierarchy.upsert(child_a, bytes));
     assert(hierarchy.upsert(child_b, bytes));
-    const TerrainResources::ViewOrigin near_view{
-        RenderLargePosition3D{}, 1024.0f, 1000.0f};
-    hierarchy.reconcileWanted(
-        std::span{&near_view, 1u}, 4096.0f, 1.0f, 120u);
+    const TerrainResources::ViewOrigin near_view{RenderLargePosition3D{}, 1024.0f, 1000.0f};
+    hierarchy.reconcileWanted(std::span{&near_view, 1u}, 4096.0f, 1.0f, 120u);
     assert(!hierarchy.find(parent.id)->drawable_target);
     assert(hierarchy.find(parent.id)->transition_active);
     assert(hierarchy.find(child_a.id)->drawable_target);
     assert(hierarchy.find(child_b.id)->drawable_target);
-    hierarchy.reconcileWanted(
-        std::span{&near_view, 1u}, 4096.0f, 2.0f, 120u);
+    hierarchy.reconcileWanted(std::span{&near_view, 1u}, 4096.0f, 2.0f, 120u);
     assert(!hierarchy.find(parent.id)->transition_active);
     assert(hierarchy.find(parent.id)->transition_end_coverage == 0.0f);
     assert(hierarchy.find(child_a.id)->transition_end_coverage == 1.0f);
     auto far_view = near_view;
     far_view.position.page_delta[0] = 10000;
-    hierarchy.reconcileWanted(
-        std::span{&far_view, 1u}, 20'000'000.0f, 3.0f, 120u);
+    hierarchy.reconcileWanted(std::span{&far_view, 1u}, 20'000'000.0f, 3.0f, 120u);
     assert(hierarchy.find(parent.id)->drawable_target);
     assert(!hierarchy.find(child_a.id)->drawable_target);
     assert(hierarchy.stats().transition_pages == 3u);
@@ -175,12 +158,10 @@ int main()
     middle_b.children[1].bytes[0] = 26u;
     assert(staged.upsert(middle_a, bytes));
     assert(staged.upsert(middle_b, bytes));
-    staged.reconcileWanted(
-        std::span{&near_view, 1u}, 4096.0f, 10.0f, 120u);
+    staged.reconcileWanted(std::span{&near_view, 1u}, 4096.0f, 10.0f, 120u);
     assert(staged.find(middle_a.id)->transition_active);
 
-    const auto add_leaf = [&](TerrainWireId id, TerrainWireId owner)
-    {
+    const auto add_leaf = [&](TerrainWireId id, TerrainWireId owner) {
         auto leaf = first;
         leaf.id = id;
         leaf.parent = owner;
@@ -190,8 +171,7 @@ int main()
     add_leaf(middle_a.children[1], middle_a.id);
     add_leaf(middle_b.children[0], middle_b.id);
     add_leaf(middle_b.children[1], middle_b.id);
-    staged.reconcileWanted(
-        std::span{&near_view, 1u}, 4096.0f, 10.1f, 120u);
+    staged.reconcileWanted(std::span{&near_view, 1u}, 4096.0f, 10.1f, 120u);
     assert(staged.find(middle_a.id)->drawable_target);
     assert(staged.find(middle_b.id)->drawable_target);
     assert(!staged.find(middle_a.children[0])->drawable_target);

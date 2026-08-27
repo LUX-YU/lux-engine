@@ -14,18 +14,17 @@ struct GLFWwindow;
 // public header. Matches the vulkan.h typedefs on 64-bit platforms, where
 // non-dispatchable handles (VkSurfaceKHR) are pointer types too; the engine
 // only targets 64-bit (x64 / arm64), enforced below.
-typedef struct VkInstance_T*   VkInstance;
+typedef struct VkInstance_T* VkInstance;
 typedef struct VkSurfaceKHR_T* VkSurfaceKHR;
 struct VkAllocationCallbacks;
-static_assert(sizeof(void*) == 8,
-              "LuxWindow's Vulkan handle forward declarations assume a 64-bit platform");
+static_assert(sizeof(void*) == 8, "LuxWindow's Vulkan handle forward declarations assume a 64-bit platform");
 
 namespace lux::window
 {
     struct InitParameter
     {
-        int         width;
-        int         height;
+        int width;
+        int height;
         std::string title;
     };
 
@@ -63,7 +62,7 @@ namespace lux::window
          * isInitialized() before using the window — a non-initialized
          * LuxWindow has no native handle and every operation on it is a
          * no-op. GLFW must already be up (see GlfwRuntime).
-        */
+         */
         LuxWindow(int width, int height, std::string title);
 
         explicit LuxWindow(const InitParameter& parameter);
@@ -73,7 +72,7 @@ namespace lux::window
          *        window whose first bring-up failed can be retried in place.
          *        Failure is available through initError(); the platform layer
          *        never chooses a logging sink.
-        */
+         */
         [[nodiscard]] virtual bool init();
 
         [[nodiscard]] bool isInitialized() const;
@@ -87,10 +86,7 @@ namespace lux::window
 
         [[nodiscard]] const char* title() const;
 
-        void size(
-            std::uint32_t& width,
-            std::uint32_t& height
-        ) const;
+        void size(std::uint32_t& width, std::uint32_t& height) const;
 
         bool shouldClose();
 
@@ -99,7 +95,7 @@ namespace lux::window
         bool setRawMouseMotion(bool enable);
 
         void getCursorPos(double* x, double* y) const;
-        
+
         void setCursorPos(double x, double y);
 
         /// Transfer the backend-native events recorded since the previous
@@ -120,10 +116,7 @@ namespace lux::window
 
         float lastFrameDelayTime() const;
 
-        void framebufferSize(
-            std::uint32_t& width,
-            std::uint32_t& height
-        ) const;
+        void framebufferSize(std::uint32_t& width, std::uint32_t& height) const;
 
         // ── Vulkan surface seam (backend-specific) ───────────────────
         // These two are the ONLY sanctioned way for render/ui code to get a
@@ -135,9 +128,8 @@ namespace lux::window
 
         /// Create a Vulkan surface for this window using the active window
         /// backend. Writes VK_NULL_HANDLE and returns false on failure.
-        [[nodiscard]] bool createVulkanSurface(VkInstance instance,
-                                               const VkAllocationCallbacks* allocator,
-                                               VkSurfaceKHR* out_surface);
+        [[nodiscard]] bool
+        createVulkanSurface(VkInstance instance, const VkAllocationCallbacks* allocator, VkSurfaceKHR* out_surface);
 
         /// Vulkan instance extensions the window backend needs for surface
         /// creation (e.g. VK_KHR_surface + the platform surface extension).
@@ -160,16 +152,16 @@ namespace lux::window
         void* win32Handle();
 #endif
         static void pollEvents();
-        
+
         static void waitEvents();
-        
+
         static double timeAfterFirstInitialization();
 
         // Get glfw context
         GLFWwindow* handle();
-        
+
         static GLFWwindow* currentContext();
-        
+
         static void makeContextCurrent(GLFWwindow*);
 
         using ProcPtr = void (*)();
@@ -183,41 +175,39 @@ namespace lux::window
         // 置空即断开。**不做订阅表** —— Signal 本身就是一个小事件系统,
         // 与统一总线冗余;真要扇出,装配层把回调翻译成总线事件(批G 的
         // 窗口域事件正是这形状)。回调在 pollEvents 的线程(主线程)上跑。
-        template <class E>
-        using EventSlot = std::function<void(const E&)>;
+        template <class E> using EventSlot = std::function<void(const E&)>;
 
-        EventSlot<WindowResizeEvent>       on_resize;
-        EventSlot<FramebufferResizeEvent>  on_framebuffer_resize;
-        EventSlot<WindowCloseEvent>        on_close;
-        EventSlot<WindowFocusEvent>        on_focus;
-        EventSlot<WindowLostFocusEvent>    on_lost_focus;
-        EventSlot<WindowMovedEvent>        on_moved;
-        EventSlot<WindowMinimizedEvent>    on_minimized;
-        EventSlot<CursorEnterEvent>        on_cursor_enter;
-        EventSlot<CursorLeaveEvent>        on_cursor_leave;
-        EventSlot<CursorMoveEvent>         on_cursor_move;
-        EventSlot<WindowMouseButtonEvent>  on_mouse_button;
-        EventSlot<WindowScrollEvent>       on_mouse_scroll;
-        EventSlot<WindowKeyEvent>          on_key;
-        EventSlot<DrawReadyEvent>          on_draw_ready;
-        EventSlot<DrawFinishedEvent>       on_draw_finished;
-        EventSlot<FileDropEvent>           on_file_drop;
+        EventSlot<WindowResizeEvent> on_resize;
+        EventSlot<FramebufferResizeEvent> on_framebuffer_resize;
+        EventSlot<WindowCloseEvent> on_close;
+        EventSlot<WindowFocusEvent> on_focus;
+        EventSlot<WindowLostFocusEvent> on_lost_focus;
+        EventSlot<WindowMovedEvent> on_moved;
+        EventSlot<WindowMinimizedEvent> on_minimized;
+        EventSlot<CursorEnterEvent> on_cursor_enter;
+        EventSlot<CursorLeaveEvent> on_cursor_leave;
+        EventSlot<CursorMoveEvent> on_cursor_move;
+        EventSlot<WindowMouseButtonEvent> on_mouse_button;
+        EventSlot<WindowScrollEvent> on_mouse_scroll;
+        EventSlot<WindowKeyEvent> on_key;
+        EventSlot<DrawReadyEvent> on_draw_ready;
+        EventSlot<DrawFinishedEvent> on_draw_finished;
+        EventSlot<FileDropEvent> on_file_drop;
 
     protected:
         virtual void newFrame();
 
     private:
-
         void subscribeKeyEvent();
-        
+
         void subscribeCursorPositionCallback();
-        
+
         void subscribeScrollCallback();
-        
+
         void subscribeMouseButtonCallback();
 
         void subscribeCharCallback();
-        
+
         void subscribeWindowSizeChangeCallback();
 
         void subscribeFramebufferSizeChangeCallback();
@@ -226,15 +216,15 @@ namespace lux::window
 
         static void window_close_callback(GLFWwindow* window);
 
-        float                           _delta_time{0};
-        float                           _last_frame_time{0};
+        float _delta_time{0};
+        float _last_frame_time{0};
 
-        GLFWwindow*                     _glfw_window{nullptr};
-        InitParameter                   _parameter;
-        bool                            _init{ false };
-        EWindowInitError                init_error_{EWindowInitError::NONE};
-        EExitBehavior                   _exit_behavior{ EExitBehavior::EXIT };
+        GLFWwindow* _glfw_window{nullptr};
+        InitParameter _parameter;
+        bool _init{false};
+        EWindowInitError init_error_{EWindowInitError::NONE};
+        EExitBehavior _exit_behavior{EExitBehavior::EXIT};
 
-        std::vector<WindowInputEvent>   pending_input_events_;
+        std::vector<WindowInputEvent> pending_input_events_;
     };
 } // namespace lux-engine::platform

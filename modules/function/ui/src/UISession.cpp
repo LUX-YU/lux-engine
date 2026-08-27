@@ -15,25 +15,24 @@ namespace lux::ui
     {
         struct SessionControl final
         {
-            explicit SessionControl(UISession *value) noexcept
-                : session(value), owner(std::this_thread::get_id()),
-                  owner_token(currentUiThreadToken())
+            explicit SessionControl(UISession* value) noexcept
+                : session(value), owner(std::this_thread::get_id()), owner_token(currentUiThreadToken())
             {
             }
 
-            UISession *session{nullptr};
+            UISession* session{nullptr};
             const std::thread::id owner;
-            const void *const owner_token;
+            const void* const owner_token;
         };
 
         struct PaneStateAccess final
         {
-            static void setFocused(Pane &pane, bool focused)
+            static void setFocused(Pane& pane, bool focused)
             {
                 pane.setFocused(focused);
             }
 
-            static void setHovered(Pane &pane, bool hovered) noexcept
+            static void setHovered(Pane& pane, bool hovered) noexcept
             {
                 pane.setHovered(hovered);
             }
@@ -44,9 +43,8 @@ namespace lux::ui
     {
         class ScopedImGuiContext final
         {
-          public:
-            explicit ScopedImGuiContext(ImGuiContext *target) noexcept
-                : previous_(ImGui::GetCurrentContext())
+        public:
+            explicit ScopedImGuiContext(ImGuiContext* target) noexcept : previous_(ImGui::GetCurrentContext())
             {
                 ImGui::SetCurrentContext(target);
             }
@@ -56,8 +54,8 @@ namespace lux::ui
                 ImGui::SetCurrentContext(previous_);
             }
 
-          private:
-            ImGuiContext *previous_{nullptr};
+        private:
+            ImGuiContext* previous_{nullptr};
         };
 
         struct PaneRecord final
@@ -96,12 +94,12 @@ namespace lux::ui
 
     struct UISession::Impl final
     {
-        explicit Impl(UISession *value) noexcept : owner(value)
+        explicit Impl(UISession* value) noexcept : owner(value)
         {
         }
 
-        UISession *owner{nullptr};
-        ImGuiContext *context{nullptr};
+        UISession* owner{nullptr};
+        ImGuiContext* context{nullptr};
         lux::object::ObjectMessageQueue messages;
         CommandRouter command_router;
         std::vector<PaneRecord> panes;
@@ -123,27 +121,27 @@ namespace lux::ui
         std::size_t factory_call_depth{0};
         bool frame_open{false};
 
-        [[nodiscard]] static PaneHandle handle(const PaneRecord &record)
+        [[nodiscard]] static PaneHandle handle(const PaneRecord& record)
         {
             return {record.token, record.lifetime};
         }
 
-        [[nodiscard]] static Pane *resolve(const PaneHandle &pane) noexcept
+        [[nodiscard]] static Pane* resolve(const PaneHandle& pane) noexcept
         {
             return pane ? pane.lifetime.getAsOnCurrent<Pane>() : nullptr;
         }
 
-        [[nodiscard]] static Pane *resolve(PaneRecord &record) noexcept
+        [[nodiscard]] static Pane* resolve(PaneRecord& record) noexcept
         {
             if (record.tombstone)
                 return nullptr;
-            auto *pane = record.lifetime.getAsOnCurrent<Pane>();
+            auto* pane = record.lifetime.getAsOnCurrent<Pane>();
             if (!pane)
                 record.tombstone = true;
             return pane;
         }
 
-        [[nodiscard]] PaneRecord *findPane(std::uint64_t token) noexcept
+        [[nodiscard]] PaneRecord* findPane(std::uint64_t token) noexcept
         {
             const auto active = std::ranges::find(panes, token, &PaneRecord::token);
             if (active != panes.end())
@@ -152,7 +150,7 @@ namespace lux::ui
             return pending == pending_panes.end() ? nullptr : std::addressof(*pending);
         }
 
-        [[nodiscard]] const PaneRecord *findPane(std::uint64_t token) const noexcept
+        [[nodiscard]] const PaneRecord* findPane(std::uint64_t token) const noexcept
         {
             const auto active = std::ranges::find(panes, token, &PaneRecord::token);
             if (active != panes.end())
@@ -161,23 +159,21 @@ namespace lux::ui
             return pending == pending_panes.end() ? nullptr : std::addressof(*pending);
         }
 
-        [[nodiscard]] Pane *resolveRegistered(const PaneHandle &pane) noexcept
+        [[nodiscard]] Pane* resolveRegistered(const PaneHandle& pane) noexcept
         {
-            auto *record = findPane(pane.token);
+            auto* record = findPane(pane.token);
             return record ? resolve(*record) : nullptr;
         }
 
-        [[nodiscard]] Pane *resolveRegistered(const PaneHandle &pane) const noexcept
+        [[nodiscard]] Pane* resolveRegistered(const PaneHandle& pane) const noexcept
         {
-            const auto *record = findPane(pane.token);
+            const auto* record = findPane(pane.token);
             return record && !record->tombstone ? pane.lifetime.getAsOnCurrent<Pane>() : nullptr;
         }
 
         void compactPaneRecords()
         {
-            const auto dead = [](const PaneRecord &record) {
-                return record.tombstone || record.lifetime.expired();
-            };
+            const auto dead = [](const PaneRecord& record) { return record.tombstone || record.lifetime.expired(); };
             std::erase_if(panes, dead);
             std::erase_if(pending_panes, dead);
         }
@@ -185,7 +181,7 @@ namespace lux::ui
         void publishPendingPanes()
         {
             compactPaneRecords();
-            for (auto &record : pending_panes)
+            for (auto& record : pending_panes)
             {
                 if (!record.tombstone && record.lifetime.alive())
                     panes.push_back(std::move(record));
@@ -195,15 +191,14 @@ namespace lux::ui
 
         void compactFactories()
         {
-            std::erase_if(factories, [](const FactoryRecord &record) { return record.tombstone; });
-            std::erase_if(pending_factories,
-                          [](const FactoryRecord &record) { return record.tombstone; });
+            std::erase_if(factories, [](const FactoryRecord& record) { return record.tombstone; });
+            std::erase_if(pending_factories, [](const FactoryRecord& record) { return record.tombstone; });
         }
 
         void publishPendingFactories()
         {
             compactFactories();
-            for (auto &record : pending_factories)
+            for (auto& record : pending_factories)
             {
                 if (!record.tombstone)
                     factories.push_back(std::move(record));
@@ -211,8 +206,8 @@ namespace lux::ui
             pending_factories.clear();
         }
 
-        [[nodiscard]] static bool sameContexts(const std::vector<UiContextId> &owned,
-                                               std::span<const UiContextIdView> views) noexcept
+        [[nodiscard]] static bool
+        sameContexts(const std::vector<UiContextId>& owned, std::span<const UiContextIdView> views) noexcept
         {
             if (owned.size() != views.size())
                 return false;
@@ -224,8 +219,7 @@ namespace lux::ui
             return true;
         }
 
-        [[nodiscard]] static std::vector<UiContextId> ownContexts(
-            std::span<const UiContextIdView> contexts)
+        [[nodiscard]] static std::vector<UiContextId> ownContexts(std::span<const UiContextIdView> contexts)
         {
             std::vector<UiContextId> result;
             result.reserve(contexts.size());
@@ -239,7 +233,7 @@ namespace lux::ui
 
         void rebuildFocusedContexts()
         {
-            auto *focused = resolveRegistered(focused_pane);
+            auto* focused = resolveRegistered(focused_pane);
             if (!focused)
                 focused_pane.reset();
 
@@ -248,18 +242,18 @@ namespace lux::ui
             const auto append_unique = [&](UiContextIdView context) {
                 if (!context.isValid())
                     return;
-                const auto found =
-                    std::ranges::find_if(focused_context_ids, [context](const UiContextId &value) {
-                        return value.view() == context;
-                    });
+                const auto found = std::ranges::find_if(focused_context_ids, [context](const UiContextId& value) {
+                    return value.view() == context;
+                }
+                );
                 if (found == focused_context_ids.end())
                 {
                     focused_context_ids.emplace_back(context.name());
                 }
             };
 
-            for (auto iterator = focused_local_context_ids.rbegin();
-                 iterator != focused_local_context_ids.rend(); ++iterator)
+            for (auto iterator = focused_local_context_ids.rbegin(); iterator != focused_local_context_ids.rend();
+                 ++iterator)
             {
                 append_unique(iterator->view());
             }
@@ -271,7 +265,7 @@ namespace lux::ui
             append_unique(kGlobalContext);
 
             focused_contexts.reserve(focused_context_ids.size());
-            for (const auto &context : focused_context_ids)
+            for (const auto& context : focused_context_ids)
                 focused_contexts.push_back(context.view());
             owner->updateCommandRoute(focused, focused_contexts);
         }
@@ -284,7 +278,7 @@ namespace lux::ui
             focused_pane.reset();
             focused_local_context_ids.clear();
             rebuildFocusedContexts();
-            if (auto *pane = resolve(previous))
+            if (auto* pane = resolve(previous))
                 detail::PaneStateAccess::setFocused(*pane, false);
         }
 
@@ -305,12 +299,12 @@ namespace lux::ui
 
             if (pane_changed)
             {
-                if (auto *old_pane = resolve(previous))
+                if (auto* old_pane = resolve(previous))
                     detail::PaneStateAccess::setFocused(*old_pane, false);
 
                 if (focused_pane.token != pane.token)
                     return;
-                auto *new_pane = resolveRegistered(focused_pane);
+                auto* new_pane = resolveRegistered(focused_pane);
                 if (!new_pane)
                 {
                     clearFocus();
@@ -326,26 +320,25 @@ namespace lux::ui
                 pane.reset();
             if (hovered_pane.token == pane.token)
                 return;
-            if (auto *previous = resolve(hovered_pane))
+            if (auto* previous = resolve(hovered_pane))
                 detail::PaneStateAccess::setHovered(*previous, false);
             hovered_pane = pane;
-            if (auto *current = resolveRegistered(hovered_pane))
+            if (auto* current = resolveRegistered(hovered_pane))
                 detail::PaneStateAccess::setHovered(*current, true);
         }
     };
 
-    PaneRegistration::PaneRegistration(std::weak_ptr<detail::SessionControl> control,
-                                       std::uint64_t token) noexcept
+    PaneRegistration::PaneRegistration(std::weak_ptr<detail::SessionControl> control, std::uint64_t token) noexcept
         : control_(std::move(control)), token_(token)
     {
     }
 
-    PaneRegistration::PaneRegistration(PaneRegistration &&other) noexcept
+    PaneRegistration::PaneRegistration(PaneRegistration&& other) noexcept
         : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0))
     {
     }
 
-    PaneRegistration &PaneRegistration::operator=(PaneRegistration &&other) noexcept
+    PaneRegistration& PaneRegistration::operator=(PaneRegistration&& other) noexcept
     {
         if (this != std::addressof(other))
         {
@@ -375,19 +368,20 @@ namespace lux::ui
         control_.reset();
     }
 
-    PaneFactoryRegistration::PaneFactoryRegistration(std::weak_ptr<detail::SessionControl> control,
-                                                     std::uint64_t token) noexcept
+    PaneFactoryRegistration::PaneFactoryRegistration(
+        std::weak_ptr<detail::SessionControl> control,
+        std::uint64_t token
+    ) noexcept
         : control_(std::move(control)), token_(token)
     {
     }
 
-    PaneFactoryRegistration::PaneFactoryRegistration(PaneFactoryRegistration &&other) noexcept
+    PaneFactoryRegistration::PaneFactoryRegistration(PaneFactoryRegistration&& other) noexcept
         : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0))
     {
     }
 
-    PaneFactoryRegistration &PaneFactoryRegistration::operator=(
-        PaneFactoryRegistration &&other) noexcept
+    PaneFactoryRegistration& PaneFactoryRegistration::operator=(PaneFactoryRegistration&& other) noexcept
     {
         if (this != std::addressof(other))
         {
@@ -418,14 +412,13 @@ namespace lux::ui
     }
 
     UISession::UISession()
-        : impl_(std::make_unique<Impl>(this)),
-          control_(std::make_shared<detail::SessionControl>(this))
+        : impl_(std::make_unique<Impl>(this)), control_(std::make_shared<detail::SessionControl>(this))
     {
-        auto *previous = ImGui::GetCurrentContext();
+        auto* previous = ImGui::GetCurrentContext();
         impl_->context = ImGui::CreateContext();
         {
             ScopedImGuiContext context{impl_->context};
-            unsigned char *pixels = nullptr;
+            unsigned char* pixels = nullptr;
             int width = 0;
             int height = 0;
             ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
@@ -446,7 +439,7 @@ namespace lux::ui
         impl_->clearFocus();
         impl_->commitHover({});
         impl_->messages.close();
-        auto *previous = ImGui::GetCurrentContext();
+        auto* previous = ImGui::GetCurrentContext();
         if (previous == impl_->context)
             previous = nullptr;
         ImGui::SetCurrentContext(impl_->context);
@@ -454,13 +447,13 @@ namespace lux::ui
         ImGui::SetCurrentContext(previous);
     }
 
-    void UISession::updateCommandRoute(lux::object::LuxObject *activation_scope,
-                                       std::span<const UiContextIdView> contexts)
+    void
+    UISession::updateCommandRoute(lux::object::LuxObject* activation_scope, std::span<const UiContextIdView> contexts)
     {
         impl_->command_router.updateRoute(activation_scope, contexts);
     }
 
-    lux::cxx::expected<PaneRegistration, EUiRegistrationError> UISession::registerPane(Pane &pane)
+    lux::cxx::expected<PaneRegistration, EUiRegistrationError> UISession::registerPane(Pane& pane)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!pane.id().isValid())
@@ -469,20 +462,16 @@ namespace lux::ui
         }
         if (!impl_->frame_open)
             impl_->compactPaneRecords();
-        const auto duplicate_id = [&](const PaneRecord &record) {
-            return !record.tombstone && record.lifetime.alive() &&
-                   record.id.view() == pane.id().view();
+        const auto duplicate_id = [&](const PaneRecord& record) {
+            return !record.tombstone && record.lifetime.alive() && record.id.view() == pane.id().view();
         };
-        if (std::ranges::any_of(impl_->panes, duplicate_id) ||
-            std::ranges::any_of(impl_->pending_panes, duplicate_id))
+        if (std::ranges::any_of(impl_->panes, duplicate_id) || std::ranges::any_of(impl_->pending_panes, duplicate_id))
         {
-            return lux::cxx::unexpected<EUiRegistrationError>{
-                EUiRegistrationError::DUPLICATE_PANE_ID};
+            return lux::cxx::unexpected<EUiRegistrationError>{EUiRegistrationError::DUPLICATE_PANE_ID};
         }
         if (pane.dispatcherRef() != impl_->messages.dispatcherRef())
         {
-            return lux::cxx::unexpected<EUiRegistrationError>{
-                EUiRegistrationError::FOREIGN_SESSION};
+            return lux::cxx::unexpected<EUiRegistrationError>{EUiRegistrationError::FOREIGN_SESSION};
         }
         const auto token = impl_->next_token++;
         PaneRecord record{token, pane.id(), pane.weakRef(), false};
@@ -493,8 +482,7 @@ namespace lux::ui
         return PaneRegistration{control_, token};
     }
 
-    lux::cxx::expected<PaneFactoryRegistration, EUiRegistrationError> UISession::registerFactory(
-        PaneFactory factory)
+    lux::cxx::expected<PaneFactoryRegistration, EUiRegistrationError> UISession::registerFactory(PaneFactory factory)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!factory.type.isValid() || !factory.create)
@@ -503,14 +491,13 @@ namespace lux::ui
         }
         if (impl_->factory_call_depth == 0)
             impl_->compactFactories();
-        const auto duplicate_type = [&](const FactoryRecord &record) {
+        const auto duplicate_type = [&](const FactoryRecord& record) {
             return !record.tombstone && record.factory.type == factory.type;
         };
         if (std::ranges::any_of(impl_->factories, duplicate_type) ||
             std::ranges::any_of(impl_->pending_factories, duplicate_type))
         {
-            return lux::cxx::unexpected<EUiRegistrationError>{
-                EUiRegistrationError::DUPLICATE_FACTORY};
+            return lux::cxx::unexpected<EUiRegistrationError>{EUiRegistrationError::DUPLICATE_FACTORY};
         }
         const auto token = impl_->next_token++;
         FactoryRecord record{token, std::move(factory), false};
@@ -524,17 +511,18 @@ namespace lux::ui
     std::unique_ptr<Pane> UISession::createPane(PaneTypeIdView type, PaneId id)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        const auto found = std::ranges::find_if(impl_->factories, [&](const FactoryRecord &record) {
+        const auto found = std::ranges::find_if(impl_->factories, [&](const FactoryRecord& record) {
             return !record.tombstone && record.factory.type.view() == type;
-        });
+        }
+        );
         if (found == impl_->factories.end())
             return {};
 
         struct FactoryCallScope final
         {
-            Impl *impl;
+            Impl* impl;
 
-            explicit FactoryCallScope(Impl &value) noexcept : impl(&value)
+            explicit FactoryCallScope(Impl& value) noexcept : impl(&value)
             {
                 ++impl->factory_call_depth;
             }
@@ -550,13 +538,13 @@ namespace lux::ui
         return found->factory.create(impl_->messages.dispatcherRef(), std::move(id));
     }
 
-    CommandRouter &UISession::commandRouter() noexcept
+    CommandRouter& UISession::commandRouter() noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         return impl_->command_router;
     }
 
-    const CommandRouter &UISession::commandRouter() const noexcept
+    const CommandRouter& UISession::commandRouter() const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         return impl_->command_router;
@@ -573,19 +561,20 @@ namespace lux::ui
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!impl_->frame_open)
             impl_->compactPaneRecords();
-        const auto found = std::ranges::find_if(impl_->panes, [&](const PaneRecord &record) {
+        const auto found = std::ranges::find_if(impl_->panes, [&](const PaneRecord& record) {
             return !record.tombstone && record.id.view() == pane && record.lifetime.alive();
-        });
+        }
+        );
         if (found == impl_->panes.end())
             return false;
-        auto *resolved = found->lifetime.getAsOnCurrent<Pane>();
+        auto* resolved = found->lifetime.getAsOnCurrent<Pane>();
         if (!resolved || !resolved->visible())
             return false;
         impl_->pending_focus = Impl::handle(*found);
         return true;
     }
 
-    Pane *UISession::focusedPane() const noexcept
+    Pane* UISession::focusedPane() const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         return impl_->resolveRegistered(impl_->focused_pane);
@@ -597,13 +586,13 @@ namespace lux::ui
         return impl_->focused_contexts;
     }
 
-    void UISession::feedInput(const UiInputEvent &event)
+    void UISession::feedInput(const UiInputEvent& event)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         ScopedImGuiContext context{impl_->context};
-        auto &io = ImGui::GetIO();
+        auto& io = ImGui::GetIO();
         std::visit(
-            [&](const auto &value) {
+            [&](const auto& value) {
                 using Value = std::remove_cvref_t<decltype(value)>;
                 if constexpr (std::same_as<Value, UiPointerMove>)
                 {
@@ -631,7 +620,8 @@ namespace lux::ui
                     io.AddFocusEvent(value.focused);
                 }
             },
-            event);
+            event
+        );
     }
 
     void UISession::beginFrame(ImVec2 display_size, float delta_seconds)
@@ -651,7 +641,7 @@ namespace lux::ui
         {
             impl_->commitHover({});
         }
-        auto &io = ImGui::GetIO();
+        auto& io = ImGui::GetIO();
         io.DisplaySize = display_size;
         io.DeltaTime = delta_seconds;
         ImGui::NewFrame();
@@ -667,9 +657,9 @@ namespace lux::ui
         PaneHandle focused_candidate;
         PaneHandle hovered_candidate;
         impl_->frame_focused_contexts.clear();
-        for (auto &record : impl_->panes)
+        for (auto& record : impl_->panes)
         {
-            auto *pane = Impl::resolve(record);
+            auto* pane = Impl::resolve(record);
             if (!pane)
                 continue;
             const auto current = Impl::handle(record);
@@ -694,8 +684,7 @@ namespace lux::ui
             {
                 pane->draw(draw_context);
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
-                impl_->wrapper_growth_count +=
-                    impl_->frame_context_scratch.capacity() != scratch_capacity;
+                impl_->wrapper_growth_count += impl_->frame_context_scratch.capacity() != scratch_capacity;
 #endif
                 pane = Impl::resolve(record);
                 if (pane && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
@@ -706,8 +695,7 @@ namespace lux::ui
 #endif
                     impl_->frame_focused_contexts = impl_->frame_context_scratch;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
-                    impl_->wrapper_growth_count +=
-                        impl_->frame_focused_contexts.capacity() != focused_capacity;
+                    impl_->wrapper_growth_count += impl_->frame_focused_contexts.capacity() != focused_capacity;
 #endif
                 }
                 if (pane && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows))
@@ -724,7 +712,7 @@ namespace lux::ui
         impl_->commitHover(hovered_candidate);
     }
 
-    ImDrawData *UISession::endFrame()
+    ImDrawData* UISession::endFrame()
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!impl_->frame_open)
@@ -741,14 +729,14 @@ namespace lux::ui
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         ScopedImGuiContext context{impl_->context};
         std::size_t size = 0;
-        const char *data = ImGui::SaveIniSettingsToMemory(&size);
+        const char* data = ImGui::SaveIniSettingsToMemory(&size);
         std::vector<std::byte> bytes(size);
         if (size != 0)
             std::memcpy(bytes.data(), data, size);
         return LayoutSnapshot{std::move(bytes)};
     }
 
-    lux::cxx::expected<void, ELayoutError> UISession::restoreLayout(const LayoutSnapshot &snapshot)
+    lux::cxx::expected<void, ELayoutError> UISession::restoreLayout(const LayoutSnapshot& snapshot)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         const auto bytes = snapshot.bytes();
@@ -757,15 +745,14 @@ namespace lux::ui
             return lux::cxx::unexpected<ELayoutError>{ELayoutError::INVALID_DATA};
         }
         ScopedImGuiContext context{impl_->context};
-        ImGui::LoadIniSettingsFromMemory(reinterpret_cast<const char *>(bytes.data()),
-                                         bytes.size());
+        ImGui::LoadIniSettingsFromMemory(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         return {};
     }
 
     void UISession::unregisterPane(std::uint64_t token) noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        auto *found = impl_->findPane(token);
+        auto* found = impl_->findPane(token);
         if (!found || found->tombstone)
             return;
         found->tombstone = true;
@@ -782,7 +769,7 @@ namespace lux::ui
     void UISession::unregisterFactory(std::uint64_t token) noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        const auto mark = [token](std::vector<FactoryRecord> &records) {
+        const auto mark = [token](std::vector<FactoryRecord>& records) {
             const auto found = std::ranges::find(records, token, &FactoryRecord::token);
             if (found != records.end())
                 found->tombstone = true;
@@ -799,7 +786,7 @@ namespace lux::ui
         return impl_->wrapper_growth_count;
     }
 
-    const void *UISession::contextIdentityForTest() const noexcept
+    const void* UISession::contextIdentityForTest() const noexcept
     {
         return impl_->context;
     }

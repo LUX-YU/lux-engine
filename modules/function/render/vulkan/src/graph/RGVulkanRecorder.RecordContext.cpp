@@ -9,8 +9,11 @@ namespace lux::render
     // ================================
     // Group extents computation (for dynamic rendering — no framebuffers needed)
     // ================================
-    std::optional<RenderError>
-    RGVulkanRecorder::computeGroupExtents(RGRecordContext& record_context, const RGCompiledGraph& graph, VkExtent2D extent)
+    std::optional<RenderError> RGVulkanRecorder::computeGroupExtents(
+        RGRecordContext& record_context,
+        const RGCompiledGraph& graph,
+        VkExtent2D extent
+    )
     {
         const auto& groups = graph.render_pass_layout.groups;
         record_context.group_extents.assign(groups.size(), VkExtent2D{0, 0});
@@ -30,8 +33,8 @@ namespace lux::render
 
             for (const auto& tex_ref : desc->textures)
             {
-                if (tex_ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT
-                    && tex_ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                if (tex_ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT &&
+                    tex_ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                     continue;
 
                 const auto& res_desc = graph.original_graph.resources[tex_ref.resource.index];
@@ -39,9 +42,8 @@ namespace lux::render
                 if (tex_desc)
                 {
                     // Slotted imported resources (e.g. backbuffer) use target extent directly.
-                    if (res_desc.lifetime == ERGResourceLifetime::IMPORTED
-                        && res_desc.import_info
-                        && res_desc.import_info->slot.has_value())
+                    if (res_desc.lifetime == ERGResourceLifetime::IMPORTED && res_desc.import_info &&
+                        res_desc.import_info->slot.has_value())
                     {
                         record_context.group_extents[group_index] = extent;
                     }
@@ -49,8 +51,8 @@ namespace lux::render
                     {
                         record_context.group_extents[group_index] = resolveTextureExtent(*tex_desc, extent);
                     }
-                    if (tex_desc->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY
-                        && tex_desc->array_layers > record_context.group_layer_counts[group_index])
+                    if (tex_desc->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY &&
+                        tex_desc->array_layers > record_context.group_layer_counts[group_index])
                     {
                         record_context.group_layer_counts[group_index] = tex_desc->array_layers;
                     }
@@ -62,19 +64,20 @@ namespace lux::render
         return std::nullopt;
     }
 
-    std::optional<RenderError>
-    RGVulkanRecorder::preCreateImageViews(
+    std::optional<RenderError> RGVulkanRecorder::preCreateImageViews(
         RGRecordContext& record_context,
         const RGCompiledGraph& graph,
         const RGPhysicalResourceTable& physical_resources,
-        uint32_t frames_in_flight)
+        uint32_t frames_in_flight
+    )
     {
         const size_t resource_count = graph.original_graph.resources.size();
         record_context.per_frame_views.assign(
-            resource_count, std::vector<VkImageView>(frames_in_flight, VK_NULL_HANDLE));
+            resource_count,
+            std::vector<VkImageView>(frames_in_flight, VK_NULL_HANDLE)
+        );
         record_context.per_frame_views_by_mip.assign(resource_count, {});
-        record_context.per_frame_images.assign(
-            resource_count, std::vector<VkImage>(frames_in_flight, VK_NULL_HANDLE));
+        record_context.per_frame_images.assign(resource_count, std::vector<VkImage>(frames_in_flight, VK_NULL_HANDLE));
 
         VkDevice device = context_.logicalDevice();
 
@@ -101,11 +104,21 @@ namespace lux::render
                 VkImageViewType view_type;
                 switch (tex_desc.dimension)
                 {
-                    case lux::rdesc::ETextureDimension::TEX_2D:       view_type = VK_IMAGE_VIEW_TYPE_2D;       break;
-                    case lux::rdesc::ETextureDimension::TEX_2D_ARRAY: view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY; break;
-                    case lux::rdesc::ETextureDimension::TEX_3D:       view_type = VK_IMAGE_VIEW_TYPE_3D;       break;
-                    case lux::rdesc::ETextureDimension::CUBE:         view_type = VK_IMAGE_VIEW_TYPE_CUBE;     break;
-                    default:                                           view_type = VK_IMAGE_VIEW_TYPE_2D;       break;
+                case lux::rdesc::ETextureDimension::TEX_2D:
+                    view_type = VK_IMAGE_VIEW_TYPE_2D;
+                    break;
+                case lux::rdesc::ETextureDimension::TEX_2D_ARRAY:
+                    view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+                    break;
+                case lux::rdesc::ETextureDimension::TEX_3D:
+                    view_type = VK_IMAGE_VIEW_TYPE_3D;
+                    break;
+                case lux::rdesc::ETextureDimension::CUBE:
+                    view_type = VK_IMAGE_VIEW_TYPE_CUBE;
+                    break;
+                default:
+                    view_type = VK_IMAGE_VIEW_TYPE_2D;
+                    break;
                 }
 
                 // Aspect from FORMAT (P1#20): a depth texture sampled before its
@@ -115,26 +128,24 @@ namespace lux::render
                 if (isDepthStencilFormat_shared(tex_desc.format))
                 {
                     aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
-                    if (hasStencilComponent_shared(tex_desc.format)
-                        && tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                    if (hasStencilComponent_shared(tex_desc.format) &&
+                        tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                         aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
                 }
                 const uint32_t layer_count =
-                    (tex_desc.dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY)
-                        ? tex_desc.array_layers : 1u;
+                    (tex_desc.dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY) ? tex_desc.array_layers : 1u;
                 const VkFormat vk_format = convertTextureFormat(tex_desc.format);
 
-                auto makeView = [&](VkImage image, uint32_t base_mip, uint32_t level_count) -> VkImageView
-                {
-                    VkImageViewCreateInfo vi{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-                    vi.image    = image;
+                auto makeView = [&](VkImage image, uint32_t base_mip, uint32_t level_count) -> VkImageView {
+                    VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+                    vi.image = image;
                     vi.viewType = view_type;
-                    vi.format   = vk_format;
-                    vi.subresourceRange.aspectMask     = aspect;
-                    vi.subresourceRange.baseMipLevel   = base_mip;
-                    vi.subresourceRange.levelCount     = level_count;
+                    vi.format = vk_format;
+                    vi.subresourceRange.aspectMask = aspect;
+                    vi.subresourceRange.baseMipLevel = base_mip;
+                    vi.subresourceRange.levelCount = level_count;
                     vi.subresourceRange.baseArrayLayer = 0;
-                    vi.subresourceRange.layerCount     = layer_count;
+                    vi.subresourceRange.layerCount = layer_count;
                     VkImageView v = VK_NULL_HANDLE;
                     vkCreateImageView(device, &vi, context_.instanceContext().allocator(), &v);
                     return v;

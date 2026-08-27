@@ -12,10 +12,7 @@ namespace lux::render
     // Shared descriptor pool + set for both sampler2D[] (binding 0) and
     // samplerCube[] (binding 1) in the same descriptor set (set 2).
     // ------------------------------------------------------------------
-    void TextureResources::createSharedPoolAndSet(
-        VkDescriptorSetLayout layout,
-        uint32_t tex2d_max,
-        uint32_t cube_max)
+    void TextureResources::createSharedPoolAndSet(VkDescriptorSetLayout layout, uint32_t tex2d_max, uint32_t cube_max)
     {
         auto& device = dc_->logicalDevice();
         // Exactly ONE set is ever allocated here — both BCS instances run in
@@ -31,11 +28,10 @@ namespace lux::render
         ps.descriptorCount = (tex2d_max + cube_max) * (kRetiredMax + 1);
 
         VkDescriptorPoolCreateInfo pci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        pci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT
-                  | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pci.maxSets      = kRetiredMax + 1;
+        pci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pci.maxSets = kRetiredMax + 1;
         pci.poolSizeCount = 1;
-        pci.pPoolSizes    = &ps;
+        pci.pPoolSizes = &ps;
         VK_CHECK(vkCreateDescriptorPool(device, &pci, nullptr, &shared_pool_));
 
         // Allocate one set — variable descriptor count applies to binding 1 (cube)
@@ -43,13 +39,13 @@ namespace lux::render
         VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
         vci.descriptorSetCount = 1;
-        vci.pDescriptorCounts  = &var_count;
+        vci.pDescriptorCounts = &var_count;
 
         VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        ai.descriptorPool     = shared_pool_;
+        ai.descriptorPool = shared_pool_;
         ai.descriptorSetCount = 1;
-        ai.pSetLayouts        = &layout;
-        ai.pNext              = &vci;
+        ai.pSetLayouts = &layout;
+        ai.pNext = &vci;
         // These counts MUST match the Texture set layout's binding counts —
         // the driver charges the pool against the layout, not against what we
         // intended. They come from GeneralDescriptorSetLayout::bindless2DCount
@@ -59,9 +55,7 @@ namespace lux::render
         VK_CHECK(vkAllocateDescriptorSets(device, &ai, &shared_set_));
     }
 
-    bool TextureResources::init(
-            const InitInfo &info
-    )
+    bool TextureResources::init(const InitInfo& info)
     {
         assert(info.device_context && info.graphics_queue && info.upload_cmd_pool);
 
@@ -86,40 +80,50 @@ namespace lux::render
             default_sampler_ci_.magFilter = VK_FILTER_LINEAR;
             default_sampler_ci_.minFilter = VK_FILTER_LINEAR;
             default_sampler_ci_.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            default_sampler_ci_.addressModeU = default_sampler_ci_.addressModeV = default_sampler_ci_.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            default_sampler_ci_.addressModeU = default_sampler_ci_.addressModeV = default_sampler_ci_.addressModeW =
+                VK_SAMPLER_ADDRESS_MODE_REPEAT;
             default_sampler_ci_.maxLod = VK_LOD_CLAMP_NONE;
         }
 
         // -- Create shared pool + set for dual-binding texture set --
         const uint32_t tex2d_max = combined_ci_.layout_max_capacity;
-        const uint32_t cube_max  = info.cube_max_capacity;
+        const uint32_t cube_max = info.cube_max_capacity;
         createSharedPoolAndSet(combined_ci_.descriptor_set_layout, tex2d_max, cube_max);
 
         // -- Init 2D texture bindless set (binding 0, external set) --
-        BCInitInfo ci_2d          = combined_ci_;
-        ci_2d.external_pool       = shared_pool_;
-        ci_2d.external_set        = shared_set_;
-        ci_2d.initial_capacity    = tex2d_max;   // fixed (no reallocation in external mode)
+        BCInitInfo ci_2d = combined_ci_;
+        ci_2d.external_pool = shared_pool_;
+        ci_2d.external_set = shared_set_;
+        ci_2d.initial_capacity = tex2d_max; // fixed (no reallocation in external mode)
         ci_2d.layout_max_capacity = tex2d_max;
-        ci_2d.frames_in_flight    = slices_;
+        ci_2d.frames_in_flight = slices_;
         if (!combined_.init(ci_2d))
-        { shutdown(); return false; }
+        {
+            shutdown();
+            return false;
+        }
 
         // -- Init cube texture bindless set (binding 1, external set) --
-        BCInitInfo ci_cube            = combined_ci_;
-        ci_cube.binding               = static_cast<uint32_t>(ETextureSetBindings::CUBE_TEXTURES);
-        ci_cube.view_type             = VK_IMAGE_VIEW_TYPE_CUBE;
-        ci_cube.generate_mipmaps      = false;
-        ci_cube.initial_capacity      = cube_max;
-        ci_cube.layout_max_capacity   = cube_max;
-        ci_cube.external_pool         = shared_pool_;
-        ci_cube.external_set          = shared_set_;
-        ci_cube.frames_in_flight      = slices_;
+        BCInitInfo ci_cube = combined_ci_;
+        ci_cube.binding = static_cast<uint32_t>(ETextureSetBindings::CUBE_TEXTURES);
+        ci_cube.view_type = VK_IMAGE_VIEW_TYPE_CUBE;
+        ci_cube.generate_mipmaps = false;
+        ci_cube.initial_capacity = cube_max;
+        ci_cube.layout_max_capacity = cube_max;
+        ci_cube.external_pool = shared_pool_;
+        ci_cube.external_set = shared_set_;
+        ci_cube.frames_in_flight = slices_;
         if (!combined_cube_.init(ci_cube))
-        { shutdown(); return false; }
+        {
+            shutdown();
+            return false;
+        }
 
         if (!initMipFeedback(slices_, tex2d_max))
-        { shutdown(); return false; }
+        {
+            shutdown();
+            return false;
+        }
 
         // Fallback texture (2D)
         lux::rdesc::Texture fb = info.fallback_pixel.value_or(makeDefaultWhite());
@@ -130,12 +134,13 @@ namespace lux::render
         fallback_bindless_index_ = fallback.index;
         noteTextureResident(fallback.index);
 
-        return true;   // initialized_ was set at the top — see the note there
+        return true; // initialized_ was set at the top — see the note there
     }
 
     void TextureResources::shutdown()
     {
-        if (!initialized_) return;
+        if (!initialized_)
+            return;
         initialized_ = false;
 
         shutdownMipFeedback();
@@ -156,11 +161,12 @@ namespace lux::render
         }
     }
 
-    Expected<TextureHandle>
-    TextureResources::submit(const lux::rdesc::Texture &cpu,
-        const VkSamplerCreateInfo *opt_sampler,
+    Expected<TextureHandle> TextureResources::submit(
+        const lux::rdesc::Texture& cpu,
+        const VkSamplerCreateInfo* opt_sampler,
         VkFormat fmt,
-        bool generate_mips)
+        bool generate_mips
+    )
     {
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
 
@@ -180,21 +186,30 @@ namespace lux::render
         {
             switch (f)
             {
-            case EPixelFormat::RGBA8_SRGB:    return VK_FORMAT_R8G8B8A8_SRGB;
-            case EPixelFormat::RGBA8_UNORM:   return VK_FORMAT_R8G8B8A8_UNORM;
-            case EPixelFormat::RGBA16_SFLOAT: return VK_FORMAT_R16G16B16A16_SFLOAT;
-            case EPixelFormat::RG8_UNORM:     return VK_FORMAT_R8G8_UNORM;
-            case EPixelFormat::R8_UNORM:      return VK_FORMAT_R8_UNORM;
-            case EPixelFormat::R16_UINT:      return VK_FORMAT_R16_UINT;
-            case EPixelFormat::R16_UNORM:     return VK_FORMAT_R16_UNORM;
-            default:                          return VK_FORMAT_UNDEFINED;
+            case EPixelFormat::RGBA8_SRGB:
+                return VK_FORMAT_R8G8B8A8_SRGB;
+            case EPixelFormat::RGBA8_UNORM:
+                return VK_FORMAT_R8G8B8A8_UNORM;
+            case EPixelFormat::RGBA16_SFLOAT:
+                return VK_FORMAT_R16G16B16A16_SFLOAT;
+            case EPixelFormat::RG8_UNORM:
+                return VK_FORMAT_R8G8_UNORM;
+            case EPixelFormat::R8_UNORM:
+                return VK_FORMAT_R8_UNORM;
+            case EPixelFormat::R16_UINT:
+                return VK_FORMAT_R16_UINT;
+            case EPixelFormat::R16_UNORM:
+                return VK_FORMAT_R16_UNORM;
+            default:
+                return VK_FORMAT_UNDEFINED;
             }
         }
     }
 
     Expected<TextureHandle> TextureResources::createPersistentTexture2D(
         const PersistentTexture2DDesc& desc,
-        const VkSamplerCreateInfo* opt_sampler)
+        const VkSamplerCreateInfo* opt_sampler
+    )
     {
         // 与客户端预检共用的那个纯函数校验器。
         const auto validation = validatePersistentTexture2DDesc(desc);
@@ -211,8 +226,9 @@ namespace lux::render
             return renderFailure<err::internal::InvalidArgument>();
 
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
-        const SlotHandle sh = combined_.addPersistentTexture(
-            desc.width, desc.height, desc.mip_levels, persistentVkFormat(desc.format), &sci);
+        const SlotHandle sh =
+            combined_
+                .addPersistentTexture(desc.width, desc.height, desc.mip_levels, persistentVkFormat(desc.format), &sci);
         if (!sh.isValid())
             return renderFailure<err::memory::CapacityExhausted>();
 
@@ -224,14 +240,15 @@ namespace lux::render
     ERegionUploadStatus TextureResources::updateTextureRegions(
         TextureHandle h,
         std::span<const TextureRegionDesc> regions,
-        std::span<const std::byte> pixels)
+        std::span<const std::byte> pixels
+    )
     {
         const SlotHandle sh{h.index, h.gen};
         if (!combined_.isTextureAlive(sh))
             return ERegionUploadStatus::InvalidHandle;
         const auto it = persistent_descs_.find(h.index);
         if (it == persistent_descs_.end())
-            return ERegionUploadStatus::InvalidHandle;   // immutable asset texture — not updatable
+            return ERegionUploadStatus::InvalidHandle; // immutable asset texture — not updatable
 
         // Authoritative bounds check — the SAME pure validator the client used.
         if (const auto v = validateTextureRegions(it->second, regions, pixels.size()); !v.ok())
@@ -242,18 +259,24 @@ namespace lux::render
         updates.reserve(regions.size());
         for (const TextureRegionDesc& r : regions)
             updates.push_back(BindlessCombinedSet::RegionUpdate{
-                r.x, r.y, r.width, r.height, r.mip, r.array_layer,
-                r.row_pitch_bytes, r.data_offset});
+                r.x,
+                r.y,
+                r.width,
+                r.height,
+                r.mip,
+                r.array_layer,
+                r.row_pitch_bytes,
+                r.data_offset}
+            );
 
-        return combined_.updateTextureRegions(
-                   sh, updates, pixels, regionTexelBytes(it->second.format))
+        return combined_.updateTextureRegions(sh, updates, pixels, regionTexelBytes(it->second.format))
                    ? ERegionUploadStatus::Ok
                    : ERegionUploadStatus::InvalidHandle;
     }
 
     bool TextureResources::remove(TextureHandle h)
     {
-        persistent_descs_.erase(h.index);   // no-op for immutable asset textures
+        persistent_descs_.erase(h.index); // no-op for immutable asset textures
         const bool removed = combined_.removeTexture(SlotHandle{h.index, h.gen});
         if (removed && h.index < mip_states_.size())
         {
@@ -268,11 +291,11 @@ namespace lux::render
         return combined_cube_.removeTexture(SlotHandle{h.index, h.gen});
     }
 
-    Expected<TextureHandle>
-    TextureResources::submitCube(
+    Expected<TextureHandle> TextureResources::submitCube(
         const lux::rdesc::Texture faces[6],
-        const VkSamplerCreateInfo *opt_sampler,
-        VkFormat fmt)
+        const VkSamplerCreateInfo* opt_sampler,
+        VkFormat fmt
+    )
     {
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
 
@@ -283,27 +306,22 @@ namespace lux::render
         return h;
     }
 
-    bool TextureResources::initMipFeedback(
-        std::uint32_t frames_in_flight,
-        std::uint32_t capacity)
+    bool TextureResources::initMipFeedback(std::uint32_t frames_in_flight, std::uint32_t capacity)
     {
         mip_feedback_capacity_ = std::max(capacity, 1u);
         mip_states_.assign(mip_feedback_capacity_, {});
-        mip_feedback_frames_.assign(
-            std::max(frames_in_flight, 1u), {});
+        mip_feedback_frames_.assign(std::max(frames_in_flight, 1u), {});
         // One extra word is the workgroup aggregation fallback counter. It is
         // deliberately outside the public texture-slot capacity so material
         // indices can never address it as a wanted-mip entry.
-        const VkDeviceSize bytes = static_cast<VkDeviceSize>(
-            mip_feedback_capacity_ + 1u) * sizeof(std::uint32_t);
+        const VkDeviceSize bytes = static_cast<VkDeviceSize>(mip_feedback_capacity_ + 1u) * sizeof(std::uint32_t);
         for (auto& frame : mip_feedback_frames_)
         {
             void* mapped = nullptr;
             if (!createGpuBufferVmaBuffer(
                     dc_->vmaAllocator(),
                     bytes,
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                     true,
                     &frame.buffer,
                     &frame.allocation,
@@ -314,13 +332,9 @@ namespace lux::render
                 return false;
             }
             frame.mapped = static_cast<std::uint32_t*>(mapped);
-            std::fill_n(
-                frame.mapped,
-                mip_feedback_capacity_,
-                std::numeric_limits<std::uint32_t>::max());
+            std::fill_n(frame.mapped, mip_feedback_capacity_, std::numeric_limits<std::uint32_t>::max());
             frame.mapped[mip_feedback_capacity_] = 0u;
-            flushGpuBufferVmaAllocation(
-                dc_->vmaAllocator(), frame.allocation, 0u, bytes);
+            flushGpuBufferVmaAllocation(dc_->vmaAllocator(), frame.allocation, 0u, bytes);
         }
         return true;
     }
@@ -332,13 +346,9 @@ namespace lux::render
             if (frame.buffer != VK_NULL_HANDLE)
             {
                 if (deferred_queue_)
-                    deferred_queue_->retireBuffer(
-                        frame.buffer, frame.allocation);
+                    deferred_queue_->retireBuffer(frame.buffer, frame.allocation);
                 else if (dc_)
-                    destroyGpuBufferVmaBuffer(
-                        dc_->vmaAllocator(),
-                        frame.buffer,
-                        frame.allocation);
+                    destroyGpuBufferVmaBuffer(dc_->vmaAllocator(), frame.buffer, frame.allocation);
             }
             frame = {};
         }
@@ -349,9 +359,7 @@ namespace lux::render
         mip_feedback_snapshot_ = {};
     }
 
-    void TextureResources::noteTextureResident(
-        std::uint32_t slot_index,
-        std::uint32_t logical_base_mip) noexcept
+    void TextureResources::noteTextureResident(std::uint32_t slot_index, std::uint32_t logical_base_mip) noexcept
     {
         if (slot_index >= mip_states_.size())
             return;
@@ -375,12 +383,9 @@ namespace lux::render
         state.resident_base_mip = logical_base_mip;
         state.no_demand_frames = 0u;
         state.replacement_pending = false;
-        state.alive = state.total_mips != 0u && state.width != 0u &&
-            state.height != 0u && physical_mips != 0u &&
-            physical_width != 0u && physical_height != 0u &&
-            physical_format == state.format;
-        if (state.alive &&
-            state.target_base_mip != state.resident_base_mip)
+        state.alive = state.total_mips != 0u && state.width != 0u && state.height != 0u && physical_mips != 0u &&
+                      physical_width != 0u && physical_height != 0u && physical_format == state.format;
+        if (state.alive && state.target_base_mip != state.resident_base_mip)
         {
             markMipDemand(slot_index);
         }
@@ -392,22 +397,32 @@ namespace lux::render
 
     namespace
     {
-        [[nodiscard]] VkFormat immutableTextureVkFormat(
-            EPixelFormat format) noexcept
+        [[nodiscard]] VkFormat immutableTextureVkFormat(EPixelFormat format) noexcept
         {
             switch (format)
             {
-            case EPixelFormat::RGBA8_SRGB:    return VK_FORMAT_R8G8B8A8_SRGB;
-            case EPixelFormat::RGBA8_UNORM:   return VK_FORMAT_R8G8B8A8_UNORM;
-            case EPixelFormat::RGBA16_SFLOAT: return VK_FORMAT_R16G16B16A16_SFLOAT;
-            case EPixelFormat::RG8_UNORM:     return VK_FORMAT_R8G8_UNORM;
-            case EPixelFormat::R8_UNORM:      return VK_FORMAT_R8_UNORM;
-            case EPixelFormat::BC1_SRGB:      return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
-            case EPixelFormat::BC3_SRGB:      return VK_FORMAT_BC3_SRGB_BLOCK;
-            case EPixelFormat::BC5_UNORM:     return VK_FORMAT_BC5_UNORM_BLOCK;
-            case EPixelFormat::BC7_SRGB:      return VK_FORMAT_BC7_SRGB_BLOCK;
-            case EPixelFormat::R16_UINT:      return VK_FORMAT_R16_UINT;
-            case EPixelFormat::R16_UNORM:     return VK_FORMAT_R16_UNORM;
+            case EPixelFormat::RGBA8_SRGB:
+                return VK_FORMAT_R8G8B8A8_SRGB;
+            case EPixelFormat::RGBA8_UNORM:
+                return VK_FORMAT_R8G8B8A8_UNORM;
+            case EPixelFormat::RGBA16_SFLOAT:
+                return VK_FORMAT_R16G16B16A16_SFLOAT;
+            case EPixelFormat::RG8_UNORM:
+                return VK_FORMAT_R8G8_UNORM;
+            case EPixelFormat::R8_UNORM:
+                return VK_FORMAT_R8_UNORM;
+            case EPixelFormat::BC1_SRGB:
+                return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+            case EPixelFormat::BC3_SRGB:
+                return VK_FORMAT_BC3_SRGB_BLOCK;
+            case EPixelFormat::BC5_UNORM:
+                return VK_FORMAT_BC5_UNORM_BLOCK;
+            case EPixelFormat::BC7_SRGB:
+                return VK_FORMAT_BC7_SRGB_BLOCK;
+            case EPixelFormat::R16_UINT:
+                return VK_FORMAT_R16_UINT;
+            case EPixelFormat::R16_UNORM:
+                return VK_FORMAT_R16_UNORM;
             }
             return VK_FORMAT_UNDEFINED;
         }
@@ -419,22 +434,26 @@ namespace lux::render
         std::uint32_t logical_base_mip,
         std::uint32_t physical_width,
         std::uint32_t physical_height,
-        std::uint32_t physical_mip_count) noexcept
+        std::uint32_t physical_mip_count
+    ) noexcept
     {
         const SlotHandle slot{handle.index, handle.gen};
-        if (!combined_.isTextureAlive(slot) ||
-            handle.index >= mip_states_.size())
+        if (!combined_.isTextureAlive(slot) || handle.index >= mip_states_.size())
         {
             return false;
         }
         auto& state = mip_states_[handle.index];
-        if (!state.alive || state.replacement_pending ||
-            logical_base_mip >= state.total_mips ||
-            immutableTextureVkFormat(format) != state.format ||
+        const bool is_invalid_state = !state.alive || state.replacement_pending;
+        const bool has_valid_base_mip = logical_base_mip < state.total_mips;
+        const bool is_invalid_base_mip = !has_valid_base_mip || immutableTextureVkFormat(format) != state.format;
+        const bool is_invalid_dimensions = !has_valid_base_mip ||
             physical_width != std::max(state.width >> logical_base_mip, 1u) ||
-            physical_height != std::max(state.height >> logical_base_mip, 1u) ||
-            physical_mip_count == 0u ||
-            physical_mip_count > state.total_mips - logical_base_mip)
+            physical_height != std::max(state.height >> logical_base_mip, 1u);
+        const bool is_invalid_mip_count = !has_valid_base_mip || physical_mip_count == 0u ||
+            physical_mip_count > state.total_mips - logical_base_mip;
+        const bool is_invalid_request = is_invalid_state || is_invalid_base_mip ||
+            is_invalid_dimensions || is_invalid_mip_count;
+        if (is_invalid_request)
         {
             return false;
         }
@@ -450,32 +469,27 @@ namespace lux::render
         if (combined_.isTextureAlive(SlotHandle{handle.index, handle.gen}))
         {
             state.replacement_pending = false;
-            if (state.alive &&
-                state.target_base_mip != state.resident_base_mip)
+            if (state.alive && state.target_base_mip != state.resident_base_mip)
             {
                 markMipDemand(handle.index);
             }
         }
     }
 
-    void TextureResources::markMipDemand(
-        std::uint32_t slot_index) noexcept
+    void TextureResources::markMipDemand(std::uint32_t slot_index) noexcept
     {
         if (slot_index >= mip_states_.size())
             return;
         auto& state = mip_states_[slot_index];
-        if (state.demand_index !=
-            std::numeric_limits<std::uint32_t>::max())
+        if (state.demand_index != std::numeric_limits<std::uint32_t>::max())
         {
             return;
         }
-        state.demand_index = static_cast<std::uint32_t>(
-            mip_demand_slots_.size());
+        state.demand_index = static_cast<std::uint32_t>(mip_demand_slots_.size());
         mip_demand_slots_.push_back(slot_index);
     }
 
-    void TextureResources::clearMipDemand(
-        std::uint32_t slot_index) noexcept
+    void TextureResources::clearMipDemand(std::uint32_t slot_index) noexcept
     {
         if (slot_index >= mip_states_.size())
             return;
@@ -490,20 +504,16 @@ namespace lux::render
         state.demand_index = std::numeric_limits<std::uint32_t>::max();
     }
 
-    TextureMipDemandsReply TextureResources::mipDemands(
-        std::uint32_t maximum_count) const noexcept
+    TextureMipDemandsReply TextureResources::mipDemands(std::uint32_t maximum_count) const noexcept
     {
         TextureMipDemandsReply reply{};
-        const std::uint32_t limit = std::min(
-            maximum_count,
-            kTextureMipDemandBatchCapacity);
+        const std::uint32_t limit = std::min(maximum_count, kTextureMipDemandBatchCapacity);
         for (const std::uint32_t slot : mip_demand_slots_)
         {
             if (slot >= mip_states_.size())
                 continue;
             const auto& state = mip_states_[slot];
-            if (!state.alive || state.replacement_pending ||
-                state.target_base_mip == state.resident_base_mip)
+            if (!state.alive || state.replacement_pending || state.target_base_mip == state.resident_base_mip)
             {
                 continue;
             }
@@ -522,64 +532,46 @@ namespace lux::render
         return reply;
     }
 
-    VkDeviceAddress TextureResources::mipFeedbackAddress(
-        std::uint32_t frame_slot) const noexcept
+    VkDeviceAddress TextureResources::mipFeedbackAddress(std::uint32_t frame_slot) const noexcept
     {
         if (!dc_ || mip_feedback_frames_.empty())
             return 0u;
-        const auto& frame = mip_feedback_frames_[
-            frame_slot % mip_feedback_frames_.size()];
+        const auto& frame = mip_feedback_frames_[frame_slot % mip_feedback_frames_.size()];
         if (frame.buffer == VK_NULL_HANDLE)
             return 0u;
-        VkBufferDeviceAddressInfo info{
-            VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+        VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
         info.buffer = frame.buffer;
         return vkGetBufferDeviceAddress(dc_->logicalDevice(), &info);
     }
 
-    std::uint64_t TextureResources::mipBytes(
-        const TextureMipState& state,
-        std::uint32_t base_mip) const noexcept
+    std::uint64_t TextureResources::mipBytes(const TextureMipState& state, std::uint32_t base_mip) const noexcept
     {
         std::uint64_t bytes = 0u;
-        for (std::uint32_t mip = std::min(base_mip, state.total_mips);
-             mip < state.total_mips;
-             ++mip)
+        for (std::uint32_t mip = std::min(base_mip, state.total_mips); mip < state.total_mips; ++mip)
         {
-            bytes += vkFormatMipBytes(
-                state.format,
-                std::max(state.width >> mip, 1u),
-                std::max(state.height >> mip, 1u));
+            bytes +=
+                vkFormatMipBytes(state.format, std::max(state.width >> mip, 1u), std::max(state.height >> mip, 1u));
         }
         return bytes;
     }
 
-    void TextureResources::adoptMipFeedback(
-        const FrameStamp& stamp) noexcept
+    void TextureResources::adoptMipFeedback(const FrameStamp& stamp) noexcept
     {
         if (mip_feedback_frames_.empty() || mip_feedback_capacity_ == 0u)
             return;
-        auto& frame = mip_feedback_frames_[
-            stamp.slotIndex() % mip_feedback_frames_.size()];
-        const bool sample = frame.last_submit_serial != 0u &&
-            (stamp.serial % 4u) == 0u;
+        auto& frame = mip_feedback_frames_[stamp.slotIndex() % mip_feedback_frames_.size()];
+        const bool sample = frame.last_submit_serial != 0u && (stamp.serial % 4u) == 0u;
         if (sample && frame.mapped)
         {
-            const VkDeviceSize bytes = static_cast<VkDeviceSize>(
-                mip_feedback_capacity_ + 1u) * sizeof(std::uint32_t);
-            invalidateGpuBufferVmaAllocation(
-                dc_->vmaAllocator(), frame.allocation, 0u, bytes);
+            const VkDeviceSize bytes = static_cast<VkDeviceSize>(mip_feedback_capacity_ + 1u) * sizeof(std::uint32_t);
+            invalidateGpuBufferVmaAllocation(dc_->vmaAllocator(), frame.allocation, 0u, bytes);
 
             TextureMipFeedbackSnapshot next{};
             next.sample_serial = stamp.serial;
-            next.minimum_wanted_mip =
-                std::numeric_limits<std::uint32_t>::max();
-            next.aggregation_fallback_count =
-                frame.mapped[mip_feedback_capacity_];
+            next.minimum_wanted_mip = std::numeric_limits<std::uint32_t>::max();
+            next.aggregation_fallback_count = frame.mapped[mip_feedback_capacity_];
             next.valid = 1u;
-            for (std::uint32_t slot = 0u;
-                 slot < mip_feedback_capacity_;
-                 ++slot)
+            for (std::uint32_t slot = 0u; slot < mip_feedback_capacity_; ++slot)
             {
                 auto& state = mip_states_[slot];
                 if (!state.alive)
@@ -587,11 +579,9 @@ namespace lux::render
                 const std::uint32_t wanted = frame.mapped[slot];
                 if (wanted != std::numeric_limits<std::uint32_t>::max())
                 {
-                    const std::uint32_t clamped = std::min(
-                        wanted, state.total_mips - 1u);
+                    const std::uint32_t clamped = std::min(wanted, state.total_mips - 1u);
                     ++next.sampled_texture_count;
-                    next.minimum_wanted_mip = std::min(
-                        next.minimum_wanted_mip, clamped);
+                    next.minimum_wanted_mip = std::min(next.minimum_wanted_mip, clamped);
                     if (clamped < state.target_base_mip)
                     {
                         state.target_base_mip = clamped;
@@ -600,9 +590,7 @@ namespace lux::render
                     }
                     else if (clamped > state.target_base_mip)
                     {
-                        state.no_demand_frames = std::min<std::uint32_t>(
-                            state.no_demand_frames + 4u,
-                            120u);
+                        state.no_demand_frames = std::min<std::uint32_t>(state.no_demand_frames + 4u, 120u);
                         if (state.no_demand_frames >= 120u)
                         {
                             ++state.target_base_mip;
@@ -617,11 +605,8 @@ namespace lux::render
                 }
                 else
                 {
-                    state.no_demand_frames = std::min<std::uint32_t>(
-                        state.no_demand_frames + 4u,
-                        120u);
-                    if (state.no_demand_frames >= 120u &&
-                        state.target_base_mip + 1u < state.total_mips)
+                    state.no_demand_frames = std::min<std::uint32_t>(state.no_demand_frames + 4u, 120u);
+                    if (state.no_demand_frames >= 120u && state.target_base_mip + 1u < state.total_mips)
                     {
                         ++state.target_base_mip;
                         state.no_demand_frames = 0u;
@@ -629,23 +614,17 @@ namespace lux::render
                     }
                 }
                 next.full_resident_bytes += mipBytes(state, 0u);
-                next.target_resident_bytes += mipBytes(
-                    state, state.target_base_mip);
-                next.actual_resident_bytes += mipBytes(
-                    state, state.resident_base_mip);
+                next.target_resident_bytes += mipBytes(state, state.target_base_mip);
+                next.actual_resident_bytes += mipBytes(state, state.resident_base_mip);
                 if (state.target_base_mip != state.resident_base_mip)
                     markMipDemand(slot);
                 else
                     clearMipDemand(slot);
             }
             mip_feedback_snapshot_ = next;
-            std::fill_n(
-                frame.mapped,
-                mip_feedback_capacity_,
-                std::numeric_limits<std::uint32_t>::max());
+            std::fill_n(frame.mapped, mip_feedback_capacity_, std::numeric_limits<std::uint32_t>::max());
             frame.mapped[mip_feedback_capacity_] = 0u;
-            flushGpuBufferVmaAllocation(
-                dc_->vmaAllocator(), frame.allocation, 0u, bytes);
+            flushGpuBufferVmaAllocation(dc_->vmaAllocator(), frame.allocation, 0u, bytes);
         }
         // The buffer belongs to a fence-safe FIF slot at this point. Mark the
         // serial that will consume it; a later reuse can adopt all atomicMin
@@ -672,9 +651,7 @@ namespace lux::render
             .height = 1,
         };
 
-        auto texture = lux::rdesc::Texture::copyOf(
-            info,
-            std::as_bytes(std::span{white}));
+        auto texture = lux::rdesc::Texture::copyOf(info, std::as_bytes(std::span{white}));
         if (!texture)
             return {};
         return std::move(*texture);

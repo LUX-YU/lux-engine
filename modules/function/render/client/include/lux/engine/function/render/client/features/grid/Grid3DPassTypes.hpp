@@ -21,12 +21,12 @@ namespace lux::render
      */
     struct Grid3DParams
     {
-        float planeY    = 0.0f;   ///< World-space Y of the grid plane
-        float cellSize  = 1.0f;   ///< Size of one grid cell in world units
-        float linePx    = 1.1f;   ///< Line half-width in screen pixels
-        float fadeDist  = 50.0f;  ///< Distance at which the grid fully fades out
-        float holeRatio = 0.45f;  ///< Fraction of each cell that is transparent
-        std::uint32_t onTop = 0;  ///< 1 = X-ray (fragment writes near depth), 0 = depth-tested
+        float planeY = 0.0f;     ///< World-space Y of the grid plane
+        float cellSize = 1.0f;   ///< Size of one grid cell in world units
+        float linePx = 1.1f;     ///< Line half-width in screen pixels
+        float fadeDist = 50.0f;  ///< Distance at which the grid fully fades out
+        float holeRatio = 0.45f; ///< Fraction of each cell that is transparent
+        std::uint32_t onTop = 0; ///< 1 = X-ray (fragment writes near depth), 0 = depth-tested
     };
 
 } // namespace lux::render

@@ -22,8 +22,7 @@ namespace lux::render
 {
     /// 打印 what + 调用点,然后 std::abort()。
     /// 位置由 std::source_location 自动带上,调用点不需要写宏。
-    [[noreturn]] LUX_FUNCTION_PUBLIC void renderFatal(
-        std::string_view            what,
-        const std::source_location& where = std::source_location::current()) noexcept;
+    [[noreturn]] LUX_FUNCTION_PUBLIC void
+    renderFatal(std::string_view what, const std::source_location& where = std::source_location::current()) noexcept;
 
 } // namespace lux::render

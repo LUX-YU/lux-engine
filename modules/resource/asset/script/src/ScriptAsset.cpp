@@ -17,7 +17,7 @@ namespace lux::asset
 
         class Writer final
         {
-          public:
+        public:
             void u8(std::uint8_t value)
             {
                 bytes_.push_back(static_cast<std::byte>(value));
@@ -54,15 +54,14 @@ namespace lux::asset
                 return std::move(bytes_);
             }
 
-          private:
+        private:
             std::vector<std::byte> bytes_;
         };
 
         class Reader final
         {
-          public:
-            explicit Reader(std::span<const std::byte> bytes) noexcept
-                : bytes_(bytes)
+        public:
+            explicit Reader(std::span<const std::byte> bytes) noexcept : bytes_(bytes)
             {
             }
 
@@ -100,28 +99,18 @@ namespace lux::asset
                 return true;
             }
 
-            [[nodiscard]] bool string(
-                std::string& value,
-                std::size_t& decoded,
-                std::size_t limit
-            )
+            [[nodiscard]] bool string(std::string& value, std::size_t& decoded, std::size_t limit)
             {
                 std::uint32_t size{};
                 if (!u32(size) || size > remaining() || size > limit - decoded)
                     return false;
-                value.assign(
-                    reinterpret_cast<const char*>(bytes_.data() + offset_),
-                    size
-                );
+                value.assign(reinterpret_cast<const char*>(bytes_.data() + offset_), size);
                 offset_ += size;
                 decoded += size;
                 return true;
             }
 
-            [[nodiscard]] bool take(
-                std::size_t size,
-                std::span<const std::byte>& value
-            ) noexcept
+            [[nodiscard]] bool take(std::size_t size, std::span<const std::byte>& value) noexcept
             {
                 if (size > remaining())
                     return false;
@@ -135,7 +124,7 @@ namespace lux::asset
                 return bytes_.size() - offset_;
             }
 
-          private:
+        private:
             std::span<const std::byte> bytes_;
             std::size_t offset_{};
         };
@@ -147,20 +136,13 @@ namespace lux::asset
             writer.u8(static_cast<std::uint8_t>(type.pass));
         }
 
-        [[nodiscard]] bool readType(
-            Reader& reader,
-            lux::rdesc::ScriptValueType& type,
-            std::size_t& decoded,
-            std::size_t limit
-        )
+        [[nodiscard]] bool
+        readType(Reader& reader, lux::rdesc::ScriptValueType& type, std::size_t& decoded, std::size_t limit)
         {
             std::uint8_t pass{};
-            return reader.string(type.canonical_name, decoded, limit) &&
-                reader.u64(type.type_id) && reader.u8(pass) &&
-                pass <= static_cast<std::uint8_t>(
-                    lux::script::EScriptPassMode::CONST_REF
-                ) &&
-                ((type.pass = static_cast<lux::script::EScriptPassMode>(pass)), true);
+            return reader.string(type.canonical_name, decoded, limit) && reader.u64(type.type_id) && reader.u8(pass) &&
+                   pass <= static_cast<std::uint8_t>(lux::script::EScriptPassMode::CONST_REF) &&
+                   ((type.pass = static_cast<lux::script::EScriptPassMode>(pass)), true);
         }
 
         template <class Type>
@@ -172,8 +154,7 @@ namespace lux::asset
             std::size_t remaining
         )
         {
-            if (count > remaining ||
-                count > (limit - decoded) / sizeof(Type))
+            if (count > remaining || count > (limit - decoded) / sizeof(Type))
             {
                 return false;
             }
@@ -182,13 +163,8 @@ namespace lux::asset
             return true;
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            std::vector<std::byte>,
-            EAssetCodecError>
-        encodeScriptAsset(
-            const void* payload,
-            const AssetEncodeContext& context
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, EAssetCodecError>
+        encodeScriptAsset(const void* payload, const AssetEncodeContext& context) noexcept
         {
             if (payload == nullptr)
                 return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
@@ -205,13 +181,11 @@ namespace lux::asset
                 writer.u32(static_cast<std::uint32_t>(asset.description.model));
                 writer.string(asset.description.module_name);
 
-                if (asset.description.exports.size() >
-                    std::numeric_limits<std::uint32_t>::max())
+                if (asset.description.exports.size() > std::numeric_limits<std::uint32_t>::max())
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
-                writer.u32(static_cast<std::uint32_t>(
-                    asset.description.exports.size()));
+                writer.u32(static_cast<std::uint32_t>(asset.description.exports.size()));
                 for (const auto& function : asset.description.exports)
                 {
                     writer.string(function.name);
@@ -224,8 +198,7 @@ namespace lux::asset
                         writeType(writer, result);
                 }
 
-                writer.u32(static_cast<std::uint32_t>(
-                    asset.description.dependencies.size()));
+                writer.u32(static_cast<std::uint32_t>(asset.description.dependencies.size()));
                 for (const auto& dependency : asset.description.dependencies)
                 {
                     writer.string(dependency.kind);
@@ -238,32 +211,24 @@ namespace lux::asset
                 writer.string(provenance.source_hash);
                 writer.string(provenance.built_at);
 
-                if (const auto* lua = std::get_if<lux::rdesc::LuaSourceScript>(
-                        &asset.description.body))
+                if (const auto* lua = std::get_if<lux::rdesc::LuaSourceScript>(&asset.description.body))
                 {
                     writer.string(lua->entry);
                 }
-                else if (const auto* python =
-                    std::get_if<lux::rdesc::PythonSourceScript>(
-                        &asset.description.body))
+                else if (const auto* python = std::get_if<lux::rdesc::PythonSourceScript>(&asset.description.body))
                 {
                     writer.string(python->entry);
                 }
-                else if (const auto* native =
-                    std::get_if<lux::rdesc::NativeModuleScript>(
-                        &asset.description.body))
+                else if (const auto* native = std::get_if<lux::rdesc::NativeModuleScript>(&asset.description.body))
                 {
                     writer.u32(native->abi_version);
                     writer.u64(native->state_layout_hash);
                     writer.u32(native->state_size);
                     writer.u32(native->state_align);
-                    writer.u32(static_cast<std::uint32_t>(
-                        native->state_defaults.size()));
+                    writer.u32(static_cast<std::uint32_t>(native->state_defaults.size()));
                     writer.raw(native->state_defaults);
                 }
-                else if (const auto* cpp_static =
-                    std::get_if<lux::rdesc::CppStaticScript>(
-                        &asset.description.body))
+                else if (const auto* cpp_static = std::get_if<lux::rdesc::CppStaticScript>(&asset.description.body))
                 {
                     writer.string(cpp_static->descriptor);
                 }
@@ -286,10 +251,7 @@ namespace lux::asset
         }
 
         [[nodiscard]] lux::cxx::expected<DecodedAsset, EAssetCodecError>
-        decodeScriptAsset(
-            std::span<const std::byte> bytes,
-            const AssetDecodeContext& context
-        ) noexcept
+        decodeScriptAsset(std::span<const std::byte> bytes, const AssetDecodeContext& context) noexcept
         {
             if (bytes.size() > context.limits.max_input_bytes)
                 return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
@@ -297,21 +259,17 @@ namespace lux::asset
             {
                 Reader reader(bytes);
                 std::uint32_t magic{}, wire{}, schema{}, kind{}, model{};
-                if (!reader.u32(magic) || !reader.u32(wire) ||
-                    !reader.u32(schema) || !reader.u32(kind) ||
-                    !reader.u32(model) ||
-                    magic != ScriptAssetPrimaryMagic || wire != kWireVersion ||
-                    schema != lux::rdesc::Script::kSchemaVersion ||
-                    model > static_cast<std::uint32_t>(
-                        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR) ||
-                    (kind != static_cast<std::uint32_t>(
-                         lux::rdesc::Script::Kind::LUA_SOURCE) &&
-                     kind != static_cast<std::uint32_t>(
-                         lux::rdesc::Script::Kind::PYTHON_SOURCE) &&
-                     kind != static_cast<std::uint32_t>(
-                         lux::rdesc::Script::Kind::NATIVE_MODULE) &&
-                     kind != static_cast<std::uint32_t>(
-                         lux::rdesc::Script::Kind::CPP_STATIC)))
+                const bool has_valid_header = reader.u32(magic) && reader.u32(wire) && reader.u32(schema) &&
+                    reader.u32(kind) && reader.u32(model);
+                const bool is_known_kind =
+                    kind == static_cast<std::uint32_t>(lux::rdesc::Script::Kind::LUA_SOURCE) ||
+                    kind == static_cast<std::uint32_t>(lux::rdesc::Script::Kind::PYTHON_SOURCE) ||
+                    kind == static_cast<std::uint32_t>(lux::rdesc::Script::Kind::NATIVE_MODULE) ||
+                    kind == static_cast<std::uint32_t>(lux::rdesc::Script::Kind::CPP_STATIC);
+                const bool is_invalid_header = !has_valid_header || magic != ScriptAssetPrimaryMagic ||
+                    wire != kWireVersion || schema != lux::rdesc::Script::kSchemaVersion ||
+                    model > static_cast<std::uint32_t>(lux::rdesc::EScriptModel::ENTITY_BEHAVIOR) || !is_known_kind;
+                if (is_invalid_header)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
@@ -321,31 +279,27 @@ namespace lux::asset
                 description.model = static_cast<lux::rdesc::EScriptModel>(model);
                 std::size_t decoded = sizeof(ScriptAssetContent);
                 const auto limit = context.limits.max_decoded_bytes;
-                if (decoded > limit ||
-                    !reader.string(description.module_name, decoded, limit))
+                if (decoded > limit || !reader.string(description.module_name, decoded, limit))
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
 
                 std::uint32_t count{};
-                if (!reader.u32(count) || !reserveRecords(
-                        description.exports, count, decoded, limit,
-                        reader.remaining()))
+                if (!reader.u32(count) ||
+                    !reserveRecords(description.exports, count, decoded, limit, reader.remaining()))
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
                 for (std::uint32_t index{}; index < count; ++index)
                 {
                     lux::rdesc::ScriptFunction function;
-                    if (!reader.string(function.name, decoded, limit) ||
-                        !reader.u64(function.symbol_id))
+                    if (!reader.string(function.name, decoded, limit) || !reader.u64(function.symbol_id))
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
                     std::uint32_t type_count{};
-                    if (!reader.u32(type_count) || !reserveRecords(
-                            function.args, type_count, decoded, limit,
-                            reader.remaining()))
+                    if (!reader.u32(type_count) ||
+                        !reserveRecords(function.args, type_count, decoded, limit, reader.remaining()))
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -356,9 +310,8 @@ namespace lux::asset
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         function.args.push_back(std::move(value));
                     }
-                    if (!reader.u32(type_count) || !reserveRecords(
-                            function.returns, type_count, decoded, limit,
-                            reader.remaining()))
+                    if (!reader.u32(type_count) ||
+                        !reserveRecords(function.returns, type_count, decoded, limit, reader.remaining()))
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -372,9 +325,8 @@ namespace lux::asset
                     description.exports.push_back(std::move(function));
                 }
 
-                if (!reader.u32(count) || !reserveRecords(
-                        description.dependencies, count, decoded, limit,
-                        reader.remaining()))
+                if (!reader.u32(count) ||
+                    !reserveRecords(description.dependencies, count, decoded, limit, reader.remaining()))
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
@@ -389,11 +341,13 @@ namespace lux::asset
                     description.dependencies.push_back(std::move(dependency));
                 }
                 auto& provenance = description.provenance;
-                if (!reader.string(provenance.compiler_id, decoded, limit) ||
-                    !reader.string(provenance.compiler_version, decoded, limit) ||
-                    !reader.string(provenance.source_id, decoded, limit) ||
-                    !reader.string(provenance.source_hash, decoded, limit) ||
-                    !reader.string(provenance.built_at, decoded, limit))
+                const bool has_valid_provenance =
+                    reader.string(provenance.compiler_id, decoded, limit) &&
+                    reader.string(provenance.compiler_version, decoded, limit) &&
+                    reader.string(provenance.source_id, decoded, limit) &&
+                    reader.string(provenance.source_hash, decoded, limit) &&
+                    reader.string(provenance.built_at, decoded, limit);
+                if (!has_valid_provenance)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
@@ -417,13 +371,13 @@ namespace lux::asset
                 {
                     lux::rdesc::NativeModuleScript native;
                     std::uint32_t defaults_size{};
-                    if (!reader.u32(native.abi_version) ||
-                        !reader.u64(native.state_layout_hash) ||
-                        !reader.u32(native.state_size) ||
-                        !reader.u32(native.state_align) ||
-                        !reader.u32(defaults_size) ||
-                        defaults_size > reader.remaining() ||
-                        defaults_size > limit - decoded)
+                    const bool has_valid_native_header =
+                        reader.u32(native.abi_version) && reader.u64(native.state_layout_hash) &&
+                        reader.u32(native.state_size) && reader.u32(native.state_align) &&
+                        reader.u32(defaults_size);
+                    const bool is_invalid_native_header = !has_valid_native_header ||
+                        defaults_size > reader.remaining() || defaults_size > limit - decoded;
+                    if (is_invalid_native_header)
                     {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                     }
@@ -447,15 +401,12 @@ namespace lux::asset
                 }
 
                 std::uint64_t payload_size{};
-                if (!reader.u64(payload_size) ||
-                    payload_size > reader.remaining() ||
-                    payload_size > limit - decoded)
+                if (!reader.u64(payload_size) || payload_size > reader.remaining() || payload_size > limit - decoded)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
                 std::span<const std::byte> payload;
-                if (!reader.take(static_cast<std::size_t>(payload_size), payload) ||
-                    reader.remaining() != 0U)
+                if (!reader.take(static_cast<std::size_t>(payload_size), payload) || reader.remaining() != 0U)
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
@@ -476,9 +427,7 @@ namespace lux::asset
         }
     }
 
-    AssetCodecDescriptor scriptAssetCodecDescriptor(
-        std::shared_ptr<const void> code_lifetime
-    )
+    AssetCodecDescriptor scriptAssetCodecDescriptor(std::shared_ptr<const void> code_lifetime)
     {
         return AssetCodecDescriptor{
             AssetTypeId::fromName(ScriptAssetCanonicalName),

@@ -4,24 +4,16 @@
 #include <cassert>
 #include <cstdint>
 
-int main()
+int
+main()
 {
     using namespace lux;
 
     const auto i32 = script::makeScriptSemanticType<std::int32_t>();
     rdesc::Script description;
     description.module_name = "lux.test.script";
-    description.exports.push_back({
-        "tick",
-        7U,
-        {{std::string(i32.canonical_name), i32.type_id, i32.pass}},
-        {}});
-    description.body = rdesc::NativeModuleScript{
-        LUX_SCRIPT_ABI_VERSION,
-        91U,
-        4U,
-        4U,
-        {std::byte{1U}, std::byte{2U}}};
+    description.exports.push_back({"tick", 7U, {{std::string(i32.canonical_name), i32.type_id, i32.pass}}, {}});
+    description.body = rdesc::NativeModuleScript{LUX_SCRIPT_ABI_VERSION, 91U, 4U, 4U, {std::byte{1U}, std::byte{2U}}};
     assert(rdesc::validScriptDescription(description));
 
     auto duplicate = description;

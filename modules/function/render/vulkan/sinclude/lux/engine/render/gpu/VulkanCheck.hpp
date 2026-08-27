@@ -5,10 +5,7 @@
 
 namespace lux::render
 {
-    inline void vk_check(
-        VkResult result,
-        const char* expression = nullptr
-    )
+    inline void vk_check(VkResult result, const char* expression = nullptr)
     {
         if (result == VK_SUCCESS)
             return;
@@ -31,12 +28,13 @@ namespace lux::render
  * 「某个 Vulkan 调用失败了」。
  */
 #ifndef VK_EXPECT
-#define VK_EXPECT(x)                                                              \
-    do {                                                                          \
-        const VkResult _vk_r = (x);                                               \
-        if (_vk_r != VK_SUCCESS)                                                  \
-            return ::lux::render::renderFailure<                                  \
-                ::lux::render::err::device::VulkanCallFailed>(                    \
-                    ::lux::render::encodeVkResult(_vk_r));                        \
+#define VK_EXPECT(x)                                                                                                   \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        const VkResult _vk_r = (x);                                                                                    \
+        if (_vk_r != VK_SUCCESS)                                                                                       \
+            return ::lux::render::renderFailure<::lux::render::err::device::VulkanCallFailed>(                         \
+                ::lux::render::encodeVkResult(_vk_r) \
+            ); \
     } while (0)
 #endif

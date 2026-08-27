@@ -5,7 +5,8 @@ struct world_mutable_get_negative final
     int value{};
 };
 
-int main()
+int
+main()
 {
     lux::simulation::ecs::EcsState world;
     world.get<world_mutable_get_negative>(lux::simulation::ecs::NullEntity).value = 1;

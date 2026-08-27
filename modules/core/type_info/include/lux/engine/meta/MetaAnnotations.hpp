@@ -16,28 +16,27 @@
 /// Select compile-time, runtime, or both type-information projections.
 /// The runtime projection temporarily retains the established luxref marker
 /// family while the generator consumes a separate luxtype projection marker.
-#define LUX_TYPE_INFO(mode, ...) \
-    LUX_META(luxref::class, type_info=#mode, ##__VA_ARGS__) \
-    LUX_META(luxtype::type, projection=#mode, ##__VA_ARGS__)
+#define LUX_TYPE_INFO(mode, ...)                                                                                       \
+    LUX_META(luxref::class, type_info = #mode, ##__VA_ARGS__)                                                          \
+    LUX_META(luxtype::type, projection = #mode, ##__VA_ARGS__)
 
 /// Mark a free function for reflection.
-#define LUX_FUNC(...)     LUX_META(luxref::function, ##__VA_ARGS__)
+#define LUX_FUNC(...) LUX_META(luxref::function, ##__VA_ARGS__)
 
 /// Mark an enum for reflection.
-#define LUX_ENUM_INFO(mode, ...) \
-    LUX_META(luxref::enum, type_info=#mode, ##__VA_ARGS__) \
-    LUX_META(luxtype::enum, projection=#mode, ##__VA_ARGS__)
+#define LUX_ENUM_INFO(mode, ...)                                                                                       \
+    LUX_META(luxref::enum, type_info = #mode, ##__VA_ARGS__)                                                           \
+    LUX_META(luxtype::enum, projection = #mode, ##__VA_ARGS__)
 
 /// A field participates in TypeStaticInfo unless skip_static=true; the runtime
 /// projection likewise honours skip_runtime=true.
-#define LUX_TYPE_MEMBER(...) \
-    LUX_META(luxtype::member, ##__VA_ARGS__)
+#define LUX_TYPE_MEMBER(...) LUX_META(luxtype::member, ##__VA_ARGS__)
 
 /// Mark a property (generic).
 #define LUX_PROPERTY(...) LUX_META(luxref::property, ##__VA_ARGS__)
 
 /// Mark a function parameter.
-#define LUX_PARAM(...)    LUX_META(luxref::property::param, ##__VA_ARGS__)
+#define LUX_PARAM(...) LUX_META(luxref::property::param, ##__VA_ARGS__)
 
 /// Mark a struct/class member field for inspector display.
 /// Supported annotation keys:
@@ -49,17 +48,17 @@
 ///   readonly=true           Show the field but prevent editing.
 ///   labels=<a>,<b>,…        Per-component axis labels for vector fields
 ///                           (e.g. labels=R,G,B overrides the default X/Y/Z).
-#define LUX_MEMBER(...)   LUX_META(luxref::property::member, ##__VA_ARGS__)
+#define LUX_MEMBER(...) LUX_META(luxref::property::member, ##__VA_ARGS__)
 
 /// Explicitly exclude a public member from reflection.
 /// Place this macro on any public field or method that should be invisible to
 /// the reflection system and the inspector, even though it is public.
 /// Example:
 ///   bool LUX_NO_MEMBER() dirty{false};
-#define LUX_NO_MEMBER()   LUX_META(luxref::property::skip)
+#define LUX_NO_MEMBER() LUX_META(luxref::property::skip)
 
 /// Mark a method for reflection.
-#define LUX_METHOD(...)   LUX_META(luxref::property::method, ##__VA_ARGS__)
+#define LUX_METHOD(...) LUX_META(luxref::property::method, ##__VA_ARGS__)
 
 // ============================================================================
 //  PassParams annotations (marker family `luxpass`, disjoint from `luxref`)
@@ -79,12 +78,12 @@
 /// Mark a struct as a render-pass parameter block (the generator's root).
 /// Exactly one per header (v0): the .lglslh binding order is derived from
 /// this struct's resource-field declaration order.
-#define LUX_PASS_PARAMS()   LUX_META(luxpass::params)
+#define LUX_PASS_PARAMS() LUX_META(luxpass::params)
 
 /// Mark the scalar sub-struct (push-constant段). Combine with
 /// LUX_TYPE_INFO(runtime) when
 /// the same struct feeds the editor panel.
-#define LUX_PASS_SCALARS()  LUX_META(luxpass::scalars)
+#define LUX_PASS_SCALARS() LUX_META(luxpass::scalars)
 
 /// Mark a resource field inside a LUX_PASS_PARAMS() struct. Key/value only
 /// (bare tokens don't survive annotation parsing reliably):
@@ -93,7 +92,7 @@
 ///   role=write     color-attachment output (RGResourceHandle)
 ///   glsl=<uName>   GLSL uniform identifier emitted into the .lglslh
 ///   for=<field>    sampler pairing: the read field this sampler serves
-#define LUX_RESOURCE(...)   LUX_META(luxpass::resource, ##__VA_ARGS__)
+#define LUX_RESOURCE(...) LUX_META(luxpass::resource, ##__VA_ARGS__)
 
 // ============================================================================
 //  Comm-ops annotations (marker family `luxop`, disjoint from luxref/luxpass)
@@ -141,8 +140,8 @@
 ///   method=<proxyMethod>                   generated Proxy method name
 ///   reply=<CppType>                        reply POD → CommandTraits spec +
 ///                                          RenderRequest<reply> return
-#define LUX_OP(...)          LUX_META(luxop::op, ##__VA_ARGS__)
+#define LUX_OP(...) LUX_META(luxop::op, ##__VA_ARGS__)
 
 /// Mark the BlobRef member inside a kind=blob payload — becomes the op
 /// descriptor's `blob_field` pointer-to-member (sendBlob writes it).
-#define LUX_OP_BLOB()        LUX_META(luxop::blob_field)
+#define LUX_OP_BLOB() LUX_META(luxop::blob_field)

@@ -32,9 +32,8 @@ namespace lux::simulation::ecs
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {
-            return generation != 0U &&
-                producer != std::numeric_limits<std::uint32_t>::max() &&
-                ordinal != std::numeric_limits<std::uint32_t>::max();
+            return generation != 0U && producer != std::numeric_limits<std::uint32_t>::max() &&
+                   ordinal != std::numeric_limits<std::uint32_t>::max();
         }
     };
 
@@ -62,7 +61,7 @@ namespace lux::simulation::ecs
 
     class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC EcsCommandWriter final
     {
-      public:
+    public:
         EcsCommandWriter() noexcept = default;
         ~EcsCommandWriter() noexcept;
         EcsCommandWriter(EcsCommandWriter&& other) noexcept;
@@ -74,44 +73,26 @@ namespace lux::simulation::ecs
         [[nodiscard]] DeferredEntity create() noexcept;
         void destroy(Entity entity) noexcept;
 
-        template <class Component, class... Args>
-        [[nodiscard]] bool emplace(Entity entity, Args&&... args) noexcept
+        template <class Component, class... Args> [[nodiscard]] bool emplace(Entity entity, Args&&... args) noexcept
         {
-            return emplaceImpl<Component>(
-                entity,
-                {},
-                false,
-                std::forward<Args>(args)...
-            );
+            return emplaceImpl<Component>(entity, {}, false, std::forward<Args>(args)...);
         }
 
         template <class Component, class... Args>
-        [[nodiscard]] bool emplace(
-            DeferredEntity entity,
-            Args&&... args
-        ) noexcept
+        [[nodiscard]] bool emplace(DeferredEntity entity, Args&&... args) noexcept
         {
-            return emplaceImpl<Component>(
-                NullEntity,
-                entity,
-                true,
-                std::forward<Args>(args)...
+            return emplaceImpl<Component>(NullEntity, entity, true, std::forward<Args>(args)...);
+        }
+
+        template <class Component> [[nodiscard]] bool remove(Entity entity) noexcept
+        {
+            return recordRemove(entity, [](Registry& registry, Entity target) {
+                registry.template remove<Component>(target);
+            }
             );
         }
 
-        template <class Component>
-        [[nodiscard]] bool remove(Entity entity) noexcept
-        {
-            return recordRemove(
-                entity,
-                [](Registry& registry, Entity target)
-                {
-                    registry.template remove<Component>(target);
-                }
-            );
-        }
-
-      private:
+    private:
         struct RawCommandVTable final
         {
             std::size_t size{};
@@ -121,19 +102,11 @@ namespace lux::simulation::ecs
             void (*destroy)(void*) noexcept;
         };
 
-        EcsCommandWriter(
-            EcsCommandBuffer& owner,
-            std::uint32_t producer,
-            std::uint32_t generation
-        ) noexcept;
+        EcsCommandWriter(EcsCommandBuffer& owner, std::uint32_t producer, std::uint32_t generation) noexcept;
 
         template <class Component, class... Args>
-        [[nodiscard]] bool emplaceImpl(
-            Entity entity,
-            DeferredEntity deferred,
-            bool uses_deferred,
-            Args&&... args
-        ) noexcept
+        [[nodiscard]] bool
+        emplaceImpl(Entity entity, DeferredEntity deferred, bool uses_deferred, Args&&... args) noexcept
         {
             using Payload = std::tuple<std::decay_t<Args>...>;
             static_assert(std::is_nothrow_destructible_v<Payload>);
@@ -143,38 +116,18 @@ namespace lux::simulation::ecs
                 const RawCommandVTable table{
                     sizeof(Payload),
                     alignof(Payload),
-                    [](void* target, void* source)
-                    {
-                        std::construct_at(
-                            static_cast<Payload*>(target),
-                            std::move(*static_cast<Payload*>(source))
-                        );
+                    [](void* target, void* source) {
+                        std::construct_at(static_cast<Payload*>(target), std::move(*static_cast<Payload*>(source)));
                     },
-                    [](void* raw, Registry& registry, Entity target)
-                    {
+                    [](void* raw, Registry& registry, Entity target) {
                         auto& values = *static_cast<Payload*>(raw);
                         std::apply(
-                            [&](auto&... value)
-                            {
-                                registry.template emplace<Component>(
-                                    target,
-                                    std::move(value)...
-                                );
-                            },
+                            [&](auto&... value) { registry.template emplace<Component>(target, std::move(value)...); },
                             values
                         );
                     },
-                    [](void* raw) noexcept
-                    {
-                        std::destroy_at(static_cast<Payload*>(raw));
-                    }};
-                return recordPayload(
-                    entity,
-                    deferred,
-                    uses_deferred,
-                    table,
-                    std::addressof(payload)
-                );
+                    [](void* raw) noexcept { std::destroy_at(static_cast<Payload*>(raw)); }};
+                return recordPayload(entity, deferred, uses_deferred, table, std::addressof(payload));
             }
             catch (const std::bad_alloc&)
             {
@@ -208,7 +161,7 @@ namespace lux::simulation::ecs
 
     class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC EcsCommandBuffer final
     {
-      public:
+    public:
         EcsCommandBuffer();
         ~EcsCommandBuffer();
         EcsCommandBuffer(EcsCommandBuffer&&) noexcept;
@@ -216,33 +169,22 @@ namespace lux::simulation::ecs
         EcsCommandBuffer(const EcsCommandBuffer&) = delete;
         EcsCommandBuffer& operator=(const EcsCommandBuffer&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, EcsCommandFailure> prepare(
-            std::span<const EcsCommandProducerCapacity> capacities
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EcsCommandFailure>
+        prepare(std::span<const EcsCommandProducerCapacity> capacities) noexcept;
         void reset() noexcept;
-        [[nodiscard]] lux::cxx::expected<EcsCommandWriter, EcsCommandFailure>
-        begin(std::size_t producer) noexcept;
-        [[nodiscard]] std::optional<Entity> resolve(
-            DeferredEntity entity
-        ) const noexcept;
+        [[nodiscard]] lux::cxx::expected<EcsCommandWriter, EcsCommandFailure> begin(std::size_t producer) noexcept;
+        [[nodiscard]] std::optional<Entity> resolve(DeferredEntity entity) const noexcept;
         [[nodiscard]] bool failed() const noexcept;
         [[nodiscard]] std::size_t allocationEvents() const noexcept;
         [[nodiscard]] std::size_t discarded() const noexcept;
         void discardPending() noexcept;
 
-      private:
+    private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
-        [[nodiscard]] DeferredEntity recordCreate(
-            std::uint32_t producer,
-            std::uint32_t generation
-        ) noexcept;
-        void recordDestroy(
-            std::uint32_t producer,
-            std::uint32_t generation,
-            Entity entity
-        ) noexcept;
+        [[nodiscard]] DeferredEntity recordCreate(std::uint32_t producer, std::uint32_t generation) noexcept;
+        void recordDestroy(std::uint32_t producer, std::uint32_t generation, Entity entity) noexcept;
         [[nodiscard]] bool recordPayload(
             std::uint32_t producer,
             std::uint32_t generation,
@@ -258,22 +200,14 @@ namespace lux::simulation::ecs
             Entity entity,
             EcsCommandWriter::RemoveFn remove
         ) noexcept;
-        void fail(
-            std::uint32_t producer,
-            std::uint32_t generation,
-            EEcsCommandError error
-        ) noexcept;
+        void fail(std::uint32_t producer, std::uint32_t generation, EEcsCommandError error) noexcept;
         void end(std::uint32_t producer, std::uint32_t generation) noexcept;
 
         friend class EcsCommandWriter;
-        friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<
-            void,
-            EcsCommandFailure>
+        friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<void, EcsCommandFailure>
         applyEcsCommands(Registry&, EcsCommandBuffer&) noexcept;
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<
-        void,
-        EcsCommandFailure>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<void, EcsCommandFailure>
     applyEcsCommands(Registry& registry, EcsCommandBuffer& commands) noexcept;
 }

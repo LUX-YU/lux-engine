@@ -5,7 +5,7 @@
 
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
-#include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp>  // DestroyResourcePayload<>
+#include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp> // DestroyResourcePayload<>
 
 #include <cstdint>
 #include <type_traits>
@@ -25,8 +25,8 @@ namespace lux::render
     /// returns a ShaderHandle via ShaderCompiledReply.
     struct CompileShaderPayload
     {
-        ExternalDataRef spirv_data{};        ///< raw SPIR-V bytes
-        ExternalDataRef shader_info_data{};  ///< ShaderInfo::serialize() output
+        ExternalDataRef spirv_data{};       ///< raw SPIR-V bytes
+        ExternalDataRef shader_info_data{}; ///< ShaderInfo::serialize() output
     };
     static_assert(std::is_trivially_copyable_v<CompileShaderPayload>);
 

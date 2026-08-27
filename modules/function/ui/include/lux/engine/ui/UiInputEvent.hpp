@@ -42,6 +42,5 @@ namespace lux::ui
         bool focused{false};
     };
 
-    using UiInputEvent =
-        std::variant<UiPointerMove, UiPointerButton, UiPointerWheel, UiKey, UiText, UiWindowFocus>;
+    using UiInputEvent = std::variant<UiPointerMove, UiPointerButton, UiPointerWheel, UiKey, UiText, UiWindowFocus>;
 } // namespace lux::ui

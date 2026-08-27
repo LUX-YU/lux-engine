@@ -28,13 +28,9 @@ namespace lux::render
 
         Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept override;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept override;
-        bool allocateViewState(
-            std::uint32_t view,
-            RenderScene& scene) override;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept override;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept override;
+        bool allocateViewState(std::uint32_t view, RenderScene& scene) override;
         void onFrameBegin(const FeatureFrameContext& context) override;
         void addPasses(RGBuilder& builder) override;
 
@@ -48,7 +44,7 @@ namespace lux::render
         VkDescriptorSetLayout pick_set_layout_{VK_NULL_HANDLE};
     };
 
-    inline RenderClusterFeature::RenderClusterFeature()
-        : RenderClusterFeature(Config{})
-    {}
+    inline RenderClusterFeature::RenderClusterFeature() : RenderClusterFeature(Config{})
+    {
+    }
 } // namespace lux::render

@@ -3,11 +3,10 @@
 #include <cstdint>
 #include <filesystem>
 
-int main()
+int
+main()
 {
-    auto loaded = lux::script::loadNativeModule(
-        std::filesystem::path{LUX_SCRIPT_NATIVE_FIXTURE}
-    );
+    auto loaded = lux::script::loadNativeModule(std::filesystem::path{LUX_SCRIPT_NATIVE_FIXTURE});
     if (!loaded)
         return 1;
     const auto* increment = loaded.value().findFunction("Increment");

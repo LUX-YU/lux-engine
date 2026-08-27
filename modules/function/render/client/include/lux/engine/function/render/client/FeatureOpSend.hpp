@@ -12,10 +12,10 @@
 // ============================================================================
 
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp>
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>   // builder() + push family
+#include <lux/engine/function/render/client/RenderFrameSession.hpp> // builder() + push family
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
-#include <lux/engine/function/render/client/RenderRequest.hpp>   // RenderRequest, RenderRequestFactory
+#include <lux/engine/function/render/client/RenderRequest.hpp> // RenderRequest, RenderRequestFactory
 #include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
 
 #include <span>
@@ -28,8 +28,7 @@ namespace lux::render
     /// contract as sendWithReply / sendBulk, so an absent feature degrades to
     /// nothing rather than dispatching an unknown TypeId.
     template <class Op, FeatureOpDesc... Ops>
-    inline void send(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids,
-                     const typename Op::Payload& payload)
+    inline void send(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
     {
         static_assert(Op::lane == EOperationLane::Frame);
         const TypeId id = ids.template id<Op>();
@@ -41,8 +40,8 @@ namespace lux::render
     /// RenderRequest<Reply>. A missing operation settles immediately as a
     /// structured dispatch failure; an unresolved request is never returned.
     template <class Op, FeatureOpDesc... Ops>
-    [[nodiscard]] inline auto sendWithReply(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids,
-                                            const typename Op::Payload& payload)
+    [[nodiscard]] inline auto
+    sendWithReply(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
     {
         static_assert(Op::lane == EOperationLane::Frame);
         using Reply = typename CommandTraits<typename Op::Payload>::Reply;
@@ -61,8 +60,8 @@ namespace lux::render
 
     /// Bulk op: N payloads in one command. No-op when empty or unregistered.
     template <class Op, FeatureOpDesc... Ops>
-    inline void sendBulk(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids,
-                         std::span<const typename Op::Payload> items)
+    inline void
+    sendBulk(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids, std::span<const typename Op::Payload> items)
     {
         static_assert(Op::lane == EOperationLane::Frame);
         const TypeId id = ids.template id<Op>();
@@ -75,9 +74,13 @@ namespace lux::render
     /// a pointer-to-member), then route by reply-ness. The caller fills the rest
     /// of the payload; the blob plumbing is derived from the op descriptor.
     template <class Op, FeatureOpDesc... Ops>
-    auto sendBlob(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids,
-                  typename Op::Payload payload,
-                  std::span<const std::byte> blob_bytes, std::size_t align)
+    auto sendBlob(
+        RenderFrameSession& session,
+        const FeatureOpIds<Ops...>& ids,
+        typename Op::Payload payload,
+        std::span<const std::byte> blob_bytes,
+        std::size_t align
+    )
     {
         static_assert(Op::lane == EOperationLane::Frame);
         payload.*(Op::blob_field) = session.builder().pushBlob(blob_bytes, align);
@@ -88,10 +91,8 @@ namespace lux::render
     }
 
     template <class Op, FeatureOpDesc... Ops>
-    inline void send(
-        RenderControlSession& session,
-        const FeatureOpIds<Ops...>& ids,
-        const typename Op::Payload& payload)
+    inline void
+    send(RenderControlSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
     {
         static_assert(Op::lane == EOperationLane::Control);
         const TypeId id = ids.template id<Op>();
@@ -100,10 +101,8 @@ namespace lux::render
     }
 
     template <class Op, FeatureOpDesc... Ops>
-    [[nodiscard]] inline auto sendWithReply(
-        RenderControlSession& session,
-        const FeatureOpIds<Ops...>& ids,
-        const typename Op::Payload& payload)
+    [[nodiscard]] inline auto
+    sendWithReply(RenderControlSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
     {
         static_assert(Op::lane == EOperationLane::Control);
         using Reply = typename CommandTraits<typename Op::Payload>::Reply;
@@ -116,21 +115,15 @@ namespace lux::render
     }
 
     template <class Op, FeatureOpDesc... Ops>
-    [[nodiscard]] inline UploadSubmitNoReplyResult send(
-        const RenderUploadClient& session,
-        const FeatureOpIds<Ops...>& ids,
-        const typename Op::Payload& payload)
+    [[nodiscard]] inline UploadSubmitNoReplyResult
+    send(const RenderUploadClient& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
     {
         static_assert(Op::lane == EOperationLane::Upload);
         const TypeId id = ids.template id<Op>();
         if (id == kInvalidTypeId)
-            return lux::cxx::unexpected(
-                ERenderUploadSubmitError::PAYLOAD_INVALID);
+            return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
         return session.trySubmitNoReply(
-            [&](RenderUploadClient::Builder& builder)
-            {
-                builder.push(opcode_of_v<Op>, id, payload);
-            }
+            [&](RenderUploadClient::Builder& builder) { builder.push(opcode_of_v<Op>, id, payload); }
         );
     }
 
@@ -138,24 +131,20 @@ namespace lux::render
     [[nodiscard]] inline auto sendWithReply(
         const RenderUploadClient& session,
         const FeatureOpIds<Ops...>& ids,
-        const typename Op::Payload& payload)
+        const typename Op::Payload& payload
+    )
     {
         static_assert(Op::lane == EOperationLane::Upload);
         using Reply = typename CommandTraits<typename Op::Payload>::Reply;
         const TypeId id = ids.template id<Op>();
         if (id == kInvalidTypeId)
-            return UploadSubmitResult<Reply>{lux::cxx::unexpected(
-                ERenderUploadSubmitError::PAYLOAD_INVALID)};
-        return session.template trySubmit<Reply>(
-            [&](RenderUploadClient::Builder& builder)
-            {
-                if constexpr (opcode_of_v<Op> == opcodes::ResourceOp)
-                    builder.pushPreparedResource(id, payload);
-                else
-                    static_assert(
-                        opcode_of_v<Op> == opcodes::ResourceOp,
-                        "prepared uploads currently require ResourceOp");
-            }
+            return UploadSubmitResult<Reply>{lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID)};
+        return session.template trySubmit<Reply>([&](RenderUploadClient::Builder& builder) {
+            if constexpr (opcode_of_v<Op> == opcodes::ResourceOp)
+                builder.pushPreparedResource(id, payload);
+            else
+                static_assert(opcode_of_v<Op> == opcodes::ResourceOp, "prepared uploads currently require ResourceOp");
+        }
         );
     }
 
@@ -165,7 +154,8 @@ namespace lux::render
         const FeatureOpIds<Ops...>& ids,
         typename Op::Payload payload,
         std::span<const std::byte> blob_bytes,
-        std::size_t align)
+        std::size_t align
+    )
     {
         static_assert(Op::lane == EOperationLane::Upload);
         const TypeId id = ids.template id<Op>();
@@ -173,34 +163,26 @@ namespace lux::render
         {
             using Reply = typename CommandTraits<typename Op::Payload>::Reply;
             if (id == kInvalidTypeId)
-                return UploadSubmitResult<Reply>{lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID)};
-            return session.template trySubmit<Reply>(
-                [&](RenderUploadClient::Builder& builder)
-                {
-                    payload.*(Op::blob_field) =
-                        builder.pushBlob(blob_bytes, align);
-                    if constexpr (opcode_of_v<Op> == opcodes::ResourceOp)
-                        builder.pushPreparedResource(id, payload);
-                    else
-                        static_assert(
-                            opcode_of_v<Op> == opcodes::ResourceOp,
-                            "prepared uploads currently require ResourceOp");
-                }
+                return UploadSubmitResult<Reply>{lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID)};
+            return session.template trySubmit<Reply>([&](RenderUploadClient::Builder& builder) {
+                payload.*(Op::blob_field) = builder.pushBlob(blob_bytes, align);
+                if constexpr (opcode_of_v<Op> == opcodes::ResourceOp)
+                    builder.pushPreparedResource(id, payload);
+                else
+                    static_assert(
+                        opcode_of_v<Op> == opcodes::ResourceOp,
+                        "prepared uploads currently require ResourceOp");
+            }
             );
         }
         else
         {
             if (id == kInvalidTypeId)
-                return UploadSubmitNoReplyResult{lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID)};
-            return session.trySubmitNoReply(
-                [&](RenderUploadClient::Builder& builder)
-                {
-                    payload.*(Op::blob_field) =
-                        builder.pushBlob(blob_bytes, align);
-                    builder.push(opcode_of_v<Op>, id, payload);
-                }
+                return UploadSubmitNoReplyResult{lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID)};
+            return session.trySubmitNoReply([&](RenderUploadClient::Builder& builder) {
+                payload.*(Op::blob_field) = builder.pushBlob(blob_bytes, align);
+                builder.push(opcode_of_v<Op>, id, payload);
+            }
             );
         }
     }

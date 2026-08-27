@@ -69,24 +69,17 @@ namespace lux::render
         [[nodiscard]] bool initializeGpuCache(
             DeviceContext& device,
             DeferredDestroyQueue& deferred_destroy,
-            std::uint32_t frames_in_flight);
+            std::uint32_t frames_in_flight
+        );
         void shutdownGpuCache() noexcept;
 
-        [[nodiscard]] bool accepts(
-            TerrainWireId id,
-            std::uint64_t revision) const noexcept;
-        [[nodiscard]] bool upsert(
-            const UploadTerrainPagePayload& header,
-            std::span<const std::byte> page_data);
-        [[nodiscard]] bool remove(
-            TerrainWireId id,
-            std::uint64_t revision) noexcept;
+        [[nodiscard]] bool accepts(TerrainWireId id, std::uint64_t revision) const noexcept;
+        [[nodiscard]] bool upsert(const UploadTerrainPagePayload& header, std::span<const std::byte> page_data);
+        [[nodiscard]] bool remove(TerrainWireId id, std::uint64_t revision) noexcept;
         [[nodiscard]] const Page* find(TerrainWireId id) const noexcept;
 
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept;
 
         /// Marks a page wanted by one View and promotes it to a full-resolution
         /// slot. If the fixed cache is full, the least-recently-wanted page is
@@ -96,8 +89,12 @@ namespace lux::render
             std::span<const ViewOrigin> views,
             float wanted_radius,
             float scene_time,
-            std::uint64_t demotion_delay_frames = 120u) noexcept;
-        void beginFrame() noexcept { ++frame_serial_; }
+            std::uint64_t demotion_delay_frames = 120u
+        ) noexcept;
+        void beginFrame() noexcept
+        {
+            ++frame_serial_;
+        }
 
         [[nodiscard]] TerrainPageCacheStatsReply stats() const noexcept;
         [[nodiscard]] std::uint32_t capacityPages() const noexcept
@@ -118,22 +115,20 @@ namespace lux::render
             return fallback_page_buffer_;
         }
         [[nodiscard]] VkBuffer pageMetadataBuffer() const noexcept
-        { return pageMetadataBuffer(0u); }
+        {
+            return pageMetadataBuffer(0u);
+        }
         [[nodiscard]] std::uint32_t pageMetadataBufferCount() const noexcept;
-        [[nodiscard]] VkBuffer pageMetadataBuffer(
-            std::uint32_t index) const noexcept;
+        [[nodiscard]] VkBuffer pageMetadataBuffer(std::uint32_t index) const noexcept;
         [[nodiscard]] std::uint32_t fallbackCapacityPages() const noexcept
         {
             return fallback_capacity_pages_;
         }
         [[nodiscard]] std::uint32_t selectionCountBufferCount() const noexcept;
-        [[nodiscard]] VkBuffer selectionCountBuffer(
-            std::uint32_t index) const noexcept;
+        [[nodiscard]] VkBuffer selectionCountBuffer(std::uint32_t index) const noexcept;
         void markSelectionSubmitted(std::uint32_t frame_index) noexcept;
         void onSelectionFrameBegin(std::uint32_t frame_index) noexcept;
-        void setRetireScheduler(
-            FrameRetireScheduler* scheduler,
-            FrameRetireScheduler::OwnerToken owner_token) noexcept
+        void setRetireScheduler(FrameRetireScheduler* scheduler, FrameRetireScheduler::OwnerToken owner_token) noexcept
         {
             retire_scheduler_ = scheduler;
             retire_owner_token_ = owner_token;
@@ -151,13 +146,8 @@ namespace lux::render
         void releaseFallback(Page& page) noexcept;
         void deferFullSlotReturn(std::uint32_t slot) noexcept;
         void deferFallbackSlotReturn(std::uint32_t slot) noexcept;
-        [[nodiscard]] float coverageAt(
-            const Page& page,
-            float scene_time) const noexcept;
-        void setDrawable(
-            Page& page,
-            bool drawable,
-            float scene_time) noexcept;
+        [[nodiscard]] float coverageAt(const Page& page, float scene_time) const noexcept;
+        void setDrawable(Page& page, bool drawable, float scene_time) noexcept;
 
         std::unordered_map<std::string, Page> pages_;
         std::unordered_map<std::string, std::uint64_t> latest_revision_;

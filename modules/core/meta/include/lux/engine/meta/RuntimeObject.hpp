@@ -21,7 +21,7 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /*  compile-time config                                               */
         /* ------------------------------------------------------------------ */
-        static constexpr std::size_t SBO_SIZE  = 16;                     // ≤ 16 B
+        static constexpr std::size_t SBO_SIZE = 16; // ≤ 16 B
         static constexpr std::size_t SBO_ALIGN = alignof(std::max_align_t);
 
         union alignas(SBO_ALIGN) Storage
@@ -33,7 +33,7 @@ namespace lux::meta
         // TaggedPtr: store type pointer and heap flag in low bit
         static constexpr uintptr_t HEAP_BIT = 1;
         uintptr_t tagged_type_ = 0;
-        Storage   storage_{};
+        Storage storage_{};
 
     public:
         /* ------------------------------------------------------------------ */
@@ -58,7 +58,8 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         RuntimeObject& operator=(RuntimeObject&& other) noexcept
         {
-            if (this != &other) {
+            if (this != &other)
+            {
                 cleanup();
                 swap(*this, other);
             }
@@ -74,40 +75,36 @@ namespace lux::meta
             setTagged(type_ptr, true);
             if (!cls->construct)
                 std::abort();
-            void* p = ::operator new(
-                type_ptr->size,
-                std::align_val_t{SBO_ALIGN},
-                std::nothrow
-            );
+            void* p = ::operator new(type_ptr->size, std::align_val_t{SBO_ALIGN}, std::nothrow);
             if (!p)
                 std::abort();
             cls->construct(p);
             storage_.heap = p;
         }
 
-		// special support for std::string
-		explicit RuntimeObject(std::string str)
-		{
+        // special support for std::string
+        explicit RuntimeObject(std::string str)
+        {
             static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string");
-			setTagged(&string_class_meta->type, true);
-			void* p = ::operator new(sizeof(std::string), std::align_val_t{SBO_ALIGN});
+            setTagged(&string_class_meta->type, true);
+            void* p = ::operator new(sizeof(std::string), std::align_val_t{SBO_ALIGN});
             new (p) std::string(std::move(str));
-			storage_.heap = p;
-		}
+            storage_.heap = p;
+        }
 
-		// special support for std::string_view
+        // special support for std::string_view
         explicit RuntimeObject(std::string_view str)
         {
-			static_assert(sizeof(std::string_view) <= SBO_SIZE, "std::string_view size exceeds SBO_SIZE");
-			static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string_view");
-			setTagged(&string_class_meta->type, false);
-			new (storage_.sbo) std::string_view(str);
+            static_assert(sizeof(std::string_view) <= SBO_SIZE, "std::string_view size exceeds SBO_SIZE");
+            static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string_view");
+            setTagged(&string_class_meta->type, false);
+            new (storage_.sbo) std::string_view(str);
         }
 
         /* ------------------------------------------------------------------ */
         /* 4. Built-in types ≤ 8 B: stored directly in the SBO (trivially copyable) */
         /* ------------------------------------------------------------------ */
-        template<typename T, typename U = std::decay_t<T>>
+        template <typename T, typename U = std::decay_t<T>>
             requires(sizeof(U) <= SBO_SIZE && std::is_trivially_copyable_v<U> && alignof(U) <= SBO_ALIGN)
         explicit RuntimeObject(T&& v) noexcept
         {
@@ -138,7 +135,7 @@ namespace lux::meta
             }
             else
             {
-                void* p = ::operator new(type->size, std::align_val_t{ SBO_ALIGN });
+                void* p = ::operator new(type->size, std::align_val_t{SBO_ALIGN});
                 std::memset(p, 0, type->size);
                 obj.setTagged(type, true);
                 obj.storage_.heap = p;
@@ -157,21 +154,31 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* 6. State / access                                                  */
         /* ------------------------------------------------------------------ */
-        [[nodiscard]] bool           isValid() const noexcept { return getType() != nullptr; }
-        [[nodiscard]] const RefType* type()    const noexcept { return getType(); }
+        [[nodiscard]] bool isValid() const noexcept
+        {
+            return getType() != nullptr;
+        }
+        [[nodiscard]] const RefType* type() const noexcept
+        {
+            return getType();
+        }
 
-        [[nodiscard]] void*          data()       noexcept { return isHeap() ? storage_.heap : storage_.sbo; }
-        [[nodiscard]] const void*    data() const noexcept { return isHeap() ? storage_.heap : storage_.sbo; }
+        [[nodiscard]] void* data() noexcept
+        {
+            return isHeap() ? storage_.heap : storage_.sbo;
+        }
+        [[nodiscard]] const void* data() const noexcept
+        {
+            return isHeap() ? storage_.heap : storage_.sbo;
+        }
 
-        template<typename T>
-        [[nodiscard]] T& get() & noexcept
+        template <typename T> [[nodiscard]] T& get() & noexcept
         {
             assert(match<T>());
             return *std::launder(reinterpret_cast<T*>(data()));
         }
 
-        template<typename T>
-        [[nodiscard]] const T& get() const& noexcept
+        template <typename T> [[nodiscard]] const T& get() const& noexcept
         {
             assert(match<T>());
             return *std::launder(reinterpret_cast<const T*>(data()));
@@ -188,7 +195,10 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* 8. Reset / swap                                                    */
         /* ------------------------------------------------------------------ */
-        void reset() noexcept { cleanup(); }
+        void reset() noexcept
+        {
+            cleanup();
+        }
 
         friend void swap(RuntimeObject& a, RuntimeObject& b) noexcept
         {
@@ -197,7 +207,10 @@ namespace lux::meta
             swap(a.storage_, b.storage_);
         }
 
-        explicit operator bool() const noexcept { return isValid(); }
+        explicit operator bool() const noexcept
+        {
+            return isValid();
+        }
 
     private:
         [[nodiscard]] const RefType* getType() const noexcept
@@ -224,15 +237,18 @@ namespace lux::meta
         void cleanup() noexcept
         {
             auto* type_ptr = getType();
-            if (!type_ptr) return;
-            if (isHeap()) {
+            if (!type_ptr)
+                return;
+            if (isHeap())
+            {
                 // Trivially-copyable payloads (defaultOf's heap path) have
                 // no destructor to run — and may not even carry a RefClass.
-                if (!type_ptr->traits.is_trivially_copyable) {
+                if (!type_ptr->traits.is_trivially_copyable)
+                {
                     auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
                     cls->destruct(storage_.heap);
                 }
-                ::operator delete(storage_.heap, std::align_val_t{ SBO_ALIGN });
+                ::operator delete(storage_.heap, std::align_val_t{SBO_ALIGN});
                 storage_.heap = nullptr;
             }
             tagged_type_ = 0;
@@ -244,13 +260,15 @@ namespace lux::meta
         bool cloneImpl(RuntimeObject& dst)
         {
             auto* type_ptr = getType();
-            if (!type_ptr) return false;
+            if (!type_ptr)
+                return false;
             bool heap = isHeap();
 
             // Same type and same storage mode — copy in place directly
             if (dst.getType() == type_ptr && dst.isHeap() == heap)
             {
-                if (heap) {
+                if (heap)
+                {
                     auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
                     if (!cls->copy) // may be a null function pointer
                     {
@@ -274,11 +292,7 @@ namespace lux::meta
                 auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
                 if (!cls->copy_construct)
                     return false;
-                tmp.storage_.heap = ::operator new(
-                    type_ptr->size,
-                    std::align_val_t{SBO_ALIGN},
-                    std::nothrow
-                );
+                tmp.storage_.heap = ::operator new(type_ptr->size, std::align_val_t{SBO_ALIGN}, std::nothrow);
                 if (!tmp.storage_.heap)
                     return false;
                 cls->copy_construct(tmp.storage_.heap, storage_.heap);
@@ -292,13 +306,10 @@ namespace lux::meta
             return true;
         }
 
-        template<typename T>
-        [[nodiscard]] bool match() const noexcept
+        template <typename T> [[nodiscard]] bool match() const noexcept
         {
             auto* type_ptr = getType();
-            return type_ptr
-                && type_ptr->hash == lux::cxx::type_hash<T>()
-                && type_ptr == builtin_ref_type_ptr<T>();
+            return type_ptr && type_ptr->hash == lux::cxx::type_hash<T>() && type_ptr == builtin_ref_type_ptr<T>();
         }
     };
 

@@ -50,28 +50,18 @@ namespace lux::render
                 Entry entry{};
                 entry.kind = Entry::EKind::Surface;
                 entry.layout = layout;
-                impl.targets_registry_.setSurfaceTarget(
-                    impl.targets_registry_.insert(std::move(entry))
-                );
+                impl.targets_registry_.setSurfaceTarget(impl.targets_registry_.insert(std::move(entry)));
                 target = impl.targets_registry_.surfaceTarget();
             }
 
             target->layout = layout;
             target->layers.clear();
-            target->layers.push_back(
-                Entry::CompositeLayer::sceneView(scene_id, view)
-            );
+            target->layers.push_back(Entry::CompositeLayer::sceneView(scene_id, view));
 
-            const auto offscreen =
-                impl.findOffscreenKeyByView(scene_id, view);
+            const auto offscreen = impl.findOffscreenKeyByView(scene_id, view);
             if (offscreen.isValid())
             {
-                impl.detachLayerAndReapIfEmpty(
-                    offscreen,
-                    scene_id,
-                    view,
-                    impl.current_stamp_.serial
-                );
+                impl.detachLayerAndReapIfEmpty(offscreen, scene_id, view, impl.current_stamp_.serial);
             }
             return {};
         }
@@ -109,13 +99,10 @@ namespace lux::render
         return impl_->dev_ctx_->caps();
     }
 
-    const lux::render::CapacityPlan&
-    GeneralRenderServer::capacityPlan() const noexcept
+    const lux::render::CapacityPlan& GeneralRenderServer::capacityPlan() const noexcept
     {
         static const lux::render::CapacityPlan empty{};
-        return impl_->render_ctx_
-            ? impl_->render_ctx_->capacityPlan()
-            : empty;
+        return impl_->render_ctx_ ? impl_->render_ctx_->capacityPlan() : empty;
     }
 
     SwapchainProvider* GeneralRenderServer::swapchainProvider() noexcept
@@ -135,15 +122,10 @@ namespace lux::render
 
     uint64_t GeneralRenderServer::gpuCompletedSerial() const noexcept
     {
-        return impl_->frame_driver_
-            ? impl_->frame_driver_->gpuCompletedSerial()
-            : impl_->current_stamp_.serial;
+        return impl_->frame_driver_ ? impl_->frame_driver_->gpuCompletedSerial() : impl_->current_stamp_.serial;
     }
 
-    void GeneralRenderServer::setExtension(
-        void* extension,
-        PreDestroySceneCallback pre_destroy
-    ) noexcept
+    void GeneralRenderServer::setExtension(void* extension, PreDestroySceneCallback pre_destroy) noexcept
     {
         impl_->extension_ = extension;
         impl_->pre_destroy_scene_cb_ = pre_destroy;
@@ -156,9 +138,7 @@ namespace lux::render
 
     void* serverExtensionOf(void* user_state) noexcept
     {
-        return user_state
-            ? static_cast<GeneralRenderServer::Impl*>(user_state)->extension_
-            : nullptr;
+        return user_state ? static_cast<GeneralRenderServer::Impl*>(user_state)->extension_ : nullptr;
     }
 
     void GeneralRenderServer::deferSurfaceRelease(
@@ -169,9 +149,7 @@ namespace lux::render
     {
         Impl::PendingSurfaceRelease release{};
         release.target = target;
-        release.retire_serial = impl_->frame_driver_
-            ? impl_->frame_driver_->lastSubmittedSerial()
-            : 0;
+        release.retire_serial = impl_->frame_driver_ ? impl_->frame_driver_->lastSubmittedSerial() : 0;
         release.ctx = std::move(context);
         release.on_teardown = std::move(on_teardown);
         impl_->pending_surface_releases_.push_back(std::move(release));
@@ -194,16 +172,11 @@ namespace lux::render
         impl_->pending_surface_releases_.clear();
     }
 
-    FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(
-        const FeatureFactory& factory
-    )
+    FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(const FeatureFactory& factory)
     {
         if (!impl_->renderer_)
         {
-            return FeatureTypeRegisteredReply{
-                .error =
-                    renderError<err::device::VulkanObjectCreationFailed>()
-            };
+            return FeatureTypeRegisteredReply{.error = renderError<err::device::VulkanObjectCreationFailed>()};
         }
 
         auto& registry = impl_->renderer_->featureTypeRegistry();
@@ -222,18 +195,10 @@ namespace lux::render
         reply.status = static_cast<std::uint32_t>(result->status);
 
         auto& stored = registry.at(result->type_id);
-        if (result->status == EFeatureTypeRegisterStatus::Registered &&
-            factory.register_ops_fn)
+        if (result->status == EFeatureTypeRegisterStatus::Registered && factory.register_ops_fn)
         {
-            stored.op_count = factory.register_ops_fn(
-                &impl_->dispatcher,
-                stored.ops,
-                FeatureTypeRegistry::kMaxOps
-            );
-            stored.op_count = std::min(
-                stored.op_count,
-                FeatureTypeRegistry::kMaxOps
-            );
+            stored.op_count = factory.register_ops_fn(&impl_->dispatcher, stored.ops, FeatureTypeRegistry::kMaxOps);
+            stored.op_count = std::min(stored.op_count, FeatureTypeRegistry::kMaxOps);
         }
         reply.op_count = stored.op_count;
         std::copy_n(stored.ops, stored.op_count, reply.ops);
@@ -241,9 +206,7 @@ namespace lux::render
     }
 
     std::vector<FeatureTypeRegisteredReply>
-    GeneralRenderServer::addFeatureFactories(
-        std::span<const FeatureFactory> factories
-    )
+    GeneralRenderServer::addFeatureFactories(std::span<const FeatureFactory> factories)
     {
         std::vector<FeatureTypeRegisteredReply> results;
         results.reserve(factories.size());
@@ -271,44 +234,24 @@ namespace lux::render
 
         for (const auto& parameter : features)
         {
-            const Expected<FeatureHandle> installed = [&]()
-                -> Expected<FeatureHandle>
-            {
+            const Expected<FeatureHandle> installed = [&]() -> Expected<FeatureHandle> {
                 if (!scene)
                 {
-                    return renderFailure<err::scene::NotFound>(
-                        result.scene_id.index
-                    );
+                    return renderFailure<err::scene::NotFound>(result.scene_id.index);
                 }
 
-                const auto& feature =
-                    impl_->renderer_->featureTypeRegistry()
-                        .at(parameter.feature_type_id)
-                        .factory;
-                RenderScene::FeatureInstallScope scope(
-                    *scene,
-                    feature.descriptor
-                );
-                return feature.create_fn(
-                    scene,
-                    parameter.param,
-                    parameter.param_size
-                );
+                const auto& feature = impl_->renderer_->featureTypeRegistry().at(parameter.feature_type_id).factory;
+                RenderScene::FeatureInstallScope scope(*scene, feature.descriptor);
+                return feature.create_fn(scene, parameter.param, parameter.param_size);
             }();
 
-            result.features.push_back(
-                installed ? *installed : FeatureHandle{}
-            );
-            result.feature_errors.push_back(
-                installed ? RenderError{} : installed.error()
-            );
+            result.features.push_back(installed ? *installed : FeatureHandle{});
+            result.feature_errors.push_back(installed ? RenderError{} : installed.error());
         }
         return result;
     }
 
-    Expected<ViewHandle> GeneralRenderServer::createView(
-        const ViewInitParam& parameter
-    )
+    Expected<ViewHandle> GeneralRenderServer::createView(const ViewInitParam& parameter)
     {
         auto* scene = impl_->renderer_->getScene(parameter.scene_id);
         if (!scene)
@@ -317,22 +260,14 @@ namespace lux::render
         return scene->addView(ViewCreateInfo{
             .initial_extent = parameter.extent,
             .debug_name = parameter.name.data(),
-        });
+        }
+        );
     }
 
-    Expected<void> GeneralRenderServer::bindSwapchain(
-        RenderSceneId scene_id,
-        ViewHandle view,
-        const RenderTargetLayout& layout
-    )
+    Expected<void>
+    GeneralRenderServer::bindSwapchain(RenderSceneId scene_id, ViewHandle view, const RenderTargetLayout& layout)
     {
-        return detail::bindSwapchainInternal(
-            *impl_,
-            scene_id,
-            view,
-            layout,
-            false
-        );
+        return detail::bindSwapchainInternal(*impl_, scene_id, view, layout, false);
     }
 
     void GeneralRenderServer::unbindSwapchain()
@@ -353,31 +288,20 @@ namespace lux::render
         return provider ? provider->layout() : RenderTargetLayout{};
     }
 
-    Expected<RTextureHandle> GeneralRenderServer::createTexture2D(
-        const lux::rdesc::Texture& texture,
-        bool generate_mips
-    )
+    Expected<RTextureHandle>
+    GeneralRenderServer::createTexture2D(const lux::rdesc::Texture& texture, bool generate_mips)
     {
-        auto& resources =
-            impl_->render_ctx_->globalRegistry().must<TextureResources>();
-        auto result = resources.submit(
-            texture,
-            nullptr,
-            VK_FORMAT_UNDEFINED,
-            generate_mips
-        );
+        auto& resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
+        auto result = resources.submit(texture, nullptr, VK_FORMAT_UNDEFINED, generate_mips);
         if (!result)
             return lux::cxx::unexpected(result.error());
         return RTextureHandle{result->index, result->gen};
     }
 
-    ShaderHandle GeneralRenderServer::compileShader(
-        std::span<const std::byte> spirv,
-        const lux::rdesc::ShaderInfo* info
-    )
+    ShaderHandle
+    GeneralRenderServer::compileShader(std::span<const std::byte> spirv, const lux::rdesc::ShaderInfo* info)
     {
-        auto& resources =
-            impl_->render_ctx_->globalRegistry().must<ShaderResources>();
+        auto& resources = impl_->render_ctx_->globalRegistry().must<ShaderResources>();
         const lux::rdesc::ShaderInfo default_info{};
         return resources.add(spirv, info ? *info : default_info);
     }
@@ -389,8 +313,7 @@ namespace lux::render
         const VkCommandPool pool = resource_context.commandPool().handle();
 
         VkCommandBufferAllocateInfo allocation{};
-        allocation.sType =
-            VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocation.commandPool = pool;
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = 1;
@@ -404,10 +327,8 @@ namespace lux::render
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(command, &begin);
 
-        auto* mesh_resources =
-            impl_->render_ctx_->globalRegistry().find<MeshResources>();
-        auto& texture_resources =
-            impl_->render_ctx_->globalRegistry().must<TextureResources>();
+        auto* mesh_resources = impl_->render_ctx_->globalRegistry().find<MeshResources>();
+        auto& texture_resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
         texture_resources.bindlessSet2D().flushUploads(command, 0);
         texture_resources.bindlessSetCube().flushUploads(command, 0);
         vkEndCommandBuffer(command);
@@ -422,14 +343,8 @@ namespace lux::render
         submit.commandBufferCount = 1;
         submit.pCommandBuffers = &command;
         {
-            const std::scoped_lock queue_lock(
-                resource_context.deviceContext().graphicsQueueMutex());
-            vkQueueSubmit(
-                resource_context.graphicsQueue(),
-                1,
-                &submit,
-                fence
-            );
+            const std::scoped_lock queue_lock(resource_context.deviceContext().graphicsQueueMutex());
+            vkQueueSubmit(resource_context.graphicsQueue(), 1, &submit, fence);
         }
         vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
 

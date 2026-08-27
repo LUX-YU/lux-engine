@@ -19,16 +19,13 @@ namespace lux::render
         constexpr std::array<BuiltinEntry, 0> kBuiltinRegistry{};
     } // namespace
 
-    lux::cxx::expected<BuiltinShaderContent, EBuiltinContentError>
-    builtinShaderContent(EBuiltinShader shader) noexcept
+    lux::cxx::expected<BuiltinShaderContent, EBuiltinContentError> builtinShaderContent(EBuiltinShader shader) noexcept
     {
         for (const BuiltinEntry& entry : kBuiltinRegistry)
         {
             if (entry.shader == shader)
                 return BuiltinShaderContent{entry.spirv, entry.metadata};
         }
-        return lux::cxx::unexpected(
-            EBuiltinContentError::BUILTIN_CONTENT_UNAVAILABLE
-        );
+        return lux::cxx::unexpected(EBuiltinContentError::BUILTIN_CONTENT_UNAVAILABLE);
     }
 } // namespace lux::render

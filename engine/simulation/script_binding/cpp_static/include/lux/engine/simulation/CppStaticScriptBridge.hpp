@@ -39,41 +39,34 @@ namespace lux::simulation
         bool (*resolve)(
             void* context,
             const lux::meta::RefType& type,
-            lux::script::ScriptSemanticLayout& result
-        ) noexcept{};
+            lux::script::ScriptSemanticLayout& result) noexcept {};
     };
 
-    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_CPP_STATIC_PUBLIC
-        CppStaticScriptDescriptor final
+    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_CPP_STATIC_PUBLIC CppStaticScriptDescriptor final
     {
-      public:
+    public:
         struct State;
 
         CppStaticScriptDescriptor() noexcept;
         explicit CppStaticScriptDescriptor(std::unique_ptr<State>) noexcept;
         CppStaticScriptDescriptor(CppStaticScriptDescriptor&&) noexcept;
-        CppStaticScriptDescriptor& operator=(
-            CppStaticScriptDescriptor&&
-        ) noexcept;
+        CppStaticScriptDescriptor& operator=(CppStaticScriptDescriptor&&) noexcept;
         ~CppStaticScriptDescriptor();
         CppStaticScriptDescriptor(const CppStaticScriptDescriptor&) = delete;
-        CppStaticScriptDescriptor& operator=(
-            const CppStaticScriptDescriptor&
-        ) = delete;
+        CppStaticScriptDescriptor& operator=(const CppStaticScriptDescriptor&) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] const lux::rdesc::Script& description() const noexcept;
         [[nodiscard]] std::string_view key() const noexcept;
 
-      private:
+    private:
         std::unique_ptr<State> state_;
         friend class CppStaticScriptBindingBackend;
     };
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_BINDING_CPP_STATIC_PUBLIC
-    lux::cxx::expected<
-        CppStaticScriptDescriptor,
-        ECppStaticScriptBridgeError> projectCppStaticEntityScript(
+        lux::cxx::expected<CppStaticScriptDescriptor, ECppStaticScriptBridgeError>
+        projectCppStaticEntityScript(
             std::string_view module_name,
             std::string_view descriptor_key,
             const lux::meta::RefClass& reflected_class,
@@ -84,22 +77,19 @@ namespace lux::simulation
 
     template <class Behavior>
         requires std::derived_from<Behavior, EntityBehavior>
-    [[nodiscard]] lux::cxx::expected<
-        CppStaticScriptDescriptor,
-        ECppStaticScriptBridgeError> projectCppStaticEntityScript(
-            std::string_view module_name,
-            std::string_view descriptor_key,
-            const lux::meta::RefClass& reflected_class,
-            std::span<const lux::meta::RefMethod* const> methods,
-            CppStaticRecordSemanticResolver record_types = {}
-        ) noexcept
+    [[nodiscard]] lux::cxx::expected<CppStaticScriptDescriptor, ECppStaticScriptBridgeError>
+    projectCppStaticEntityScript(
+        std::string_view module_name,
+        std::string_view descriptor_key,
+        const lux::meta::RefClass& reflected_class,
+        std::span<const lux::meta::RefMethod* const> methods,
+        CppStaticRecordSemanticResolver record_types = {}
+    ) noexcept
     {
         static_assert(std::is_nothrow_destructible_v<Behavior>);
         if (reflected_class.type.hash != lux::cxx::type_hash<Behavior>())
         {
-            return lux::cxx::unexpected(
-                ECppStaticScriptBridgeError::INVALID_CLASS
-            );
+            return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_CLASS);
         }
         return projectCppStaticEntityScript(
             module_name,
@@ -112,41 +102,31 @@ namespace lux::simulation
     }
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_BINDING_CPP_STATIC_PUBLIC
-    lux::cxx::expected<
-        CppStaticScriptDescriptor,
-        ECppStaticScriptBridgeError> projectCppStaticGlobalScript(
+        lux::cxx::expected<CppStaticScriptDescriptor, ECppStaticScriptBridgeError>
+        projectCppStaticGlobalScript(
             std::string_view module_name,
             std::string_view descriptor_key,
             std::span<const lux::meta::RefFunction* const> functions,
             CppStaticRecordSemanticResolver record_types = {}
         ) noexcept;
 
-    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_CPP_STATIC_PUBLIC
-        CppStaticScriptBindingBackend final
+    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_CPP_STATIC_PUBLIC CppStaticScriptBindingBackend final
     {
-      public:
+    public:
         CppStaticScriptBindingBackend(
             std::span<const CppStaticScriptDescriptor* const> descriptors,
             std::size_t instance_capacity
         ) noexcept;
         ~CppStaticScriptBindingBackend();
-        CppStaticScriptBindingBackend(
-            CppStaticScriptBindingBackend&&
-        ) noexcept;
-        CppStaticScriptBindingBackend& operator=(
-            CppStaticScriptBindingBackend&&
-        ) noexcept;
-        CppStaticScriptBindingBackend(
-            const CppStaticScriptBindingBackend&
-        ) = delete;
-        CppStaticScriptBindingBackend& operator=(
-            const CppStaticScriptBindingBackend&
-        ) = delete;
+        CppStaticScriptBindingBackend(CppStaticScriptBindingBackend&&) noexcept;
+        CppStaticScriptBindingBackend& operator=(CppStaticScriptBindingBackend&&) noexcept;
+        CppStaticScriptBindingBackend(const CppStaticScriptBindingBackend&) = delete;
+        CppStaticScriptBindingBackend& operator=(const CppStaticScriptBindingBackend&) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
 
-      private:
+    private:
         struct State;
         std::unique_ptr<State> state_;
     };

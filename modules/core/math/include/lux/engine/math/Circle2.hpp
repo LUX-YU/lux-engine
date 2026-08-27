@@ -11,12 +11,17 @@ namespace lux::math
     struct Circle2
     {
         Eigen::Vector2f center{Eigen::Vector2f::Zero()};
-        float           radius{0.0f};
+        float radius{0.0f};
 
         Circle2() = default;
-        Circle2(const Eigen::Vector2f& c, float r) : center(c), radius(r) {}
+        Circle2(const Eigen::Vector2f& c, float r) : center(c), radius(r)
+        {
+        }
 
-        [[nodiscard]] bool isValid() const noexcept { return radius >= 0.0f; }
+        [[nodiscard]] bool isValid() const noexcept
+        {
+            return radius >= 0.0f;
+        }
 
         [[nodiscard]] bool contains(const Eigen::Vector2f& p) const noexcept
         {

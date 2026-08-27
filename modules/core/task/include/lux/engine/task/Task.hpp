@@ -22,9 +22,7 @@ namespace lux::task
             return value != 0U;
         }
 
-        [[nodiscard]] constexpr bool operator==(
-            const TaskBuildId&
-        ) const noexcept = default;
+        [[nodiscard]] constexpr bool operator==(const TaskBuildId&) const noexcept = default;
     };
 
     /**
@@ -41,9 +39,7 @@ namespace lux::task
             return owner.isValid() && index != InvalidTaskIndex;
         }
 
-        [[nodiscard]] constexpr bool operator==(
-            const TaskHandle&
-        ) const noexcept = default;
+        [[nodiscard]] constexpr bool operator==(const TaskHandle&) const noexcept = default;
     };
 
     struct TaskResourceKey final
@@ -51,13 +47,9 @@ namespace lux::task
         std::uint64_t domain{};
         std::uint64_t value{};
 
-        [[nodiscard]] constexpr bool operator==(
-            const TaskResourceKey&
-        ) const noexcept = default;
+        [[nodiscard]] constexpr bool operator==(const TaskResourceKey&) const noexcept = default;
 
-        [[nodiscard]] constexpr auto operator<=> (
-            const TaskResourceKey&
-        ) const noexcept = default;
+        [[nodiscard]] constexpr auto operator<=>(const TaskResourceKey&) const noexcept = default;
     };
 
     enum class ETaskResourceAccess : std::uint8_t
@@ -102,56 +94,39 @@ namespace lux::task
         std::shared_ptr<const void> value;
     };
 
-    [[nodiscard]] constexpr TaskResourceAccess read(
-        TaskResourceKey key
-    ) noexcept
+    [[nodiscard]] constexpr TaskResourceAccess read(TaskResourceKey key) noexcept
     {
         return {key, ETaskResourceAccess::READ};
     }
 
-    [[nodiscard]] constexpr TaskResourceAccess write(
-        TaskResourceKey key
-    ) noexcept
+    [[nodiscard]] constexpr TaskResourceAccess write(TaskResourceKey key) noexcept
     {
         return {key, ETaskResourceAccess::WRITE};
     }
 
-    [[nodiscard]] inline TaskResources resources(
-        std::span<const TaskResourceAccess> accesses
-    )
+    [[nodiscard]] inline TaskResources resources(std::span<const TaskResourceAccess> accesses)
     {
-        return TaskResources{
-            std::vector<TaskResourceAccess>(accesses.begin(), accesses.end())
-        };
+        return TaskResources{std::vector<TaskResourceAccess>(accesses.begin(), accesses.end())};
     }
 
     template <class Range>
-        requires requires(const Range& value)
-        {
-            std::span<const TaskResourceAccess>(value);
-        }
+        requires requires(const Range& value) { std::span<const TaskResourceAccess>(value); }
     [[nodiscard]] TaskResources resources(const Range& accesses)
     {
         return resources(std::span<const TaskResourceAccess>(accesses));
     }
 
-    [[nodiscard]] constexpr TaskDependency dependsOn(
-        TaskHandle task
-    ) noexcept
+    [[nodiscard]] constexpr TaskDependency dependsOn(TaskHandle task) noexcept
     {
         return {task};
     }
 
-    [[nodiscard]] constexpr TaskAffinity on(
-        ETaskAffinity affinity
-    ) noexcept
+    [[nodiscard]] constexpr TaskAffinity on(ETaskAffinity affinity) noexcept
     {
         return {affinity};
     }
 
-    [[nodiscard]] inline TaskLifetimePin keepAlive(
-        std::shared_ptr<const void> lifetime
-    ) noexcept
+    [[nodiscard]] inline TaskLifetimePin keepAlive(std::shared_ptr<const void> lifetime) noexcept
     {
         return {std::move(lifetime)};
     }

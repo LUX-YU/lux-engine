@@ -9,19 +9,12 @@ namespace lux::render
     namespace
     {
         template <class Reply>
-        [[nodiscard]] Reply decodeReply(
-            ReplyPacketView packet,
-            const ReplyRecord& record
-        ) noexcept
+        [[nodiscard]] Reply decodeReply(ReplyPacketView packet, const ReplyRecord& record) noexcept
         {
             Reply value{};
             if (record.payload_size == sizeof(Reply))
             {
-                std::memcpy(
-                    &value,
-                    packet.payload.data() + record.payload_offset,
-                    sizeof(Reply)
-                );
+                std::memcpy(&value, packet.payload.data() + record.payload_offset, sizeof(Reply));
             }
             return value;
         }
@@ -52,22 +45,14 @@ namespace lux::render
     {
         client_.setUnsolicitedHandler(
             type_ids::ReplyErrorEventBatch,
-            [handler = std::move(on_batch)](
-                ReplyPacketView packet,
-                const ReplyRecord& record
-            )
-            {
+            [handler = std::move(on_batch)](ReplyPacketView packet, const ReplyRecord& record) {
                 if (handler)
                     handler(decodeReply<ErrorEventBatchReply>(packet, record));
             }
         );
         client_.setUnsolicitedHandler(
             type_ids::ReplyErrorEvent,
-            [handler = std::move(on_event)](
-                ReplyPacketView packet,
-                const ReplyRecord& record
-            )
-            {
+            [handler = std::move(on_event)](ReplyPacketView packet, const ReplyRecord& record) {
                 if (handler)
                     handler(decodeReply<RenderErrorEvent>(packet, record));
             }
@@ -84,21 +69,15 @@ namespace lux::render
         return client_.beginFrame(hints);
     }
 
-    bool RenderFrameSession::rebaseSceneOrigin(
-        RenderSceneId scene,
-        const std::int64_t scene_origin_page[3]) noexcept
+    bool RenderFrameSession::rebaseSceneOrigin(RenderSceneId scene, const std::int64_t scene_origin_page[3]) noexcept
     {
-        if (!isRecording() || scene.isNull() ||
-            scene_origin_page == nullptr)
+        if (!isRecording() || scene.isNull() || scene_origin_page == nullptr)
             return false;
         RebaseSceneOriginPayload payload{};
         payload.scene_id = scene;
         for (std::size_t axis = 0u; axis < 3u; ++axis)
             payload.scene_origin_page[axis] = scene_origin_page[axis];
-        builder().push(
-            opcodes::CommandOp,
-            type_ids::RebaseSceneOrigin,
-            payload);
+        builder().push(opcodes::CommandOp, type_ids::RebaseSceneOrigin, payload);
         return true;
     }
 
@@ -107,27 +86,23 @@ namespace lux::render
         return client_.trySubmitFrame();
     }
 
-    RenderFrameSession::FrameProgressToken
-    RenderFrameSession::observeProgress() const noexcept
+    RenderFrameSession::FrameProgressToken RenderFrameSession::observeProgress() const noexcept
     {
         return client_.observeProgress();
     }
 
-    void RenderFrameSession::waitForProgress(
-        FrameProgressToken observed) const noexcept
+    void RenderFrameSession::waitForProgress(FrameProgressToken observed) const noexcept
     {
         client_.waitForProgress(observed);
     }
 
     bool RenderFrameSession::waitForProgressUntil(
         FrameProgressToken observed,
-        std::chrono::steady_clock::time_point deadline) const noexcept
+        std::chrono::steady_clock::time_point deadline
+    ) const noexcept
     {
         auto domain = client_.progressDomain();
-        return lux::cxx::concurrent::waitAtomicU64Until(
-            domain->work_epoch,
-            observed,
-            deadline);
+        return lux::cxx::concurrent::waitAtomicU64Until(domain->work_epoch, observed, deadline);
     }
 
     void RenderFrameSession::notifyProgress() noexcept
@@ -146,8 +121,7 @@ namespace lux::render
         return sync ? sync->terminalError() : RenderError{};
     }
 
-    std::shared_ptr<RenderChannelSync>
-    RenderFrameSession::progressDomain() const noexcept
+    std::shared_ptr<RenderChannelSync> RenderFrameSession::progressDomain() const noexcept
     {
         return client_.progressDomain();
     }

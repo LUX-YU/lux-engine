@@ -50,7 +50,7 @@
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
-#include "RenderTask.hpp"            // relocated test-only coroutine support
+#include "RenderTask.hpp" // relocated test-only coroutine support
 #include "RenderTaskScheduler.hpp"
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
@@ -84,7 +84,8 @@ using namespace lux::render;
 static int g_pass = 0;
 static int g_fail = 0;
 
-static void check(bool cond, const char* name)
+static void
+check(bool cond, const char* name)
 {
     if (cond)
     {
@@ -100,7 +101,8 @@ static void check(bool cond, const char* name)
 
 // ── Vulkan extensions ───────────────────────────────────────────────────
 
-static std::vector<const char*> getVulkanExtensions()
+static std::vector<const char*>
+getVulkanExtensions()
 {
     const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
     return {exts.begin(), exts.end()};
@@ -110,22 +112,30 @@ static std::vector<const char*> getVulkanExtensions()
 
 static constexpr float kPi = 3.14159265f;
 
-static Eigen::Matrix4f buildViewMatrix(const Eigen::Vector3f& eye,
-                                       const Eigen::Vector3f& target,
-                                       const Eigen::Vector3f& up)
+static Eigen::Matrix4f
+buildViewMatrix(const Eigen::Vector3f& eye, const Eigen::Vector3f& target, const Eigen::Vector3f& up)
 {
     Eigen::Vector3f f = (target - eye).normalized();
     Eigen::Vector3f s = f.cross(up).normalized();
     Eigen::Vector3f u = s.cross(f);
     Eigen::Matrix4f V = Eigen::Matrix4f::Identity();
-    V(0, 0) = s.x();  V(0, 1) = s.y();  V(0, 2) = s.z();  V(0, 3) = -s.dot(eye);
-    V(1, 0) = u.x();  V(1, 1) = u.y();  V(1, 2) = u.z();  V(1, 3) = -u.dot(eye);
-    V(2, 0) = -f.x(); V(2, 1) = -f.y(); V(2, 2) = -f.z(); V(2, 3) = f.dot(eye);
+    V(0, 0) = s.x();
+    V(0, 1) = s.y();
+    V(0, 2) = s.z();
+    V(0, 3) = -s.dot(eye);
+    V(1, 0) = u.x();
+    V(1, 1) = u.y();
+    V(1, 2) = u.z();
+    V(1, 3) = -u.dot(eye);
+    V(2, 0) = -f.x();
+    V(2, 1) = -f.y();
+    V(2, 2) = -f.z();
+    V(2, 3) = f.dot(eye);
     return V;
 }
 
-static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect,
-                                       float near_z, float far_z)
+static Eigen::Matrix4f
+buildProjMatrix(float fov_rad, float aspect, float near_z, float far_z)
 {
     float tanHalf = std::tan(fov_rad * 0.5f);
     Eigen::Matrix4f P = Eigen::Matrix4f::Zero();
@@ -150,15 +160,20 @@ static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect,
 // If the test still renders spikes despite clean CPU data, the bug is in
 // the GPU upload / synchronisation path inside the library.
 
-struct Vec3 { float x, y, z; };
+struct Vec3
+{
+    float x, y, z;
+};
 
-static float distance(const Vec3& a, const Vec3& b)
+static float
+distance(const Vec3& a, const Vec3& b)
 {
     float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-static bool isFinite(const Vec3& v)
+static bool
+isFinite(const Vec3& v)
 {
     return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
 }
@@ -181,7 +196,8 @@ struct TrajectoryMirror
         if (!positions.empty())
         {
             float d = distance(positions.back(), p);
-            if (d > max_jump) max_jump = d;
+            if (d > max_jump)
+                max_jump = d;
             // For a smooth trajectory, consecutive vertices should not jump more
             // than ~2 m (generous for 60 fps odometry at reasonable speeds).
             if (d > 5.0f)
@@ -189,7 +205,12 @@ struct TrajectoryMirror
         }
         // Origin check: if a position is exactly (0,0,0), it's suspicious
         // unless it's the intended start.
-        if (positions.size() > 1 && p.x == 0.0f && p.y == 0.0f && p.z == 0.0f)
+        const bool has_multiple_positions = positions.size() > 1;
+        const bool is_zero_x = p.x == 0.0f;
+        const bool is_zero_y = p.y == 0.0f;
+        const bool is_zero_z = p.z == 0.0f;
+        const bool is_suspicious_origin = has_multiple_positions && is_zero_x && is_zero_y && is_zero_z;
+        if (is_suspicious_origin)
             ++anomaly_origin_count;
 
         positions.push_back(p);
@@ -211,10 +232,8 @@ struct TrajectoryMirror
 
     void report(const char* label) const
     {
-        std::cout << "    " << label << ": "
-                  << positions.size() << " pts, max_jump=" << max_jump
-                  << ", anomalies(nan=" << anomaly_nan_count
-                  << " jump=" << anomaly_jump_count
+        std::cout << "    " << label << ": " << positions.size() << " pts, max_jump=" << max_jump
+                  << ", anomalies(nan=" << anomaly_nan_count << " jump=" << anomaly_jump_count
                   << " origin=" << anomaly_origin_count << ")\n";
     }
 };
@@ -222,8 +241,8 @@ struct TrajectoryMirror
 // ── Trajectory generators ───────────────────────────────────────────────
 
 /// Helix: p(t) = (r·cos(t·ω), h·t, r·sin(t·ω))
-static TrajectoryPoint makeHelixPoint(float t, float r, float h_rate, float omega,
-                                      float cr, float cg, float cb)
+static TrajectoryPoint
+makeHelixPoint(float t, float r, float h_rate, float omega, float cr, float cg, float cb)
 {
     float x = r * std::cos(t * omega);
     float y = h_rate * t;
@@ -232,8 +251,8 @@ static TrajectoryPoint makeHelixPoint(float t, float r, float h_rate, float omeg
 }
 
 /// Circle on the XZ plane at height y.
-static TrajectoryPoint makeCirclePoint(float t, float r, float y,
-                                       float cr, float cg, float cb)
+static TrajectoryPoint
+makeCirclePoint(float t, float r, float y, float cr, float cg, float cb)
 {
     float x = r * std::cos(t * 2.0f * kPi);
     float z = r * std::sin(t * 2.0f * kPi);
@@ -241,8 +260,8 @@ static TrajectoryPoint makeCirclePoint(float t, float r, float y,
 }
 
 /// Straight line from origin along +Z (simulates odometry path).
-static TrajectoryPoint makeOdometryPoint(float z, float speed,
-                                         float cr, float cg, float cb)
+static TrajectoryPoint
+makeOdometryPoint(float z, float speed, float cr, float cg, float cb)
 {
     // Slight sine wobble in X to make the path visible
     float x = 0.3f * std::sin(z * 0.2f);
@@ -273,30 +292,42 @@ enum class ETestPhase
     Done
 };
 
-static const char* phaseLabel(ETestPhase p)
+static const char*
+phaseLabel(ETestPhase p)
 {
     switch (p)
     {
-    case ETestPhase::Setup:             return "Setup";
-    case ETestPhase::BulkCreate:        return "BulkCreate";
-    case ETestPhase::IncrementalAppend: return "IncrementalAppend";
-    case ETestPhase::MultiTrajectory:   return "MultiTrajectory";
-    case ETestPhase::ClearReupload:     return "ClearReupload";
-    case ETestPhase::RemoveRecreate:    return "RemoveRecreate";
-    case ETestPhase::SlotGrowth:        return "SlotGrowth";
-    case ETestPhase::VisualHold:        return "VisualHold";
-    case ETestPhase::Done:              return "Done";
+    case ETestPhase::Setup:
+        return "Setup";
+    case ETestPhase::BulkCreate:
+        return "BulkCreate";
+    case ETestPhase::IncrementalAppend:
+        return "IncrementalAppend";
+    case ETestPhase::MultiTrajectory:
+        return "MultiTrajectory";
+    case ETestPhase::ClearReupload:
+        return "ClearReupload";
+    case ETestPhase::RemoveRecreate:
+        return "RemoveRecreate";
+    case ETestPhase::SlotGrowth:
+        return "SlotGrowth";
+    case ETestPhase::VisualHold:
+        return "VisualHold";
+    case ETestPhase::Done:
+        return "Done";
     }
     return "?";
 }
 
 // ── Coroutine task ──────────────────────────────────────────────────────
 
-static RenderTask<void> trajectoryLineTask(
+static RenderTask<void>
+trajectoryLineTask(
     RenderFrameSession& session,
     RenderControlSession& control,
     RenderUploadClient upload,
-    lux::window::LuxWindow& window)
+    lux::window::LuxWindow& window
+)
 {
     // ── Setup: create scene + view + features ───────────────────────
 
@@ -326,8 +357,7 @@ static RenderTask<void> trajectoryLineTask(
     // (replaces the retired RenderFrameSession::updateView).
     co_await yield_frame();
     auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
-    auto view_cam_ops = ViewCameraOperationIds::fromOps(
-        view_cam_type_reply.ops, view_cam_type_reply.op_count);
+    auto view_cam_ops = ViewCameraOperationIds::fromOps(view_cam_type_reply.ops, view_cam_type_reply.op_count);
     co_await yield_frame();
     lux::render::ViewCameraCommTag view_cam_cfg{};
     co_await control.addFeature(scene_id, view_cam_type_reply.feature_type_id, view_cam_cfg);
@@ -351,29 +381,28 @@ static RenderTask<void> trajectoryLineTask(
 
     // A+:生成 Proxy 收 wire 载荷,测试侧打包 helper(回执照旧可 co_await)。
     auto new_traj = [&](lux::render::RenderSceneId sid, std::span<const TrajectoryPoint> pts) {
-        CreateTrajectoryPayload p{}; p.scene_id = sid;
+        CreateTrajectoryPayload p{};
+        p.scene_id = sid;
         p.point_count = static_cast<uint32_t>(pts.size());
-        return requireUploadAccepted(upload_client.newTrajectory(
-            p,
-            std::as_bytes(pts),
-            alignof(TrajectoryPoint)
-        ));
+        return requireUploadAccepted(upload_client.newTrajectory(p, std::as_bytes(pts), alignof(TrajectoryPoint)));
     };
     auto append_pts = [&](lux::render::RenderSceneId sid, TrajectoryHandle h, std::span<const TrajectoryPoint> pts) {
-        AppendTrajectoryPointsPayload p{}; p.scene_id = sid; p.trajectory = h;
+        AppendTrajectoryPointsPayload p{};
+        p.scene_id = sid;
+        p.trajectory = h;
         p.point_count = static_cast<uint32_t>(pts.size());
-        return requireUploadAccepted(upload_client.appendPoints(
-            p,
-            std::as_bytes(pts),
-            alignof(TrajectoryPoint)
-        ));
+        return requireUploadAccepted(upload_client.appendPoints(p, std::as_bytes(pts), alignof(TrajectoryPoint)));
     };
     auto clear_traj = [&](lux::render::RenderSceneId sid, TrajectoryHandle h) {
-        ClearTrajectoryPayload p{}; p.scene_id = sid; p.trajectory = h;
+        ClearTrajectoryPayload p{};
+        p.scene_id = sid;
+        p.trajectory = h;
         return control_client.clear(p);
     };
     auto remove_traj = [&](lux::render::RenderSceneId sid, TrajectoryHandle h) {
-        RemoveTrajectoryPayload p{}; p.scene_id = sid; p.trajectory = h;
+        RemoveTrajectoryPayload p{};
+        p.scene_id = sid;
+        p.trajectory = h;
         return control_client.remove(p);
     };
 
@@ -404,8 +433,7 @@ static RenderTask<void> trajectoryLineTask(
         }
 
         auto create_reply = co_await new_traj(scene_id, std::span<const TrajectoryPoint>(pts.data(), pts.size()));
-        check(create_reply.status == 0 && create_reply.trajectory.isValid(),
-              "BulkCreate — trajectory created");
+        check(create_reply.status == 0 && create_reply.trajectory.isValid(), "BulkCreate — trajectory created");
         TrajectoryHandle h_bulk = create_reply.trajectory;
 
         // Render a few frames to verify no crash / artefacts
@@ -429,8 +457,10 @@ static RenderTask<void> trajectoryLineTask(
 
         // Create empty trajectory
         auto create_reply = co_await new_traj(scene_id, std::span<const TrajectoryPoint>{});
-        check(create_reply.status == 0 && create_reply.trajectory.isValid(),
-              "IncrementalAppend — empty trajectory created");
+        check(
+            create_reply.status == 0 && create_reply.trajectory.isValid(),
+            "IncrementalAppend — empty trajectory created"
+        );
         TrajectoryHandle h_incr = create_reply.trajectory;
 
         TrajectoryMirror mirror;
@@ -453,18 +483,24 @@ static RenderTask<void> trajectoryLineTask(
             Eigen::Vector3f eye(
                 cam_target.x() + cam_dist * std::cos(angle),
                 cam_target.y() + cam_dist * 0.4f,
-                cam_target.z() + cam_dist * std::sin(angle));
+                cam_target.z() + cam_dist * std::sin(angle)
+            );
             Eigen::Matrix4f V = buildViewMatrix(eye, cam_target, up);
-            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(
+                ViewCameraProxy(session, view_cam_ops),
+                scene_id,
+                view_handle,
+                V.data(),
+                P.data(),
+                eye.data()
+            );
 
             co_await yield_frame();
         }
 
         mirror.report("IncrementalAppend odometry");
-        check(mirror.totalAnomalies() == 0,
-              "IncrementalAppend — no anomalies in CPU mirror");
-        check(mirror.positions.size() == kFrames,
-              "IncrementalAppend — all points recorded");
+        check(mirror.totalAnomalies() == 0, "IncrementalAppend — no anomalies in CPU mirror");
+        check(mirror.positions.size() == kFrames, "IncrementalAppend — all points recorded");
 
         // Keep alive for next phase
         auto rm = co_await remove_traj(scene_id, h_incr);
@@ -497,8 +533,7 @@ static RenderTask<void> trajectoryLineTask(
             for (int i = 0; i < kPointsPer; ++i)
             {
                 float s = static_cast<float>(i) / static_cast<float>(kPointsPer - 1);
-                auto pt = makeCirclePoint(s, 3.0f + static_cast<float>(t) * 0.5f, y,
-                                          r_hue, 1.0f - r_hue, 0.5f);
+                auto pt = makeCirclePoint(s, 3.0f + static_cast<float>(t) * 0.5f, y, r_hue, 1.0f - r_hue, 0.5f);
                 pts.push_back(pt);
                 mirrors[t].append({pt.x, pt.y, pt.z});
             }
@@ -516,12 +551,16 @@ static RenderTask<void> trajectoryLineTask(
         for (int f = 0; f < 30; ++f)
         {
             float angle = static_cast<float>(f) * 0.05f;
-            Eigen::Vector3f eye(
-                cam_dist * std::cos(angle),
-                cam_dist * 0.6f,
-                cam_dist * std::sin(angle));
+            Eigen::Vector3f eye(cam_dist * std::cos(angle), cam_dist * 0.6f, cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, {0, 3, 0}, up);
-            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(
+                ViewCameraProxy(session, view_cam_ops),
+                scene_id,
+                view_handle,
+                V.data(),
+                P.data(),
+                eye.data()
+            );
             co_await yield_frame();
         }
 
@@ -566,14 +605,16 @@ static RenderTask<void> trajectoryLineTask(
         check(cr.status == 0 && cr.trajectory.isValid(), "ClearReupload — created");
         TrajectoryHandle h_cr = cr.trajectory;
 
-        for (int f = 0; f < 10; ++f) co_await yield_frame();
+        for (int f = 0; f < 10; ++f)
+            co_await yield_frame();
 
         // Clear
         auto clear_reply = co_await clear_traj(scene_id, h_cr);
         check(clear_reply.code == 0, "ClearReupload — clear OK");
 
         // The trajectory should render 0 vertices now
-        for (int f = 0; f < 5; ++f) co_await yield_frame();
+        for (int f = 0; f < 5; ++f)
+            co_await yield_frame();
 
         // Re-upload new data via append (different shape — a flat circle)
         TrajectoryMirror mirror_after;
@@ -591,12 +632,12 @@ static RenderTask<void> trajectoryLineTask(
         }
 
         mirror_after.report("ClearReupload after");
-        check(mirror_after.totalAnomalies() == 0,
-              "ClearReupload — no anomalies after refill");
+        check(mirror_after.totalAnomalies() == 0, "ClearReupload — no anomalies after refill");
 
         auto rm = co_await remove_traj(scene_id, h_cr);
         check(rm.code == 0, "ClearReupload — remove OK");
-        for (int f = 0; f < 3; ++f) co_await yield_frame();
+        for (int f = 0; f < 3; ++f)
+            co_await yield_frame();
     }
 
     // ================================================================
@@ -620,8 +661,15 @@ static RenderTask<void> trajectoryLineTask(
             for (int i = 0; i < kPts; ++i)
             {
                 float t = static_cast<float>(i) / static_cast<float>(kPts - 1);
-                auto pt = makeHelixPoint(t * 2.0f * kPi, 1.5f, 1.0f + y_offset, 1.0f,
-                                         0.2f * static_cast<float>(c), 0.8f, 0.3f);
+                auto pt = makeHelixPoint(
+                    t * 2.0f * kPi,
+                    1.5f,
+                    1.0f + y_offset,
+                    1.0f,
+                    0.2f * static_cast<float>(c),
+                    0.8f,
+                    0.3f
+                );
                 pts.push_back(pt);
                 mirror.append({pt.x, pt.y, pt.z});
             }
@@ -634,17 +682,20 @@ static RenderTask<void> trajectoryLineTask(
             }
 
             // Render a few frames
-            for (int f = 0; f < 8; ++f) co_await yield_frame();
+            for (int f = 0; f < 8; ++f)
+                co_await yield_frame();
 
             if (mirror.totalAnomalies() != 0)
                 all_ok = false;
 
             // Remove
             auto rm = co_await remove_traj(scene_id, cr.trajectory);
-            if (rm.code != 0) all_ok = false;
+            if (rm.code != 0)
+                all_ok = false;
 
             // Flush deferred destruction
-            for (int f = 0; f < 5; ++f) co_await yield_frame();
+            for (int f = 0; f < 5; ++f)
+                co_await yield_frame();
         }
 
         check(all_ok, "RemoveRecreate — all 5 cycles clean");
@@ -673,8 +724,7 @@ static RenderTask<void> trajectoryLineTask(
             {
                 int idx = f * kBatchSize + b;
                 float t = static_cast<float>(idx) / static_cast<float>(kTotalPts - 1);
-                auto pt = makeHelixPoint(t * 10.0f * kPi, 5.0f, 3.0f, 2.0f,
-                                         1.0f, 0.5f * t, 1.0f - t);
+                auto pt = makeHelixPoint(t * 10.0f * kPi, 5.0f, 3.0f, 2.0f, 1.0f, 0.5f * t, 1.0f - t);
                 batch.push_back(pt);
                 mirror.append({pt.x, pt.y, pt.z});
             }
@@ -685,12 +735,16 @@ static RenderTask<void> trajectoryLineTask(
             // Update camera
             float z_center = 3.0f * static_cast<float>(f) / static_cast<float>(kTotalPts / kBatchSize);
             float angle = static_cast<float>(f) * 0.03f;
-            Eigen::Vector3f eye(
-                cam_dist * std::cos(angle),
-                cam_dist * 0.5f,
-                z_center + cam_dist * std::sin(angle));
+            Eigen::Vector3f eye(cam_dist * std::cos(angle), cam_dist * 0.5f, z_center + cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, {0, z_center, z_center}, up);
-            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(
+                ViewCameraProxy(session, view_cam_ops),
+                scene_id,
+                view_handle,
+                V.data(),
+                P.data(),
+                eye.data()
+            );
 
             co_await yield_frame();
         }
@@ -716,18 +770,21 @@ static RenderTask<void> trajectoryLineTask(
 
         while (!window.shouldClose())
         {
-            float elapsed = std::chrono::duration<float>(
-                std::chrono::steady_clock::now() - start).count();
+            float elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
             if (elapsed > kHoldSeconds)
                 break;
 
             float angle = elapsed * 0.5f;
-            Eigen::Vector3f eye(
-                cam_dist * std::cos(angle),
-                cam_dist * 0.5f,
-                cam_dist * std::sin(angle));
+            Eigen::Vector3f eye(cam_dist * std::cos(angle), cam_dist * 0.5f, cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, {0, 2, 0}, up);
-            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(
+                ViewCameraProxy(session, view_cam_ops),
+                scene_id,
+                view_handle,
+                V.data(),
+                P.data(),
+                eye.data()
+            );
 
             co_await yield_frame();
 
@@ -744,7 +801,8 @@ static RenderTask<void> trajectoryLineTask(
 
 // ── main ────────────────────────────────────────────────────────────────
 
-int main()
+int
+main()
 {
     std::cout << "=== TrajectoryLineFeature Integration Test ===\n"
               << "  Tests: BulkCreate, IncrementalAppend, MultiTrajectory,\n"
@@ -763,8 +821,7 @@ int main()
     std::atomic<bool> server_ready{false};
     std::atomic<bool> server_failed{false};
 
-    std::thread server_thread([&]
-    {
+    std::thread server_thread([&] {
         GeneralRenderServer server(channel, control_channel, upload_channel, sync);
         ServerConfig cfg;
         cfg.instance_extensions = surface_exts;
@@ -783,8 +840,11 @@ int main()
             return;
         }
         server_ready.store(true, std::memory_order_release);
-        while (server.tick()) {}
-    });
+        while (server.tick())
+        {
+        }
+    }
+    );
 
     while (!server_ready.load(std::memory_order_acquire))
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -805,17 +865,11 @@ int main()
     // ── Run ─────────────────────────────────────────────────────────
 
     RenderTaskScheduler scheduler(session, control, &upload);
-    auto task = trajectoryLineTask(
-        session,
-        control,
-        upload_client.client(),
-        window);
-    scheduler.run(
-        std::move(task), [&](RenderFrameSession&) -> bool
-        {
-            window.pollEvents();
-            return !window.shouldClose();
-        }
+    auto task = trajectoryLineTask(session, control, upload_client.client(), window);
+    scheduler.run(std::move(task), [&](RenderFrameSession&) -> bool {
+        window.pollEvents();
+        return !window.shouldClose();
+    }
     );
 
     // ── Shutdown ────────────────────────────────────────────────────

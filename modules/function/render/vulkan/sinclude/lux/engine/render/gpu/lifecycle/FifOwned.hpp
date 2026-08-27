@@ -41,11 +41,17 @@ namespace lux::render
 
     template <> struct FifRetireTraits<VkSampler>
     {
-        static void retire(DeferredDestroyQueue& q, VkSampler h) { q.retireSampler(h); }
+        static void retire(DeferredDestroyQueue& q, VkSampler h)
+        {
+            q.retireSampler(h);
+        }
     };
     template <> struct FifRetireTraits<VkImageView>
     {
-        static void retire(DeferredDestroyQueue& q, VkImageView h) { q.retireImageView(h); }
+        static void retire(DeferredDestroyQueue& q, VkImageView h)
+        {
+            q.retireImageView(h);
+        }
     };
 
     /**
@@ -56,8 +62,7 @@ namespace lux::render
      * forthcoming FifOwnedAllocated<H> sibling — those are migrated in a later
      * increment (GpuBufferBase / BindlessCombinedSet image+view).
      */
-    template <class H>
-    class FifOwned
+    template <class H> class FifOwned
     {
     public:
         FifOwned() = default;
@@ -65,40 +70,52 @@ namespace lux::render
         /// Take ownership of @p handle; it will be retired through @p queue.
         /// @p queue must be non-null whenever @p handle is non-null and must
         /// outlive this FifOwned (see file-level lifetime contract).
-        FifOwned(DeferredDestroyQueue* queue, H handle) noexcept
-            : queue_(queue), handle_(handle) {}
+        FifOwned(DeferredDestroyQueue* queue, H handle) noexcept : queue_(queue), handle_(handle)
+        {
+        }
 
-        FifOwned(const FifOwned&)            = delete;
+        FifOwned(const FifOwned&) = delete;
         FifOwned& operator=(const FifOwned&) = delete;
 
-        FifOwned(FifOwned&& o) noexcept
-            : queue_(o.queue_), handle_(o.handle_)
+        FifOwned(FifOwned&& o) noexcept : queue_(o.queue_), handle_(o.handle_)
         {
-            o.handle_ = VK_NULL_HANDLE;   // source no longer owns; its retire() is a no-op
+            o.handle_ = VK_NULL_HANDLE; // source no longer owns; its retire() is a no-op
         }
 
         FifOwned& operator=(FifOwned&& o) noexcept
         {
             if (this != &o)
             {
-                retire();                 // retire whatever we currently hold
-                queue_    = o.queue_;
-                handle_   = o.handle_;
+                retire(); // retire whatever we currently hold
+                queue_ = o.queue_;
+                handle_ = o.handle_;
                 o.handle_ = VK_NULL_HANDLE;
             }
             return *this;
         }
 
-        ~FifOwned() { retire(); }
+        ~FifOwned()
+        {
+            retire();
+        }
 
         /// Non-owning handle for descriptor writes / pipeline binding.
-        [[nodiscard]] H    get()   const noexcept { return handle_; }
-        [[nodiscard]] bool valid() const noexcept { return handle_ != VK_NULL_HANDLE; }
+        [[nodiscard]] H get() const noexcept
+        {
+            return handle_;
+        }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return handle_ != VK_NULL_HANDLE;
+        }
 
         /// Retire the held handle now (queued behind the current frame fence) and
         /// become empty. Idempotent. Use to release promptly on detach instead of
         /// waiting for destruction.
-        void reset() noexcept { retire(); }
+        void reset() noexcept
+        {
+            retire();
+        }
 
     private:
         void retire() noexcept
@@ -108,8 +125,8 @@ namespace lux::render
             handle_ = VK_NULL_HANDLE;
         }
 
-        DeferredDestroyQueue* queue_  = nullptr;
-        H                     handle_ = VK_NULL_HANDLE;
+        DeferredDestroyQueue* queue_ = nullptr;
+        H handle_ = VK_NULL_HANDLE;
     };
 
     // Trait: how to retire a (handle + VmaAllocation) pair of type H.
@@ -117,11 +134,17 @@ namespace lux::render
 
     template <> struct FifRetireAllocTraits<VkBuffer>
     {
-        static void retire(DeferredDestroyQueue& q, VkBuffer h, VmaAllocation a) { q.retireBuffer(h, a); }
+        static void retire(DeferredDestroyQueue& q, VkBuffer h, VmaAllocation a)
+        {
+            q.retireBuffer(h, a);
+        }
     };
     template <> struct FifRetireAllocTraits<VkImage>
     {
-        static void retire(DeferredDestroyQueue& q, VkImage h, VmaAllocation a) { q.retireImage(h, a); }
+        static void retire(DeferredDestroyQueue& q, VkImage h, VmaAllocation a)
+        {
+            q.retireImage(h, a);
+        }
     };
 
     /**
@@ -134,40 +157,46 @@ namespace lux::render
      * a later retire as a silent no-op). The queue may be late-bound (setQueue)
      * before the first handle is adopted, matching GpuBuffer's setDeferredQueue.
      */
-    template <class H>
-    class FifOwnedAllocated
+    template <class H> class FifOwnedAllocated
     {
     public:
         FifOwnedAllocated() = default;
         FifOwnedAllocated(DeferredDestroyQueue* queue, H handle, VmaAllocation alloc) noexcept
-            : queue_(queue), handle_(handle), alloc_(alloc) {}
+            : queue_(queue), handle_(handle), alloc_(alloc)
+        {
+        }
 
-        FifOwnedAllocated(const FifOwnedAllocated&)            = delete;
+        FifOwnedAllocated(const FifOwnedAllocated&) = delete;
         FifOwnedAllocated& operator=(const FifOwnedAllocated&) = delete;
 
-        FifOwnedAllocated(FifOwnedAllocated&& o) noexcept
-            : queue_(o.queue_), handle_(o.handle_), alloc_(o.alloc_)
+        FifOwnedAllocated(FifOwnedAllocated&& o) noexcept : queue_(o.queue_), handle_(o.handle_), alloc_(o.alloc_)
         {
             o.handle_ = VK_NULL_HANDLE;
-            o.alloc_  = VK_NULL_HANDLE;
+            o.alloc_ = VK_NULL_HANDLE;
         }
         FifOwnedAllocated& operator=(FifOwnedAllocated&& o) noexcept
         {
             if (this != &o)
             {
                 retire();
-                queue_    = o.queue_;
-                handle_   = o.handle_;
-                alloc_    = o.alloc_;
+                queue_ = o.queue_;
+                handle_ = o.handle_;
+                alloc_ = o.alloc_;
                 o.handle_ = VK_NULL_HANDLE;
-                o.alloc_  = VK_NULL_HANDLE;
+                o.alloc_ = VK_NULL_HANDLE;
             }
             return *this;
         }
-        ~FifOwnedAllocated() { retire(); }
+        ~FifOwnedAllocated()
+        {
+            retire();
+        }
 
         /// Late-bind the destroy queue. Must be set before the first adopt().
-        void setQueue(DeferredDestroyQueue* q) noexcept { queue_ = q; }
+        void setQueue(DeferredDestroyQueue* q) noexcept
+        {
+            queue_ = q;
+        }
 
         /// Retire the currently-held handle (if any) and take ownership of a new
         /// one. Used by the resize/migration path after the new buffer is created
@@ -176,15 +205,27 @@ namespace lux::render
         {
             retire();
             handle_ = handle;
-            alloc_  = alloc;
+            alloc_ = alloc;
         }
 
-        [[nodiscard]] H             get()   const noexcept { return handle_; }
-        [[nodiscard]] VmaAllocation alloc() const noexcept { return alloc_; }
-        [[nodiscard]] bool          valid() const noexcept { return handle_ != VK_NULL_HANDLE; }
+        [[nodiscard]] H get() const noexcept
+        {
+            return handle_;
+        }
+        [[nodiscard]] VmaAllocation alloc() const noexcept
+        {
+            return alloc_;
+        }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return handle_ != VK_NULL_HANDLE;
+        }
 
         /// Retire the held handle now (queued behind the current frame fence).
-        void reset() noexcept { retire(); }
+        void reset() noexcept
+        {
+            retire();
+        }
 
     private:
         void retire() noexcept
@@ -192,12 +233,12 @@ namespace lux::render
             if (handle_ != VK_NULL_HANDLE && queue_ != nullptr)
                 FifRetireAllocTraits<H>::retire(*queue_, handle_, alloc_);
             handle_ = VK_NULL_HANDLE;
-            alloc_  = VK_NULL_HANDLE;
+            alloc_ = VK_NULL_HANDLE;
         }
 
-        DeferredDestroyQueue* queue_  = nullptr;
-        H                     handle_ = VK_NULL_HANDLE;
-        VmaAllocation         alloc_  = VK_NULL_HANDLE;
+        DeferredDestroyQueue* queue_ = nullptr;
+        H handle_ = VK_NULL_HANDLE;
+        VmaAllocation alloc_ = VK_NULL_HANDLE;
     };
 
 } // namespace lux::render

@@ -12,11 +12,11 @@ namespace lux::render
 
     /**
      * @brief Resize (or initially allocate) per-view physical resources.
-     * 
+     *
      * The compiled graph is treated as immutable.  RELATIVE_MODE texture sizes
      * are resolved by the allocator using the supplied extent — the graph
      * descriptions are NOT mutated.
-     * 
+     *
      * @param graph         The compiled graph (read-only)
      * @param new_extent    The target resolution
      * @param state         Per-view resource state to update
@@ -39,14 +39,15 @@ namespace lux::render
      * @return true on success
      */
     LUX_FUNCTION_PUBLIC bool ResizeViewResources(
-        const RGCompiledGraph&          graph,
-        VkExtent2D                      new_extent,
-        RGResourceState&                state,
-        RGVulkanRecorder&               recorder,
-        PhysicalResourceAllocator&      allocator,
-        uint32_t                        frames_in_flight,
+        const RGCompiledGraph& graph,
+        VkExtent2D new_extent,
+        RGResourceState& state,
+        RGVulkanRecorder& recorder,
+        PhysicalResourceAllocator& allocator,
+        uint32_t frames_in_flight,
         std::function<void(RGPhysicalResourceTable&)> on_resources_allocated,
-        std::function<void(RGResourceState&&)>        on_old_state_retired,
-        uint32_t                        update_mask = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN));
+        std::function<void(RGResourceState&&)> on_old_state_retired,
+        uint32_t update_mask = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN)
+    );
 
 } // namespace lux::render

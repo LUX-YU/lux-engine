@@ -22,23 +22,27 @@ namespace lux::object
     {
         struct ObjectDiagnosticsAccess;
 
-        using QueuedMessageFactory = MessageEnvelope (*)(lux::cxx::intrusive_ptr<ConnectionControl>,
-                                                         const void *) noexcept;
+        using QueuedMessageFactory =
+            MessageEnvelope (*)(lux::cxx::intrusive_ptr<ConnectionControl>, const void*) noexcept;
 
         class SignalDescriptor final
         {
-          private:
+        private:
             template <class Owner, class Payload> friend class ::lux::object::Signal;
             friend class ::lux::object::LuxObject;
             friend class ::lux::object::reflection::SignalView;
             friend struct ObjectState;
             friend struct ObjectDiagnosticsAccess;
 
-            constexpr SignalDescriptor(std::size_t dense_index, std::size_t lineage_size,
-                                       lux::cxx::TypeToken owner, lux::cxx::TypeToken payload,
-                                       QueuedMessageFactory queued_message_factory) noexcept
-                : dense_index_(dense_index), lineage_size_(lineage_size), owner_(owner),
-                  payload_(payload), queued_message_factory_(queued_message_factory)
+            constexpr SignalDescriptor(
+                std::size_t dense_index,
+                std::size_t lineage_size,
+                lux::cxx::TypeToken owner,
+                lux::cxx::TypeToken payload,
+                QueuedMessageFactory queued_message_factory
+            ) noexcept
+                : dense_index_(dense_index), lineage_size_(lineage_size), owner_(owner), payload_(payload),
+                  queued_message_factory_(queued_message_factory)
             {
             }
 

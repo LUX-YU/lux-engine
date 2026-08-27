@@ -16,31 +16,26 @@ namespace lux::extensions::physics2d
         std::atomic<std::uint64_t> completed_steps{0u};
     };
 
-    PhysicsWorldApi::PhysicsWorldApi(std::shared_ptr<State> state) noexcept
-        : state_(std::move(state))
-    {}
+    PhysicsWorldApi::PhysicsWorldApi(std::shared_ptr<State> state) noexcept : state_(std::move(state))
+    {
+    }
 
     std::uint64_t PhysicsWorldApi::completedSteps() const noexcept
     {
-        return state_
-            ? state_->completed_steps.load(std::memory_order_relaxed)
-            : 0u;
+        return state_ ? state_->completed_steps.load(std::memory_order_relaxed) : 0u;
     }
 
     class Physics2DExtensionSystem final : public lux::ecs::ISystem
     {
     public:
-        Physics2DExtensionSystem(
-            Physics2DInstallConfig config)
-            : physics_(config.physics)
-            , fixed_(config.fixed_step)
-            , state_(std::make_shared<PhysicsWorldApi::State>())
-        {}
+        Physics2DExtensionSystem(Physics2DInstallConfig config)
+            : physics_(config.physics), fixed_(config.fixed_step), state_(std::make_shared<PhysicsWorldApi::State>())
+        {
+        }
 
         [[nodiscard]] std::unique_ptr<PhysicsWorldApi> makeApi() const
         {
-            return std::unique_ptr<PhysicsWorldApi>(
-                new PhysicsWorldApi(state_));
+            return std::unique_ptr<PhysicsWorldApi>(new PhysicsWorldApi(state_));
         }
 
         void update(const lux::ecs::SystemUpdateContext& context) override
@@ -48,26 +43,19 @@ namespace lux::extensions::physics2d
             if (!(fixed_.fixed_dt > 0.0f) || fixed_.max_substeps <= 0)
                 return;
             const auto dt = std::max(context.dt(), 0.0f);
-            accumulated_ = std::min(
-                accumulated_ + dt,
-                std::max(fixed_.max_accumulated, fixed_.fixed_dt));
+            accumulated_ = std::min(accumulated_ + dt, std::max(fixed_.max_accumulated, fixed_.fixed_dt));
             int substeps = 0;
-            while (accumulated_ >= fixed_.fixed_dt &&
-                   substeps < fixed_.max_substeps)
+            while (accumulated_ >= fixed_.fixed_dt && substeps < fixed_.max_substeps)
             {
                 physics_.step(context.registry(), fixed_.fixed_dt);
                 accumulated_ -= fixed_.fixed_dt;
                 ++substeps;
             }
-            if (substeps == fixed_.max_substeps &&
-                accumulated_ >= fixed_.fixed_dt &&
-                fixed_.drop_excess_time)
+            if (substeps == fixed_.max_substeps && accumulated_ >= fixed_.fixed_dt && fixed_.drop_excess_time)
             {
                 accumulated_ = std::fmod(accumulated_, fixed_.fixed_dt);
             }
-            state_->completed_steps.fetch_add(
-                static_cast<std::uint64_t>(substeps),
-                std::memory_order_relaxed);
+            state_->completed_steps.fetch_add(static_cast<std::uint64_t>(substeps), std::memory_order_relaxed);
         }
 
         [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
@@ -82,8 +70,7 @@ namespace lux::extensions::physics2d
         float accumulated_{0.0f};
     };
 
-    ExtensionRegistrationResult installWorldSystems(
-        lux::ecs::ScheduleBuilder& builder) noexcept
+    ExtensionRegistrationResult installWorldSystems(lux::ecs::ScheduleBuilder& builder) noexcept
     {
         Physics2DInstallConfig defaults;
         auto system = std::make_unique<Physics2DExtensionSystem>(defaults);
@@ -91,24 +78,19 @@ namespace lux::extensions::physics2d
         const auto checkpoint = builder.checkpoint();
         if (!builder.services().emplace(std::move(api)))
         {
-            return ExtensionRegistrationResult{
-                EExtensionRegistrationError::DUPLICATE_REGISTRATION};
+            return ExtensionRegistrationResult{EExtensionRegistrationError::DUPLICATE_REGISTRATION};
         }
-        if (!builder.add(
-                std::move(system),
-                lux::ecs::kPhaseSimulation))
+        if (!builder.add(std::move(system), lux::ecs::kPhaseSimulation))
         {
             (void)builder.rollbackTo(checkpoint);
-            return ExtensionRegistrationResult{
-                EExtensionRegistrationError::DUPLICATE_REGISTRATION};
+            return ExtensionRegistrationResult{EExtensionRegistrationError::DUPLICATE_REGISTRATION};
         }
         return {};
     }
 
 } // namespace lux::extensions::physics2d
 
-extern "C" LUX_PHYSICS2D_EXTENSION_PUBLIC
-const lux::extensions::ExtensionModuleDescriptorV5*
+extern "C" LUX_PHYSICS2D_EXTENSION_PUBLIC const lux::extensions::ExtensionModuleDescriptorV5*
 luxGetExtensionModuleV5() noexcept
 {
     using namespace lux::extensions;
@@ -124,10 +106,8 @@ luxGetExtensionModuleV5() noexcept
     return &descriptor;
 }
 
-extern "C" LUX_PHYSICS2D_EXTENSION_PUBLIC
-lux::extensions::ExtensionRegistrationResult
-luxInstallWorldSystemsV5(
-    lux::ecs::ScheduleBuilder& builder) noexcept
+extern "C" LUX_PHYSICS2D_EXTENSION_PUBLIC lux::extensions::ExtensionRegistrationResult
+luxInstallWorldSystemsV5(lux::ecs::ScheduleBuilder& builder) noexcept
 {
     return lux::extensions::physics2d::installWorldSystems(builder);
 }

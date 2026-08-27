@@ -2,8 +2,7 @@
 
 namespace lux::render
 {
-    uint32_t VariantBucketManager::getOrCreate(ELightingTechnique family,
-                                               ShaderFeatureMask  feature_mask)
+    uint32_t VariantBucketManager::getOrCreate(ELightingTechnique family, ShaderFeatureMask feature_mask)
     {
         const uint64_t key = makeKey(family, feature_mask);
         if (auto it = lookup_.find(key); it != lookup_.end())
@@ -13,19 +12,22 @@ namespace lux::render
         // the upper layer polices the live bucket count (see count()).
         const uint32_t bucket = static_cast<uint32_t>(buckets_.size());
         buckets_.push_back(VariantBucketDesc{
-            .family       = family,
+            .family = family,
             .feature_mask = feature_mask,
-        });
-        graph_refcount_.push_back(0u);  // keep parallel; family variants aren't refcounted
+        }
+        );
+        graph_refcount_.push_back(0u); // keep parallel; family variants aren't refcounted
         lookup_.emplace(key, bucket);
         return bucket;
     }
 
-    uint32_t VariantBucketManager::getOrCreateGraph(uint64_t               shader_key,
-                                                    ShaderHandle           gbuffer_shader,
-                                                    ShaderHandle           forward_shader,
-                                                    lux::rdesc::EAlphaMode alpha_mode,
-                                                    bool                   double_sided)
+    uint32_t VariantBucketManager::getOrCreateGraph(
+        uint64_t shader_key,
+        ShaderHandle gbuffer_shader,
+        ShaderHandle forward_shader,
+        lux::rdesc::EAlphaMode alpha_mode,
+        bool double_sided
+    )
     {
         // Key on the FULL identity (both baked shader handles + render-state),
         // not the client's lossy shader_key. shader_key is only the caller's
@@ -35,13 +37,16 @@ namespace lux::render
         // is part of the identity so distinct cull/alpha -> distinct PSO.
         (void)shader_key;
         const GraphBucketKey key{
-            gbuffer_shader.index, gbuffer_shader.gen,
-            forward_shader.index, forward_shader.gen,
-            static_cast<uint8_t>(alpha_mode), double_sided,
+            gbuffer_shader.index,
+            gbuffer_shader.gen,
+            forward_shader.index,
+            forward_shader.gen,
+            static_cast<uint8_t>(alpha_mode),
+            double_sided,
         };
         if (auto it = graph_lookup_.find(key); it != graph_lookup_.end())
         {
-            ++graph_refcount_[it->second];   // another material shares this bucket
+            ++graph_refcount_[it->second]; // another material shares this bucket
             return it->second;
         }
 
@@ -51,19 +56,18 @@ namespace lux::render
         // enforces no PSO-count policy. Buckets are refcounted and recycled via
         // release() on material destroy.
         const VariantBucketDesc desc{
-            .family               = ELightingTechnique::Graph,
+            .family = ELightingTechnique::Graph,
             // DOUBLE_SIDED here drives BucketPipelinePool::pick()'s cull-tier
             // selection (it reads feature_mask); set in lock-step with
             // graph_double_sided from the same param so the PSO is registered under
             // the tier pick() will request. Other feature bits are inert for graph
             // buckets (the baked frag shader, not feature_mask, defines the variant).
-            .feature_mask         = double_sided
-                                      ? static_cast<ShaderFeatureMask>(EShaderFeature::DOUBLE_SIDED)
-                                      : ShaderFeatureMask{ 0u },
+            .feature_mask =
+                double_sided ? static_cast<ShaderFeatureMask>(EShaderFeature::DOUBLE_SIDED) : ShaderFeatureMask{0u},
             .graph_gbuffer_shader = gbuffer_shader,
             .graph_forward_shader = forward_shader,
-            .graph_alpha_mode     = alpha_mode,
-            .graph_double_sided   = double_sided,
+            .graph_alpha_mode = alpha_mode,
+            .graph_double_sided = double_sided,
         };
 
         // Reuse a freed graph-bucket id before growing (bounds the high-water mark
@@ -76,7 +80,7 @@ namespace lux::render
         {
             bucket = graph_free_list_.back();
             graph_free_list_.pop_back();
-            buckets_[bucket]        = desc;
+            buckets_[bucket] = desc;
             graph_refcount_[bucket] = 1u;
         }
         else
@@ -95,9 +99,9 @@ namespace lux::render
         if (bucket_id < kLightingTechniqueCount)
             return;
         if (bucket_id >= graph_refcount_.size() || graph_refcount_[bucket_id] == 0u)
-            return;  // defensive: never seen / already free
+            return; // defensive: never seen / already free
         if (--graph_refcount_[bucket_id] != 0u)
-            return;  // still referenced by other materials
+            return; // still referenced by other materials
 
         // Last reference dropped: free the bucket. Erase its graph_lookup_ key
         // (cold path; the map is bounded by live graph buckets), blank the slot so
@@ -111,7 +115,7 @@ namespace lux::render
                 break;
             }
         }
-        buckets_[bucket_id] = VariantBucketDesc{};  // family defaults to Unlit -> skipped
+        buckets_[bucket_id] = VariantBucketDesc{}; // family defaults to Unlit -> skipped
         graph_free_list_.push_back(bucket_id);
     }
 
@@ -128,10 +132,11 @@ namespace lux::render
         {
             const auto family = static_cast<ELightingTechnique>(family_index);
             buckets_.push_back(VariantBucketDesc{
-                .family       = family,
+                .family = family,
                 .feature_mask = 0u,
-            });
-            graph_refcount_.push_back(0u);  // family bootstrap buckets are pinned
+            }
+            );
+            graph_refcount_.push_back(0u); // family bootstrap buckets are pinned
             lookup_.emplace(makeKey(family, 0u), family_index);
         }
     }

@@ -12,22 +12,19 @@
 namespace lux::render
 {
     struct LUX_COMM_CONFIG(
-        prefix=Fog,
-        id=lux.render.fog.v1,
-        display=Fog,
-        requires=lux.render.linear_depth.v1,
-        feature=FogFeature,
-        feature_header=lux/engine/render/renderer/features/postprocess/FogFeature.hpp)
-    FogCommConfig
+        prefix = Fog,
+        id = lux.render.fog.v1,
+        display = Fog,
+        requires = lux.render.linear_depth.v1,
+        feature = FogFeature,
+        feature_header = lux / engine / render / renderer / features / postprocess / FogFeature.hpp) FogCommConfig
     {
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};
     };
     static_assert(std::is_trivially_copyable_v<FogCommConfig>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=FogSetParams,
-                  method=setParams)
-    FogSetParamsPayload
+    struct LUX_OP(lane = frame, kind = stream, name = FogSetParams, method = setParams) FogSetParamsPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};

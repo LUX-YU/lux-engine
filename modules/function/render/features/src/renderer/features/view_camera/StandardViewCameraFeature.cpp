@@ -9,9 +9,11 @@ namespace lux::render
 {
     StandardViewCameraFeature::StandardViewCameraFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
-    {}
+    {
+    }
 
-    lux::render::Expected<void> StandardViewCameraFeature::initAndAttachTo(RenderScene& sc){
+    lux::render::Expected<void> StandardViewCameraFeature::initAndAttachTo(RenderScene& sc)
+    {
         // Own the per-scene 3D camera store. ensure<T>: idempotent get-or-create
         // (whoever attaches first builds it). No GPU state — it is a plain CPU
         // mirror filled by the camera op handler each frame and read by the camera
@@ -36,20 +38,15 @@ namespace lux::render
             cam->removeView(view);
     }
 
-    bool StandardViewCameraFeature::canRebaseSceneOrigin(
-        const std::int64_t origin_delta[3]) const noexcept
+    bool StandardViewCameraFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
-        const auto* cameras = renderScene().sceneRegistry().find<
-            ViewCameraResource>();
-        return cameras == nullptr ||
-            cameras->canRebaseSceneOrigin(origin_delta);
+        const auto* cameras = renderScene().sceneRegistry().find<ViewCameraResource>();
+        return cameras == nullptr || cameras->canRebaseSceneOrigin(origin_delta);
     }
 
-    void StandardViewCameraFeature::rebaseSceneOrigin(
-        const std::int64_t origin_delta[3]) noexcept
+    void StandardViewCameraFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
     {
-        if (auto* cameras = renderScene().sceneRegistry().find<
-                ViewCameraResource>())
+        if (auto* cameras = renderScene().sceneRegistry().find<ViewCameraResource>())
         {
             cameras->rebaseSceneOrigin(origin_delta);
         }

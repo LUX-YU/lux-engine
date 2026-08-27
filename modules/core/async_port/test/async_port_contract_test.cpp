@@ -21,15 +21,15 @@ namespace
         int value{0};
     };
 
-    class Endpoint final
-        : public lux::async::detail::OperationEndpoint<Notify>
+    class Endpoint final : public lux::async::detail::OperationEndpoint<Notify>
     {
     public:
         [[nodiscard]] lux::async::SubmitResult submit(
             Notify operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
-            lux::async::SubmitOptions) noexcept override
+            lux::async::SubmitOptions
+        ) noexcept override
         {
             observed = operation.value;
             complete(state, Outcome{});
@@ -39,15 +39,15 @@ namespace
         int observed{0};
     };
 
-    class DeferredEndpoint final
-        : public lux::async::detail::OperationEndpoint<Notify>
+    class DeferredEndpoint final : public lux::async::detail::OperationEndpoint<Notify>
     {
     public:
         [[nodiscard]] lux::async::SubmitResult submit(
             Notify operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
-            lux::async::SubmitOptions) noexcept override
+            lux::async::SubmitOptions
+        ) noexcept override
         {
             observed = operation.value;
             state_ = state;
@@ -66,15 +66,15 @@ namespace
 
     private:
         void* state_{nullptr};
-        void (*complete_)(void*, Outcome&&) noexcept{nullptr};
+        void (*complete_)(void*, Outcome&&) noexcept {nullptr};
     };
 }
 
-int main()
+int
+main()
 {
     static_assert(lux::async::Operation<Notify>);
-    static_assert(std::is_copy_constructible_v<
-        lux::async::OperationPort<Notify>>);
+    static_assert(std::is_copy_constructible_v<lux::async::OperationPort<Notify>>);
 
     lux::async::OperationPort<Notify> missing;
     const auto rejected = missing.tryNotify(Notify{1});
@@ -88,20 +88,17 @@ int main()
     assert(lux::async::operationType<Notify>().isValid());
 
     lux::async::OperationInbox<Notify, int> rejected_inbox{1u};
-    const auto inbox_rejected = rejected_inbox.submit(
-        missing, Notify{2}, 7);
+    const auto inbox_rejected = rejected_inbox.submit(missing, Notify{2}, 7);
     assert(!inbox_rejected);
     assert(rejected_inbox.terminal());
 
     lux::async::OperationInbox<Notify, int> immediate_inbox{1u};
     assert(immediate_inbox.submit(port, Notify{43}, 8));
     assert(!immediate_inbox.terminal());
-    assert(immediate_inbox.drain(
-        [](auto completion) noexcept
-        {
-            assert(completion.key == 8);
-            assert(completion.outcome);
-        }) == 1u);
+    assert(immediate_inbox.drain([](auto completion) noexcept {
+        assert(completion.key == 8);
+        assert(completion.outcome);
+    }) == 1u);
     assert(immediate_inbox.terminal());
 
     auto deferred_endpoint = std::make_shared<DeferredEndpoint>();
@@ -110,11 +107,9 @@ int main()
     assert(deferred_inbox.submit(deferred_port, Notify{44}, 9));
     assert(!deferred_inbox.terminal());
     deferred_endpoint->finish();
-    assert(deferred_inbox.drain(
-        [](auto completion) noexcept
-        {
-            assert(completion.key == 9);
-            assert(completion.outcome);
-        }) == 1u);
+    assert(deferred_inbox.drain([](auto completion) noexcept {
+        assert(completion.key == 9);
+        assert(completion.outcome);
+    }) == 1u);
     assert(deferred_inbox.terminal());
 }

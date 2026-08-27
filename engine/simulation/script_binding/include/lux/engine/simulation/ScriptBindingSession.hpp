@@ -17,8 +17,7 @@
 
 namespace lux::simulation
 {
-    [[noreturn]] LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC
-    void scriptBindingContractFailure() noexcept;
+    [[noreturn]] LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC void scriptBindingContractFailure() noexcept;
 
     enum class EScriptBindingError : std::uint8_t
     {
@@ -82,17 +81,13 @@ namespace lux::simulation
     {
         const lux::asset::ScriptAssetContent* asset{};
         void* lease{};
-        void (*release)(void* lease) noexcept{};
+        void (*release)(void* lease) noexcept {};
     };
 
     struct ScriptAssetResolver final
     {
         void* context{};
-        bool (*resolve)(
-            void* context,
-            const lux::asset::AssetId& id,
-            ResolvedScriptAsset& result
-        ) noexcept{};
+        bool (*resolve)(void* context, const lux::asset::AssetId& id, ResolvedScriptAsset& result) noexcept {};
     };
 
     enum class EScriptHostCommand : std::uint8_t
@@ -116,55 +111,38 @@ namespace lux::simulation
     struct ScriptHostApi final
     {
         void* context{};
-        const void* (*read)(
-            void* context,
-            ecs::Entity entity,
-            std::uint64_t component_type
-        ) noexcept{};
-        bool (*patch)(
-            void* context,
-            ecs::Entity entity,
-            std::uint64_t component_type,
-            const void* value
-        ) noexcept{};
+        const void* (*read)(void* context, ecs::Entity entity, std::uint64_t component_type) noexcept {};
+        bool (*patch)(void* context, ecs::Entity entity, std::uint64_t component_type, const void* value) noexcept {};
         bool (*command)(
             void* context,
             EScriptHostCommand command,
             ecs::Entity entity,
             std::uint64_t component_type,
-            const void* value
-        ) noexcept{};
+            const void* value) noexcept {};
         bool (*component_contract)(
             void* context,
             std::uint64_t component_type,
-            ScriptHostComponentContract& result
-        ) noexcept{};
+            ScriptHostComponentContract& result) noexcept {};
     };
 
-    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC
-        ScriptInstanceHostContext final
+    class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC ScriptInstanceHostContext final
     {
-      public:
+    public:
         ScriptInstanceHostContext() noexcept = default;
 
         [[nodiscard]] bool attached() const noexcept;
         [[nodiscard]] ecs::Entity self() const noexcept;
         [[nodiscard]] const void* read(std::uint64_t component_type) const noexcept;
-        [[nodiscard]] bool patch(
-            std::uint64_t component_type,
-            const void* value
-        ) const noexcept;
+        [[nodiscard]] bool patch(std::uint64_t component_type, const void* value) const noexcept;
         [[nodiscard]] bool command(
             EScriptHostCommand command,
             std::uint64_t component_type = 0U,
             const void* value = nullptr
         ) const noexcept;
-        [[nodiscard]] bool componentContract(
-            std::uint64_t component_type,
-            ScriptHostComponentContract& result
-        ) const noexcept;
+        [[nodiscard]] bool
+        componentContract(std::uint64_t component_type, ScriptHostComponentContract& result) const noexcept;
 
-      private:
+    private:
         void configure(const ScriptHostApi& api) noexcept;
         void attach(ecs::Entity entity) noexcept;
         const ScriptHostApi* api_{};
@@ -210,23 +188,17 @@ namespace lux::simulation
             void* context,
             const ScriptInstanceCreateContext& create_context,
             const lux::asset::ScriptAssetContent& asset,
-            ScriptBackendInstance& result
-        ) noexcept{};
+            ScriptBackendInstance& result) noexcept {};
         EScriptBackendResult (*prepareMethod)(
             void* context,
             ScriptBackendInstance instance,
             const lux::rdesc::ScriptFunction& function,
-            lux::script::BoundScriptCall& result
-        ) noexcept{};
+            lux::script::BoundScriptCall& result) noexcept {};
         void (*releaseMethod)(
             void* context,
             ScriptBackendInstance instance,
-            lux::script::BoundScriptCall call
-        ) noexcept{};
-        void (*destroyInstance)(
-            void* context,
-            ScriptBackendInstance instance
-        ) noexcept{};
+            lux::script::BoundScriptCall call) noexcept {};
+        void (*destroyInstance)(void* context, ScriptBackendInstance instance) noexcept {};
     };
 
     struct ScriptBindingFailure final
@@ -261,19 +233,17 @@ namespace lux::simulation
 
     class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC ScriptBindingSession final
     {
-      public:
+    public:
         struct State;
 
-        [[nodiscard]] static lux::cxx::expected<
-            ScriptBindingSession,
-            EScriptBindingError> create(
-                SimulationDescription description,
-                ecs::Registry& registry,
-                ScriptBindingCapacities capacities,
-                ScriptAssetResolver resolver,
-                std::span<const ScriptBackendDescriptor> backends,
-                ScriptHostApi host_api = {}
-            ) noexcept;
+        [[nodiscard]] static lux::cxx::expected<ScriptBindingSession, EScriptBindingError> create(
+            SimulationDescription description,
+            ecs::Registry& registry,
+            ScriptBindingCapacities capacities,
+            ScriptAssetResolver resolver,
+            std::span<const ScriptBackendDescriptor> backends,
+            ScriptHostApi host_api = {}
+        ) noexcept;
 
         ScriptBindingSession(ScriptBindingSession&&) noexcept;
         ScriptBindingSession& operator=(ScriptBindingSession&&) noexcept;
@@ -282,41 +252,26 @@ namespace lux::simulation
         ScriptBindingSession(const ScriptBindingSession&) = delete;
         ScriptBindingSession& operator=(const ScriptBindingSession&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        prepare() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        applyQuiescentMutations() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        shutdown() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> prepare() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> applyQuiescentMutations() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError> shutdown() noexcept;
 
-        [[nodiscard]] ScriptHookSlot hookSlot(
-            std::string_view system_instance,
-            std::string_view hook
-        ) const noexcept;
-        [[nodiscard]] ScriptEventSlot eventSlot(
-            std::string_view system_instance,
-            std::string_view event
-        ) const noexcept;
+        [[nodiscard]] ScriptHookSlot hookSlot(std::string_view system_instance, std::string_view hook) const noexcept;
+        [[nodiscard]] ScriptEventSlot
+        eventSlot(std::string_view system_instance, std::string_view event) const noexcept;
 
-        [[nodiscard]] ScriptDispatchResult dispatchHook(
-            ScriptHookSlot hook,
-            const lux_script_call_frame& frame
-        ) noexcept;
-        [[nodiscard]] ScriptDispatchResult dispatchEvent(
-            ScriptEventSlot event,
-            ecs::Entity target,
-            const lux_script_call_frame& live_frame
-        ) noexcept;
+        [[nodiscard]] ScriptDispatchResult
+        dispatchHook(ScriptHookSlot hook, const lux_script_call_frame& frame) noexcept;
+        [[nodiscard]] ScriptDispatchResult
+        dispatchEvent(ScriptEventSlot event, ecs::Entity target, const lux_script_call_frame& live_frame) noexcept;
 
         void clearFailures() noexcept;
-        [[nodiscard]] std::span<const ScriptBindingFailure> failures() const
-            noexcept;
+        [[nodiscard]] std::span<const ScriptBindingFailure> failures() const noexcept;
         [[nodiscard]] std::size_t instanceCount() const noexcept;
         [[nodiscard]] std::size_t preparedMethodCount() const noexcept;
-        [[nodiscard]] const ScriptBindingInstrumentation& instrumentation() const
-            noexcept;
+        [[nodiscard]] const ScriptBindingInstrumentation& instrumentation() const noexcept;
 
-      private:
+    private:
         explicit ScriptBindingSession(std::unique_ptr<State> state) noexcept;
         std::unique_ptr<State> state_;
     };

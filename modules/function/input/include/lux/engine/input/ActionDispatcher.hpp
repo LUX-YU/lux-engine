@@ -25,13 +25,19 @@ namespace lux::input
     class ActionMapperDispatcher final : public IActionDispatcher
     {
     public:
-        explicit ActionMapperDispatcher(ActionMapper& mapper) : mapper_(mapper) {}
+        explicit ActionMapperDispatcher(ActionMapper& mapper) : mapper_(mapper)
+        {
+        }
 
         void dispatchTriggered(ActionId id, const InputValue& value) override
-        { mapper_.injectTriggered(id, value); }
+        {
+            mapper_.injectTriggered(id, value);
+        }
 
         void dispatchValue(ActionId id, const InputValue& value) override
-        { mapper_.injectValue(id, value); }
+        {
+            mapper_.injectValue(id, value);
+        }
 
     private:
         ActionMapper& mapper_;

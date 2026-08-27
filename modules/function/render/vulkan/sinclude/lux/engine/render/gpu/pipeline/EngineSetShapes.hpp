@@ -29,9 +29,9 @@
 
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
 #include <lux/engine/function/render/client/core/ShadingInputSlot.hpp> // kShadingInputSlotCount (Light b11)
-#include <lux/engine/description/LayoutContract.hpp>   // rdesc::EBindFrequency
-#include <lux/engine/description/ShaderInfo.hpp>       // rdesc::ShaderInfo
-#include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp> // SpirvRelocation
+#include <lux/engine/description/LayoutContract.hpp>                   // rdesc::EBindFrequency
+#include <lux/engine/description/ShaderInfo.hpp>                       // rdesc::ShaderInfo
+#include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>             // SpirvRelocation
 
 #include <vulkan/vulkan.h>
 
@@ -49,34 +49,34 @@ namespace lux::render
     /// tagged with an enum and resolved at build time instead.
     enum class EBindingCountSource : uint8_t
     {
-        Fixed,              ///< Use the literal value of the count field.
-        Bindless2DTextures, ///< Device-derived: bindless 2D texture table capacity.
-        BindlessCubeTextures,///< Device-derived: bindless cube texture table capacity.
-        VertexPoolSlots,    ///< kVertexPoolMaxCount.
-        MaterialFamilies,   ///< kMaterialFamilyBindingCount (one binding per family).
+        Fixed,                ///< Use the literal value of the count field.
+        Bindless2DTextures,   ///< Device-derived: bindless 2D texture table capacity.
+        BindlessCubeTextures, ///< Device-derived: bindless cube texture table capacity.
+        VertexPoolSlots,      ///< kVertexPoolMaxCount.
+        MaterialFamilies,     ///< kMaterialFamilyBindingCount (one binding per family).
     };
 
     struct EngineSetBindingShape
     {
-        uint32_t             binding{0};
-        VkDescriptorType     type{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-        VkShaderStageFlags   stages{0};
+        uint32_t binding{0};
+        VkDescriptorType type{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+        VkShaderStageFlags stages{0};
         VkDescriptorBindingFlags binding_flags{0};
-        EBindingCountSource  count_source{EBindingCountSource::Fixed};
-        uint32_t             count{1};
+        EBindingCountSource count_source{EBindingCountSource::Fixed};
+        uint32_t count{1};
     };
 
     struct EngineSetShape
     {
-        EDescriptorSetSlot                     slot{};
+        EDescriptorSetSlot slot{};
         std::span<const EngineSetBindingShape> bindings;
         /// Whether this set needs the UPDATE_AFTER_BIND pool flag (true if
         /// any binding carries UAB).
-        bool                                   update_after_bind{false};
+        bool update_after_bind{false};
         /// For sets like MaterialFamilies that "expand into N identically-
         /// shaped bindings by a constant": bindings holds only the template
         /// entry 0, expanded by count_source at build time.
-        bool                                   expand_by_count_source{false};
+        bool expand_by_count_source{false};
         /// This set's update-frequency domain.
         ///
         /// Why this is an engine-level fact rather than derived from the
@@ -88,23 +88,22 @@ namespace lux::render
         /// precisely on "there are only 4 frequency domains" (sets in the
         /// same domain merge into one, so any pipeline binds at most 4) —
         /// so every set's domain must be a fixed, known fact.
-        rdesc::EBindFrequency                  frequency{rdesc::EBindFrequency::FEATURE};
+        rdesc::EBindFrequency frequency{rdesc::EBindFrequency::FEATURE};
     };
 
     namespace engine_sets
     {
-        constexpr VkShaderStageFlags kVFC = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
-                                          | VK_SHADER_STAGE_COMPUTE_BIT;
-        constexpr VkShaderStageFlags kVF  = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        constexpr VkShaderStageFlags kFC  = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-        constexpr VkShaderStageFlags kF   = VK_SHADER_STAGE_FRAGMENT_BIT;
-        constexpr VkShaderStageFlags kC   = VK_SHADER_STAGE_COMPUTE_BIT;
-        constexpr VkShaderStageFlags kCV  = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+        constexpr VkShaderStageFlags kVFC =
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+        constexpr VkShaderStageFlags kVF = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        constexpr VkShaderStageFlags kFC = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+        constexpr VkShaderStageFlags kF = VK_SHADER_STAGE_FRAGMENT_BIT;
+        constexpr VkShaderStageFlags kC = VK_SHADER_STAGE_COMPUTE_BIT;
+        constexpr VkShaderStageFlags kCV = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
 
         constexpr VkDescriptorBindingFlags kUAB = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
         constexpr VkDescriptorBindingFlags kUAB_PB = kUAB | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-        constexpr VkDescriptorBindingFlags kUAB_PB_VAR =
-            kUAB_PB | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+        constexpr VkDescriptorBindingFlags kUAB_PB_VAR = kUAB_PB | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
 
         // SET 0 — Scene: global SoA + view SoA (binding 0 isn't declared by
         // any shader — only the engine side writes it — so it can never
@@ -122,10 +121,18 @@ namespace lux::render
 
         // SET 2 — Texture: bindless 2D + cube (capacity is device-derived).
         inline constexpr std::array kTexture{
-            EngineSetBindingShape{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kF, kUAB_PB,
-                                  EBindingCountSource::Bindless2DTextures},
-            EngineSetBindingShape{1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kF, kUAB_PB_VAR,
-                                  EBindingCountSource::BindlessCubeTextures},
+            EngineSetBindingShape{
+                0,
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                kF,
+                kUAB_PB,
+                EBindingCountSource::Bindless2DTextures},
+            EngineSetBindingShape{
+                1,
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                kF,
+                kUAB_PB_VAR,
+                EBindingCountSource::BindlessCubeTextures},
         };
 
         // SET 3 — Light + shadow + shading inputs: b0-3 are lights; b4-10 are
@@ -133,25 +140,35 @@ namespace lux::render
         // input array (ALWAYS fully written — LightResources fills every
         // element with a 1×1 white default at init, so no PARTIALLY_BOUND).
         inline constexpr std::array kLight{
-            EngineSetBindingShape{0,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kFC, kUAB},
-            EngineSetBindingShape{1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kFC, kUAB},
-            EngineSetBindingShape{2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kFC, kUAB},
-            EngineSetBindingShape{3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kFC, kUAB},
-            EngineSetBindingShape{4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kVF, kUAB_PB},
-            EngineSetBindingShape{5,  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kF,  kUAB_PB},
-            EngineSetBindingShape{6,  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kF,  kUAB_PB},
-            EngineSetBindingShape{7,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kF,  kUAB_PB},
-            EngineSetBindingShape{8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kF,  kUAB_PB},
-            EngineSetBindingShape{9,  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kF,  kUAB_PB},
-            EngineSetBindingShape{10, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kF,  kUAB_PB},
-            EngineSetBindingShape{11, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kF,  kUAB,
-                                  EBindingCountSource::Fixed, kShadingInputSlotCount},
+            EngineSetBindingShape{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kFC, kUAB},
+            EngineSetBindingShape{1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kFC, kUAB},
+            EngineSetBindingShape{2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kFC, kUAB},
+            EngineSetBindingShape{3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kFC, kUAB},
+            EngineSetBindingShape{4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kVF, kUAB_PB},
+            EngineSetBindingShape{5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kF, kUAB_PB},
+            EngineSetBindingShape{6, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kF, kUAB_PB},
+            EngineSetBindingShape{7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kF, kUAB_PB},
+            EngineSetBindingShape{8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kF, kUAB_PB},
+            EngineSetBindingShape{9, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kF, kUAB_PB},
+            EngineSetBindingShape{10, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kF, kUAB_PB},
+            EngineSetBindingShape{
+                11,
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                kF,
+                kUAB,
+                EBindingCountSource::Fixed,
+                kShadingInputSlotCount},
         };
 
         // SET 4 — Material: one identically-shaped SSBO per family (count =
         // kMaterialFamilyBindingCount).
         inline constexpr std::array kMaterial{
-            EngineSetBindingShape{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kF, kUAB, EBindingCountSource::MaterialFamilies},
+            EngineSetBindingShape{
+                0,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                kF,
+                kUAB,
+                EBindingCountSource::MaterialFamilies},
         };
 
         // SET 5 — Particle:**空**。
@@ -177,7 +194,12 @@ namespace lux::render
 
         // SET 7 — VertexPool: bindless vertex-source array.
         inline constexpr std::array kVertexPool{
-            EngineSetBindingShape{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kVFC, kUAB_PB, EBindingCountSource::VertexPoolSlots},
+            EngineSetBindingShape{
+                0,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                kVFC,
+                kUAB_PB,
+                EBindingCountSource::VertexPoolSlots},
         };
     } // namespace engine_sets
 
@@ -191,13 +213,13 @@ namespace lux::render
     ///   FEATURE    varies with the feature combination (instance/light/material/particle/cull)
     ///   PASS_LOCAL per pass (no engine set lives here — it's the domain of private sets)
     inline constexpr std::array<EngineSetShape, kDescriptorSetCount> kEngineSetShapes{{
-        {EDescriptorSetSlot::Scene,      engine_sets::kScene,      true,  false, rdesc::EBindFrequency::GLOBAL},
-        {EDescriptorSetSlot::Instance,   engine_sets::kInstance,   true,  false, rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Texture,    engine_sets::kTexture,    true,  false, rdesc::EBindFrequency::BINDLESS},
-        {EDescriptorSetSlot::Light,      engine_sets::kLight,      true,  false, rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Material,   engine_sets::kMaterial,   true,  true , rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Particle,   engine_sets::kParticle,   false, false, rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Compute,    engine_sets::kCompute,    false, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::Scene, engine_sets::kScene, true, false, rdesc::EBindFrequency::GLOBAL},
+        {EDescriptorSetSlot::Instance, engine_sets::kInstance, true, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::Texture, engine_sets::kTexture, true, false, rdesc::EBindFrequency::BINDLESS},
+        {EDescriptorSetSlot::Light, engine_sets::kLight, true, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::Material, engine_sets::kMaterial, true, true, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::Particle, engine_sets::kParticle, false, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::Compute, engine_sets::kCompute, false, false, rdesc::EBindFrequency::FEATURE},
         // The vertex pool belongs to FEATURE, not BINDLESS — the domain is a
         // *grouping key* chosen by "lifetime + budget," not an assertion
         // about update frequency. Reason: BINDLESS's other member (the
@@ -212,7 +234,7 @@ namespace lux::render
         // and the vertex pool shares its domain and lifetime with the rest
         // of the per-scene resources. Pipelines still bind only 4 sets
         // (verified in practice).
-        {EDescriptorSetSlot::VertexPool, engine_sets::kVertexPool, true,  false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::VertexPool, engine_sets::kVertexPool, true, false, rdesc::EBindFrequency::FEATURE},
     }};
 
     // ── Position constants for domain merging ─────────────────────────────
@@ -239,8 +261,10 @@ namespace lux::render
             return 0;
         switch (shape.bindings[0].count_source)
         {
-        case EBindingCountSource::MaterialFamilies: return kMaterialFamilyBindingCount;
-        default:                                    return static_cast<uint32_t>(shape.bindings.size());
+        case EBindingCountSource::MaterialFamilies:
+            return kMaterialFamilyBindingCount;
+        default:
+            return static_cast<uint32_t>(shape.bindings.size());
         }
     }
 
@@ -267,15 +291,15 @@ namespace lux::render
     /// the shape table; (2) when routing claims an engine set, checking
     /// entry by entry that a reflected binding really lives in this set
     /// (number exists + type matches).
-    [[nodiscard]] constexpr const EngineSetBindingShape* engineShapeBindingFor(
-        uint32_t canonical_set, uint32_t binding) noexcept
+    [[nodiscard]] constexpr const EngineSetBindingShape*
+    engineShapeBindingFor(uint32_t canonical_set, uint32_t binding) noexcept
     {
         if (canonical_set >= kEngineSetShapes.size())
             return nullptr;
         const EngineSetShape& shape = kEngineSetShapes[canonical_set];
         if (shape.expand_by_count_source)
-            return (!shape.bindings.empty() && binding < engineSetOccupancy(canonical_set))
-                 ? &shape.bindings[0] : nullptr;
+            return (!shape.bindings.empty() && binding < engineSetOccupancy(canonical_set)) ? &shape.bindings[0]
+                                                                                            : nullptr;
         for (const auto& b : shape.bindings)
             if (b.binding == binding)
                 return &b;
@@ -291,8 +315,7 @@ namespace lux::render
     /// relocateShaderInfoByName must give exactly the same answer to
     /// "which resources need to move," and writing the predicate in two
     /// places would eventually diverge, so it lives here instead.
-    [[nodiscard]] constexpr const rdesc::LogicalResourceDesc* engineOwnedResource(
-        std::string_view name) noexcept
+    [[nodiscard]] constexpr const rdesc::LogicalResourceDesc* engineOwnedResource(std::string_view name) noexcept
     {
         const auto* e = rdesc::findLogicalResource(name);
         return (e && e->engine_set && e->canonical_set < kEngineSetShapes.size()) ? e : nullptr;
@@ -304,16 +327,26 @@ namespace lux::render
     {
         switch (t)
         {
-        case rdesc::EDescriptorType::SAMPLER:                return VK_DESCRIPTOR_TYPE_SAMPLER;
-        case rdesc::EDescriptorType::COMBINED_IMAGE_SAMPLER: return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        case rdesc::EDescriptorType::SAMPLED_IMAGE:          return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        case rdesc::EDescriptorType::STORAGE_IMAGE:          return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        case rdesc::EDescriptorType::UNIFORM_TEXEL_BUFFER:   return VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-        case rdesc::EDescriptorType::STORAGE_TEXEL_BUFFER:   return VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-        case rdesc::EDescriptorType::UNIFORM_BUFFER:         return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case rdesc::EDescriptorType::STORAGE_BUFFER:         return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        case rdesc::EDescriptorType::INPUT_ATTACHMENT:       return VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-        default:                                             return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case rdesc::EDescriptorType::SAMPLER:
+            return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case rdesc::EDescriptorType::COMBINED_IMAGE_SAMPLER:
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        case rdesc::EDescriptorType::SAMPLED_IMAGE:
+            return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        case rdesc::EDescriptorType::STORAGE_IMAGE:
+            return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case rdesc::EDescriptorType::UNIFORM_TEXEL_BUFFER:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+        case rdesc::EDescriptorType::STORAGE_TEXEL_BUFFER:
+            return VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+        case rdesc::EDescriptorType::UNIFORM_BUFFER:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case rdesc::EDescriptorType::STORAGE_BUFFER:
+            return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case rdesc::EDescriptorType::INPUT_ATTACHMENT:
+            return VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        default:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         }
     }
 
@@ -334,7 +367,7 @@ namespace lux::render
     {
         if (canonical_set >= kEngineSetShapes.size())
             return 0;
-        const auto domain   = kEngineSetShapes[canonical_set].frequency;
+        const auto domain = kEngineSetShapes[canonical_set].frequency;
         const bool self_var = engineSetHasVariableCount(canonical_set);
 
         uint32_t offset = 0;
@@ -370,8 +403,7 @@ namespace lux::render
         uint32_t uniform_buffer{0};
     };
 
-    [[nodiscard]] constexpr DomainDescriptorCounts domainDescriptorCounts(
-        rdesc::EBindFrequency domain) noexcept
+    [[nodiscard]] constexpr DomainDescriptorCounts domainDescriptorCounts(rdesc::EBindFrequency domain) noexcept
     {
         DomainDescriptorCounts c{};
         for (uint32_t s = 0; s < kEngineSetShapes.size(); ++s)
@@ -385,22 +417,37 @@ namespace lux::render
                 uint32_t repeat = 1;
                 switch (b.count_source)
                 {
-                case EBindingCountSource::VertexPoolSlots:  n = kVertexPoolMaxCount; break;
-                case EBindingCountSource::MaterialFamilies: n = 1; repeat = kMaterialFamilyBindingCount; break;
+                case EBindingCountSource::VertexPoolSlots:
+                    n = kVertexPoolMaxCount;
+                    break;
+                case EBindingCountSource::MaterialFamilies:
+                    n = 1;
+                    repeat = kMaterialFamilyBindingCount;
+                    break;
                 // Bindless capacity is device-derived — see the comment
                 // above; this case is never hit here.
                 case EBindingCountSource::Bindless2DTextures:
-                case EBindingCountSource::BindlessCubeTextures: n = 0; break;
+                case EBindingCountSource::BindlessCubeTextures:
+                    n = 0;
+                    break;
                 case EBindingCountSource::Fixed:
-                default: break;
+                default:
+                    break;
                 }
                 const uint32_t total = n * repeat;
                 switch (b.type)
                 {
-                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:         c.storage_buffer         += total; break;
-                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: c.combined_image_sampler += total; break;
-                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:         c.uniform_buffer         += total; break;
-                default: break;
+                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+                    c.storage_buffer += total;
+                    break;
+                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                    c.combined_image_sampler += total;
+                    break;
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                    c.uniform_buffer += total;
+                    break;
+                default:
+                    break;
                 }
             }
         }
@@ -418,10 +465,14 @@ namespace lux::render
     {
         switch (domain)
         {
-        case rdesc::EBindFrequency::GLOBAL:     return 0;   // once per frame
-        case rdesc::EBindFrequency::BINDLESS:   return 1;   // almost never changes
-        case rdesc::EBindFrequency::FEATURE:    return 2;   // varies with feature combination
-        case rdesc::EBindFrequency::PASS_LOCAL: return 3;   // every pass
+        case rdesc::EBindFrequency::GLOBAL:
+            return 0; // once per frame
+        case rdesc::EBindFrequency::BINDLESS:
+            return 1; // almost never changes
+        case rdesc::EBindFrequency::FEATURE:
+            return 2; // varies with feature combination
+        case rdesc::EBindFrequency::PASS_LOCAL:
+            return 3; // every pass
         }
         return 3;
     }
@@ -440,10 +491,8 @@ namespace lux::render
             for (const auto& b : s.bindings)
                 if (const auto* e = engineOwnedResource(b.name))
                 {
-                    const uint32_t to_set =
-                        domainSetSlot(kEngineSetShapes[e->canonical_set].frequency);
-                    const uint32_t to_binding =
-                        engineSetDomainOffset(e->canonical_set) + e->canonical_binding;
+                    const uint32_t to_set = domainSetSlot(kEngineSetShapes[e->canonical_set].frequency);
+                    const uint32_t to_binding = engineSetDomainOffset(e->canonical_set) + e->canonical_binding;
                     if (to_set != s.set || to_binding != b.binding)
                         return true;
                 }
@@ -472,8 +521,7 @@ namespace lux::render
     /// domain-mode validation at registration time will error out
     /// immediately; the fix in that case is to change the feature's
     /// explicit slot number, not to special-case it here.
-    [[nodiscard]] inline std::vector<std::pair<uint32_t, uint32_t>>
-    privateSetRemapFor(const rdesc::ShaderInfo& info)
+    [[nodiscard]] inline std::vector<std::pair<uint32_t, uint32_t>> privateSetRemapFor(const rdesc::ShaderInfo& info)
     {
         // Which domain slots this shader's engine resources will occupy.
         bool domain_used[4] = {false, false, false, false};
@@ -490,7 +538,11 @@ namespace lux::render
         {
             bool any_engine = false;
             for (const auto& b : s.bindings)
-                if (engineOwnedResource(b.name)) { any_engine = true; break; }
+                if (engineOwnedResource(b.name))
+                {
+                    any_engine = true;
+                    break;
+                }
             if (!any_engine)
                 private_sets.push_back(s.set);
         }
@@ -499,24 +551,27 @@ namespace lux::render
         // Slot occupancy table: domain slots + private sets kept in place.
         bool occupied[16] = {};
         for (int d = 0; d < 4; ++d)
-            if (domain_used[d]) occupied[d] = true;
+            if (domain_used[d])
+                occupied[d] = true;
 
         std::vector<uint32_t> to_move;
         for (uint32_t s : private_sets)
         {
             const bool clash = s < 4 && occupied[s];
             if (s <= 3 && !clash)
-                occupied[s] = true;          // keep in place
+                occupied[s] = true; // keep in place
             else
-                to_move.push_back(s);        // slot number > 3 or collides with a domain slot -> move
+                to_move.push_back(s); // slot number > 3 or collides with a domain slot -> move
         }
 
         std::vector<std::pair<uint32_t, uint32_t>> remap;
         for (uint32_t s : to_move)
         {
             uint32_t target = 3;
-            while (target < 16 && occupied[target]) ++target;
-            if (target >= 16) break;         // impossible: all 16 slots exhausted
+            while (target < 16 && occupied[target])
+                ++target;
+            if (target >= 16)
+                break; // impossible: all 16 slots exhausted
             occupied[target] = true;
             remap.push_back({s, target});
         }
@@ -548,11 +603,14 @@ namespace lux::render
             {
                 const auto* e = engineOwnedResource(b.name);
                 if (!e)
-                    continue;   // private/unregistered -> not handled by engine relocation (see the private relocation below)
+                    continue; // private/unregistered -> not handled by engine relocation (see the private relocation
+                              // below)
                 out.push_back(SpirvRelocation{
-                    s.set, b.binding,
+                    s.set,
+                    b.binding,
                     domainSetSlot(kEngineSetShapes[e->canonical_set].frequency),
-                    engineSetDomainOffset(e->canonical_set) + e->canonical_binding});
+                    engineSetDomainOffset(e->canonical_set) + e->canonical_binding}
+                );
             }
 
         // Relocation of private sets (the real allocation strategy): the
@@ -579,7 +637,11 @@ namespace lux::render
         const auto emit = [&out](uint32_t set, rdesc::EDescriptorBindingInfo b) {
             b.set = set;
             for (auto& s : out.sets)
-                if (s.set == set) { s.bindings.push_back(std::move(b)); return; }
+                if (s.set == set)
+                {
+                    s.bindings.push_back(std::move(b));
+                    return;
+                }
             rdesc::DescriptorSetLayoutInfo ns{};
             ns.set = set;
             ns.bindings.push_back(std::move(b));
@@ -589,7 +651,8 @@ namespace lux::render
         const auto remap = privateSetRemapFor(src);
         const auto remapPrivate = [&remap](uint32_t set) {
             for (const auto& [from, to] : remap)
-                if (from == set) return to;
+                if (from == set)
+                    return to;
             return set;
         };
 
@@ -664,9 +727,12 @@ namespace lux::render
         [[nodiscard]] constexpr VkShaderStageFlags stagesToVk(uint8_t s) noexcept
         {
             VkShaderStageFlags f = 0;
-            if (s & static_cast<uint8_t>(rdesc::EStageBits::VERTEX))   f |= VK_SHADER_STAGE_VERTEX_BIT;
-            if (s & static_cast<uint8_t>(rdesc::EStageBits::FRAGMENT)) f |= VK_SHADER_STAGE_FRAGMENT_BIT;
-            if (s & static_cast<uint8_t>(rdesc::EStageBits::COMPUTE))  f |= VK_SHADER_STAGE_COMPUTE_BIT;
+            if (s & static_cast<uint8_t>(rdesc::EStageBits::VERTEX))
+                f |= VK_SHADER_STAGE_VERTEX_BIT;
+            if (s & static_cast<uint8_t>(rdesc::EStageBits::FRAGMENT))
+                f |= VK_SHADER_STAGE_FRAGMENT_BIT;
+            if (s & static_cast<uint8_t>(rdesc::EStageBits::COMPUTE))
+                f |= VK_SHADER_STAGE_COMPUTE_BIT;
             return f;
         }
 
@@ -689,7 +755,8 @@ namespace lux::render
             for (std::size_t i = 0; i < rdesc::kLayoutContractV0.size(); ++i)
             {
                 const auto& e = rdesc::kLayoutContractV0[i];
-                if (!e.engine_set) continue;
+                if (!e.engine_set)
+                    continue;
                 if (!engineShapeBindingFor(e.canonical_set, e.canonical_binding))
                     return static_cast<int>(i);
             }
@@ -703,7 +770,8 @@ namespace lux::render
             for (std::size_t i = 0; i < rdesc::kLayoutContractV0.size(); ++i)
             {
                 const auto& e = rdesc::kLayoutContractV0[i];
-                if (!e.engine_set) continue;
+                if (!e.engine_set)
+                    continue;
                 const auto* b = engineShapeBindingFor(e.canonical_set, e.canonical_binding);
                 if (b && b->type != toVkDescriptorType(e.type))
                     return static_cast<int>(i);
@@ -722,7 +790,8 @@ namespace lux::render
             for (std::size_t i = 0; i < rdesc::kLayoutContractV0.size(); ++i)
             {
                 const auto& e = rdesc::kLayoutContractV0[i];
-                if (!e.engine_set) continue;
+                if (!e.engine_set)
+                    continue;
                 const auto* b = engineShapeBindingFor(e.canonical_set, e.canonical_binding);
                 if (b && b->stages != stagesToVk(e.stages))
                     return static_cast<int>(i);
@@ -737,7 +806,8 @@ namespace lux::render
             for (std::size_t i = 0; i < rdesc::kLayoutContractV0.size(); ++i)
             {
                 const auto& e = rdesc::kLayoutContractV0[i];
-                if (!e.engine_set) continue;
+                if (!e.engine_set)
+                    continue;
                 const auto* b = engineShapeBindingFor(e.canonical_set, e.canonical_binding);
                 if (b && b->binding_flags != bindingFlagsToVk(e.binding_flags))
                     return static_cast<int>(i);
@@ -746,15 +816,19 @@ namespace lux::render
         }
     } // namespace contract_shape_check
 
-    static_assert(contract_shape_check::firstPositionNotInShape() == -1,
+    static_assert(
+        contract_shape_check::firstPositionNotInShape() == -1,
         "LayoutContract 与 EngineSetShapes 漂移:某条 engine_set 契约条目的 canonical 位置"
         "在形状表里不存在(会静默落进邻居 set 的域内区间)。用 firstPositionNotInShape() 定位。");
-    static_assert(contract_shape_check::firstTypeMismatch() == -1,
+    static_assert(
+        contract_shape_check::firstTypeMismatch() == -1,
         "LayoutContract 与 EngineSetShapes 漂移:描述符类型不一致。用 firstTypeMismatch() 定位。");
-    static_assert(contract_shape_check::firstStageMismatch() == -1,
+    static_assert(
+        contract_shape_check::firstStageMismatch() == -1,
         "LayoutContract 与 EngineSetShapes 漂移:stage 可见性不一致(Plan 记录会失真)。"
         "用 firstStageMismatch() 定位。");
-    static_assert(contract_shape_check::firstBindingFlagsMismatch() == -1,
+    static_assert(
+        contract_shape_check::firstBindingFlagsMismatch() == -1,
         "LayoutContract 与 EngineSetShapes 漂移:binding flags 不一致。"
         "用 firstBindingFlagsMismatch() 定位。");
 
@@ -783,20 +857,28 @@ namespace lux::render
     {
         struct NamedBindingEnum
         {
-            uint32_t    slot;
-            uint32_t    count;   ///< 枚举的 COUNT 哨兵
+            uint32_t slot;
+            uint32_t count; ///< 枚举的 COUNT 哨兵
             const char* name;
         };
 
         inline constexpr std::array kNamedBindingEnums{
-            NamedBindingEnum{static_cast<uint32_t>(EDescriptorSetSlot::Scene),
-                             static_cast<uint32_t>(ESceneSetBindings::COUNT),      "ESceneSetBindings"},
-            NamedBindingEnum{static_cast<uint32_t>(EDescriptorSetSlot::Texture),
-                             static_cast<uint32_t>(ETextureSetBindings::COUNT),    "ETextureSetBindings"},
-            NamedBindingEnum{static_cast<uint32_t>(EDescriptorSetSlot::Light),
-                             static_cast<uint32_t>(ELightSetBindings::COUNT),      "ELightSetBindings"},
-            NamedBindingEnum{static_cast<uint32_t>(EDescriptorSetSlot::VertexPool),
-                             static_cast<uint32_t>(EVertexPoolSetBindings::COUNT), "EVertexPoolSetBindings"},
+            NamedBindingEnum{
+                static_cast<uint32_t>(EDescriptorSetSlot::Scene),
+                static_cast<uint32_t>(ESceneSetBindings::COUNT),
+                "ESceneSetBindings"},
+            NamedBindingEnum{
+                static_cast<uint32_t>(EDescriptorSetSlot::Texture),
+                static_cast<uint32_t>(ETextureSetBindings::COUNT),
+                "ETextureSetBindings"},
+            NamedBindingEnum{
+                static_cast<uint32_t>(EDescriptorSetSlot::Light),
+                static_cast<uint32_t>(ELightSetBindings::COUNT),
+                "ELightSetBindings"},
+            NamedBindingEnum{
+                static_cast<uint32_t>(EDescriptorSetSlot::VertexPool),
+                static_cast<uint32_t>(EVertexPoolSetBindings::COUNT),
+                "EVertexPoolSetBindings"},
         };
 
         /// 枚举的 COUNT 必须等于形状表里该 set 的实际 binding 数。
@@ -822,10 +904,12 @@ namespace lux::render
         }
     } // namespace binding_enum_check
 
-    static_assert(binding_enum_check::firstEnumCountMismatch() == -1,
+    static_assert(
+        binding_enum_check::firstEnumCountMismatch() == -1,
         "DescriptorSetLayoutContract 的 binding 枚举与 EngineSetShapes 漂移:COUNT 与形状表的"
         "binding 数不一致。用 firstEnumCountMismatch() 取下标,再查 kNamedBindingEnums[i].name。");
-    static_assert(binding_enum_check::firstEnumBindingNotInShape() == -1,
+    static_assert(
+        binding_enum_check::firstEnumBindingNotInShape() == -1,
         "DescriptorSetLayoutContract 的 binding 枚举与 EngineSetShapes 漂移:某个枚举值在形状表里"
         "没有对应 binding。用 firstEnumBindingNotInShape() 定位。");
 

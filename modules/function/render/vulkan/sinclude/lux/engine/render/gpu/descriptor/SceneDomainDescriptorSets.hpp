@@ -59,13 +59,10 @@ namespace lux::render
         /// Allocates one set per domain per frames-in-flight slice.
         /// Returns false on failure (pool exhausted / layout missing); the
         /// caller decides whether that's fatal.
-        bool init(SceneDescriptorArena& arena,
-                  const GeneralDescriptorSetLayout& layouts,
-                  uint32_t slices);
+        bool init(SceneDescriptorArena& arena, const GeneralDescriptorSetLayout& layouts, uint32_t slices);
 
         /// Gets the set for a given domain and slice. Returns VK_NULL_HANDLE if not allocated.
-        [[nodiscard]] VkDescriptorSet set(rdesc::EBindFrequency domain,
-                                          uint32_t slice) const noexcept
+        [[nodiscard]] VkDescriptorSet set(rdesc::EBindFrequency domain, uint32_t slice) const noexcept
         {
             const auto d = static_cast<std::size_t>(domain);
             if (d >= sets_.size() || slice >= sets_[d].size())
@@ -80,15 +77,18 @@ namespace lux::render
         /// Passing a span instead of `this` avoids pulling this header (and
         /// the whole EngineSetShapes -> LayoutContract chain it drags in)
         /// into the resource objects' headers.
-        [[nodiscard]] std::span<const VkDescriptorSet> setsFor(
-            rdesc::EBindFrequency domain) const noexcept
+        [[nodiscard]] std::span<const VkDescriptorSet> setsFor(rdesc::EBindFrequency domain) const noexcept
         {
             const auto d = static_cast<std::size_t>(domain);
-            if (d >= sets_.size()) return {};
+            if (d >= sets_.size())
+                return {};
             return {sets_[d].data(), sets_[d].size()};
         }
 
-        [[nodiscard]] uint32_t slices() const noexcept { return slices_; }
+        [[nodiscard]] uint32_t slices() const noexcept
+        {
+            return slices_;
+        }
 
         /// This class only holds set handles, not the pool itself — the pool
         /// belongs to SceneDescriptorArena and is reclaimed together when its
@@ -96,7 +96,8 @@ namespace lux::render
         /// there's no teardown logic here; clear() only needs to run on rebuild.
         void clear() noexcept
         {
-            for (auto& v : sets_) v.clear();
+            for (auto& v : sets_)
+                v.clear();
             slices_ = 0;
         }
 

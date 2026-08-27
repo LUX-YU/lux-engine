@@ -25,9 +25,9 @@ namespace lux::render
     /// 色调映射全屏 pass 的资源面:HDR 输入(采样)→ LDR 输出(色附件)。
     struct LUX_PASS_PARAMS() TonemapPassParams
     {
-        LUX_RESOURCE(role=read, glsl=uHDRColor)   RGResourceHandle hdr_color{};
+        LUX_RESOURCE(role = read, glsl = uHDRColor) RGResourceHandle hdr_color {};
         LUX_RESOURCE(role=sampler, for=hdr_color) VkSampler        hdr_sampler{VK_NULL_HANDLE};
-        LUX_RESOURCE(role=write)                  RGResourceHandle color_out{};
+        LUX_RESOURCE(role = write) RGResourceHandle color_out {};
 
         /// 标量段 = 推送常量 [8,20);同一份结构喂编辑器面板与 comm 载荷。
         TonemapParams scalars{};

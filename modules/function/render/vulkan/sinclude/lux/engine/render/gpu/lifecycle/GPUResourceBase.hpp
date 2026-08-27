@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>   // kMaxFramesInFlight
+#include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
 #include <string>
 #include <cstdint>
@@ -16,13 +16,17 @@ namespace lux::render
         uint64_t revision{0};
         uint64_t written[kMaxFramesInFlight]{};
 
-        void bump() noexcept { ++revision; }
+        void bump() noexcept
+        {
+            ++revision;
+        }
 
         /// Returns true if slot `fi` has not yet been written at the
         /// current revision.  Automatically marks it written.
         bool needsWrite(uint32_t fi) noexcept
         {
-            if (written[fi] != revision) {
+            if (written[fi] != revision)
+            {
                 written[fi] = revision;
                 return true;
             }
@@ -46,20 +50,30 @@ namespace lux::render
      * and dispatches shutdown/upload via stored function pointers — no
      * virtual call needed.
      */
-    template<typename Derived, EGPUResourceType ResourceType>
-    class GPUResourceBase
+    template <typename Derived, EGPUResourceType ResourceType> class GPUResourceBase
     {
     public:
         static constexpr EGPUResourceType resource_type = ResourceType;
 
-        [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
+        [[nodiscard]] bool isInitialized() const noexcept
+        {
+            return initialized_;
+        }
 
         // ── Optional hooks — shadowed by Derived when needed ────────────────
 
-        void uploadData(VkCommandBuffer /*cb*/, const FrameStamp& /*stamp*/) {}
+        void uploadData(VkCommandBuffer /*cb*/, const FrameStamp& /*stamp*/)
+        {
+        }
 
-        VkDescriptorSet       getDescriptorSet()       const { return VK_NULL_HANDLE; }
-        VkDescriptorSetLayout getDescriptorSetLayout()  const { return VK_NULL_HANDLE; }
+        VkDescriptorSet getDescriptorSet() const
+        {
+            return VK_NULL_HANDLE;
+        }
+        VkDescriptorSetLayout getDescriptorSetLayout() const
+        {
+            return VK_NULL_HANDLE;
+        }
 
         //(已删三个钩子:
         //  · getDebugInfo() —— 基类默认实现 + 8 个子类覆写,全仓零调用点,

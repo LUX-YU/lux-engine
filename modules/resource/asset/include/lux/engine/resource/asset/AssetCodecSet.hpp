@@ -43,9 +43,7 @@ namespace lux::asset
             std::size_t decoded_bytes,
             std::size_t encoded_bytes
         ) noexcept
-            : max_input_bytes(input_bytes),
-              max_decoded_bytes(decoded_bytes),
-              max_encoded_bytes(encoded_bytes)
+            : max_input_bytes(input_bytes), max_decoded_bytes(decoded_bytes), max_encoded_bytes(encoded_bytes)
         {
         }
 
@@ -58,10 +56,7 @@ namespace lux::asset
     {
         AssetDecodeContext() = delete;
 
-        explicit constexpr AssetDecodeContext(
-            AssetCodecLimits value
-        ) noexcept
-            : limits(value)
+        explicit constexpr AssetDecodeContext(AssetCodecLimits value) noexcept : limits(value)
         {
         }
 
@@ -72,10 +67,7 @@ namespace lux::asset
     {
         AssetEncodeContext() = delete;
 
-        explicit constexpr AssetEncodeContext(
-            AssetCodecLimits value
-        ) noexcept
-            : limits(value)
+        explicit constexpr AssetEncodeContext(AssetCodecLimits value) noexcept : limits(value)
         {
         }
 
@@ -84,22 +76,21 @@ namespace lux::asset
 
     using AssetDecodeFn = lux::cxx::expected<DecodedAsset, EAssetCodecError> (*)(
         std::span<const std::byte>,
-        const AssetDecodeContext&
-    ) noexcept;
+        const AssetDecodeContext&) noexcept;
 
-    using AssetEncodeFn = lux::cxx::expected<
-        std::vector<std::byte>,
-        EAssetCodecError> (*)(const void*, const AssetEncodeContext&) noexcept;
+    using AssetEncodeFn = lux::cxx::expected<std::vector<std::byte>, EAssetCodecError> (*)(
+        const void*,
+        const AssetEncodeContext&) noexcept;
 
     struct AssetCodecDescriptor final
     {
-        AssetTypeId         type;
-        std::string         canonical_name;
-        std::uint32_t       primary_magic{};
-        std::uint32_t       legacy_magic{};
+        AssetTypeId type;
+        std::string canonical_name;
+        std::uint32_t primary_magic{};
+        std::uint32_t legacy_magic{};
         lux::cxx::TypeToken cpp_payload_type;
-        AssetDecodeFn       decode{};
-        AssetEncodeFn       encode{};
+        AssetDecodeFn decode{};
+        AssetEncodeFn encode{};
         std::shared_ptr<const void> code_lifetime;
     };
 
@@ -108,37 +99,26 @@ namespace lux::asset
     public:
         AssetCodecSet() = default;
 
-        [[nodiscard]] static lux::cxx::expected<
-            AssetCodecSet,
-            EAssetCodecError>
+        [[nodiscard]] static lux::cxx::expected<AssetCodecSet, EAssetCodecError>
         build(std::vector<AssetCodecDescriptor> descriptors) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            AssetCodecSet,
-            EAssetCodecError>
+        [[nodiscard]] lux::cxx::expected<AssetCodecSet, EAssetCodecError>
         extended(std::span<const AssetCodecDescriptor> descriptors) const noexcept;
 
-        [[nodiscard]] const AssetCodecDescriptor* find(
-            AssetTypeId type
-        ) const noexcept;
+        [[nodiscard]] const AssetCodecDescriptor* find(AssetTypeId type) const noexcept;
 
-        [[nodiscard]] const AssetCodecDescriptor* findByMagic(
-            std::uint32_t magic
-        ) const noexcept;
+        [[nodiscard]] const AssetCodecDescriptor* findByMagic(std::uint32_t magic) const noexcept;
 
-        [[nodiscard]] const AssetCodecDescriptor* findByPayloadType(
-            lux::cxx::TypeToken type
-        ) const noexcept;
+        [[nodiscard]] const AssetCodecDescriptor* findByPayloadType(lux::cxx::TypeToken type) const noexcept;
 
-        [[nodiscard]] std::span<const AssetCodecDescriptor>
-        descriptors() const noexcept;
+        [[nodiscard]] std::span<const AssetCodecDescriptor> descriptors() const noexcept;
 
     private:
         struct Impl;
 
-        explicit AssetCodecSet(std::shared_ptr<const Impl> impl) noexcept
-            : impl_(std::move(impl))
-        {}
+        explicit AssetCodecSet(std::shared_ptr<const Impl> impl) noexcept : impl_(std::move(impl))
+        {
+        }
 
         std::shared_ptr<const Impl> impl_;
     };

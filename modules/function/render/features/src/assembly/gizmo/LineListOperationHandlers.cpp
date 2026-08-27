@@ -17,26 +17,22 @@ namespace lux::render
 
     // ── 瞬态语义:整帧替换本场景的全部线段(chunk_id 现阶段忽略,
     //    last-writer-wins),blob 解码后回执上传状态。──
-    void handleLineListUpload(GeneralRenderServer::Dispatcher::Ctx& ctx,
-                              const UploadLineListPayload& p)
+    void handleLineListUpload(GeneralRenderServer::Dispatcher::Ctx& ctx, const UploadLineListPayload& p)
     {
-        auto* sc  = lookupScene(ctx.user_state, p.scene_id);
+        auto* sc = lookupScene(ctx.user_state, p.scene_id);
         auto* buf = sc ? sc->sceneRegistry().find<TransientLineListBuffer>() : nullptr;
-        if (!buf) {
-            replyToCurrent<UploadLineListPayload>(ctx,
-                LineListUploadedReply{p.chunk_id, 1u});
+        if (!buf)
+        {
+            replyToCurrent<UploadLineListPayload>(ctx, LineListUploadedReply{p.chunk_id, 1u});
             return;
         }
 
         auto blob = resolveBlob(ctx.program, p.vertex_data);
         assert(blob.size() == p.vertex_count * sizeof(GizmoVertex));
 
-        buf->replace(
-            reinterpret_cast<const GizmoVertex*>(blob.data()),
-            p.vertex_count);
+        buf->replace(reinterpret_cast<const GizmoVertex*>(blob.data()), p.vertex_count);
 
-        replyToCurrent<UploadLineListPayload>(ctx,
-            LineListUploadedReply{p.chunk_id, 0u});
+        replyToCurrent<UploadLineListPayload>(ctx, LineListUploadedReply{p.chunk_id, 0u});
     }
 
 } // namespace lux::render

@@ -39,7 +39,8 @@ namespace
     }
 }
 
-int main()
+int
+main()
 {
     using namespace lux::asset;
     using namespace lux::world;
@@ -54,49 +55,30 @@ int main()
     assert(code_lifetime.use_count() == 2U);
 
     auto world = makeWorld();
-    const AssetEncodeContext generous_encode{
-        AssetCodecLimits{0U, 0U, std::numeric_limits<std::size_t>::max()}};
+    const AssetEncodeContext generous_encode{AssetCodecLimits{0U, 0U, std::numeric_limits<std::size_t>::max()}};
     auto encoded = descriptor.encode(&world, generous_encode);
     assert(encoded);
-    assert(!descriptor.encode(
-        &world,
-        AssetEncodeContext{AssetCodecLimits{0U, 0U, encoded->size() - 1U}}
-    ));
+    assert(!descriptor.encode(&world, AssetEncodeContext{AssetCodecLimits{0U, 0U, encoded->size() - 1U}}));
 
-    const AssetDecodeContext generous_decode{AssetCodecLimits{
-        encoded->size(),
-        std::numeric_limits<std::size_t>::max(),
-        0U}};
+    const AssetDecodeContext generous_decode{
+        AssetCodecLimits{encoded->size(), std::numeric_limits<std::size_t>::max(), 0U}};
     auto decoded = descriptor.decode(*encoded, generous_decode);
     assert(decoded);
-    auto decoded_world = std::static_pointer_cast<const WorldDescription>(
-        decoded->payload
-    );
+    auto decoded_world = std::static_pointer_cast<const WorldDescription>(decoded->payload);
     assert(decoded_world);
     assert(decoded_world->objectCount() == world.objectCount());
     assert(decoded_world->dataCount() == world.dataCount());
     assert(decoded->decoded_byte_count == decoded_world->retainedBytes());
     assert(!descriptor.decode(
         *encoded,
-        AssetDecodeContext{AssetCodecLimits{
-            encoded->size() - 1U,
-            std::numeric_limits<std::size_t>::max(),
-            0U}}
-    ));
-    assert(!descriptor.decode(
-        *encoded,
-        AssetDecodeContext{AssetCodecLimits{encoded->size(), 1U, 0U}}
-    ));
+        AssetDecodeContext{AssetCodecLimits{encoded->size() - 1U, std::numeric_limits<std::size_t>::max(), 0U}}));
+    assert(!descriptor.decode(*encoded, AssetDecodeContext{AssetCodecLimits{encoded->size(), 1U, 0U}}));
 
     auto trailing = *encoded;
     trailing.push_back(std::byte{});
     assert(!descriptor.decode(
         trailing,
-        AssetDecodeContext{AssetCodecLimits{
-            trailing.size(),
-            std::numeric_limits<std::size_t>::max(),
-            0U}}
-    ));
+        AssetDecodeContext{AssetCodecLimits{trailing.size(), std::numeric_limits<std::size_t>::max(), 0U}}));
     auto corrupt_magic = *encoded;
     corrupt_magic[0] ^= std::byte{0x01U};
     assert(!descriptor.decode(corrupt_magic, generous_decode));
@@ -112,10 +94,7 @@ int main()
     constexpr std::size_t schema_record_bytes = 16U + 7U;
     for (std::size_t index{}; index < schema_record_bytes; ++index)
     {
-        std::swap(
-            noncanonical[header_bytes + index],
-            noncanonical[header_bytes + schema_record_bytes + index]
-        );
+        std::swap(noncanonical[header_bytes + index], noncanonical[header_bytes + schema_record_bytes + index]);
     }
     assert(!descriptor.decode(noncanonical, generous_decode));
 

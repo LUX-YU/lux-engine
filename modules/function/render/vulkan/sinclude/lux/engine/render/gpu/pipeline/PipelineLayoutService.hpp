@@ -29,10 +29,10 @@ namespace lux::render
         PipelineLayoutService(VkDevice device, uint32_t max_bound_descriptor_sets);
         ~PipelineLayoutService();
 
-        PipelineLayoutService(const PipelineLayoutService &) = delete;
-        PipelineLayoutService &operator=(const PipelineLayoutService &) = delete;
+        PipelineLayoutService(const PipelineLayoutService&) = delete;
+        PipelineLayoutService& operator=(const PipelineLayoutService&) = delete;
 
-        [[nodiscard]] Expected<VkPipelineLayout> getOrCreate(const PipelineLayoutDesc &desc);
+        [[nodiscard]] Expected<VkPipelineLayout> getOrCreate(const PipelineLayoutDesc& desc);
 
         /// The device's maxBoundDescriptorSets (0 = unknown/unbounded). Used
         /// as the budget criterion for the ≤4-set projection — this limit

@@ -32,11 +32,7 @@ namespace lux::rendertest
          * `--soak <finite-positive-seconds>`. Diagnostics go to stderr and a
          * false result maps to process exit code 2 at each executable boundary.
          */
-        [[nodiscard]] static bool parse(
-            int argc,
-            char* const argv[],
-            VisualSoak& out
-        ) noexcept
+        [[nodiscard]] static bool parse(int argc, char* const argv[], VisualSoak& out) noexcept
         {
             out = {};
             bool seen_soak = false;
@@ -63,10 +59,7 @@ namespace lux::rendertest
                 }
                 if (++i >= argc || argv[i] == nullptr)
                 {
-                    std::fprintf(
-                        stderr,
-                        "--soak requires a positive number of seconds\n"
-                    );
+                    std::fprintf(stderr, "--soak requires a positive number of seconds\n");
                     return false;
                 }
 
@@ -78,9 +71,13 @@ namespace lux::rendertest
                     seconds,
                     std::chars_format::general
                 );
-                if (parsed.ec != std::errc{} ||
-                    parsed.ptr != value_text.data() + value_text.size() ||
-                    !std::isfinite(seconds) || seconds <= 0.0)
+                const bool is_parse_error = parsed.ec != std::errc{};
+                const bool has_trailing_characters = parsed.ptr != value_text.data() + value_text.size();
+                const bool is_non_finite = !std::isfinite(seconds);
+                const bool is_non_positive = seconds <= 0.0;
+                const bool is_invalid_value = is_parse_error || has_trailing_characters || is_non_finite ||
+                    is_non_positive;
+                if (is_invalid_value)
                 {
                     std::fprintf(
                         stderr,
@@ -93,7 +90,7 @@ namespace lux::rendertest
                 }
 
                 out.seconds_ = seconds;
-                seen_soak    = true;
+                seen_soak = true;
             }
             return true;
         }
@@ -108,23 +105,15 @@ namespace lux::rendertest
             return seconds_;
         }
 
-        [[nodiscard]] bool reached(
-            Clock::time_point start,
-            Clock::time_point now
-        ) const noexcept
+        [[nodiscard]] bool reached(Clock::time_point start, Clock::time_point now) const noexcept
         {
-            return enabled() &&
-                std::chrono::duration<double>(now - start).count() >= seconds_;
+            return enabled() && std::chrono::duration<double>(now - start).count() >= seconds_;
         }
 
-        void reportGracefulTeardown(
-            Clock::time_point start,
-            Clock::time_point now,
-            std::uint64_t frame_count
-        ) const noexcept
+        void
+        reportGracefulTeardown(Clock::time_point start, Clock::time_point now, std::uint64_t frame_count) const noexcept
         {
-            const double elapsed =
-                std::chrono::duration<double>(now - start).count();
+            const double elapsed = std::chrono::duration<double>(now - start).count();
             std::printf(
                 "soak duration reached: %.2f s, %llu frames; "
                 "beginning graceful teardown\n",
@@ -134,14 +123,9 @@ namespace lux::rendertest
         }
 
     private:
-        [[nodiscard]] static const char* programName(
-            int argc,
-            char* const argv[]
-        ) noexcept
+        [[nodiscard]] static const char* programName(int argc, char* const argv[]) noexcept
         {
-            return argc > 0 && argv != nullptr && argv[0] != nullptr
-                ? argv[0]
-                : "visual-demo";
+            return argc > 0 && argv != nullptr && argv[0] != nullptr ? argv[0] : "visual-demo";
         }
 
         double seconds_{0.0};

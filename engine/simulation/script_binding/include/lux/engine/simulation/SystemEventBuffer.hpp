@@ -32,19 +32,18 @@ namespace lux::simulation
      * local append order. The buffer never stores a call frame or a pointer to
      * caller-owned payload memory.
      */
-    template <class Payload>
-    class SystemEventBuffer final
+    template <class Payload> class SystemEventBuffer final
     {
         static_assert(std::is_nothrow_destructible_v<Payload>);
 
-      public:
+    public:
         struct Occurrence final
         {
             ecs::Entity target{ecs::NullEntity};
             Payload payload;
         };
 
-      private:
+    private:
         struct Producer final
         {
             std::vector<Occurrence> occurrences;
@@ -52,14 +51,12 @@ namespace lux::simulation
             bool failed{};
         };
 
-      public:
+    public:
         class Writer final
         {
-          public:
+        public:
             Writer() noexcept = default;
-            Writer(Writer&& other) noexcept
-                : owner_(std::exchange(other.owner_, nullptr)),
-                  producer_(other.producer_)
+            Writer(Writer&& other) noexcept : owner_(std::exchange(other.owner_, nullptr)), producer_(other.producer_)
             {
             }
             Writer& operator=(Writer&& other) noexcept
@@ -79,84 +76,58 @@ namespace lux::simulation
                 close();
             }
 
-            [[nodiscard]] lux::cxx::expected<
-                void,
-                ESystemEventBufferError> emit(
-                    ecs::Entity target,
-                    const Payload& payload
-                ) noexcept
+            [[nodiscard]] lux::cxx::expected<void, ESystemEventBufferError>
+            emit(ecs::Entity target, const Payload& payload) noexcept
             {
                 if (!owner_)
                 {
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::INVALID_PRODUCER
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::INVALID_PRODUCER);
                 }
                 auto& producer = owner_->producers_[producer_];
                 if (producer.failed)
                 {
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::RECORDING_FAILED
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::RECORDING_FAILED);
                 }
                 if (producer.occurrences.size() >= owner_->capacity_per_producer_)
                 {
                     producer.failed = true;
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::CAPACITY_EXCEEDED
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::CAPACITY_EXCEEDED);
                 }
                 try
                 {
-                    producer.occurrences.push_back(
-                        Occurrence{target, payload}
-                    );
+                    producer.occurrences.push_back(Occurrence{target, payload});
                     return {};
                 }
                 catch (...)
                 {
                     producer.failed = true;
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::RECORDING_FAILED
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::RECORDING_FAILED);
                 }
             }
 
-            [[nodiscard]] lux::cxx::expected<
-                void,
-                ESystemEventBufferError> emit(
-                    ecs::Entity target,
-                    Payload&& payload
-                ) noexcept
+            [[nodiscard]] lux::cxx::expected<void, ESystemEventBufferError>
+            emit(ecs::Entity target, Payload&& payload) noexcept
                 requires std::is_nothrow_move_constructible_v<Payload>
             {
                 if (!owner_)
                 {
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::INVALID_PRODUCER
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::INVALID_PRODUCER);
                 }
                 auto& producer = owner_->producers_[producer_];
                 if (producer.failed)
                 {
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::RECORDING_FAILED
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::RECORDING_FAILED);
                 }
                 if (producer.occurrences.size() >= owner_->capacity_per_producer_)
                 {
                     producer.failed = true;
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::CAPACITY_EXCEEDED
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::CAPACITY_EXCEEDED);
                 }
-                producer.occurrences.push_back(
-                    Occurrence{target, std::move(payload)}
-                );
+                producer.occurrences.push_back(Occurrence{target, std::move(payload)});
                 return {};
             }
 
-          private:
+        private:
             Writer(SystemEventBuffer& owner, std::size_t producer) noexcept
                 : owner_(std::addressof(owner)), producer_(producer)
             {
@@ -183,22 +154,15 @@ namespace lux::simulation
         SystemEventBuffer& operator=(const SystemEventBuffer&) = delete;
 
         [[nodiscard]] lux::cxx::expected<void, ESystemEventBufferError>
-        prepare(
-            std::size_t producer_count,
-            std::size_t capacity_per_producer
-        ) noexcept
+        prepare(std::size_t producer_count, std::size_t capacity_per_producer) noexcept
         {
             if (hasActiveWriter())
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::ACTIVE_WRITER
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::ACTIVE_WRITER);
             }
             if (producer_count == 0U || capacity_per_producer == 0U)
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::CAPACITY_EXCEEDED
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::CAPACITY_EXCEEDED);
             }
             try
             {
@@ -212,74 +176,50 @@ namespace lux::simulation
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::ALLOCATION_FAILURE
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::ALLOCATION_FAILURE);
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<Writer, ESystemEventBufferError>
-        writer(std::size_t producer) noexcept
+        [[nodiscard]] lux::cxx::expected<Writer, ESystemEventBufferError> writer(std::size_t producer) noexcept
         {
             if (!producers_)
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::NOT_PREPARED
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::NOT_PREPARED);
             }
             if (producer >= producer_count_)
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::INVALID_PRODUCER
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::INVALID_PRODUCER);
             }
             if (producers_[producer].active)
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::ACTIVE_WRITER
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::ACTIVE_WRITER);
             }
             producers_[producer].active = true;
             return Writer{*this, producer};
         }
 
         template <class Callback>
-        [[nodiscard]] lux::cxx::expected<void, ESystemEventBufferError>
-        drain(Callback&& callback) noexcept
+        [[nodiscard]] lux::cxx::expected<void, ESystemEventBufferError> drain(Callback&& callback) noexcept
         {
-            static_assert(std::is_nothrow_invocable_v<
-                Callback&,
-                ecs::Entity,
-                const Payload&>);
+            static_assert(std::is_nothrow_invocable_v<Callback&, ecs::Entity, const Payload&>);
             if (!producers_)
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::NOT_PREPARED
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::NOT_PREPARED);
             }
             if (hasActiveWriter())
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::ACTIVE_WRITER
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::ACTIVE_WRITER);
             }
-            for (std::size_t producer{};
-                 producer < producer_count_;
-                 ++producer)
+            for (std::size_t producer{}; producer < producer_count_; ++producer)
             {
                 if (producers_[producer].failed)
                 {
-                    return lux::cxx::unexpected(
-                        ESystemEventBufferError::RECORDING_FAILED
-                    );
+                    return lux::cxx::unexpected(ESystemEventBufferError::RECORDING_FAILED);
                 }
             }
-            for (std::size_t producer{};
-                 producer < producer_count_;
-                 ++producer)
+            for (std::size_t producer{}; producer < producer_count_; ++producer)
             {
-                for (const auto& occurrence :
-                     producers_[producer].occurrences)
+                for (const auto& occurrence : producers_[producer].occurrences)
                 {
                     callback(occurrence.target, occurrence.payload);
                 }
@@ -288,24 +228,17 @@ namespace lux::simulation
             return {};
         }
 
-        [[nodiscard]] lux::cxx::expected<void, ESystemEventBufferError>
-        reset() noexcept
+        [[nodiscard]] lux::cxx::expected<void, ESystemEventBufferError> reset() noexcept
         {
             if (!producers_)
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::NOT_PREPARED
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::NOT_PREPARED);
             }
             if (hasActiveWriter())
             {
-                return lux::cxx::unexpected(
-                    ESystemEventBufferError::ACTIVE_WRITER
-                );
+                return lux::cxx::unexpected(ESystemEventBufferError::ACTIVE_WRITER);
             }
-            for (std::size_t producer{};
-                 producer < producer_count_;
-                 ++producer)
+            for (std::size_t producer{}; producer < producer_count_; ++producer)
             {
                 producers_[producer].occurrences.clear();
                 producers_[producer].failed = false;
@@ -316,21 +249,17 @@ namespace lux::simulation
         [[nodiscard]] std::size_t size() const noexcept
         {
             std::size_t result{};
-            for (std::size_t producer{};
-                 producer < producer_count_;
-                 ++producer)
+            for (std::size_t producer{}; producer < producer_count_; ++producer)
             {
                 result += producers_[producer].occurrences.size();
             }
             return result;
         }
 
-      private:
+    private:
         [[nodiscard]] bool hasActiveWriter() const noexcept
         {
-            for (std::size_t producer{};
-                 producer < producer_count_;
-                 ++producer)
+            for (std::size_t producer{}; producer < producer_count_; ++producer)
             {
                 if (producers_[producer].active)
                     return true;

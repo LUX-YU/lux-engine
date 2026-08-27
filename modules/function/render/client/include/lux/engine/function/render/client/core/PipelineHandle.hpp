@@ -10,11 +10,13 @@
  */
 
 #include <cstdint>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // TypedHandle
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp> // TypedHandle
 
 namespace lux::render
 {
-    struct GraphicsPipelineTag {};
+    struct GraphicsPipelineTag
+    {
+    };
     using GraphicsPipelineHandle = TypedHandle<GraphicsPipelineTag>;
 
     /// @brief Sentinel value indicating no valid pipeline handle.
@@ -23,10 +25,19 @@ namespace lux::render
     // -- Compute pipeline handle --
     struct ComputePipelineHandle
     {
-        uint32_t index{ ~0u };
-        [[nodiscard]] bool valid() const noexcept { return index != ~0u; }
-        bool operator==(const ComputePipelineHandle& o) const noexcept { return index == o.index; }
-        bool operator!=(const ComputePipelineHandle& o) const noexcept { return index != o.index; }
+        uint32_t index{~0u};
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return index != ~0u;
+        }
+        bool operator==(const ComputePipelineHandle& o) const noexcept
+        {
+            return index == o.index;
+        }
+        bool operator!=(const ComputePipelineHandle& o) const noexcept
+        {
+            return index != o.index;
+        }
     };
 
     inline constexpr ComputePipelineHandle kInvalidComputePipelineHandle{};

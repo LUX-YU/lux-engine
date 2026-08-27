@@ -18,11 +18,10 @@ namespace lux::math
      * @param tMax  [out] Exit distance along the ray.
      * @return true if the ray intersects the AABB (i.e. tMax >= max(tMin, 0)).
      */
-    inline bool rayIntersectsAABB(const Ray& ray, const AABB& aabb,
-                                  float& tMin, float& tMax)
+    inline bool rayIntersectsAABB(const Ray& ray, const AABB& aabb, float& tMin, float& tMax)
     {
         tMin = -std::numeric_limits<float>::max();
-        tMax =  std::numeric_limits<float>::max();
+        tMax = std::numeric_limits<float>::max();
 
         for (int i = 0; i < 3; ++i)
         {
@@ -30,7 +29,8 @@ namespace lux::math
             float t0 = (aabb.min[i] - ray.origin[i]) * invD;
             float t1 = (aabb.max[i] - ray.origin[i]) * invD;
 
-            if (invD < 0.0f) std::swap(t0, t1);
+            if (invD < 0.0f)
+                std::swap(t0, t1);
 
             tMin = std::max(tMin, t0);
             tMax = std::min(tMax, t1);
@@ -53,8 +53,8 @@ namespace lux::math
      * Tests front-face only (counter-clockwise winding).
      * Set `cull_backface = false` to test both faces.
      */
-    inline std::optional<TriangleHit> rayIntersectsTriangle(
-        const Ray& ray, const Triangle& tri, bool cull_backface = false)
+    inline std::optional<TriangleHit>
+    rayIntersectsTriangle(const Ray& ray, const Triangle& tri, bool cull_backface = false)
     {
         constexpr float kEpsilon = 1e-8f;
 
@@ -66,26 +66,31 @@ namespace lux::math
 
         if (cull_backface)
         {
-            if (a < kEpsilon) return std::nullopt; // Back-facing or parallel
+            if (a < kEpsilon)
+                return std::nullopt; // Back-facing or parallel
         }
         else
         {
-            if (std::abs(a) < kEpsilon) return std::nullopt; // Parallel
+            if (std::abs(a) < kEpsilon)
+                return std::nullopt; // Parallel
         }
 
         float f = 1.0f / a;
         Eigen::Vector3f s = ray.origin - tri.v0;
         float u = f * s.dot(h);
-        if (u < 0.0f || u > 1.0f) return std::nullopt;
+        if (u < 0.0f || u > 1.0f)
+            return std::nullopt;
 
         Eigen::Vector3f q = s.cross(edge1);
         float v = f * ray.direction.dot(q);
-        if (v < 0.0f || u + v > 1.0f) return std::nullopt;
+        if (v < 0.0f || u + v > 1.0f)
+            return std::nullopt;
 
         float t = f * edge2.dot(q);
-        if (t < 0.0f) return std::nullopt; // Behind the ray
+        if (t < 0.0f)
+            return std::nullopt; // Behind the ray
 
-        return TriangleHit{ t, u, v };
+        return TriangleHit{t, u, v};
     }
 
 } // namespace lux::math

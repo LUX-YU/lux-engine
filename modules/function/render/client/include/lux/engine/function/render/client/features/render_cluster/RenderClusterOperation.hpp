@@ -28,9 +28,7 @@ namespace lux::render
             return false;
         }
 
-        friend bool operator==(
-            const RenderClusterWireId&,
-            const RenderClusterWireId&) = default;
+        friend bool operator==(const RenderClusterWireId&, const RenderClusterWireId&) = default;
     };
     static_assert(std::is_trivially_copyable_v<RenderClusterWireId>);
 
@@ -41,10 +39,7 @@ namespace lux::render
         RMaterialHandle material{};
         std::uint64_t stable_pick_id{0u};
         std::uint32_t rgba8{0xffffffffu};
-        std::uint32_t flags{
-            kInstanceFlagCastShadow |
-            kInstanceFlagReceiveShadow |
-            kInstanceFlagVisible};
+        std::uint32_t flags{kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible};
     };
     static_assert(std::is_trivially_copyable_v<RenderClusterWireInstance>);
     static_assert(sizeof(RenderClusterWireInstance) == 96u);
@@ -57,10 +52,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<RenderClusterUploadedReply>);
 
-    struct LUX_OP(lane=upload, kind=resource, name=RenderClusterUpload,
-                  method=upload, reply=RenderClusterUploadedReply,
-                  opcode=resource)
-    UploadRenderClusterPayload final
+    struct LUX_OP(
+        lane = upload,
+        kind = resource,
+        name = RenderClusterUpload,
+        method = upload,
+        reply = RenderClusterUploadedReply,
+        opcode = resource) UploadRenderClusterPayload final
     {
         RenderSceneId scene_id{};
         RenderClusterWireId id;
@@ -91,10 +89,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<RenderClusterRemovedReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=RenderClusterRemove,
-                  method=remove, reply=RenderClusterRemovedReply,
-                  opcode=command)
-    RemoveRenderClusterPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = RenderClusterRemove,
+        method = remove,
+        reply = RenderClusterRemovedReply,
+        opcode = command) RemoveRenderClusterPayload final
     {
         RenderSceneId scene_id{};
         RenderClusterWireId id;
@@ -137,15 +138,17 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<RenderClusterStatsReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=RenderClusterStats,
-                  method=stats, reply=RenderClusterStatsReply,
-                  opcode=command)
-    QueryRenderClusterStatsPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = RenderClusterStats,
+        method = stats,
+        reply = RenderClusterStatsReply,
+        opcode = command) QueryRenderClusterStatsPayload final
     {
         RenderSceneId scene_id{};
     };
-    static_assert(
-        std::is_trivially_copyable_v<QueryRenderClusterStatsPayload>);
+    static_assert(std::is_trivially_copyable_v<QueryRenderClusterStatsPayload>);
 
     enum class ERenderPickStatus : std::uint32_t
     {
@@ -159,9 +162,8 @@ namespace lux::render
     /// Non-blocking pick intent. Coordinates are normalized to the current
     /// View content rect. request_generation is client-owned and monotonically
     /// increasing; view_generation rejects results from a recreated View.
-    struct LUX_OP(lane=frame, kind=stream, name=RenderClusterPickRequest,
-                  method=requestPick)
-    RequestRenderClusterPickPayload final
+    struct LUX_OP(lane = frame, kind = stream, name = RenderClusterPickRequest, method = requestPick)
+        RequestRenderClusterPickPayload final
     {
         RenderSceneId scene_id{};
         std::uint32_t view_index{0u};
@@ -172,8 +174,7 @@ namespace lux::render
         float maximum_distance{1'000'000.0f};
         std::uint32_t reserved{0u};
     };
-    static_assert(std::is_trivially_copyable_v<
-        RequestRenderClusterPickPayload>);
+    static_assert(std::is_trivially_copyable_v<RequestRenderClusterPickPayload>);
 
     struct RenderClusterPickReply final
     {
@@ -186,26 +187,27 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<RenderClusterPickReply>);
 
-    struct LUX_OP(lane=control, kind=resource,
-                  name=RenderClusterPickResult, method=pickResult,
-                  reply=RenderClusterPickReply, opcode=command)
-    QueryRenderClusterPickPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = RenderClusterPickResult,
+        method = pickResult,
+        reply = RenderClusterPickReply,
+        opcode = command) QueryRenderClusterPickPayload final
     {
         RenderSceneId scene_id{};
         std::uint64_t request_generation{0u};
     };
-    static_assert(std::is_trivially_copyable_v<
-        QueryRenderClusterPickPayload>);
+    static_assert(std::is_trivially_copyable_v<QueryRenderClusterPickPayload>);
 
     struct LUX_COMM_CONFIG(
-        prefix=RenderCluster,
-        id=lux.render.cluster.v1,
-        display=RenderCluster,
-        requires=lux.render.mesh_stack.v1,
-        feature=RenderClusterFeature,
-        feature_header=lux/engine/render/renderer/features/render_cluster/RenderClusterFeature.hpp,
-        multiplicity=single)
-    RenderClusterCommTag
+        prefix = RenderCluster,
+        id = lux.render.cluster.v1,
+        display = RenderCluster,
+        requires = lux.render.mesh_stack.v1,
+        feature = RenderClusterFeature,
+        feature_header = lux / engine / render / renderer / features / render_cluster / RenderClusterFeature.hpp,
+        multiplicity = single) RenderClusterCommTag
     {
     };
     static_assert(std::is_trivially_copyable_v<RenderClusterCommTag>);

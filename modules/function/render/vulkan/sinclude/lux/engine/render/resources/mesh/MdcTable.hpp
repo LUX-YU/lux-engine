@@ -11,7 +11,7 @@
  * addressed using per-MDC offsets computed by buildOffsets().
  */
 
-#include <cstddef>   // size_t
+#include <cstddef> // size_t
 #include <cstdint>
 #include <vector>
 #include <unordered_map>
@@ -31,12 +31,12 @@ namespace lux::render
         uint16_t ibo_segment;
         VkIndexType index_type;
 
-        bool operator==(const MdcKey &) const noexcept = default;
+        bool operator==(const MdcKey&) const noexcept = default;
     };
 
     struct MdcKeyHash
     {
-        size_t operator()(const MdcKey &k) const noexcept
+        size_t operator()(const MdcKey& k) const noexcept
         {
             size_t h = std::hash<uint32_t>{}(k.section_id);
             h ^= std::hash<uint32_t>{}(k.bucket_id) + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -84,7 +84,8 @@ namespace lux::render
             uint32_t bucket_id,
             uint32_t section_id,
             uint16_t ibo_segment,
-            VkIndexType index_type);
+            VkIndexType index_type
+        );
 
         /// Unregister an instance.  Decrements instance_count for the given MDC.
         void unregisterInstance(uint32_t mdc_index);
@@ -100,13 +101,19 @@ namespace lux::render
         }
 
         /// Read-only access to entries.
-        [[nodiscard]] const std::vector<MdcEntry> &entries() const noexcept { return entries_; }
+        [[nodiscard]] const std::vector<MdcEntry>& entries() const noexcept
+        {
+            return entries_;
+        }
 
         /// GPU-uploadable packed data.
         /// Layout: mdc_count × {uint32_t offset, uint32_t section_id},
         ///         plus one sentinel {total_capacity, 0}.
         /// Total element count = (mdc_count + 1) * 2.
-        [[nodiscard]] const std::vector<uint32_t> &gpuData() const noexcept { return gpu_data_; }
+        [[nodiscard]] const std::vector<uint32_t>& gpuData() const noexcept
+        {
+            return gpu_data_;
+        }
 
         /// Size of the GPU data buffer in bytes.
         [[nodiscard]] uint32_t gpuDataSizeBytes() const noexcept
@@ -115,13 +122,16 @@ namespace lux::render
         }
 
         /// Total visible-buffer capacity across all MDCs (in uint32_t entries).
-        [[nodiscard]] uint32_t totalVisibleCapacity() const noexcept { return total_visible_capacity_; }
+        [[nodiscard]] uint32_t totalVisibleCapacity() const noexcept
+        {
+            return total_visible_capacity_;
+        }
 
         /// Live sum of instance_count across all MDCs (no buildOffsets needed).
         [[nodiscard]] uint32_t liveInstanceTotal() const noexcept
         {
             uint32_t total = 0;
-            for (const auto &e : entries_)
+            for (const auto& e : entries_)
                 total += e.instance_count;
             return total;
         }
@@ -134,7 +144,10 @@ namespace lux::render
         /// only bumps when the per-MDC offset LAYOUT actually changes. mutationSerial
         /// is kept only as an exact change fingerprint for a future consumer that
         /// genuinely needs per-mutation granularity (none today).
-        [[nodiscard]] uint64_t mutationSerial() const noexcept { return mutation_serial_; }
+        [[nodiscard]] uint64_t mutationSerial() const noexcept
+        {
+            return mutation_serial_;
+        }
 
         /// Coarser fingerprint than mutationSerial: bumped ONLY when the per-MDC
         /// offset LAYOUT changes — a capacity band crossing, a new bucket, a bucket
@@ -145,7 +158,10 @@ namespace lux::render
         /// spawn/despawn of existing meshes no longer forces a full graph recompile
         /// every frame. mutationSerial stays the exact per-mutation fingerprint for
         /// consumers that need it. (P-7)
-        [[nodiscard]] uint64_t layoutSerial() const noexcept { return layout_serial_; }
+        [[nodiscard]] uint64_t layoutSerial() const noexcept
+        {
+            return layout_serial_;
+        }
 
         /// Power-of-two visible-buffer capacity band for @p n live instances:
         /// 0 -> 0, else the smallest power of two >= n. Used by buildOffsets and by
@@ -153,9 +169,14 @@ namespace lux::render
         /// per-MDC capacity (keeping their offsets in lock-step). (P-7)
         [[nodiscard]] static uint32_t bucketCapacity(uint32_t n) noexcept
         {
-            if (n <= 1u) return n;            // 0 -> 0, 1 -> 1
+            if (n <= 1u)
+                return n; // 0 -> 0, 1 -> 1
             --n;
-            n |= n >> 1; n |= n >> 2; n |= n >> 4; n |= n >> 8; n |= n >> 16;
+            n |= n >> 1;
+            n |= n >> 2;
+            n |= n >> 4;
+            n |= n >> 8;
+            n |= n >> 16;
             return n + 1u;
         }
 
@@ -165,13 +186,13 @@ namespace lux::render
     private:
         std::unordered_map<MdcKey, uint32_t, MdcKeyHash> key_to_index_;
         std::vector<MdcEntry> entries_;
-        std::vector<uint32_t> free_list_;  ///< dead entry slots available for reuse (M10)
+        std::vector<uint32_t> free_list_; ///< dead entry slots available for reuse (M10)
 
         // GPU-uploadable arrays (built by buildOffsets)
         std::vector<uint32_t> gpu_data_; ///< interleaved {offset, section_id}
         uint32_t total_visible_capacity_{0};
-        uint64_t mutation_serial_{0};    ///< bumped on every count-affecting mutation
-        uint64_t layout_serial_{0};      ///< bumped only on offset-LAYOUT changes (P-7)
+        uint64_t mutation_serial_{0}; ///< bumped on every count-affecting mutation
+        uint64_t layout_serial_{0};   ///< bumped only on offset-LAYOUT changes (P-7)
     };
 
 } // namespace lux::render

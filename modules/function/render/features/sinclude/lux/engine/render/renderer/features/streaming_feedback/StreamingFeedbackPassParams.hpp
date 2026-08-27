@@ -21,9 +21,9 @@ namespace lux::render
 
     struct LUX_PASS_PARAMS() StreamingFeedbackPassParams
     {
-        LUX_RESOURCE(role=read, glsl=uMask)  RGResourceHandle mask{};
+        LUX_RESOURCE(role = read, glsl = uMask) RGResourceHandle mask {};
         LUX_RESOURCE(role=sampler, for=mask) VkSampler        mask_sampler{VK_NULL_HANDLE};
-        LUX_RESOURCE(role=write)             RGResourceHandle color_out{};
+        LUX_RESOURCE(role = write) RGResourceHandle color_out {};
 
         StreamingFeedbackScalars scalars{};
     };

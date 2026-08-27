@@ -34,24 +34,18 @@ namespace lux::render
 
         [[nodiscard]] std::uint32_t requiredTargetSlots() const override
         {
-            return 1u << static_cast<std::uint32_t>(
-                TargetSlot::LINEAR_DEPTH);
+            return 1u << static_cast<std::uint32_t>(TargetSlot::LINEAR_DEPTH);
         }
 
         Expected<void> initAndAttachTo(RenderScene&) override;
         void onDetachFromScene(RenderScene&) override;
         void onFrameBegin(const FeatureFrameContext&) override;
         void addPasses(RGBuilder& builder) override;
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept override;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept override;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept override;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept override;
 
-        [[nodiscard]] WaterSurfaceCreatedReply createSurface(
-            const WaterSurfaceDesc& surface) noexcept;
-        void updateSurface(
-            RWaterSurfaceHandle handle,
-            const WaterSurfaceDesc& surface) noexcept;
+        [[nodiscard]] WaterSurfaceCreatedReply createSurface(const WaterSurfaceDesc& surface) noexcept;
+        void updateSurface(RWaterSurfaceHandle handle, const WaterSurfaceDesc& surface) noexcept;
         void destroySurface(RWaterSurfaceHandle handle) noexcept;
         [[nodiscard]] WaterStatsReply stats() const noexcept;
 
@@ -89,9 +83,7 @@ namespace lux::render
         static_assert(sizeof(GpuHeader) == 16u);
 
         [[nodiscard]] bool valid(RWaterSurfaceHandle handle) const noexcept;
-        [[nodiscard]] float coverageAt(
-            const SurfaceSlot& slot,
-            float scene_time) const noexcept;
+        [[nodiscard]] float coverageAt(const SurfaceSlot& slot, float scene_time) const noexcept;
         void rebuildGpuSnapshot(float scene_time);
 
         Config config_{};

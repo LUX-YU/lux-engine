@@ -7,30 +7,30 @@
 //  (UIRenderServer) can directly access Impl members.
 // ─────────────────────────────────────────────────────────────────────────
 
-#include <lux/engine/render/comm/server/RenderServer.hpp>   // GeneralRenderServer, FrameReplyBuilder
-#include <lux/engine/function/render/client/RenderProtocol.hpp>        // FeatureFactory, TypeId
-#include <lux/engine/render/comm/RenderTickPipeline.hpp>    // SceneViewBatch (reused per-tick)
-#include <lux/engine/render/gpu/VulkanContext.hpp>          // InstanceContext, DeviceContext, ResourceContext
-#include <lux/engine/render/gpu/RenderContext.hpp>             // RenderContext
-#include <lux/engine/function/render/client/core/FrameStamp.hpp>                  // FrameClock, FrameStamp
+#include <lux/engine/render/comm/server/RenderServer.hpp>        // GeneralRenderServer, FrameReplyBuilder
+#include <lux/engine/function/render/client/RenderProtocol.hpp>  // FeatureFactory, TypeId
+#include <lux/engine/render/comm/RenderTickPipeline.hpp>         // SceneViewBatch (reused per-tick)
+#include <lux/engine/render/gpu/VulkanContext.hpp>               // InstanceContext, DeviceContext, ResourceContext
+#include <lux/engine/render/gpu/RenderContext.hpp>               // RenderContext
+#include <lux/engine/function/render/client/core/FrameStamp.hpp> // FrameClock, FrameStamp
 #include <lux/engine/render/core/RenderErrorSink.hpp>            // 自发上报汇集器(渲染线程私有)
 #include <lux/engine/render/renderer/FrameOrchestrator.hpp>
-#include <lux/engine/render/renderer/Renderer.hpp>           // Renderer
+#include <lux/engine/render/renderer/Renderer.hpp>          // Renderer
 #include <lux/engine/render/gpu/RenderSurface.hpp>          // RenderSurface
-#include <lux/engine/render/targets/SwapchainProvider.hpp>     // SwapchainProvider
-#include <lux/engine/render/targets/PresentContext.hpp>        // PresentContext(拆层)
-#include <lux/engine/render/targets/OffscreenImagePool.hpp>    // OffscreenImagePool
-#include <lux/engine/render/renderer/FrameDriver.hpp>          // FrameDriver
+#include <lux/engine/render/targets/SwapchainProvider.hpp>  // SwapchainProvider
+#include <lux/engine/render/targets/PresentContext.hpp>     // PresentContext(拆层)
+#include <lux/engine/render/targets/OffscreenImagePool.hpp> // OffscreenImagePool
+#include <lux/engine/render/renderer/FrameDriver.hpp>       // FrameDriver
 #include <lux/engine/render/resources/lifecycle/GpuTransferPipeline.hpp>
-#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>     // StagingBuffer
-#include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>   // kMaxFramesInFlight
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>            // kMaxFramesInFlight
+#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>         // StagingBuffer
+#include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>    // kMaxFramesInFlight
+#include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
 
-#include <lux/cxx/concurrent/LockFreeQueue.hpp>   // SpscLockFreeRingQueue(校验消息通道)
+#include <lux/cxx/concurrent/LockFreeQueue.hpp> // SpscLockFreeRingQueue(校验消息通道)
 #include <lux/cxx/container/SparseSet.hpp>
-#include <lux/cxx/container/BasicSparseSet.hpp>   // SlotKeyAutoSparseSet
-#include <lux/engine/render/renderer/RenderTargetRegistry.hpp>   // targets 一等对象(L4)
-#include <lux/cxx/container/SmallVector.hpp>      // RenderTargetEntry::layers
+#include <lux/cxx/container/BasicSparseSet.hpp>                // SlotKeyAutoSparseSet
+#include <lux/engine/render/renderer/RenderTargetRegistry.hpp> // targets 一等对象(L4)
+#include <lux/cxx/container/SmallVector.hpp>                   // RenderTargetEntry::layers
 
 #include <array>
 #include <atomic>
@@ -41,7 +41,10 @@
 #include <optional>
 #include <vector>
 
-namespace lux::window { class LuxWindow; }
+namespace lux::window
+{
+    class LuxWindow;
+}
 
 namespace lux::render
 {
@@ -76,8 +79,8 @@ namespace lux::render
     /// 计数的两维。
     struct ValidationEvent
     {
-        std::uint32_t severity{0};      ///< 0=info 1=warn 2=error
-        std::uint32_t fingerprint{0};   ///< 消息全文的 FNV-1a,同消息同指纹
+        std::uint32_t severity{0};    ///< 0=info 1=warn 2=error
+        std::uint32_t fingerprint{0}; ///< 消息全文的 FNV-1a,同消息同指纹
     };
 
     /// 每生产者线程一条 SPSC 环。
@@ -110,9 +113,7 @@ namespace lux::render
         {
             const std::size_t lane = laneIndex();
             if (lane >= kLanes ||
-                lanes_[lane].tryPush(
-                    ValidationEvent{severity, fingerprint}) !=
-                    lux::cxx::EQueuePushResult::ACCEPTED)
+                lanes_[lane].tryPush(ValidationEvent{severity, fingerprint}) != lux::cxx::EQueuePushResult::ACCEPTED)
                 dropped_.fetch_add(1, std::memory_order_relaxed);
         }
 
@@ -121,13 +122,11 @@ namespace lux::render
         /// 逐通道排空而不是按时间归并:跨通道的先后本来就没有全序可言(不同线程上
         /// 发生的两件事之间没有同步点),硬排一个顺序是假精度。合并计数在 sink 里
         /// 按键做,与到达顺序无关。
-        template <class F>
-        void drain(F&& fn)
+        template <class F> void drain(F&& fn)
         {
             ValidationEvent event{};
             for (auto& lane : lanes_)
-                while (lane.tryPop(event) ==
-                       lux::cxx::EQueuePopResult::VALUE)
+                while (lane.tryPop(event) == lux::cxx::EQueuePopResult::VALUE)
                     fn(event);
         }
 
@@ -137,7 +136,10 @@ namespace lux::render
             return dropped_.load(std::memory_order_relaxed);
         }
 
-        void clearDropped() noexcept { dropped_.store(0, std::memory_order_relaxed); }
+        void clearDropped() noexcept
+        {
+            dropped_.store(0, std::memory_order_relaxed);
+        }
 
     private:
         /// 本线程的通道号,首次调用时领取并固定。计数器与 thread_local 都是进程级:
@@ -146,7 +148,7 @@ namespace lux::render
         static std::size_t laneIndex() noexcept
         {
             static std::atomic<std::size_t> s_next_lane{0};
-            static constexpr std::size_t    kUnassigned = static_cast<std::size_t>(-1);
+            static constexpr std::size_t kUnassigned = static_cast<std::size_t>(-1);
 
             thread_local std::size_t t_lane = kUnassigned;
             if (t_lane == kUnassigned)
@@ -171,20 +173,20 @@ namespace lux::render
         GeneralRenderServer* server_{nullptr};
 
         // Vulkan infrastructure — created lazily by init()
-        std::unique_ptr<InstanceContext>  inst_ctx_;
-        std::unique_ptr<DeviceContext>    dev_ctx_;
-        std::unique_ptr<ResourceContext>  res_ctx_;
-        std::shared_ptr<RenderContext>    render_ctx_;
-        std::unique_ptr<Renderer>         renderer_;
+        std::unique_ptr<InstanceContext> inst_ctx_;
+        std::unique_ptr<DeviceContext> dev_ctx_;
+        std::unique_ptr<ResourceContext> res_ctx_;
+        std::shared_ptr<RenderContext> render_ctx_;
+        std::unique_ptr<Renderer> renderer_;
 
         // Dispatch
-        Dispatcher                        dispatcher;
+        Dispatcher dispatcher;
         // Feature-type registry now lives in renderer_->featureTypeRegistry().
 
         // Surface + targets
         // (surface_/swapchain_provider_ 单例成员已消亡:呈现机件收进
         //  Surface RenderTargetEntry::present——多窗即多实例。拆层。)
-        std::unique_ptr<FrameDriver>      frame_driver_;
+        std::unique_ptr<FrameDriver> frame_driver_;
 
         // ── RenderTarget 一等对象(设计 §1;收编四份并列状态)──────────
         // Offscreen 态拥有图像池;Surface 态引用 target 自己拥有的
@@ -194,37 +196,58 @@ namespace lux::render
         // RenderTargetRegistry —— 那些词汇(渲染目标、合成层、图像池、呈现上下文)
         // 全是渲染层的,没有一个属于线协议;它们住在这里还直接卡住了帧编排的下沉。
         // 本层保留一个持有者与若干转发,调用点照旧。
-        RenderTargetRegistry              targets_registry_;
+        RenderTargetRegistry targets_registry_;
 
         using RenderTargetEntry = RenderTargetRegistry::Entry;
 
-        [[nodiscard]] RenderTargetRegistry&       targets()       noexcept { return targets_registry_; }
-        [[nodiscard]] const RenderTargetRegistry& targets() const noexcept { return targets_registry_; }
+        [[nodiscard]] RenderTargetRegistry& targets() noexcept
+        {
+            return targets_registry_;
+        }
+        [[nodiscard]] const RenderTargetRegistry& targets() const noexcept
+        {
+            return targets_registry_;
+        }
 
         // ── 兼容转发(逐步收敛到直接用 targets()) ────────────────────────
-        RenderTargetEntry* surfaceTarget()      noexcept { return targets_registry_.surfaceTarget(); }
-        PresentContext*    surfacePresent()     noexcept { return targets_registry_.surfacePresent(); }
-        SwapchainProvider* swapchainProvider()  noexcept { return targets_registry_.swapchainProvider(); }
+        RenderTargetEntry* surfaceTarget() noexcept
+        {
+            return targets_registry_.surfaceTarget();
+        }
+        PresentContext* surfacePresent() noexcept
+        {
+            return targets_registry_.surfacePresent();
+        }
+        SwapchainProvider* swapchainProvider() noexcept
+        {
+            return targets_registry_.swapchainProvider();
+        }
 
         RenderTargetEntry* findOffscreenByView(RenderSceneId s, ViewHandle v) noexcept
-        { return targets_registry_.findOffscreenByView(s, v); }
+        {
+            return targets_registry_.findOffscreenByView(s, v);
+        }
 
-        bool detachLayerAndReapIfEmpty(RenderTargetId key, RenderSceneId s, ViewHandle v,
-                                       uint64_t retire_serial)
-        { return targets_registry_.detachLayerAndReapIfEmpty(key, s, v, retire_serial); }
+        bool detachLayerAndReapIfEmpty(RenderTargetId key, RenderSceneId s, ViewHandle v, uint64_t retire_serial)
+        {
+            return targets_registry_.detachLayerAndReapIfEmpty(key, s, v, retire_serial);
+        }
 
-        std::unique_ptr<OffscreenImagePool> makeTargetPool(
-            const RenderTargetLayout& layout, VkExtent2D extent, uint32_t target_flags)
-        { return targets_registry_.makeTargetPool(layout, extent, target_flags); }
+        std::unique_ptr<OffscreenImagePool>
+        makeTargetPool(const RenderTargetLayout& layout, VkExtent2D extent, uint32_t target_flags)
+        {
+            return targets_registry_.makeTargetPool(layout, extent, target_flags);
+        }
 
         void retireTargetPool(RenderTargetEntry& t, uint64_t retire_serial)
-        { targets_registry_.retireTargetPool(t, retire_serial); }
+        {
+            targets_registry_.retireTargetPool(t, retire_serial);
+        }
 
         /// surface + swapchain + Surface target entry 一体创建(attach
         /// 宿主封装与 CreateSurfaceTarget 命令共用)。过渡期所有权在 Impl
         /// 单实例;失败时接管并销毁传入的 surface。
-        Expected<RenderTargetId> createSurfaceTargetInternal(
-            RenderSurface&& surface, VkExtent2D extent);
+        Expected<RenderTargetId> createSurfaceTargetInternal(RenderSurface&& surface, VkExtent2D extent);
 
         /// 两阶段销毁的在途账本:Surface target 受理销毁后停止呈现,
         /// 等 fence 水位越过 retire_serial 再拆 swapchain/surface,然后按
@@ -232,11 +255,11 @@ namespace lux::render
         struct PendingSurfaceRelease
         {
             RenderTargetId target{};
-            uint64_t       retire_serial{0};
+            uint64_t retire_serial{0};
             /// 0 = 内部释放(imgui 副视口等,不发 TargetReleased 回执);
             /// 非 0 = 命令面销毁,按此 request_id 延迟回执。
-            uint32_t       request_id{0};
-            bool           torn_down{false};   ///< 已拆资源,回执待送(环满重试)
+            uint32_t request_id{0};
+            bool torn_down{false}; ///< 已拆资源,回执待送(环满重试)
             /// 受理销毁时从 entry 移入的呈现机件(per-target 所有权);
             /// fence 水位越过后 reset() 即完成 swapchain→surface 逆序拆。
             std::unique_ptr<PresentContext> ctx;
@@ -246,21 +269,23 @@ namespace lux::render
         };
         std::vector<PendingSurfaceRelease> pending_surface_releases_;
         RenderTargetId findOffscreenKeyByView(RenderSceneId s, ViewHandle v) const noexcept
-        { return targets_registry_.findOffscreenKeyByView(s, v); }
+        {
+            return targets_registry_.findOffscreenKeyByView(s, v);
+        }
 
-        RenderSceneId                     current_bulk_scene_{};
+        RenderSceneId current_bulk_scene_{};
 
         // Frame timing — single authoritative clock
-        FrameOrchestrator                 frame_orchestrator_{2};
-        FrameStamp                        current_stamp_{};
+        FrameOrchestrator frame_orchestrator_{2};
+        FrameStamp current_stamp_{};
 
         // Per-tick scene/view batch, reused across ticks (cleared at tick start)
         // instead of stack-constructing 3 vectors every frame. MUST be cleared
         // before the offscreen-view loop — stale scene/view pointers would feed
         // endViewFrame after a scene/view was destroyed. (P-5)
-        SceneViewBatch                    scene_view_batch_;
-        uint32_t                          frames_in_flight_{2};
-        bool                              enable_vsync_{true};
+        SceneViewBatch scene_view_batch_;
+        uint32_t frames_in_flight_{2};
+        bool enable_vsync_{true};
 
         // Single-owner GPU transfer pipeline (built by init; handlers publish
         // low-level jobs, this render owner drains results).
@@ -291,14 +316,14 @@ namespace lux::render
         // rebuild) they stay here: StagingOnly copy records remain queued
         // until a future runUploadPhase, so the FIF retirement countdown
         // must not start before the copies are actually recorded.
-        std::vector<StagingBuffer>        staging_pending_this_tick_;
+        std::vector<StagingBuffer> staging_pending_this_tick_;
 
         // Scratch buffer for drainCompletions() — avoids per-tick allocation.
-        static constexpr uint32_t         kMaxDrainBatch = 64;
-        TransferCompletion                completion_buf_[kMaxDrainBatch];
+        static constexpr uint32_t kMaxDrainBatch = 64;
+        TransferCompletion completion_buf_[kMaxDrainBatch];
 
         // VRAM budget: set when DEVICE_LOCAL usage > 95%, cleared when < 85%.
-        bool                              expansion_suppressed_{false};
+        bool expansion_suppressed_{false};
 
         // Deferred resource-upload replies: accumulated during drainCompletions,
         // flushed into the reply builder on the next drainAndDispatch cycle.
@@ -309,7 +334,7 @@ namespace lux::render
             uint32_t resource_index; ///< handle.index
             uint32_t resource_gen;   ///< handle.gen
             uint32_t logical_base_mip{0};
-            uint32_t status{0};      ///< 0 = success; non-zero = failed upload
+            uint32_t status{0}; ///< 0 = success; non-zero = failed upload
         };
         std::vector<DeferredReplyEntry> pending_deferred_replies_;
 
@@ -324,8 +349,7 @@ namespace lux::render
         std::vector<ActiveUpload> active_uploads_;
         UploadLifecycleSnapshot upload_lifecycle_{};
         static constexpr std::size_t kRecentUploadTerminals = 256;
-        std::array<std::uint32_t, kRecentUploadTerminals>
-            recent_upload_terminals_{};
+        std::array<std::uint32_t, kRecentUploadTerminals> recent_upload_terminals_{};
         std::size_t recent_upload_terminal_cursor_{0};
 
         struct PendingGraphicsFinalize
@@ -364,26 +388,26 @@ namespace lux::render
         // survives across ticks (unlike the synchronous handleReadbackTarget).
         struct PendingReadback
         {
-            RenderTargetId  target{};
-            uint64_t        dst_ptr{0};
-            uint64_t        dst_capacity{0};
-            TargetSlot      slot{TargetSlot::SCENE_COLOR}; ///< which output semantic to read
-            uint32_t        request_id{0};
-            uint32_t        settle_left{0};   ///< ticks to render before the copy
-            uint32_t        deadline{0};      ///< ticks to wait for the fence
-            bool            submitted{false};
-            bool            done{false};      ///< reply filled, ready to send
+            RenderTargetId target{};
+            uint64_t dst_ptr{0};
+            uint64_t dst_capacity{0};
+            TargetSlot slot{TargetSlot::SCENE_COLOR}; ///< which output semantic to read
+            uint32_t request_id{0};
+            uint32_t settle_left{0}; ///< ticks to render before the copy
+            uint32_t deadline{0};    ///< ticks to wait for the fence
+            bool submitted{false};
+            bool done{false}; ///< reply filled, ready to send
             // GPU state — valid only between submit and completion.
-            VkBuffer        buf{VK_NULL_HANDLE};
-            VmaAllocation   alloc{nullptr};
-            void*           mapped{nullptr};
-            VkFence         fence{VK_NULL_HANDLE};
+            VkBuffer buf{VK_NULL_HANDLE};
+            VmaAllocation alloc{nullptr};
+            void* mapped{nullptr};
+            VkFence fence{VK_NULL_HANDLE};
             VkCommandBuffer cb{VK_NULL_HANDLE};
-            uint32_t        width{0};
-            uint32_t        height{0};
-            uint32_t        bpp{0};
-            VkFormat        format{VK_FORMAT_UNDEFINED};
-            uint64_t        needed{0};
+            uint32_t width{0};
+            uint32_t height{0};
+            uint32_t bpp{0};
+            VkFormat format{VK_FORMAT_UNDEFINED};
+            uint64_t needed{0};
             ReadbackTargetReply reply{};
         };
         std::vector<PendingReadback> pending_readbacks_;
@@ -430,9 +454,7 @@ namespace lux::render
             std::uint32_t resource_gen,
             EUploadLifecycleState state
         ) noexcept;
-        [[nodiscard]] bool observeTransferResult(
-            const TransferCompletion& completion
-        ) noexcept;
+        [[nodiscard]] bool observeTransferResult(const TransferCompletion& completion) noexcept;
         void settleUploadReply(const DeferredReplyEntry& reply) noexcept;
         [[nodiscard]] UploadLifecycleSnapshot uploadLifecycle() const noexcept;
         void failActiveUploadsForShutdown() noexcept;
@@ -443,12 +465,19 @@ namespace lux::render
         /// as failed. A finalizer that drops a completion (stale/recycled slot) frees the
         /// GPU objects AND the staging itself, so the caller must NOT retire the staging
         /// again (double-free) nor claim success.
-        enum class FinalizeDisposition { Succeeded, Failed };
+        enum class FinalizeDisposition
+        {
+            Succeeded,
+            Failed
+        };
 
         // Per-kind completion finalization.
-        FinalizeDisposition finalizeMeshCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
-        FinalizeDisposition finalizeTexture2DCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
-        FinalizeDisposition finalizeTextureCubeCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
+        FinalizeDisposition
+        finalizeMeshCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
+        FinalizeDisposition
+        finalizeTexture2DCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
+        FinalizeDisposition
+        finalizeTextureCubeCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
         /// Finalize one completion + accumulate deferred reply + defer staging buffer.
         void finalizeCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
         /// Return a reserved-but-failed bindless slot to its free list.
@@ -468,16 +497,8 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     //  lookupScene — exported for feature operation handlers
     // ─────────────────────────────────────────────────────────────────────
-    LUX_FUNCTION_PUBLIC RenderScene* lookupScene(
-        void* user_state,
-        RenderSceneId scene_id
-    );
+    LUX_FUNCTION_PUBLIC RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
     LUX_FUNCTION_PUBLIC RenderContext* lookupRenderContext(void* user_state);
-    LUX_FUNCTION_PUBLIC GpuTransferPipeline* lookupTransferPipeline(
-        void* user_state
-    );
-    LUX_FUNCTION_PUBLIC void forEachSceneOnServer(
-        void* user_state,
-        void (*fn)(RenderScene&)
-    );
+    LUX_FUNCTION_PUBLIC GpuTransferPipeline* lookupTransferPipeline(void* user_state);
+    LUX_FUNCTION_PUBLIC void forEachSceneOnServer(void* user_state, void (*fn)(RenderScene&));
 } // namespace lux::render

@@ -23,6 +23,5 @@
 
 namespace lux::render
 {
-    template<typename T>
-    using Expected = lux::cxx::expected<T, RenderError>;
+    template <typename T> using Expected = lux::cxx::expected<T, RenderError>;
 }

@@ -15,10 +15,7 @@ namespace lux::input
 
         InputSnapshot next;
         window.size(next.window_width, next.window_height);
-        window.framebufferSize(
-            next.framebuffer_width,
-            next.framebuffer_height
-        );
+        window.framebufferSize(next.framebuffer_width, next.framebuffer_height);
         state_->snapshot = std::move(next);
         state_->sampled = true;
     }

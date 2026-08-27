@@ -6,35 +6,36 @@
 
 namespace LuxEigenExt
 {
-    template<class Scalar> using Affine3 = Eigen::Transform<Scalar, 3, Eigen::Affine>;
-    template<class Scalar> using Matrix4 = Eigen::Matrix<Scalar, 4, 4>;
+    template <class Scalar> using Affine3 = Eigen::Transform<Scalar, 3, Eigen::Affine>;
+    template <class Scalar> using Matrix4 = Eigen::Matrix<Scalar, 4, 4>;
 
     /************************************************************************
      * 1. euler2Quaternion
      ************************************************************************/
-     // If this function only supports a fixed euler.size() == 3, you can write a static_assert(euler.size() == 3).
-     // But usually, the default behavior is sufficient.
-    template<typename Scalar, typename Derived>
+    // If this function only supports a fixed euler.size() == 3, you can write a static_assert(euler.size() == 3).
+    // But usually, the default behavior is sufficient.
+    template <typename Scalar, typename Derived>
     Eigen::Quaternion<Scalar> euler2Quaternion(const Eigen::MatrixBase<Derived>& euler)
     {
-        static_assert(std::is_same_v<Scalar, typename Derived::Scalar>,
+        static_assert(
+            std::is_same_v<Scalar, typename Derived::Scalar>,
             "Euler angles must have the same scalar type as template <Scalar>.");
 
         using Vec3 = Eigen::Matrix<Scalar, 3, 1>;
-        // Note: euler[0], euler[1], and euler[2] correspond to X/Y/Z rotations, respectively. 
+        // Note: euler[0], euler[1], and euler[2] correspond to X/Y/Z rotations, respectively.
         // Ensure they align with your project's convention.
-        return  Eigen::AngleAxis<Scalar>(euler[2], Vec3::UnitZ()) *
-            Eigen::AngleAxis<Scalar>(euler[1], Vec3::UnitY()) *
-            Eigen::AngleAxis<Scalar>(euler[0], Vec3::UnitX());
+        return Eigen::AngleAxis<Scalar>(euler[2], Vec3::UnitZ()) * Eigen::AngleAxis<Scalar>(euler[1], Vec3::UnitY()) *
+               Eigen::AngleAxis<Scalar>(euler[0], Vec3::UnitX());
     }
 
     /************************************************************************
      * 2. TRotateMatrixFromEuler
      ************************************************************************/
-    template<typename Scalar, typename Derived>
+    template <typename Scalar, typename Derived>
     Affine3<Scalar> TRotateMatrixFromEuler(const Eigen::MatrixBase<Derived>& euler)
     {
-        static_assert(std::is_same_v<Scalar, typename Derived::Scalar>,
+        static_assert(
+            std::is_same_v<Scalar, typename Derived::Scalar>,
             "Euler angles must have the same scalar type as template <Scalar>.");
 
         // First, construct an identity transformation.
@@ -46,10 +47,11 @@ namespace LuxEigenExt
     /************************************************************************
      * 3. TRotate
      ************************************************************************/
-    template<typename Scalar, typename Derived>
+    template <typename Scalar, typename Derived>
     void TRotate(Affine3<Scalar>& target, const Eigen::MatrixBase<Derived>& euler)
     {
-        static_assert(std::is_same_v<Scalar, typename Derived::Scalar>,
+        static_assert(
+            std::is_same_v<Scalar, typename Derived::Scalar>,
             "Euler angles must have the same scalar type as template <Scalar>.");
 
         target.prerotate(euler2Quaternion<Scalar>(euler));
@@ -79,20 +81,19 @@ namespace LuxEigenExt
     */
 
     /************************************************************************
-    * 4. TLookAt
-    ************************************************************************/
+     * 4. TLookAt
+     ************************************************************************/
     template <typename DerivedEye, typename DerivedTarget, typename DerivedUp, bool ZFlip = true>
-    Affine3<typename DerivedEye::Scalar>
-        TLookAt(const Eigen::MatrixBase<DerivedEye>& eye,
-            const Eigen::MatrixBase<DerivedTarget>& target,
-            const Eigen::MatrixBase<DerivedUp>& up)
+    Affine3<typename DerivedEye::Scalar> TLookAt(
+        const Eigen::MatrixBase<DerivedEye>& eye,
+        const Eigen::MatrixBase<DerivedTarget>& target,
+        const Eigen::MatrixBase<DerivedUp>& up
+    )
     {
         using Scalar = typename DerivedEye::Scalar;
 
-        static_assert(std::is_same_v<Scalar, typename DerivedTarget::Scalar>,
-            "eye / target scalar type mismatch.");
-        static_assert(std::is_same_v<Scalar, typename DerivedUp::Scalar>,
-            "eye / up scalar type mismatch.");
+        static_assert(std::is_same_v<Scalar, typename DerivedTarget::Scalar>, "eye / target scalar type mismatch.");
+        static_assert(std::is_same_v<Scalar, typename DerivedUp::Scalar>, "eye / up scalar type mismatch.");
 
         // For simplicity, Eigen::Matrix<Scalar,3,1> can also be written directly.
         using Vec3 = Eigen::Matrix<Scalar, 3, 1>;
@@ -105,7 +106,7 @@ namespace LuxEigenExt
         Vec3 f = (target - eye).normalized();
         Vec3 u = up.normalized();
         Vec3 s = f.cross(u).normalized();
-        u = s.cross(f);  // Recalculate corrected u.
+        u = s.cross(f); // Recalculate corrected u.
 
         ret.matrix().template block<1, 3>(0, 0) = s;
         ret.matrix().template block<1, 3>(1, 0) = u;
@@ -118,45 +119,41 @@ namespace LuxEigenExt
         ret.matrix().template block<1, 4>(3, 0) = Vec4(0, 0, 0, 1);
 
         // Translation part (rows 0~2, column 3).
-        // In the camera coordinate system, the eye point needs to be "moved" to the origin, 
+        // In the camera coordinate system, the eye point needs to be "moved" to the origin,
         // so it's equivalent to -dot.
-        ret.matrix().template block<3, 1>(0, 3) =
-            Vec3(-s.dot(eye), -u.dot(eye), f.dot(eye));
+        ret.matrix().template block<3, 1>(0, 3) = Vec3(-s.dot(eye), -u.dot(eye), f.dot(eye));
         return ret;
     }
 
     /************************************************************************
      * 5. TOrthographicProjection
      ************************************************************************/
-    template<typename Scalar, bool OpenGLNDC = false>
-    Matrix4<Scalar> TOrthographicProjection(
-        Scalar left,  Scalar right,
-        Scalar bottom, Scalar top,
-        Scalar near_p, Scalar far_p)
+    template <typename Scalar, bool OpenGLNDC = false>
+    Matrix4<Scalar>
+    TOrthographicProjection(Scalar left, Scalar right, Scalar bottom, Scalar top, Scalar near_p, Scalar far_p)
     {
-        const Scalar width   = (right - left);
+        const Scalar width = (right - left);
         const Scalar centerX = (right + left);
-        const Scalar height  = (top   - bottom);
-        const Scalar centerY = (top   + bottom);
-        const Scalar depth   = (far_p - near_p);
-        const Scalar sumZF   = (far_p + near_p);
+        const Scalar height = (top - bottom);
+        const Scalar centerY = (top + bottom);
+        const Scalar depth = (far_p - near_p);
+        const Scalar sumZF = (far_p + near_p);
 
         Matrix4<Scalar> ret;
 
-        if constexpr (!OpenGLNDC) {
+        if constexpr (!OpenGLNDC)
+        {
             // Vulkan ZO: z_ndc ∈ [0,1]
             // scale_z = -1/(f-n), translate_z = -n/(f-n)
-            ret <<  Scalar(2) / width, 0,                    0,                     -centerX / width,
-                                       0,  Scalar(2) / height,  0,                     -centerY / height,
-                                       0,                    0, Scalar(-1) / depth,    -near_p / depth,
-                                       0,                    0,                    0,   Scalar(1);
-        } else {
+            ret << Scalar(2) / width, 0, 0, -centerX / width, 0, Scalar(2) / height, 0, -centerY / height, 0, 0,
+                Scalar(-1) / depth, -near_p / depth, 0, 0, 0, Scalar(1);
+        }
+        else
+        {
             // OpenGL NO: z_ndc ∈ [-1,1]
             // scale_z = -2/(f-n), translate_z = -(f+n)/(f-n)
-            ret <<  Scalar(2) / width, 0,                    0,                     -centerX / width,
-                                       0,  Scalar(2) / height,  0,                     -centerY / height,
-                                       0,                    0, Scalar(-2) / depth,    -sumZF / depth,
-                                       0,                    0,                    0,   Scalar(1);
+            ret << Scalar(2) / width, 0, 0, -centerX / width, 0, Scalar(2) / height, 0, -centerY / height, 0, 0,
+                Scalar(-2) / depth, -sumZF / depth, 0, 0, 0, Scalar(1);
         }
         return ret;
     }
@@ -164,16 +161,17 @@ namespace LuxEigenExt
     /************************************************************************
      * 6. TPerspectiveProjection (6.1)
      ************************************************************************/
-    template<typename Scalar, bool OpenGLNDC = false>
-    Matrix4<Scalar> TPerspectiveProjection(Scalar left,  Scalar right, Scalar bottom,Scalar top, Scalar near_p,Scalar far_p)
+    template <typename Scalar, bool OpenGLNDC = false>
+    Matrix4<Scalar>
+    TPerspectiveProjection(Scalar left, Scalar right, Scalar bottom, Scalar top, Scalar near_p, Scalar far_p)
     {
         Matrix4<Scalar> ret;
 
-        const Scalar width    = (right - left);
-        const Scalar centerX  = (right + left);
-        const Scalar height   = (top   - bottom);
-        const Scalar centerY  = (top   + bottom);
-        const Scalar depth    = (far_p - near_p);   // f - n
+        const Scalar width = (right - left);
+        const Scalar centerX = (right + left);
+        const Scalar height = (top - bottom);
+        const Scalar centerY = (top + bottom);
+        const Scalar depth = (far_p - near_p); // f - n
 
         // The first two rows (x/y) are the same under both conventions
         const Scalar A00 = Scalar(2) * near_p / width;
@@ -181,21 +179,19 @@ namespace LuxEigenExt
         const Scalar A11 = Scalar(2) * near_p / height;
         const Scalar A12 = centerY / height;
 
-        if constexpr (!OpenGLNDC) {
+        if constexpr (!OpenGLNDC)
+        {
             // Vulkan Zero-to-One (NDC z in [0,1])
             // Third row: [-f/(f-n), -(f*n)/(f-n)], fourth row: [0,0,-1,0]
-            ret <<  A00, 0,   A02,                              0,
-                       0, A11, A12,                              0,
-                       0, 0,  -far_p / depth,   -(far_p * near_p) / depth,
-                       0, 0,         -1,                         0;
-        } else {
-            const Scalar sumZF    = (far_p + near_p);   // f + n
+            ret << A00, 0, A02, 0, 0, A11, A12, 0, 0, 0, -far_p / depth, -(far_p * near_p) / depth, 0, 0, -1, 0;
+        }
+        else
+        {
+            const Scalar sumZF = (far_p + near_p); // f + n
             // OpenGL (NDC z in [-1,1])
             // Third row: [ -(f+n)/(f-n), -(2fn)/(f-n) ], fourth row: [0,0,-1,0]
-            ret <<  A00, 0,   A02,                              0,
-                       0, A11, A12,                              0,
-                       0, 0,  -sumZF / depth,   Scalar(-2) * far_p * near_p / depth,
-                       0, 0,         -1,                         0;
+            ret << A00, 0, A02, 0, 0, A11, A12, 0, 0, 0, -sumZF / depth, Scalar(-2) * far_p * near_p / depth, 0, 0, -1,
+                0;
         }
         return ret;
     }
@@ -203,46 +199,52 @@ namespace LuxEigenExt
     /************************************************************************
      * 7. TPerspectiveProjection (6.2) - Common fovy/aspect version
      ************************************************************************/
-    template<typename Scalar, bool OpenGLNDC = false>
+    template <typename Scalar, bool OpenGLNDC = false>
     Matrix4<Scalar> TPerspectiveProjection(Scalar fovy, Scalar aspect, Scalar zNear, Scalar zFar)
     {
         assert(aspect > 0);
-        assert(zNear  > 0);
-        assert(zFar   > zNear);
+        assert(zNear > 0);
+        assert(zFar > zNear);
 
         Matrix4<Scalar> mat = Matrix4<Scalar>::Zero();
 
-        const Scalar t = std::tan(Scalar(0.5) * fovy);   // tan(fovy/2)
+        const Scalar t = std::tan(Scalar(0.5) * fovy); // tan(fovy/2)
         const Scalar a00 = Scalar(1) / (aspect * t);
         const Scalar a11 = Scalar(1) / t;
-        const Scalar fn  = (zFar - zNear);
+        const Scalar fn = (zFar - zNear);
 
         // x/y are the same under both NDC conventions
-        mat(0,0) = a00;
-        mat(1,1) = a11;
+        mat(0, 0) = a00;
+        mat(1, 1) = a11;
 
         // Perspective-divide setup
-        mat(3,2) = -Scalar(1);
+        mat(3, 2) = -Scalar(1);
 
-        if constexpr (!OpenGLNDC) {
+        if constexpr (!OpenGLNDC)
+        {
             // Vulkan Zero-to-One (NDC z in [0,1])
-            mat(2,2) = -zFar / fn;
-            mat(2,3) = -(zFar * zNear) / fn;
-        } else {
+            mat(2, 2) = -zFar / fn;
+            mat(2, 3) = -(zFar * zNear) / fn;
+        }
+        else
+        {
             // OpenGL (NDC z in [-1,1])
-            mat(2,2) = -(zFar + zNear) / fn;
-            mat(2,3) = -(Scalar(2) * zFar * zNear) / fn;
+            mat(2, 2) = -(zFar + zNear) / fn;
+            mat(2, 3) = -(Scalar(2) * zFar * zNear) / fn;
         }
 
         return mat;
     }
 
-    template<typename DerivedEuler, typename DerivedTrans, typename Scalar = typename DerivedEuler::Scalar>
-    Affine3<Scalar> TRotateAndTranslate(const Eigen::MatrixBase<DerivedEuler>& euler, const Eigen::MatrixBase<DerivedTrans>& trans)
+    template <typename DerivedEuler, typename DerivedTrans, typename Scalar = typename DerivedEuler::Scalar>
+    Affine3<Scalar>
+    TRotateAndTranslate(const Eigen::MatrixBase<DerivedEuler>& euler, const Eigen::MatrixBase<DerivedTrans>& trans)
     {
-        static_assert(std::is_same_v<Scalar, typename DerivedEuler::Scalar>,
+        static_assert(
+            std::is_same_v<Scalar, typename DerivedEuler::Scalar>,
             "Euler angles must have the same scalar type as template <Scalar>.");
-        static_assert(std::is_same_v<Scalar, typename DerivedTrans::Scalar>,
+        static_assert(
+            std::is_same_v<Scalar, typename DerivedTrans::Scalar>,
             "Translation must have the same scalar type as template <Scalar>.");
         // 1) First, construct the rotation part.
         Affine3<Scalar> ret = TRotateMatrixFromEuler<Scalar>(euler);
@@ -257,10 +259,12 @@ namespace LuxEigenExt
     /************************************************************************
      * 9. TRotateAndTranslate (Quaternion version)
      ************************************************************************/
-    template<typename Scalar, typename Quaternion = Eigen::Quaternion<Scalar>, typename Derived>
+    template <typename Scalar, typename Quaternion = Eigen::Quaternion<Scalar>, typename Derived>
     Affine3<Scalar> TRotateAndTranslate(const Quaternion& quat, const Eigen::MatrixBase<Derived>& trans)
     {
-        static_assert(std::is_same_v<Scalar, typename Derived::Scalar>, "Translation must have the same scalar type as template <Scalar>.");
+        static_assert(
+            std::is_same_v<Scalar, typename Derived::Scalar>,
+            "Translation must have the same scalar type as template <Scalar>.");
 
         // Usually, initialize to identity. Default construction does not guarantee an identity matrix.
         Affine3<Scalar> ret = Affine3<Scalar>::Identity();

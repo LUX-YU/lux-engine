@@ -31,14 +31,12 @@
 
 namespace lux::render
 {
-    Expected<void> RenderScene::rebaseSceneOrigin(
-        const std::int64_t scene_origin_page[3]) noexcept
+    Expected<void> RenderScene::rebaseSceneOrigin(const std::int64_t scene_origin_page[3]) noexcept
     {
         std::int64_t delta[3]{};
         for (std::size_t axis = 0u; axis < 3u; ++axis)
         {
-            delta[axis] = scene_origin_page[axis] -
-                config_.scene_origin_page[axis];
+            delta[axis] = scene_origin_page[axis] - config_.scene_origin_page[axis];
         }
         if (delta[0] == 0 && delta[1] == 0 && delta[2] == 0)
             return {};
@@ -46,8 +44,7 @@ namespace lux::render
         {
             if (!feature->canRebaseSceneOrigin(delta))
             {
-                return renderFailure<
-                    err::scene::SpatialOriginRebaseRejected>();
+                return renderFailure<err::scene::SpatialOriginRebaseRejected>();
             }
         }
         for (auto* feature : features())
@@ -57,24 +54,22 @@ namespace lux::render
         return {};
     }
 
-
     // ─────────────────────────────────────────────────────────────────────
     //  Construction / Destruction
     // ─────────────────────────────────────────────────────────────────────
 
-    RenderScene::RenderScene(std::shared_ptr<RenderContext> ctx)
-        : RenderScene(std::move(ctx), Config{}){}
+    RenderScene::RenderScene(std::shared_ptr<RenderContext> ctx) : RenderScene(std::move(ctx), Config{})
+    {
+    }
 
-    RenderScene::RenderScene(std::shared_ptr<RenderContext> ctx,
-                             const Config &cfg)
+    RenderScene::RenderScene(std::shared_ptr<RenderContext> ctx, const Config& cfg)
         : render_ctx_(std::move(ctx)), config_(cfg), debug_name_(cfg.scene_name)
     {
-        retire_owner_token_ = static_cast<FrameRetireScheduler::OwnerToken>(
-            reinterpret_cast<uintptr_t>(this));
+        retire_owner_token_ = static_cast<FrameRetireScheduler::OwnerToken>(reinterpret_cast<uintptr_t>(this));
         pipeline_config_ = cfg.pipeline;
 
-        auto &rctx = *render_ctx_;
-        auto &res_ctx = rctx.resourceContext();
+        auto& rctx = *render_ctx_;
+        auto& res_ctx = rctx.resourceContext();
 
         // Per-scene growable descriptor-pool chain — backs every per-scene
         // persistent descriptor set below (light/scene/instance/vertex-pool,
@@ -93,10 +88,10 @@ namespace lux::render
             for (const auto domain : SceneDomainDescriptorSets::kPerSceneDomains)
             {
                 const auto c = domainDescriptorCounts(domain);
-                tmpl.max_sets               += slices;
-                tmpl.storage_buffer         += c.storage_buffer * slices;
+                tmpl.max_sets += slices;
+                tmpl.storage_buffer += c.storage_buffer * slices;
                 tmpl.combined_image_sampler += c.combined_image_sampler * slices;
-                tmpl.uniform_buffer         += c.uniform_buffer * slices;
+                tmpl.uniform_buffer += c.uniform_buffer * slices;
             }
             scene_descriptor_arena_.init(rctx.deviceContext().logicalDevice(), tmpl);
         }
@@ -105,9 +100,7 @@ namespace lux::render
         // transition: build them first and have each owner dual-write into them,
         // verify the offsets and types line up, then switch the pipelines over).
         scene_domain_sets_ = std::make_unique<SceneDomainDescriptorSets>();
-        if (!scene_domain_sets_->init(scene_descriptor_arena_,
-                                      rctx.descriptorLayouts(),
-                                      rctx.framesInFlight()))
+        if (!scene_domain_sets_->init(scene_descriptor_arena_, rctx.descriptorLayouts(), rctx.framesInFlight()))
         {
             // 域集是描述符的唯一写目标,也是管线唯一的绑定来源。分配失败之后本场景的
             // 所有资源描述符都不会被写入,而绑定一个从未写过的描述符集是未定义行为 ——
@@ -126,9 +119,10 @@ namespace lux::render
             auto* sr = scene_registry_.emplace<SceneResources>().get();
             // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。PostUpload:
             // 它要在其余资源之后推进(与改动前 kUploadPhase 声明的阶段一致)。
-            scene_registry_.addBeginFrameHook(
-                SceneResources::kUploadPhase,
-                [sr](const FrameStamp& s) { sr->onFrameBeginMaintenance(s); });
+            scene_registry_.addBeginFrameHook(SceneResources::kUploadPhase, [sr](const FrameStamp& s) {
+                sr->onFrameBeginMaintenance(s);
+            }
+            );
             SceneResources::InitInfo si{
                 .device_context = rctx.deviceContext(),
                 .slices = rctx.framesInFlight(),
@@ -142,8 +136,7 @@ namespace lux::render
                 // vkUpdateDescriptorSets' dstBinding/type validation, without having
                 // to wait until the pipeline switches over to notice.
                 .domain_sets = scene_domain_sets_->setsFor(rdesc::EBindFrequency::GLOBAL),
-                .domain_binding_offset =
-                    engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::Scene)),
+                .domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::Scene)),
             };
             sr->init(si);
             sr->setDeferredQueue(&rctx.deferredDestroyQueue());
@@ -175,8 +168,8 @@ namespace lux::render
         // ── Unified transfer scheduler ──────────────────────────────────
         {
             TransferScheduler::Config ts_cfg{
-                .allocator        = rctx.vmaAllocator(),
-                .ring_capacity    = 4 * 1024 * 1024, // 4 MiB
+                .allocator = rctx.vmaAllocator(),
+                .ring_capacity = 4 * 1024 * 1024, // 4 MiB
                 .frames_in_flight = rctx.framesInFlight(),
             };
             (void)transfer_scheduler_.init(ts_cfg);
@@ -187,7 +180,8 @@ namespace lux::render
 
             // Register SceneResources (HOST_WRITE barriers merged into post-batch).
             transfer_scheduler_.contributors().add(
-                makeTransferContributor(&scene_registry_.must<SceneResources>(), /*priority=*/10));
+                makeTransferContributor(&scene_registry_.must<SceneResources>(), /*priority=*/10)
+            );
 
             // (LightResources transfer contributor is registered by LightFeature in
             // initAndAttachTo — the scene ctor no longer knows light. A scene without
@@ -202,7 +196,6 @@ namespace lux::render
         view_set_.setGraphCache(*graph_cache_);
 
         feature_set_.markCacheDirty();
-
 
         initialized_ = true;
     }
@@ -283,13 +276,11 @@ namespace lux::render
 
         for (FeatureTypeId conflict : desc.conflicts)
             if (feature_set_.hasType(conflict))
-                return renderFailure<err::feature::ConflictsWithInstalled>(
-                    self, encodeFeatureType(conflict));
+                return renderFailure<err::feature::ConflictsWithInstalled>(self, encodeFeatureType(conflict));
 
         for (const FeatureDependency& dep : desc.dependencies)
             if (!dep.optional && !feature_set_.hasType(dep.type))
-                return renderFailure<err::feature::DependencyMissing>(
-                    self, encodeFeatureType(dep.type));
+                return renderFailure<err::feature::DependencyMissing>(self, encodeFeatureType(dep.type));
 
         // EFeatureLevel negotiation: a feature declaring level_profiles must carry a
         // row for the resolved session tier AND the device must have enabled that
@@ -299,18 +290,16 @@ namespace lux::render
 
         // deviceContext() 只有非 const 重载,而本函数只读 caps/featureLevel;
         // render_ctx_ 是 shared_ptr,常量性到指针为止。
-        const auto&        device  = render_ctx_->deviceContext();
+        const auto& device = render_ctx_->deviceContext();
         const EFeatureLevel session = device.featureLevel();
 
         const auto row = std::ranges::find(desc.level_profiles, session, &FeatureLevelProfile::level);
         if (row == desc.level_profiles.end())
-            return renderFailure<err::feature::LevelProfileMissing>(
-                self, static_cast<std::uint32_t>(session));
+            return renderFailure<err::feature::LevelProfileMissing>(self, static_cast<std::uint32_t>(session));
 
         // 带的是**缺了哪些位**,不是「这一行要求了哪些位」—— 后者要消费方自己
         // 再跟 caps 比一遍才知道问题在哪。位到名字的反查见 deviceFeatureName。
-        if (const std::uint32_t missing = unmetDeviceFeatures(device.caps(), row->required_features);
-            missing != 0)
+        if (const std::uint32_t missing = unmetDeviceFeatures(device.caps(), row->required_features); missing != 0)
             return renderFailure<err::feature::LevelRequirementsUnmet>(self, missing);
 
         return {};
@@ -347,7 +336,8 @@ namespace lux::render
                     return false;
                 created.push_back(view->handle.index);
                 return true;
-            });
+            }
+            );
 
             if (failed != views.end())
             {
@@ -358,16 +348,14 @@ namespace lux::render
                 raw->onDetachFromScene(*this);
                 feature_set_.erase(raw->feature_id_);
                 feature_set_.markCacheDirty();
-                graph_cache_->invalidate(
-                    EGraphInvalidationReason::FEATURE_TOPOLOGY);
+                graph_cache_->invalidate(EGraphInvalidationReason::FEATURE_TOPOLOGY);
                 return renderFailure<err::memory::CapacityExhausted>();
             }
         }
 
         feature_set_.markCacheDirty();
         // Adding a feature changes the pass set; force graph recompile on next render.
-        graph_cache_->invalidate(
-            EGraphInvalidationReason::FEATURE_TOPOLOGY);
+        graph_cache_->invalidate(EGraphInvalidationReason::FEATURE_TOPOLOGY);
 
         if (feature_type_registry_ != nullptr)
             feature_type_registry_->noteInstanceAdded(raw->typeId());
@@ -375,15 +363,14 @@ namespace lux::render
         return raw->feature_id_;
     }
 
-    Expected<FeatureHandle> RenderScene::addFeatureErased(
-        std::unique_ptr<RenderFeature> feature)
+    Expected<FeatureHandle> RenderScene::addFeatureErased(std::unique_ptr<RenderFeature> feature)
     {
         // 插件路径的入参本就是 RenderFeature(见 FeatureRegistration.hpp:
         // "T must derive from RenderFeature"),类型信息不必再猜。
         return installFeature(std::move(feature));
     }
 
-    RenderFeature *RenderScene::getFeature(FeatureHandle feature_id) const
+    RenderFeature* RenderScene::getFeature(FeatureHandle feature_id) const
     {
         // get() 内部用 tryGet,同时挡掉未知句柄与陈旧句柄(代数不匹配)。
         return feature_set_.get(feature_id);
@@ -392,7 +379,7 @@ namespace lux::render
     void RenderScene::setFeatureDescriptor(FeatureHandle feature_id, const FeatureDescriptor& descriptor) noexcept
     {
         if (auto* f = getFeature(feature_id))
-            f->descriptor_ = descriptor;   // RenderScene is a friend of RenderFeature
+            f->descriptor_ = descriptor; // RenderScene is a friend of RenderFeature
     }
 
     bool RenderScene::hasFeatureOfType(FeatureTypeId type) const noexcept
@@ -422,11 +409,11 @@ namespace lux::render
         // (kInvalidFeatureTypeId) are never depended upon, so they bypass the scan.
         if (check_reverse_deps)
         {
-            if (const RenderFeature* dependent =
-                    feature_set_.firstRequiring(ptr->descriptor_.type, ptr))
+            if (const RenderFeature* dependent = feature_set_.firstRequiring(ptr->descriptor_.type, ptr))
                 return renderFailure<err::feature::StillRequiredByAnother>(
                     encodeFeatureType(ptr->descriptor_.type),
-                    encodeFeatureType(dependent->descriptor_.type));
+                    encodeFeatureType(dependent->descriptor_.type)
+                );
         }
 
         ptr->lifecycle_state_ = FeatureState::Detaching;
@@ -449,8 +436,7 @@ namespace lux::render
         if (feature_type_registry_ != nullptr)
             feature_type_registry_->noteInstanceRemoved(removed_type);
         feature_set_.markCacheDirty();
-        graph_cache_->invalidate(
-            EGraphInvalidationReason::FEATURE_TOPOLOGY);
+        graph_cache_->invalidate(EGraphInvalidationReason::FEATURE_TOPOLOGY);
         return {};
     }
 
@@ -459,7 +445,7 @@ namespace lux::render
         // Collect ids first since erase during iteration may invalidate
         std::vector<FeatureHandle> ids;
         ids.reserve(feature_set_.size());
-        for (auto *f : feature_set_.all())
+        for (auto* f : feature_set_.all())
             if (f)
                 ids.push_back(f->feature_id_);
 
@@ -481,7 +467,7 @@ namespace lux::render
 
     Expected<void> RenderScene::setFeatureEnabled(FeatureHandle feature_id, bool enabled)
     {
-        auto *f = getFeature(feature_id);
+        auto* f = getFeature(feature_id);
         if (f == nullptr)
             return renderFailure<err::feature::HandleStale>(feature_id.index, feature_id.gen);
         if (f->isEnabled() == enabled)
@@ -491,8 +477,7 @@ namespace lux::render
         // runtime. Default descriptor → supports_runtime_disable=true, so untyped
         // features behave as before.
         if (!enabled && !f->descriptor_.supports_runtime_disable)
-            return renderFailure<err::feature::RuntimeDisableUnsupported>(
-                encodeFeatureType(f->descriptor_.type));
+            return renderFailure<err::feature::RuntimeDisableUnsupported>(encodeFeatureType(f->descriptor_.type));
 
         // State machine + symmetric per-view-state management (closes PR-1's deferred
         // enable/disable case). The lifecycle_state_ transitions ARE the enable/disable
@@ -512,7 +497,8 @@ namespace lux::render
                         return false;
                     created.push_back(view->handle.index);
                     return true;
-                });
+                }
+                );
 
                 if (failed != views.end())
                 {
@@ -522,8 +508,7 @@ namespace lux::render
                         releaseFeatureViewState(*f, v);
                     f->lifecycle_state_ = FeatureState::Disabled;
                     feature_set_.markCacheDirty();
-                    graph_cache_->invalidate(
-                        EGraphInvalidationReason::FEATURE_TOPOLOGY);
+                    graph_cache_->invalidate(EGraphInvalidationReason::FEATURE_TOPOLOGY);
                     return renderFailure<err::memory::CapacityExhausted>();
                 }
             }
@@ -541,8 +526,7 @@ namespace lux::render
         }
 
         feature_set_.markCacheDirty();
-        graph_cache_->invalidate(
-            EGraphInvalidationReason::FEATURE_TOPOLOGY);
+        graph_cache_->invalidate(EGraphInvalidationReason::FEATURE_TOPOLOGY);
         return {};
     }
 
@@ -551,7 +535,7 @@ namespace lux::render
         // Route through the handle-based overload so the name path gets the SAME
         // capability gate (supports_runtime_disable) + FeatureState transitions +
         // per-view-state management.
-        for (auto *f : feature_set_.all())
+        for (auto* f : feature_set_.all())
             if (f && f->name() == feature_name)
                 return setFeatureEnabled(f->featureId(), enabled);
 
@@ -571,7 +555,7 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     //  View Management
     // ─────────────────────────────────────────────────────────────────────
-    ViewHandle RenderScene::addView(const ViewCreateInfo &info)
+    ViewHandle RenderScene::addView(const ViewCreateInfo& info)
     {
         // 视图容器 + 每视图 GPU 槽由 SceneViewSet 负责;特性侧的每视图状态由场景
         // 编排 —— RenderFeature::allocateViewState 的签名要 RenderScene&,让视图集合
@@ -596,7 +580,7 @@ namespace lux::render
         // 释放**每一个**拥有该视图状态的特性 —— 不只是当前启用的那些。视图创建后被
         // 禁用的特性仍持有当时登记的状态;只遍历启用集会漏掉它们(旧实现的泄漏点)。
         // releaseFeatureViewState 对没有登记的特性是 no-op。
-        for (auto *feat : feature_set_.all())
+        for (auto* feat : feature_set_.all())
             if (feat)
                 releaseFeatureViewState(*feat, handle.index);
 
@@ -611,12 +595,12 @@ namespace lux::render
         return true;
     }
 
-    View *RenderScene::getView(ViewHandle handle) noexcept
+    View* RenderScene::getView(ViewHandle handle) noexcept
     {
         return view_set_.get(handle);
     }
 
-    const View *RenderScene::getView(ViewHandle handle) const noexcept
+    const View* RenderScene::getView(ViewHandle handle) const noexcept
     {
         return view_set_.get(handle);
     }
@@ -637,33 +621,32 @@ namespace lux::render
     //  Infra Accessors
     // ─────────────────────────────────────────────────────────────────────
 
-    RGVulkanResourceAllocator &RenderScene::graphAllocator() noexcept
+    RGVulkanResourceAllocator& RenderScene::graphAllocator() noexcept
     {
         return graph_cache_->allocator();
     }
 
-    RGVulkanRecorder &RenderScene::graphRecorder() noexcept
+    RGVulkanRecorder& RenderScene::graphRecorder() noexcept
     {
         return graph_cache_->recorder();
     }
 
-    SceneGraphState &RenderScene::graphState() noexcept
+    SceneGraphState& RenderScene::graphState() noexcept
     {
         return graph_cache_->state();
     }
 
-    const SceneGraphState &RenderScene::graphState() const noexcept
+    const SceneGraphState& RenderScene::graphState() const noexcept
     {
         return graph_cache_->state();
     }
 
-    void RenderScene::invalidateGraph(
-        EGraphInvalidationReason reason) noexcept
+    void RenderScene::invalidateGraph(EGraphInvalidationReason reason) noexcept
     {
         graph_cache_->invalidate(reason);
     }
 
-    void RenderScene::compileGraphTemplate(const RenderTargetLayout &layout)
+    void RenderScene::compileGraphTemplate(const RenderTargetLayout& layout)
     {
         // 实现已迁入 SceneGraphCache::compile(事务式 build-then-commit)。这里只做
         // 一件本层该做的事:把**场景拥有的东西**(已启用特性、全部视图、域描述符集)
@@ -672,15 +655,14 @@ namespace lux::render
         const std::span<View* const> all_views = view_set_.all();
         // 图缓存不认识特性:它只收"把 pass 声明进这个 builder"这一个操作。
         // 只拥有资源的特性其槽里没有该操作,自然不参与。
-        graph_cache_->compile(layout,
-                              requiredTargetSlotMask(),
-                              [this](RGBuilder& b)
-                              {
-                                  feature_set_.contributePasses(b);
-                              },
-                              all_views,
-                              scene_domain_sets_.get(),
-                              current_stamp_.serial);
+        graph_cache_->compile(
+            layout,
+            requiredTargetSlotMask(),
+            [this](RGBuilder& b) { feature_set_.contributePasses(b); },
+            all_views,
+            scene_domain_sets_.get(),
+            current_stamp_.serial
+        );
     }
 
     void RenderScene::retireViewResourceState(RGResourceState&& state, const RGGraphDescription* source_graph)
@@ -692,12 +674,12 @@ namespace lux::render
     //  Scene Data
     // ─────────────────────────────────────────────────────────────────────
 
-    RenderContext &RenderScene::renderContext() noexcept
+    RenderContext& RenderScene::renderContext() noexcept
     {
         return *render_ctx_;
     }
 
-    const RenderContext &RenderScene::renderContext() const noexcept
+    const RenderContext& RenderScene::renderContext() const noexcept
     {
         return *render_ctx_;
     }
@@ -723,40 +705,47 @@ namespace lux::render
 
     void RenderScene::dumpGpuTiming(std::ostream& os) const
     {
-        auto write_json_string = [&os](std::string_view value)
-        {
+        auto write_json_string = [&os](std::string_view value) {
             os << '"';
             for (const char c : value)
             {
                 switch (c)
                 {
-                case '"': os << "\\\""; break;
-                case '\\': os << "\\\\"; break;
-                case '\n': os << "\\n"; break;
-                case '\r': os << "\\r"; break;
-                case '\t': os << "\\t"; break;
-                default: os << c; break;
+                case '"':
+                    os << "\\\"";
+                    break;
+                case '\\':
+                    os << "\\\\";
+                    break;
+                case '\n':
+                    os << "\\n";
+                    break;
+                case '\r':
+                    os << "\\r";
+                    break;
+                case '\t':
+                    os << "\\t";
+                    break;
+                default:
+                    os << c;
+                    break;
                 }
             }
             os << '"';
         };
 
         const auto& graph_telemetry = graph_cache_->telemetry();
-        os << "{\"version\":2,\"graph\":{\"pending_invalidation_bits\":"
-           << graph_telemetry.pending_invalidation_bits
+        os << "{\"version\":2,\"graph\":{\"pending_invalidation_bits\":" << graph_telemetry.pending_invalidation_bits
            << ",\"compile_attempts\":" << graph_telemetry.compile_attempts
            << ",\"compile_successes\":" << graph_telemetry.compile_successes
            << ",\"compile_failures\":" << graph_telemetry.compile_failures
            << ",\"build_ns\":" << graph_telemetry.build_nanoseconds
            << ",\"compile_ns\":" << graph_telemetry.compile_nanoseconds
            << ",\"total_ns\":" << graph_telemetry.total_nanoseconds
-           << ",\"retired_graph_high_water\":"
-           << graph_telemetry.retired_graph_high_water
-           << ",\"retired_view_resource_high_water\":"
-           << graph_telemetry.retired_view_resource_high_water
+           << ",\"retired_graph_high_water\":" << graph_telemetry.retired_graph_high_water
+           << ",\"retired_view_resource_high_water\":" << graph_telemetry.retired_view_resource_high_water
            << ",\"invalidation_counts\":[";
-        for (std::size_t index = 0u;
-             index < graph_telemetry.invalidation_counts.size(); ++index)
+        for (std::size_t index = 0u; index < graph_telemetry.invalidation_counts.size(); ++index)
         {
             if (index != 0u)
                 os << ',';
@@ -769,54 +758,36 @@ namespace lux::render
             if (!first_compile)
                 os << ',';
             first_compile = false;
-            os << "{\"frame\":" << sample.frame_serial
-               << ",\"invalidation_bits\":" << sample.invalidation_bits
-               << ",\"build_ns\":" << sample.build_nanoseconds
-               << ",\"compile_ns\":" << sample.compile_nanoseconds
+            os << "{\"frame\":" << sample.frame_serial << ",\"invalidation_bits\":" << sample.invalidation_bits
+               << ",\"build_ns\":" << sample.build_nanoseconds << ",\"compile_ns\":" << sample.compile_nanoseconds
                << ",\"total_ns\":" << sample.total_nanoseconds
-               << ",\"succeeded\":"
-               << (sample.succeeded ? "true" : "false") << '}';
+               << ",\"succeeded\":" << (sample.succeeded ? "true" : "false") << '}';
         }
-        const auto& pipeline_telemetry =
-            render_ctx_->pipelineManager().telemetry();
-        os << "]},\"pipeline\":{\"graphics_cache_hits\":"
-           << pipeline_telemetry.graphics_cache_hits
-           << ",\"graphics_cache_misses\":"
-           << pipeline_telemetry.graphics_cache_misses
-           << ",\"graphics_create_failures\":"
-           << pipeline_telemetry.graphics_create_failures
-           << ",\"graphics_create_ns\":"
-           << pipeline_telemetry.graphics_create_nanoseconds
-           << ",\"graphics_create_max_ns\":"
-           << pipeline_telemetry.graphics_create_max_nanoseconds
-           << ",\"compute_create_calls\":"
-           << pipeline_telemetry.compute_create_calls
-           << ",\"compute_create_failures\":"
-           << pipeline_telemetry.compute_create_failures
-           << ",\"compute_create_ns\":"
-           << pipeline_telemetry.compute_create_nanoseconds
-           << ",\"compute_create_max_ns\":"
-           << pipeline_telemetry.compute_create_max_nanoseconds
-           << ",\"render_pass_cache_hits\":"
-           << pipeline_telemetry.render_pass_cache_hits
-           << ",\"render_pass_cache_misses\":"
-           << pipeline_telemetry.render_pass_cache_misses
-           << "},\"views\":[";
+        const auto& pipeline_telemetry = render_ctx_->pipelineManager().telemetry();
+        os << "]},\"pipeline\":{\"graphics_cache_hits\":" << pipeline_telemetry.graphics_cache_hits
+           << ",\"graphics_cache_misses\":" << pipeline_telemetry.graphics_cache_misses
+           << ",\"graphics_create_failures\":" << pipeline_telemetry.graphics_create_failures
+           << ",\"graphics_create_ns\":" << pipeline_telemetry.graphics_create_nanoseconds
+           << ",\"graphics_create_max_ns\":" << pipeline_telemetry.graphics_create_max_nanoseconds
+           << ",\"compute_create_calls\":" << pipeline_telemetry.compute_create_calls
+           << ",\"compute_create_failures\":" << pipeline_telemetry.compute_create_failures
+           << ",\"compute_create_ns\":" << pipeline_telemetry.compute_create_nanoseconds
+           << ",\"compute_create_max_ns\":" << pipeline_telemetry.compute_create_max_nanoseconds
+           << ",\"render_pass_cache_hits\":" << pipeline_telemetry.render_pass_cache_hits
+           << ",\"render_pass_cache_misses\":" << pipeline_telemetry.render_pass_cache_misses << "},\"views\":[";
         bool first_view = true;
         for (const auto* view : view_set_.active())
         {
             if (!view || !view->resource_state)
                 continue;
-            const auto& history =
-                view->resource_state->record_ctx.gpu_timing_history;
+            const auto& history = view->resource_state->record_ctx.gpu_timing_history;
             if (history.empty())
                 continue;
 
             if (!first_view)
                 os << ',';
             first_view = false;
-            os << "{\"view\":" << view->handle.index
-               << ",\"samples\":[";
+            os << "{\"view\":" << view->handle.index << ",\"samples\":[";
             bool first_sample = true;
             for (const auto& snapshot : history)
             {
@@ -826,10 +797,8 @@ namespace lux::render
                     os << ',';
                 first_sample = false;
                 os << "{\"frame\":" << snapshot->frame_id
-                   << ",\"available\":"
-                   << (snapshot->available ? "true" : "false")
-                   << ",\"total_ms\":" << snapshot->total_milliseconds
-                   << ",\"passes\":[";
+                   << ",\"available\":" << (snapshot->available ? "true" : "false")
+                   << ",\"total_ms\":" << snapshot->total_milliseconds << ",\"passes\":[";
                 bool first_pass = true;
                 for (const auto& pass : snapshot->passes)
                 {
@@ -879,15 +848,15 @@ namespace lux::render
             sg.pad0 = 0.f;
             scene_res.writeSceneGlobal(scene_global_slot_, sg);
 
-            for (auto *view : view_set_.active())
+            for (auto* view : view_set_.active())
             {
                 if (!view || !view->has_view_data)
                     continue;
                 // Upload the neutral per-view bytes the scene staged in updateView
                 // (the core does not interpret them; #27: write happens here, after
                 // the fence wait, never during the request drain).
-                scene_res.writeViewData(view->view_slot,
-                    view->view_data_staging.data(), kViewDataStrideBytes, frame_slot);
+                scene_res
+                    .writeViewData(view->view_slot, view->view_data_staging.data(), kViewDataStrideBytes, frame_slot);
             }
         }
 
@@ -898,9 +867,7 @@ namespace lux::render
 
         graph_cache_->allocator().garbageCollect(stamp.serial, render_ctx_->framesInFlight() + 1);
 
-        const FeatureFrameContext frame_ctx{
-            frame_slot
-        };
+        const FeatureFrameContext frame_ctx{frame_slot};
         for (auto* feature : feature_set_.enabled())
             feature->onFrameBegin(frame_ctx);
     }
@@ -925,12 +892,7 @@ namespace lux::render
         //  重写过它。接口与遍历一并删除。)
 
         // Forward endFrame to each active view
-        forEachActiveView(
-            [&](View &v)
-            {
-                v.frame_systems_done = false;
-            }
-        );
+        forEachActiveView([&](View& v) { v.frame_systems_done = false; });
     }
 
     // ─────────────────────────────────────────────────────────────────────

@@ -15,8 +15,7 @@ namespace lux::render
 {
     /// Optional mesh-surface streaming overlay.  It owns an extra mask and
     /// fullscreen composite pass; standard material shaders stay branch-free.
-    class LUX_FUNCTION_PUBLIC StreamingFeedbackFeature final :
-        public GpuDrivenMeshFeatureBase
+    class LUX_FUNCTION_PUBLIC StreamingFeedbackFeature final : public GpuDrivenMeshFeatureBase
     {
     public:
         struct Config final
@@ -34,8 +33,7 @@ namespace lux::render
             float speed{1.6f};
             float intensity{0.72f};
             float color[3]{0.18f, 0.72f, 1.0f};
-            EStreamingFeedbackPattern pattern{
-                EStreamingFeedbackPattern::MOSAIC_DITHER};
+            EStreamingFeedbackPattern pattern{EStreamingFeedbackPattern::MOSAIC_DITHER};
         };
 
         explicit StreamingFeedbackFeature(Config config);
@@ -59,7 +57,6 @@ namespace lux::render
         VkDescriptorSetLayout composite_set_layout_{VK_NULL_HANDLE};
         GraphicsPipelineHandle composite_pipeline_{kInvalidPipelineHandle};
         VkSampler mask_sampler_{VK_NULL_HANDLE};
-        std::chrono::steady_clock::time_point start_time_{
-            std::chrono::steady_clock::now()};
+        std::chrono::steady_clock::time_point start_time_{std::chrono::steady_clock::now()};
     };
 }

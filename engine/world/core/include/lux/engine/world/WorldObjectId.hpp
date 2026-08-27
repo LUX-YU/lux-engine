@@ -10,19 +10,14 @@ namespace lux::world
 {
     namespace detail
     {
-        [[nodiscard]] inline bool uuidLess(
-            const uuids::uuid& left,
-            const uuids::uuid& right
-        ) noexcept
+        [[nodiscard]] inline bool uuidLess(const uuids::uuid& left, const uuids::uuid& right) noexcept
         {
-            const auto left_bytes  = left.as_bytes();
+            const auto left_bytes = left.as_bytes();
             const auto right_bytes = right.as_bytes();
             for (std::size_t index{}; index < left_bytes.size(); ++index)
             {
-                const auto left_byte =
-                    std::to_integer<std::uint8_t>(left_bytes[index]);
-                const auto right_byte =
-                    std::to_integer<std::uint8_t>(right_bytes[index]);
+                const auto left_byte = std::to_integer<std::uint8_t>(left_bytes[index]);
+                const auto right_byte = std::to_integer<std::uint8_t>(right_bytes[index]);
                 if (left_byte != right_byte)
                     return left_byte < right_byte;
             }
@@ -39,18 +34,12 @@ namespace lux::world
             return !value.is_nil();
         }
 
-        friend bool operator==(
-            const WorldObjectId&,
-            const WorldObjectId&
-        ) noexcept = default;
+        friend bool operator==(const WorldObjectId&, const WorldObjectId&) noexcept = default;
     };
 
     struct WorldObjectIdLess final
     {
-        [[nodiscard]] bool operator()(
-            const WorldObjectId& left,
-            const WorldObjectId& right
-        ) const noexcept
+        [[nodiscard]] bool operator()(const WorldObjectId& left, const WorldObjectId& right) const noexcept
         {
             return detail::uuidLess(left.value, right.value);
         }

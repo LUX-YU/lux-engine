@@ -22,8 +22,8 @@ namespace lux::input
     ///   6. Action-level modifiers / triggers (InputActionDesc) are applied on the result.
     struct ActionBinding
     {
-        BindingId   binding_id = InvalidBindingId;
-        ActionId    action     = InvalidActionId;
+        BindingId binding_id = InvalidBindingId;
+        ActionId action = InvalidActionId;
 
         PhysicalInput source{};
 
@@ -35,7 +35,7 @@ namespace lux::input
         /// Per-binding trigger descriptions (replaces the old Interaction system).
         /// Evaluated per-binding before accumulation into the parent action.
         /// See also: InputActionDesc::action_triggers for action-level triggers.
-        std::vector<TriggerDesc>  binding_triggers;
+        std::vector<TriggerDesc> binding_triggers;
 
         /// For future rebinding support.
         std::string mapping_name;

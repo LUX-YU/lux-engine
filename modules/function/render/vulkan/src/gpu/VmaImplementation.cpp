@@ -11,12 +11,12 @@
 // "entry point not found" when the consumer DLL/EXE loads. Keep in sync with
 // the VMA API the editor calls.
 #if defined(_MSC_VER)
-    #pragma comment(linker, "/export:vmaCreateBuffer")
-    #pragma comment(linker, "/export:vmaDestroyBuffer")
-    #pragma comment(linker, "/export:vmaCreateImage")
-    #pragma comment(linker, "/export:vmaDestroyImage")
-    #pragma comment(linker, "/export:vmaMapMemory")
-    #pragma comment(linker, "/export:vmaUnmapMemory")
-    #pragma comment(linker, "/export:vmaFlushAllocation")
-    #pragma comment(linker, "/export:vmaInvalidateAllocation")
+#pragma comment(linker, "/export:vmaCreateBuffer")
+#pragma comment(linker, "/export:vmaDestroyBuffer")
+#pragma comment(linker, "/export:vmaCreateImage")
+#pragma comment(linker, "/export:vmaDestroyImage")
+#pragma comment(linker, "/export:vmaMapMemory")
+#pragma comment(linker, "/export:vmaUnmapMemory")
+#pragma comment(linker, "/export:vmaFlushAllocation")
+#pragma comment(linker, "/export:vmaInvalidateAllocation")
 #endif

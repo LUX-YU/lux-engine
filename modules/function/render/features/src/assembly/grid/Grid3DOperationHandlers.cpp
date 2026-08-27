@@ -16,14 +16,12 @@ namespace lux::render
     // Defined in RenderServer.cpp
     RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
 
-    void handleGrid3DSetParams(GeneralRenderServer::Dispatcher::Ctx& ctx,
-                               const Grid3DSetParamsPayload& p)
+    void handleGrid3DSetParams(GeneralRenderServer::Dispatcher::Ctx& ctx, const Grid3DSetParamsPayload& p)
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
         if (sc)
             if (auto* f = sc->getFeatureAs<Grid3DPassFeature>(p.feature))
-                f->setGrid3DParams({p.planeY, p.cellSize, p.linePx,
-                                    p.fadeDist, p.holeRatio, p.onTop});
+                f->setGrid3DParams({p.planeY, p.cellSize, p.linePx, p.fadeDist, p.holeRatio, p.onTop});
     }
 
 } // namespace lux::render

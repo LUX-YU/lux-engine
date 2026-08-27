@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <type_traits>
 
-int main()
+int
+main()
 {
     using lux::rdesc::ETextureDimension;
     using lux::rdesc::ETextureFormat;

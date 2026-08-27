@@ -15,10 +15,16 @@
 
 #include <lux/cxx/container/SmallVector.hpp>
 
-namespace lux::render { class DeviceContext; }
+namespace lux::render
+{
+    class DeviceContext;
+}
 #include <string>
 
-namespace lux::rdesc { struct ShaderInfo; }
+namespace lux::rdesc
+{
+    struct ShaderInfo;
+}
 
 namespace lux::render
 {
@@ -46,15 +52,17 @@ namespace lux::render
     /// reconciliation key against LayoutContract — information reflection
     /// can't obtain, like binding flags, is looked up from the contract by
     /// name.
-    struct ReflectedSetBinding {
-        uint32_t           binding{0};
-        VkDescriptorType   type{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER};
-        uint32_t           count{1};
+    struct ReflectedSetBinding
+    {
+        uint32_t binding{0};
+        VkDescriptorType type{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER};
+        uint32_t count{1};
         VkShaderStageFlags stages{0};
-        std::string        name{};
+        std::string name{};
     };
 
-    struct ReflectedSet {
+    struct ReflectedSet
+    {
         uint32_t set{0};
         lux::cxx::SmallVector<ReflectedSetBinding, 8> bindings;
     };
@@ -103,13 +111,13 @@ namespace lux::render
     /// mismatch resources.
     struct ReflectedSlot
     {
-        uint32_t              slot{0};        ///< Index within this pipeline's layout array.
-        ESlotSource           source{ESlotSource::PipelinePrivate};
+        uint32_t slot{0}; ///< Index within this pipeline's layout array.
+        ESlotSource source{ESlotSource::PipelinePrivate};
         /// Logical identity: for EngineShared/ReflectionHole, the engine's
         /// canonical set number; for everything else, the slot itself
         /// (needs the owning pipeline alongside it to be uniquely
         /// determined).
-        uint32_t              logical_set{0};
+        uint32_t logical_set{0};
         /// The layout decided at build time. FeatureExplicit uses it as an
         /// *identity key*: multiple pipelines sharing the same feature set
         /// are passed the same handle.
@@ -133,7 +141,8 @@ namespace lux::render
         }
     };
 
-    struct PipelineReflectedInfo {
+    struct PipelineReflectedInfo
+    {
         // Mask of active descriptor sets used by the pipeline (e.g., 0b101 means Set 0 and 2 are used).
         uint32_t active_sets_mask = 0;
 
@@ -174,14 +183,22 @@ namespace lux::render
     {
         switch (samples)
         {
-        case 1:  return VK_SAMPLE_COUNT_1_BIT;
-        case 2:  return VK_SAMPLE_COUNT_2_BIT;
-        case 4:  return VK_SAMPLE_COUNT_4_BIT;
-        case 8:  return VK_SAMPLE_COUNT_8_BIT;
-        case 16: return VK_SAMPLE_COUNT_16_BIT;
-        case 32: return VK_SAMPLE_COUNT_32_BIT;
-        case 64: return VK_SAMPLE_COUNT_64_BIT;
-        default: return VK_SAMPLE_COUNT_1_BIT;
+        case 1:
+            return VK_SAMPLE_COUNT_1_BIT;
+        case 2:
+            return VK_SAMPLE_COUNT_2_BIT;
+        case 4:
+            return VK_SAMPLE_COUNT_4_BIT;
+        case 8:
+            return VK_SAMPLE_COUNT_8_BIT;
+        case 16:
+            return VK_SAMPLE_COUNT_16_BIT;
+        case 32:
+            return VK_SAMPLE_COUNT_32_BIT;
+        case 64:
+            return VK_SAMPLE_COUNT_64_BIT;
+        default:
+            return VK_SAMPLE_COUNT_1_BIT;
         }
     }
 
@@ -230,18 +247,18 @@ namespace lux::render
     // =============================
     struct PipelineKey
     {
-        GraphicsPipelineHandle         template_handle;
-        RenderPassKey                  render_pass_key;
-        uint32_t                       subpass_index = 0;
-        ShaderFeatureMask              features = 0;  // Shader permutation feature mask
-        uint32_t                       specialization_hash = 0;
+        GraphicsPipelineHandle template_handle;
+        RenderPassKey render_pass_key;
+        uint32_t subpass_index = 0;
+        ShaderFeatureMask features = 0; // Shader permutation feature mask
+        uint32_t specialization_hash = 0;
 
         /// Version number of the template's pipeline layout. Incremented
         /// whenever LayoutPlan rewrites the template's layout at
         /// graph-compile time — otherwise the same (template, render_pass,
         /// features) tuple would hit a cached PSO built against the old
         /// layout, silently using the wrong layout.
-        uint32_t                       layout_epoch = 0;
+        uint32_t layout_epoch = 0;
 
         bool operator==(const PipelineKey& other) const noexcept
         {
@@ -322,23 +339,24 @@ namespace lux::render
 
         /// Injects the three services needed to build the reflected layout
         /// (called once when RenderContext is constructed).
-        void setReflectedLayoutEnv(GeneralDescriptorSetLayout& shared,
-                                   DescriptorService& descriptors,
-                                   PipelineLayoutService& pipeline_layouts) noexcept;
+        void setReflectedLayoutEnv(
+            GeneralDescriptorSetLayout& shared,
+            DescriptorService& descriptors,
+            PipelineLayoutService& pipeline_layouts
+        ) noexcept;
 
         /// Under the reflected-layout path, the VkDescriptorSetLayout for a
         /// given set slot of the template (used when a feature allocates a
         /// private set instance). Returns VK_NULL_HANDLE for a legacy
         /// (hand-assembled) template or an out-of-range slot.
-        [[nodiscard]] VkDescriptorSetLayout templateSetLayout(
-            GraphicsPipelineHandle handle, uint32_t set) const noexcept;
+        [[nodiscard]] VkDescriptorSetLayout
+        templateSetLayout(GraphicsPipelineHandle handle, uint32_t set) const noexcept;
 
         /// Resolves a source-shader private set through domain relocation.
         /// Returns an invalid result if the template is legacy, the source
         /// set is absent, or the resolved slot is not pipeline-private.
-        [[nodiscard]] ResolvedPrivateSetLayout templatePrivateSetLayout(
-            GraphicsPipelineHandle handle,
-            uint32_t source_set) const noexcept;
+        [[nodiscard]] ResolvedPrivateSetLayout
+        templatePrivateSetLayout(GraphicsPipelineHandle handle, uint32_t source_set) const noexcept;
 
         /// Registers a compute pipeline's reflected layout: the layout is
         /// built from a single shader's reflection + the contract (the same
@@ -354,10 +372,10 @@ namespace lux::render
             const rdesc::ShaderInfo& info,
             std::string debug_name,
             std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values = {},
-            std::span<const std::pair<uint32_t, VkDescriptorSetLayout>> explicit_set_layouts = {});
+            std::span<const std::pair<uint32_t, VkDescriptorSetLayout>> explicit_set_layouts = {}
+        );
 
-        [[nodiscard]] VkDescriptorSetLayout computeSetLayout(
-            ComputePipelineHandle handle, uint32_t set) const noexcept;
+        [[nodiscard]] VkDescriptorSetLayout computeSetLayout(ComputePipelineHandle handle, uint32_t set) const noexcept;
 
         /// Rewrites a template's pipeline layout and set-layout table at
         /// graph-compile time. Once LayoutAllocator produces a LayoutPlan,
@@ -375,7 +393,8 @@ namespace lux::render
         Expected<void> finalizeTemplateLayout(
             GraphicsPipelineHandle handle,
             VkPipelineLayout layout,
-            std::span<const VkDescriptorSetLayout> set_layouts);
+            std::span<const VkDescriptorSetLayout> set_layouts
+        );
 
         /// The template's current layout version number (part of the PSO
         /// key).
@@ -401,21 +420,18 @@ namespace lux::render
         /// incrementing `layout_epoch` on every graph recompile would
         /// invalidate every cached PSO (PipelineKey includes the epoch),
         /// triggering an avalanche of rebuilds.
-        Expected<bool> rebuildTemplateLayout(
-            GraphicsPipelineHandle handle,
-            std::span<const VkDescriptorSetLayout> set_layouts);
+        Expected<bool>
+        rebuildTemplateLayout(GraphicsPipelineHandle handle, std::span<const VkDescriptorSetLayout> set_layouts);
 
         /// The device's maxBoundDescriptorSets (0 = the reflected-layout
         /// environment hasn't been injected).
         [[nodiscard]] uint32_t maxBoundDescriptorSets() const noexcept;
 
-        [[nodiscard]] const PipelineReflectedInfo* templateReflection(
-            GraphicsPipelineHandle handle) const noexcept;
+        [[nodiscard]] const PipelineReflectedInfo* templateReflection(GraphicsPipelineHandle handle) const noexcept;
 
         /// The equivalent reflection data for compute pipelines (indices
         /// aligned with compute_pipelines_).
-        [[nodiscard]] const PipelineReflectedInfo* computeReflection(
-            ComputePipelineHandle handle) const noexcept;
+        [[nodiscard]] const PipelineReflectedInfo* computeReflection(ComputePipelineHandle handle) const noexcept;
 
         /**
          * @brief Retrieves or creates a VkPipeline based on the template, render pass key, and subpass index.
@@ -425,7 +441,11 @@ namespace lux::render
          * @param subpass_index The subpass index within the render pass.
          * @return VkPipeline The requested pipeline.
          */
-        VkPipeline getOrCreatePipeline(GraphicsPipelineHandle template_handle, const RenderPassKey& render_pass_key, uint32_t subpass_index);
+        VkPipeline getOrCreatePipeline(
+            GraphicsPipelineHandle template_handle,
+            const RenderPassKey& render_pass_key,
+            uint32_t subpass_index
+        );
 
         /**
          * @brief Retrieves or creates a VkPipeline with shader permutation features.
@@ -434,7 +454,12 @@ namespace lux::render
          * based on the feature mask. This allows a single SPIR-V module to produce
          * multiple pipeline variants without recompilation.
          */
-        VkPipeline getOrCreatePipeline(GraphicsPipelineHandle template_handle, const RenderPassKey& render_pass_key, uint32_t subpass_index, ShaderFeatureMask features);
+        VkPipeline getOrCreatePipeline(
+            GraphicsPipelineHandle template_handle,
+            const RenderPassKey& render_pass_key,
+            uint32_t subpass_index,
+            ShaderFeatureMask features
+        );
 
         /**
          * @brief Retrieves or creates a VkRenderPass based on the key.
@@ -444,7 +469,6 @@ namespace lux::render
          */
         VkRenderPass getOrCreateRenderPass(const RenderPassKey& key);
         const GraphicsPipelineTemplate& getTemplate(GraphicsPipelineHandle handle) const;
-
 
         // -----------------------------------------------------------------
         // Compute pipeline management
@@ -464,13 +488,17 @@ namespace lux::render
         [[nodiscard]] ComputePipelineHandle registerComputePipeline(
             VkShaderModule shader,
             VkPipelineLayout layout,
-            std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values = {});
+            std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values = {}
+        );
 
-        [[nodiscard]] VkPipeline      getComputePipeline(ComputePipelineHandle handle) const noexcept;
-        [[nodiscard]] VkPipelineLayout getComputeLayout (ComputePipelineHandle handle) const noexcept;
+        [[nodiscard]] VkPipeline getComputePipeline(ComputePipelineHandle handle) const noexcept;
+        [[nodiscard]] VkPipelineLayout getComputeLayout(ComputePipelineHandle handle) const noexcept;
 
         /// @brief Return count of registered templates
-        [[nodiscard]] uint32_t templateCount() const noexcept { return static_cast<uint32_t>(pipeline_templates_.size()); }
+        [[nodiscard]] uint32_t templateCount() const noexcept
+        {
+            return static_cast<uint32_t>(pipeline_templates_.size());
+        }
 
         /**
          * @brief Explicitly destroys all managed resources.
@@ -483,26 +511,35 @@ namespace lux::render
         //  injection is no longer needed.)
 
         /// @brief Query whether this manager creates pipelines for dynamic rendering
-        [[nodiscard]] bool useDynamicRendering() const noexcept { return use_dynamic_rendering_; }
+        [[nodiscard]] bool useDynamicRendering() const noexcept
+        {
+            return use_dynamic_rendering_;
+        }
 
-        [[nodiscard]] const PipelineManagerTelemetry& telemetry() const
-            noexcept
+        [[nodiscard]] const PipelineManagerTelemetry& telemetry() const noexcept
         {
             return telemetry_;
         }
 
-        [[nodiscard]] static constexpr uint32_t variantBudgetPerTemplate() noexcept { return kVariantBudgetPerTemplate; }
+        [[nodiscard]] static constexpr uint32_t variantBudgetPerTemplate() noexcept
+        {
+            return kVariantBudgetPerTemplate;
+        }
 
         /// 自发上报的去处(非拥有,由 RenderContext 在构造后装上)。管线创建失败与
         /// 变体预算耗尽都发生在图编译期,调用方按 VK_NULL_HANDLE 当作"这次没准备好"
         /// 并在下次重编时重试 —— 没有谁能就地处置,但也不能不可见。
-        void setErrorSink(RenderErrorSink* sink) noexcept { error_sink_ = sink; }
+        void setErrorSink(RenderErrorSink* sink) noexcept
+        {
+            error_sink_ = sink;
+        }
 
     private:
         static constexpr uint32_t kVariantBudgetPerTemplate = 256;
         RenderErrorSink* error_sink_ = nullptr;
         DeviceContext* device_ctx_ = nullptr;
-        bool use_dynamic_rendering_ = false;  ///< When true, pipelines use VkPipelineRenderingCreateInfo instead of VkRenderPass
+        bool use_dynamic_rendering_ =
+            false; ///< When true, pipelines use VkPipelineRenderingCreateInfo instead of VkRenderPass
         PipelineManagerTelemetry telemetry_{};
         std::vector<GraphicsPipelineTemplate> pipeline_templates_;
         std::vector<std::vector<ShaderFeatureMask>> template_variant_masks_;
@@ -511,11 +548,11 @@ namespace lux::render
 
         struct PipelineRecord
         {
-            VkPipeline                      pipeline        = VK_NULL_HANDLE;
-            VkRenderPass                    render_pass     = VK_NULL_HANDLE;
-            GraphicsPipelineHandle          template_handle;
-            RenderPassKey                   render_pass_key{};
-            uint32_t                        subpass_index = 0;
+            VkPipeline pipeline = VK_NULL_HANDLE;
+            VkRenderPass render_pass = VK_NULL_HANDLE;
+            GraphicsPipelineHandle template_handle;
+            RenderPassKey render_pass_key{};
+            uint32_t subpass_index = 0;
         };
 
         std::unordered_map<PipelineKey, PipelineRecord, PipelineKeyHasher> pipeline_cache_;
@@ -523,14 +560,20 @@ namespace lux::render
         // Compute pipeline storage
         struct ComputePipelineRecord
         {
-            VkPipeline       pipeline = VK_NULL_HANDLE;
-            VkPipelineLayout layout   = VK_NULL_HANDLE;
+            VkPipeline pipeline = VK_NULL_HANDLE;
+            VkPipelineLayout layout = VK_NULL_HANDLE;
         };
         std::vector<ComputePipelineRecord> compute_pipelines_;
 
     private:
         Expected<VkRenderPass> create_render_pass_internal(const RenderPassKey& key);
-        Expected<VkPipeline>   create_pipeline_internal(const GraphicsPipelineTemplate& tmpl, VkRenderPass render_pass, uint32_t subpass_index, const RenderPassKey& render_pass_key, ShaderFeatureMask features = 0);
+        Expected<VkPipeline> create_pipeline_internal(
+            const GraphicsPipelineTemplate& tmpl,
+            VkRenderPass render_pass,
+            uint32_t subpass_index,
+            const RenderPassKey& render_pass_key,
+            ShaderFeatureMask features = 0
+        );
 
         /// Builds the reflected layout: routes each set's layout by
         /// ownership, producing the pipeline layout and the per-set layout
@@ -544,13 +587,14 @@ namespace lux::render
         Expected<VkPipelineLayout> buildReflectedPipelineLayout(
             PipelineReflectedInfo& reflected,
             const GraphicsPipelineTemplate& description,
-            lux::cxx::SmallVector<VkDescriptorSetLayout, 8>& out_set_layouts);
+            lux::cxx::SmallVector<VkDescriptorSetLayout, 8>& out_set_layouts
+        );
 
         // The reflected-layout environment (injected by
         // setReflectedLayoutEnv; the legacy path doesn't depend on it).
         GeneralDescriptorSetLayout* shared_layouts_{nullptr};
-        DescriptorService*          descriptor_service_{nullptr};
-        PipelineLayoutService*      pipeline_layout_service_{nullptr};
+        DescriptorService* descriptor_service_{nullptr};
+        PipelineLayoutService* pipeline_layout_service_{nullptr};
 
         /// Per-template set-layout table built from reflection (empty for
         /// legacy templates); indices aligned with pipeline_templates_. The

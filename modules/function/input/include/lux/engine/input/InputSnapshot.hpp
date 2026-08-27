@@ -44,12 +44,7 @@ namespace lux::input
         float y{0.0f};
     };
 
-    using InputEvent = std::variant<
-        KeyAction,
-        MouseButtonAction,
-        MouseScrollAction,
-        TouchAction
-    >;
+    using InputEvent = std::variant<KeyAction, MouseButtonAction, MouseScrollAction, TouchAction>;
 
     struct InputSnapshot
     {
@@ -115,15 +110,13 @@ namespace lux::input
         [[nodiscard]] bool isMouseButtonJustPressed(EMouseButton button) const noexcept
         {
             const auto index = static_cast<int>(button);
-            return index >= 0 && index < 8 &&
-                ((mouse_just_pressed >> index) & 1u) != 0;
+            return index >= 0 && index < 8 && ((mouse_just_pressed >> index) & 1u) != 0;
         }
 
         [[nodiscard]] bool isMouseButtonJustReleased(EMouseButton button) const noexcept
         {
             const auto index = static_cast<int>(button);
-            return index >= 0 && index < 8 &&
-                ((mouse_just_released >> index) & 1u) != 0;
+            return index >= 0 && index < 8 && ((mouse_just_released >> index) & 1u) != 0;
         }
 
         [[nodiscard]] std::span<const TouchPoint> activeTouches() const noexcept
@@ -141,9 +134,7 @@ namespace lux::input
             for (std::uint8_t index = 0; index < touch_count; ++index)
             {
                 const auto phase = touches[index].phase;
-                if (phase == ETouchPhase::BEGAN ||
-                    phase == ETouchPhase::MOVED ||
-                    phase == ETouchPhase::STATIONARY)
+                if (phase == ETouchPhase::BEGAN || phase == ETouchPhase::MOVED || phase == ETouchPhase::STATIONARY)
                 {
                     return true;
                 }

@@ -32,11 +32,9 @@ namespace lux::render
         STOPPING
     };
 
-    template <class T>
-    using UploadSubmitExp = lux::cxx::expected<T, ERenderUploadSubmitError>;
+    template <class T> using UploadSubmitExp = lux::cxx::expected<T, ERenderUploadSubmitError>;
 
-    template <class Reply>
-    using UploadSubmitResult = UploadSubmitExp<RenderRequest<Reply>>;
+    template <class Reply> using UploadSubmitResult = UploadSubmitExp<RenderRequest<Reply>>;
 
     using UploadSubmitNoReplyResult = UploadSubmitExp<void>;
 
@@ -47,8 +45,7 @@ namespace lux::render
         std::uint32_t height{0};
     };
 
-    using OwnedCubeTextureFaces =
-        std::array<lux::cxx::SharedBytes<>, 6u>;
+    using OwnedCubeTextureFaces = std::array<lux::cxx::SharedBytes<>, 6u>;
 
     /// Coordinator-owned upload endpoint. It is constructed by the host,
     /// explicitly transferred to AsyncRuntime's coordinator, and thereafter
@@ -57,11 +54,12 @@ namespace lux::render
     {
     public:
         using CallbackStore = ResponseCallbackStore<>;
-        using Builder       = SingleOperationBuilder<>;
+        using Builder = SingleOperationBuilder<>;
 
         explicit RenderUploadSession(
             std::shared_ptr<RenderUploadChannel<>> channel,
-            std::shared_ptr<RenderChannelSync> sync);
+            std::shared_ptr<RenderChannelSync> sync
+        );
 
         RenderUploadSession(const RenderUploadSession&) = delete;
         RenderUploadSession& operator=(const RenderUploadSession&) = delete;
@@ -91,43 +89,37 @@ namespace lux::render
         /// callback slot and RequestId are deliberately allocated here, on the
         /// same thread that pumps replies.  On backpressure the packet remains
         /// intact and may be retried later.
-        [[nodiscard]] UploadSubmitNoReplyResult trySubmitPrepared(
-            OperationPacket<>& packet,
-            TypeId expected_reply_type,
-            ReplyDispatchCallback callback)
+        [[nodiscard]] UploadSubmitNoReplyResult
+        trySubmitPrepared(OperationPacket<>& packet, TypeId expected_reply_type, ReplyDispatchCallback callback)
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::STOPPING);
-            if (!packet.has_command ||
-                packet.command.request_id != kInvalidRequestId ||
-                expected_reply_type == kInvalidTypeId ||
-                !hasFlag(packet.command.flags, CmdFlags::ExpectsReply))
+                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
+            const bool has_command = packet.has_command;
+            const bool has_unassigned_request = has_command && packet.command.request_id == kInvalidRequestId;
+            const bool has_expected_reply = expected_reply_type != kInvalidTypeId;
+            const bool has_reply_flag = has_command && hasFlag(packet.command.flags, CmdFlags::ExpectsReply);
+            const bool is_invalid_packet = !has_command || !has_unassigned_request || !has_expected_reply ||
+                !has_reply_flag;
+            if (is_invalid_packet)
             {
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
 
-            const auto request_id = callbacks_.registerCallback(
-                std::move(callback),
-                expected_reply_type);
+            const auto request_id = callbacks_.registerCallback(std::move(callback), expected_reply_type);
             packet.command.request_id = request_id;
-            if (channel_->requests.tryPush(std::move(packet)) !=
-                lux::cxx::EQueuePushResult::ACCEPTED)
+            if (channel_->requests.tryPush(std::move(packet)) != lux::cxx::EQueuePushResult::ACCEPTED)
             {
                 packet.command.request_id = kInvalidRequestId;
                 callbacks_.cancel(request_id);
                 channel_->releaseBytes(payload_bytes);
                 return lux::cxx::unexpected(
-                    sync_->isStopping()
-                        ? ERenderUploadSubmitError::STOPPING
-                        : ERenderUploadSubmitError::QUEUE_FULL);
+                    sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
+                );
             }
 
             channel_->noteEnqueued();
@@ -135,86 +127,70 @@ namespace lux::render
             return {};
         }
 
-        [[nodiscard]] UploadSubmitNoReplyResult trySubmitPreparedNoReply(
-            OperationPacket<>& packet)
+        [[nodiscard]] UploadSubmitNoReplyResult trySubmitPreparedNoReply(OperationPacket<>& packet)
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::STOPPING);
-            if (!packet.has_command ||
-                packet.command.request_id != kInvalidRequestId ||
+                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
+            if (!packet.has_command || packet.command.request_id != kInvalidRequestId ||
                 hasFlag(packet.command.flags, CmdFlags::ExpectsReply))
             {
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
-            if (channel_->requests.tryPush(std::move(packet)) !=
-                lux::cxx::EQueuePushResult::ACCEPTED)
+                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+            if (channel_->requests.tryPush(std::move(packet)) != lux::cxx::EQueuePushResult::ACCEPTED)
             {
                 channel_->releaseBytes(payload_bytes);
                 return lux::cxx::unexpected(
-                    sync_->isStopping()
-                        ? ERenderUploadSubmitError::STOPPING
-                        : ERenderUploadSubmitError::QUEUE_FULL);
+                    sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
+                );
             }
             channel_->noteEnqueued();
             sync_->notifyRequestStateChanged();
             return {};
         }
 
-        template <class Reply, class Record>
-        [[nodiscard]] UploadSubmitResult<Reply> trySubmit(
-            Record&& record)
+        template <class Reply, class Record> [[nodiscard]] UploadSubmitResult<Reply> trySubmit(Record&& record)
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::STOPPING);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
 
             OperationPacket<> packet{};
 
             Builder builder(packet, callbacks_);
             builder.begin();
             auto [request, callback] = RenderRequestFactory<Reply>::make();
-            std::invoke(
-                std::forward<Record>(record), builder, std::move(callback));
+            std::invoke(std::forward<Record>(record), builder, std::move(callback));
 
             const auto request_id = packet.requestId();
             if (!builder.valid() || builder.commandCount() != 1u)
             {
                 callbacks_.cancel(request_id);
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             if (!packet.sealAccounting())
             {
                 callbacks_.cancel(request_id);
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
             {
                 callbacks_.cancel(request_id);
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
             }
-            if (channel_->requests.tryPush(std::move(packet)) !=
-                lux::cxx::EQueuePushResult::ACCEPTED)
+            if (channel_->requests.tryPush(std::move(packet)) != lux::cxx::EQueuePushResult::ACCEPTED)
             {
                 callbacks_.cancel(request_id);
                 channel_->releaseBytes(payload_bytes);
                 return lux::cxx::unexpected(
-                    sync_->isStopping()
-                        ? ERenderUploadSubmitError::STOPPING
-                        : ERenderUploadSubmitError::QUEUE_FULL);
+                    sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
+                );
             }
 
             channel_->noteEnqueued();
@@ -222,14 +198,11 @@ namespace lux::render
             return std::move(request);
         }
 
-        template <class Record>
-        [[nodiscard]] UploadSubmitNoReplyResult trySubmitNoReply(
-            Record&& record)
+        template <class Record> [[nodiscard]] UploadSubmitNoReplyResult trySubmitNoReply(Record&& record)
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::STOPPING);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
 
             OperationPacket<> packet{};
 
@@ -238,25 +211,20 @@ namespace lux::render
             std::invoke(std::forward<Record>(record), builder);
             if (!builder.valid() || builder.commandCount() != 1u)
             {
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             if (!packet.sealAccounting())
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
-                return lux::cxx::unexpected(
-                    ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
-            if (channel_->requests.tryPush(std::move(packet)) !=
-                lux::cxx::EQueuePushResult::ACCEPTED)
+                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+            if (channel_->requests.tryPush(std::move(packet)) != lux::cxx::EQueuePushResult::ACCEPTED)
             {
                 channel_->releaseBytes(payload_bytes);
                 return lux::cxx::unexpected(
-                    sync_->isStopping()
-                        ? ERenderUploadSubmitError::STOPPING
-                        : ERenderUploadSubmitError::QUEUE_FULL);
+                    sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
+                );
             }
 
             channel_->noteEnqueued();
@@ -264,55 +232,55 @@ namespace lux::render
             return {};
         }
 
-        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply>
-        tryCreateTexture2D(
+        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply> tryCreateTexture2D(
             lux::cxx::SharedBytes<> pixels,
             std::int32_t width,
             std::int32_t height,
             std::int32_t channels = 4,
             EPixelFormat format = EPixelFormat::RGBA8_SRGB,
-            bool generate_mips = true);
+            bool generate_mips = true
+        );
 
-        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply>
-        tryCreateTexture2D(
+        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply> tryCreateTexture2D(
             lux::cxx::SharedBytes<> pixels,
             std::int32_t width,
             std::int32_t height,
             std::int32_t channels,
             lux::rdesc::ETexturePixelFormat format,
-            bool generate_mips = true);
+            bool generate_mips = true
+        );
 
-        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply>
-        tryCreateTexture2DMips(
+        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply> tryCreateTexture2DMips(
             std::vector<OwnedTextureMipLevel> mip_levels,
             std::int32_t channels,
             EPixelFormat format,
-            bool generate_mips = false);
+            bool generate_mips = false
+        );
 
-        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply>
-        tryCreateTexture2DMips(
+        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply> tryCreateTexture2DMips(
             std::vector<OwnedTextureMipLevel> mip_levels,
             std::int32_t channels,
             lux::rdesc::ETexturePixelFormat format,
-            bool generate_mips = false);
+            bool generate_mips = false
+        );
 
         /// Replace the physical image behind an immutable texture handle with
         /// a logical mip sub-range. The handle/index/generation remain stable;
         /// failed replacement leaves the prior image resident.
-        [[nodiscard]] UploadSubmitResult<TextureMipRangeReplacedReply>
-        tryReplaceTexture2DMipRange(
+        [[nodiscard]] UploadSubmitResult<TextureMipRangeReplacedReply> tryReplaceTexture2DMipRange(
             RTextureHandle handle,
             std::uint32_t base_mip,
             std::vector<OwnedTextureMipLevel> mip_levels,
             EPixelFormat format = EPixelFormat::RGBA8_SRGB,
-            bool generate_mips = false);
+            bool generate_mips = false
+        );
 
-        [[nodiscard]] UploadSubmitResult<CubeTextureCreatedReply>
-        tryCreateCubeTexture(
+        [[nodiscard]] UploadSubmitResult<CubeTextureCreatedReply> tryCreateCubeTexture(
             OwnedCubeTextureFaces faces,
             std::int32_t face_size,
             std::int32_t channels = 4,
-            EPixelFormat format = EPixelFormat::RGBA8_SRGB);
+            EPixelFormat format = EPixelFormat::RGBA8_SRGB
+        );
 
         [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply>
         tryCreatePersistentTexture2D(const PersistentTexture2DDesc& desc);
@@ -325,15 +293,18 @@ namespace lux::render
             return channel_->payloadBytes();
         }
 
-        void requestStop() noexcept { sync_->requestStop(); }
+        void requestStop() noexcept
+        {
+            sync_->requestStop();
+        }
 
     private:
         [[nodiscard]] static std::uint64_t currentThreadToken() noexcept;
         void requireOwnerThread() noexcept;
 
         std::shared_ptr<RenderUploadChannel<>> channel_;
-        std::shared_ptr<RenderChannelSync>     sync_;
-        CallbackStore                         callbacks_{ERequestLane::UPLOAD};
+        std::shared_ptr<RenderChannelSync> sync_;
+        CallbackStore callbacks_{ERequestLane::UPLOAD};
         std::atomic<bool> coordinator_owned_{false};
         std::atomic<std::uint64_t> owner_thread_token_{0u};
     };

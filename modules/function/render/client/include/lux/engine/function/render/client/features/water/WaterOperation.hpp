@@ -13,7 +13,9 @@
 
 namespace lux::render
 {
-    struct WaterSurfaceTag {};
+    struct WaterSurfaceTag
+    {
+    };
     using RWaterSurfaceHandle = RenderResourceHandle<WaterSurfaceTag>;
 
     struct WaterSurfaceDesc final
@@ -40,19 +42,26 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<WaterSurfaceCreatedReply>);
 
-    struct LUX_OP(lane=frame, kind=resource, name=WaterSurfaceCreate,
-                  method=createSurface, reply=WaterSurfaceCreatedReply)
-    WaterSurfaceCreatePayload final
+    struct LUX_OP(
+        lane = frame,
+        kind = resource,
+        name = WaterSurfaceCreate,
+        method = createSurface,
+        reply = WaterSurfaceCreatedReply) WaterSurfaceCreatePayload final
     {
         RenderSceneId scene_id{};
         WaterSurfaceDesc surface{};
     };
     static_assert(std::is_trivially_copyable_v<WaterSurfaceCreatePayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=WaterSurfaceUpdate,
-                  method=updateSurface, opcode=resource,
-                  bulk=WaterSurfaceBatch, bulk_method=updateSurfaces)
-    WaterSurfaceUpdatePayload final
+    struct LUX_OP(
+        lane = frame,
+        kind = stream,
+        name = WaterSurfaceUpdate,
+        method = updateSurface,
+        opcode = resource,
+        bulk = WaterSurfaceBatch,
+        bulk_method = updateSurfaces) WaterSurfaceUpdatePayload final
     {
         RenderSceneId scene_id{};
         RWaterSurfaceHandle handle{};
@@ -60,9 +69,8 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<WaterSurfaceUpdatePayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=WaterSurfaceDestroy,
-                  method=destroySurface, opcode=resource)
-    WaterSurfaceDestroyPayload final
+    struct LUX_OP(lane = frame, kind = stream, name = WaterSurfaceDestroy, method = destroySurface, opcode = resource)
+        WaterSurfaceDestroyPayload final
     {
         RenderSceneId scene_id{};
         RWaterSurfaceHandle handle{};
@@ -80,23 +88,26 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<WaterStatsReply>);
 
-    struct LUX_OP(lane=control, kind=resource, name=WaterStats,
-                  method=stats, reply=WaterStatsReply, opcode=command)
-    WaterStatsPayload final
+    struct LUX_OP(
+        lane = control,
+        kind = resource,
+        name = WaterStats,
+        method = stats,
+        reply = WaterStatsReply,
+        opcode = command) WaterStatsPayload final
     {
         RenderSceneId scene_id{};
     };
     static_assert(std::is_trivially_copyable_v<WaterStatsPayload>);
 
     struct LUX_COMM_CONFIG(
-        prefix=Water,
-        id=lux.render.water.v1,
-        display=Water,
-        requires="lux.render.fog.v1?,lux.render.linear_depth.v1,lux.render.view_camera.v1",
-        feature=WaterFeature,
-        feature_header=lux/engine/render/renderer/features/water/WaterFeature.hpp,
-        multiplicity=single)
-    WaterCommConfig final
+        prefix = Water,
+        id = lux.render.water.v1,
+        display = Water,
+        requires = "lux.render.fog.v1?,lux.render.linear_depth.v1,lux.render.view_camera.v1",
+        feature = WaterFeature,
+        feature_header = lux / engine / render / renderer / features / water / WaterFeature.hpp,
+        multiplicity = single) WaterCommConfig final
     {
         ShaderHandle vertex_shader{};
         ShaderHandle fragment_shader{};

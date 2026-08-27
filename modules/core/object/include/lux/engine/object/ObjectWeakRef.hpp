@@ -14,7 +14,7 @@ namespace lux::object
 
     class LUX_CORE_PUBLIC ObjectWeakRef final
     {
-      public:
+    public:
         ObjectWeakRef() noexcept = default;
 
         [[nodiscard]] bool alive() const noexcept;
@@ -22,11 +22,11 @@ namespace lux::object
         {
             return !alive();
         }
-        [[nodiscard]] LuxObject *getOnCurrent() const noexcept;
+        [[nodiscard]] LuxObject* getOnCurrent() const noexcept;
         [[nodiscard]] ObjectDispatcherRef dispatcherRef() const noexcept;
 
 #if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        [[nodiscard]] const void *storageIdentityForTest() const noexcept
+        [[nodiscard]] const void* storageIdentityForTest() const noexcept
         {
             return state_.get();
         }
@@ -34,19 +34,18 @@ namespace lux::object
 
         template <class Type>
             requires std::derived_from<Type, LuxObject>
-        [[nodiscard]] Type *getAsOnCurrent() const noexcept
+        [[nodiscard]] Type* getAsOnCurrent() const noexcept
         {
-            return static_cast<Type *>(getAsOnCurrentErased(lux::cxx::typeToken<Type>()));
+            return static_cast<Type*>(getAsOnCurrentErased(lux::cxx::typeToken<Type>()));
         }
 
-      private:
+    private:
         friend class LuxObject;
-        explicit ObjectWeakRef(lux::cxx::intrusive_ptr<detail::ObjectState> state) noexcept
-            : state_(std::move(state))
+        explicit ObjectWeakRef(lux::cxx::intrusive_ptr<detail::ObjectState> state) noexcept : state_(std::move(state))
         {
         }
 
-        [[nodiscard]] LuxObject *getAsOnCurrentErased(lux::cxx::TypeToken type) const noexcept;
+        [[nodiscard]] LuxObject* getAsOnCurrentErased(lux::cxx::TypeToken type) const noexcept;
 
         lux::cxx::intrusive_ptr<detail::ObjectState> state_;
     };

@@ -7,10 +7,7 @@ namespace lux::world
 {
     namespace
     {
-        void addRetainedBytes(
-            std::size_t& total,
-            std::size_t value
-        ) noexcept
+        void addRetainedBytes(std::size_t& total, std::size_t value) noexcept
         {
             if (value > std::numeric_limits<std::size_t>::max() - total)
             {
@@ -20,14 +17,9 @@ namespace lux::world
             total += value;
         }
 
-        void addRetainedArray(
-            std::size_t& total,
-            std::size_t count,
-            std::size_t element_size
-        ) noexcept
+        void addRetainedArray(std::size_t& total, std::size_t count, std::size_t element_size) noexcept
         {
-            if (count != 0U &&
-                element_size > std::numeric_limits<std::size_t>::max() / count)
+            if (count != 0U && element_size > std::numeric_limits<std::size_t>::max() / count)
             {
                 total = std::numeric_limits<std::size_t>::max();
                 return;
@@ -36,10 +28,7 @@ namespace lux::world
         }
     }
 
-    WorldDataView::WorldDataView(
-        const WorldDescription& world,
-        std::size_t data_index
-    ) noexcept
+    WorldDataView::WorldDataView(const WorldDescription& world, std::size_t data_index) noexcept
         : world_(&world), data_index_(data_index)
     {
     }
@@ -58,16 +47,10 @@ namespace lux::world
     std::span<const std::byte> WorldDataView::payload() const noexcept
     {
         const auto& record = world_->data_[data_index_];
-        return std::span<const std::byte>(world_->payload_).subspan(
-            record.payload_offset,
-            record.payload_size
-        );
+        return std::span<const std::byte>(world_->payload_).subspan(record.payload_offset, record.payload_size);
     }
 
-    WorldObjectView::WorldObjectView(
-        const WorldDescription& world,
-        std::size_t object_index
-    ) noexcept
+    WorldObjectView::WorldObjectView(const WorldDescription& world, std::size_t object_index) noexcept
         : world_(&world), object_index_(object_index)
     {
     }
@@ -92,46 +75,31 @@ namespace lux::world
         return WorldDataView(*world_, object.first_data + index);
     }
 
-    WorldDataView WorldObjectView::findData(
-        const WorldDataSchemaId& schema
-    ) const noexcept
+    WorldDataView WorldObjectView::findData(const WorldDataSchemaId& schema) const noexcept
     {
         if (world_ == nullptr || !schema.valid())
             return {};
 
-        const auto schema_it = std::lower_bound(
-            world_->schemas_.begin(),
-            world_->schemas_.end(),
-            schema,
-            WorldDataSchemaIdLess{}
-        );
+        const auto schema_it =
+            std::lower_bound(world_->schemas_.begin(), world_->schemas_.end(), schema, WorldDataSchemaIdLess{});
         if (schema_it == world_->schemas_.end() || *schema_it != schema)
             return {};
 
-        const std::size_t schema_ordinal = static_cast<std::size_t>(
-            std::distance(world_->schemas_.begin(), schema_it)
-        );
+        const std::size_t schema_ordinal = static_cast<std::size_t>(std::distance(world_->schemas_.begin(), schema_it));
         const auto& object = world_->objects_[object_index_];
-        const auto begin = world_->data_.begin() +
-            static_cast<std::ptrdiff_t>(object.first_data);
+        const auto begin = world_->data_.begin() + static_cast<std::ptrdiff_t>(object.first_data);
         const auto end = begin + static_cast<std::ptrdiff_t>(object.data_count);
         const auto data_it = std::lower_bound(
             begin,
             end,
             schema_ordinal,
-            [](const WorldDescription::DataRecord& record, std::size_t value)
-            {
+            [](const WorldDescription::DataRecord& record, std::size_t value) {
                 return record.schema_ordinal < value;
             }
         );
         if (data_it == end || data_it->schema_ordinal != schema_ordinal)
             return {};
-        return WorldDataView(
-            *world_,
-            static_cast<std::size_t>(
-                std::distance(world_->data_.begin(), data_it)
-            )
-        );
+        return WorldDataView(*world_, static_cast<std::size_t>(std::distance(world_->data_.begin(), data_it)));
     }
 
     bool WorldDescription::empty() const noexcept
@@ -157,11 +125,7 @@ namespace lux::world
     std::size_t WorldDescription::retainedBytes() const noexcept
     {
         std::size_t result{sizeof(WorldDescription)};
-        addRetainedArray(
-            result,
-            schemas_.capacity(),
-            sizeof(WorldDataSchemaId)
-        );
+        addRetainedArray(result, schemas_.capacity(), sizeof(WorldDataSchemaId));
         addRetainedArray(result, objects_.capacity(), sizeof(ObjectRecord));
         addRetainedArray(result, data_.capacity(), sizeof(DataRecord));
         addRetainedArray(result, payload_.capacity(), sizeof(std::byte));
@@ -177,8 +141,7 @@ namespace lux::world
 
     WorldObjectView WorldDescription::objectAt(std::size_t index) const noexcept
     {
-        return index < objects_.size() ? WorldObjectView(*this, index)
-                                       : WorldObjectView{};
+        return index < objects_.size() ? WorldObjectView(*this, index) : WorldObjectView{};
     }
 
     WorldObjectView WorldDescription::findObject(WorldObjectId id) const noexcept
@@ -189,16 +152,12 @@ namespace lux::world
             objects_.begin(),
             objects_.end(),
             id,
-            [](const ObjectRecord& object, const WorldObjectId& value)
-            {
+            [](const ObjectRecord& object, const WorldObjectId& value) {
                 return WorldObjectIdLess{}(object.id, value);
             }
         );
         if (iterator == objects_.end() || iterator->id != id)
             return {};
-        return WorldObjectView(
-            *this,
-            static_cast<std::size_t>(std::distance(objects_.begin(), iterator))
-        );
+        return WorldObjectView(*this, static_cast<std::size_t>(std::distance(objects_.begin(), iterator)));
     }
 }

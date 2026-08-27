@@ -13,7 +13,7 @@ namespace lux::render
 {
     struct FeatureFactory;
 
-    inline constexpr uint32_t kForwardMeshCommConfigVersion = 3u;  // +graph_fragment
+    inline constexpr uint32_t kForwardMeshCommConfigVersion = 3u; // +graph_fragment
     inline constexpr uint32_t kForwardMeshDescriptorLayoutVersion = 1u;
 
     // =========================================================================
@@ -29,23 +29,26 @@ namespace lux::render
     //  after the vertex-pool rewrite renamed the asset to forward_mesh_vp.vert.
     //  Prefer EBuiltinShader when a typed handle will do.
     // =========================================================================
-    inline constexpr std::string_view kForwardCullShaderName         = "mesh_cull_unified.comp";
-    inline constexpr std::string_view kForwardCompactShaderName      = "mdc_compact.comp";
-    inline constexpr std::string_view kForwardVertShaderName         = "forward_mesh_vp.vert";
-    inline constexpr std::string_view kForwardUnlitFragShaderName    = "fr_unlit.frag";
+    inline constexpr std::string_view kForwardCullShaderName = "mesh_cull_unified.comp";
+    inline constexpr std::string_view kForwardCompactShaderName = "mdc_compact.comp";
+    inline constexpr std::string_view kForwardVertShaderName = "forward_mesh_vp.vert";
+    inline constexpr std::string_view kForwardUnlitFragShaderName = "fr_unlit.frag";
 
     /// Shadow-technique VARIANT STEMS — these two are packed per technique, so
     /// the asset name is the stem plus a suffix: ".pcf" or ".evsm"
     /// (e.g. "fr_pbr.frag.pcf"). The stem alone resolves to nothing.
     /// Unlit has no shadow path and therefore no variants.
-    inline constexpr std::string_view kForwardPbrFragShaderName      = "fr_pbr.frag";
+    inline constexpr std::string_view kForwardPbrFragShaderName = "fr_pbr.frag";
     inline constexpr std::string_view kForwardStylizedFragShaderName = "fr_stylized.frag";
 
     /// Comm-layer config for ForwardMeshFeature.
     /// Client fills shader indices from CompileShader replies.
-    struct LUX_COMM_CONFIG(prefix=ForwardMesh, id=lux.render.forward_mesh.v1, display=ForwardMesh, requires=lux.render.mesh_stack.v1,
-                           custom_create=true)
-    ForwardMeshCommConfig
+    struct LUX_COMM_CONFIG(
+        prefix = ForwardMesh,
+        id = lux.render.forward_mesh.v1,
+        display = ForwardMesh,
+        requires = lux.render.mesh_stack.v1,
+        custom_create = true) ForwardMeshCommConfig
     {
         ShaderHandle forward_cull_shader{};
         ShaderHandle forward_compact_shader{};

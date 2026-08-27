@@ -14,36 +14,46 @@
  */
 
 #include <lux/engine/render/core/LayoutTypes.hpp>
-#include <lux/engine/render/resources/material/MaterialFamily.hpp>   // ELightingTechnique (+ MaterialEnums)
-#include <Eigen/Core>                                  // GPU-struct vector fields (was via the deleted Material.hpp)
+#include <lux/engine/render/resources/material/MaterialFamily.hpp> // ELightingTechnique (+ MaterialEnums)
+#include <Eigen/Core> // GPU-struct vector fields (was via the deleted Material.hpp)
 
 #include <cstring>
 
 namespace lux::render
 {
     // ===== Material Common Flags =====
-    enum : uint32_t {
-        MATF_DOUBLE_SIDED    = 1u << 0,
-        MATF_CAST_SHADOWS    = 1u << 1,
+    enum : uint32_t
+    {
+        MATF_DOUBLE_SIDED = 1u << 0,
+        MATF_CAST_SHADOWS = 1u << 1,
         MATF_RECEIVE_SHADOWS = 1u << 2,
-        MATF_SMITH_MASKING   = 1u << 3,
+        MATF_SMITH_MASKING = 1u << 3,
     };
 
     // ===== Texture sampling representation reference, aligned to 16B =====
-    struct alignas(16) TextureRefGPU {
-        uint32_t representation_index{ 0 };
-        uint32_t resource_index{ 0 };
-        uint32_t aux{ 0 };
-        uint32_t flags{ 0 };
+    struct alignas(16) TextureRefGPU
+    {
+        uint32_t representation_index{0};
+        uint32_t resource_index{0};
+        uint32_t aux{0};
+        uint32_t flags{0};
     };
     static_assert(sizeof(TextureRefGPU) == 16u);
 
     // ===== Eigen → GPU vector conversion helpers =====
-    namespace detail {
-        inline aligned16vec3 vec3ToGPU(const Eigen::Vector3f& v) { return { v.x(), v.y(), v.z() }; }
-        inline aligned16vec4 vec4ToGPU(const Eigen::Vector4f& v) { return { v.x(), v.y(), v.z(), v.w() }; }
-        inline aligned16vec4 vec3ToVec4(const Eigen::Vector3f& v, float w = 0.0f) {
-            return { v.x(), v.y(), v.z(), w };
+    namespace detail
+    {
+        inline aligned16vec3 vec3ToGPU(const Eigen::Vector3f& v)
+        {
+            return {v.x(), v.y(), v.z()};
+        }
+        inline aligned16vec4 vec4ToGPU(const Eigen::Vector4f& v)
+        {
+            return {v.x(), v.y(), v.z(), v.w()};
+        }
+        inline aligned16vec4 vec3ToVec4(const Eigen::Vector3f& v, float w = 0.0f)
+        {
+            return {v.x(), v.y(), v.z(), w};
         }
         // (bindTex(optional<rdesc::TextureBinding>) retired in W5a with the builtin
         //  closure-material converters below.)
@@ -54,16 +64,16 @@ namespace lux::render
     // =====================================================================
     struct alignas(16) UnlitFamilyGPU
     {
-        uint32_t      shading_model_id;   // EShadingModel::UNLIT = 0
-        uint32_t      feature_mask;       // ShaderFeatureMask
-        uint32_t      tex_mask;           // bit0: base_color, bit1: emissive
-        uint32_t      flags;              // MATF_*
-        uint32_t      _header_pad[4]{};   // pad header to 32B
+        uint32_t shading_model_id; // EShadingModel::UNLIT = 0
+        uint32_t feature_mask;     // ShaderFeatureMask
+        uint32_t tex_mask;         // bit0: base_color, bit1: emissive
+        uint32_t flags;            // MATF_*
+        uint32_t _header_pad[4]{}; // pad header to 32B
 
-        aligned16vec4 base_color;         // rgba
-        aligned16vec4 emissive;           // rgb, 0
+        aligned16vec4 base_color; // rgba
+        aligned16vec4 emissive;   // rgb, 0
 
-        TextureRefGPU tex[2];             // [base_color, emissive]
+        TextureRefGPU tex[2]; // [base_color, emissive]
     };
     static_assert(sizeof(UnlitFamilyGPU) == 96, "UnlitFamilyGPU must be 96 bytes");
 
@@ -72,28 +82,28 @@ namespace lux::render
     // =====================================================================
     struct alignas(16) LegacyLitFamilyGPU
     {
-        uint32_t      shading_model_id;   // 100 + diffuse*10 + specular
-        uint32_t      feature_mask;
-        uint32_t      tex_mask;           // bit0: albedo, bit1: normal, bit2: emissive,
-                                          // bit3: specular_color, bit4: specular_param
-        uint32_t      flags;
-        uint32_t      _header_pad[4]{};   // pad header to 32B
+        uint32_t shading_model_id; // 100 + diffuse*10 + specular
+        uint32_t feature_mask;
+        uint32_t tex_mask; // bit0: albedo, bit1: normal, bit2: emissive,
+                           // bit3: specular_color, bit4: specular_param
+        uint32_t flags;
+        uint32_t _header_pad[4]{}; // pad header to 32B
 
         // --- param area (128B = 8 × vec4) ---
-        aligned16vec4 albedo;             // rgb, 0
-        aligned16vec4 emissive;           // rgb, 0
-        aligned16vec4 specular_color;     // rgb, 0   (Phong/BlinnPhong/CookTorrance)
-        aligned16vec4 specular_params;    // x=shininess/glossiness/roughness,
-                                          // y=metalness, z=ior, w=distribution(as uint bits)
-        aligned16vec4 diffuse_params;     // x=sigma_deg(OrenNayar), y=k(Minnaert), z=0, w=0
-        aligned16vec4 layer_params;       // x=fresnel_strength, y=clearcoat_factor,
-                                          // z=clearcoat_roughness, w=sheen_roughness
-        aligned16vec4 layer_colors;       // xyz=sheen_color, w=0
+        aligned16vec4 albedo;          // rgb, 0
+        aligned16vec4 emissive;        // rgb, 0
+        aligned16vec4 specular_color;  // rgb, 0   (Phong/BlinnPhong/CookTorrance)
+        aligned16vec4 specular_params; // x=shininess/glossiness/roughness,
+                                       // y=metalness, z=ior, w=distribution(as uint bits)
+        aligned16vec4 diffuse_params;  // x=sigma_deg(OrenNayar), y=k(Minnaert), z=0, w=0
+        aligned16vec4 layer_params;    // x=fresnel_strength, y=clearcoat_factor,
+                                       // z=clearcoat_roughness, w=sheen_roughness
+        aligned16vec4 layer_colors;    // xyz=sheen_color, w=0
         aligned16vec4 _reserved;
 
         // --- texture area (96B = 6 slots) ---
-        TextureRefGPU tex[6];             // [albedo, normal, emissive, spec_color/param,
-                                          //  fresnel_mask, clearcoat_normal]
+        TextureRefGPU tex[6]; // [albedo, normal, emissive, spec_color/param,
+                              //  fresnel_mask, clearcoat_normal]
     };
     static_assert(sizeof(LegacyLitFamilyGPU) == 256, "LegacyLitFamilyGPU must be 256 bytes");
 
@@ -102,27 +112,27 @@ namespace lux::render
     // =====================================================================
     struct alignas(16) PbrFamilyGPU
     {
-        uint32_t      shading_model_id;   // EShadingModel::PbrMetallicRoughness = 200
-        uint32_t      feature_mask;
-        uint32_t      tex_mask;           // bit0: base_color, bit1: metallic_roughness,
-                                          // bit2: normal, bit3: occlusion, bit4: emissive
-        uint32_t      flags;
-        uint32_t      _header_pad[4]{};   // pad header to 32B
+        uint32_t shading_model_id; // EShadingModel::PbrMetallicRoughness = 200
+        uint32_t feature_mask;
+        uint32_t tex_mask; // bit0: base_color, bit1: metallic_roughness,
+                           // bit2: normal, bit3: occlusion, bit4: emissive
+        uint32_t flags;
+        uint32_t _header_pad[4]{}; // pad header to 32B
 
         // --- param area (128B = 8 × vec4) ---
-        aligned16vec4 base_color;         // rgba
-        aligned16vec4 pbr_params;         // metallic, roughness, normal_scale, ao_strength
-        aligned16vec4 emissive;           // rgb, 0
-        aligned16vec4 alpha_params;       // alpha_mode(as uint bits), alpha_cutoff, ior, 0
-        aligned16vec4 layer_params;       // fresnel_strength, clearcoat_factor,
-                                          // clearcoat_roughness, sheen_roughness
-        aligned16vec4 layer_colors;       // xyz=sheen_color, w=0
+        aligned16vec4 base_color;   // rgba
+        aligned16vec4 pbr_params;   // metallic, roughness, normal_scale, ao_strength
+        aligned16vec4 emissive;     // rgb, 0
+        aligned16vec4 alpha_params; // alpha_mode(as uint bits), alpha_cutoff, ior, 0
+        aligned16vec4 layer_params; // fresnel_strength, clearcoat_factor,
+                                    // clearcoat_roughness, sheen_roughness
+        aligned16vec4 layer_colors; // xyz=sheen_color, w=0
         aligned16vec4 _reserved0;
         aligned16vec4 _reserved1;
 
         // --- texture area (96B = 6 slots) ---
-        TextureRefGPU tex[6];             // [base_color, metallic_roughness, normal,
-                                          //  occlusion, emissive, clearcoat_normal]
+        TextureRefGPU tex[6]; // [base_color, metallic_roughness, normal,
+                              //  occlusion, emissive, clearcoat_normal]
     };
     static_assert(sizeof(PbrFamilyGPU) == 256, "PbrFamilyGPU must be 256 bytes");
 
@@ -131,24 +141,24 @@ namespace lux::render
     // =====================================================================
     struct alignas(16) StylizedFamilyGPU
     {
-        uint32_t      shading_model_id;   // EShadingModel::STYLIZED = 300
-        uint32_t      feature_mask;
-        uint32_t      tex_mask;           // bit0: base_color, bit1: ramp,
-                                          // bit2: normal, bit3: emissive
-        uint32_t      flags;
-        uint32_t      _header_pad[4]{};   // pad header to 32B
+        uint32_t shading_model_id; // EShadingModel::STYLIZED = 300
+        uint32_t feature_mask;
+        uint32_t tex_mask; // bit0: base_color, bit1: ramp,
+                           // bit2: normal, bit3: emissive
+        uint32_t flags;
+        uint32_t _header_pad[4]{}; // pad header to 32B
 
         // --- param area (96B = 6 × vec4) ---
-        aligned16vec4 base_color;         // rgb, 0
-        aligned16vec4 toon_params;        // diffuse_steps, specular_steps,
-                                          // edge_threshold, sigma_deg(-1 if none)
-        aligned16vec4 emissive;           // rgb, 0
+        aligned16vec4 base_color;  // rgb, 0
+        aligned16vec4 toon_params; // diffuse_steps, specular_steps,
+                                   // edge_threshold, sigma_deg(-1 if none)
+        aligned16vec4 emissive;    // rgb, 0
         aligned16vec4 _reserved0;
         aligned16vec4 _reserved1;
         aligned16vec4 _reserved2;
 
         // --- texture area (64B = 4 slots) ---
-        TextureRefGPU tex[4];             // [base_color, ramp, normal, emissive]
+        TextureRefGPU tex[4]; // [base_color, ramp, normal, emissive]
     };
     static_assert(sizeof(StylizedFamilyGPU) == 192, "StylizedFamilyGPU must be 192 bytes");
 
@@ -167,14 +177,14 @@ namespace lux::render
     // =====================================================================
     struct alignas(16) GraphFamilyGPU
     {
-        uint32_t      shading_model_id;   // EShadingModel::GRAPH = 400
-        uint32_t      feature_mask;       // unused (graph bakes its own shading)
-        uint32_t      tex_mask;           // bit i set if tex slot i bound
-        uint32_t      flags;              // MATF_*
-        uint32_t      _header_pad[4]{};   // pad header to 32B
+        uint32_t shading_model_id; // EShadingModel::GRAPH = 400
+        uint32_t feature_mask;     // unused (graph bakes its own shading)
+        uint32_t tex_mask;         // bit i set if tex slot i bound
+        uint32_t flags;            // MATF_*
+        uint32_t _header_pad[4]{}; // pad header to 32B
 
-        aligned16vec4 params[16];         // generic param lanes (256B)
-        TextureRefGPU tex[8];             // graph texture table (128B)
+        aligned16vec4 params[16]; // generic param lanes (256B)
+        TextureRefGPU tex[8];     // graph texture table (128B)
     };
     static_assert(sizeof(GraphFamilyGPU) == 416, "GraphFamilyGPU must be 416 bytes (matches glsl GraphMaterialGPU)");
 
@@ -193,14 +203,28 @@ namespace lux::render
     // =====================================================================
     //  Family GPU type trait: ELightingTechnique → GPU struct type
     // =====================================================================
-    template<ELightingTechnique> struct family_gpu_type;
-    template<> struct family_gpu_type<ELightingTechnique::Unlit>      { using type = UnlitFamilyGPU; };
-    template<> struct family_gpu_type<ELightingTechnique::LegacyLit> { using type = LegacyLitFamilyGPU; };
-    template<> struct family_gpu_type<ELightingTechnique::PbrMetallicRoughness>     { using type = PbrFamilyGPU; };
-    template<> struct family_gpu_type<ELightingTechnique::Stylized>   { using type = StylizedFamilyGPU; };
-    template<> struct family_gpu_type<ELightingTechnique::Graph>      { using type = GraphFamilyGPU; };
+    template <ELightingTechnique> struct family_gpu_type;
+    template <> struct family_gpu_type<ELightingTechnique::Unlit>
+    {
+        using type = UnlitFamilyGPU;
+    };
+    template <> struct family_gpu_type<ELightingTechnique::LegacyLit>
+    {
+        using type = LegacyLitFamilyGPU;
+    };
+    template <> struct family_gpu_type<ELightingTechnique::PbrMetallicRoughness>
+    {
+        using type = PbrFamilyGPU;
+    };
+    template <> struct family_gpu_type<ELightingTechnique::Stylized>
+    {
+        using type = StylizedFamilyGPU;
+    };
+    template <> struct family_gpu_type<ELightingTechnique::Graph>
+    {
+        using type = GraphFamilyGPU;
+    };
 
-    template<ELightingTechnique F>
-    using family_gpu_t = typename family_gpu_type<F>::type;
+    template <ELightingTechnique F> using family_gpu_t = typename family_gpu_type<F>::type;
 
 } // namespace lux::render

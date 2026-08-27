@@ -1,10 +1,10 @@
 #pragma once
 #include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
-#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>  // shared shading-input sampler
+#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp> // shared shading-input sampler
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>  // LightHandle
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // LightHandle
 #include <lux/engine/function/render/client/core/ShadingInputSlot.hpp> // EShadingInputSlot (Light b11)
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
@@ -28,147 +28,159 @@
 
 namespace lux::render
 {
-    class SceneDescriptorArena;   // per-scene growable descriptor-pool chain
+    class SceneDescriptorArena; // per-scene growable descriptor-pool chain
     // ===== Light Common Flags (Extensible) =====
-    enum : uint32_t {
-        LF_CAST_SHADOW = 1u << 0,   // Cast shadow
+    enum : uint32_t
+    {
+        LF_CAST_SHADOW = 1u << 0, // Cast shadow
     };
 
     // ====== GPU Side Directional Light ======
-    struct alignas(16) DirectionalLightGPU {
-        aligned16vec3 color;      // Color
-        float         intensity;  // Intensity
-        aligned16vec3 direction;  // Direction (should be normalized)
-        uint32_t      flags;      // LF_CAST_SHADOW
-        uint32_t      shadow_map_size;
-        float         shadow_bias;
-        float         shadow_normal_bias;
-        uint32_t      cascade_count;               // Cascade count
-        float         cascade_splits[kShadowCascadeSlots];
-        uint32_t      _pad0[3];                   // Align to 16B
+    struct alignas(16) DirectionalLightGPU
+    {
+        aligned16vec3 color;     // Color
+        float intensity;         // Intensity
+        aligned16vec3 direction; // Direction (should be normalized)
+        uint32_t flags;          // LF_CAST_SHADOW
+        uint32_t shadow_map_size;
+        float shadow_bias;
+        float shadow_normal_bias;
+        uint32_t cascade_count; // Cascade count
+        float cascade_splits[kShadowCascadeSlots];
+        uint32_t _pad0[3]; // Align to 16B
     };
-    static_assert(sizeof(DirectionalLightGPU) == 112,
-                  "DirectionalLightGPU must stay 112 B (std430 parity with light_types.glsl)");
+    static_assert(
+        sizeof(DirectionalLightGPU) == 112,
+        "DirectionalLightGPU must stay 112 B (std430 parity with light_types.glsl)");
 
     // ====== GPU Side Point Light ======
-    struct alignas(16) PointLightGPU {
+    struct alignas(16) PointLightGPU
+    {
         aligned16vec3 color;
-        float         intensity;
-        uint32_t      _intensity_pad[3];
-        std::int32_t  position_page[4];
+        float intensity;
+        uint32_t _intensity_pad[3];
+        std::int32_t position_page[4];
         aligned16vec3 position_local;
-        float         range;
-        float         attenuation_constant;
-        float         attenuation_linear;
-        float         attenuation_quadratic;
-        uint32_t      flags;               // LF_CAST_SHADOW
-        uint32_t      shadow_map_size;
-        float         shadow_bias;
-        float         shadow_normal_bias;
-        uint32_t      _pad0[3];
+        float range;
+        float attenuation_constant;
+        float attenuation_linear;
+        float attenuation_quadratic;
+        uint32_t flags; // LF_CAST_SHADOW
+        uint32_t shadow_map_size;
+        float shadow_bias;
+        float shadow_normal_bias;
+        uint32_t _pad0[3];
     };
-    static_assert(sizeof(PointLightGPU) == 112,
-                  "PointLightGPU must stay 112 B (std430 parity with light_types.glsl)");
+    static_assert(sizeof(PointLightGPU) == 112, "PointLightGPU must stay 112 B (std430 parity with light_types.glsl)");
 
     // ====== GPU Side Spot Light ======
-    struct alignas(16) SpotLightGPU {
+    struct alignas(16) SpotLightGPU
+    {
         aligned16vec3 color;
-        float         intensity;
-        uint32_t      _intensity_pad[3];
-        std::int32_t  position_page[4];
+        float intensity;
+        uint32_t _intensity_pad[3];
+        std::int32_t position_page[4];
         aligned16vec3 position_local;
         aligned16vec3 direction;
-        float         range;
-        float         attenuation_constant;
-        float         attenuation_linear;
-        float         attenuation_quadratic;
-        float         inner_cone_angle;    // Radians
-        float         outer_cone_angle;    // Radians
-        uint32_t      flags;               // LF_CAST_SHADOW
-        uint32_t      shadow_map_size;
-        float         shadow_bias;
-        float         shadow_normal_bias;
-        uint32_t      _pad0[2];
+        float range;
+        float attenuation_constant;
+        float attenuation_linear;
+        float attenuation_quadratic;
+        float inner_cone_angle; // Radians
+        float outer_cone_angle; // Radians
+        uint32_t flags;         // LF_CAST_SHADOW
+        uint32_t shadow_map_size;
+        float shadow_bias;
+        float shadow_normal_bias;
+        uint32_t _pad0[2];
     };
-    static_assert(sizeof(SpotLightGPU) == 128,
-                  "SpotLightGPU must stay 128 B (std430 parity with light_types.glsl)");
+    static_assert(sizeof(SpotLightGPU) == 128, "SpotLightGPU must stay 128 B (std430 parity with light_types.glsl)");
 
     // ====== GPU Side Area Light ======
-    struct alignas(16) AreaLightGPU {
+    struct alignas(16) AreaLightGPU
+    {
         aligned16vec3 color;
-        float         intensity;
-        aligned8vec2  size;          // Width and height (GLSL vec2: align 8)
-        uint32_t      flags;         // LF_CAST_SHADOW (Usually area light uses offline or RTX; reserved here)
-        uint32_t      shadow_map_size;
-        float         shadow_bias;
-        float         shadow_normal_bias;
-        uint32_t      _pad0[1];
+        float intensity;
+        aligned8vec2 size; // Width and height (GLSL vec2: align 8)
+        uint32_t flags;    // LF_CAST_SHADOW (Usually area light uses offline or RTX; reserved here)
+        uint32_t shadow_map_size;
+        float shadow_bias;
+        float shadow_normal_bias;
+        uint32_t _pad0[1];
     };
-    static_assert(sizeof(AreaLightGPU) == 64,
-                  "AreaLightGPU must stay 64 B — the GLSL AreaLightGPU in "
-                  "assets/shaders/light_types.glsl computes to 64 under std430");
+    static_assert(
+        sizeof(AreaLightGPU) == 64,
+        "AreaLightGPU must stay 64 B — the GLSL AreaLightGPU in "
+        "assets/shaders/light_types.glsl computes to 64 under std430");
 
     // ===== Light Set Bindings -> GPU Type Mapping (Bound with DescriptorSet Layout) =====
     // enum class ELightSetBindings { LIGHT_DIRECTIONAL, LIGHT_POINT, LIGHT_SPOT, LIGHT_AREA };
-    template<ELightSetBindings> struct light_set_bindings_map_gpu;
+    template <ELightSetBindings> struct light_set_bindings_map_gpu;
 
-    template<> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_DIRECTIONAL> {
+    template <> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_DIRECTIONAL>
+    {
         using type = DirectionalLightGPU;
     };
-    template<> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_POINT> {
+    template <> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_POINT>
+    {
         using type = PointLightGPU;
     };
-    template<> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_SPOT> {
+    template <> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_SPOT>
+    {
         using type = SpotLightGPU;
     };
-    template<> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_AREA> {
+    template <> struct light_set_bindings_map_gpu<ELightSetBindings::LIGHT_AREA>
+    {
         using type = AreaLightGPU;
     };
 
     // ===== Reverse Mapping: GPU Type -> Light Set Bindings (Use as needed) =====
-    template<typename LightGPUType> struct light_gpu_to_set_bindings;
-    template<> struct light_gpu_to_set_bindings<DirectionalLightGPU> {
+    template <typename LightGPUType> struct light_gpu_to_set_bindings;
+    template <> struct light_gpu_to_set_bindings<DirectionalLightGPU>
+    {
         static constexpr ELightSetBindings value = ELightSetBindings::LIGHT_DIRECTIONAL;
     };
-    template<> struct light_gpu_to_set_bindings<PointLightGPU> {
+    template <> struct light_gpu_to_set_bindings<PointLightGPU>
+    {
         static constexpr ELightSetBindings value = ELightSetBindings::LIGHT_POINT;
     };
-    template<> struct light_gpu_to_set_bindings<SpotLightGPU> {
+    template <> struct light_gpu_to_set_bindings<SpotLightGPU>
+    {
         static constexpr ELightSetBindings value = ELightSetBindings::LIGHT_SPOT;
     };
-    template<> struct light_gpu_to_set_bindings<AreaLightGPU> {
+    template <> struct light_gpu_to_set_bindings<AreaLightGPU>
+    {
         static constexpr ELightSetBindings value = ELightSetBindings::LIGHT_AREA;
     };
 
-    class LUX_FUNCTION_PUBLIC LightResources final
-        : public GPUResourceBase<LightResources, EGPUResourceType::Light>
+    class LUX_FUNCTION_PUBLIC LightResources final : public GPUResourceBase<LightResources, EGPUResourceType::Light>
     {
     public:
         struct SlotRecord
         {
             ELightSetBindings binding{ELightSetBindings::LIGHT_POINT};
-            SlotHandle        local_slot{};
+            SlotHandle local_slot{};
         };
 
         struct IntensityTransition final
         {
             LightHandle handle{};
-            float       start_intensity{0.0f};
-            float       target_intensity{0.0f};
-            float       start_time{0.0f};
-            float       duration{0.0f};
-            bool        remove_on_completion{false};
+            float start_intensity{0.0f};
+            float target_intensity{0.0f};
+            float start_time{0.0f};
+            float duration{0.0f};
+            bool remove_on_completion{false};
         };
 
-
-        struct InitInfo {
-            SSBOInitConfig        ssbo_config;
+        struct InitInfo
+        {
+            SSBOInitConfig ssbo_config;
 
             /// For the b11 shading-input default texture (1×1 white image +
             /// sampler). Required: b11 has no PARTIALLY_BOUND, so every
             /// element must be written at init or validation fires on first
             /// draw that binds the Light set.
-            VkDevice     device{VK_NULL_HANDLE};
+            VkDevice device{VK_NULL_HANDLE};
             VmaAllocator allocator{VK_NULL_HANDLE};
             /// Supplies the shared shading-input sampler. Required.
             DescriptorService* descriptor_svc{nullptr};
@@ -184,11 +196,15 @@ namespace lux::render
             ///
             /// 传裸数据而非域集对象 —— 见 SceneResources::InitInfo 的说明。
             std::span<const VkDescriptorSet> domain_sets{};
-            uint32_t                         domain_binding_offset{0};
+            uint32_t domain_binding_offset{0};
         };
 
         LightResources() = default;
-        ~LightResources() { if (initialized_) shutdown(); }
+        ~LightResources()
+        {
+            if (initialized_)
+                shutdown();
+        }
 
         LightResources(const LightResources&) = delete;
         LightResources& operator=(const LightResources&) = delete;
@@ -197,11 +213,11 @@ namespace lux::render
 
         /**
          * @brief Rewrite all light SSBO descriptors with tight ranges (count-based).
-         * 
+         *
          * Must be called AFTER all lights have been submitted, so that GLSL
          * `lights.length()` returns the actual live element count instead of the
          * full multi-slice buffer capacity.
-         * 
+         *
          * @param slice Which SSBO slice to expose (default 0 = first frame)
          */
         void refreshDescriptors(uint32_t slice = 0)
@@ -227,32 +243,22 @@ namespace lux::render
         // Submit a render-domain light descriptor, return LightHandle
         Expected<LightHandle> submit(const LightDescriptor& desc);
 
-        [[nodiscard]] bool beginFadeIn(
-            LightHandle handle,
-            float scene_time,
-            float duration_seconds);
-        [[nodiscard]] bool beginFadeOut(
-            LightHandle handle,
-            float scene_time,
-            float duration_seconds);
+        [[nodiscard]] bool beginFadeIn(LightHandle handle, float scene_time, float duration_seconds);
+        [[nodiscard]] bool beginFadeOut(LightHandle handle, float scene_time, float duration_seconds);
         void advanceIntensityTransitions(float scene_time);
         [[nodiscard]] std::uint32_t transitionCount() const noexcept
         {
             return static_cast<std::uint32_t>(intensity_transitions_.size());
         }
-        [[nodiscard]] std::uint32_t lightCount(
-            ELightSetBindings binding) const noexcept
+        [[nodiscard]] std::uint32_t lightCount(ELightSetBindings binding) const noexcept
         {
             return live_counts_[static_cast<std::size_t>(binding)];
         }
-        [[nodiscard]] bool canRebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) const noexcept;
-        void rebaseSceneOrigin(
-            const std::int64_t origin_delta[3]) noexcept;
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept;
 
         // Upload SSBO data slice for specified light type
-        template<ELightSetBindings SetBinding>
-        void uploadSlice(VkCommandBuffer cmd, uint32_t slice)
+        template <ELightSetBindings SetBinding> void uploadSlice(VkCommandBuffer cmd, uint32_t slice)
         {
             using LightType = typename light_set_bindings_map_gpu<SetBinding>::type;
             auto& ssbo = std::get<SlicedSSBO<LightType>>(ssbos_);
@@ -264,7 +270,10 @@ namespace lux::render
         // 场景域集,绑定经 RGPassBuilder::useEngineSet 从域集取;影子段的写
         // 目标改由 framesInFlight() 驱动。)
 
-        uint32_t framesInFlight() const noexcept { return frames_in_flight_; }
+        uint32_t framesInFlight() const noexcept
+        {
+            return frames_in_flight_;
+        }
 
         // ========== IGPUResource Interface Implementation ==========
 
@@ -367,11 +376,8 @@ namespace lux::render
     private:
         [[nodiscard]] LightHandle allocateGlobalHandle();
         void releaseGlobalHandle(LightHandle h) noexcept;
-        [[nodiscard]] std::optional<float> intensity(
-            LightHandle handle) const noexcept;
-        [[nodiscard]] bool setIntensity(
-            LightHandle handle,
-            float intensity) noexcept;
+        [[nodiscard]] std::optional<float> intensity(LightHandle handle) const noexcept;
+        [[nodiscard]] bool setIntensity(LightHandle handle, float intensity) noexcept;
         void cancelIntensityTransition(LightHandle handle) noexcept;
 
         /// Create the 1×1 white default image + view + the shared sampler
@@ -394,21 +400,20 @@ namespace lux::render
         // ========== Read-only access for shadow system ==========
 
         /// Return the number of live lights of the given GPU type.
-        template<typename LightGPUType>
-        [[nodiscard]] uint32_t lightCount() const noexcept
+        template <typename LightGPUType> [[nodiscard]] uint32_t lightCount() const noexcept
         {
             return std::get<SlicedSSBO<LightGPUType>>(ssbos_).count();
         }
 
         /// Invoke `fn(uint32_t slot, const LightGPUType&)` for every alive light of the given GPU type.
-        template<typename LightGPUType, typename Fn>
-        void forEachLight(Fn&& fn) const
+        template <typename LightGPUType, typename Fn> void forEachLight(Fn&& fn) const
         {
             const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             const uint32_t n = ssbo.count();
             for (uint32_t i = 0; i < n; ++i)
             {
-                if (!ssbo.isSlotAlive(i)) continue;
+                if (!ssbo.isSlotAlive(i))
+                    continue;
                 fn(i, ssbo.hostValue(i));
             }
         }
@@ -436,65 +441,56 @@ namespace lux::render
 
         // Write descriptor of specified Light SSBO type to a specific set.
         // 阶段 C:legacy per-set 半边已删,域集是唯一写目标。
-        template<ELightSetBindings SetBinding>
-        void writeDescriptorOnSet(uint32_t set_index) const
+        template <ELightSetBindings SetBinding> void writeDescriptorOnSet(uint32_t set_index) const
         {
             using LightGPUType = typename light_set_bindings_map_gpu<SetBinding>::type;
             const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             if (VkDescriptorSet ds = domainSetFor(set_index); ds != VK_NULL_HANDLE)
-                ssbo.writeDescriptor(
-                    ds, domain_.binding(static_cast<uint32_t>(SetBinding)));
+                ssbo.writeDescriptor(ds, domain_.binding(static_cast<uint32_t>(SetBinding)));
         }
 
         // Rewrite descriptor with tight count-based range for a specific light SSBO on current frame's set
-        template<ELightSetBindings SetBinding>
-        void refreshDescriptor(uint32_t slice = 0)
+        template <ELightSetBindings SetBinding> void refreshDescriptor(uint32_t slice = 0)
         {
             using LightGPUType = typename light_set_bindings_map_gpu<SetBinding>::type;
             auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             if (VkDescriptorSet ds = domainSetFor(current_frame_); ds != VK_NULL_HANDLE)
-                ssbo.writeDescriptorTight(
-                    ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
+                ssbo.writeDescriptorTight(ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
         }
 
         // Rewrite descriptor with tight count-based range on a specific set
-        template<ELightSetBindings SetBinding>
-        void refreshDescriptorOnSet(uint32_t set_index, uint32_t slice = 0)
+        template <ELightSetBindings SetBinding> void refreshDescriptorOnSet(uint32_t set_index, uint32_t slice = 0)
         {
             using LightGPUType = typename light_set_bindings_map_gpu<SetBinding>::type;
             auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             if (VkDescriptorSet ds = domainSetFor(set_index); ds != VK_NULL_HANDLE)
-                ssbo.writeDescriptorTight(
-                    ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
+                ssbo.writeDescriptorTight(ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
         }
 
     private:
-
         using SSBOList = std::tuple<
             SlicedSSBO<DirectionalLightGPU>,
             SlicedSSBO<PointLightGPU>,
             SlicedSSBO<SpotLightGPU>,
-            SlicedSSBO<AreaLightGPU>
-        >;
+            SlicedSSBO<AreaLightGPU>>;
 
         SSBOList ssbos_;
 
-
         /// Dual-write target: per-slice domain-set handles plus the
         /// in-domain binding offset.
-        DomainWriteTarget            domain_{};
+        DomainWriteTarget domain_{};
         uint32_t current_frame_{0};
 
         // ── b11 shading inputs: default texture + current per-slot views ──
-        VkDevice      device_{VK_NULL_HANDLE};
-        VmaAllocator  allocator_{VK_NULL_HANDLE};
-        VkImage       default_input_image_{VK_NULL_HANDLE};
+        VkDevice device_{VK_NULL_HANDLE};
+        VmaAllocator allocator_{VK_NULL_HANDLE};
+        VkImage default_input_image_{VK_NULL_HANDLE};
         VmaAllocation default_input_alloc_{VK_NULL_HANDLE};
-        VkImageView   default_input_view_{VK_NULL_HANDLE};
+        VkImageView default_input_view_{VK_NULL_HANDLE};
         // Borrowed from the DescriptorService cache, which owns it until device
         // teardown — this class must not destroy it.
         DescriptorService* descriptor_svc_{nullptr};
-        VkSampler     shading_input_sampler_{VK_NULL_HANDLE};
+        VkSampler shading_input_sampler_{VK_NULL_HANDLE};
         /// What each slot currently points at (default view unless a
         /// provider overrode it). Kept so a future set rebuild can replay.
         std::array<VkImageView, kShadingInputSlotCount> shading_input_views_{};

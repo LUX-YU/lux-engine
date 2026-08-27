@@ -3,7 +3,8 @@
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSystem.hpp>
 
-int main()
+int
+main()
 {
     using namespace lux::simulation;
     using namespace lux::simulation::ecs;
@@ -22,11 +23,7 @@ int main()
         return 2;
 
     SystemRegistry systems;
-    auto transform = systems.emplace<Transform3DSystem>(
-        registry,
-        hierarchy,
-        deltas
-    );
+    auto transform = systems.emplace<Transform3DSystem>(registry, hierarchy, deltas);
     if (!transform)
         return 3;
     auto retained = systems.retain<Transform3DSystem>(*transform);

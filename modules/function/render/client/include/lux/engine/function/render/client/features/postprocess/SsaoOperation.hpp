@@ -12,10 +12,12 @@
 namespace lux::render
 {
     /// Factory identity for SsaoFeature (shading-input reference impl).
-    struct LUX_COMM_CONFIG(prefix=Ssao, id=lux.render.ssao.v1, display=Ssao,
-                           feature=SsaoFeature,
-                           feature_header=lux/engine/render/renderer/features/postprocess/SsaoFeature.hpp)
-    SsaoCommTag
+    struct LUX_COMM_CONFIG(
+        prefix = Ssao,
+        id = lux.render.ssao.v1,
+        display = Ssao,
+        feature = SsaoFeature,
+        feature_header = lux / engine / render / renderer / features / postprocess / SsaoFeature.hpp) SsaoCommTag
     {
     };
     static_assert(std::is_trivially_copyable_v<SsaoCommTag>);

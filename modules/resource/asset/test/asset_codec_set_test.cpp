@@ -16,30 +16,20 @@ namespace
     };
 
     lux::cxx::expected<lux::asset::DecodedAsset, lux::asset::EAssetCodecError>
-    decode(
-        std::span<const std::byte> input,
-        const lux::asset::AssetDecodeContext& context
-    ) noexcept
+    decode(std::span<const std::byte> input, const lux::asset::AssetDecodeContext& context) noexcept
     {
-        if (input.size() > context.limits.max_input_bytes ||
-            sizeof(PayloadA) > context.limits.max_decoded_bytes)
+        if (input.size() > context.limits.max_input_bytes || sizeof(PayloadA) > context.limits.max_decoded_bytes)
         {
-            return lux::cxx::unexpected(
-                lux::asset::EAssetCodecError::CODEC_FAILURE
-            );
+            return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
         }
         auto payload = std::make_shared<const PayloadA>(PayloadA{42});
         return lux::asset::DecodedAsset{payload, sizeof(PayloadA)};
     }
 
     lux::cxx::expected<std::vector<std::byte>, lux::asset::EAssetCodecError>
-    encode(
-        const void* payload,
-        const lux::asset::AssetEncodeContext& context
-    ) noexcept
+    encode(const void* payload, const lux::asset::AssetEncodeContext& context) noexcept
     {
-        if (payload == nullptr ||
-            sizeof(PayloadA) > context.limits.max_encoded_bytes)
+        if (payload == nullptr || sizeof(PayloadA) > context.limits.max_encoded_bytes)
         {
             return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
         }
@@ -47,7 +37,8 @@ namespace
     }
 }
 
-int main()
+int
+main()
 {
     using namespace lux::asset;
     const auto type_a = AssetTypeId::fromName("lux.asset.test.a");
@@ -68,15 +59,10 @@ int main()
     assert(copy.find(type_a) != nullptr);
     assert(copy.findByMagic(0x3141534cu) != nullptr);
     assert(copy.findByPayloadType(lux::cxx::typeToken<PayloadA>()) != nullptr);
-    const auto decoded = descriptor_a.decode(
-        {},
-        AssetDecodeContext{AssetCodecLimits{0u, sizeof(PayloadA), 0u}}
-    );
+    const auto decoded = descriptor_a.decode({}, AssetDecodeContext{AssetCodecLimits{0u, sizeof(PayloadA), 0u}});
     assert(decoded);
-    const auto encoded = descriptor_a.encode(
-        decoded->payload.get(),
-        AssetEncodeContext{AssetCodecLimits{0u, 0u, sizeof(PayloadA)}}
-    );
+    const auto encoded =
+        descriptor_a.encode(decoded->payload.get(), AssetEncodeContext{AssetCodecLimits{0u, 0u, sizeof(PayloadA)}});
     assert(encoded);
 
     auto descriptor_b = descriptor_a;

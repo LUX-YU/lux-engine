@@ -21,23 +21,19 @@ namespace lux::rdesc
     {
         std::string canonical_name;
         std::uint64_t type_id{};
-        lux::script::EScriptPassMode pass{
-            lux::script::EScriptPassMode::VALUE};
+        lux::script::EScriptPassMode pass{lux::script::EScriptPassMode::VALUE};
 
-        friend bool operator==(const ScriptValueType&, const ScriptValueType&)
-            noexcept = default;
+        friend bool operator==(const ScriptValueType&, const ScriptValueType&) noexcept = default;
     };
 
     struct ScriptFunction final
     {
         std::string name;
-        lux::script::ScriptSymbolId symbol_id{
-            lux::script::InvalidScriptSymbolId};
+        lux::script::ScriptSymbolId symbol_id{lux::script::InvalidScriptSymbolId};
         std::vector<ScriptValueType> args;
         std::vector<ScriptValueType> returns;
 
-        friend bool operator==(const ScriptFunction&, const ScriptFunction&)
-            noexcept = default;
+        friend bool operator==(const ScriptFunction&, const ScriptFunction&) noexcept = default;
     };
 
     struct ScriptDependency final
@@ -45,8 +41,7 @@ namespace lux::rdesc
         std::string kind;
         std::string id;
 
-        friend bool operator==(const ScriptDependency&, const ScriptDependency&)
-            noexcept = default;
+        friend bool operator==(const ScriptDependency&, const ScriptDependency&) noexcept = default;
     };
 
     struct ScriptProvenance final
@@ -57,16 +52,14 @@ namespace lux::rdesc
         std::string source_hash;
         std::string built_at;
 
-        friend bool operator==(const ScriptProvenance&, const ScriptProvenance&)
-            noexcept = default;
+        friend bool operator==(const ScriptProvenance&, const ScriptProvenance&) noexcept = default;
     };
 
     struct LuaSourceScript final
     {
         std::string entry;
 
-        friend bool operator==(const LuaSourceScript&, const LuaSourceScript&)
-            noexcept = default;
+        friend bool operator==(const LuaSourceScript&, const LuaSourceScript&) noexcept = default;
     };
 
     struct NativeModuleScript final
@@ -77,35 +70,26 @@ namespace lux::rdesc
         std::uint32_t state_align{1U};
         std::vector<std::byte> state_defaults;
 
-        friend bool operator==(
-            const NativeModuleScript&,
-            const NativeModuleScript&
-        ) noexcept = default;
+        friend bool operator==(const NativeModuleScript&, const NativeModuleScript&) noexcept = default;
     };
 
     struct CppStaticScript final
     {
         std::string descriptor;
 
-        friend bool operator==(
-            const CppStaticScript&,
-            const CppStaticScript&
-        ) noexcept = default;
+        friend bool operator==(const CppStaticScript&, const CppStaticScript&) noexcept = default;
     };
 
     struct PythonSourceScript final
     {
         std::string entry;
 
-        friend bool operator==(
-            const PythonSourceScript&,
-            const PythonSourceScript&
-        ) noexcept = default;
+        friend bool operator==(const PythonSourceScript&, const PythonSourceScript&) noexcept = default;
     };
 
     class Script final
     {
-      public:
+    public:
         static constexpr std::uint32_t kSchemaVersion = 4U;
 
         enum class Kind : std::uint8_t
@@ -117,12 +101,8 @@ namespace lux::rdesc
             CPP_STATIC = 6,
         };
 
-        using Body = std::variant<
-            std::monostate,
-            LuaSourceScript,
-            PythonSourceScript,
-            NativeModuleScript,
-            CppStaticScript>;
+        using Body =
+            std::variant<std::monostate, LuaSourceScript, PythonSourceScript, NativeModuleScript, CppStaticScript>;
 
         std::uint32_t schema_version{kSchemaVersion};
         std::string module_name;
@@ -146,31 +126,28 @@ namespace lux::rdesc
         }
     };
 
-    [[nodiscard]] inline bool validScriptDescription(
-        const Script& description
-    ) noexcept
+    [[nodiscard]] inline bool validScriptDescription(const Script& description) noexcept
     {
-        if (description.schema_version != Script::kSchemaVersion ||
-            description.module_name.empty() ||
-            (description.model != EScriptModel::GLOBAL_MODULE &&
-             description.model != EScriptModel::ENTITY_BEHAVIOR) ||
-            description.kind() == Script::Kind::UNKNOWN)
+        const bool is_invalid_schema = description.schema_version != Script::kSchemaVersion;
+        const bool is_invalid_identity = description.module_name.empty();
+        const bool is_invalid_model = description.model != EScriptModel::GLOBAL_MODULE &&
+            description.model != EScriptModel::ENTITY_BEHAVIOR;
+        const bool is_invalid_kind = description.kind() == Script::Kind::UNKNOWN;
+        const bool is_invalid_description = is_invalid_schema || is_invalid_identity ||
+            is_invalid_model || is_invalid_kind;
+        if (is_invalid_description)
         {
             return false;
         }
 
-        const auto valid_type = [](const ScriptValueType& type) noexcept
-        {
+        const auto valid_type = [](const ScriptValueType& type) noexcept {
             return type.type_id != 0U && !type.canonical_name.empty() &&
-                type.type_id == lux::script::scriptSemanticTypeId(
-                    type.canonical_name
-                );
+                   type.type_id == lux::script::scriptSemanticTypeId(type.canonical_name);
         };
         for (std::size_t index{}; index < description.exports.size(); ++index)
         {
             const auto& function = description.exports[index];
-            if (function.name.empty() ||
-                function.symbol_id == lux::script::InvalidScriptSymbolId)
+            if (function.name.empty() || function.symbol_id == lux::script::InvalidScriptSymbolId)
             {
                 return false;
             }
@@ -188,40 +165,37 @@ namespace lux::rdesc
             }
             for (const auto& result : function.returns)
             {
-                if (!valid_type(result) ||
-                    result.pass != lux::script::EScriptPassMode::VALUE)
+                if (!valid_type(result) || result.pass != lux::script::EScriptPassMode::VALUE)
                 {
                     return false;
                 }
             }
         }
 
-        if (const auto* native = std::get_if<NativeModuleScript>(
-                &description.body
-            ))
+        if (const auto* native = std::get_if<NativeModuleScript>(&description.body))
         {
-            if (native->abi_version == 0U ||
-                native->state_align == 0U ||
-                (native->state_align & (native->state_align - 1U)) != 0U ||
-                native->state_defaults.size() > native->state_size)
+            const bool is_invalid_abi = native->abi_version == 0U;
+            const bool is_invalid_alignment = native->state_align == 0U ||
+                (native->state_align & (native->state_align - 1U)) != 0U;
+            const bool is_invalid_defaults = native->state_defaults.size() > native->state_size;
+            const bool is_invalid_native_script = is_invalid_abi || is_invalid_alignment ||
+                is_invalid_defaults;
+            if (is_invalid_native_script)
             {
                 return false;
             }
         }
-        if (const auto* cpp_static = std::get_if<CppStaticScript>(
-                &description.body
-            ); cpp_static != nullptr && cpp_static->descriptor.empty())
+        if (const auto* cpp_static = std::get_if<CppStaticScript>(&description.body);
+            cpp_static != nullptr && cpp_static->descriptor.empty())
         {
             return false;
         }
-        if (const auto* lua = std::get_if<LuaSourceScript>(&description.body);
-            lua != nullptr && lua->entry.empty())
+        if (const auto* lua = std::get_if<LuaSourceScript>(&description.body); lua != nullptr && lua->entry.empty())
         {
             return false;
         }
-        if (const auto* python = std::get_if<PythonSourceScript>(
-                &description.body
-            ); python != nullptr && python->entry.empty())
+        if (const auto* python = std::get_if<PythonSourceScript>(&description.body);
+            python != nullptr && python->entry.empty())
         {
             return false;
         }

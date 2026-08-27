@@ -19,7 +19,7 @@
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/description/Vertex.hpp>
 
-#include <cstddef>   // offsetof
+#include <cstddef> // offsetof
 #include <cstdint>
 
 namespace lux::render
@@ -28,8 +28,8 @@ namespace lux::render
     // Within a block: (base + 0) = float stride; (base + slot) = float offset of a
     // semantic, where `slot` comes from vtxSpecSlot(). Two blocks so the skinning
     // compute can carry distinct INPUT (full) and OUTPUT (lean) layouts.
-    inline constexpr uint32_t kVtxSpecInputBase  = 110u;  // skin INPUT / pool-read layout
-    inline constexpr uint32_t kVtxSpecOutputBase = 120u;  // skinned OUTPUT layout
+    inline constexpr uint32_t kVtxSpecInputBase = 110u;  // skin INPUT / pool-read layout
+    inline constexpr uint32_t kVtxSpecOutputBase = 120u; // skinned OUTPUT layout
 
     /// Spec-constant slot for a semantic within a block (0 reserved for stride).
     /// Returns 0 for semantics that have no dedicated pool slot (skipped).
@@ -37,14 +37,22 @@ namespace lux::render
     {
         switch (s)
         {
-        case EVertexSemantic::POSITION:     return 1u;
-        case EVertexSemantic::NORMAL:       return 2u;
-        case EVertexSemantic::TANGENT:      return 3u;
-        case EVertexSemantic::UV0:          return 4u;
-        case EVertexSemantic::BITANGENT:    return 5u;
-        case EVertexSemantic::BONE_IDS:     return 6u;
-        case EVertexSemantic::BONE_WEIGHTS: return 7u;
-        default:                            return 0u;
+        case EVertexSemantic::POSITION:
+            return 1u;
+        case EVertexSemantic::NORMAL:
+            return 2u;
+        case EVertexSemantic::TANGENT:
+            return 3u;
+        case EVertexSemantic::UV0:
+            return 4u;
+        case EVertexSemantic::BITANGENT:
+            return 5u;
+        case EVertexSemantic::BONE_IDS:
+            return 6u;
+        case EVertexSemantic::BONE_WEIGHTS:
+            return 7u;
+        default:
+            return 0u;
         }
     }
 
@@ -58,13 +66,17 @@ namespace lux::render
         VertexLayout L{};
         L.stride = static_cast<uint32_t>(sizeof(V));
         L.attributes = {
-            {EVertexSemantic::POSITION,     VK_FORMAT_R32G32B32_SFLOAT,    static_cast<uint32_t>(offsetof(V, position))},
-            {EVertexSemantic::NORMAL,       VK_FORMAT_R32G32B32_SFLOAT,    static_cast<uint32_t>(offsetof(V, normal))},
-            {EVertexSemantic::TANGENT,      VK_FORMAT_R32G32B32_SFLOAT,    static_cast<uint32_t>(offsetof(V, tangent))},
-            {EVertexSemantic::UV0,          VK_FORMAT_R32G32_SFLOAT,       static_cast<uint32_t>(offsetof(V, uv))},
-            {EVertexSemantic::BITANGENT,    VK_FORMAT_R32G32B32_SFLOAT,    static_cast<uint32_t>(offsetof(V, bitangent))},
-            {EVertexSemantic::BONE_IDS,     VK_FORMAT_R32G32B32A32_SINT,   static_cast<uint32_t>(offsetof(V, bone) + offsetof(B, bone_ids))},
-            {EVertexSemantic::BONE_WEIGHTS, VK_FORMAT_R32G32B32A32_SFLOAT, static_cast<uint32_t>(offsetof(V, bone) + offsetof(B, weights))},
+            {EVertexSemantic::POSITION, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(V, position))},
+            {EVertexSemantic::NORMAL, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(V, normal))},
+            {EVertexSemantic::TANGENT, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(V, tangent))},
+            {EVertexSemantic::UV0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(V, uv))},
+            {EVertexSemantic::BITANGENT, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(V, bitangent))},
+            {EVertexSemantic::BONE_IDS,
+             VK_FORMAT_R32G32B32A32_SINT,
+             static_cast<uint32_t>(offsetof(V, bone) + offsetof(B, bone_ids))},
+            {EVertexSemantic::BONE_WEIGHTS,
+             VK_FORMAT_R32G32B32A32_SFLOAT,
+             static_cast<uint32_t>(offsetof(V, bone) + offsetof(B, weights))},
         };
         return L;
     }
@@ -75,29 +87,28 @@ namespace lux::render
     {
         VertexLayout L{};
         uint32_t off_floats = 0;
-        const auto add = [&](EVertexSemantic s, VkFormat fmt, uint32_t floats)
-        {
+        const auto add = [&](EVertexSemantic s, VkFormat fmt, uint32_t floats) {
             L.attributes.push_back(VertexAttribute{s, fmt, off_floats * 4u});
             off_floats += floats;
         };
-        add(EVertexSemantic::POSITION,  VK_FORMAT_R32G32B32_SFLOAT, 3u);
-        add(EVertexSemantic::NORMAL,    VK_FORMAT_R32G32B32_SFLOAT, 3u);
-        add(EVertexSemantic::TANGENT,   VK_FORMAT_R32G32B32_SFLOAT, 3u);
-        add(EVertexSemantic::UV0,       VK_FORMAT_R32G32_SFLOAT,    2u);
+        add(EVertexSemantic::POSITION, VK_FORMAT_R32G32B32_SFLOAT, 3u);
+        add(EVertexSemantic::NORMAL, VK_FORMAT_R32G32B32_SFLOAT, 3u);
+        add(EVertexSemantic::TANGENT, VK_FORMAT_R32G32B32_SFLOAT, 3u);
+        add(EVertexSemantic::UV0, VK_FORMAT_R32G32_SFLOAT, 2u);
         add(EVertexSemantic::BITANGENT, VK_FORMAT_R32G32B32_SFLOAT, 3u);
-        L.stride = off_floats * 4u;   // 14 * 4 = 56
+        L.stride = off_floats * 4u; // 14 * 4 = 56
         return L;
     }
 
     // ---- Drift guards: layout 0 must match rdesc::Vertex byte-for-byte ----
     // (These mirror the float offsets baked as defaults into vertex_layout.glsl.)
-    static_assert(offsetof(lux::rdesc::Vertex, position)  ==  0, "vertex layout drift: position");
-    static_assert(offsetof(lux::rdesc::Vertex, normal)    == 12, "vertex layout drift: normal");
-    static_assert(offsetof(lux::rdesc::Vertex, tangent)   == 24, "vertex layout drift: tangent");
-    static_assert(offsetof(lux::rdesc::Vertex, uv)        == 36, "vertex layout drift: uv");
+    static_assert(offsetof(lux::rdesc::Vertex, position) == 0, "vertex layout drift: position");
+    static_assert(offsetof(lux::rdesc::Vertex, normal) == 12, "vertex layout drift: normal");
+    static_assert(offsetof(lux::rdesc::Vertex, tangent) == 24, "vertex layout drift: tangent");
+    static_assert(offsetof(lux::rdesc::Vertex, uv) == 36, "vertex layout drift: uv");
     static_assert(offsetof(lux::rdesc::Vertex, bitangent) == 44, "vertex layout drift: bitangent");
-    static_assert(offsetof(lux::rdesc::Vertex, bone)      == 56, "vertex layout drift: bone");
-    static_assert(sizeof(lux::rdesc::Vertex)              == 88, "vertex layout drift: stride");
+    static_assert(offsetof(lux::rdesc::Vertex, bone) == 56, "vertex layout drift: bone");
+    static_assert(sizeof(lux::rdesc::Vertex) == 88, "vertex layout drift: stride");
 
     // ---- Spec-constant emission ----
 
@@ -107,13 +118,17 @@ namespace lux::render
     /// Shared by the graphics `_vp` features (VERTEX stage) and skin compute.
     inline void appendVertexLayoutSpecs(
         lux::cxx::SmallVector<GraphicsPipelineTemplate::ShaderSpecializationValue, 4>& out,
-        const VertexLayout& layout, VkShaderStageFlagBits stage, uint32_t id_base)
+        const VertexLayout& layout,
+        VkShaderStageFlagBits stage,
+        uint32_t id_base
+    )
     {
         out.push_back({stage, id_base + 0u, layout.stride / 4u});
         for (const auto& a : layout.attributes)
         {
             const uint32_t slot = vtxSpecSlot(a.semantic);
-            if (slot == 0u) continue;
+            if (slot == 0u)
+                continue;
             out.push_back({stage, id_base + slot, a.offset / 4u});
         }
     }

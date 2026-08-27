@@ -16,15 +16,14 @@ namespace lux::ui
     {
         struct CommandRouterControl final
         {
-            explicit CommandRouterControl(CommandRouter *value) noexcept
-                : router(value), owner(std::this_thread::get_id()),
-                  owner_token(currentUiThreadToken())
+            explicit CommandRouterControl(CommandRouter* value) noexcept
+                : router(value), owner(std::this_thread::get_id()), owner_token(currentUiThreadToken())
             {
             }
 
-            CommandRouter *router{nullptr};
+            CommandRouter* router{nullptr};
             const std::thread::id owner;
-            const void *const owner_token;
+            const void* const owner_token;
         };
     } // namespace detail
 
@@ -37,12 +36,12 @@ namespace lux::ui
             std::uint64_t token{0};
             CommandHandle command;
             UiContextId context;
-            lux::object::LuxObject *scope_identity{nullptr};
+            lux::object::LuxObject* scope_identity{nullptr};
             lux::object::ObjectWeakRef scope;
             lux::object::ObjectWeakRef receiver;
-            void (*invoke)(lux::object::LuxObject *) noexcept {nullptr};
-            bool (*enabled)(const lux::object::LuxObject *) noexcept {nullptr};
-            bool (*checked)(const lux::object::LuxObject *) noexcept {nullptr};
+            void (*invoke)(lux::object::LuxObject*) noexcept {nullptr};
+            bool (*enabled)(const lux::object::LuxObject*) noexcept {nullptr};
+            bool (*checked)(const lux::object::LuxObject*) noexcept {nullptr};
 
             [[nodiscard]] bool endpointsAlive() const noexcept
             {
@@ -53,16 +52,15 @@ namespace lux::ui
 
     struct CommandRouter::Impl final
     {
-        const std::uint64_t owner_identity{
-            next_router_identity.fetch_add(1, std::memory_order_relaxed)};
+        const std::uint64_t owner_identity{next_router_identity.fetch_add(1, std::memory_order_relaxed)};
         std::vector<Command> commands;
         std::vector<Binding> bindings;
-        std::vector<Binding *> effective;
+        std::vector<Binding*> effective;
         std::vector<UiContextId> active_context_ids{UiContextId{kGlobalContext.name()}};
         std::vector<UiContextIdView> active_contexts;
         std::vector<std::pair<UiContextIdView, std::size_t>> context_ranks;
         std::vector<std::size_t> selected_ranks;
-        lux::object::LuxObject *active_scope_identity{nullptr};
+        lux::object::LuxObject* active_scope_identity{nullptr};
         lux::object::ObjectWeakRef active_scope;
         std::uint64_t next_token{1};
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
@@ -128,14 +126,13 @@ namespace lux::ui
 
         [[nodiscard]] bool valid(CommandHandle command) const noexcept
         {
-            return command.owner_identity_ == owner_identity &&
-                   command.dense_index_ < commands.size();
+            return command.owner_identity_ == owner_identity && command.dense_index_ < commands.size();
         }
 
         [[nodiscard]] std::size_t contextRank(UiContextIdView context) const noexcept
         {
-            const auto found = std::ranges::find_if(
-                context_ranks, [context](const auto &ranked) { return ranked.first == context; });
+            const auto found =
+                std::ranges::find_if(context_ranks, [context](const auto& ranked) { return ranked.first == context; });
             if (found == context_ranks.end())
                 return (std::numeric_limits<std::size_t>::max)();
             return found->second;
@@ -148,8 +145,7 @@ namespace lux::ui
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
             const auto begin = std::chrono::steady_clock::now();
 #endif
-            std::erase_if(bindings,
-                          [](const Binding &binding) { return !binding.endpointsAlive(); });
+            std::erase_if(bindings, [](const Binding& binding) { return !binding.endpointsAlive(); });
 
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
             const auto effective_capacity = effective.capacity();
@@ -161,12 +157,11 @@ namespace lux::ui
             storage_growth_count += effective.capacity() != effective_capacity;
             storage_growth_count += selected_ranks.capacity() != rank_capacity;
 #endif
-            for (auto &binding : bindings)
+            for (auto& binding : bindings)
             {
                 if (!valid(binding.command))
                     continue;
-                if (binding.scope_identity != nullptr &&
-                    binding.scope_identity != active_scope_identity)
+                if (binding.scope_identity != nullptr && binding.scope_identity != active_scope_identity)
                 {
                     continue;
                 }
@@ -182,14 +177,13 @@ namespace lux::ui
             dirty = false;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
             ++rebuild_count;
-            rebuild_elapsed_ns +=
-                static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                               std::chrono::steady_clock::now() - begin)
-                                               .count());
+            rebuild_elapsed_ns += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - begin).count()
+            );
 #endif
         }
 
-        [[nodiscard]] Binding *selected(CommandHandle command)
+        [[nodiscard]] Binding* selected(CommandHandle command)
         {
             if (!valid(command))
                 return nullptr;
@@ -200,7 +194,7 @@ namespace lux::ui
                 dirty = true;
             }
             rebuild();
-            auto *binding = effective[command.dense_index_];
+            auto* binding = effective[command.dense_index_];
             if (binding && !binding->endpointsAlive())
             {
                 dirty = true;
@@ -211,18 +205,20 @@ namespace lux::ui
         }
     };
 
-    CommandRegistration::CommandRegistration(std::weak_ptr<detail::CommandRouterControl> control,
-                                             std::uint64_t token) noexcept
+    CommandRegistration::CommandRegistration(
+        std::weak_ptr<detail::CommandRouterControl> control,
+        std::uint64_t token
+    ) noexcept
         : control_(std::move(control)), token_(token)
     {
     }
 
-    CommandRegistration::CommandRegistration(CommandRegistration &&other) noexcept
+    CommandRegistration::CommandRegistration(CommandRegistration&& other) noexcept
         : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0))
     {
     }
 
-    CommandRegistration &CommandRegistration::operator=(CommandRegistration &&other) noexcept
+    CommandRegistration& CommandRegistration::operator=(CommandRegistration&& other) noexcept
     {
         if (this != std::addressof(other))
         {
@@ -253,8 +249,7 @@ namespace lux::ui
     }
 
     CommandRouter::CommandRouter()
-        : impl_(std::make_unique<Impl>()),
-          control_(std::make_shared<detail::CommandRouterControl>(this))
+        : impl_(std::make_unique<Impl>()), control_(std::make_shared<detail::CommandRouterControl>(this))
     {
     }
 
@@ -264,22 +259,18 @@ namespace lux::ui
         control_->router = nullptr;
     }
 
-    lux::cxx::expected<CommandHandle, ECommandDefinitionError> CommandRouter::defineCommand(
-        Command command_value)
+    lux::cxx::expected<CommandHandle, ECommandDefinitionError> CommandRouter::defineCommand(Command command_value)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!command_value.id.isValid())
         {
-            return lux::cxx::unexpected<ECommandDefinitionError>{
-                ECommandDefinitionError::INVALID_ID};
+            return lux::cxx::unexpected<ECommandDefinitionError>{ECommandDefinitionError::INVALID_ID};
         }
         if (findCommand(command_value.id.view()))
         {
-            return lux::cxx::unexpected<ECommandDefinitionError>{
-                ECommandDefinitionError::DUPLICATE_ID};
+            return lux::cxx::unexpected<ECommandDefinitionError>{ECommandDefinitionError::DUPLICATE_ID};
         }
-        const auto handle = CommandHandle{static_cast<std::uint32_t>(impl_->commands.size()),
-                                          impl_->owner_identity};
+        const auto handle = CommandHandle{static_cast<std::uint32_t>(impl_->commands.size()), impl_->owner_identity};
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
         const auto capacity = impl_->commands.capacity();
 #endif
@@ -294,10 +285,10 @@ namespace lux::ui
     std::optional<CommandHandle> CommandRouter::findCommand(UiCommandIdView id) const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        const auto found =
-            std::ranges::find_if(impl_->commands, [id](const Command &command_value) {
-                return command_value.id.view() == id;
-            });
+        const auto found = std::ranges::find_if(impl_->commands, [id](const Command& command_value) {
+            return command_value.id.view() == id;
+        }
+        );
         if (found == impl_->commands.end())
             return std::nullopt;
         return CommandHandle{
@@ -313,42 +304,51 @@ namespace lux::ui
     }
 
     lux::cxx::expected<CommandRegistration, ECommandBindingError> CommandRouter::bindErased(
-        CommandHandle command, UiContextId context, lux::object::LuxObject *activation_scope,
-        lux::object::LuxObject &receiver, InvokeThunk invoke, StateThunk enabled,
-        StateThunk checked)
+        CommandHandle command,
+        UiContextId context,
+        lux::object::LuxObject* activation_scope,
+        lux::object::LuxObject& receiver,
+        InvokeThunk invoke,
+        StateThunk enabled,
+        StateThunk checked
+    )
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!impl_->valid(command))
         {
-            return lux::cxx::unexpected<ECommandBindingError>{
-                ECommandBindingError::INVALID_COMMAND};
+            return lux::cxx::unexpected<ECommandBindingError>{ECommandBindingError::INVALID_COMMAND};
         }
         if (!context.isValid() || (activation_scope && context.view() == kGlobalContext))
         {
-            return lux::cxx::unexpected<ECommandBindingError>{
-                ECommandBindingError::INVALID_CONTEXT};
+            return lux::cxx::unexpected<ECommandBindingError>{ECommandBindingError::INVALID_CONTEXT};
         }
 
-        std::erase_if(impl_->bindings,
-                      [](const Binding &binding) { return !binding.endpointsAlive(); });
-        const auto duplicate = std::ranges::any_of(impl_->bindings, [&](const Binding &binding) {
+        std::erase_if(impl_->bindings, [](const Binding& binding) { return !binding.endpointsAlive(); });
+        const auto duplicate = std::ranges::any_of(impl_->bindings, [&](const Binding& binding) {
             return binding.command == command && binding.context == context &&
                    binding.scope_identity == activation_scope;
-        });
+        }
+        );
         if (duplicate)
         {
-            return lux::cxx::unexpected<ECommandBindingError>{
-                ECommandBindingError::DUPLICATE_BINDING};
+            return lux::cxx::unexpected<ECommandBindingError>{ECommandBindingError::DUPLICATE_BINDING};
         }
 
         const auto token = impl_->next_token++;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
         const auto capacity = impl_->bindings.capacity();
 #endif
-        impl_->bindings.push_back(
-            Binding{token, command, std::move(context), activation_scope,
-                    activation_scope ? activation_scope->weakRef() : lux::object::ObjectWeakRef{},
-                    receiver.weakRef(), invoke, enabled, checked});
+        impl_->bindings.push_back(Binding{
+            token,
+            command,
+            std::move(context),
+            activation_scope,
+            activation_scope ? activation_scope->weakRef() : lux::object::ObjectWeakRef{},
+            receiver.weakRef(),
+            invoke,
+            enabled,
+            checked}
+        );
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
         impl_->storage_growth_count += impl_->bindings.capacity() != capacity;
 #endif
@@ -359,15 +359,15 @@ namespace lux::ui
     CommandState CommandRouter::state(CommandHandle command) const
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        auto *mutable_impl = const_cast<Impl *>(impl_.get());
-        auto *binding = mutable_impl->selected(command);
+        auto* mutable_impl = const_cast<Impl*>(impl_.get());
+        auto* binding = mutable_impl->selected(command);
         if (!binding)
             return {};
 
         const auto receiver_ref = binding->receiver;
         const auto enabled = binding->enabled;
         const auto checked = binding->checked;
-        auto *receiver = receiver_ref.getOnCurrent();
+        auto* receiver = receiver_ref.getOnCurrent();
         if (!receiver)
             return {};
 
@@ -391,14 +391,14 @@ namespace lux::ui
     ECommandDispatchResult CommandRouter::invoke(CommandHandle command)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        auto *binding = impl_->selected(command);
+        auto* binding = impl_->selected(command);
         if (!binding)
             return ECommandDispatchResult::NOT_FOUND;
 
         const auto receiver_ref = binding->receiver;
         const auto invoke = binding->invoke;
         const auto enabled = binding->enabled;
-        auto *receiver = receiver_ref.getOnCurrent();
+        auto* receiver = receiver_ref.getOnCurrent();
         if (!receiver)
             return ECommandDispatchResult::NOT_FOUND;
         const bool enabled_value = !enabled || enabled(receiver);
@@ -414,8 +414,7 @@ namespace lux::ui
         return ECommandDispatchResult::EXECUTED;
     }
 
-    void CommandRouter::updateRoute(lux::object::LuxObject *activation_scope,
-                                    std::span<const UiContextIdView> contexts)
+    void CommandRouter::updateRoute(lux::object::LuxObject* activation_scope, std::span<const UiContextIdView> contexts)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         const bool same_contexts = impl_->sameContexts(contexts);
@@ -426,8 +425,7 @@ namespace lux::ui
         if (!same_contexts)
             impl_->setContexts(contexts);
         impl_->active_scope_identity = activation_scope;
-        impl_->active_scope =
-            activation_scope ? activation_scope->weakRef() : lux::object::ObjectWeakRef{};
+        impl_->active_scope = activation_scope ? activation_scope->weakRef() : lux::object::ObjectWeakRef{};
         impl_->dirty = true;
         impl_->rebuild();
     }
@@ -435,8 +433,7 @@ namespace lux::ui
     void CommandRouter::unbind(std::uint64_t token) noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        std::erase_if(impl_->bindings,
-                      [token](const Binding &binding) { return binding.token == token; });
+        std::erase_if(impl_->bindings, [token](const Binding& binding) { return binding.token == token; });
         impl_->dirty = true;
     }
 

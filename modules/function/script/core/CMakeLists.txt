@@ -26,9 +26,9 @@ target_compile_definitions(
 
 lux_classify_target(
     TARGET  script_core
-    LAYER   FUNCTION
+    LAYER   CORE
     PRODUCT RUNTIME
-    ROLE    DOMAIN
+    ROLE    FOUNDATION
 )
 
 find_package(lux-cxx REQUIRED COMPONENTS compile_time)

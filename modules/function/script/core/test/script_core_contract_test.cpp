@@ -1,4 +1,6 @@
+#include <lux/engine/function/script/BoundScriptCall.hpp>
 #include <lux/engine/function/script/ScriptCallFrame.hpp>
+#include <lux/engine/function/script/ScriptSemantic.hpp>
 #include <lux/engine/function/script/ScriptSignature.hpp>
 
 #include <cassert>
@@ -9,6 +11,24 @@ int main()
 {
     static_assert(LUX_SCRIPT_ABI_VERSION == 1u);
     static_assert(!std::is_default_constructible_v<lux::script::CallFrame>);
+    static_assert(
+        lux::script::scriptSemanticTypeId("lux.i32") ==
+        lux::script::makeScriptSemanticType<std::int32_t>().type_id
+    );
+    static_assert(
+        lux::script::makeScriptSemanticType<std::int32_t>().canonical_name ==
+        "lux.i32"
+    );
+
+    const std::array parameters{
+        lux::script::makeScriptSemanticType<std::int32_t>()};
+    const lux::script::ScriptFunctionSignatureView signature{
+        parameters,
+        {}};
+    assert(lux::script::sameScriptSignature(signature, signature));
+
+    lux::script::BoundScriptCall unbound{};
+    assert(!unbound);
 
     std::int32_t value = 42;
     lux_script_value_slot argument{};

@@ -61,14 +61,28 @@ lux_detect_build_platform()
 lux_configure_host_tools()
 lux_validate_module_layout("${CMAKE_CURRENT_SOURCE_DIR}/modules")
 
-# L1 has no Editor/Toolchain/Host product composition. Module targets may use
-# these compatibility values only to disable optional upper-layer sidecars.
+# Product composition is explicit.  FlowForge is the only canonical
+# Authoring/Toolchain slice in this repository revision.
 set(LUX_PROFILE_HAS_RUNTIME OFF)
 set(LUX_PROFILE_HAS_REFERENCE_PLAYER OFF)
-set(LUX_PROFILE_HAS_EDITOR OFF)
-set(LUX_PROFILE_HAS_TOOLCHAIN OFF)
+if(LUX_BUILD_PROFILE STREQUAL "EDITOR")
+    set(LUX_PROFILE_HAS_EDITOR ON)
+else()
+    set(LUX_PROFILE_HAS_EDITOR OFF)
+endif()
+if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
+    set(LUX_PROFILE_HAS_TOOLCHAIN ON)
+else()
+    set(LUX_PROFILE_HAS_TOOLCHAIN OFF)
+endif()
 set(LUX_BUILD_COMPONENT_LUA_META OFF CACHE BOOL "Build Lua component metadata" FORCE)
-set(LUX_ENABLE_FLOWFORGE_MLIR OFF CACHE BOOL "Build FlowForge MLIR backend" FORCE)
+option(LUX_ENABLE_FLOWFORGE_MLIR "Build FlowForge MLIR backend" OFF)
+if(LUX_ENABLE_FLOWFORGE_MLIR AND
+   NOT LUX_BUILD_PROFILE MATCHES "^(EDITOR|TOOLCHAIN)$")
+    message(FATAL_ERROR
+        "LUX_ENABLE_FLOWFORGE_MLIR is available only to EDITOR/TOOLCHAIN profiles"
+    )
+endif()
 if(LUX_TARGET_OS STREQUAL "ANDROID")
     set(LUX_SCRIPT_HAS_LUA OFF CACHE BOOL "Build Lua backend" FORCE)
 else()

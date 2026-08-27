@@ -1,2 +1,8 @@
 add_subdirectory(world)
 add_subdirectory(simulation)
+if(LUX_BUILD_PROFILE MATCHES "^(EDITOR|TOOLCHAIN)$")
+    add_subdirectory(authoring)
+endif()
+if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
+    add_subdirectory(toolchain)
+endif()

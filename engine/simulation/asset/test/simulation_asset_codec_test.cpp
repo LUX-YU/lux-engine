@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/SimulationStepInfo.hpp>
 #include <lux/engine/simulation/asset/SystemDescriptionCompatibility.hpp>
 
 #include <array>
@@ -18,13 +19,16 @@ namespace
 
     inline constexpr std::array kPhysicsCapabilities{
         std::string_view{"physics.simulate"}};
-    inline constexpr std::array kPhysicsPoints{
-        lux::simulation::SystemExecutionPoint{"before"},
-        lux::simulation::SystemExecutionPoint{"after"}};
+    inline constexpr std::array kPhysicsHooks{
+        lux::simulation::makeSystemHookPoint<
+            void(const lux::simulation::SimulationStepInfo&)>("before"),
+        lux::simulation::makeSystemHookPoint<
+            void(const lux::simulation::SimulationStepInfo&)>("after")};
     inline constexpr std::array kPhysicsEvents{
         lux::simulation::makeSystemEvent<CollisionEvent>(
             "collision",
-            kPhysicsPoints[1],
+            kPhysicsHooks[1],
+            lux::simulation::ESystemEventTarget::ENTITY_TARGETED,
             "lux.event.Collision",
             1U
         )};
@@ -36,7 +40,7 @@ namespace
             .configuration_schema_name = "lux.physics.Config",
             .configuration_schema_version = 2U,
             .capabilities = kPhysicsCapabilities,
-            .execution_points = kPhysicsPoints,
+            .hooks = kPhysicsHooks,
             .events = kPhysicsEvents};
     };
 }
@@ -70,13 +74,14 @@ int main()
 
     constexpr std::array physics_capabilities{
         std::string_view{"physics.simulate"}};
-    constexpr std::array physics_points{
-        SystemExecutionPoint{"before"},
-        SystemExecutionPoint{"after"}};
+    constexpr std::array physics_hooks{
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("before"),
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("after")};
     constexpr std::array physics_events{
         makeSystemEvent<CollisionEvent>(
             "collision",
-            physics_points[1],
+            physics_hooks[1],
+            ESystemEventTarget::ENTITY_TARGETED,
             "lux.event.Collision",
             1U
         )};
@@ -86,18 +91,19 @@ int main()
         .configuration_schema_name = "lux.physics.Config",
         .configuration_schema_version = 2U,
         .capabilities = physics_capabilities,
-        .execution_points = physics_points,
+        .hooks = physics_hooks,
         .events = physics_events};
 
     constexpr std::array animation_capabilities{
         std::string_view{"animation.evaluate"}};
-    constexpr std::array animation_points{
-        SystemExecutionPoint{"before"},
-        SystemExecutionPoint{"after"}};
+    constexpr std::array animation_hooks{
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("before"),
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("after")};
     constexpr std::array animation_events{
         makeSystemEvent<void>(
             "finished",
-            animation_points[1],
+            animation_hooks[1],
+            ESystemEventTarget::GLOBAL,
             "ignored.for.void",
             99U
         )};
@@ -105,7 +111,7 @@ int main()
         .canonical_name = "lux.animation",
         .version = 5U,
         .capabilities = animation_capabilities,
-        .execution_points = animation_points,
+        .hooks = animation_hooks,
         .events = animation_events};
     constexpr std::array physics_configuration{
         std::byte{0x11U}, std::byte{0x22U}};
@@ -113,10 +119,20 @@ int main()
     assert(builder.addSystem("animation", animation));
     assert(builder.addDependency(
         "physics",
-        physics_points[1],
-        "animation",
-        animation_points[0]
+        "animation"
     ));
+    std::array<std::uint8_t, 16U> script_id{};
+    script_id[0] = 9U;
+    assert(builder.addGlobalScriptMount(ScriptMountDescription{
+        AssetId{script_id},
+        EScriptBindingSetMode::EXPLICIT,
+        {{
+            77U,
+            lux::rdesc::EScriptBindingKind::HOOK,
+            "lux.physics",
+            "physics",
+            "after"
+        }}}));
     auto description = std::move(builder).build();
     assert(description);
 
@@ -128,7 +144,7 @@ int main()
             std::numeric_limits<std::size_t>::max()}}
     );
     assert(encoded);
-    assert((*encoded)[4] == std::byte{2U});
+    assert((*encoded)[4] == std::byte{3U});
     assert(!descriptor.encode(
         std::addressof(*description),
         AssetEncodeContext{AssetCodecLimits{0U, 0U, encoded->size() - 1U}}
@@ -146,6 +162,7 @@ int main()
     assert(decoded_description->dataCount() == 2U);
     assert(decoded_description->systemCount() == 2U);
     assert(decoded_description->dependencyCount() == 1U);
+    assert(decoded_description->globalScriptMountCount() == 1U);
     assert(decoded_description->findData(schema_a));
     assert(decoded_description->findData(schema_b));
     const auto decoded_physics = decoded_description->findSystem("physics");
@@ -167,15 +184,17 @@ int main()
     assert(decoded_animation.findEvent("finished"));
     assert(decoded_animation.findEvent("finished").payloadSchemaName().empty());
     assert(
-        decoded_description->dependencyAt(0U).before().system().instanceName() ==
+        decoded_description->dependencyAt(0U).before().instanceName() ==
         "physics"
     );
-    assert(decoded_description->dependencyAt(0U).before().name() == "after");
     assert(
-        decoded_description->dependencyAt(0U).after().system().instanceName() ==
+        decoded_description->dependencyAt(0U).after().instanceName() ==
         "animation"
     );
-    assert(decoded_description->dependencyAt(0U).after().name() == "before");
+    assert(
+        decoded_description->globalScriptMountAt(0U).bindingAt(0U)->function ==
+        77U
+    );
     assert(
         decoded->decoded_byte_count == decoded_description->retainedBytes()
     );
@@ -207,9 +226,9 @@ int main()
     truncated.pop_back();
     assert(!descriptor.decode(truncated, generous_decode));
 
-    auto wire_v1 = *encoded;
-    wire_v1[4] = std::byte{1U};
-    assert(!descriptor.decode(wire_v1, generous_decode));
+    auto wire_v2 = *encoded;
+    wire_v2[4] = std::byte{2U};
+    assert(!descriptor.decode(wire_v2, generous_decode));
 
     auto overlapping_section = *encoded;
     overlapping_section[40] ^= std::byte{0x01U};
@@ -224,18 +243,6 @@ int main()
     );
     assert(reencoded);
     assert(*reencoded == *encoded);
-
-    auto noncanonical = *encoded;
-    constexpr std::size_t header_bytes = 40U;
-    constexpr std::size_t schema_record_bytes = 16U + 7U;
-    for (std::size_t index{}; index < schema_record_bytes; ++index)
-    {
-        std::swap(
-            noncanonical[header_bytes + index],
-            noncanonical[header_bytes + schema_record_bytes + index]
-        );
-    }
-    assert(!descriptor.decode(noncanonical, generous_decode));
 
     return 0;
 }

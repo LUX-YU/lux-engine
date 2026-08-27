@@ -20,8 +20,7 @@ namespace lux::simulation::asset
             asset_system.configurationSchemaVersion() !=
                 current.configuration_schema_version ||
             asset_system.capabilityCount() != current.capabilities.size() ||
-            asset_system.executionPointCount() !=
-                current.execution_points.size() ||
+            asset_system.hookPointCount() != current.hooks.size() ||
             asset_system.eventCount() != current.events.size())
         {
             return false;
@@ -31,12 +30,28 @@ namespace lux::simulation::asset
             if (asset_system.capabilityAt(index) != current.capabilities[index])
                 return false;
         }
-        for (std::size_t index{}; index < current.execution_points.size(); ++index)
+        for (std::size_t index{}; index < current.hooks.size(); ++index)
         {
-            if (asset_system.executionPointAt(index).name() !=
-                current.execution_points[index].name)
+            const auto actual = asset_system.hookPointAt(index);
+            const auto& expected = current.hooks[index];
+            if (actual.name() != expected.name ||
+                actual.cardinality() != expected.cardinality ||
+                actual.parameterCount() != expected.signature.parameters.size() ||
+                actual.returnCount() != expected.signature.returns.size())
             {
                 return false;
+            }
+            for (std::size_t parameter{};
+                 parameter < actual.parameterCount(); ++parameter)
+            {
+                if (actual.parameterAt(parameter) !=
+                    expected.signature.parameters[parameter])
+                    return false;
+            }
+            for (std::size_t result{}; result < actual.returnCount(); ++result)
+            {
+                if (actual.returnAt(result) != expected.signature.returns[result])
+                    return false;
             }
         }
         for (std::size_t index{}; index < current.events.size(); ++index)
@@ -44,7 +59,8 @@ namespace lux::simulation::asset
             const auto actual = asset_system.eventAt(index);
             const auto& expected = current.events[index];
             if (actual.name() != expected.name ||
-                actual.dispatchPoint().name() != expected.dispatch_point ||
+                actual.dispatchHook().name() != expected.dispatch_hook ||
+                actual.target() != expected.target ||
                 actual.payloadSchemaName() != expected.payload_schema_name ||
                 actual.payloadSchemaVersion() != expected.payload_schema_version)
             {

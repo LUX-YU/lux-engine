@@ -111,7 +111,6 @@ foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-simulation/simulation_description/lux-engine-simulation-simulation_description-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-asset/simulation_asset/lux-engine-simulation-asset-simulation_asset-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-ecs/core/lux-engine-simulation-ecs-core-config-targets.cmake"
-    "${prefix}/share/lux-engine-core/script_meta_adapter/lux-engine-core-script_meta_adapter-config-targets.cmake"
     "${prefix}/share/lux-engine-resource-script/script_asset/lux-engine-resource-script-script_asset-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation/simulation_script_binding/lux-engine-simulation-simulation_script_binding-config-targets.cmake"
 )
@@ -126,5 +125,18 @@ foreach(contract_file IN ITEMS
         )
     endif()
 endforeach()
+
+# The meta adapter is the explicit setup-only seam from reflection metadata to
+# persistent Script semantics, so runtime reflection is part of its declared
+# contract.  Keep it in the install-surface existence gate without applying the
+# reflection-free data/runtime closure rule above.
+set(script_meta_adapter_targets
+    "${prefix}/share/lux-engine-core/script_meta_adapter/lux-engine-core-script_meta_adapter-config-targets.cmake"
+)
+if(NOT EXISTS "${script_meta_adapter_targets}")
+    message(FATAL_ERROR
+        "Installed Script meta adapter is missing: ${script_meta_adapter_targets}"
+    )
+endif()
 
 message(STATUS "Installed architecture surface is clean: ${prefix}")

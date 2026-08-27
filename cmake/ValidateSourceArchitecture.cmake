@@ -24,6 +24,21 @@ if(EXISTS "${source_root}/engine/editor")
         "Architecture: Rev2 has no canonical Editor product; do not create a temporary editor tree."
     )
 endif()
+foreach(retired_root IN ITEMS
+    "${source_root}/engine/simulation/script_binding"
+    "${source_root}/engine/authoring/script_binding"
+    "${source_root}/engine/authoring/flowforge"
+    "${source_root}/engine/toolchain/flowforge"
+)
+    file(GLOB_RECURSE retired_entries LIST_DIRECTORIES false
+        "${retired_root}/*"
+    )
+    if(retired_entries)
+        message(FATAL_ERROR
+            "Architecture: retired source root contains files: ${retired_root}"
+        )
+    endif()
+endforeach()
 if(NOT EXISTS "${source_root}/legacy/ecs" OR
    NOT EXISTS "${source_root}/legacy/engine" OR
    NOT EXISTS "${source_root}/legacy/modules/resource/asset-runtime")
@@ -66,7 +81,7 @@ foreach(source IN LISTS production_sources)
     file(READ "${source}" content)
 
     if(content MATCHES
-       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|GlobalScriptBindingManager|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|TypedEntryCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType")
+       "SystemExecutionPoint|SystemHookPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptEventRegistry|GlobalScriptBindingManager|ScriptBindingSession|ScriptComponent|EntityBehavior|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|PythonSourceScript|SemanticCatalog|TargetCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' restores a retired SystemHook/ScriptBinding API."
         )
@@ -102,7 +117,7 @@ foreach(source IN LISTS production_sources)
         endif()
         if(content MATCHES
            "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|WORLD_BUSY|worldStructureWrite|HierarchyChangeCursor|HierarchyChanges|kHierarchyChangeCapacity|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(|EcsState|EcsMutation|SimulationEcsMutation|EcsChangeJournal|ChangeCursor|ComponentChanges|EntityChanges|EcsTaskAccess|EcsTaskResources|HierarchySystem|executeSimulationStep|FrameInfo" AND
-           NOT normalized MATCHES "/engine/simulation/script_binding/cpp_static/")
+           NOT normalized MATCHES "/engine/simulation/script/cpp_static/")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' restores retired vocabulary."
             )
@@ -121,7 +136,7 @@ foreach(source IN LISTS production_sources)
         endif()
         if(content MATCHES
            "on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<" AND
-           NOT normalized MATCHES "/engine/simulation/(ecs/(hierarchy|transform)|script_binding)/")
+           NOT normalized MATCHES "/engine/simulation/(ecs/(hierarchy|transform)|script)/")
             message(FATAL_ERROR
                 "Architecture: EnTT signal ownership '${normalized}' is outside a concrete reactive Simulation subsystem."
             )
@@ -189,6 +204,69 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 endforeach()
+
+# The replacement roots are held to the final contract while the old roots are
+# still being removed in staged commits. This prevents new code from rebuilding
+# the retired session/name-routing model under a different target name.
+file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
+    "${source_root}/engine/simulation/script/*.hpp"
+    "${source_root}/engine/simulation/script/*.cpp"
+)
+foreach(source IN LISTS script_system_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene")
+        message(FATAL_ERROR
+            "Architecture: replacement ScriptSystem source '${source}' restores a retired boundary."
+        )
+    endif()
+endforeach()
+
+file(GLOB_RECURSE generic_system_sources LIST_DIRECTORIES false
+    "${source_root}/engine/simulation/system/include/*.hpp"
+    "${source_root}/engine/simulation/system/src/*.cpp"
+)
+foreach(source IN LISTS generic_system_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "function/script|ScriptSemantic|ScriptCallFrame|BoundScriptCall|ScriptAsset")
+        message(FATAL_ERROR
+            "Architecture: generic System endpoint '${source}' depends on Script ABI."
+        )
+    endif()
+endforeach()
+
+if(EXISTS "${source_root}/engine/flowforge")
+    file(GLOB_RECURSE flowforge_sources LIST_DIRECTORIES false
+        "${source_root}/engine/flowforge/*.hpp"
+        "${source_root}/engine/flowforge/*.cpp"
+        "${source_root}/engine/flowforge/*.cmake"
+    )
+    foreach(source IN LISTS flowforge_sources)
+        file(READ "${source}" content)
+        if(content MATCHES "engine/editor/framework/graphkit|[/\\]legacy[/\\]")
+            message(FATAL_ERROR
+                "Architecture: FlowForge package '${source}' reaches a retired or UI implementation."
+            )
+        endif()
+    endforeach()
+endif()
+
+if(EXISTS "${source_root}/engine/graph_kit")
+    file(GLOB_RECURSE graph_kit_sources LIST_DIRECTORIES false
+        "${source_root}/engine/graph_kit/*.hpp"
+        "${source_root}/engine/graph_kit/*.cpp"
+        "${source_root}/engine/graph_kit/*.cmake"
+    )
+    foreach(source IN LISTS graph_kit_sources)
+        file(READ "${source}" content)
+        if(content MATCHES "flowforge|engine/simulation|resource/asset|mlir|llvm|[/\\]legacy[/\\]")
+            message(FATAL_ERROR
+                "Architecture: GraphKit package '${source}' is not domain independent."
+            )
+        endif()
+    endforeach()
+endif()
 
 foreach(capacity_header IN ITEMS
     "${source_root}/modules/core/serialization/include/lux/engine/serialization/SerializationError.hpp"

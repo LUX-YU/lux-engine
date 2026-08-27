@@ -4,7 +4,7 @@ add_subdirectory(ecs/core)
 add_subdirectory(ecs/schema)
 add_subdirectory(ecs/snapshot)
 add_subdirectory(system)
-add_subdirectory(script_binding)
+add_subdirectory(script)
 add_subdirectory(ecs/task)
 add_subdirectory(ecs/hierarchy)
 add_subdirectory(ecs/transform)
@@ -12,19 +12,19 @@ add_subdirectory(ecs)
 
 set(LUX_SIMULATION_COMPONENTS
     simulation_description
-    simulation_script_binding
-    simulation_script_binding_cpp_static
+    simulation_script
+    simulation_script_cpp_static
 )
-if(TARGET simulation_script_binding_native)
+if(TARGET simulation_script_native)
     list(APPEND
         LUX_SIMULATION_COMPONENTS
-        simulation_script_binding_native
+        simulation_script_native
     )
 endif()
-if(TARGET simulation_script_binding_lua)
+if(TARGET simulation_script_lua)
     list(APPEND
         LUX_SIMULATION_COMPONENTS
-        simulation_script_binding_lua
+        simulation_script_lua
     )
 endif()
 install_components(

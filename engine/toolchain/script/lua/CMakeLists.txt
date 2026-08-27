@@ -1,8 +1,8 @@
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(_lua_importer ${CMAKE_CURRENT_SOURCE_DIR}/import_lux_lua_script.py)
-set(_script_semantic_catalog
-    ${CMAKE_SOURCE_DIR}/engine/authoring/script_binding/assets/lux-script-semantics-project-fixture-v1.json
+set(_script_symbol_ledger
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_behavior_fixture.symbols.json
 )
 add_custom_target(toolchain_lua_script_importer SOURCES ${_lua_importer})
 lux_classify_target(
@@ -20,14 +20,16 @@ add_custom_command(
         ${_lua_importer}
         --source ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_behavior_fixture.lua
         --output ${_lua_fixture_lxsa}
-        --semantic-catalog ${_script_semantic_catalog}
+        --record-type lux.simulation.SimulationStepInfo,16,8
+        --record-type lux.test.CollisionEvent,8,4
+        --symbol-ledger ${_script_symbol_ledger}
         --module lux.test.lua
         --entry EnemyBehavior
-        --model ENTITY_BEHAVIOR
+        --scope ENTITY
     DEPENDS
         ${_lua_importer}
         ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_behavior_fixture.lua
-        ${_script_semantic_catalog}
+        ${_script_symbol_ledger}
     VERBATIM
 )
 add_custom_target(lua_importer_fixture DEPENDS ${_lua_fixture_lxsa})

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/simulation/SystemEventDescription.hpp>
+#include <lux/engine/simulation/SystemEndpointSpec.hpp>
 
 #include <cstdint>
 #include <span>
@@ -15,15 +15,18 @@ namespace lux::simulation
         std::string_view configuration_schema_name;
         std::uint32_t configuration_schema_version{};
         std::span<const std::string_view> capabilities;
-        std::span<const SystemHookPoint> hooks;
-        std::span<const SystemEventDescription> events;
+        std::span<const HookPointSpec> hooks;
+        std::span<const EventPointSpec> events;
     };
 
-    [[nodiscard]] constexpr bool validSystemDescription(const SystemDescription& description) noexcept
+    [[nodiscard]] constexpr bool validSystemDescription(
+        const SystemDescription& description
+    ) noexcept
     {
         if (description.canonical_name.empty() || description.version == 0U)
             return false;
-        if (description.configuration_schema_name.empty() != (description.configuration_schema_version == 0U))
+        if (description.configuration_schema_name.empty() !=
+            (description.configuration_schema_version == 0U))
         {
             return false;
         }
@@ -33,7 +36,8 @@ namespace lux::simulation
                 return false;
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (description.capabilities[index] == description.capabilities[previous])
+                if (description.capabilities[index] ==
+                    description.capabilities[previous])
                 {
                     return false;
                 }
@@ -42,34 +46,13 @@ namespace lux::simulation
         for (std::size_t index{}; index < description.hooks.size(); ++index)
         {
             const auto& hook = description.hooks[index];
-            const bool is_invalid_identity = hook.name.empty();
-            const bool has_too_many_returns = hook.signature.returns.size() > 1U;
-            const bool is_invalid_multi_return = hook.cardinality == ESystemHookCardinality::MULTI &&
-                !hook.signature.returns.empty();
-            const bool is_invalid_hook = is_invalid_identity || has_too_many_returns || is_invalid_multi_return;
-            if (is_invalid_hook)
+            if (!validHookPointSpec(hook))
             {
                 return false;
             }
-            const auto valid_type = [](const auto& type) constexpr noexcept {
-                return type.type_id != 0U && !type.canonical_name.empty() &&
-                       type.type_id == lux::script::scriptSemanticTypeId(type.canonical_name);
-            };
-            for (const auto& parameter : hook.signature.parameters)
-            {
-                if (!valid_type(parameter))
-                    return false;
-            }
-            for (const auto& result : hook.signature.returns)
-            {
-                if (!valid_type(result) || result.pass != lux::script::EScriptPassMode::VALUE)
-                {
-                    return false;
-                }
-            }
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (hook.name == description.hooks[previous].name)
+                if (hook.id == description.hooks[previous].id)
                 {
                     return false;
                 }
@@ -78,22 +61,16 @@ namespace lux::simulation
         for (std::size_t index{}; index < description.events.size(); ++index)
         {
             const auto& event = description.events[index];
-            if (event.name.empty() || event.dispatch_hook.empty() || !event.payload_cpp_type.isValid())
-            {
+            if (!validEventPointSpec(event))
                 return false;
-            }
-            if (event.payload_schema_name.empty() != (event.payload_schema_version == 0U))
-            {
-                return false;
-            }
             bool hook_found{};
             for (const auto& hook : description.hooks)
-                hook_found = hook_found || hook.name == event.dispatch_hook;
+                hook_found = hook_found || hook.id == event.dispatch_hook;
             if (!hook_found)
                 return false;
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (event.name == description.events[previous].name)
+                if (event.id == description.events[previous].id)
                     return false;
             }
         }

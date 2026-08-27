@@ -4,16 +4,23 @@
 #include <cassert>
 #include <cstdint>
 
-int
-main()
+int main()
 {
     using namespace lux;
 
-    const auto i32 = script::makeScriptSemanticType<std::int32_t>();
     rdesc::Script description;
     description.module_name = "lux.test.script";
-    description.exports.push_back({"tick", 7U, {{std::string(i32.canonical_name), i32.type_id, i32.pass}}, {}});
-    description.body = rdesc::NativeModuleScript{LUX_SCRIPT_ABI_VERSION, 91U, 4U, 4U, {std::byte{1U}, std::byte{2U}}};
+    description.exports.push_back({
+        "tick",
+        7U,
+        {rdesc::makeScriptValueType<std::int32_t>()},
+        {}});
+    description.body = rdesc::NativeModuleScript{
+        LUX_SCRIPT_ABI_VERSION,
+        91U,
+        4U,
+        4U,
+        {std::byte{1U}, std::byte{2U}}};
     assert(rdesc::validScriptDescription(description));
 
     auto duplicate = description;
@@ -33,10 +40,8 @@ main()
     std::get<rdesc::NativeModuleScript>(invalid_align.body).state_align = 3U;
     assert(!rdesc::validScriptDescription(invalid_align));
 
-    auto python = description;
-    python.model = rdesc::EScriptModel::ENTITY_BEHAVIOR;
-    python.body = rdesc::PythonSourceScript{"EnemyBehavior"};
-    assert(python.kind() == rdesc::Script::Kind::PYTHON_SOURCE);
-    assert(rdesc::validScriptDescription(python));
+    auto invalid_layout = description;
+    invalid_layout.exports.front().args.front().alignment = 3U;
+    assert(!rdesc::validScriptDescription(invalid_layout));
     return 0;
 }

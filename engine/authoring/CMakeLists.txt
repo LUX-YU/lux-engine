@@ -1,2 +1,1 @@
-add_subdirectory(script_binding)
-add_subdirectory(flowforge)
+add_subdirectory(script)

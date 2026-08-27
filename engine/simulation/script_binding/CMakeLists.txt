@@ -81,3 +81,6 @@ install_components(
 if(TARGET script_native)
     add_subdirectory(native)
 endif()
+if(TARGET script_lua AND NOT ANDROID)
+    add_subdirectory(lua)
+endif()

@@ -91,11 +91,20 @@ namespace lux::simulation
         std::uint32_t binding_ordinal{};
     };
 
+    enum class EScriptBackendPrepareResult : std::uint8_t
+    {
+        SUCCESS,
+        CAPACITY_EXCEEDED,
+        ALLOCATION_FAILURE,
+        SIGNATURE_MISMATCH,
+        CONSTRUCTION_FAILURE,
+    };
+
     struct ScriptBackendDescriptor final
     {
         lux::rdesc::Script::Kind kind{lux::rdesc::Script::Kind::UNKNOWN};
         void* context{};
-        bool (*prepare)(
+        EScriptBackendPrepareResult (*prepare)(
             void* context,
             const ScriptPrepareContext& instance,
             const lux::asset::ScriptAssetContent& asset,

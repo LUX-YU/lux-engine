@@ -30,9 +30,14 @@ namespace lux::simulation
             const lux_script_function_desc* function{};
         };
 
-        explicit State(std::shared_ptr<lux::script::NativeModule> value) noexcept
+        explicit State(
+            std::shared_ptr<lux::script::NativeModule> value,
+            std::size_t instance_capacity
+        )
             : module(std::move(value))
-        {}
+        {
+            instances.reserve(instance_capacity);
+        }
 
         static int invoke(lux_script_call_frame* frame) noexcept
         {
@@ -45,7 +50,7 @@ namespace lux::simulation
             return call.function->invoke(frame);
         }
 
-        static bool prepare(
+        static EScriptBackendPrepareResult prepare(
             void* opaque,
             const ScriptPrepareContext& context,
             const lux::asset::ScriptAssetContent& asset,
@@ -58,9 +63,10 @@ namespace lux::simulation
                 std::addressof(asset.description.body)
             );
             if (!self.module || !body ||
-                body->abi_version != self.module->abiVersion())
+                body->abi_version != self.module->abiVersion() ||
+                body->state_defaults.size() > body->state_size)
             {
-                return false;
+                return EScriptBackendPrepareResult::CONSTRUCTION_FAILURE;
             }
             const auto* function = self.module->findFunction(
                 description.symbol_id
@@ -68,7 +74,7 @@ namespace lux::simulation
             if (!function || function->arg_count != description.args.size() ||
                 function->return_count != description.returns.size())
             {
-                return false;
+                return EScriptBackendPrepareResult::SIGNATURE_MISMATCH;
             }
             const auto same = [](const lux_script_type_desc& native_type,
                                  const lux::rdesc::ScriptValueType& semantic)
@@ -81,12 +87,12 @@ namespace lux::simulation
             for (std::size_t index{}; index < description.args.size(); ++index)
             {
                 if (!same(function->args[index], description.args[index]))
-                    return false;
+                    return EScriptBackendPrepareResult::SIGNATURE_MISMATCH;
             }
             for (std::size_t index{}; index < description.returns.size(); ++index)
             {
                 if (!same(function->returns[index], description.returns[index]))
-                    return false;
+                    return EScriptBackendPrepareResult::SIGNATURE_MISMATCH;
             }
             try
             {
@@ -104,6 +110,21 @@ namespace lux::simulation
                 }
                 if (!call->instance)
                 {
+                    self.instances.erase(
+                        std::remove_if(
+                            self.instances.begin(),
+                            self.instances.end(),
+                            [](const InstanceEntry& entry) noexcept
+                            {
+                                return entry.instance.expired();
+                            }
+                        ),
+                        self.instances.end()
+                    );
+                    if (self.instances.size() >= self.instances.capacity())
+                    {
+                        return EScriptBackendPrepareResult::CAPACITY_EXCEEDED;
+                    }
                     call->instance = std::make_shared<Instance>();
                     call->instance->module = self.module;
                     call->instance->instance_state.resize(body->state_size);
@@ -121,11 +142,11 @@ namespace lux::simulation
                 result = lux::script::BoundScriptCall{
                     &State::invoke,
                     call.release()};
-                return true;
+                return EScriptBackendPrepareResult::SUCCESS;
             }
             catch (const std::bad_alloc&)
             {
-                return false;
+                return EScriptBackendPrepareResult::ALLOCATION_FAILURE;
             }
         }
 
@@ -142,12 +163,16 @@ namespace lux::simulation
     };
 
     NativeScriptBindingBackend::NativeScriptBindingBackend(
-        std::shared_ptr<lux::script::NativeModule> module
+        std::shared_ptr<lux::script::NativeModule> module,
+        std::size_t instance_capacity
     ) noexcept
     {
         try
         {
-            state_ = std::make_unique<State>(std::move(module));
+            state_ = std::make_unique<State>(
+                std::move(module),
+                instance_capacity
+            );
         }
         catch (const std::bad_alloc&)
         {}

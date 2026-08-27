@@ -435,7 +435,7 @@ namespace
             return true;
         }
 
-        static bool prepareCall(
+        static lux::simulation::EScriptBackendPrepareResult prepareCall(
             void* opaque,
             const lux::simulation::ScriptPrepareContext&,
             const lux::asset::ScriptAssetContent&,
@@ -446,7 +446,7 @@ namespace
             result = lux::script::BoundScriptCall{
                 &BindingBenchmarkState::invoke,
                 opaque};
-            return true;
+            return lux::simulation::EScriptBackendPrepareResult::SUCCESS;
         }
 
         static int invoke(lux_script_call_frame* frame) noexcept

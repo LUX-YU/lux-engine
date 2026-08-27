@@ -13,7 +13,8 @@ namespace lux::simulation
     {
       public:
         explicit NativeScriptBindingBackend(
-            std::shared_ptr<lux::script::NativeModule> module
+            std::shared_ptr<lux::script::NativeModule> module,
+            std::size_t instance_capacity
         ) noexcept;
         ~NativeScriptBindingBackend();
 

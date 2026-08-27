@@ -78,7 +78,8 @@ namespace lux::simulation
 
         [[nodiscard]] std::shared_ptr<Instance> loadInstance(
             const ScriptPrepareContext& context,
-            const lux::asset::ScriptAssetContent& asset
+            const lux::asset::ScriptAssetContent& asset,
+            EScriptBackendPrepareResult& error
         ) noexcept
         {
             for (auto& entry : instances)
@@ -91,7 +92,23 @@ namespace lux::simulation
                         return existing;
                 }
             }
-            if (instances.size() >= instances.capacity() || asset.payload.empty())
+            instances.erase(
+                std::remove_if(
+                    instances.begin(),
+                    instances.end(),
+                    [](const InstanceEntry& entry) noexcept
+                    {
+                        return entry.instance.expired();
+                    }
+                ),
+                instances.end()
+            );
+            if (instances.size() >= instances.capacity())
+            {
+                error = EScriptBackendPrepareResult::CAPACITY_EXCEEDED;
+                return {};
+            }
+            if (asset.payload.empty())
                 return {};
             const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(
                 std::addressof(asset.description.body)
@@ -138,15 +155,17 @@ namespace lux::simulation
                     context.mount_ordinal,
                     instance});
                 ++chunk_loads;
+                error = EScriptBackendPrepareResult::SUCCESS;
                 return instance;
             }
             catch (const std::bad_alloc&)
             {
+                error = EScriptBackendPrepareResult::ALLOCATION_FAILURE;
                 return {};
             }
         }
 
-        static bool prepare(
+        static EScriptBackendPrepareResult prepare(
             void* opaque,
             const ScriptPrepareContext& context,
             const lux::asset::ScriptAssetContent& asset,
@@ -156,37 +175,39 @@ namespace lux::simulation
         {
             auto& self = *static_cast<State*>(opaque);
             if (std::this_thread::get_id() != self.affinity)
-                return false;
-            auto instance = self.loadInstance(context, asset);
+                return EScriptBackendPrepareResult::CONSTRUCTION_FAILURE;
+            auto error = EScriptBackendPrepareResult::CONSTRUCTION_FAILURE;
+            auto instance = self.loadInstance(context, asset, error);
             if (!instance)
-                return false;
+                return error;
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, instance->table_ref);
             lua_getfield(self.state, -1, function.name.c_str());
             lua_remove(self.state, -2);
             if (!lua_isfunction(self.state, -1))
             {
                 lua_pop(self.state, 1);
-                return false;
+                return EScriptBackendPrepareResult::CONSTRUCTION_FAILURE;
             }
+            const auto function_ref = luaL_ref(
+                self.state,
+                LUA_REGISTRYINDEX
+            );
             try
             {
                 auto call = std::make_unique<Call>();
                 call->owner = std::addressof(self);
                 call->instance = std::move(instance);
-                call->function_ref = luaL_ref(
-                    self.state,
-                    LUA_REGISTRYINDEX
-                );
+                call->function_ref = function_ref;
                 ++self.prepared_references;
                 result = lux::script::BoundScriptCall{
                     &State::invoke,
                     call.release()};
-                return true;
+                return EScriptBackendPrepareResult::SUCCESS;
             }
             catch (const std::bad_alloc&)
             {
-                lua_pop(self.state, 1);
-                return false;
+                luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                return EScriptBackendPrepareResult::ALLOCATION_FAILURE;
             }
         }
 

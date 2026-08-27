@@ -63,7 +63,7 @@ namespace
         return 0;
     }
 
-    bool prepareCall(
+    EScriptBackendPrepareResult prepareCall(
         void* opaque,
         const ScriptPrepareContext&,
         const lux::asset::ScriptAssetContent&,
@@ -73,11 +73,11 @@ namespace
     {
         auto& backend = *static_cast<Backend*>(opaque);
         if (function.symbol_id == 0U || function.symbol_id > backend.calls.size())
-            return false;
+            return EScriptBackendPrepareResult::CONSTRUCTION_FAILURE;
         result = lux::script::BoundScriptCall{
             &invoke,
             &backend.calls[function.symbol_id - 1U]};
-        return true;
+        return EScriptBackendPrepareResult::SUCCESS;
     }
 
     void releaseCall(void* opaque, lux::script::BoundScriptCall) noexcept

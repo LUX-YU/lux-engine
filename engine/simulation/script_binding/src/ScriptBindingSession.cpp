@@ -416,10 +416,26 @@ namespace lux::simulation
                 *export_it,
                 call
             );
-            if (!prepared || !call)
+            if (prepared != EScriptBackendPrepareResult::SUCCESS || !call)
             {
+                const auto error = [&]() noexcept
+                {
+                    switch (prepared)
+                    {
+                    case EScriptBackendPrepareResult::CAPACITY_EXCEEDED:
+                        return EScriptBindingError::CAPACITY_EXCEEDED;
+                    case EScriptBackendPrepareResult::ALLOCATION_FAILURE:
+                        return EScriptBindingError::ALLOCATION_FAILURE;
+                    case EScriptBackendPrepareResult::SIGNATURE_MISMATCH:
+                        return EScriptBindingError::SIGNATURE_MISMATCH;
+                    case EScriptBackendPrepareResult::SUCCESS:
+                    case EScriptBackendPrepareResult::CONSTRUCTION_FAILURE:
+                        return EScriptBindingError::BACKEND_CONSTRUCTION_FAILURE;
+                    }
+                    return EScriptBindingError::BACKEND_CONSTRUCTION_FAILURE;
+                }();
                 return lux::cxx::unexpected(
-                    EScriptBindingError::BACKEND_CONSTRUCTION_FAILURE
+                    error
                 );
             }
 

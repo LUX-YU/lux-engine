@@ -96,17 +96,17 @@ int main()
     lux::script::BoundScriptCall second;
     assert(descriptor.prepare(
         descriptor.context, first_key, asset, function, first
-    ));
+    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
     assert(descriptor.prepare(
         descriptor.context,
         first_second_binding,
         asset,
         function,
         first_again
-    ));
+    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
     assert(descriptor.prepare(
         descriptor.context, second_key, asset, function, second
-    ));
+    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
     assert(backend.loadedInstanceCount() == 2U);
     assert(backend.chunkLoadCount() == 2U);
     assert(backend.preparedReferenceCount() == 3U);

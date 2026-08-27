@@ -16,7 +16,7 @@ int main()
     auto module = std::make_shared<lux::script::NativeModule>(
         std::move(*loaded)
     );
-    lux::simulation::NativeScriptBindingBackend backend{module};
+    lux::simulation::NativeScriptBindingBackend backend{module, 2U};
     assert(backend);
 
     lux::asset::ScriptAssetContent asset;
@@ -57,15 +57,29 @@ int main()
         asset,
         function,
         first
-    ));
+    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
     assert(descriptor.prepare(
         descriptor.context,
         second_instance,
         asset,
         function,
         second
-    ));
+    ) == lux::simulation::EScriptBackendPrepareResult::SUCCESS);
     assert(first && second && first.context != second.context);
+
+    id_bytes[0] = 3U;
+    lux::script::BoundScriptCall over_capacity;
+    assert(descriptor.prepare(
+        descriptor.context,
+        lux::simulation::ScriptPrepareContext{
+            lux::asset::AssetId{id_bytes},
+            lux::simulation::ecs::NullEntity,
+            2U,
+            0U},
+        asset,
+        function,
+        over_capacity
+    ) == lux::simulation::EScriptBackendPrepareResult::CAPACITY_EXCEEDED);
 
     float delta = 2.5F;
     lux_script_value_slot argument{

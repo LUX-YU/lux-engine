@@ -168,10 +168,59 @@ int main()
     CppStaticScriptBindingBackend backend{descriptor_set, 1U};
     assert(backend);
     const auto backend_descriptor = backend.descriptor();
+    ScriptInstanceHostContext contract_host;
+    const ScriptInstanceCreateContext contract_context{
+        asset.id,
+        mount.id,
+        entity,
+        &contract_host};
+    const auto expect_contract_mismatch = [&](const auto& content)
+    {
+        ScriptBackendInstance instance;
+        assert(backend_descriptor.createInstance(
+            backend_descriptor.context,
+            contract_context,
+            content,
+            instance
+        ) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
+        assert(!instance);
+    };
+    {
+        auto tampered = asset.content;
+        tampered.description.module_name = "lux.test.tampered";
+        expect_contract_mismatch(tampered);
+    }
+    {
+        auto tampered = asset.content;
+        tampered.description.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
+        expect_contract_mismatch(tampered);
+    }
+    {
+        auto tampered = asset.content;
+        std::get<lux::rdesc::CppStaticScript>(tampered.description.body)
+            .descriptor = "wrong-key";
+        expect_contract_mismatch(tampered);
+    }
+    {
+        auto tampered = asset.content;
+        tampered.description.exports[0].name = "renamed";
+        expect_contract_mismatch(tampered);
+    }
+    {
+        auto tampered = asset.content;
+        ++tampered.description.exports[0].symbol_id;
+        expect_contract_mismatch(tampered);
+    }
+    {
+        auto tampered = asset.content;
+        tampered.description.exports[0].args[0].pass =
+            lux::script::EScriptPassMode::CONST_REF;
+        expect_contract_mismatch(tampered);
+    }
     auto session_result = ScriptBindingSession::create(
         std::move(*description),
         registry,
-        ScriptBindingCapacities{1U, 2U, 64U, 4U, 4U},
+        ScriptBindingCapacities{1U, 2U, 64U, 4U, 4U, 4U, 4U},
         ScriptAssetResolver{&asset, &resolveAsset},
         std::span{&backend_descriptor, 1U}
     );
@@ -194,7 +243,17 @@ int main()
     assert(dispatched.calls == 1U);
     assert(test::observed_self == entity);
     assert(test::observed_value == value);
-    assert(session.instrumentation().reflection_accesses == 0U);
+    const auto cold_asset_resolutions =
+        session.instrumentation().asset_resolutions;
+    const auto cold_target_resolutions =
+        session.instrumentation().target_resolutions;
+    assert(session.dispatchHook(hook, entity, frame).calls == 1U);
+    assert(
+        session.instrumentation().asset_resolutions == cold_asset_resolutions
+    );
+    assert(
+        session.instrumentation().target_resolutions == cold_target_resolutions
+    );
     assert(session.shutdown());
     lux::meta::ReflectionRegistry::destroyRegistry();
 }

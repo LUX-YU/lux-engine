@@ -19,41 +19,65 @@ namespace lux::simulation
         };
 
         [[nodiscard]] const lux::script::ScriptSemanticLayout* builtin(
-            lux::meta::EBaseType base
+            const lux::meta::RefType& type,
+            std::uint64_t value_type_hash
         ) noexcept
         {
             using lux::script::ScriptBuiltinSemanticLayouts;
-            const std::string_view name = [&]() noexcept -> std::string_view
+            struct Mapping final
             {
-                switch (base)
-                {
-                case lux::meta::EBaseType::Bool: return "lux.bool";
-                case lux::meta::EBaseType::Int32: return "lux.i32";
-                case lux::meta::EBaseType::Uint32: return "lux.u32";
-                case lux::meta::EBaseType::Int64: return "lux.i64";
-                case lux::meta::EBaseType::Uint64: return "lux.u64";
-                case lux::meta::EBaseType::Float: return "lux.f32";
-                case lux::meta::EBaseType::Double: return "lux.f64";
-                default: return {};
-                }
-            }();
+                lux::meta::EBaseType base;
+                std::uint64_t type_hash{};
+                lux::script::ScriptSemanticLayout layout;
+            };
+#define LUX_META_BASE_BOOL Bool
+#define LUX_META_BASE_I32 Int32
+#define LUX_META_BASE_U32 Uint32
+#define LUX_META_BASE_I64 Int64
+#define LUX_META_BASE_U64 Uint64
+#define LUX_META_BASE_F32 Float
+#define LUX_META_BASE_F64 Double
+#define LUX_META_BASE_VALUE(tag) LUX_META_BASE_##tag
+#define LUX_SCRIPT_BUILTIN(tag, cpp_type, canonical, abi_kind_value)           \
+            Mapping{                                                          \
+                lux::meta::EBaseType::LUX_META_BASE_VALUE(tag),                \
+                lux::cxx::type_hash<cpp_type>(),                               \
+                lux::script::ScriptSemanticLayout{                             \
+                    lux::script::scriptSemanticTypeId(canonical),              \
+                    canonical,                                                 \
+                    abi_kind_value,                                            \
+                    sizeof(cpp_type),                                          \
+                    alignof(cpp_type)}},
+            static const auto mappings = std::array{
+#include <lux/engine/function/script/ScriptSemanticBuiltin.def>
+            };
+#undef LUX_SCRIPT_BUILTIN
+#undef LUX_META_BASE_VALUE
+#undef LUX_META_BASE_F64
+#undef LUX_META_BASE_F32
+#undef LUX_META_BASE_U64
+#undef LUX_META_BASE_I64
+#undef LUX_META_BASE_U32
+#undef LUX_META_BASE_I32
+#undef LUX_META_BASE_BOOL
             const auto found = std::find_if(
-                ScriptBuiltinSemanticLayouts.begin(),
-                ScriptBuiltinSemanticLayouts.end(),
-                [name](const auto& layout) noexcept
+                mappings.begin(),
+                mappings.end(),
+                [&type, value_type_hash](const Mapping& mapping) noexcept
                 {
-                    return layout.canonical_name == name;
+                    return mapping.base == static_cast<lux::meta::EBaseType>(
+                        type.qtype.base
+                    ) && mapping.type_hash == value_type_hash;
                 }
             );
-            return found == ScriptBuiltinSemanticLayouts.end()
-                ? nullptr
-                : std::addressof(*found);
+            return found == mappings.end() ? nullptr : std::addressof(found->layout);
         }
 
         [[nodiscard]] lux::cxx::expected<
             lux::rdesc::ScriptValueType,
             ECppStaticScriptBridgeError> projectType(
                 const lux::meta::RefType& type,
+                std::uint64_t value_type_hash,
                 bool is_return,
                 CppStaticRecordSemanticResolver resolver
             ) noexcept
@@ -90,10 +114,7 @@ namespace lux::simulation
                 );
             }
 
-            const auto base = static_cast<lux::meta::EBaseType>(
-                type.qtype.base
-            );
-            if (const auto* layout = builtin(base))
+            if (const auto* layout = builtin(type, value_type_hash))
             {
                 return lux::rdesc::ScriptValueType{
                     std::string{layout->canonical_name},
@@ -161,7 +182,12 @@ namespace lux::simulation
                 projected.args.reserve(invokable.parameters.size());
                 for (const auto& parameter : invokable.parameters)
                 {
-                    auto type = projectType(parameter.type, false, resolver);
+                    auto type = projectType(
+                        parameter.type,
+                        parameter.value_type_hash,
+                        false,
+                        resolver
+                    );
                     if (!type)
                         return lux::cxx::unexpected(type.error());
                     projected.args.push_back(std::move(*type));
@@ -173,6 +199,7 @@ namespace lux::simulation
                 {
                     auto type = projectType(
                         invokable.return_type,
+                        invokable.return_type.hash,
                         true,
                         resolver
                     );
@@ -474,15 +501,44 @@ namespace lux::simulation
             );
             if (!body)
                 return nullptr;
+            const CppStaticScriptDescriptor::State* executable_candidate{};
             for (const auto* descriptor : descriptors)
             {
-                if (descriptor && descriptor->state_ &&
-                    descriptor->state_->descriptor_key == body->descriptor)
+                if (!descriptor || !descriptor->state_)
+                    continue;
+                if (descriptor->state_->descriptor_key == body->descriptor)
                 {
                     return descriptor->state_.get();
                 }
+                if (descriptor->state_->description.module_name ==
+                        asset.description.module_name &&
+                    descriptor->state_->description.model ==
+                        asset.description.model)
+                {
+                    executable_candidate = descriptor->state_.get();
+                }
             }
-            return nullptr;
+            return executable_candidate;
+        }
+
+        [[nodiscard]] static bool executableContractMatches(
+            const lux::asset::ScriptAssetContent& asset,
+            const CppStaticScriptDescriptor::State& descriptor
+        ) noexcept
+        {
+            const auto* asset_body = std::get_if<lux::rdesc::CppStaticScript>(
+                std::addressof(asset.description.body)
+            );
+            const auto* descriptor_body =
+                std::get_if<lux::rdesc::CppStaticScript>(
+                    std::addressof(descriptor.description.body)
+                );
+            return asset_body && descriptor_body &&
+                asset.description.module_name ==
+                    descriptor.description.module_name &&
+                asset.description.model == descriptor.description.model &&
+                asset_body->descriptor == descriptor_body->descriptor &&
+                asset.description.exports == descriptor.description.exports;
         }
 
         static EScriptBackendResult createInstance(
@@ -498,6 +554,10 @@ namespace lux::simulation
             const auto* descriptor = self.find(asset);
             if (!descriptor)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
+            if (!executableContractMatches(asset, *descriptor))
+            {
+                return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+            }
             auto* instance = new (std::nothrow) Instance{descriptor, nullptr};
             if (!instance)
                 return EScriptBackendResult::ALLOCATION_FAILURE;

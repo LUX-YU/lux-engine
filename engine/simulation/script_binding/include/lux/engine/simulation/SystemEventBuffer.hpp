@@ -177,8 +177,8 @@ namespace lux::simulation
         };
 
         SystemEventBuffer() noexcept = default;
-        SystemEventBuffer(SystemEventBuffer&&) noexcept = default;
-        SystemEventBuffer& operator=(SystemEventBuffer&&) noexcept = default;
+        SystemEventBuffer(SystemEventBuffer&&) = delete;
+        SystemEventBuffer& operator=(SystemEventBuffer&&) = delete;
         SystemEventBuffer(const SystemEventBuffer&) = delete;
         SystemEventBuffer& operator=(const SystemEventBuffer&) = delete;
 

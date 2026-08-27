@@ -60,7 +60,7 @@ namespace lux::simulation
         STOP,
     };
 
-    enum class EBehaviorStopReason : std::uint8_t
+    enum class EBehaviorStopReason : std::uint32_t
     {
         MOUNT_REMOVED,
         ENTITY_DESTROYED,

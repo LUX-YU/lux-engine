@@ -24,6 +24,15 @@ int main()
     using namespace lux::simulation;
     using namespace lux::task;
 
+    static_assert(!std::is_move_constructible_v<
+        SystemEventBuffer<OwnedPayload>>);
+    static_assert(!std::is_move_assignable_v<
+        SystemEventBuffer<OwnedPayload>>);
+    static_assert(std::is_move_constructible_v<
+        SystemEventBuffer<OwnedPayload>::Writer>);
+    static_assert(!std::is_copy_constructible_v<
+        SystemEventBuffer<OwnedPayload>::Writer>);
+
     SystemEventBuffer<OwnedPayload> buffer;
     assert(buffer.prepare(2U, 2U));
     auto first_writer = buffer.writer(0U);
@@ -33,6 +42,17 @@ int main()
         std::move(*first_writer)};
     std::optional<SystemEventBuffer<OwnedPayload>::Writer> second_writer_state{
         std::move(*second_writer)};
+    const auto active_prepare = buffer.prepare(2U, 2U);
+    assert(!active_prepare);
+    assert(active_prepare.error() == ESystemEventBufferError::ACTIVE_WRITER);
+    const auto active_reset = buffer.reset();
+    assert(!active_reset);
+    assert(active_reset.error() == ESystemEventBufferError::ACTIVE_WRITER);
+    const auto active_drain = buffer.drain(
+        [](lux::simulation::ecs::Entity, const OwnedPayload&) noexcept {}
+    );
+    assert(!active_drain);
+    assert(active_drain.error() == ESystemEventBufferError::ACTIVE_WRITER);
 
     std::atomic_size_t callbacks{};
     TaskGraphBuilder builder;

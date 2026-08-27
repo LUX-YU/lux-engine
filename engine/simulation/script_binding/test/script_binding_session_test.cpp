@@ -81,6 +81,10 @@ namespace
     struct Backend final
     {
         std::vector<std::int64_t> log;
+        lux::script::ScriptSymbolId fail_symbol{};
+        std::size_t failures_remaining{};
+        lux::script::ScriptSymbolId patch_symbol{};
+        std::uint64_t patch_component_type{};
         std::size_t creates{};
         std::size_t prepares{};
         std::size_t releases{};
@@ -121,6 +125,21 @@ namespace
             assert(method.instance->host->self() == method.instance->self);
         }
         method.instance->backend->log.push_back(logValue(method, value));
+        auto& backend = *method.instance->backend;
+        if (backend.patch_symbol == method.symbol)
+        {
+            backend.patch_symbol = {};
+            assert(method.instance->host->patch(
+                backend.patch_component_type,
+                nullptr
+            ));
+        }
+        if (backend.fail_symbol == method.symbol &&
+            backend.failures_remaining != 0U)
+        {
+            --backend.failures_remaining;
+            return -77;
+        }
         return 0;
     }
 
@@ -190,9 +209,36 @@ namespace
             lux::asset::AssetId id;
             lux::asset::ScriptAssetContent content;
         };
-        std::array<Entry, 3U> entries;
+        std::array<Entry, 4U> entries;
         std::size_t resolves{};
     };
+
+    struct HostPatchState final
+    {
+        ecs::Registry* registry{};
+        std::uint64_t component_type{};
+    };
+
+    bool patchHostComponent(
+        void* opaque,
+        ecs::Entity entity,
+        std::uint64_t component_type,
+        const void*
+    ) noexcept
+    {
+        auto& state = *static_cast<HostPatchState*>(opaque);
+        if (!state.registry || component_type != state.component_type ||
+            !state.registry->valid(entity) ||
+            !state.registry->all_of<ScriptComponent>(entity))
+        {
+            return false;
+        }
+        state.registry->patch<ScriptComponent>(entity, [](auto& component)
+        {
+            component.mounts.clear();
+        });
+        return true;
+    }
 
     bool resolveAsset(
         void* opaque,
@@ -337,6 +383,14 @@ int main()
         {}}};
     assert(lux::rdesc::validScriptDescription(python));
 
+    assets.entries[3].id = assetId(0x45U);
+    assets.entries[3].content.description = behavior;
+    assets.entries[3].content.description.module_name =
+        "binding.behavior.replacement.fixture";
+    assert(lux::rdesc::validScriptDescription(
+        assets.entries[3].content.description
+    ));
+
     {
         SimulationDescriptionBuilder python_builder;
         assert(python_builder.addSystem("fixture", kSystem));
@@ -453,6 +507,276 @@ int main()
         assert(capacity_backend.prepares == 0U);
         assert(capacity_backend.releases == 0U);
         assert(capacity_backend.destroys == 0U);
+    }
+
+    {
+        SimulationDescriptionBuilder failure_builder;
+        assert(failure_builder.addSystem("fixture", kSystem));
+        auto failure_description = std::move(failure_builder).build();
+        assert(failure_description);
+        ecs::Registry failure_registry;
+        const auto failure_entity = failure_registry.create();
+        auto failure_mount = entity_mount;
+        failure_mount.bindings = {
+            lifecycleBinding(kConstruct, EBehaviorLifecyclePoint::CONSTRUCT),
+            lifecycleBinding(kStop, EBehaviorLifecyclePoint::STOP)};
+        failure_registry.emplace<ScriptComponent>(
+            failure_entity,
+            ScriptComponent{{failure_mount}}
+        );
+        Backend failure_backend;
+        failure_backend.fail_symbol = kConstruct;
+        failure_backend.failures_remaining = 2U;
+        const ScriptBackendDescriptor failure_backend_descriptor{
+            lux::rdesc::Script::Kind::CPP_STATIC,
+            &failure_backend,
+            &createInstance,
+            &prepareMethod,
+            &releaseMethod,
+            &destroyInstance};
+        auto failure_session = ScriptBindingSession::create(
+            std::move(*failure_description),
+            failure_registry,
+            ScriptBindingCapacities{1U, 2U, 4U, 4U, 4U, 4U, 4U},
+            resolver,
+            std::span{&failure_backend_descriptor, 1U}
+        );
+        assert(failure_session);
+        for (std::size_t attempt{}; attempt < 2U; ++attempt)
+        {
+            const auto failed = failure_session->prepare();
+            assert(!failed);
+            assert(failed.error() == EScriptBindingError::INVOCATION_FAILURE);
+            assert(failure_session->instanceCount() == 0U);
+            assert(failure_backend.creates == attempt + 1U);
+            assert(failure_backend.creates == failure_backend.destroys);
+            assert(failure_backend.prepares == failure_backend.releases);
+            assert(failure_backend.log[attempt * 2U] == 2002300LL);
+            assert(failure_backend.log[attempt * 2U + 1U] == 2002503LL);
+        }
+    }
+
+    {
+        SimulationDescriptionBuilder retirement_builder;
+        assert(retirement_builder.addSystem("fixture", kSystem));
+        auto retirement_description = std::move(retirement_builder).build();
+        assert(retirement_description);
+        ecs::Registry retirement_registry;
+        const auto retirement_entity = retirement_registry.create();
+        auto retirement_mount = entity_mount;
+        retirement_mount.id = ScriptMountId{70U};
+        retirement_mount.bindings = {
+            hookBinding(kEntityHook, "after"),
+            eventBinding(kEntityEvent, "entity-pulse")};
+        retirement_registry.emplace<ScriptComponent>(
+            retirement_entity,
+            ScriptComponent{{retirement_mount}}
+        );
+        Backend retirement_backend;
+        const ScriptBackendDescriptor retirement_backend_descriptor{
+            lux::rdesc::Script::Kind::CPP_STATIC,
+            &retirement_backend,
+            &createInstance,
+            &prepareMethod,
+            &releaseMethod,
+            &destroyInstance};
+        auto retirement_session = ScriptBindingSession::create(
+            std::move(*retirement_description),
+            retirement_registry,
+            ScriptBindingCapacities{1U, 2U, 4U, 4U, 4U, 4U, 4U},
+            resolver,
+            std::span{&retirement_backend_descriptor, 1U}
+        );
+        assert(retirement_session);
+        assert(retirement_session->prepare());
+        assert(retirement_session->preparedMethodCount() == 2U);
+        const auto retained_instance_creates = retirement_backend.creates;
+        retirement_registry.patch<ScriptComponent>(
+            retirement_entity,
+            [](auto& component)
+            {
+                component.mounts[0].bindings = {
+                    hookBinding(kEntityHook, "after")};
+            }
+        );
+        assert(retirement_session->applyQuiescentMutations());
+        assert(retirement_session->preparedMethodCount() == 1U);
+        assert(retirement_backend.releases == 1U);
+        retirement_registry.patch<ScriptComponent>(
+            retirement_entity,
+            [](auto& component)
+            {
+                component.mounts[0].bindings = {
+                    hookBinding(kEntityHook, "after"),
+                    lifecycleBinding(
+                        kConstruct,
+                        EBehaviorLifecyclePoint::CONSTRUCT
+                    )};
+            }
+        );
+        assert(retirement_session->applyQuiescentMutations());
+        assert(retirement_session->preparedMethodCount() == 2U);
+        assert(retirement_backend.creates == retained_instance_creates);
+        assert(retirement_session->shutdown());
+        assert(retirement_backend.creates == retirement_backend.destroys);
+        assert(retirement_backend.prepares == retirement_backend.releases);
+    }
+
+    {
+        SimulationDescriptionBuilder replacement_builder;
+        assert(replacement_builder.addSystem("fixture", kSystem));
+        auto replacement_description = std::move(replacement_builder).build();
+        assert(replacement_description);
+        ecs::Registry replacement_registry;
+        const auto replacement_entity = replacement_registry.create();
+        auto replacement_mount = entity_mount;
+        replacement_mount.id = ScriptMountId{80U};
+        replacement_mount.bindings = {
+            lifecycleBinding(kConstruct, EBehaviorLifecyclePoint::CONSTRUCT),
+            lifecycleBinding(kStart, EBehaviorLifecyclePoint::START),
+            lifecycleBinding(kStop, EBehaviorLifecyclePoint::STOP),
+            hookBinding(kEntityHook, "after")};
+        replacement_registry.emplace<ScriptComponent>(
+            replacement_entity,
+            ScriptComponent{{replacement_mount}}
+        );
+        Backend replacement_backend;
+        const ScriptBackendDescriptor replacement_backend_descriptor{
+            lux::rdesc::Script::Kind::CPP_STATIC,
+            &replacement_backend,
+            &createInstance,
+            &prepareMethod,
+            &releaseMethod,
+            &destroyInstance};
+        auto replacement_session = ScriptBindingSession::create(
+            std::move(*replacement_description),
+            replacement_registry,
+            ScriptBindingCapacities{2U, 8U, 8U, 8U, 8U, 8U, 8U},
+            resolver,
+            std::span{&replacement_backend_descriptor, 1U}
+        );
+        assert(replacement_session);
+        assert(replacement_session->prepare());
+        const auto replacement_hook = replacement_session->hookSlot(
+            "fixture",
+            "after"
+        );
+        assert(replacement_hook);
+        replacement_backend.log.clear();
+        replacement_backend.fail_symbol = kStart;
+        replacement_backend.failures_remaining = 1U;
+        replacement_registry.patch<ScriptComponent>(
+            replacement_entity,
+            [&](auto& component)
+            {
+                component.mounts[0].script = assets.entries[3].id;
+            }
+        );
+        const auto replacement_failed =
+            replacement_session->applyQuiescentMutations();
+        assert(!replacement_failed);
+        assert(
+            replacement_failed.error() ==
+            EScriptBindingError::INVOCATION_FAILURE
+        );
+        assert((replacement_backend.log == std::vector<std::int64_t>{
+            8002300LL,
+            8002500LL,
+            8002400LL,
+            8002503LL}));
+        assert(replacement_session->instanceCount() == 0U);
+        SimulationStepInfo replacement_step{1.0F / 60.0F, 1U};
+        lux_script_value_slot replacement_slot{
+            LUX_SCRIPT_VK_STRUCT_REF,
+            {},
+            sizeof(replacement_step),
+            lux::script::scriptSemanticTypeId(
+                "lux.simulation.SimulationStepInfo"
+            ),
+            &replacement_step};
+        lux_script_call_frame replacement_frame{
+            &replacement_slot,
+            1U,
+            0U,
+            nullptr,
+            0U,
+            0U,
+            nullptr,
+            nullptr};
+        assert(replacement_session->dispatchHook(
+            replacement_hook,
+            replacement_frame
+        ).calls == 0U);
+        replacement_backend.log.clear();
+        assert(replacement_session->applyQuiescentMutations());
+        assert((replacement_backend.log == std::vector<std::int64_t>{
+            8002300LL,
+            8002400LL}));
+        assert(replacement_session->instanceCount() == 1U);
+        assert(replacement_session->dispatchHook(
+            replacement_hook,
+            replacement_frame
+        ).calls == 1U);
+        assert(replacement_session->shutdown());
+        assert(replacement_backend.creates == replacement_backend.destroys);
+        assert(replacement_backend.prepares == replacement_backend.releases);
+    }
+
+    {
+        SimulationDescriptionBuilder reentrant_builder;
+        assert(reentrant_builder.addSystem("fixture", kSystem));
+        auto reentrant_description = std::move(reentrant_builder).build();
+        assert(reentrant_description);
+        ecs::Registry reentrant_registry;
+        const auto reentrant_entity = reentrant_registry.create();
+        Backend reentrant_backend;
+        constexpr std::uint64_t kScriptComponentType = 0x534352495054ULL;
+        reentrant_backend.patch_symbol = kStart;
+        reentrant_backend.patch_component_type = kScriptComponentType;
+        HostPatchState patch_state{
+            &reentrant_registry,
+            kScriptComponentType};
+        const ScriptHostApi host_api{
+            &patch_state,
+            nullptr,
+            &patchHostComponent,
+            nullptr};
+        const ScriptBackendDescriptor reentrant_backend_descriptor{
+            lux::rdesc::Script::Kind::CPP_STATIC,
+            &reentrant_backend,
+            &createInstance,
+            &prepareMethod,
+            &releaseMethod,
+            &destroyInstance};
+        auto reentrant_session = ScriptBindingSession::create(
+            std::move(*reentrant_description),
+            reentrant_registry,
+            ScriptBindingCapacities{1U, 2U, 4U, 4U, 4U, 4U, 4U},
+            resolver,
+            std::span{&reentrant_backend_descriptor, 1U},
+            host_api
+        );
+        assert(reentrant_session);
+        assert(reentrant_session->prepare());
+        auto reentrant_mount = entity_mount;
+        reentrant_mount.id = ScriptMountId{90U};
+        reentrant_mount.bindings = {
+            lifecycleBinding(kStart, EBehaviorLifecyclePoint::START),
+            lifecycleBinding(kStop, EBehaviorLifecyclePoint::STOP)};
+        reentrant_registry.emplace<ScriptComponent>(
+            reentrant_entity,
+            ScriptComponent{{reentrant_mount}}
+        );
+        assert(reentrant_session->applyQuiescentMutations());
+        assert(reentrant_session->instanceCount() == 1U);
+        assert(reentrant_registry.get<ScriptComponent>(
+            reentrant_entity
+        ).mounts.empty());
+        assert(reentrant_session->applyQuiescentMutations());
+        assert(reentrant_session->instanceCount() == 0U);
+        assert(reentrant_session->shutdown());
+        assert(reentrant_backend.creates == reentrant_backend.destroys);
+        assert(reentrant_backend.prepares == reentrant_backend.releases);
     }
 
     const std::array duplicate_backends{
@@ -677,7 +1001,10 @@ int main()
     assert(invalid_apply.error() == EScriptBindingError::CARDINALITY_MISMATCH);
     registry.destroy(invalid_entity);
 
+    backend.fail_symbol = kStop;
+    backend.failures_remaining = 1U;
     assert(session.shutdown());
+    assert(backend.failures_remaining == 0U);
     assert(session.instanceCount() == 0U);
     assert(backend.creates == backend.destroys);
     assert(backend.prepares == backend.releases);

@@ -65,6 +65,7 @@ namespace lux::simulation
         MOUNT_REMOVED,
         ENTITY_DESTROYED,
         SIMULATION_STOPPED,
+        INITIALIZATION_FAILED,
     };
 
     inline constexpr std::string_view BehaviorStopReasonCanonicalName{

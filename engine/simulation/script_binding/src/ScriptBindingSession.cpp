@@ -134,7 +134,11 @@ namespace lux::simulation
             std::size_t pending_mount_order{};
             EMountState state{EMountState::CONSTRUCTING};
             EBehaviorStopReason stop_reason{EBehaviorStopReason::MOUNT_REMOVED};
-            bool lifecycle_started{};
+            bool construct_entered{};
+            bool construct_completed{};
+            bool start_entered{};
+            bool start_completed{};
+            bool published{};
             bool stop_called{};
         };
 
@@ -218,7 +222,8 @@ namespace lux::simulation
         {
             backends.assign(source_backends.begin(), source_backends.end());
             mounts.reserve(capacities.mount_instances);
-            dirty.reserve(capacities.dirty_entities);
+            dirty_current.reserve(capacities.dirty_entities);
+            dirty_next.reserve(capacities.dirty_entities);
             failures.reserve(capacities.failures);
             dispatch.entities.reserve(capacities.scripted_entities);
             dispatch.sidecars.reserve(capacities.scripted_entities);
@@ -450,11 +455,15 @@ namespace lux::simulation
         void recordFailure(
             MountRuntime& mount,
             lux::script::ScriptSymbolId symbol,
-            std::int32_t status
+            std::int32_t status,
+            bool retire
         ) noexcept
         {
-            mount.state = EMountState::RETIRING;
-            mount.stop_reason = EBehaviorStopReason::MOUNT_REMOVED;
+            if (retire)
+            {
+                mount.state = EMountState::RETIRING;
+                mount.stop_reason = EBehaviorStopReason::MOUNT_REMOVED;
+            }
             if (failures.size() < capacities.failures)
             {
                 failures.push_back(ScriptBindingFailure{
@@ -491,7 +500,8 @@ namespace lux::simulation
                 recordFailure(
                     *handler.mount,
                     handler.method->symbol,
-                    status
+                    status,
+                    true
                 );
             }
             (void)single;
@@ -504,6 +514,7 @@ namespace lux::simulation
             EBehaviorStopReason reason = EBehaviorStopReason::MOUNT_REMOVED
         ) noexcept
         {
+            bool success = true;
             for (const auto& binding : mount.authored.bindings)
             {
                 const auto* lifecycle =
@@ -514,6 +525,10 @@ namespace lux::simulation
                 auto* method = findMethod(mount, binding.function);
                 if (!method || !method->call)
                     continue;
+                if (point == EBehaviorLifecyclePoint::CONSTRUCT)
+                    mount.construct_entered = true;
+                else if (point == EBehaviorLifecyclePoint::START)
+                    mount.start_entered = true;
                 EBehaviorStopReason reason_value = reason;
                 lux_script_value_slot reason_slot{
                     LUX_SCRIPT_VK_UINT32,
@@ -537,16 +552,25 @@ namespace lux::simulation
                 const auto status = method->call.invoke(std::addressof(frame));
                 if (status != 0)
                 {
-                    recordFailure(mount, method->symbol, status);
-                    return false;
+                    recordFailure(mount, method->symbol, status, false);
+                    success = false;
+                    if (point != EBehaviorLifecyclePoint::STOP)
+                        return false;
                 }
             }
-            return true;
+            if (point == EBehaviorLifecyclePoint::CONSTRUCT && success)
+                mount.construct_completed = true;
+            else if (point == EBehaviorLifecyclePoint::START && success)
+                mount.start_completed = true;
+            return success;
         }
 
         void releaseMount(MountRuntime& mount, bool invoke_stop) noexcept
         {
-            if (invoke_stop && mount.lifecycle_started && !mount.stop_called)
+            if (invoke_stop &&
+                (mount.published || mount.construct_entered ||
+                 mount.start_entered) &&
+                !mount.stop_called)
             {
                 mount.stop_called = true;
                 (void)invokeLifecycle(
@@ -1021,7 +1045,10 @@ namespace lux::simulation
         }
 
         [[nodiscard]] lux::cxx::expected<DispatchIndex, EScriptBindingError>
-        makeDispatch() noexcept
+        makeDispatch(
+            bool include_constructing = true,
+            bool use_pending_authored = true
+        ) noexcept
         {
             try
             {
@@ -1059,7 +1086,8 @@ namespace lux::simulation
                 for (auto& mount : mounts)
                 {
                     if (mount->state == EMountState::ACTIVE ||
-                        mount->state == EMountState::CONSTRUCTING)
+                        (include_constructing &&
+                         mount->state == EMountState::CONSTRUCTING))
                         ordered.push_back(mount.get());
                 }
                 std::sort(
@@ -1075,8 +1103,13 @@ namespace lux::simulation
                         if (left->self != right->self)
                             return ecs::entityBits(left->self) <
                                 ecs::entityBits(right->self);
-                        return effectiveMountOrder(*left) <
-                            effectiveMountOrder(*right);
+                        const auto left_order = use_pending_authored
+                            ? effectiveMountOrder(*left)
+                            : left->mount_order;
+                        const auto right_order = use_pending_authored
+                            ? effectiveMountOrder(*right)
+                            : right->mount_order;
+                        return left_order < right_order;
                     }
                 );
 
@@ -1084,7 +1117,9 @@ namespace lux::simulation
                 std::size_t handler_count{};
                 for (auto* mount : ordered)
                 {
-                    const auto& authored = effectiveAuthored(*mount);
+                    const auto& authored = use_pending_authored
+                        ? effectiveAuthored(*mount)
+                        : mount->authored;
                     for (const auto& binding : authored.bindings)
                     {
                         auto* method = findMethod(*mount, binding.function);
@@ -1372,12 +1407,12 @@ namespace lux::simulation
             EBehaviorStopReason reason
         ) noexcept
         {
-            if (dirty.size() >= capacities.dirty_entities)
+            if (dirty_next.size() >= capacities.dirty_entities)
             {
-                full_resync = true;
+                full_resync_next = true;
                 return;
             }
-            dirty.push_back(DirtyEntity{entity, reason});
+            dirty_next.push_back(DirtyEntity{entity, reason});
         }
 
         void onConstruct(ecs::Registry&, ecs::Entity entity) noexcept
@@ -1491,13 +1526,15 @@ namespace lux::simulation
                 result = activateAndPublish();
                 if (!result)
                     return result;
-                dirty.clear();
-                full_resync = false;
+                dirty_current.clear();
+                full_resync_current = false;
                 prepared_once = true;
                 return {};
             }
             catch (const std::bad_alloc&)
             {
+                rollbackStaged();
+                full_resync_next = true;
                 return lux::cxx::unexpected(
                     EScriptBindingError::ALLOCATION_FAILURE);
             }
@@ -1513,7 +1550,11 @@ namespace lux::simulation
                 return prepareInitial();
             try
             {
-                if (full_resync)
+                dirty_current.clear();
+                dirty_current.swap(dirty_next);
+                full_resync_current = full_resync_next;
+                full_resync_next = false;
+                if (full_resync_current)
                 {
                     for (auto& runtime : mounts)
                     {
@@ -1557,7 +1598,7 @@ namespace lux::simulation
                                 capacities.prepared_methods))
                         {
                             rollbackStaged();
-                            full_resync = true;
+                            full_resync_next = true;
                             return lux::cxx::unexpected(
                                 EScriptBindingError::CAPACITY_EXCEEDED);
                         }
@@ -1572,7 +1613,7 @@ namespace lux::simulation
                         if (!result)
                         {
                             rollbackStaged();
-                            full_resync = true;
+                            full_resync_next = true;
                             return result;
                         }
                     }
@@ -1580,8 +1621,8 @@ namespace lux::simulation
                 else
                 {
                     std::sort(
-                        dirty.begin(),
-                        dirty.end(),
+                        dirty_current.begin(),
+                        dirty_current.end(),
                         [](const auto& left, const auto& right) noexcept
                         {
                             const auto left_bits = ecs::entityBits(left.entity);
@@ -1592,18 +1633,18 @@ namespace lux::simulation
                                 static_cast<std::uint32_t>(right.reason);
                         }
                     );
-                    dirty.erase(
+                    dirty_current.erase(
                         std::unique(
-                            dirty.begin(),
-                            dirty.end(),
+                            dirty_current.begin(),
+                            dirty_current.end(),
                             [](const auto& left, const auto& right) noexcept
                             {
                                 return left.entity == right.entity;
                             }
                         ),
-                        dirty.end()
+                        dirty_current.end()
                     );
-                    for (const auto change : dirty)
+                    for (const auto change : dirty_current)
                     {
                         const auto* component = registry->valid(change.entity)
                             ? registry->try_get<ScriptComponent>(change.entity)
@@ -1611,7 +1652,7 @@ namespace lux::simulation
                         markRemoved(change.entity, component, change.reason);
                     }
                     std::size_t required_methods = preparedMethodCount();
-                    for (const auto change : dirty)
+                    for (const auto change : dirty_current)
                     {
                         if (!registry->valid(change.entity))
                             continue;
@@ -1629,13 +1670,13 @@ namespace lux::simulation
                                 capacities.prepared_methods))
                         {
                             rollbackStaged();
-                            full_resync = true;
+                            full_resync_next = true;
                             return lux::cxx::unexpected(
                                 EScriptBindingError::CAPACITY_EXCEEDED);
                         }
                         required_methods += missing;
                     }
-                    for (const auto change : dirty)
+                    for (const auto change : dirty_current)
                     {
                         if (!registry->valid(change.entity))
                             continue;
@@ -1650,7 +1691,7 @@ namespace lux::simulation
                         if (!result)
                         {
                             rollbackStaged();
-                            full_resync = true;
+                            full_resync_next = true;
                             return result;
                         }
                     }
@@ -1658,12 +1699,14 @@ namespace lux::simulation
                 auto result = activateAndPublish();
                 if (!result)
                     return result;
-                dirty.clear();
-                full_resync = false;
+                dirty_current.clear();
+                full_resync_current = false;
                 return {};
             }
             catch (const std::bad_alloc&)
             {
+                rollbackStaged();
+                full_resync_next = true;
                 return lux::cxx::unexpected(
                     EScriptBindingError::ALLOCATION_FAILURE);
             }
@@ -1747,7 +1790,6 @@ namespace lux::simulation
                         return lux::cxx::unexpected(
                             EScriptBindingError::INVOCATION_FAILURE);
                     }
-                    mount->lifecycle_started = true;
                 }
                 return {};
             }
@@ -1787,9 +1829,11 @@ namespace lux::simulation
         {
             for (auto& mount : mounts)
             {
-                if (mount->state == EMountState::CONSTRUCTING)
+                if (!mount->published)
                 {
-                    releaseMount(*mount, mount->lifecycle_started);
+                    mount->stop_reason =
+                        EBehaviorStopReason::INITIALIZATION_FAILED;
+                    releaseMount(*mount, true);
                     continue;
                 }
                 if (!mount->pending_authored)
@@ -1833,7 +1877,7 @@ namespace lux::simulation
             );
         }
 
-        void publish(DispatchIndex&& shadow) noexcept
+        void publishDispatch(DispatchIndex&& shadow) noexcept
         {
             instrumentation.target_ranges_built =
                 static_cast<std::size_t>(std::count_if(
@@ -1847,13 +1891,47 @@ namespace lux::simulation
             instrumentation.dispatch_handlers_built =
                 shadow.hook_handlers.size() + shadow.event_handlers.size();
             dispatch = std::move(shadow);
+        }
+
+        void commitPending() noexcept
+        {
             for (auto& mount : mounts)
             {
-                if (!mount->pending_authored)
+                if (mount->pending_authored)
+                {
+                    mount->authored = std::move(*mount->pending_authored);
+                    mount->mount_order = mount->pending_mount_order;
+                    mount->pending_authored.reset();
+                }
+                if (mount->state != EMountState::ACTIVE)
                     continue;
-                mount->authored = std::move(*mount->pending_authored);
-                mount->mount_order = mount->pending_mount_order;
-                mount->pending_authored.reset();
+                mount->published = true;
+                const auto& backend = backends[mount->backend];
+                std::erase_if(
+                    mount->methods,
+                    [&](const auto& method) noexcept
+                    {
+                        const auto retained = std::any_of(
+                            mount->authored.bindings.begin(),
+                            mount->authored.bindings.end(),
+                            [&](const auto& binding) noexcept
+                            {
+                                return method &&
+                                    binding.function == method->symbol;
+                            }
+                        );
+                        if (!retained && method && backend.releaseMethod &&
+                            method->call)
+                        {
+                            backend.releaseMethod(
+                                backend.context,
+                                mount->instance,
+                                method->call
+                            );
+                        }
+                        return !retained;
+                    }
+                );
             }
         }
 
@@ -1864,25 +1942,34 @@ namespace lux::simulation
             if (!constructed_result)
             {
                 rollbackStaged();
-                full_resync = true;
+                full_resync_next = true;
                 return constructed_result;
             }
-            auto shadow = makeDispatch();
-            if (!shadow)
+            auto candidate = makeDispatch(true, true);
+            if (!candidate)
             {
                 rollbackStaged();
-                full_resync = true;
-                return lux::cxx::unexpected(shadow.error());
+                full_resync_next = true;
+                return lux::cxx::unexpected(candidate.error());
             }
+            auto fallback = makeDispatch(false, false);
+            if (!fallback)
+            {
+                rollbackStaged();
+                full_resync_next = true;
+                return lux::cxx::unexpected(fallback.error());
+            }
+            destroyRetired();
             auto started = startPending();
             if (!started)
             {
                 rollbackStaged();
-                full_resync = true;
+                publishDispatch(std::move(*fallback));
+                full_resync_next = true;
                 return started;
             }
-            publish(std::move(*shadow));
-            destroyRetired();
+            publishDispatch(std::move(*candidate));
+            commitPending();
             return {};
         }
 
@@ -1931,13 +2018,15 @@ namespace lux::simulation
         std::vector<Event> events;
         std::vector<std::unique_ptr<MountRuntime>> mounts;
         DispatchIndex dispatch;
-        std::vector<DirtyEntity> dirty;
+        std::vector<DirtyEntity> dirty_current;
+        std::vector<DirtyEntity> dirty_next;
         std::vector<ScriptBindingFailure> failures;
         ScriptBindingInstrumentation instrumentation;
         entt::scoped_connection constructed;
         entt::scoped_connection updated;
         entt::scoped_connection destroyed;
-        bool full_resync{};
+        bool full_resync_current{};
+        bool full_resync_next{};
         bool prepared_once{};
         bool shut_down{};
     };

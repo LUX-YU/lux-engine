@@ -1,0 +1,7 @@
+LUX_SEMANTIC_BUILTIN(BOOL, bool, "lux.bool", 1U)
+LUX_SEMANTIC_BUILTIN(I32, std::int32_t, "lux.i32", 2U)
+LUX_SEMANTIC_BUILTIN(U32, std::uint32_t, "lux.u32", 3U)
+LUX_SEMANTIC_BUILTIN(I64, std::int64_t, "lux.i64", 4U)
+LUX_SEMANTIC_BUILTIN(U64, std::uint64_t, "lux.u64", 5U)
+LUX_SEMANTIC_BUILTIN(F32, float, "lux.f32", 6U)
+LUX_SEMANTIC_BUILTIN(F64, double, "lux.f64", 7U)

@@ -1,36 +1,22 @@
 #pragma once
 
-#include <array>
-#include <concepts>
-#include <cstdint>
-#include <span>
-#include <string_view>
-#include <type_traits>
+#include <lux/engine/core/semantic/SemanticType.hpp>
 
-#include <lux/engine/function/script/abi/lux_script_abi.h>
+#include <cstdint>
+#include <string_view>
 
 namespace lux::script
 {
     using ScriptSymbolId = std::uint64_t;
     inline constexpr ScriptSymbolId InvalidScriptSymbolId = 0U;
 
-    enum class EScriptPassMode : std::uint8_t
-    {
-        VALUE,
-        CONST_REF,
-    };
+    using EScriptPassMode = lux::semantic::EValuePass;
 
     [[nodiscard]] constexpr std::uint64_t scriptSemanticTypeId(
         std::string_view canonical_name
     ) noexcept
     {
-        std::uint64_t result = 14695981039346656037ULL;
-        for (const auto value : canonical_name)
-        {
-            result ^= static_cast<std::uint8_t>(value);
-            result *= 1099511628211ULL;
-        }
-        return result;
+        return lux::semantic::typeId(canonical_name);
     }
 
     [[nodiscard]] constexpr ScriptSymbolId scriptSymbolId(
@@ -41,23 +27,8 @@ namespace lux::script
         return value == InvalidScriptSymbolId ? 1U : value;
     }
 
-    struct ScriptSemanticType final
-    {
-        std::uint64_t type_id{};
-        std::string_view canonical_name;
-        EScriptPassMode pass{EScriptPassMode::VALUE};
-
-        [[nodiscard]] friend constexpr bool operator==(
-            const ScriptSemanticType&,
-            const ScriptSemanticType&
-        ) noexcept = default;
-    };
-
-    struct ScriptFunctionSignatureView final
-    {
-        std::span<const ScriptSemanticType> parameters;
-        std::span<const ScriptSemanticType> returns;
-    };
+    using ScriptSemanticType = lux::semantic::Type;
+    using ScriptFunctionSignatureView = lux::semantic::SignatureView;
 
     [[nodiscard]] constexpr ScriptSymbolId scriptSymbolId(
         std::string_view declaring_scope,
@@ -100,28 +71,15 @@ namespace lux::script
         ScriptFunctionSignatureView right
     ) noexcept
     {
-        if (left.parameters.size() != right.parameters.size() ||
-            left.returns.size() != right.returns.size())
-        {
-            return false;
-        }
-        for (std::size_t index{}; index < left.parameters.size(); ++index)
-        {
-            if (left.parameters[index] != right.parameters[index])
-                return false;
-        }
-        for (std::size_t index{}; index < left.returns.size(); ++index)
-        {
-            if (left.returns[index] != right.returns[index])
-                return false;
-        }
-        return true;
+        return lux::semantic::sameSignature(left, right);
     }
 
     template <class Type>
-    struct ScriptSemanticTypeTraits;
+    struct ScriptSemanticTypeTraits
+    {
+    };
 
-#define LUX_SCRIPT_BUILTIN(tag, cpp_type, canonical, abi_kind_value)           \
+#define LUX_SEMANTIC_BUILTIN(tag, cpp_type, canonical, abi_kind_value)         \
     template <>                                                                \
     struct ScriptSemanticTypeTraits<cpp_type> final                            \
     {                                                                          \
@@ -131,9 +89,9 @@ namespace lux::script
         inline static constexpr std::uint32_t Alignment = alignof(cpp_type);   \
     };
 
-#include <lux/engine/function/script/ScriptSemanticBuiltin.def>
+#include <lux/engine/core/semantic/SemanticBuiltin.def>
 
-#undef LUX_SCRIPT_BUILTIN
+#undef LUX_SEMANTIC_BUILTIN
 
     template <class Type>
     concept ScriptSemanticTypeDeclared = requires
@@ -153,33 +111,14 @@ namespace lux::script
         return ScriptSemanticType{scriptSemanticTypeId(name), name, pass};
     }
 
-    struct ScriptSemanticLayout final
-    {
-        std::uint64_t type_id{};
-        std::string_view canonical_name;
-        std::uint8_t abi_kind{LUX_SCRIPT_VK_VOID};
-        std::uint32_t size{};
-        std::uint32_t alignment{};
-    };
-
-    inline constexpr auto ScriptBuiltinSemanticLayouts = std::array{
-#define LUX_SCRIPT_BUILTIN(tag, cpp_type, canonical, abi_kind_value)           \
-        ScriptSemanticLayout{                                                  \
-            scriptSemanticTypeId(canonical), canonical, abi_kind_value,        \
-            sizeof(cpp_type), alignof(cpp_type)},
-#include <lux/engine/function/script/ScriptSemanticBuiltin.def>
-#undef LUX_SCRIPT_BUILTIN
-    };
+    using ScriptSemanticLayout = lux::semantic::Layout;
+    inline constexpr auto ScriptBuiltinSemanticLayouts =
+        lux::semantic::BuiltinLayouts;
 
     [[nodiscard]] constexpr const ScriptSemanticLayout* scriptBuiltinLayout(
         std::uint64_t type_id
     ) noexcept
     {
-        for (const auto& layout : ScriptBuiltinSemanticLayouts)
-        {
-            if (layout.type_id == type_id)
-                return &layout;
-        }
-        return nullptr;
+        return lux::semantic::builtinLayout(type_id);
     }
 }

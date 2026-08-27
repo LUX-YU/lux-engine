@@ -38,7 +38,7 @@ namespace lux::simulation
 #define LUX_META_BASE_F32 Float
 #define LUX_META_BASE_F64 Double
 #define LUX_META_BASE_VALUE(tag) LUX_META_BASE_##tag
-#define LUX_SCRIPT_BUILTIN(tag, cpp_type, canonical, abi_kind_value)           \
+#define LUX_SEMANTIC_BUILTIN(tag, cpp_type, canonical, abi_kind_value)         \
             Mapping{                                                          \
                 lux::meta::EBaseType::LUX_META_BASE_VALUE(tag),                \
                 lux::cxx::type_hash<cpp_type>(),                               \
@@ -49,9 +49,9 @@ namespace lux::simulation
                     sizeof(cpp_type),                                          \
                     alignof(cpp_type)}},
             static const auto mappings = std::array{
-#include <lux/engine/function/script/ScriptSemanticBuiltin.def>
+#include <lux/engine/core/semantic/SemanticBuiltin.def>
             };
-#undef LUX_SCRIPT_BUILTIN
+#undef LUX_SEMANTIC_BUILTIN
 #undef LUX_META_BASE_VALUE
 #undef LUX_META_BASE_F64
 #undef LUX_META_BASE_F32

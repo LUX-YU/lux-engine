@@ -68,6 +68,30 @@ lux_classify_target(
 )
 add_test(NAME vnext_ecs_system_registry COMMAND ecs_system_registry_test)
 
+add_executable(
+    simulation_endpoint_point_test
+    test/endpoint_point_test.cpp
+)
+target_link_libraries(
+    simulation_endpoint_point_test
+    PRIVATE lux::engine::simulation::system
+)
+if(MSVC)
+    target_compile_options(simulation_endpoint_point_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_endpoint_point_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_endpoint_point_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME simulation_endpoint_point_test
+    COMMAND simulation_endpoint_point_test
+)
+
 include_component_cmake_scripts(meta)
 engine_add_type_runtime_info(
     NAME simulation_object_boundary_meta

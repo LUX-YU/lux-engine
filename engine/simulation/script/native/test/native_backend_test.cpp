@@ -18,6 +18,7 @@ namespace
         };
 
         std::array<std::shared_ptr<lux::script::NativeModule>, 2U> modules;
+        std::size_t resolves{};
         std::size_t releases{};
 
         static void release(void* opaque) noexcept
@@ -35,6 +36,7 @@ namespace
         ) noexcept
         {
             auto& self = *static_cast<Provider*>(opaque);
+            ++self.resolves;
             const auto bytes = asset.bytes();
             const auto index = std::to_integer<std::uint8_t>(bytes[0]) == 2U
                 ? 1U
@@ -256,6 +258,35 @@ int main()
     descriptor.destroyInstance(descriptor.context, first_instance);
     descriptor.destroyInstance(descriptor.context, second_instance);
     descriptor.destroyInstance(descriptor.context, third_instance);
+    id_bytes[0] = 1U;
+    ScriptBackendInstance recycled_instance;
+    assert(descriptor.createInstance(
+        descriptor.context,
+        ScriptInstanceCreateContext{
+            lux::asset::AssetId{id_bytes},
+            ScriptMountId{5U}},
+        asset,
+        recycled_instance
+    ) == EScriptBackendResult::SUCCESS);
+    assert(recycled_instance.value == third_instance.value);
+    lux::script::BoundScriptCall recycled_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        recycled_instance,
+        function,
+        recycled_call
+    ) == EScriptBackendResult::SUCCESS);
+    assert(
+        recycled_call.context == second.context ||
+        recycled_call.context == first.context
+    );
+    descriptor.releaseMethod(
+        descriptor.context,
+        recycled_instance,
+        recycled_call
+    );
+    descriptor.destroyInstance(descriptor.context, recycled_instance);
+    assert(provider.resolves == 6U);
     backend.reset();
     module.reset();
     second_module.reset();

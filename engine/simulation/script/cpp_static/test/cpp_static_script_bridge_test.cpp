@@ -119,6 +119,11 @@ int main()
     lux::asset::ScriptAssetContent entity_asset;
     entity_asset.description = projected->description();
     const std::array descriptors{std::addressof(*projected)};
+    const std::array duplicate_descriptors{
+        std::addressof(*projected),
+        std::addressof(*projected)};
+    CppStaticScriptBackend duplicate_backend{duplicate_descriptors, 1U};
+    assert(!duplicate_backend);
     CppStaticScriptBackend backend{descriptors, 1U};
     assert(backend);
     const auto descriptor = backend.descriptor();
@@ -170,6 +175,32 @@ int main()
 
     descriptor.releaseMethod(descriptor.context, instance, call);
     descriptor.destroyInstance(descriptor.context, instance);
+    ScriptBackendInstance recycled_instance;
+    assert(descriptor.createInstance(
+        descriptor.context,
+        ScriptInstanceCreateContext{
+            assetId(),
+            ScriptMountId{4U},
+            EntityScriptScope{ecs::Entity{4U}},
+            &behavior},
+        entity_asset,
+        recycled_instance
+    ) == EScriptBackendResult::SUCCESS);
+    assert(recycled_instance.value == instance.value);
+    lux::script::BoundScriptCall recycled_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        recycled_instance,
+        entity_asset.description.exports[0],
+        recycled_call
+    ) == EScriptBackendResult::SUCCESS);
+    assert(recycled_call.context == call.context);
+    descriptor.releaseMethod(
+        descriptor.context,
+        recycled_instance,
+        recycled_call
+    );
+    descriptor.destroyInstance(descriptor.context, recycled_instance);
 
     lux::asset::ScriptAssetContent global_asset;
     global_asset.description = global->description();

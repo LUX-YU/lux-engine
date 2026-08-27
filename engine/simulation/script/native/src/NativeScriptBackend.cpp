@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <new>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -17,6 +19,11 @@ namespace lux::simulation::script
             const lux::script::NativeModule* module{};
             void* lease{};
             void (*release)(void*) noexcept{};
+            void* state_slab{};
+            std::size_t state_stride{};
+            std::size_t state_align{1U};
+            bool over_aligned{};
+            std::vector<std::size_t> free_state_slots;
         };
 
         struct Instance final
@@ -26,6 +33,7 @@ namespace lux::simulation::script
             std::size_t state_size{};
             std::size_t state_align{1U};
             bool over_aligned{};
+            std::size_t state_slot{(std::numeric_limits<std::size_t>::max)()};
         };
 
         State(
@@ -40,15 +48,92 @@ namespace lux::simulation::script
               record_layouts(layouts)
         {
             modules.reserve(module_capacity);
+            module_index.reserve(module_capacity);
+            instances.resize(instance_capacity);
+            free_instances.reserve(instance_capacity);
+            for (std::size_t index = instance_capacity; index > 0U; --index)
+                free_instances.push_back(index - 1U);
         }
 
         ~State()
         {
             for (auto entry = modules.rbegin(); entry != modules.rend(); ++entry)
             {
+                if (entry->state_slab)
+                {
+                    if (entry->over_aligned)
+                    {
+                        ::operator delete(
+                            entry->state_slab,
+                            std::align_val_t{entry->state_align}
+                        );
+                    }
+                    else
+                    {
+                        ::operator delete(entry->state_slab);
+                    }
+                }
                 if (entry->release)
                     entry->release(entry->lease);
             }
+        }
+
+        [[nodiscard]] bool initializeStateSlab(
+            ModuleEntry& entry,
+            const lux::rdesc::NativeModuleScript& body
+        ) noexcept
+        {
+            if (body.state_size == 0U)
+                return true;
+            const auto alignment = static_cast<std::size_t>(body.state_align);
+            const auto size = static_cast<std::size_t>(body.state_size);
+            const auto padding = alignment - 1U;
+            const bool stride_overflow = size >
+                (std::numeric_limits<std::size_t>::max)() - padding;
+            if (stride_overflow)
+                return false;
+            entry.state_stride = (size + padding) & ~padding;
+            const bool slab_overflow = instance_capacity != 0U &&
+                entry.state_stride >
+                    (std::numeric_limits<std::size_t>::max)() /
+                        instance_capacity;
+            if (slab_overflow)
+                return false;
+            entry.state_align = alignment;
+            entry.over_aligned = alignment > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+            const auto slab_size = entry.state_stride * instance_capacity;
+            entry.state_slab = entry.over_aligned
+                ? ::operator new(
+                    slab_size,
+                    std::align_val_t{alignment},
+                    std::nothrow
+                )
+                : ::operator new(slab_size, std::nothrow);
+            if (!entry.state_slab)
+                return false;
+            try
+            {
+                entry.free_state_slots.reserve(instance_capacity);
+                for (std::size_t index = instance_capacity; index > 0U; --index)
+                    entry.free_state_slots.push_back(index - 1U);
+            }
+            catch (const std::bad_alloc&)
+            {
+                if (entry.over_aligned)
+                {
+                    ::operator delete(
+                        entry.state_slab,
+                        std::align_val_t{alignment}
+                    );
+                }
+                else
+                {
+                    ::operator delete(entry.state_slab);
+                }
+                entry.state_slab = nullptr;
+                return false;
+            }
+            return true;
         }
 
         [[nodiscard]] bool expectedLayout(
@@ -147,22 +232,16 @@ namespace lux::simulation::script
             ModuleEntry*& result
         ) noexcept
         {
-            const auto found = std::find_if(
-                modules.begin(),
-                modules.end(),
-                [&](const ModuleEntry& entry) noexcept
-                {
-                    return entry.asset == asset_id;
-                }
-            );
-            if (found != modules.end())
+            const auto found = module_index.find(asset_id);
+            if (found != module_index.end())
             {
-                if (!executableContractMatches(*found->module, asset))
+                auto& entry = modules[found->second];
+                if (!executableContractMatches(*entry.module, asset))
                 {
                     return EScriptBackendResult::
                         EXECUTABLE_CONTRACT_MISMATCH;
                 }
-                result = std::addressof(*found);
+                result = std::addressof(entry);
                 return EScriptBackendResult::SUCCESS;
             }
             if (modules.size() >= module_capacity)
@@ -187,6 +266,7 @@ namespace lux::simulation::script
                     resolved.release(resolved.lease);
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             }
+            bool module_appended{};
             try
             {
                 modules.push_back(ModuleEntry{
@@ -194,13 +274,66 @@ namespace lux::simulation::script
                     resolved.module,
                     resolved.lease,
                     resolved.release});
+                module_appended = true;
+                auto& entry = modules.back();
+                const auto& body = std::get<lux::rdesc::NativeModuleScript>(
+                    asset.description.body
+                );
+                if (!initializeStateSlab(entry, body))
+                {
+                    modules.pop_back();
+                    if (resolved.release)
+                        resolved.release(resolved.lease);
+                    return EScriptBackendResult::ALLOCATION_FAILURE;
+                }
+                const auto module_slot = modules.size() - 1U;
+                if (!module_index.emplace(asset_id, module_slot).second)
+                {
+                    if (entry.state_slab)
+                    {
+                        if (entry.over_aligned)
+                        {
+                            ::operator delete(
+                                entry.state_slab,
+                                std::align_val_t{entry.state_align}
+                            );
+                        }
+                        else
+                        {
+                            ::operator delete(entry.state_slab);
+                        }
+                    }
+                    modules.pop_back();
+                    if (resolved.release)
+                        resolved.release(resolved.lease);
+                    return EScriptBackendResult::CONSTRUCTION_FAILURE;
+                }
                 resolved.lease = nullptr;
                 resolved.release = nullptr;
-                result = std::addressof(modules.back());
+                result = std::addressof(entry);
                 return EScriptBackendResult::SUCCESS;
             }
             catch (const std::bad_alloc&)
             {
+                if (module_appended)
+                {
+                    auto& entry = modules.back();
+                    if (entry.state_slab)
+                    {
+                        if (entry.over_aligned)
+                        {
+                            ::operator delete(
+                                entry.state_slab,
+                                std::align_val_t{entry.state_align}
+                            );
+                        }
+                        else
+                        {
+                            ::operator delete(entry.state_slab);
+                        }
+                    }
+                    modules.pop_back();
+                }
                 if (resolved.release)
                     resolved.release(resolved.lease);
                 return EScriptBackendResult::ALLOCATION_FAILURE;
@@ -223,7 +356,7 @@ namespace lux::simulation::script
             {
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             }
-            if (self.live_instances >= self.instance_capacity)
+            if (self.free_instances.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             ModuleEntry* module{};
             const auto module_result = self.resolveModule(
@@ -233,9 +366,12 @@ namespace lux::simulation::script
             );
             if (module_result != EScriptBackendResult::SUCCESS)
                 return module_result;
-            auto* instance = new (std::nothrow) Instance;
-            if (!instance)
-                return EScriptBackendResult::ALLOCATION_FAILURE;
+            if (body->state_size != 0U && module->free_state_slots.empty())
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            const auto instance_slot = self.free_instances.back();
+            self.free_instances.pop_back();
+            auto* instance = std::addressof(self.instances[instance_slot]);
+            *instance = {};
             instance->module = module;
             instance->state_size = body->state_size;
             instance->state_align = body->state_align;
@@ -243,17 +379,10 @@ namespace lux::simulation::script
                 __STDCPP_DEFAULT_NEW_ALIGNMENT__;
             if (body->state_size != 0U)
             {
-                instance->state = instance->over_aligned
-                    ? ::operator new(
-                        body->state_size,
-                        std::align_val_t{body->state_align},
-                        std::nothrow)
-                    : ::operator new(body->state_size, std::nothrow);
-                if (!instance->state)
-                {
-                    delete instance;
-                    return EScriptBackendResult::ALLOCATION_FAILURE;
-                }
+                instance->state_slot = module->free_state_slots.back();
+                module->free_state_slots.pop_back();
+                instance->state = static_cast<std::byte*>(module->state_slab) +
+                    instance->state_slot * module->state_stride;
                 std::memset(instance->state, 0, body->state_size);
                 if (!body->state_defaults.empty())
                 {
@@ -327,19 +456,16 @@ namespace lux::simulation::script
                 return;
             if (instance->state)
             {
-                if (instance->over_aligned)
-                {
-                    ::operator delete(
-                        instance->state,
-                        std::align_val_t{instance->state_align}
-                    );
-                }
-                else
-                {
-                    ::operator delete(instance->state);
-                }
+                std::memset(instance->state, 0, instance->state_size);
+                instance->module->free_state_slots.push_back(
+                    instance->state_slot
+                );
             }
-            delete instance;
+            const auto instance_slot = static_cast<std::size_t>(
+                instance - self.instances.data()
+            );
+            *instance = {};
+            self.free_instances.push_back(instance_slot);
             if (self.live_instances != 0U)
                 --self.live_instances;
         }
@@ -350,6 +476,9 @@ namespace lux::simulation::script
         std::size_t live_instances{};
         NativeScriptRecordLayoutResolver record_layouts;
         std::vector<ModuleEntry> modules;
+        std::unordered_map<lux::asset::AssetId, std::size_t> module_index;
+        std::vector<Instance> instances;
+        std::vector<std::size_t> free_instances;
     };
 
     NativeScriptBackend::NativeScriptBackend(

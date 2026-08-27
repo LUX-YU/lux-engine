@@ -4,6 +4,7 @@
 #include <limits>
 #include <new>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -440,9 +441,17 @@ namespace lux::simulation::script
 
     struct CppStaticScriptBackend::State final
     {
-        struct Instance final
+        struct DescriptorIndex final
         {
             const CppStaticScriptDescriptor::State* descriptor{};
+            std::unordered_map<
+                lux::script::ScriptSymbolId,
+                const Callable*> callables;
+        };
+
+        struct Instance final
+        {
+            const DescriptorIndex* descriptor{};
             void* object{};
         };
 
@@ -451,6 +460,7 @@ namespace lux::simulation::script
             Instance* instance{};
             const Callable* callable{};
             std::vector<void*> arguments;
+            bool active{};
 
             static int invoke(lux_script_call_frame* frame) noexcept
             {
@@ -488,9 +498,68 @@ namespace lux::simulation::script
             : instance_capacity(capacity)
         {
             descriptors.assign(source.begin(), source.end());
+            descriptor_indexes.reserve(source.size());
+            descriptor_by_key.reserve(source.size());
+            std::size_t maximum_parameters{};
+            std::size_t prepared_capacity{};
+            for (const auto* descriptor : descriptors)
+            {
+                if (!descriptor || !descriptor->state_ ||
+                    descriptor->state_->descriptor_key.empty())
+                {
+                    valid = false;
+                    return;
+                }
+                DescriptorIndex index;
+                index.descriptor = descriptor->state_.get();
+                index.callables.reserve(index.descriptor->callables.size());
+                for (const auto& callable : index.descriptor->callables)
+                {
+                    if (!index.callables.emplace(
+                            callable.symbol,
+                            std::addressof(callable)
+                        ).second)
+                    {
+                        valid = false;
+                        return;
+                    }
+                    const auto& invokable = callable.method
+                        ? callable.method->invokable
+                        : callable.function->invokable;
+                    maximum_parameters = (std::max)(
+                        maximum_parameters,
+                        invokable.parameters.size()
+                    );
+                }
+                descriptor_indexes.push_back(std::move(index));
+                const auto descriptor_index = descriptor_indexes.size() - 1U;
+                if (!descriptor_by_key.emplace(
+                        descriptor->state_->descriptor_key,
+                        descriptor_index
+                    ).second)
+                {
+                    valid = false;
+                    return;
+                }
+                prepared_capacity += descriptor->state_->callables.size();
+            }
+            prepared_capacity *= instance_capacity;
+            instances.resize(instance_capacity);
+            free_instances.reserve(instance_capacity);
+            for (std::size_t index = instance_capacity; index > 0U; --index)
+                free_instances.push_back(index - 1U);
+            prepared_calls.resize(prepared_capacity);
+            free_prepared_calls.reserve(prepared_capacity);
+            for (std::size_t index = prepared_capacity; index > 0U; --index)
+            {
+                prepared_calls[index - 1U].arguments.resize(
+                    maximum_parameters
+                );
+                free_prepared_calls.push_back(index - 1U);
+            }
         }
 
-        [[nodiscard]] const CppStaticScriptDescriptor::State* find(
+        [[nodiscard]] const DescriptorIndex* find(
             const lux::asset::ScriptAssetContent& asset
         ) const noexcept
         {
@@ -499,42 +568,10 @@ namespace lux::simulation::script
             );
             if (!body)
                 return nullptr;
-            for (const auto* descriptor : descriptors)
-            {
-                if (!descriptor || !descriptor->state_)
-                    continue;
-                if (descriptor->state_->descriptor_key == body->descriptor)
-                {
-                    return descriptor->state_.get();
-                }
-            }
-            const CppStaticScriptDescriptor::State* only_descriptor{};
-            std::size_t valid_descriptor_count{};
-            for (const auto* descriptor : descriptors)
-            {
-                if (descriptor && descriptor->state_)
-                {
-                    only_descriptor = descriptor->state_.get();
-                    ++valid_descriptor_count;
-                }
-            }
-            if (valid_descriptor_count == 1U)
-                return only_descriptor;
-
-            const CppStaticScriptDescriptor::State* candidate{};
-            for (const auto* descriptor : descriptors)
-            {
-                if (!descriptor || !descriptor->state_ ||
-                    descriptor->state_->description.exports !=
-                        asset.description.exports)
-                {
-                    continue;
-                }
-                if (candidate)
-                    return nullptr;
-                candidate = descriptor->state_.get();
-            }
-            return candidate;
+            const auto found = descriptor_by_key.find(body->descriptor);
+            return found == descriptor_by_key.end()
+                ? nullptr
+                : std::addressof(descriptor_indexes[found->second]);
         }
 
         [[nodiscard]] static bool executableContractMatches(
@@ -564,25 +601,28 @@ namespace lux::simulation::script
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            const auto* descriptor = self.find(asset);
-            if (!descriptor)
+            const auto* descriptor_index = self.find(asset);
+            if (!descriptor_index)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            if (!executableContractMatches(asset, *descriptor))
+            const auto& descriptor = *descriptor_index->descriptor;
+            if (!executableContractMatches(asset, descriptor))
             {
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             }
             const bool entity_scope =
                 std::holds_alternative<EntityScriptScope>(context.scope);
-            if (descriptor->entity_scope != entity_scope)
+            if (descriptor.entity_scope != entity_scope)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-            if (self.active_instances >= self.instance_capacity)
+            if (self.free_instances.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
-            auto* instance = new (std::nothrow) Instance{descriptor, nullptr};
-            if (!instance)
-                return EScriptBackendResult::ALLOCATION_FAILURE;
-            if (descriptor->reflected_class)
+            const auto instance_slot = self.free_instances.back();
+            self.free_instances.pop_back();
+            auto* instance = std::addressof(self.instances[instance_slot]);
+            instance->descriptor = descriptor_index;
+            instance->object = nullptr;
+            if (descriptor.reflected_class)
             {
-                const auto& type = descriptor->reflected_class->type;
+                const auto& type = descriptor.reflected_class->type;
                 try
                 {
                     instance->object = ::operator new(
@@ -592,12 +632,13 @@ namespace lux::simulation::script
                     );
                     if (!instance->object)
                     {
-                        delete instance;
+                        *instance = {};
+                        self.free_instances.push_back(instance_slot);
                         return EScriptBackendResult::ALLOCATION_FAILURE;
                     }
-                    descriptor->reflected_class->construct(instance->object);
-                    if (descriptor->attach && context.behavior)
-                        descriptor->attach(
+                    descriptor.reflected_class->construct(instance->object);
+                    if (descriptor.attach && context.behavior)
+                        descriptor.attach(
                             instance->object,
                             *context.behavior
                         );
@@ -611,7 +652,8 @@ namespace lux::simulation::script
                             std::align_val_t{type.alignment}
                         );
                     }
-                    delete instance;
+                    *instance = {};
+                    self.free_instances.push_back(instance_slot);
                     return EScriptBackendResult::CONSTRUCTION_FAILURE;
                 }
             }
@@ -621,52 +663,52 @@ namespace lux::simulation::script
         }
 
         static EScriptBackendResult prepareMethod(
-            void*,
+            void* opaque,
             ScriptBackendInstance opaque_instance,
             const lux::rdesc::ScriptFunction& function,
             lux::script::BoundScriptCall& result
         ) noexcept
         {
+            auto& self = *static_cast<State*>(opaque);
             auto* instance = static_cast<Instance*>(opaque_instance.value);
             if (!instance)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            const auto found = std::find_if(
-                instance->descriptor->callables.begin(),
-                instance->descriptor->callables.end(),
-                [&](const auto& callable) noexcept
-                {
-                    return callable.symbol == function.symbol_id;
-                }
+            const auto found = instance->descriptor->callables.find(
+                function.symbol_id
             );
             if (found == instance->descriptor->callables.end())
                 return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
-            try
-            {
-                auto call = std::make_unique<PreparedCall>();
-                call->instance = instance;
-                call->callable = std::addressof(*found);
-                const auto& invokable = found->method
-                    ? found->method->invokable
-                    : found->function->invokable;
-                call->arguments.resize(invokable.parameters.size());
-                result = lux::script::BoundScriptCall{
-                    &PreparedCall::invoke,
-                    call.release()};
-                return EScriptBackendResult::SUCCESS;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return EScriptBackendResult::ALLOCATION_FAILURE;
-            }
+            if (self.free_prepared_calls.empty())
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            const auto call_slot = self.free_prepared_calls.back();
+            self.free_prepared_calls.pop_back();
+            auto& call = self.prepared_calls[call_slot];
+            call.instance = instance;
+            call.callable = found->second;
+            call.active = true;
+            result = lux::script::BoundScriptCall{
+                &PreparedCall::invoke,
+                std::addressof(call)};
+            return EScriptBackendResult::SUCCESS;
         }
 
         static void releaseMethod(
-            void*,
+            void* opaque,
             ScriptBackendInstance,
             lux::script::BoundScriptCall call
         ) noexcept
         {
-            delete static_cast<PreparedCall*>(call.context);
+            auto& self = *static_cast<State*>(opaque);
+            auto* prepared = static_cast<PreparedCall*>(call.context);
+            if (!prepared || !prepared->active)
+                return;
+            prepared->instance = nullptr;
+            prepared->callable = nullptr;
+            prepared->active = false;
+            const auto index = static_cast<std::size_t>(
+                prepared - self.prepared_calls.data()
+            );
+            self.free_prepared_calls.push_back(index);
         }
 
         static void destroyInstance(
@@ -680,20 +722,34 @@ namespace lux::simulation::script
                 return;
             if (instance->object)
             {
-                const auto& type = instance->descriptor->reflected_class->type;
-                instance->descriptor->reflected_class->destruct(instance->object);
+                const auto& type =
+                    instance->descriptor->descriptor->reflected_class->type;
+                instance->descriptor->descriptor->reflected_class->destruct(
+                    instance->object
+                );
                 ::operator delete(
                     instance->object,
                     std::align_val_t{type.alignment}
                 );
             }
-            delete instance;
+            const auto index = static_cast<std::size_t>(
+                instance - self.instances.data()
+            );
+            *instance = {};
+            self.free_instances.push_back(index);
             --self.active_instances;
         }
 
         std::vector<const CppStaticScriptDescriptor*> descriptors;
+        std::vector<DescriptorIndex> descriptor_indexes;
+        std::unordered_map<std::string_view, std::size_t> descriptor_by_key;
+        std::vector<Instance> instances;
+        std::vector<std::size_t> free_instances;
+        std::vector<PreparedCall> prepared_calls;
+        std::vector<std::size_t> free_prepared_calls;
         std::size_t instance_capacity{};
         std::size_t active_instances{};
+        bool valid{true};
     };
 
     CppStaticScriptBackend::CppStaticScriptBackend(
@@ -706,6 +762,8 @@ namespace lux::simulation::script
         try
         {
             state_ = std::make_unique<State>(descriptors, instance_capacity);
+            if (!state_->valid)
+                state_.reset();
         }
         catch (const std::bad_alloc&)
         {

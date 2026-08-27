@@ -7,6 +7,7 @@ endforeach()
 # core target before Resource descriptions so the latter can depend on the
 # durable vocabulary without depending on a backend.
 add_subdirectory(function/script/core)
+add_subdirectory(core/meta_script)
 
 foreach(layer IN ITEMS resource function)
     add_subdirectory(${layer})

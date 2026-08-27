@@ -41,8 +41,10 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         render_client
         render_standard_content
     )
-    if(LUX_ENABLE_FLOWFORGE_MLIR)
+    if(TARGET script_core)
         list(APPEND LUX_FUNCTION_COMPONENTS script_core)
+    endif()
+    if(LUX_ENABLE_FLOWFORGE_MLIR)
         if(ENABLE_FLOWFORGE_TEST)
             list(APPEND LUX_FUNCTION_COMPONENTS script_native)
         endif()

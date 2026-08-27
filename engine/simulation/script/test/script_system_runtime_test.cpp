@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -94,6 +95,7 @@ namespace
     {
         BackendState* owner{};
         ScriptBehavior* behavior{};
+        ScriptMountId mount;
     };
 
     struct PreparedCall final
@@ -106,8 +108,6 @@ namespace
     struct BackendState final
     {
         std::size_t creates{};
-        std::size_t starts{};
-        std::size_t stops{};
         std::size_t destroys{};
         std::size_t prepares{};
         std::size_t releases{};
@@ -115,7 +115,11 @@ namespace
         std::size_t broadcast_calls{};
         std::size_t targeted_calls{};
         std::size_t entity_calls{};
-        std::vector<EBehaviorStopReason> stop_reasons;
+        ScriptMountId fail_mount;
+        lux::script::ScriptSymbolId fail_symbol{};
+        ScriptSystem* system{};
+        bool request_shutdown{};
+        std::optional<EScriptSystemError> shutdown_error;
     };
 
     int invoke(lux_script_call_frame* frame)
@@ -133,6 +137,19 @@ namespace
             ++call.owner->targeted_calls;
         else
             return 7;
+        if (call.instance->mount == call.owner->fail_mount &&
+            call.symbol == call.owner->fail_symbol)
+        {
+            return 9;
+        }
+        if (call.owner->request_shutdown && call.symbol == kHookSymbol &&
+            call.instance->mount == ScriptMountId{1U})
+        {
+            call.owner->request_shutdown = false;
+            const auto stopped = call.owner->system->shutdown();
+            if (!stopped)
+                call.owner->shutdown_error = stopped.error();
+        }
         return 0;
     }
 
@@ -146,7 +163,8 @@ namespace
         auto& state = *static_cast<BackendState*>(context);
         auto instance = new (std::nothrow) BackendInstance{
             &state,
-            create.behavior};
+            create.behavior,
+            create.mount};
         if (!instance)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         ++state.creates;
@@ -171,27 +189,6 @@ namespace
         ++backend->owner->prepares;
         output = {&invoke, call};
         return EScriptBackendResult::SUCCESS;
-    }
-
-    EScriptBackendResult startInstance(
-        void*,
-        ScriptBackendInstance instance
-    ) noexcept
-    {
-        auto* backend = static_cast<BackendInstance*>(instance.value);
-        ++backend->owner->starts;
-        return EScriptBackendResult::SUCCESS;
-    }
-
-    void stopInstance(
-        void*,
-        ScriptBackendInstance instance,
-        EBehaviorStopReason reason
-    ) noexcept
-    {
-        auto* backend = static_cast<BackendInstance*>(instance.value);
-        ++backend->owner->stops;
-        backend->owner->stop_reasons.push_back(reason);
     }
 
     void releaseMethod(
@@ -312,23 +309,13 @@ int main()
         &backend_state,
         &createInstance,
         &prepareMethod,
-        &startInstance,
-        &stopInstance,
         &releaseMethod,
         &destroyInstance}};
-    const ScriptSystemCapacities capacities{
-        4U,
-        8U,
-        2U,
-        2U,
-        8U,
-        8U,
-        8U};
     auto created = ScriptSystem::create(
         simulation,
         *description,
         registry,
-        capacities,
+        ScriptSystemOptions{8U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         backends,
@@ -337,10 +324,13 @@ int main()
     );
     assert(created);
     auto system = std::move(*created);
+    backend_state.system = &system;
     assert(system.prepare());
     assert(system.activeInstanceCount() == 2U);
+    assert(hook.handlerCount() == 1U);
+    assert(broadcast.handlerCount() == 1U);
+    assert(targeted.handlerCount() == 1U);
     assert(backend_state.creates == 2U);
-    assert(backend_state.starts == 2U);
     assert(backend_state.prepares == 5U);
 
     const SimulationStepInfo step{1.0F / 60.0F, 12U};
@@ -364,19 +354,46 @@ int main()
     assert(targeted.drain() == 2U);
     assert(backend_state.targeted_calls == 1U);
 
-    registry.remove<lux::simulation::script::detail::ScriptAttachment>(
-        fixture.entity
-    );
-    assert(system.flushMutations());
+    const auto destroyed_entity = fixture.entity;
+    registry.destroy(destroyed_entity);
+    const auto pending_world = system.flushMutations();
+    assert(!pending_world);
+    assert(pending_world.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
     assert(system.activeInstanceCount() == 1U);
-    assert(backend_state.stops == 1U);
-    assert(backend_state.stop_reasons.back() ==
-        EBehaviorStopReason::ENTITY_DESTROYED);
+
+    fixture.entity = registry.create();
+    assert(system.flushMutations());
+    assert(system.activeInstanceCount() == 2U);
+    assert(backend_state.creates == 3U);
+    assert(backend_state.prepares == 8U);
+
+    {
+        auto writer = targeted.begin(0U);
+        assert(writer.record(destroyed_entity, step));
+        assert(writer.record(fixture.entity, step));
+    }
+    assert(targeted.drain() == 2U);
+    assert(backend_state.targeted_calls == 2U);
+
+    backend_state.fail_mount = ScriptMountId{2U};
+    backend_state.fail_symbol = kHookSymbol;
+    assert(hook.dispatch(step) == 1U);
+    assert(system.activeInstanceCount() == 1U);
+    assert(system.failures().size() == 1U);
+    assert(system.failures().front().status == 9);
+    assert(system.flushMutations());
+    assert(backend_state.destroys == 2U);
+    assert(backend_state.releases == 6U);
+    assert(targeted.targetBucketCount() == 0U);
+
+    backend_state.request_shutdown = true;
+    assert(hook.dispatch(step) == 1U);
+    assert(backend_state.shutdown_error == EScriptSystemError::ENDPOINT_BUSY);
+    assert(system.activeInstanceCount() == 1U);
 
     assert(system.shutdown());
-    assert(backend_state.stops == 2U);
-    assert(backend_state.destroys == 2U);
-    assert(backend_state.releases == 5U);
-    assert(fixture.leases == 2U && fixture.releases == 2U);
+    assert(backend_state.destroys == 3U);
+    assert(backend_state.releases == 8U);
+    assert(fixture.leases == 3U && fixture.releases == 3U);
     return 0;
 }

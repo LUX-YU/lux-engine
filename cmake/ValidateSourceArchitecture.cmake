@@ -215,7 +215,7 @@ file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
     if(content MATCHES
-       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush")
+       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if")
         message(FATAL_ERROR
             "Architecture: replacement ScriptSystem source '${source}' restores a retired boundary."
         )

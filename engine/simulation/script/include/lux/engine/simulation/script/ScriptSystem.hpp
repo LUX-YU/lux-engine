@@ -22,19 +22,13 @@ namespace lux::simulation::script
     {
         struct ScriptAttachment final
         {
-            lux::world::WorldObjectId object;
+            std::uint32_t mount_slot{};
         };
     }
 
-    struct ScriptSystemCapacities final
+    struct ScriptSystemOptions final
     {
-        std::size_t instances{};
-        std::size_t prepared_methods{};
-        std::size_t hook_buckets{};
-        std::size_t event_buckets{};
-        std::size_t handlers{};
-        std::size_t failures{};
-        std::size_t mutations{};
+        std::size_t failure_capacity{};
     };
 
     enum class EScriptSystemError : std::uint8_t
@@ -55,6 +49,7 @@ namespace lux::simulation::script
         ENDPOINT_CONNECTION_FAILURE,
         INVOCATION_FAILURE,
         ALLOCATION_FAILURE,
+        ENDPOINT_BUSY,
         SHUT_DOWN,
     };
 
@@ -84,7 +79,7 @@ namespace lux::simulation::script
             const SimulationDescription &simulation,
             const ScriptSystemDescription &description,
             ecs::Registry &registry,
-            ScriptSystemCapacities capacities,
+            ScriptSystemOptions options,
             ResidentScriptResolver assets,
             ScriptWorldResolver world,
             std::span<const ScriptBackendDescriptor> backends,
@@ -93,7 +88,7 @@ namespace lux::simulation::script
             ScriptHostApi host = {}) noexcept;
 
         ScriptSystem(ScriptSystem &&) noexcept;
-        
+
         ScriptSystem &operator=(ScriptSystem &&) noexcept;
 
         ~ScriptSystem() noexcept;
@@ -111,11 +106,9 @@ namespace lux::simulation::script
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         shutdown() noexcept;
 
-        [[nodiscard]] std::size_t 
-        activeInstanceCount() const noexcept;
+        [[nodiscard]] std::size_t activeInstanceCount() const noexcept;
 
-        [[nodiscard]] std::span<const ScriptSystemFailure> 
-        failures() const noexcept;
+        [[nodiscard]] std::span<const ScriptSystemFailure> failures() const noexcept;
 
     private:
         struct State;

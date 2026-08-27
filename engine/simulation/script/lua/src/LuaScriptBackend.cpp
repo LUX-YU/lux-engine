@@ -779,8 +779,6 @@ namespace lux::simulation::script
             state_.get(),
             &State::createInstance,
             &State::prepareMethod,
-            nullptr,
-            nullptr,
             &State::releaseMethod,
             &State::destroyInstance};
     }

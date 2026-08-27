@@ -12,15 +12,6 @@
 
 namespace lux::simulation::script
 {
-    enum class EBehaviorStopReason : std::uint32_t
-    {
-        MOUNT_REMOVED,
-        ENTITY_DESTROYED,
-        SIMULATION_STOPPED,
-        INITIALIZATION_FAILED,
-        INVOCATION_FAILED,
-    };
-
     struct SimulationScriptScope final
     {
         friend constexpr bool operator==(
@@ -236,15 +227,6 @@ namespace lux::simulation::script
             ScriptBackendInstance,
             const lux::rdesc::ScriptFunction&,
             lux::script::BoundScriptCall&
-        ) noexcept{};
-        EScriptBackendResult (*startInstance)(
-            void*,
-            ScriptBackendInstance
-        ) noexcept{};
-        void (*stopInstance)(
-            void*,
-            ScriptBackendInstance,
-            EBehaviorStopReason
         ) noexcept{};
         void (*releaseMethod)(
             void*,

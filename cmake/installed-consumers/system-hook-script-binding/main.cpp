@@ -207,7 +207,7 @@ int main()
         *simulation,
         *decoded_script,
         registry,
-        ScriptSystemCapacities{1U, 2U, 1U, 1U, 2U, 2U, 2U},
+        ScriptSystemOptions{2U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         backends,

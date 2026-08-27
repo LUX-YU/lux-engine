@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/SimulationStepInfo.hpp>
 #include <lux/engine/simulation/detail/SimulationDescriptionFailureInjection.hpp>
 
 #include <array>
@@ -21,13 +22,14 @@ namespace
     inline constexpr std::array kPhysicsCapabilities{
         std::string_view{"physics.simulate"},
         std::string_view{"physics.contacts"}};
-    inline constexpr std::array kPhysicsPoints{
-        SystemExecutionPoint{"before"},
-        SystemExecutionPoint{"after"}};
+    inline constexpr std::array kPhysicsHooks{
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("before"),
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("after")};
     inline constexpr std::array kPhysicsEvents{
         makeSystemEvent<CollisionEvent>(
             "collision",
-            kPhysicsPoints[1],
+            kPhysicsHooks[1],
+            ESystemEventTarget::ENTITY_TARGETED,
             "lux.event.Collision",
             1U
         )};
@@ -37,18 +39,19 @@ namespace
         .configuration_schema_name = "lux.physics.Config",
         .configuration_schema_version = 1U,
         .capabilities = kPhysicsCapabilities,
-        .execution_points = kPhysicsPoints,
+        .hooks = kPhysicsHooks,
         .events = kPhysicsEvents};
 
     inline constexpr std::array kAnimationCapabilities{
         std::string_view{"animation.evaluate"}};
-    inline constexpr std::array kAnimationPoints{
-        SystemExecutionPoint{"before"},
-        SystemExecutionPoint{"after"}};
+    inline constexpr std::array kAnimationHooks{
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("before"),
+        makeSystemHookPoint<void(const SimulationStepInfo&)>("after")};
     inline constexpr std::array kAnimationEvents{
         makeSystemEvent<void>(
             "finished",
-            kAnimationPoints[1],
+            kAnimationHooks[1],
+            ESystemEventTarget::GLOBAL,
             "must.be.ignored",
             42U
         )};
@@ -56,7 +59,7 @@ namespace
         .canonical_name = "lux.animation",
         .version = 4U,
         .capabilities = kAnimationCapabilities,
-        .execution_points = kAnimationPoints,
+        .hooks = kAnimationHooks,
         .events = kAnimationEvents};
 
     static_assert(validSystemDescription(kPhysicsDescription));
@@ -114,10 +117,21 @@ namespace
         ));
         assert(builder.addDependency(
             "physics.primary",
-            kPhysicsPoints[1],
-            "animation",
-            kAnimationPoints[0]
+            "animation"
         ));
+        std::array<std::uint8_t, 16U> script_id_bytes{};
+        script_id_bytes[0] = 1U;
+        ScriptMountDescription global_mount{
+            lux::asset::AssetId{script_id_bytes},
+            EScriptBindingSetMode::EXPLICIT,
+            {{
+                7U,
+                lux::rdesc::EScriptBindingKind::HOOK,
+                "lux.physics",
+                "physics.primary",
+                "after"
+            }}};
+        assert(builder.addGlobalScriptMount(global_mount));
         auto built = std::move(builder).build();
         assert(built);
         assert(built->systemCount() == 3U);
@@ -132,8 +146,27 @@ namespace
                 .payloadSchemaName() == "lux.event.Collision"
         );
         assert(built->dependencyCount() == 1U);
-        assert(built->dependencyAt(0U).before().name() == "after");
-        assert(built->dependencyAt(0U).after().name() == "before");
+        assert(built->dependencyAt(0U).before().instanceName() == "physics.primary");
+        assert(built->dependencyAt(0U).after().instanceName() == "animation");
+        assert(built->globalScriptMountCount() == 1U);
+        assert(
+            built->globalScriptMountAt(0U).bindingMode() ==
+            EScriptBindingSetMode::EXPLICIT
+        );
+        assert(built->globalScriptMountAt(0U).bindingCount() == 1U);
+        assert(built->globalScriptMountAt(0U).bindingAt(0U)->function == 7U);
+        const auto after = built->findHookPoint("physics.primary", "after");
+        assert(after);
+        assert(after.cardinality() == ESystemHookCardinality::MULTI);
+        assert(after.parameterCount() == 1U);
+        assert(
+            after.parameterAt(0U).pass ==
+            lux::script::EScriptPassMode::CONST_REF
+        );
+        assert(
+            built->findEvent("physics.primary", "collision").target() ==
+            ESystemEventTarget::ENTITY_TARGETED
+        );
 
         SimulationDescriptionBuilder invalid;
         assert(invalid.addSystem("physics", kPhysicsDescription, physics_config));
@@ -141,48 +174,27 @@ namespace
         assert(invalid.addSystem("animation", kAnimationDescription));
         auto missing = invalid.addDependency(
             "missing",
-            "after",
-            "animation",
-            "before"
+            "animation"
         );
         assert(!missing);
         assert(missing.error().code == ESimulationDescriptionError::SYSTEM_NOT_FOUND);
-        auto point = invalid.addDependency(
-            "physics",
-            "missing",
-            "animation",
-            "before"
-        );
-        assert(!point);
-        assert(
-            point.error().code ==
-            ESimulationDescriptionError::EXECUTION_POINT_NOT_FOUND
-        );
         auto self = invalid.addDependency(
             "physics",
-            "after",
-            "physics",
-            "before"
+            "physics"
         );
         assert(!self);
         assert(self.error().code == ESimulationDescriptionError::INVALID_DEPENDENCY);
         assert(invalid.addDependency(
             "physics",
-            "after",
-            "animation",
-            "before"
+            "animation"
         ));
         assert(!invalid.addDependency(
             "physics",
-            "after",
-            "animation",
-            "before"
+            "animation"
         ));
         auto cycle = invalid.addDependency(
             "animation",
-            "after",
-            "physics",
-            "before"
+            "physics"
         );
         assert(!cycle);
         assert(cycle.error().code == ESimulationDescriptionError::DEPENDENCY_CYCLE);

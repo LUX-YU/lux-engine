@@ -28,17 +28,18 @@ namespace lux::simulation
         INVALID_CONFIGURATION_SCHEMA,
         INVALID_CAPABILITY,
         DUPLICATE_CAPABILITY,
-        INVALID_EXECUTION_POINT,
-        DUPLICATE_EXECUTION_POINT,
+        INVALID_HOOK_POINT,
+        DUPLICATE_HOOK_POINT,
         INVALID_EVENT,
         DUPLICATE_EVENT,
-        INVALID_EVENT_DISPATCH_POINT,
+        INVALID_EVENT_DISPATCH_HOOK,
         INVALID_EVENT_PAYLOAD_SCHEMA,
         SYSTEM_NOT_FOUND,
-        EXECUTION_POINT_NOT_FOUND,
         INVALID_DEPENDENCY,
         DUPLICATE_DEPENDENCY,
         DEPENDENCY_CYCLE,
+        INVALID_SCRIPT_MOUNT,
+        SCRIPT_MOUNT_NOT_FOUND,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
     };
@@ -103,26 +104,20 @@ namespace lux::simulation
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         addDependency(
             std::string_view before_system,
-            SystemExecutionPoint before_point,
-            std::string_view after_system,
-            SystemExecutionPoint after_point
-        ) noexcept;
-
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addDependency(
-            std::string_view before_system,
-            std::string_view before_point,
-            std::string_view after_system,
-            std::string_view after_point
+            std::string_view after_system
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         eraseDependency(
             std::string_view before_system,
-            std::string_view before_point,
-            std::string_view after_system,
-            std::string_view after_point
+            std::string_view after_system
         ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        addGlobalScriptMount(const ScriptMountDescription& mount) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        eraseGlobalScriptMount(std::size_t ordinal) noexcept;
 
         void clear() noexcept;
 

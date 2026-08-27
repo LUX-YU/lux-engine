@@ -41,12 +41,13 @@ namespace lux::simulation::test
         static const signal_type<MaterialTextureDemand> textureDemand;
         inline static constexpr std::array Capabilities{
             std::string_view{"material.texture-residency"}};
-        inline static constexpr std::array ExecutionPoints{
-            SystemExecutionPoint{"update"}};
+        inline static constexpr std::array Hooks{
+            makeSystemHookPoint<void()>("update")};
         inline static constexpr std::array Events{
             makeSystemEvent<MaterialTextureDemand>(
                 "texture-demand",
-                ExecutionPoints[0],
+                Hooks[0],
+                ESystemEventTarget::GLOBAL,
                 "lux.material.TextureDemand",
                 1U
             )};
@@ -56,7 +57,7 @@ namespace lux::simulation::test
             .canonical_name = "lux.test.material-texture",
             .version = 1U,
             .capabilities = Capabilities,
-            .execution_points = ExecutionPoints,
+            .hooks = Hooks,
             .events = Events};
 
         [[nodiscard]] bool prepare(std::size_t completion_capacity) noexcept

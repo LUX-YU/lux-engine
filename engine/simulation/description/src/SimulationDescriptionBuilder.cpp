@@ -20,10 +20,35 @@ namespace lux::simulation
             std::vector<std::byte> payload;
         };
 
+        struct PendingSemanticType final
+        {
+            std::uint64_t type_id{};
+            std::string canonical_name;
+            lux::script::EScriptPassMode pass{
+                lux::script::EScriptPassMode::VALUE};
+
+            friend bool operator==(
+                const PendingSemanticType&,
+                const PendingSemanticType&
+            ) noexcept = default;
+        };
+
+        struct PendingHook final
+        {
+            std::string name;
+            ESystemHookCardinality cardinality{ESystemHookCardinality::MULTI};
+            std::vector<PendingSemanticType> parameters;
+            std::vector<PendingSemanticType> returns;
+
+            friend bool operator==(const PendingHook&, const PendingHook&) noexcept =
+                default;
+        };
+
         struct PendingEvent final
         {
             std::string name;
-            std::size_t dispatch_point_ordinal{};
+            std::size_t dispatch_hook_ordinal{};
+            ESystemEventTarget target{ESystemEventTarget::GLOBAL};
             std::string payload_schema_name;
             std::uint64_t payload_schema_hash{};
             std::uint32_t payload_schema_version{};
@@ -38,7 +63,7 @@ namespace lux::simulation
             std::uint64_t configuration_schema_hash{};
             std::uint32_t configuration_schema_version{};
             std::vector<std::string> capabilities;
-            std::vector<std::string> execution_points;
+            std::vector<PendingHook> hooks;
             std::vector<PendingEvent> events;
             std::vector<std::byte> configuration;
         };
@@ -46,9 +71,7 @@ namespace lux::simulation
         struct PendingDependency final
         {
             std::string before_system;
-            std::string before_point;
             std::string after_system;
-            std::string after_point;
 
             friend bool operator==(const PendingDependency&, const PendingDependency&)
                 noexcept = default;
@@ -57,6 +80,7 @@ namespace lux::simulation
         std::vector<PendingData> data;
         std::vector<PendingSystem> systems;
         std::vector<PendingDependency> dependencies;
+        std::vector<ScriptMountDescription> global_script_mounts;
     };
 
     namespace
@@ -133,7 +157,7 @@ namespace lux::simulation
                 left.configuration_schema_version !=
                     right.configuration_schema_version ||
                 left.capabilities != right.capabilities ||
-                left.execution_points != right.execution_points ||
+                left.hooks != right.hooks ||
                 left.events.size() != right.events.size())
             {
                 return false;
@@ -143,7 +167,8 @@ namespace lux::simulation
                 const auto& a = left.events[index];
                 const auto& b = right.events[index];
                 if (a.name != b.name ||
-                    a.dispatch_point_ordinal != b.dispatch_point_ordinal ||
+                    a.dispatch_hook_ordinal != b.dispatch_hook_ordinal ||
+                    a.target != b.target ||
                     a.payload_schema_name != b.payload_schema_name ||
                     a.payload_schema_hash != b.payload_schema_hash ||
                     a.payload_schema_version != b.payload_schema_version)
@@ -375,22 +400,50 @@ namespace lux::simulation
                 ESimulationDescriptionError::DUPLICATE_CAPABILITY
             ));
 
-        for (const auto point : system.execution_points)
+        for (const auto& hook : system.hooks)
         {
-            if (point.name.empty())
+            if (hook.name.empty() || hook.signature.returns.size() > 1U ||
+                (hook.cardinality == ESystemHookCardinality::MULTI &&
+                 !hook.signature.returns.empty()))
+            {
                 return lux::cxx::unexpected(failure(
-                    ESimulationDescriptionError::INVALID_EXECUTION_POINT
+                    ESimulationDescriptionError::INVALID_HOOK_POINT
                 ));
+            }
+            for (const auto& parameter : hook.signature.parameters)
+            {
+                if (parameter.type_id == 0U || parameter.canonical_name.empty() ||
+                    parameter.type_id != lux::script::scriptSemanticTypeId(
+                        parameter.canonical_name
+                    ))
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESimulationDescriptionError::INVALID_HOOK_POINT
+                    ));
+                }
+            }
+            for (const auto& result : hook.signature.returns)
+            {
+                if (result.type_id == 0U || result.canonical_name.empty() ||
+                    result.pass != lux::script::EScriptPassMode::VALUE ||
+                    result.type_id != lux::script::scriptSemanticTypeId(
+                        result.canonical_name
+                    ))
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESimulationDescriptionError::INVALID_HOOK_POINT
+                    ));
+                }
+            }
         }
-        for (std::size_t index{}; index < system.execution_points.size(); ++index)
+        for (std::size_t index{}; index < system.hooks.size(); ++index)
         {
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                if (system.execution_points[index].name ==
-                    system.execution_points[previous].name)
+                if (system.hooks[index].name == system.hooks[previous].name)
                 {
                     return lux::cxx::unexpected(failure(
-                        ESimulationDescriptionError::DUPLICATE_EXECUTION_POINT
+                        ESimulationDescriptionError::DUPLICATE_HOOK_POINT
                     ));
                 }
             }
@@ -410,24 +463,24 @@ namespace lux::simulation
                         ESimulationDescriptionError::DUPLICATE_EVENT
                     ));
             }
-            const auto point = std::find_if(
-                system.execution_points.begin(),
-                system.execution_points.end(),
+            const auto hook = std::find_if(
+                system.hooks.begin(),
+                system.hooks.end(),
                 [&](const auto& candidate) noexcept
                 {
-                    return candidate.name == event.dispatch_point;
+                    return candidate.name == event.dispatch_hook;
                 }
             );
-            if (point == system.execution_points.end())
+            if (hook == system.hooks.end())
                 return lux::cxx::unexpected(failure(
-                    ESimulationDescriptionError::INVALID_EVENT_DISPATCH_POINT
+                    ESimulationDescriptionError::INVALID_EVENT_DISPATCH_HOOK
                 ));
             const bool void_payload =
                 event.payload_cpp_type == lux::cxx::typeToken<void>();
-            if (!event.payload_cpp_type.isValid() ||
-                event.payload_schema_name.empty() !=
+            if (event.payload_schema_name.empty() !=
                     (event.payload_schema_version == 0U) ||
-                void_payload != event.payload_schema_name.empty())
+                (event.payload_cpp_type.isValid() &&
+                 void_payload != event.payload_schema_name.empty()))
             {
                 return lux::cxx::unexpected(failure(
                     ESimulationDescriptionError::INVALID_EVENT_PAYLOAD_SCHEMA
@@ -457,21 +510,48 @@ namespace lux::simulation
             candidate.capabilities.reserve(system.capabilities.size());
             for (const auto value : system.capabilities)
                 candidate.capabilities.emplace_back(value);
-            candidate.execution_points.reserve(system.execution_points.size());
-            for (const auto value : system.execution_points)
-                candidate.execution_points.emplace_back(value.name);
+            candidate.hooks.reserve(system.hooks.size());
+            for (const auto& value : system.hooks)
+            {
+                Impl::PendingHook hook;
+                hook.name = value.name;
+                hook.cardinality = value.cardinality;
+                hook.parameters.reserve(value.signature.parameters.size());
+                for (const auto& parameter : value.signature.parameters)
+                {
+                    hook.parameters.push_back({
+                        parameter.type_id,
+                        std::string(parameter.canonical_name),
+                        parameter.pass
+                    });
+                }
+                hook.returns.reserve(value.signature.returns.size());
+                for (const auto& result : value.signature.returns)
+                {
+                    hook.returns.push_back({
+                        result.type_id,
+                        std::string(result.canonical_name),
+                        result.pass
+                    });
+                }
+                candidate.hooks.push_back(std::move(hook));
+            }
             candidate.events.reserve(system.events.size());
             for (const auto& event : system.events)
             {
-                const auto point = std::find(
-                    candidate.execution_points.begin(),
-                    candidate.execution_points.end(),
-                    event.dispatch_point
+                const auto hook = std::find_if(
+                    candidate.hooks.begin(),
+                    candidate.hooks.end(),
+                    [&](const auto& value) noexcept
+                    {
+                        return value.name == event.dispatch_hook;
+                    }
                 );
                 candidate.events.push_back({
                     std::string(event.name),
                     static_cast<std::size_t>(
-                        std::distance(candidate.execution_points.begin(), point)),
+                        std::distance(candidate.hooks.begin(), hook)),
+                    event.target,
                     std::string(event.payload_schema_name),
                     event.payload_schema_name.empty()
                         ? 0U
@@ -585,25 +665,7 @@ namespace lux::simulation
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::addDependency(
         std::string_view before_system,
-        SystemExecutionPoint before_point,
-        std::string_view after_system,
-        SystemExecutionPoint after_point
-    ) noexcept
-    {
-        return addDependency(
-            before_system,
-            before_point.name,
-            after_system,
-            after_point.name
-        );
-    }
-
-    lux::cxx::expected<void, SimulationDescriptionFailure>
-    SimulationDescriptionBuilder::addDependency(
-        std::string_view before_system,
-        std::string_view before_point,
-        std::string_view after_system,
-        std::string_view after_point
+        std::string_view after_system
     ) noexcept
     {
         const auto before = findSystem(impl_->systems, before_system);
@@ -616,29 +678,11 @@ namespace lux::simulation
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::INVALID_DEPENDENCY
             ));
-        if (std::find(
-                before->execution_points.begin(),
-                before->execution_points.end(),
-                before_point
-            ) == before->execution_points.end() ||
-            std::find(
-                after->execution_points.begin(),
-                after->execution_points.end(),
-                after_point
-            ) == after->execution_points.end())
-        {
-            return lux::cxx::unexpected(failure(
-                ESimulationDescriptionError::EXECUTION_POINT_NOT_FOUND
-            ));
-        }
-
         try
         {
             Impl::PendingDependency candidate{
                 std::string(before_system),
-                std::string(before_point),
-                std::string(after_system),
-                std::string(after_point)};
+                std::string(after_system)};
             if (std::find(
                     impl_->dependencies.begin(),
                     impl_->dependencies.end(),
@@ -676,9 +720,7 @@ namespace lux::simulation
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::eraseDependency(
         std::string_view before_system,
-        std::string_view before_point,
-        std::string_view after_system,
-        std::string_view after_point
+        std::string_view after_system
     ) noexcept
     {
         const auto dependency = std::find_if(
@@ -687,9 +729,7 @@ namespace lux::simulation
             [&](const auto& value) noexcept
             {
                 return value.before_system == before_system &&
-                    value.before_point == before_point &&
-                    value.after_system == after_system &&
-                    value.after_point == after_point;
+                    value.after_system == after_system;
             }
         );
         if (dependency == impl_->dependencies.end())
@@ -700,11 +740,60 @@ namespace lux::simulation
         return {};
     }
 
+    lux::cxx::expected<void, SimulationDescriptionFailure>
+    SimulationDescriptionBuilder::addGlobalScriptMount(
+        const ScriptMountDescription& mount
+    ) noexcept
+    {
+        if (!validScriptMountDescription(mount))
+            return lux::cxx::unexpected(failure(
+                ESimulationDescriptionError::INVALID_SCRIPT_MOUNT
+            ));
+        if (failMutationForTest())
+            return lux::cxx::unexpected(failure(
+                ESimulationDescriptionError::ALLOCATION_FAILURE
+            ));
+        try
+        {
+            impl_->global_script_mounts.push_back(mount);
+            return {};
+        }
+        catch (const std::length_error&)
+        {
+            return lux::cxx::unexpected(failure(
+                ESimulationDescriptionError::SIZE_OVERFLOW
+            ));
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(
+                ESimulationDescriptionError::ALLOCATION_FAILURE
+            ));
+        }
+    }
+
+    lux::cxx::expected<void, SimulationDescriptionFailure>
+    SimulationDescriptionBuilder::eraseGlobalScriptMount(
+        std::size_t ordinal
+    ) noexcept
+    {
+        if (ordinal >= impl_->global_script_mounts.size())
+            return lux::cxx::unexpected(failure(
+                ESimulationDescriptionError::SCRIPT_MOUNT_NOT_FOUND
+            ));
+        impl_->global_script_mounts.erase(
+            impl_->global_script_mounts.begin() +
+            static_cast<std::ptrdiff_t>(ordinal)
+        );
+        return {};
+    }
+
     void SimulationDescriptionBuilder::clear() noexcept
     {
         impl_->data.clear();
         impl_->systems.clear();
         impl_->dependencies.clear();
+        impl_->global_script_mounts.clear();
     }
 
     lux::cxx::expected<SimulationDescription, SimulationDescriptionFailure>
@@ -749,11 +838,7 @@ namespace lux::simulation
                 {
                     if (left.before_system != right.before_system)
                         return left.before_system < right.before_system;
-                    if (left.before_point != right.before_point)
-                        return left.before_point < right.before_point;
-                    if (left.after_system != right.after_system)
-                        return left.after_system < right.after_system;
-                    return left.after_point < right.after_point;
+                    return left.after_system < right.after_system;
                 }
             );
 
@@ -842,13 +927,39 @@ namespace lux::simulation
                 record.configuration_schema_version =
                     source.configuration_schema_version;
                 record.capabilities = source.capabilities;
-                record.execution_points = source.execution_points;
+                record.hooks.reserve(source.hooks.size());
+                for (const auto& hook : source.hooks)
+                {
+                    SimulationDescription::HookRecord hook_record;
+                    hook_record.name = hook.name;
+                    hook_record.cardinality = hook.cardinality;
+                    hook_record.parameters.reserve(hook.parameters.size());
+                    for (const auto& parameter : hook.parameters)
+                    {
+                        hook_record.parameters.push_back({
+                            parameter.type_id,
+                            parameter.canonical_name,
+                            parameter.pass
+                        });
+                    }
+                    hook_record.returns.reserve(hook.returns.size());
+                    for (const auto& return_type : hook.returns)
+                    {
+                        hook_record.returns.push_back({
+                            return_type.type_id,
+                            return_type.canonical_name,
+                            return_type.pass
+                        });
+                    }
+                    record.hooks.push_back(std::move(hook_record));
+                }
                 record.events.reserve(source.events.size());
                 for (const auto& event : source.events)
                 {
                     record.events.push_back({
                         event.name,
-                        event.dispatch_point_ordinal,
+                        event.dispatch_hook_ordinal,
+                        event.target,
                         event.payload_schema_name,
                         event.payload_schema_hash,
                         event.payload_schema_version
@@ -921,32 +1032,17 @@ namespace lux::simulation
                     std::distance(result.systems_.begin(), before_system));
                 const auto after_index = static_cast<std::size_t>(
                     std::distance(result.systems_.begin(), after_system));
-                const auto before_type = before_system->type_ordinal;
-                const auto after_type = after_system->type_ordinal;
-                const auto before_point = std::find(
-                    result.system_types_[before_type].execution_points.begin(),
-                    result.system_types_[before_type].execution_points.end(),
-                    dependency.before_point
-                );
-                const auto after_point = std::find(
-                    result.system_types_[after_type].execution_points.begin(),
-                    result.system_types_[after_type].execution_points.end(),
-                    dependency.after_point
-                );
                 result.dependencies_.push_back({
                     before_index,
-                    static_cast<std::size_t>(std::distance(
-                        result.system_types_[before_type].execution_points.begin(),
-                        before_point)),
-                    after_index,
-                    static_cast<std::size_t>(std::distance(
-                        result.system_types_[after_type].execution_points.begin(),
-                        after_point))
+                    after_index
                 });
             }
+            result.global_script_mounts_ =
+                std::move(impl_->global_script_mounts);
             impl_->data.clear();
             impl_->systems.clear();
             impl_->dependencies.clear();
+            impl_->global_script_mounts.clear();
             return result;
         }
         catch (const std::length_error&)

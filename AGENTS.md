@@ -26,6 +26,11 @@ lux 是一个项目簇；lux-engine 是其中的游戏引擎——`modules/` 提
 
 ## 代码风格
 
+### 基本排版
+- 单条语句在不超过 120 列时保持一行；只有超过 120 列或层次明显影响可读性时才换行。
+- 换行应表达语义层次，不要为了凑列宽把一个完整表达式拆成难以阅读的碎片。
+- 多行列表、初始化和调用的结束括号/花括号独占下一行，并与对应的开始层级对齐。
+
 ### 命名
 - **类名 / struct（含纯数据类型）**：首字母大写驼峰 `XxxYyyy`。
 - **成员变量**：小写下划线 `xxx_yyy`；private 成员加末尾下划线 `xxx_yyy_`。
@@ -35,8 +40,8 @@ lux 是一个项目簇；lux-engine 是其中的游戏引擎——`modules/` 提
   成员全大写下划线 `XXX_YYY_ZZZ`（存量有很多不遵守的，改到就顺手正名）。
 
 ### 长语句换行
-函数调用过长时逐参数换行、**闭括号放到下一行并保持层级**；参数尽量同一行，
-过长先考虑是不是设计问题：
+函数调用超过 120 列时逐参数换行、**闭括号放到下一行并保持层级**；参数尽量同一行，
+单个参数过长再继续拆分；过长先考虑是不是设计问题：
 
 ```cpp
 xxx::object.invoke(
@@ -46,6 +51,64 @@ xxx::object.invoke(
     ),
     cccc
 )
+```
+
+函数声明过长时，优先把限定符、返回类型和可见性放在一行，函数名另起一行；
+如果返回类型本身过长，先用 `using` 起一个有意义的结果类型别名：
+
+```cpp
+using LuaScriptResult = lux::cxx::expected<LuaScriptBindingBackend, ELuaScriptBindingBackendError>;
+
+[[nodiscard]] static LuaScriptResult
+create(std::size_t instance_capacity, std::span<const LuaComponentBinding> components = {}) noexcept;
+```
+
+如果参数列表仍超过 120 列，再按参数逐行换行：
+
+```cpp
+create(
+    std::size_t instance_capacity,
+    std::span<const LuaComponentBinding> components = {}
+) noexcept;
+```
+
+多行聚合初始化的最后一个元素与结束花括号分行：
+
+```cpp
+result = Type{
+    first,
+    second,
+    {}
+};
+```
+
+### 复杂判断
+- `if`、`else if` 或循环条件包含多个相互独立的校验时，先在判断前用具名 `const bool`
+  表达各个语义分组，再组合成最终结果；变量名应说明是 `is_invalid_*`、`has_*`、
+  `is_*_mismatch` 等什么条件。
+- 最终判断只保留聚合结果，例如 `if (is_invalid_descriptor)`；不要把一长串字段比较直接
+  堆在条件中。
+- 外提判断不得破坏原有短路安全性。涉及指针、迭代器、范围边界或可能溢出的算术时，
+  先建立前置有效性布尔量，再在有效时计算后续条件；需要时保留分阶段的 `&&` 短路。
+
+```cpp
+const bool is_invalid_type = !descriptor.type ||
+    descriptor.type != AssetTypeId::fromName(descriptor.canonical_name);
+const bool is_invalid_magic = descriptor.primary_magic == 0u;
+const bool is_invalid_cpp_type = descriptor.cpp_payload_type.hash() == 0u ||
+    descriptor.cpp_payload_type.name().empty();
+const bool is_invalid_decode = descriptor.decode == nullptr;
+const bool is_invalid_encode = descriptor.encode == nullptr;
+const bool is_invalid_descriptor = is_invalid_type ||
+    is_invalid_magic ||
+    is_invalid_cpp_type ||
+    is_invalid_decode ||
+    is_invalid_encode;
+
+if (is_invalid_descriptor)
+{
+    return lux::cxx::unexpected(EAssetCodecError::INVALID_DESCRIPTOR);
+}
 ```
 
 ### 模块结构（lux-cmake-toolset 构建的模块）

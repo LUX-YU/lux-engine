@@ -13,32 +13,18 @@
 
 namespace lux::simulation::script
 {
-    using ScriptHookLane = void (*)(
-        void*,
-        lux_script_call_frame&
-    ) noexcept;
-    using ScriptEventLane = void (*)(
-        void*,
-        ecs::Entity,
-        lux_script_call_frame&
-    ) noexcept;
+    using ScriptHookLane = void (*)(void *, lux_script_call_frame &) noexcept;
+    using ScriptEventLane = void (*)(void *, ecs::Entity, lux_script_call_frame &) noexcept;
 
     struct ScriptHookEndpointDescriptor final
     {
         SystemInstanceId system;
         HookPointId hook;
         lux::semantic::SignatureView signature;
-        void* context{};
-        EndpointConnectResult (*connect)(
-            void*,
-            void*,
-            ScriptHookLane
-        ) noexcept{};
-        EEndpointMutationError (*disconnect)(
-            void*,
-            EndpointConnectionToken
-        ) noexcept{};
-        EEndpointMutationError (*flush)(void*) noexcept{};
+        void *context{};
+        EndpointConnectResult (*connect)(void *, void *, ScriptHookLane) noexcept {};
+        EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
+        EEndpointMutationError (*flush)(void *) noexcept {};
     };
 
     struct ScriptEventEndpointDescriptor final
@@ -47,25 +33,16 @@ namespace lux::simulation::script
         EventPointId event;
         EEventRoute route{EEventRoute::SIMULATION_BROADCAST};
         lux::semantic::Type payload_type;
-        void* context{};
-        EndpointConnectResult (*connect)(
-            void*,
-            void*,
-            ScriptEventLane
-        ) noexcept{};
-        EEndpointMutationError (*disconnect)(
-            void*,
-            EndpointConnectionToken
-        ) noexcept{};
-        EEndpointMutationError (*flush)(void*) noexcept{};
+        void *context{};
+        EndpointConnectResult (*connect)(void *, void *, ScriptEventLane) noexcept {};
+        EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
+        EEndpointMutationError (*flush)(void *) noexcept {};
     };
 
     namespace detail
     {
         template <class Parameter>
-        [[nodiscard]] lux_script_value_slot argumentSlot(
-            Parameter& value
-        ) noexcept
+        [[nodiscard]] lux_script_value_slot argumentSlot(Parameter &value) noexcept
         {
             using Base = std::remove_cv_t<std::remove_reference_t<Parameter>>;
             using Traits = lux::semantic::TypeTraits<Base>;
@@ -74,12 +51,11 @@ namespace lux::simulation::script
                 {},
                 Traits::Size,
                 lux::semantic::typeId(Traits::CanonicalName),
-                const_cast<void*>(static_cast<const void*>(
-                    std::addressof(value)))};
+                const_cast<void *>(static_cast<const void *>(std::addressof(value)))};
         }
 
         template <class... Parameters>
-        [[nodiscard]] auto argumentSlots(Parameters&... parameters) noexcept
+        [[nodiscard]] auto argumentSlots(Parameters &...parameters) noexcept
         {
             return std::array<lux_script_value_slot, sizeof...(Parameters)>{
                 argumentSlot(parameters)...};
@@ -92,68 +68,64 @@ namespace lux::simulation::script
     template <class... Parameters>
     class ScriptHookEndpoint<void(Parameters...)>
     {
-      public:
+    public:
         ScriptHookEndpoint(
             SystemInstanceId system,
             HookPointId id,
-            HookPoint<void(Parameters...)>& endpoint
-        ) noexcept
+            HookPoint<void(Parameters...)> &endpoint) noexcept
             : system_(system), id_(id), endpoint_(&endpoint)
         {
         }
 
-        ScriptHookEndpoint(const ScriptHookEndpoint&) = delete;
-        ScriptHookEndpoint& operator=(const ScriptHookEndpoint&) = delete;
-        ScriptHookEndpoint(ScriptHookEndpoint&&) = delete;
-        ScriptHookEndpoint& operator=(ScriptHookEndpoint&&) = delete;
+        ScriptHookEndpoint(const ScriptHookEndpoint &) = delete;
+        ScriptHookEndpoint &operator=(const ScriptHookEndpoint &) = delete;
+        ScriptHookEndpoint(ScriptHookEndpoint &&) = delete;
+        ScriptHookEndpoint &operator=(ScriptHookEndpoint &&) = delete;
 
         [[nodiscard]] ScriptHookEndpointDescriptor descriptor() noexcept
         {
             return {
                 system_,
                 id_,
-                lux::simulation::detail::EndpointSignatureStorage<
-                    void(Parameters...)>::view(),
+                lux::simulation::detail::EndpointSignatureStorage<void(Parameters...)>::view(),
                 this,
                 &connect,
                 &disconnect,
-                &flush};
+                &flush
+            };
         }
 
-      private:
+    private:
         static EndpointConnectResult connect(
-            void* context,
-            void* lane_context,
-            ScriptHookLane lane
-        ) noexcept
+            void *context,
+            void *lane_context,
+            ScriptHookLane lane) noexcept
         {
-            auto& self = *static_cast<ScriptHookEndpoint*>(context);
+            auto &self = *static_cast<ScriptHookEndpoint *>(context);
             self.lane_context_ = lane_context;
             self.lane_ = lane;
             return self.endpoint_->connect(&self, &dispatch);
         }
 
         static EEndpointMutationError disconnect(
-            void* context,
-            EndpointConnectionToken token
-        ) noexcept
+            void *context,
+            EndpointConnectionToken token) noexcept
         {
-            return static_cast<ScriptHookEndpoint*>(context)
+            return static_cast<ScriptHookEndpoint *>(context)
                 ->endpoint_->disconnect(token);
         }
 
-        static EEndpointMutationError flush(void* context) noexcept
+        static EEndpointMutationError flush(void *context) noexcept
         {
-            return static_cast<ScriptHookEndpoint*>(context)
+            return static_cast<ScriptHookEndpoint *>(context)
                 ->endpoint_->flushMutations();
         }
 
         static void dispatch(
-            void* context,
-            Parameters... parameters
-        ) noexcept
+            void *context,
+            Parameters... parameters) noexcept
         {
-            auto& self = *static_cast<ScriptHookEndpoint*>(context);
+            auto &self = *static_cast<ScriptHookEndpoint *>(context);
             auto slots = detail::argumentSlots(parameters...);
             lux_script_call_frame frame{
                 slots.data(),
@@ -169,8 +141,8 @@ namespace lux::simulation::script
 
         SystemInstanceId system_;
         HookPointId id_;
-        HookPoint<void(Parameters...)>* endpoint_{};
-        void* lane_context_{};
+        HookPoint<void(Parameters...)> *endpoint_{};
+        void *lane_context_{};
         ScriptHookLane lane_{};
     };
 
@@ -179,7 +151,8 @@ namespace lux::simulation::script
         : public ScriptHookEndpoint<void(Parameters...)>
     {
         using Base = ScriptHookEndpoint<void(Parameters...)>;
-      public:
+
+    public:
         using Base::Base;
     };
 
@@ -189,20 +162,19 @@ namespace lux::simulation::script
     template <class Payload>
     class ScriptEventEndpoint<SimulationBroadcastRoute, Payload> final
     {
-      public:
+    public:
         ScriptEventEndpoint(
             SystemInstanceId system,
             EventPointId id,
-            EventPoint<SimulationBroadcastRoute, Payload>& endpoint
-        ) noexcept
+            EventPoint<SimulationBroadcastRoute, Payload> &endpoint) noexcept
             : system_(system), id_(id), endpoint_(&endpoint)
         {
         }
 
-        ScriptEventEndpoint(const ScriptEventEndpoint&) = delete;
-        ScriptEventEndpoint& operator=(const ScriptEventEndpoint&) = delete;
-        ScriptEventEndpoint(ScriptEventEndpoint&&) = delete;
-        ScriptEventEndpoint& operator=(ScriptEventEndpoint&&) = delete;
+        ScriptEventEndpoint(const ScriptEventEndpoint &) = delete;
+        ScriptEventEndpoint &operator=(const ScriptEventEndpoint &) = delete;
+        ScriptEventEndpoint(ScriptEventEndpoint &&) = delete;
+        ScriptEventEndpoint &operator=(ScriptEventEndpoint &&) = delete;
 
         [[nodiscard]] ScriptEventEndpointDescriptor descriptor() noexcept
         {
@@ -218,37 +190,35 @@ namespace lux::simulation::script
                 &flush};
         }
 
-      private:
+    private:
         static EndpointConnectResult connect(
-            void* context,
-            void* lane_context,
-            ScriptEventLane lane
-        ) noexcept
+            void *context,
+            void *lane_context,
+            ScriptEventLane lane) noexcept
         {
-            auto& self = *static_cast<ScriptEventEndpoint*>(context);
+            auto &self = *static_cast<ScriptEventEndpoint *>(context);
             self.lane_context_ = lane_context;
             self.lane_ = lane;
             return self.endpoint_->connect(&self, &dispatch);
         }
 
         static EEndpointMutationError disconnect(
-            void* context,
-            EndpointConnectionToken token
-        ) noexcept
+            void *context,
+            EndpointConnectionToken token) noexcept
         {
-            return static_cast<ScriptEventEndpoint*>(context)
+            return static_cast<ScriptEventEndpoint *>(context)
                 ->endpoint_->disconnect(token);
         }
 
-        static EEndpointMutationError flush(void* context) noexcept
+        static EEndpointMutationError flush(void *context) noexcept
         {
-            return static_cast<ScriptEventEndpoint*>(context)
+            return static_cast<ScriptEventEndpoint *>(context)
                 ->endpoint_->flushMutations();
         }
 
-        static void dispatch(void* context, const Payload& payload) noexcept
+        static void dispatch(void *context, const Payload &payload) noexcept
         {
-            auto& self = *static_cast<ScriptEventEndpoint*>(context);
+            auto &self = *static_cast<ScriptEventEndpoint *>(context);
             auto slot = detail::argumentSlot(payload);
             lux_script_call_frame frame{
                 &slot,
@@ -264,28 +234,27 @@ namespace lux::simulation::script
 
         SystemInstanceId system_;
         EventPointId id_;
-        EventPoint<SimulationBroadcastRoute, Payload>* endpoint_{};
-        void* lane_context_{};
+        EventPoint<SimulationBroadcastRoute, Payload> *endpoint_{};
+        void *lane_context_{};
         ScriptEventLane lane_{};
     };
 
     template <class Payload>
     class ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, Payload> final
     {
-      public:
+    public:
         ScriptEventEndpoint(
             SystemInstanceId system,
             EventPointId id,
-            EventPoint<EntityTargetedRoute<ecs::Entity>, Payload>& endpoint
-        ) noexcept
+            EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> &endpoint) noexcept
             : system_(system), id_(id), endpoint_(&endpoint)
         {
         }
 
-        ScriptEventEndpoint(const ScriptEventEndpoint&) = delete;
-        ScriptEventEndpoint& operator=(const ScriptEventEndpoint&) = delete;
-        ScriptEventEndpoint(ScriptEventEndpoint&&) = delete;
-        ScriptEventEndpoint& operator=(ScriptEventEndpoint&&) = delete;
+        ScriptEventEndpoint(const ScriptEventEndpoint &) = delete;
+        ScriptEventEndpoint &operator=(const ScriptEventEndpoint &) = delete;
+        ScriptEventEndpoint(ScriptEventEndpoint &&) = delete;
+        ScriptEventEndpoint &operator=(ScriptEventEndpoint &&) = delete;
 
         [[nodiscard]] ScriptEventEndpointDescriptor descriptor() noexcept
         {
@@ -301,41 +270,38 @@ namespace lux::simulation::script
                 &flush};
         }
 
-      private:
+    private:
         static EndpointConnectResult connect(
-            void* context,
-            void* lane_context,
-            ScriptEventLane lane
-        ) noexcept
+            void *context,
+            void *lane_context,
+            ScriptEventLane lane) noexcept
         {
-            auto& self = *static_cast<ScriptEventEndpoint*>(context);
+            auto &self = *static_cast<ScriptEventEndpoint *>(context);
             self.lane_context_ = lane_context;
             self.lane_ = lane;
             return self.endpoint_->connectAll(&self, &dispatch);
         }
 
         static EEndpointMutationError disconnect(
-            void* context,
-            EndpointConnectionToken token
-        ) noexcept
+            void *context,
+            EndpointConnectionToken token) noexcept
         {
-            return static_cast<ScriptEventEndpoint*>(context)
+            return static_cast<ScriptEventEndpoint *>(context)
                 ->endpoint_->disconnect(token);
         }
 
-        static EEndpointMutationError flush(void* context) noexcept
+        static EEndpointMutationError flush(void *context) noexcept
         {
-            return static_cast<ScriptEventEndpoint*>(context)
+            return static_cast<ScriptEventEndpoint *>(context)
                 ->endpoint_->flushMutations();
         }
 
         static void dispatch(
-            void* context,
-            const ecs::Entity& target,
-            const Payload& payload
-        ) noexcept
+            void *context,
+            const ecs::Entity &target,
+            const Payload &payload) noexcept
         {
-            auto& self = *static_cast<ScriptEventEndpoint*>(context);
+            auto &self = *static_cast<ScriptEventEndpoint *>(context);
             auto slot = detail::argumentSlot(payload);
             lux_script_call_frame frame{
                 &slot,
@@ -351,8 +317,8 @@ namespace lux::simulation::script
 
         SystemInstanceId system_;
         EventPointId id_;
-        EventPoint<EntityTargetedRoute<ecs::Entity>, Payload>* endpoint_{};
-        void* lane_context_{};
+        EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> *endpoint_{};
+        void *lane_context_{};
         ScriptEventLane lane_{};
     };
 }

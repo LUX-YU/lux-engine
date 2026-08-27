@@ -43,11 +43,13 @@ target_link_libraries(
     simulation_description
     PUBLIC
         lux::engine::core::semantic
+        lux::engine::function::script_core
         lux::cxx::compile_time
 )
 component_add_transitive_commands(
     simulation_description
     "find_package(lux-engine-core REQUIRED COMPONENTS semantic)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "if(NOT TARGET lux::engine::simulation::description)"
     "add_library(lux::engine::simulation::description INTERFACE IMPORTED GLOBAL)"

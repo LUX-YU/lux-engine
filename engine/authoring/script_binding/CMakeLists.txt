@@ -69,10 +69,17 @@ add_test(
 target_compile_definitions(
     authoring_script_binding_test
     PRIVATE
-        LUX_SCRIPT_SEMANTIC_CATALOG="${CMAKE_CURRENT_SOURCE_DIR}/assets/lux-script-semantics-v1.json"
+        LUX_SCRIPT_SEMANTIC_CATALOG="${CMAKE_CURRENT_BINARY_DIR}/lux-script-semantics-v1.json"
+)
+
+configure_file(
+    assets/lux-script-semantics-v1.json
+    ${CMAKE_CURRENT_BINARY_DIR}/lux-script-semantics-v1.json
+    @ONLY
+    NEWLINE_STYLE LF
 )
 
 install(
-    FILES assets/lux-script-semantics-v1.json
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/lux-script-semantics-v1.json
     DESTINATION share/lux-engine/script
 )

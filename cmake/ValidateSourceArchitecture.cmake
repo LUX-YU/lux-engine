@@ -66,7 +66,7 @@ foreach(source IN LISTS production_sources)
     file(READ "${source}" content)
 
     if(content MATCHES
-       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|GlobalScriptBindingManager|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|TypedEntryCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType")
+       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptEventRegistry|GlobalScriptBindingManager|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|TypedEntryCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' restores a retired SystemHook/ScriptBinding API."
         )
@@ -189,6 +189,69 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 endforeach()
+
+# The replacement roots are held to the final contract while the old roots are
+# still being removed in staged commits. This prevents new code from rebuilding
+# the retired session/name-routing model under a different target name.
+file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
+    "${source_root}/engine/simulation/script/*.hpp"
+    "${source_root}/engine/simulation/script/*.cpp"
+)
+foreach(source IN LISTS script_system_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene")
+        message(FATAL_ERROR
+            "Architecture: replacement ScriptSystem source '${source}' restores a retired boundary."
+        )
+    endif()
+endforeach()
+
+file(GLOB_RECURSE generic_system_sources LIST_DIRECTORIES false
+    "${source_root}/engine/simulation/system/include/*.hpp"
+    "${source_root}/engine/simulation/system/src/*.cpp"
+)
+foreach(source IN LISTS generic_system_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "function/script|ScriptSemantic|ScriptCallFrame|BoundScriptCall|ScriptAsset")
+        message(FATAL_ERROR
+            "Architecture: generic System endpoint '${source}' depends on Script ABI."
+        )
+    endif()
+endforeach()
+
+if(EXISTS "${source_root}/engine/flowforge")
+    file(GLOB_RECURSE flowforge_sources LIST_DIRECTORIES false
+        "${source_root}/engine/flowforge/*.hpp"
+        "${source_root}/engine/flowforge/*.cpp"
+        "${source_root}/engine/flowforge/*.cmake"
+    )
+    foreach(source IN LISTS flowforge_sources)
+        file(READ "${source}" content)
+        if(content MATCHES "engine/editor/framework/graphkit|[/\\]legacy[/\\]")
+            message(FATAL_ERROR
+                "Architecture: FlowForge package '${source}' reaches a retired or UI implementation."
+            )
+        endif()
+    endforeach()
+endif()
+
+if(EXISTS "${source_root}/engine/graph_kit")
+    file(GLOB_RECURSE graph_kit_sources LIST_DIRECTORIES false
+        "${source_root}/engine/graph_kit/*.hpp"
+        "${source_root}/engine/graph_kit/*.cpp"
+        "${source_root}/engine/graph_kit/*.cmake"
+    )
+    foreach(source IN LISTS graph_kit_sources)
+        file(READ "${source}" content)
+        if(content MATCHES "flowforge|engine/simulation|resource/asset|mlir|llvm|[/\\]legacy[/\\]")
+            message(FATAL_ERROR
+                "Architecture: GraphKit package '${source}' is not domain independent."
+            )
+        endif()
+    endforeach()
+endif()
 
 foreach(capacity_header IN ITEMS
     "${source_root}/modules/core/serialization/include/lux/engine/serialization/SerializationError.hpp"

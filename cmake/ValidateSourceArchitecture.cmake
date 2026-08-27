@@ -32,6 +32,12 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/modules/*/sinclude/*.hpp"
     "${source_root}/modules/*/pinclude/*.hpp"
     "${source_root}/modules/*/src/*.cpp"
+    "${source_root}/modules/*/*/include/*.hpp"
+    "${source_root}/modules/*/*/sinclude/*.hpp"
+    "${source_root}/modules/*/*/pinclude/*.hpp"
+    "${source_root}/modules/*/*/src/*.cpp"
+    "${source_root}/modules/*/*/*/include/*.hpp"
+    "${source_root}/modules/*/*/*/src/*.cpp"
     "${source_root}/engine/world/*/include/*.hpp"
     "${source_root}/engine/world/*/sinclude/*.hpp"
     "${source_root}/engine/world/*/pinclude/*.hpp"
@@ -44,11 +50,22 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/simulation/*/*/sinclude/*.hpp"
     "${source_root}/engine/simulation/*/*/pinclude/*.hpp"
     "${source_root}/engine/simulation/*/*/src/*.cpp"
+    "${source_root}/engine/authoring/*/include/*.hpp"
+    "${source_root}/engine/authoring/*/src/*.cpp"
+    "${source_root}/engine/toolchain/*/include/*.hpp"
+    "${source_root}/engine/toolchain/*/src/*.cpp"
 )
 
 foreach(source IN LISTS production_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
     file(READ "${source}" content)
+
+    if(content MATCHES
+       "SystemExecutionPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptSystem|ScriptEventRegistry|GlobalScriptBindingManager")
+        message(FATAL_ERROR
+            "Architecture: active source '${normalized}' restores a retired SystemHook/ScriptBinding API."
+        )
+    endif()
 
     if(content MATCHES
        "#[ \t]*include[ \t]*[<\"]([^\">]*/)?legacy/|[/\\]legacy[/\\]")
@@ -98,7 +115,7 @@ foreach(source IN LISTS production_sources)
         endif()
         if(content MATCHES
            "on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<" AND
-           NOT normalized MATCHES "/engine/simulation/ecs/(hierarchy|transform)/")
+           NOT normalized MATCHES "/engine/simulation/(ecs/(hierarchy|transform)|script_binding)/")
             message(FATAL_ERROR
                 "Architecture: EnTT signal ownership '${normalized}' is outside a concrete reactive Simulation subsystem."
             )
@@ -311,12 +328,18 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/CMakeLists.txt"
     "${source_root}/modules/CMakeLists.txt"
     "${source_root}/modules/*/CMakeLists.txt"
+    "${source_root}/modules/*/*/CMakeLists.txt"
+    "${source_root}/modules/*/*/*/CMakeLists.txt"
     "${source_root}/engine/CMakeLists.txt"
     "${source_root}/engine/world/CMakeLists.txt"
     "${source_root}/engine/world/*/CMakeLists.txt"
     "${source_root}/engine/simulation/CMakeLists.txt"
     "${source_root}/engine/simulation/*/CMakeLists.txt"
     "${source_root}/engine/simulation/*/*/CMakeLists.txt"
+    "${source_root}/engine/authoring/CMakeLists.txt"
+    "${source_root}/engine/authoring/*/CMakeLists.txt"
+    "${source_root}/engine/toolchain/CMakeLists.txt"
+    "${source_root}/engine/toolchain/*/CMakeLists.txt"
 )
 foreach(source IN LISTS active_cmake)
     file(READ "${source}" content)

@@ -91,13 +91,24 @@ namespace
     };
 
     const lux_script_module_desc kModule{
+#if defined(LUX_SCRIPT_FIXTURE_SECOND_MODULE)
+        "native_fixture_two",
+#else
         "native_fixture",
+#endif
 #if defined(LUX_SCRIPT_FIXTURE_BAD_ABI)
-        LUX_SCRIPT_ABI_VERSION + 1,
+        LUX_SCRIPT_ABI_VERSION - 1,
 #else
         LUX_SCRIPT_ABI_VERSION,
 #endif
         0,
+#if defined(LUX_SCRIPT_FIXTURE_SECOND_MODULE)
+        0x4C55584E41544957ULL,
+#else
+        0x4C55584E41544956ULL,
+#endif
+        64,
+        64,
         kFunctions,
         3,
         0

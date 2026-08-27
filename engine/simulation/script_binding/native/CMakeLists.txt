@@ -50,11 +50,14 @@ if(TARGET script_native_fixture)
     )
     target_compile_definitions(
         simulation_script_binding_native_test
-        PRIVATE LUX_SCRIPT_NATIVE_FIXTURE="$<TARGET_FILE:script_native_fixture>"
+        PRIVATE
+            LUX_SCRIPT_NATIVE_FIXTURE="$<TARGET_FILE:script_native_fixture>"
+            LUX_SCRIPT_NATIVE_SECOND_FIXTURE="$<TARGET_FILE:script_native_second_fixture>"
     )
     add_dependencies(
         simulation_script_binding_native_test
         script_native_fixture
+        script_native_second_fixture
     )
     if(MSVC)
         target_compile_options(simulation_script_binding_native_test PRIVATE /UNDEBUG)

@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 /** Increment whenever the layout below changes in a non-additive way. */
-#define LUX_SCRIPT_ABI_VERSION 1u
+#define LUX_SCRIPT_ABI_VERSION 2u
 
 /** Symbol name compiled modules must export. */
 #define LUX_SCRIPT_MODULE_ENTRY "lux_script_get_module"
@@ -42,6 +42,12 @@ typedef enum lux_script_value_kind {
     LUX_SCRIPT_VK_STRUCT_REF  = 10  /**< Pointer + size + type_id            */
 } lux_script_value_kind;
 
+/** Semantic parameter passing mode. Returns must use VALUE. */
+typedef enum lux_script_pass_mode {
+    LUX_SCRIPT_PASS_VALUE     = 0,
+    LUX_SCRIPT_PASS_CONST_REF = 1
+} lux_script_pass_mode;
+
 /** Description of a parameter / return slot. */
 typedef struct lux_script_type_desc {
     const char* name;        /**< Diagnostic-only, may be NULL. */
@@ -49,7 +55,8 @@ typedef struct lux_script_type_desc {
     uint32_t    size;        /**< Storage size in bytes. */
     uint32_t    align;       /**< Storage alignment in bytes. */
     uint8_t     kind;        /**< @ref lux_script_value_kind. */
-    uint8_t     reserved[7];
+    uint8_t     pass;        /**< @ref lux_script_pass_mode. */
+    uint8_t     reserved[6];
 } lux_script_type_desc;
 
 /** A single argument / return slot in a call frame. */
@@ -97,6 +104,10 @@ typedef struct lux_script_module_desc {
     const char* module_name;
     uint32_t    abi_version;  /**< Must equal @ref LUX_SCRIPT_ABI_VERSION. */
     uint32_t    reserved;
+
+    uint64_t    state_layout_hash;
+    uint32_t    state_size;
+    uint32_t    state_align;
 
     const lux_script_function_desc* functions;
     uint32_t                        function_count;

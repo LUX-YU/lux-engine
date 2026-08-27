@@ -82,6 +82,14 @@ namespace lux::script
                     "native script function table is null"
                 ));
             }
+            if (descriptor->state_align == 0U ||
+                (descriptor->state_align & (descriptor->state_align - 1U)) != 0U)
+            {
+                return lux::cxx::unexpected(scriptFailure(
+                    EScriptError::INVALID_MODULE,
+                    "native script state alignment is invalid"
+                ));
+            }
 
             auto state = std::make_unique<NativeModule::State>();
             state->library = std::move(library);
@@ -108,6 +116,52 @@ namespace lux::script
                         EScriptError::INVALID_MODULE,
                         "native script function signature table is incomplete"
                     ));
+                }
+                const auto valid_type = [](const lux_script_type_desc& type,
+                                           bool is_return) noexcept
+                {
+                    if (!type.name || type.name[0] == '\0' ||
+                        type.type_id == InvalidScriptSymbolId ||
+                        type.type_id != scriptSemanticTypeId(type.name) ||
+                        type.size == 0U || type.align == 0U ||
+                        (type.align & (type.align - 1U)) != 0U ||
+                        type.kind < LUX_SCRIPT_VK_BOOL ||
+                        type.kind > LUX_SCRIPT_VK_STRUCT_REF ||
+                        type.pass > LUX_SCRIPT_PASS_CONST_REF ||
+                        (is_return && type.pass != LUX_SCRIPT_PASS_VALUE))
+                    {
+                        return false;
+                    }
+                    if (const auto* builtin = scriptBuiltinLayout(type.type_id))
+                    {
+                        return builtin->canonical_name == type.name &&
+                            builtin->abi_kind == type.kind &&
+                            builtin->size == type.size &&
+                            builtin->alignment == type.align;
+                    }
+                    return type.kind == LUX_SCRIPT_VK_STRUCT_REF;
+                };
+                for (std::uint32_t argument{};
+                     argument < function.arg_count; ++argument)
+                {
+                    if (!valid_type(function.args[argument], false))
+                    {
+                        return lux::cxx::unexpected(scriptFailure(
+                            EScriptError::INVALID_MODULE,
+                            "native script argument type is invalid"
+                        ));
+                    }
+                }
+                for (std::uint32_t result{};
+                     result < function.return_count; ++result)
+                {
+                    if (!valid_type(function.returns[result], true))
+                    {
+                        return lux::cxx::unexpected(scriptFailure(
+                            EScriptError::INVALID_MODULE,
+                            "native script return type is invalid"
+                        ));
+                    }
                 }
                 const auto [name_iterator, inserted_name] =
                     state->functions_by_name.emplace(
@@ -203,6 +257,27 @@ namespace lux::script
     {
         return state_ && state_->descriptor
             ? state_->descriptor->abi_version
+            : 0U;
+    }
+
+    std::uint64_t NativeModule::stateLayoutHash() const noexcept
+    {
+        return state_ && state_->descriptor
+            ? state_->descriptor->state_layout_hash
+            : 0U;
+    }
+
+    std::uint32_t NativeModule::stateSize() const noexcept
+    {
+        return state_ && state_->descriptor
+            ? state_->descriptor->state_size
+            : 0U;
+    }
+
+    std::uint32_t NativeModule::stateAlignment() const noexcept
+    {
+        return state_ && state_->descriptor
+            ? state_->descriptor->state_align
             : 0U;
     }
 

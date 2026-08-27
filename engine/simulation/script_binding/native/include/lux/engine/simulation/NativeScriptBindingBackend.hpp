@@ -19,12 +19,31 @@ namespace lux::simulation
         ) noexcept{};
     };
 
+    struct ResolvedNativeModule final
+    {
+        const lux::script::NativeModule* module{};
+        void* lease{};
+        void (*release)(void* lease) noexcept{};
+    };
+
+    struct NativeModuleResolver final
+    {
+        void* context{};
+        bool (*resolve)(
+            void* context,
+            const lux::asset::AssetId& asset,
+            const lux::asset::ScriptAssetContent& content,
+            ResolvedNativeModule& result
+        ) noexcept{};
+    };
+
     class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_NATIVE_PUBLIC
         NativeScriptBindingBackend final
     {
       public:
-        explicit NativeScriptBindingBackend(
-            std::shared_ptr<lux::script::NativeModule> module,
+        NativeScriptBindingBackend(
+            NativeModuleResolver resolver,
+            std::size_t module_capacity,
             std::size_t instance_capacity,
             NativeScriptRecordLayoutResolver record_layouts = {}
         ) noexcept;

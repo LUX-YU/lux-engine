@@ -38,6 +38,9 @@ namespace lux::script
         [[nodiscard]] const lux_script_function_desc*
             findFunction(ScriptSymbolId symbol) const noexcept;
         [[nodiscard]] std::uint32_t abiVersion() const noexcept;
+        [[nodiscard]] std::uint64_t stateLayoutHash() const noexcept;
+        [[nodiscard]] std::uint32_t stateSize() const noexcept;
+        [[nodiscard]] std::uint32_t stateAlignment() const noexcept;
 
     private:
         std::unique_ptr<State> state_;

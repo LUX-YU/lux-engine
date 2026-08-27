@@ -3,6 +3,30 @@ add_library(
     SHARED
     native_fixture.cpp
 )
+
+add_library(
+    script_native_second_fixture
+    SHARED
+    native_fixture.cpp
+)
+target_compile_definitions(
+    script_native_second_fixture
+    PRIVATE LUX_SCRIPT_FIXTURE_SECOND_MODULE=1
+)
+target_include_directories(
+    script_native_second_fixture
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
+)
+target_link_libraries(
+    script_native_second_fixture
+    PRIVATE lux::cxx::compile_time
+)
+lux_classify_target(
+    TARGET  script_native_second_fixture
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
 target_include_directories(
     script_native_fixture
     PRIVATE

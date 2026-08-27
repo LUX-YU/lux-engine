@@ -9,7 +9,7 @@
 
 int main()
 {
-    static_assert(LUX_SCRIPT_ABI_VERSION == 1u);
+    static_assert(LUX_SCRIPT_ABI_VERSION == 2u);
     static_assert(!std::is_default_constructible_v<lux::script::CallFrame>);
     static_assert(
         lux::script::scriptSemanticTypeId("lux.i32") ==

@@ -8,7 +8,7 @@ add_component(
     COMPONENT_NAME authoring_flowforge
     NAMESPACE      lux::engine::authoring
     OUTPUT_NAME    lux_engine_authoring_flowforge
-    SOURCE_FILES src/TypedEntryCatalog.cpp
+    SOURCE_FILES src/FlowForgeGraph.cpp
 )
 component_include_directories(
     authoring_flowforge

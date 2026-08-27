@@ -1,7 +1,8 @@
 #pragma once
 
-#include <lux/engine/authoring/flowforge/TypedEntryCatalog.hpp>
+#include <lux/engine/authoring/flowforge/FlowForgeGraph.hpp>
 #include <lux/engine/description/Script.hpp>
+#include <lux/engine/simulation/SimulationDescription.hpp>
 #include <lux/engine/toolchain/flowforge/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -33,6 +34,8 @@ namespace lux::flowforge
     {
         lux::rdesc::Script description;
         FlowForgeAotAbiManifest abi;
+        std::vector<lux::simulation::ScriptBindingDescription>
+            binding_template;
     };
 
     enum class EFlowForgeCompileError : std::uint8_t
@@ -40,6 +43,8 @@ namespace lux::flowforge
         INVALID_MODULE_NAME,
         INVALID_STATE_LAYOUT,
         DUPLICATE_SYMBOL,
+        INVALID_GRAPH,
+        INCOMPATIBLE_BINDING,
         INVALID_DESCRIPTION,
     };
 
@@ -48,7 +53,9 @@ namespace lux::flowforge
     compileFlowForgeScript(
         std::string module_name,
         lux::rdesc::EScriptModel model,
-        std::span<const TypedEntryNode> graph_exports,
+        std::span<const ExportMethodNode> graph_exports,
+        std::span<const BindingEdge> graph_bindings,
+        const lux::simulation::SimulationDescription& simulation,
         FlowForgeStateLayout state
     );
 }

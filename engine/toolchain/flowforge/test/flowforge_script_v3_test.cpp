@@ -4,87 +4,69 @@
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
 
 #include <array>
-#include <algorithm>
 #include <cassert>
 
 namespace
 {
-    struct Contact final
-    {
-        std::uint32_t body{};
-    };
-
     inline constexpr std::array kHooks{
         lux::simulation::makeSystemHookPoint<void(
             const lux::simulation::SimulationStepInfo&)>("after")};
-    inline constexpr std::array kEvents{
-        lux::simulation::makeSystemEvent<Contact>(
-            "contact",
-            kHooks[0],
-            lux::simulation::ESystemEventTarget::ENTITY_TARGETED,
-            "lux.event.Contact",
-            1U
-        )};
-    inline constexpr lux::simulation::SystemDescription kPhysics{
-        .canonical_name = "lux.physics",
+    inline constexpr lux::simulation::SystemDescription kSystem{
+        .canonical_name = "lux.flowforge.fixture",
         .version = 1U,
-        .hooks = kHooks,
-        .events = kEvents};
+        .hooks = kHooks};
 }
 
 int main()
 {
-    lux::simulation::SimulationDescriptionBuilder builder;
-    assert(builder.addSystem("physics", kPhysics));
+    using namespace lux::flowforge;
+    using namespace lux::simulation;
+
+    SimulationDescriptionBuilder builder;
+    assert(builder.addSystem("physics", kSystem));
+    assert(builder.addSystem("animation", kSystem));
     auto simulation = std::move(builder).build();
     assert(simulation);
 
-    auto catalog = lux::flowforge::makeTypedEntryCatalog(
-        *simulation,
-        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
-    );
-    catalog.erase(
-        std::remove_if(
-            catalog.begin(),
-            catalog.end(),
-            [](const auto& entry) noexcept
-            {
-                return entry.kind == lux::flowforge::ETypedEntryKind::LIFECYCLE;
-            }
-        ),
-        catalog.end()
-    );
+    const auto step = lux::script::makeScriptSemanticType<
+        SimulationStepInfo>(lux::script::EScriptPassMode::CONST_REF);
+    const std::array exports{
+        ExportMethodNode{FlowForgeExportNodeId{1U}, "tick", {step}, {}},
+        ExportMethodNode{FlowForgeExportNodeId{2U}, "idle", {}, {}},
+        ExportMethodNode{FlowForgeExportNodeId{3U}, "once", {step}, {}}};
+    const auto type = systemTypeId(kSystem.canonical_name);
+    const std::array bindings{
+        BindingEdge{
+            FlowForgeExportNodeId{1U},
+            SystemHookBindingTarget{type, "physics", "after"}},
+        BindingEdge{
+            FlowForgeExportNodeId{1U},
+            SystemHookBindingTarget{type, "animation", "after"}},
+        BindingEdge{
+            FlowForgeExportNodeId{3U},
+            SystemHookBindingTarget{type, "physics", "after"}}};
 
-    auto compiled = lux::flowforge::compileFlowForgeScript(
-        "gameplay.physics",
+    auto compiled = compileFlowForgeScript(
+        "gameplay.behavior",
         lux::rdesc::EScriptModel::ENTITY_BEHAVIOR,
-        catalog,
-        lux::flowforge::FlowForgeStateLayout{
+        exports,
+        bindings,
+        *simulation,
+        FlowForgeStateLayout{
             0x1234U,
             16U,
             16U,
             {std::byte{1U}}}
     );
     assert(compiled);
-    assert(compiled->description.schema_version == 4U);
-    assert(
-        compiled->description.model ==
-        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
-    );
-    assert(compiled->description.exports.size() == 2U);
-    assert(compiled->description.exports[0].args.size() == 1U);
-    assert(
-        compiled->description.exports[0].args[0].canonical_name ==
-        "lux.simulation.SimulationStepInfo"
-    );
-    assert(compiled->description.exports[1].args.size() == 1U);
-    assert(
-        compiled->description.exports[1].args[0].canonical_name ==
-        "lux.event.Contact"
-    );
-    assert(compiled->abi.symbols.size() == 2U);
-    assert(compiled->abi.state.size == 16U);
+    assert(compiled->description.exports.size() == 3U);
+    assert(compiled->binding_template.size() == 3U);
+    assert(compiled->binding_template[0].function ==
+        compiled->binding_template[1].function);
+    assert(compiled->binding_template[0].function !=
+        compiled->binding_template[2].function);
+    assert(compiled->description.exports[1].name == "idle");
+    assert(compiled->abi.abi_version == LUX_SCRIPT_ABI_VERSION);
     assert(compiled->abi.state.align == 16U);
     assert(lux::rdesc::validScriptDescription(compiled->description));
-    return 0;
 }

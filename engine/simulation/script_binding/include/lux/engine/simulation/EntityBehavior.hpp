@@ -18,10 +18,56 @@ namespace lux::simulation
         ~EntityBehavior() noexcept = default;
 
       protected:
+        [[nodiscard]] bool attached() const noexcept
+        {
+            return host_ != nullptr && host_->attached();
+        }
+
         [[nodiscard]] const ScriptInstanceHostContext& hostContext() const
             noexcept
         {
+            if (!attached())
+                scriptBindingContractFailure();
             return *host_;
+        }
+
+        [[nodiscard]] ecs::Entity self() const noexcept
+        {
+            return hostContext().self();
+        }
+
+        [[nodiscard]] bool hasComponent(std::uint64_t component_type) const
+            noexcept
+        {
+            return hostContext().read(component_type) != nullptr;
+        }
+
+        [[nodiscard]] const void* readComponent(
+            std::uint64_t component_type
+        ) const noexcept
+        {
+            return hostContext().read(component_type);
+        }
+
+        [[nodiscard]] bool patchComponent(
+            std::uint64_t component_type,
+            const void* value
+        ) const noexcept
+        {
+            return hostContext().patch(component_type, value);
+        }
+
+        [[nodiscard]] bool command(
+            EScriptHostCommand command_value,
+            std::uint64_t component_type = 0U,
+            const void* value = nullptr
+        ) const noexcept
+        {
+            return hostContext().command(
+                command_value,
+                component_type,
+                value
+            );
         }
 
       private:

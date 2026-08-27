@@ -2,28 +2,28 @@
 #include <lux/engine/simulation/ScriptBindingCompatibility.hpp>
 
 #include <entt/entity/entity.hpp>
+#include <entt/entity/sparse_set.hpp>
 #include <entt/signal/sigh.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <limits>
 #include <new>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace lux::simulation
 {
+    [[noreturn]] void scriptBindingContractFailure() noexcept
+    {
+        std::abort();
+    }
+
     namespace
     {
-        constexpr std::uint32_t kInvalidIndex =
-            std::numeric_limits<std::uint32_t>::max();
-
-        [[nodiscard]] std::size_t entityIndex(ecs::Entity entity) noexcept
-        {
-            return static_cast<std::size_t>(entt::to_entity(entity));
-        }
-
         [[nodiscard]] EScriptBindingError mapBackendResult(
             EScriptBackendResult result
         ) noexcept
@@ -34,6 +34,8 @@ namespace lux::simulation
                 return EScriptBindingError::CAPACITY_EXCEEDED;
             case EScriptBackendResult::ALLOCATION_FAILURE:
                 return EScriptBindingError::ALLOCATION_FAILURE;
+            case EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH:
+                return EScriptBindingError::EXECUTABLE_CONTRACT_MISMATCH;
             case EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE:
                 return EScriptBindingError::UNSUPPORTED_MARSHAL_TYPE;
             case EScriptBackendResult::UNSUPPORTED_MODEL:
@@ -127,7 +129,9 @@ namespace lux::simulation
             void (*release_lease)(void*) noexcept{};
             std::size_t backend{};
             ScriptBackendInstance instance;
-            std::vector<PreparedMethod> methods;
+            std::vector<std::unique_ptr<PreparedMethod>> methods;
+            std::optional<ScriptMountDescription> pending_authored;
+            std::size_t pending_mount_order{};
             EMountState state{EMountState::CONSTRUCTING};
             EBehaviorStopReason stop_reason{EBehaviorStopReason::MOUNT_REMOVED};
             bool lifecycle_started{};
@@ -145,7 +149,6 @@ namespace lux::simulation
             std::size_t system{};
             std::size_t member{};
             ESystemHookCardinality cardinality{ESystemHookCardinality::MULTI};
-            std::vector<Handler> global_handlers;
         };
 
         struct Event final
@@ -154,14 +157,34 @@ namespace lux::simulation
             std::size_t member{};
             ScriptHookSlot dispatch_hook;
             ESystemEventTarget target{ESystemEventTarget::GLOBAL};
-            std::vector<Handler> global_handlers;
+        };
+
+        struct TargetRange final
+        {
+            std::uint32_t slot{};
+            std::uint32_t begin{};
+            std::uint32_t count{};
         };
 
         struct EntitySidecar final
         {
             ecs::Entity owner{ecs::NullEntity};
-            std::vector<std::vector<Handler>> hook_handlers;
-            std::vector<std::vector<Handler>> event_handlers;
+            std::uint32_t hook_range_begin{};
+            std::uint32_t hook_range_count{};
+            std::uint32_t event_range_begin{};
+            std::uint32_t event_range_count{};
+        };
+
+        struct DispatchIndex final
+        {
+            std::vector<std::vector<Handler>> global_hook_handlers;
+            std::vector<std::vector<Handler>> global_event_handlers;
+            entt::basic_sparse_set<ecs::Entity> entities;
+            std::vector<EntitySidecar> sidecars;
+            std::vector<TargetRange> hook_ranges;
+            std::vector<TargetRange> event_ranges;
+            std::vector<Handler> hook_handlers;
+            std::vector<Handler> event_handlers;
         };
 
         struct DirtyEntity final
@@ -194,8 +217,12 @@ namespace lux::simulation
             mounts.reserve(capacities.mount_instances);
             dirty.reserve(capacities.dirty_entities);
             failures.reserve(capacities.failures);
-            sidecars.reserve(capacities.entity_slots);
-            entity_to_sidecar.assign(capacities.entity_slots, kInvalidIndex);
+            dispatch.entities.reserve(capacities.scripted_entities);
+            dispatch.sidecars.reserve(capacities.scripted_entities);
+            dispatch.hook_ranges.reserve(capacities.dispatch_target_ranges);
+            dispatch.event_ranges.reserve(capacities.dispatch_target_ranges);
+            dispatch.hook_handlers.reserve(capacities.dispatch_handlers);
+            dispatch.event_handlers.reserve(capacities.dispatch_handlers);
             makeSlots();
         }
 
@@ -217,8 +244,7 @@ namespace lux::simulation
                     hooks.push_back(Hook{
                         system_index,
                         hook_index,
-                        system.hookPointAt(hook_index).cardinality(),
-                        {}});
+                        system.hookPointAt(hook_index).cardinality()});
                 }
             }
             for (std::size_t system_index{};
@@ -233,8 +259,7 @@ namespace lux::simulation
                         system_index,
                         event_index,
                         findHookSlot(system_index, event.dispatchHook().name()),
-                        event.target(),
-                        {}});
+                        event.target()});
                 }
             }
         }
@@ -395,10 +420,28 @@ namespace lux::simulation
                 mount.methods.end(),
                 [symbol](const auto& method) noexcept
                 {
-                    return method.symbol == symbol;
+                    return method && method->symbol == symbol;
                 }
             );
-            return found == mount.methods.end() ? nullptr : std::addressof(*found);
+            return found == mount.methods.end() ? nullptr : found->get();
+        }
+
+        [[nodiscard]] const ScriptMountDescription& effectiveAuthored(
+            const MountRuntime& mount
+        ) const noexcept
+        {
+            return mount.pending_authored
+                ? *mount.pending_authored
+                : mount.authored;
+        }
+
+        [[nodiscard]] std::size_t effectiveMountOrder(
+            const MountRuntime& mount
+        ) const noexcept
+        {
+            return mount.pending_authored
+                ? mount.pending_mount_order
+                : mount.mount_order;
         }
 
         void recordFailure(
@@ -468,7 +511,7 @@ namespace lux::simulation
                 auto* method = findMethod(mount, binding.function);
                 if (!method || !method->call)
                     continue;
-                std::uint32_t reason_value = static_cast<std::uint32_t>(reason);
+                EBehaviorStopReason reason_value = reason;
                 lux_script_value_slot reason_slot{
                     LUX_SCRIPT_VK_UINT32,
                     {},
@@ -514,12 +557,12 @@ namespace lux::simulation
                 const auto& backend = backends[mount.backend];
                 for (auto& method : mount.methods)
                 {
-                    if (backend.releaseMethod && method.call)
+                    if (method && backend.releaseMethod && method->call)
                     {
                         backend.releaseMethod(
                             backend.context,
                             mount.instance,
-                            method.call
+                            method->call
                         );
                     }
                 }
@@ -600,6 +643,31 @@ namespace lux::simulation
                 }
             }
 
+            std::size_t requested_methods{};
+            for (std::size_t index{}; index < authored.bindings.size(); ++index)
+            {
+                bool first = true;
+                for (std::size_t previous{}; previous < index; ++previous)
+                {
+                    if (authored.bindings[previous].function ==
+                        authored.bindings[index].function)
+                    {
+                        first = false;
+                        break;
+                    }
+                }
+                if (first)
+                    ++requested_methods;
+            }
+            const auto prepared = preparedMethodCount();
+            if (requested_methods > capacities.prepared_methods -
+                std::min(prepared, capacities.prepared_methods))
+            {
+                release_resolved();
+                return lux::cxx::unexpected(
+                    EScriptBindingError::CAPACITY_EXCEEDED);
+            }
+
             std::size_t backend_index{};
             const auto* backend = backendFor(
                 resolved.asset->description.kind(),
@@ -624,7 +692,7 @@ namespace lux::simulation
                 resolved.lease = nullptr;
                 resolved.release = nullptr;
                 runtime->backend = backend_index;
-                runtime->methods.reserve(authored.bindings.size());
+                runtime->methods.reserve(requested_methods);
                 ScriptInstanceCreateContext create_context{
                     authored.script,
                     authored.id,
@@ -647,12 +715,6 @@ namespace lux::simulation
                 {
                     if (findMethod(*runtime, binding.function))
                         continue;
-                    if (preparedMethodCount() >= capacities.prepared_methods)
-                    {
-                        releaseMount(*runtime, false);
-                        return lux::cxx::unexpected(
-                            EScriptBindingError::CAPACITY_EXCEEDED);
-                    }
                     const auto* function = findFunction(
                         *resolved.asset,
                         binding.function
@@ -672,19 +734,11 @@ namespace lux::simulation
                             mapBackendResult(prepare_result));
                     }
                     runtime->methods.push_back(
-                        PreparedMethod{binding.function, call});
+                        std::make_unique<PreparedMethod>(
+                            PreparedMethod{binding.function, call}
+                        )
+                    );
                 }
-                runtime->lifecycle_started = true;
-                if (!invokeLifecycle(
-                        *runtime,
-                        EBehaviorLifecyclePoint::CONSTRUCT) ||
-                    !invokeLifecycle(*runtime, EBehaviorLifecyclePoint::START))
-                {
-                    releaseMount(*runtime, true);
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::INVOCATION_FAILURE);
-                }
-                runtime->state = EMountState::ACTIVE;
                 return runtime;
             }
             catch (const std::bad_alloc&)
@@ -705,6 +759,42 @@ namespace lux::simulation
             return count;
         }
 
+        [[nodiscard]] std::size_t missingPreparedMethodCount(
+            ecs::Entity self,
+            const std::vector<ScriptMountDescription>& authored_mounts
+        ) noexcept
+        {
+            std::size_t missing{};
+            for (const auto& authored : authored_mounts)
+            {
+                auto* runtime = findMount(self, authored.id);
+                const bool reusable = runtime &&
+                    runtime->authored.script == authored.script;
+                for (std::size_t index{};
+                     index < authored.bindings.size(); ++index)
+                {
+                    bool first = true;
+                    for (std::size_t previous{}; previous < index; ++previous)
+                    {
+                        if (authored.bindings[previous].function ==
+                            authored.bindings[index].function)
+                        {
+                            first = false;
+                            break;
+                        }
+                    }
+                    if (!first || (reusable && findMethod(
+                            *runtime,
+                            authored.bindings[index].function)))
+                    {
+                        continue;
+                    }
+                    ++missing;
+                }
+            }
+            return missing;
+        }
+
         [[nodiscard]] MountRuntime* findMount(
             ecs::Entity self,
             ScriptMountId id
@@ -712,7 +802,8 @@ namespace lux::simulation
         {
             for (const auto& mount : mounts)
             {
-                if (mount->state != EMountState::DEAD &&
+                if ((mount->state == EMountState::CONSTRUCTING ||
+                     mount->state == EMountState::ACTIVE) &&
                     mount->self == self && mount->authored.id == id)
                 {
                     return mount.get();
@@ -793,56 +884,105 @@ namespace lux::simulation
                     return lux::cxx::unexpected(valid.error());
             }
             const auto& backend = backends[runtime.backend];
-            for (auto iterator = runtime.methods.begin();
-                 iterator != runtime.methods.end();)
+            std::size_t missing{};
+            for (std::size_t index{}; index < authored.bindings.size(); ++index)
             {
-                const bool still_used = std::any_of(
-                    authored.bindings.begin(),
-                    authored.bindings.end(),
-                    [&](const auto& binding) noexcept
-                    {
-                        return binding.function == iterator->symbol;
-                    }
-                );
-                if (still_used)
-                {
-                    ++iterator;
+                if (findMethod(runtime, authored.bindings[index].function))
                     continue;
-                }
-                if (backend.releaseMethod && iterator->call)
+                bool first = true;
+                for (std::size_t previous{}; previous < index; ++previous)
                 {
-                    backend.releaseMethod(
+                    if (authored.bindings[previous].function ==
+                        authored.bindings[index].function)
+                    {
+                        first = false;
+                        break;
+                    }
+                }
+                if (first)
+                    ++missing;
+            }
+            const auto prepared = preparedMethodCount();
+            if (missing > capacities.prepared_methods -
+                std::min(prepared, capacities.prepared_methods))
+            {
+                return lux::cxx::unexpected(
+                    EScriptBindingError::CAPACITY_EXCEEDED);
+            }
+            const auto original_size = runtime.methods.size();
+            const auto rollback = [&]() noexcept
+            {
+                while (runtime.methods.size() > original_size)
+                {
+                    auto& method = runtime.methods.back();
+                    if (method && backend.releaseMethod && method->call)
+                    {
+                        backend.releaseMethod(
+                            backend.context,
+                            runtime.instance,
+                            method->call
+                        );
+                    }
+                    runtime.methods.pop_back();
+                }
+            };
+            try
+            {
+                runtime.methods.reserve(original_size + missing);
+                for (const auto& binding : authored.bindings)
+                {
+                    if (findMethod(runtime, binding.function))
+                        continue;
+                    const auto* function = findFunction(
+                        *runtime.asset,
+                        binding.function
+                    );
+                    lux::script::BoundScriptCall call;
+                    ++instrumentation.method_prepares;
+                    const auto result = backend.prepareMethod(
                         backend.context,
                         runtime.instance,
-                        iterator->call
+                        *function,
+                        call
                     );
+                    if (result != EScriptBackendResult::SUCCESS || !call)
+                    {
+                        rollback();
+                        return lux::cxx::unexpected(mapBackendResult(result));
+                    }
+                    try
+                    {
+                        runtime.methods.push_back(
+                            std::make_unique<PreparedMethod>(
+                                PreparedMethod{binding.function, call}
+                            )
+                        );
+                    }
+                    catch (const std::bad_alloc&)
+                    {
+                        if (backend.releaseMethod)
+                        {
+                            backend.releaseMethod(
+                                backend.context,
+                                runtime.instance,
+                                call
+                            );
+                        }
+                        rollback();
+                        return lux::cxx::unexpected(
+                            EScriptBindingError::ALLOCATION_FAILURE);
+                    }
                 }
-                iterator = runtime.methods.erase(iterator);
+                runtime.pending_authored = authored;
+                runtime.pending_mount_order = mount_order;
+                return {};
             }
-            for (const auto& binding : authored.bindings)
+            catch (const std::bad_alloc&)
             {
-                if (findMethod(runtime, binding.function))
-                    continue;
-                if (preparedMethodCount() >= capacities.prepared_methods)
-                    return lux::cxx::unexpected(
-                        EScriptBindingError::CAPACITY_EXCEEDED);
-                const auto* function = findFunction(*runtime.asset, binding.function);
-                lux::script::BoundScriptCall call;
-                ++instrumentation.method_prepares;
-                const auto result = backend.prepareMethod(
-                    backend.context,
-                    runtime.instance,
-                    *function,
-                    call
-                );
-                if (result != EScriptBackendResult::SUCCESS || !call)
-                    return lux::cxx::unexpected(mapBackendResult(result));
-                runtime.methods.push_back(
-                    PreparedMethod{binding.function, call});
+                rollback();
+                return lux::cxx::unexpected(
+                    EScriptBindingError::ALLOCATION_FAILURE);
             }
-            runtime.authored = authored;
-            runtime.mount_order = mount_order;
-            return {};
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
@@ -857,7 +997,8 @@ namespace lux::simulation
             for (std::size_t index{}; index < authored_mounts.size(); ++index)
             {
                 const auto& authored = authored_mounts[index];
-                if (auto* runtime = findMount(self, authored.id))
+                if (auto* runtime = findMount(self, authored.id);
+                    runtime && runtime->authored.script == authored.script)
                 {
                     const auto reconciled = reconcileMount(
                         *runtime,
@@ -876,33 +1017,46 @@ namespace lux::simulation
             return {};
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
-        buildDispatch() noexcept
+        [[nodiscard]] lux::cxx::expected<DispatchIndex, EScriptBindingError>
+        makeDispatch() noexcept
         {
             try
             {
-                for (auto& hook : hooks)
-                    hook.global_handlers.clear();
-                for (auto& event : events)
-                    event.global_handlers.clear();
-                std::fill(
-                    entity_to_sidecar.begin(),
-                    entity_to_sidecar.end(),
-                    kInvalidIndex
-                );
-                sidecars.clear();
+                struct PendingHandler final
+                {
+                    ecs::Entity owner{ecs::NullEntity};
+                    std::uint32_t slot{};
+                    Handler handler;
+                    std::size_t sequence{};
+                };
+
+                DispatchIndex shadow;
+                shadow.global_hook_handlers.resize(hooks.size());
+                shadow.global_event_handlers.resize(events.size());
+                shadow.entities.reserve(capacities.scripted_entities);
+                shadow.sidecars.reserve(capacities.scripted_entities);
+                shadow.hook_ranges.reserve(capacities.dispatch_target_ranges);
+                shadow.event_ranges.reserve(capacities.dispatch_target_ranges);
+                shadow.hook_handlers.reserve(capacities.dispatch_handlers);
+                shadow.event_handlers.reserve(capacities.dispatch_handlers);
+
+                std::vector<PendingHandler> pending_hooks;
+                std::vector<PendingHandler> pending_events;
+                pending_hooks.reserve(capacities.dispatch_handlers);
+                pending_events.reserve(capacities.dispatch_handlers);
 
                 std::vector<MountRuntime*> ordered;
                 ordered.reserve(mounts.size());
                 for (auto& mount : mounts)
                 {
-                    if (mount->state == EMountState::ACTIVE)
+                    if (mount->state == EMountState::ACTIVE ||
+                        mount->state == EMountState::CONSTRUCTING)
                         ordered.push_back(mount.get());
                 }
                 std::sort(
                     ordered.begin(),
                     ordered.end(),
-                    [](const auto* left, const auto* right) noexcept
+                    [&](const auto* left, const auto* right) noexcept
                     {
                         if ((left->self == ecs::NullEntity) !=
                             (right->self == ecs::NullEntity))
@@ -912,46 +1066,17 @@ namespace lux::simulation
                         if (left->self != right->self)
                             return ecs::entityBits(left->self) <
                                 ecs::entityBits(right->self);
-                        return left->mount_order < right->mount_order;
+                        return effectiveMountOrder(*left) <
+                            effectiveMountOrder(*right);
                     }
                 );
 
-                const auto sidecarFor = [&](ecs::Entity entity)
-                    -> EntitySidecar*
-                {
-                    const auto index = entityIndex(entity);
-                    if (index >= entity_to_sidecar.size())
-                        return nullptr;
-                    auto sidecar_index = entity_to_sidecar[index];
-                    if (sidecar_index != kInvalidIndex)
-                    {
-                        auto& existing = sidecars[sidecar_index];
-                        return existing.owner == entity
-                            ? std::addressof(existing)
-                            : nullptr;
-                    }
-                    if (sidecars.size() >= capacities.entity_slots)
-                        return nullptr;
-                    sidecar_index = static_cast<std::uint32_t>(sidecars.size());
-                    sidecars.push_back(EntitySidecar{
-                        entity,
-                        std::vector<std::vector<Handler>>(hooks.size()),
-                        std::vector<std::vector<Handler>>(events.size())});
-                    entity_to_sidecar[index] = sidecar_index;
-                    return std::addressof(sidecars.back());
-                };
-
+                std::size_t sequence{};
+                std::size_t handler_count{};
                 for (auto* mount : ordered)
                 {
-                    EntitySidecar* sidecar{};
-                    if (mount->self != ecs::NullEntity)
-                    {
-                        sidecar = sidecarFor(mount->self);
-                        if (!sidecar)
-                            return lux::cxx::unexpected(
-                                EScriptBindingError::CAPACITY_EXCEEDED);
-                    }
-                    for (const auto& binding : mount->authored.bindings)
+                    const auto& authored = effectiveAuthored(*mount);
+                    for (const auto& binding : authored.bindings)
                     {
                         auto* method = findMethod(*mount, binding.function);
                         if (!method)
@@ -989,12 +1114,26 @@ namespace lux::simulation
                                     }
                                     if (!resolved_slot)
                                         return false;
-                                    if (sidecar)
-                                        sidecar->hook_handlers[resolved_slot.value]
-                                            .push_back(handler);
+                                    if (mount->self != ecs::NullEntity)
+                                    {
+                                        pending_hooks.push_back(PendingHandler{
+                                            mount->self,
+                                            resolved_slot.value,
+                                            handler,
+                                            sequence++});
+                                    }
                                     else
-                                        hooks[resolved_slot.value]
-                                            .global_handlers.push_back(handler);
+                                    {
+                                        auto& handlers = shadow
+                                            .global_hook_handlers[resolved_slot.value];
+                                        if (hooks[resolved_slot.value].cardinality ==
+                                                ESystemHookCardinality::SINGLE &&
+                                            !handlers.empty())
+                                        {
+                                            return false;
+                                        }
+                                        handlers.push_back(handler);
+                                    }
                                 }
                                 else if constexpr (
                                     std::is_same_v<Target,
@@ -1022,23 +1161,185 @@ namespace lux::simulation
                                     }
                                     if (!resolved_slot)
                                         return false;
-                                    if (sidecar)
-                                        sidecar->event_handlers[resolved_slot.value]
-                                            .push_back(handler);
+                                    if (mount->self != ecs::NullEntity)
+                                    {
+                                        pending_events.push_back(PendingHandler{
+                                            mount->self,
+                                            resolved_slot.value,
+                                            handler,
+                                            sequence++});
+                                    }
                                     else
-                                        events[resolved_slot.value]
-                                            .global_handlers.push_back(handler);
+                                    {
+                                        shadow.global_event_handlers[
+                                            resolved_slot.value].push_back(handler);
+                                    }
                                 }
                                 return true;
                             },
                             binding.target
                         );
                         if (!indexed)
+                        {
+                            const bool duplicate_single = std::visit(
+                                [&](const auto& target) noexcept
+                                {
+                                    using Target = std::remove_cvref_t<
+                                        decltype(target)>;
+                                    if constexpr (!std::is_same_v<
+                                        Target,
+                                        SystemHookBindingTarget>)
+                                    {
+                                        return false;
+                                    }
+                                    else
+                                    {
+                                        const auto system = resolveSystem(
+                                            target.system_type,
+                                            target.system_instance
+                                        );
+                                        if (!system)
+                                            return false;
+                                        for (std::size_t index{};
+                                             index < description.systemCount();
+                                             ++index)
+                                        {
+                                            if (description.systemAt(index)
+                                                    .instanceName() !=
+                                                system->instanceName())
+                                            {
+                                                continue;
+                                            }
+                                            const auto slot = findHookSlot(
+                                                index,
+                                                target.hook
+                                            );
+                                            return slot &&
+                                                hooks[slot.value].cardinality ==
+                                                    ESystemHookCardinality::SINGLE &&
+                                                mount->self == ecs::NullEntity;
+                                        }
+                                        return false;
+                                    }
+                                },
+                                binding.target
+                            );
                             return lux::cxx::unexpected(
-                                EScriptBindingError::MEMBER_NOT_FOUND);
+                                duplicate_single
+                                    ? EScriptBindingError::
+                                        SINGLE_HOOK_MULTIPLE_HANDLERS
+                                    : EScriptBindingError::MEMBER_NOT_FOUND);
+                        }
+                        ++handler_count;
+                        if (handler_count > capacities.dispatch_handlers)
+                        {
+                            return lux::cxx::unexpected(
+                                EScriptBindingError::CAPACITY_EXCEEDED);
+                        }
                     }
                 }
-                return {};
+
+                const auto pending_less = [](const PendingHandler& left,
+                                             const PendingHandler& right) noexcept
+                {
+                    const auto left_bits = ecs::entityBits(left.owner);
+                    const auto right_bits = ecs::entityBits(right.owner);
+                    if (left_bits != right_bits)
+                        return left_bits < right_bits;
+                    if (left.slot != right.slot)
+                        return left.slot < right.slot;
+                    return left.sequence < right.sequence;
+                };
+                std::sort(pending_hooks.begin(), pending_hooks.end(), pending_less);
+                std::sort(pending_events.begin(), pending_events.end(), pending_less);
+
+                std::vector<ecs::Entity> owners;
+                owners.reserve(capacities.scripted_entities);
+                for (const auto* mount : ordered)
+                {
+                    if (mount->self == ecs::NullEntity ||
+                        (!owners.empty() && owners.back() == mount->self))
+                    {
+                        continue;
+                    }
+                    if (owners.size() >= capacities.scripted_entities)
+                    {
+                        return lux::cxx::unexpected(
+                            EScriptBindingError::CAPACITY_EXCEEDED);
+                    }
+                    owners.push_back(mount->self);
+                    shadow.entities.push(mount->self);
+                    shadow.sidecars.push_back(EntitySidecar{mount->self});
+                }
+
+                const auto flatten = [&](const std::vector<PendingHandler>& pending,
+                                         bool hook_values)
+                    -> lux::cxx::expected<void, EScriptBindingError>
+                {
+                    auto& ranges = hook_values
+                        ? shadow.hook_ranges
+                        : shadow.event_ranges;
+                    auto& handlers = hook_values
+                        ? shadow.hook_handlers
+                        : shadow.event_handlers;
+                    std::size_t cursor{};
+                    while (cursor < pending.size())
+                    {
+                        const auto owner = pending[cursor].owner;
+                        if (!shadow.entities.contains(owner))
+                        {
+                            return lux::cxx::unexpected(
+                                EScriptBindingError::INVALID_ENTITY);
+                        }
+                        const auto sidecar_index = shadow.entities.index(owner);
+                        if (sidecar_index >= shadow.sidecars.size())
+                        {
+                            return lux::cxx::unexpected(
+                                EScriptBindingError::INVALID_ENTITY);
+                        }
+                        auto& sidecar = shadow.sidecars[sidecar_index];
+                        auto& range_begin = hook_values
+                            ? sidecar.hook_range_begin
+                            : sidecar.event_range_begin;
+                        auto& range_count = hook_values
+                            ? sidecar.hook_range_count
+                            : sidecar.event_range_count;
+                        range_begin = static_cast<std::uint32_t>(ranges.size());
+                        while (cursor < pending.size() &&
+                               pending[cursor].owner == owner)
+                        {
+                            if (shadow.hook_ranges.size() +
+                                    shadow.event_ranges.size() >=
+                                capacities.dispatch_target_ranges)
+                            {
+                                return lux::cxx::unexpected(
+                                    EScriptBindingError::CAPACITY_EXCEEDED);
+                            }
+                            const auto slot = pending[cursor].slot;
+                            const auto begin = handlers.size();
+                            while (cursor < pending.size() &&
+                                   pending[cursor].owner == owner &&
+                                   pending[cursor].slot == slot)
+                            {
+                                handlers.push_back(pending[cursor].handler);
+                                ++cursor;
+                            }
+                            ranges.push_back(TargetRange{
+                                slot,
+                                static_cast<std::uint32_t>(begin),
+                                static_cast<std::uint32_t>(
+                                    handlers.size() - begin)});
+                            ++range_count;
+                        }
+                    }
+                    return {};
+                };
+                if (auto flattened = flatten(pending_hooks, true); !flattened)
+                    return lux::cxx::unexpected(flattened.error());
+                if (auto flattened = flatten(pending_events, false); !flattened)
+                    return lux::cxx::unexpected(flattened.error());
+
+                return shadow;
             }
             catch (const std::bad_alloc&)
             {
@@ -1107,10 +1408,6 @@ namespace lux::simulation
                     }
                     global_mounts.push_back(std::move(mount));
                 }
-                auto result = upsertOwner(ecs::NullEntity, global_mounts);
-                if (!result)
-                    return result;
-
                 std::vector<ecs::Entity> entities;
                 const auto view = registry->view<ScriptComponent>();
                 for (const auto entity : view)
@@ -1123,14 +1420,56 @@ namespace lux::simulation
                         return ecs::entityBits(left) < ecs::entityBits(right);
                     }
                 );
+                std::size_t required_methods{};
+                const auto account = [&](
+                    ecs::Entity owner,
+                    const std::vector<ScriptMountDescription>& owner_mounts
+                ) noexcept
+                {
+                    const auto missing = missingPreparedMethodCount(
+                        owner,
+                        owner_mounts
+                    );
+                    if (missing > capacities.prepared_methods -
+                        std::min(required_methods, capacities.prepared_methods))
+                    {
+                        return false;
+                    }
+                    required_methods += missing;
+                    return true;
+                };
+                if (!account(ecs::NullEntity, global_mounts))
+                {
+                    return lux::cxx::unexpected(
+                        EScriptBindingError::CAPACITY_EXCEEDED);
+                }
+                for (const auto entity : entities)
+                {
+                    if (!account(
+                            entity,
+                            registry->get<ScriptComponent>(entity).mounts))
+                    {
+                        return lux::cxx::unexpected(
+                            EScriptBindingError::CAPACITY_EXCEEDED);
+                    }
+                }
+                auto result = upsertOwner(ecs::NullEntity, global_mounts);
+                if (!result)
+                {
+                    rollbackStaged();
+                    return result;
+                }
                 for (const auto entity : entities)
                 {
                     const auto& component = registry->get<ScriptComponent>(entity);
                     result = upsertOwner(entity, component.mounts);
                     if (!result)
+                    {
+                        rollbackStaged();
                         return result;
+                    }
                 }
-                result = buildDispatch();
+                result = activateAndPublish();
                 if (!result)
                     return result;
                 dirty.clear();
@@ -1173,16 +1512,50 @@ namespace lux::simulation
                                 : EBehaviorStopReason::ENTITY_DESTROYED
                         );
                     }
-                    destroyRetired();
+                    std::vector<ecs::Entity> entities;
                     const auto view = registry->view<ScriptComponent>();
                     for (const auto entity : view)
+                        entities.push_back(entity);
+                    std::sort(
+                        entities.begin(),
+                        entities.end(),
+                        [](auto left, auto right) noexcept
+                        {
+                            return ecs::entityBits(left) <
+                                ecs::entityBits(right);
+                        }
+                    );
+                    std::size_t required_methods = preparedMethodCount();
+                    for (const auto entity : entities)
+                    {
+                        const auto missing = missingPreparedMethodCount(
+                            entity,
+                            registry->get<ScriptComponent>(entity).mounts
+                        );
+                        if (missing > capacities.prepared_methods -
+                            std::min(
+                                required_methods,
+                                capacities.prepared_methods))
+                        {
+                            rollbackStaged();
+                            full_resync = true;
+                            return lux::cxx::unexpected(
+                                EScriptBindingError::CAPACITY_EXCEEDED);
+                        }
+                        required_methods += missing;
+                    }
+                    for (const auto entity : entities)
                     {
                         const auto result = upsertOwner(
                             entity,
                             registry->get<ScriptComponent>(entity).mounts
                         );
                         if (!result)
+                        {
+                            rollbackStaged();
+                            full_resync = true;
                             return result;
+                        }
                     }
                 }
                 else
@@ -1192,8 +1565,12 @@ namespace lux::simulation
                         dirty.end(),
                         [](const auto& left, const auto& right) noexcept
                         {
-                            return ecs::entityBits(left.entity) <
-                                ecs::entityBits(right.entity);
+                            const auto left_bits = ecs::entityBits(left.entity);
+                            const auto right_bits = ecs::entityBits(right.entity);
+                            if (left_bits != right_bits)
+                                return left_bits < right_bits;
+                            return static_cast<std::uint32_t>(left.reason) >
+                                static_cast<std::uint32_t>(right.reason);
                         }
                     );
                     dirty.erase(
@@ -1214,7 +1591,31 @@ namespace lux::simulation
                             : nullptr;
                         markRemoved(change.entity, component, change.reason);
                     }
-                    destroyRetired();
+                    std::size_t required_methods = preparedMethodCount();
+                    for (const auto change : dirty)
+                    {
+                        if (!registry->valid(change.entity))
+                            continue;
+                        const auto* component =
+                            registry->try_get<ScriptComponent>(change.entity);
+                        if (!component)
+                            continue;
+                        const auto missing = missingPreparedMethodCount(
+                            change.entity,
+                            component->mounts
+                        );
+                        if (missing > capacities.prepared_methods -
+                            std::min(
+                                required_methods,
+                                capacities.prepared_methods))
+                        {
+                            rollbackStaged();
+                            full_resync = true;
+                            return lux::cxx::unexpected(
+                                EScriptBindingError::CAPACITY_EXCEEDED);
+                        }
+                        required_methods += missing;
+                    }
                     for (const auto change : dirty)
                     {
                         if (!registry->valid(change.entity))
@@ -1228,13 +1629,19 @@ namespace lux::simulation
                             component->mounts
                         );
                         if (!result)
+                        {
+                            rollbackStaged();
+                            full_resync = true;
                             return result;
+                        }
                     }
                 }
+                auto result = activateAndPublish();
+                if (!result)
+                    return result;
                 dirty.clear();
                 full_resync = false;
-                destroyRetired();
-                return buildDispatch();
+                return {};
             }
             catch (const std::bad_alloc&)
             {
@@ -1258,16 +1665,7 @@ namespace lux::simulation
                 }
             }
             destroyRetired();
-            for (auto& hook : hooks)
-                hook.global_handlers.clear();
-            for (auto& event : events)
-                event.global_handlers.clear();
-            sidecars.clear();
-            std::fill(
-                entity_to_sidecar.begin(),
-                entity_to_sidecar.end(),
-                kInvalidIndex
-            );
+            dispatch = DispatchIndex{};
             shut_down = true;
             return {};
         }
@@ -1276,15 +1674,234 @@ namespace lux::simulation
             ecs::Entity entity
         ) noexcept
         {
-            const auto index = entityIndex(entity);
-            if (index >= entity_to_sidecar.size())
+            if (!dispatch.entities.contains(entity))
                 return nullptr;
-            const auto sidecar_index = entity_to_sidecar[index];
-            if (sidecar_index == kInvalidIndex ||
-                sidecar_index >= sidecars.size())
+            const auto sidecar_index = dispatch.entities.index(entity);
+            if (sidecar_index >= dispatch.sidecars.size())
                 return nullptr;
-            auto& sidecar = sidecars[sidecar_index];
+            auto& sidecar = dispatch.sidecars[sidecar_index];
             return sidecar.owner == entity ? std::addressof(sidecar) : nullptr;
+        }
+
+        [[nodiscard]] std::vector<MountRuntime*> orderedConstructing()
+        {
+            std::vector<MountRuntime*> ordered;
+            ordered.reserve(mounts.size());
+            for (auto& mount : mounts)
+            {
+                if (mount->state == EMountState::CONSTRUCTING)
+                    ordered.push_back(mount.get());
+            }
+            std::sort(
+                ordered.begin(),
+                ordered.end(),
+                [](const auto* left, const auto* right) noexcept
+                {
+                    if ((left->self == ecs::NullEntity) !=
+                        (right->self == ecs::NullEntity))
+                    {
+                        return left->self == ecs::NullEntity;
+                    }
+                    if (left->self != right->self)
+                    {
+                        return ecs::entityBits(left->self) <
+                            ecs::entityBits(right->self);
+                    }
+                    return left->mount_order < right->mount_order;
+                }
+            );
+            return ordered;
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
+        constructPending() noexcept
+        {
+            try
+            {
+                const auto ordered = orderedConstructing();
+                for (auto* mount : ordered)
+                {
+                    if (!invokeLifecycle(
+                            *mount,
+                            EBehaviorLifecyclePoint::CONSTRUCT))
+                    {
+                        return lux::cxx::unexpected(
+                            EScriptBindingError::INVOCATION_FAILURE);
+                    }
+                    mount->lifecycle_started = true;
+                }
+                return {};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(
+                    EScriptBindingError::ALLOCATION_FAILURE);
+            }
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
+        startPending() noexcept
+        {
+            try
+            {
+                const auto ordered = orderedConstructing();
+                for (auto* mount : ordered)
+                {
+                    if (!invokeLifecycle(*mount, EBehaviorLifecyclePoint::START))
+                    {
+                        return lux::cxx::unexpected(
+                            EScriptBindingError::INVOCATION_FAILURE);
+                    }
+                }
+                for (auto* mount : ordered)
+                    mount->state = EMountState::ACTIVE;
+                return {};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(
+                    EScriptBindingError::ALLOCATION_FAILURE);
+            }
+        }
+
+        void rollbackStaged() noexcept
+        {
+            for (auto& mount : mounts)
+            {
+                if (mount->state == EMountState::CONSTRUCTING)
+                {
+                    releaseMount(*mount, mount->lifecycle_started);
+                    continue;
+                }
+                if (!mount->pending_authored)
+                    continue;
+                const auto& backend = backends[mount->backend];
+                std::erase_if(
+                    mount->methods,
+                    [&](const auto& method) noexcept
+                    {
+                        const auto committed = std::any_of(
+                            mount->authored.bindings.begin(),
+                            mount->authored.bindings.end(),
+                            [&](const auto& binding) noexcept
+                            {
+                                return binding.function == method->symbol;
+                            }
+                        );
+                        if (!committed && backend.releaseMethod && method->call)
+                        {
+                            backend.releaseMethod(
+                                backend.context,
+                                mount->instance,
+                                method->call
+                            );
+                        }
+                        return !committed;
+                    }
+                );
+                mount->pending_authored.reset();
+            }
+            mounts.erase(
+                std::remove_if(
+                    mounts.begin(),
+                    mounts.end(),
+                    [](const auto& mount) noexcept
+                    {
+                        return mount->state == EMountState::DEAD;
+                    }
+                ),
+                mounts.end()
+            );
+        }
+
+        void publish(DispatchIndex&& shadow) noexcept
+        {
+            instrumentation.target_ranges_built =
+                shadow.hook_ranges.size() + shadow.event_ranges.size();
+            instrumentation.dispatch_handlers_built =
+                shadow.hook_handlers.size() + shadow.event_handlers.size();
+            dispatch = std::move(shadow);
+            for (auto& mount : mounts)
+            {
+                if (!mount->pending_authored)
+                    continue;
+                mount->authored = std::move(*mount->pending_authored);
+                mount->mount_order = mount->pending_mount_order;
+                mount->pending_authored.reset();
+            }
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, EScriptBindingError>
+        activateAndPublish() noexcept
+        {
+            auto constructed_result = constructPending();
+            if (!constructed_result)
+            {
+                rollbackStaged();
+                full_resync = true;
+                return constructed_result;
+            }
+            auto shadow = makeDispatch();
+            if (!shadow)
+            {
+                rollbackStaged();
+                full_resync = true;
+                return lux::cxx::unexpected(shadow.error());
+            }
+            auto started = startPending();
+            if (!started)
+            {
+                rollbackStaged();
+                full_resync = true;
+                return started;
+            }
+            publish(std::move(*shadow));
+            destroyRetired();
+            return {};
+        }
+
+        [[nodiscard]] std::span<const Handler> handlersFor(
+            ecs::Entity entity,
+            std::uint32_t slot,
+            bool hook_values
+        ) noexcept
+        {
+            const auto* sidecar = sidecarFor(entity);
+            if (!sidecar)
+                return {};
+            const auto& ranges = hook_values
+                ? dispatch.hook_ranges
+                : dispatch.event_ranges;
+            const auto& handlers = hook_values
+                ? dispatch.hook_handlers
+                : dispatch.event_handlers;
+            const auto begin = hook_values
+                ? sidecar->hook_range_begin
+                : sidecar->event_range_begin;
+            const auto count = hook_values
+                ? sidecar->hook_range_count
+                : sidecar->event_range_count;
+            if (begin > ranges.size() || count > ranges.size() - begin)
+                return {};
+            const auto first = ranges.begin() + begin;
+            const auto last = first + count;
+            ++instrumentation.target_range_lookups;
+            const auto found = std::lower_bound(
+                first,
+                last,
+                slot,
+                [](const TargetRange& range, std::uint32_t value) noexcept
+                {
+                    return range.slot < value;
+                }
+            );
+            if (found == last || found->slot != slot ||
+                found->begin > handlers.size() ||
+                found->count > handlers.size() - found->begin)
+            {
+                return {};
+            }
+            return {handlers.data() + found->begin, found->count};
         }
 
         SimulationDescription description;
@@ -1296,8 +1913,7 @@ namespace lux::simulation
         std::vector<Hook> hooks;
         std::vector<Event> events;
         std::vector<std::unique_ptr<MountRuntime>> mounts;
-        std::vector<EntitySidecar> sidecars;
-        std::vector<std::uint32_t> entity_to_sidecar;
+        DispatchIndex dispatch;
         std::vector<DirtyEntity> dirty;
         std::vector<ScriptBindingFailure> failures;
         ScriptBindingInstrumentation instrumentation;
@@ -1328,7 +1944,9 @@ namespace lux::simulation
     {
         if (!resolver.resolve || capacities.mount_instances == 0U ||
             capacities.prepared_methods == 0U ||
-            capacities.entity_slots == 0U ||
+            capacities.scripted_entities == 0U ||
+            capacities.dispatch_target_ranges == 0U ||
+            capacities.dispatch_handlers == 0U ||
             capacities.dirty_entities == 0U)
         {
             return lux::cxx::unexpected(
@@ -1463,21 +2081,19 @@ namespace lux::simulation
         ++state_->instrumentation.frame_builds;
         auto frame = source_frame;
         const auto& metadata = state_->hooks[hook.value];
-        const std::vector<State::Handler>* handlers{};
+        std::span<const State::Handler> handlers;
         if (target == ecs::NullEntity)
         {
-            handlers = std::addressof(metadata.global_handlers);
+            handlers = state_->dispatch.global_hook_handlers[hook.value];
         }
         else
         {
             ++state_->instrumentation.entities_examined;
-            auto* sidecar = state_->sidecarFor(target);
-            if (!sidecar)
-                return total;
-            handlers = std::addressof(sidecar->hook_handlers[hook.value]);
+            handlers = state_->handlersFor(target, hook.value, true);
         }
-        for (const auto handler : *handlers)
+        for (const auto handler : handlers)
         {
+            ++state_->instrumentation.handlers_visited;
             const auto result = state_->invoke(
                 handler,
                 frame,
@@ -1518,21 +2134,19 @@ namespace lux::simulation
         }
         ++state_->instrumentation.frame_builds;
         auto frame = live_frame;
-        const std::vector<State::Handler>* handlers{};
+        std::span<const State::Handler> handlers;
         if (target == ecs::NullEntity)
         {
-            handlers = std::addressof(metadata.global_handlers);
+            handlers = state_->dispatch.global_event_handlers[event.value];
         }
         else
         {
             ++state_->instrumentation.entities_examined;
-            auto* sidecar = state_->sidecarFor(target);
-            if (!sidecar)
-                return total;
-            handlers = std::addressof(sidecar->event_handlers[event.value]);
+            handlers = state_->handlersFor(target, event.value, false);
         }
-        for (const auto handler : *handlers)
+        for (const auto handler : handlers)
         {
+            ++state_->instrumentation.handlers_visited;
             const auto result = state_->invoke(handler, frame, false);
             total.calls += result.calls;
             total.failures += result.failures;

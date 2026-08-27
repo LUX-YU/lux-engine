@@ -17,6 +17,9 @@
 
 namespace lux::simulation
 {
+    [[noreturn]] LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC
+    void scriptBindingContractFailure() noexcept;
+
     enum class EScriptBindingError : std::uint8_t
     {
         ALLOCATION_FAILURE,
@@ -30,10 +33,12 @@ namespace lux::simulation
         MEMBER_NOT_FOUND,
         SCOPE_MISMATCH,
         CARDINALITY_MISMATCH,
+        SINGLE_HOOK_MULTIPLE_HANDLERS,
         SIGNATURE_MISMATCH,
         BACKEND_NOT_AVAILABLE,
         DUPLICATE_BACKEND_KIND,
         BACKEND_CONSTRUCTION_FAILURE,
+        EXECUTABLE_CONTRACT_MISMATCH,
         UNSUPPORTED_MARSHAL_TYPE,
         INVOCATION_FAILURE,
         INVALID_SLOT,
@@ -65,7 +70,9 @@ namespace lux::simulation
     {
         std::size_t mount_instances{};
         std::size_t prepared_methods{};
-        std::size_t entity_slots{};
+        std::size_t scripted_entities{};
+        std::size_t dispatch_target_ranges{};
+        std::size_t dispatch_handlers{};
         std::size_t dirty_entities{};
         std::size_t failures{};
     };
@@ -170,6 +177,7 @@ namespace lux::simulation
         CAPACITY_EXCEEDED,
         ALLOCATION_FAILURE,
         CONSTRUCTION_FAILURE,
+        EXECUTABLE_CONTRACT_MISMATCH,
     };
 
     struct ScriptBackendDescriptor final
@@ -219,16 +227,14 @@ namespace lux::simulation
     {
         std::size_t asset_resolutions{};
         std::size_t target_resolutions{};
-        std::size_t reflection_accesses{};
         std::size_t entities_examined{};
+        std::size_t target_range_lookups{};
+        std::size_t handlers_visited{};
+        std::size_t target_ranges_built{};
+        std::size_t dispatch_handlers_built{};
         std::size_t instance_creates{};
         std::size_t method_prepares{};
         std::size_t frame_builds{};
-        std::size_t hot_path_allocations{};
-        std::size_t hot_path_name_lookups{};
-        std::size_t hot_path_asset_lookups{};
-        std::size_t hot_path_signature_adaptations{};
-        std::size_t hot_path_scene_scans{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_BINDING_PUBLIC ScriptBindingSession final

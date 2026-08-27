@@ -354,7 +354,7 @@ int main()
         auto python_session = ScriptBindingSession::create(
             std::move(*python_description),
             python_registry,
-            ScriptBindingCapacities{1U, 1U, 4U, 4U, 4U},
+            ScriptBindingCapacities{1U, 1U, 4U, 4U, 4U, 4U, 4U},
             ScriptAssetResolver{&assets, &resolveAsset},
             {}
         );
@@ -412,13 +412,56 @@ int main()
         &destroyInstance};
     const ScriptAssetResolver resolver{&assets, &resolveAsset};
 
+    {
+        SimulationDescriptionBuilder capacity_builder;
+        assert(capacity_builder.addSystem("fixture", kSystem));
+        auto capacity_description = std::move(capacity_builder).build();
+        assert(capacity_description);
+        ecs::Registry capacity_registry;
+        const auto capacity_entity = capacity_registry.create();
+        auto capacity_mount = entity_mount;
+        capacity_mount.bindings = {
+            hookBinding(kEntityHook, "after"),
+            eventBinding(kEntityEvent, "entity-pulse")};
+        capacity_registry.emplace<ScriptComponent>(
+            capacity_entity,
+            ScriptComponent{{capacity_mount}}
+        );
+        Backend capacity_backend;
+        const ScriptBackendDescriptor capacity_backend_descriptor{
+            lux::rdesc::Script::Kind::CPP_STATIC,
+            &capacity_backend,
+            &createInstance,
+            &prepareMethod,
+            &releaseMethod,
+            &destroyInstance};
+        auto capacity_session = ScriptBindingSession::create(
+            std::move(*capacity_description),
+            capacity_registry,
+            ScriptBindingCapacities{1U, 1U, 4U, 4U, 4U, 4U, 4U},
+            resolver,
+            std::span{&capacity_backend_descriptor, 1U}
+        );
+        assert(capacity_session);
+        const auto capacity_prepare = capacity_session->prepare();
+        assert(!capacity_prepare);
+        assert(
+            capacity_prepare.error() ==
+            EScriptBindingError::CAPACITY_EXCEEDED
+        );
+        assert(capacity_backend.creates == 0U);
+        assert(capacity_backend.prepares == 0U);
+        assert(capacity_backend.releases == 0U);
+        assert(capacity_backend.destroys == 0U);
+    }
+
     const std::array duplicate_backends{
         backend_descriptor,
         backend_descriptor};
     auto duplicate = ScriptBindingSession::create(
         SimulationDescription{},
         registry,
-        ScriptBindingCapacities{16U, 64U, 64U, 16U, 16U},
+        ScriptBindingCapacities{16U, 64U, 64U, 64U, 64U, 16U, 16U},
         resolver,
         duplicate_backends
     );
@@ -428,7 +471,7 @@ int main()
     auto created = ScriptBindingSession::create(
         std::move(*description),
         registry,
-        ScriptBindingCapacities{16U, 64U, 64U, 16U, 16U},
+        ScriptBindingCapacities{16U, 64U, 64U, 64U, 64U, 16U, 16U},
         resolver,
         std::span{&backend_descriptor, 1U}
     );
@@ -441,8 +484,8 @@ int main()
     assert(backend.log.size() == 4U);
     assert((backend.log == std::vector<std::int64_t>{
         2002300LL,
-        2002400LL,
         2102300LL,
+        2002400LL,
         2102400LL}));
 
     const auto after = session.hookSlot("fixture", "after");
@@ -539,9 +582,17 @@ int main()
     assert(backend.log[log_before_workers] == 2002230LL);
     assert(backend.log[log_before_workers + 1U] == 2002240LL);
     assert(backend.log[log_before_workers + 2U] == 2002100LL);
-    assert(session.instrumentation().hot_path_name_lookups == 0U);
-    assert(session.instrumentation().hot_path_asset_lookups == 0U);
-    assert(session.instrumentation().hot_path_scene_scans == 0U);
+    const auto cold_asset_resolutions =
+        session.instrumentation().asset_resolutions;
+    const auto cold_target_resolutions =
+        session.instrumentation().target_resolutions;
+    assert(session.dispatchHook(after, entity, hook_frame).calls == 1U);
+    assert(
+        session.instrumentation().asset_resolutions == cold_asset_resolutions
+    );
+    assert(
+        session.instrumentation().target_resolutions == cold_target_resolutions
+    );
 
     const auto mount_schema = ecs::makeComponentSchema<ScriptComponent>(
         ecs::componentSchemaId(ScriptComponentCanonicalName),

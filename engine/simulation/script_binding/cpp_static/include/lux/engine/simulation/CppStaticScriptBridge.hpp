@@ -78,6 +78,7 @@ namespace lux::simulation
             std::string_view descriptor_key,
             const lux::meta::RefClass& reflected_class,
             std::span<const lux::meta::RefMethod* const> methods,
+            std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types,
             void (*attach)(void*, ScriptInstanceHostContext&) noexcept
         ) noexcept;
@@ -91,6 +92,7 @@ namespace lux::simulation
             std::string_view descriptor_key,
             const lux::meta::RefClass& reflected_class,
             std::span<const lux::meta::RefMethod* const> methods,
+            std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types = {}
         ) noexcept
     {
@@ -106,6 +108,7 @@ namespace lux::simulation
             descriptor_key,
             reflected_class,
             methods,
+            symbols,
             record_types,
             &attachEntityBehavior<Behavior>
         );
@@ -118,6 +121,7 @@ namespace lux::simulation
             std::string_view module_name,
             std::string_view descriptor_key,
             std::span<const lux::meta::RefFunction* const> functions,
+            std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types = {}
         ) noexcept;
 

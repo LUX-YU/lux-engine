@@ -62,7 +62,6 @@ int main()
 
     lux::rdesc::Script script;
     script.module_name = "authoring.fixture";
-    script.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
     script.body = lux::rdesc::CppStaticScript{"fixture"};
     script.exports = {{
         "update",
@@ -72,7 +71,11 @@ int main()
             lux::script::scriptSemanticTypeId(
                 "lux.simulation.SimulationStepInfo"
             ),
-            lux::script::EScriptPassMode::CONST_REF
+            lux::script::EScriptPassMode::CONST_REF,
+            static_cast<std::uint8_t>(
+                lux::semantic::EAbiKind::STRUCT_REF),
+            sizeof(SimulationStepInfo),
+            alignof(SimulationStepInfo)
         }},
         {}}};
     assert(lux::rdesc::validScriptDescription(script));
@@ -81,6 +84,7 @@ int main()
     const auto compatible = compatibleScriptBindingTargets(
         script,
         1U,
+        EScriptAttachmentScope::ENTITY,
         catalog
     );
     assert(compatible.size() == 2U);
@@ -95,6 +99,7 @@ int main()
     const auto detached_compatible = compatibleScriptBindingTargets(
         script,
         1U,
+        EScriptAttachmentScope::ENTITY,
         detached_catalog
     );
     assert(detached_compatible.size() == 2U);
@@ -104,7 +109,8 @@ int main()
     ScriptMountDescription mount{
         ScriptMountId{1U},
         lux::asset::AssetId{asset_bytes},
-        {}};
+        {},
+        EScriptAttachmentScope::ENTITY};
     const auto before = ScriptBindingDescription{
         1U,
         SystemHookBindingTarget{
@@ -147,7 +153,6 @@ int main()
 
     lux::rdesc::Script global;
     global.module_name = "authoring.global";
-    global.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
     global.body = lux::rdesc::CppStaticScript{"global"};
     global.exports = {
         {"first", 2U, {}, {}},
@@ -188,7 +193,8 @@ int main()
     const auto base_catalog_json = semantic_catalog->canonicalJson();
     auto collision_entry = makeScriptAuthoringRecordEntry<CollisionEvent>();
     assert(collision_entry);
-    assert(collision_entry->abi_kind == LUX_SCRIPT_VK_STRUCT_REF);
+    assert(collision_entry->abi_kind == static_cast<std::uint8_t>(
+        lux::semantic::EAbiKind::STRUCT_REF));
     assert(collision_entry->default_parameter_pass ==
         lux::script::EScriptPassMode::CONST_REF);
     assert(semantic_catalog->add(std::move(*collision_entry)));
@@ -201,11 +207,14 @@ int main()
         {{
             collision->canonical_name,
             collision->type_id,
-            lux::script::EScriptPassMode::CONST_REF}},
+            lux::script::EScriptPassMode::CONST_REF,
+            collision->abi_kind,
+            collision->size,
+            collision->alignment}},
         {}};
     assert(evaluateScriptBindingCompatibility(
         *simulation,
-        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR,
+        EScriptAttachmentScope::ENTITY,
         collision_function,
         SystemEventBindingTarget{
             systemTypeId(kSystem.canonical_name),

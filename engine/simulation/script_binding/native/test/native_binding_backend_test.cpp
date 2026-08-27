@@ -77,7 +77,6 @@ int main()
 
     lux::asset::ScriptAssetContent asset;
     asset.description.module_name = "native_fixture";
-    asset.description.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
     asset.description.body = lux::rdesc::NativeModuleScript{
         LUX_SCRIPT_ABI_VERSION,
         module->stateLayoutHash(),
@@ -92,17 +91,14 @@ int main()
     const lux::rdesc::ScriptFunction function{
         "OnUpdate",
         2U,
-        {{"lux.f32", lux::script::scriptSemanticTypeId("lux.f32"),
-          lux::script::EScriptPassMode::VALUE}},
+        {lux::rdesc::makeScriptValueType<float>()},
         {}};
     const lux::rdesc::ScriptFunction pair{
         "OnUpdate",
         3U,
         {
-            {"lux.f32", lux::script::scriptSemanticTypeId("lux.f32"),
-             lux::script::EScriptPassMode::VALUE},
-            {"lux.u32", lux::script::scriptSemanticTypeId("lux.u32"),
-             lux::script::EScriptPassMode::VALUE}},
+            lux::rdesc::makeScriptValueType<float>(),
+            lux::rdesc::makeScriptValueType<std::uint32_t>()},
         {}};
     asset.description.exports = {increment, function, pair};
     assert(lux::rdesc::validScriptDescription(asset.description));

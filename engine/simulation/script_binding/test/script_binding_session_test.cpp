@@ -271,10 +271,44 @@ namespace
         lux::script::EScriptPassMode pass
     )
     {
-        return lux::rdesc::ScriptValueType{
-            canonical_name,
-            lux::script::scriptSemanticTypeId(canonical_name),
-            pass};
+        const auto id = lux::script::scriptSemanticTypeId(canonical_name);
+        if (const auto* layout = lux::script::scriptBuiltinLayout(id))
+        {
+            return {
+                std::move(canonical_name),
+                id,
+                pass,
+                layout->abi_kind,
+                layout->size,
+                layout->alignment};
+        }
+        if (canonical_name == BehaviorStopReasonCanonicalName)
+        {
+            return {
+                std::move(canonical_name),
+                id,
+                pass,
+                LUX_SCRIPT_VK_UINT32,
+                sizeof(EBehaviorStopReason),
+                alignof(EBehaviorStopReason)};
+        }
+        if (canonical_name == "lux.simulation.SimulationStepInfo")
+        {
+            return {
+                std::move(canonical_name),
+                id,
+                pass,
+                LUX_SCRIPT_VK_STRUCT_REF,
+                sizeof(SimulationStepInfo),
+                alignof(SimulationStepInfo)};
+        }
+        return {
+            std::move(canonical_name),
+            id,
+            pass,
+            LUX_SCRIPT_VK_STRUCT_REF,
+            sizeof(Pulse),
+            alignof(Pulse)};
     }
 
     ScriptBindingDescription hookBinding(
@@ -334,7 +368,6 @@ int main()
     assets.entries[0].id = assetId(0x42U);
     auto& global = assets.entries[0].content.description;
     global.module_name = "binding.global.fixture";
-    global.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
     global.body = lux::rdesc::CppStaticScript{"global-fixture"};
     global.exports = {
         {"after", kGlobalHook,
@@ -349,7 +382,6 @@ int main()
     assets.entries[1].id = assetId(0x43U);
     auto& behavior = assets.entries[1].content.description;
     behavior.module_name = "binding.behavior.fixture";
-    behavior.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
     behavior.body = lux::rdesc::CppStaticScript{"behavior-fixture"};
     behavior.exports = {
         {"after", kEntityHook,
@@ -369,20 +401,6 @@ int main()
     assert(lux::rdesc::validScriptDescription(global));
     assert(lux::rdesc::validScriptDescription(behavior));
 
-    assets.entries[2].id = assetId(0x44U);
-    auto& python = assets.entries[2].content.description;
-    python.module_name = "binding.python.fixture";
-    python.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
-    python.body = lux::rdesc::PythonSourceScript{"PythonBehavior"};
-    python.exports = {{
-        "after",
-        31U,
-        {valueType(
-            "lux.simulation.SimulationStepInfo",
-            lux::script::EScriptPassMode::CONST_REF)},
-        {}}};
-    assert(lux::rdesc::validScriptDescription(python));
-
     assets.entries[3].id = assetId(0x45U);
     assets.entries[3].content.description = behavior;
     assets.entries[3].content.description.module_name =
@@ -390,33 +408,6 @@ int main()
     assert(lux::rdesc::validScriptDescription(
         assets.entries[3].content.description
     ));
-
-    {
-        SimulationDescriptionBuilder python_builder;
-        assert(python_builder.addSystem("fixture", kSystem));
-        auto python_description = std::move(python_builder).build();
-        assert(python_description);
-        ecs::Registry python_registry;
-        const auto python_entity = python_registry.create();
-        python_registry.emplace<ScriptComponent>(
-            python_entity,
-            ScriptComponent{{{
-                ScriptMountId{30U},
-                assets.entries[2].id,
-                {hookBinding(31U, "after")}}}}
-        );
-        auto python_session = ScriptBindingSession::create(
-            std::move(*python_description),
-            python_registry,
-            ScriptBindingCapacities{1U, 1U, 4U, 4U, 4U, 4U, 4U},
-            ScriptAssetResolver{&assets, &resolveAsset},
-            {}
-        );
-        assert(python_session);
-        const auto prepared = python_session->prepare();
-        assert(!prepared);
-        assert(prepared.error() == EScriptBindingError::BACKEND_NOT_AVAILABLE);
-    }
 
     const ScriptMountDescription global_mount{
         ScriptMountId{10U},
@@ -434,7 +425,8 @@ int main()
             lifecycleBinding(kStop, EBehaviorLifecyclePoint::STOP),
             hookBinding(kEntityHook, "after"),
             eventBinding(kEntityEvent, "entity-pulse"),
-        }};
+        },
+        EScriptAttachmentScope::ENTITY};
 
     SimulationDescriptionBuilder builder;
     assert(builder.addSystem("fixture", kSystem));

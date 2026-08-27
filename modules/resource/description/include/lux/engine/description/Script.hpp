@@ -6,27 +6,43 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
 namespace lux::rdesc
 {
-    enum class EScriptModel : std::uint8_t
-    {
-        GLOBAL_MODULE,
-        ENTITY_BEHAVIOR,
-    };
-
     struct ScriptValueType final
     {
         std::string canonical_name;
         std::uint64_t type_id{};
         lux::script::EScriptPassMode pass{
             lux::script::EScriptPassMode::VALUE};
+        std::uint8_t abi_kind{};
+        std::uint32_t size{};
+        std::uint32_t alignment{};
 
         friend bool operator==(const ScriptValueType&, const ScriptValueType&)
             noexcept = default;
     };
+
+    template <class Value>
+        requires lux::script::ScriptSemanticTypeDeclared<Value>
+    [[nodiscard]] inline ScriptValueType makeScriptValueType(
+        lux::script::EScriptPassMode pass =
+            lux::script::EScriptPassMode::VALUE
+    )
+    {
+        using Traits = lux::script::ScriptSemanticTypeTraits<
+            std::remove_cv_t<Value>>;
+        return {
+            std::string(Traits::CanonicalName),
+            lux::script::scriptSemanticTypeId(Traits::CanonicalName),
+            pass,
+            Traits::AbiKind,
+            Traits::Size,
+            Traits::Alignment};
+    }
 
     struct ScriptFunction final
     {
@@ -93,26 +109,15 @@ namespace lux::rdesc
         ) noexcept = default;
     };
 
-    struct PythonSourceScript final
-    {
-        std::string entry;
-
-        friend bool operator==(
-            const PythonSourceScript&,
-            const PythonSourceScript&
-        ) noexcept = default;
-    };
-
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 4U;
+        static constexpr std::uint32_t kSchemaVersion = 5U;
 
         enum class Kind : std::uint8_t
         {
             UNKNOWN = 0,
             LUA_SOURCE = 1,
-            PYTHON_SOURCE = 2,
             NATIVE_MODULE = 3,
             CPP_STATIC = 6,
         };
@@ -120,13 +125,11 @@ namespace lux::rdesc
         using Body = std::variant<
             std::monostate,
             LuaSourceScript,
-            PythonSourceScript,
             NativeModuleScript,
             CppStaticScript>;
 
         std::uint32_t schema_version{kSchemaVersion};
         std::string module_name;
-        EScriptModel model{EScriptModel::GLOBAL_MODULE};
         std::vector<ScriptFunction> exports;
         std::vector<ScriptDependency> dependencies;
         ScriptProvenance provenance;
@@ -136,8 +139,6 @@ namespace lux::rdesc
         {
             if (std::holds_alternative<LuaSourceScript>(body))
                 return Kind::LUA_SOURCE;
-            if (std::holds_alternative<PythonSourceScript>(body))
-                return Kind::PYTHON_SOURCE;
             if (std::holds_alternative<NativeModuleScript>(body))
                 return Kind::NATIVE_MODULE;
             if (std::holds_alternative<CppStaticScript>(body))
@@ -152,8 +153,6 @@ namespace lux::rdesc
     {
         if (description.schema_version != Script::kSchemaVersion ||
             description.module_name.empty() ||
-            (description.model != EScriptModel::GLOBAL_MODULE &&
-             description.model != EScriptModel::ENTITY_BEHAVIOR) ||
             description.kind() == Script::Kind::UNKNOWN)
         {
             return false;
@@ -161,10 +160,22 @@ namespace lux::rdesc
 
         const auto valid_type = [](const ScriptValueType& type) noexcept
         {
-            return type.type_id != 0U && !type.canonical_name.empty() &&
-                type.type_id == lux::script::scriptSemanticTypeId(
-                    type.canonical_name
-                );
+            if (type.type_id == 0U || type.canonical_name.empty() ||
+                type.type_id != lux::script::scriptSemanticTypeId(
+                    type.canonical_name) ||
+                type.pass > lux::script::EScriptPassMode::CONST_REF ||
+                type.abi_kind == 0U || type.size == 0U ||
+                type.alignment == 0U ||
+                (type.alignment & (type.alignment - 1U)) != 0U)
+            {
+                return false;
+            }
+            const auto* builtin = lux::script::scriptBuiltinLayout(type.type_id);
+            return builtin == nullptr ||
+                (builtin->canonical_name == type.canonical_name &&
+                 builtin->abi_kind == type.abi_kind &&
+                 builtin->size == type.size &&
+                 builtin->alignment == type.alignment);
         };
         for (std::size_t index{}; index < description.exports.size(); ++index)
         {
@@ -216,12 +227,6 @@ namespace lux::rdesc
         }
         if (const auto* lua = std::get_if<LuaSourceScript>(&description.body);
             lua != nullptr && lua->entry.empty())
-        {
-            return false;
-        }
-        if (const auto* python = std::get_if<PythonSourceScript>(
-                &description.body
-            ); python != nullptr && python->entry.empty())
         {
             return false;
         }

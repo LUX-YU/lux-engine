@@ -52,7 +52,7 @@ namespace lux::flowforge
     lux::cxx::expected<FlowForgeScriptArtifact, EFlowForgeCompileError>
     compileFlowForgeScript(
         std::string module_name,
-        lux::rdesc::EScriptModel model,
+        lux::simulation::EScriptAttachmentScope scope,
         std::span<const ExportMethodNode> graph_exports,
         std::span<const BindingEdge> graph_bindings,
         const lux::simulation::SimulationDescription& simulation,

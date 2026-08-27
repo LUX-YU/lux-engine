@@ -1,4 +1,5 @@
 #include <lux/engine/toolchain/flowforge/ScriptCompiler.hpp>
+#include <lux/engine/function/script/abi/lux_script_abi.h>
 
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
@@ -33,21 +34,19 @@ int main()
         "lux.simulation.SimulationStepInfo",
         lux::script::scriptSemanticTypeId(
             "lux.simulation.SimulationStepInfo"),
-        lux::script::EScriptPassMode::CONST_REF};
-    const lux::rdesc::ScriptValueType i32{
-        "lux.i32",
-        lux::script::scriptSemanticTypeId("lux.i32"),
-        lux::script::EScriptPassMode::VALUE};
-    const lux::rdesc::ScriptValueType f32{
-        "lux.f32",
-        lux::script::scriptSemanticTypeId("lux.f32"),
-        lux::script::EScriptPassMode::VALUE};
+        lux::script::EScriptPassMode::CONST_REF,
+            static_cast<std::uint8_t>(
+                lux::semantic::EAbiKind::STRUCT_REF),
+        sizeof(SimulationStepInfo),
+        alignof(SimulationStepInfo)};
+    const auto i32 = lux::rdesc::makeScriptValueType<std::int32_t>();
+    const auto f32 = lux::rdesc::makeScriptValueType<float>();
     const std::array exports{
-        ExportMethodNode{FlowForgeExportNodeId{1U}, "tick", {step}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{2U}, "idle", {}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{3U}, "once", {step}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{4U}, "foo", {i32}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{5U}, "foo", {f32}, {}}};
+        ExportMethodNode{FlowForgeExportNodeId{1U}, 11U, "tick", {step}, {}},
+        ExportMethodNode{FlowForgeExportNodeId{2U}, 12U, "idle", {}, {}},
+        ExportMethodNode{FlowForgeExportNodeId{3U}, 13U, "once", {step}, {}},
+        ExportMethodNode{FlowForgeExportNodeId{4U}, 14U, "foo", {i32}, {}},
+        ExportMethodNode{FlowForgeExportNodeId{5U}, 15U, "foo", {f32}, {}}};
     const auto type = systemTypeId(kSystem.canonical_name);
     const std::array bindings{
         BindingEdge{
@@ -65,7 +64,7 @@ int main()
 
     auto compiled = compileFlowForgeScript(
         "gameplay.behavior",
-        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR,
+        EScriptAttachmentScope::ENTITY,
         exports,
         bindings,
         *simulation,

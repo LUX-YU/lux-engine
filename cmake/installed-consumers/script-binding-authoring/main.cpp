@@ -47,7 +47,6 @@ int main()
 
     lux::rdesc::Script script;
     script.module_name = "installed.authoring.script";
-    script.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
     script.body = lux::rdesc::CppStaticScript{"installed-authoring-v1"};
     constexpr lux::script::ScriptSymbolId symbol{77U};
     script.exports.push_back(lux::rdesc::ScriptFunction{
@@ -56,7 +55,10 @@ int main()
         {{
             "lux.f32",
             lux::script::scriptSemanticTypeId("lux.f32"),
-            lux::script::EScriptPassMode::VALUE}},
+            lux::script::EScriptPassMode::VALUE,
+            static_cast<std::uint8_t>(lux::semantic::EAbiKind::F32),
+            sizeof(float),
+            alignof(float)}},
         {}});
     assert(lux::rdesc::validScriptDescription(script));
 
@@ -66,6 +68,7 @@ int main()
     const auto compatible = lux::authoring::compatibleScriptBindingTargets(
         script,
         symbol,
+        EScriptAttachmentScope::SIMULATION,
         catalog
     );
     assert(catalog.size() == 7U);

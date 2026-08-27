@@ -105,9 +105,9 @@ namespace lux::simulation
     }
 
     EScriptBindingCompatibility evaluateScriptBindingSignatureCompatibility(
-        lux::rdesc::EScriptModel source_model,
+        EScriptAttachmentScope source_scope,
         const lux::rdesc::ScriptFunction& function,
-        lux::rdesc::EScriptModel target_model,
+        EScriptAttachmentScope target_scope,
         ESystemHookCardinality cardinality,
         std::span<const lux::rdesc::ScriptValueType> parameters,
         std::span<const lux::rdesc::ScriptValueType> returns
@@ -118,9 +118,9 @@ namespace lux::simulation
         {
             return EScriptBindingCompatibility::INVALID_FUNCTION;
         }
-        if (source_model != target_model)
+        if (source_scope != target_scope)
             return EScriptBindingCompatibility::SCOPE_MISMATCH;
-        if (source_model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR &&
+        if (source_scope == EScriptAttachmentScope::ENTITY &&
             cardinality == ESystemHookCardinality::SINGLE)
         {
             return EScriptBindingCompatibility::CARDINALITY_MISMATCH;
@@ -145,7 +145,7 @@ namespace lux::simulation
 
     EScriptBindingCompatibility evaluateScriptBindingCompatibility(
         const SimulationDescription& simulation,
-        lux::rdesc::EScriptModel model,
+        EScriptAttachmentScope scope,
         const lux::rdesc::ScriptFunction& function,
         const ScriptBindingTarget& target
     ) noexcept
@@ -153,8 +153,8 @@ namespace lux::simulation
         if (function.name.empty() ||
             function.symbol_id == lux::script::InvalidScriptSymbolId)
             return EScriptBindingCompatibility::INVALID_FUNCTION;
-        const bool entity = model == lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
-        if (!entity && model != lux::rdesc::EScriptModel::GLOBAL_MODULE)
+        const bool entity = scope == EScriptAttachmentScope::ENTITY;
+        if (!entity && scope != EScriptAttachmentScope::SIMULATION)
             return EScriptBindingCompatibility::SCOPE_MISMATCH;
         return std::visit(
             [&](const auto& concrete) noexcept

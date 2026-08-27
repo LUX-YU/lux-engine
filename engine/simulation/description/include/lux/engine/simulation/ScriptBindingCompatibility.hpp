@@ -23,9 +23,9 @@ namespace lux::simulation
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
     EScriptBindingCompatibility evaluateScriptBindingSignatureCompatibility(
-        lux::rdesc::EScriptModel source_model,
+        EScriptAttachmentScope source_scope,
         const lux::rdesc::ScriptFunction& function,
-        lux::rdesc::EScriptModel target_model,
+        EScriptAttachmentScope target_scope,
         ESystemHookCardinality cardinality,
         std::span<const lux::rdesc::ScriptValueType> parameters,
         std::span<const lux::rdesc::ScriptValueType> returns
@@ -34,7 +34,7 @@ namespace lux::simulation
     [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
     EScriptBindingCompatibility evaluateScriptBindingCompatibility(
         const SimulationDescription& simulation,
-        lux::rdesc::EScriptModel model,
+        EScriptAttachmentScope scope,
         const lux::rdesc::ScriptFunction& function,
         const ScriptBindingTarget& target
     ) noexcept;

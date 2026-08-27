@@ -29,7 +29,7 @@ namespace lux::semantic
         U64 = 5U,
         F32 = 6U,
         F64 = 7U,
-        STRUCT_REF = 8U,
+        STRUCT_REF = 10U,
     };
 
     [[nodiscard]] constexpr TypeId typeId(

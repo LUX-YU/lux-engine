@@ -12,8 +12,8 @@ namespace lux::authoring
 {
     struct ScriptBindingTargetCatalogEntry final
     {
-        lux::rdesc::EScriptModel model{
-            lux::rdesc::EScriptModel::GLOBAL_MODULE};
+        lux::simulation::EScriptAttachmentScope scope{
+            lux::simulation::EScriptAttachmentScope::SIMULATION};
         lux::simulation::ScriptBindingTarget target;
         lux::simulation::ESystemHookCardinality cardinality{
             lux::simulation::ESystemHookCardinality::MULTI};
@@ -61,6 +61,7 @@ namespace lux::authoring
     std::vector<std::size_t> compatibleScriptBindingTargets(
         const lux::rdesc::Script& script,
         lux::script::ScriptSymbolId symbol,
+        lux::simulation::EScriptAttachmentScope scope,
         const std::vector<ScriptBindingTargetCatalogEntry>& catalog
     );
 

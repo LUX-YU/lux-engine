@@ -90,17 +90,19 @@ int main()
     assert(value_method && record_method && throwing_method);
 
     const std::array selected{value_method, record_method};
+    const std::array selected_symbols{
+        lux::script::ScriptSymbolId{101U},
+        lux::script::ScriptSymbolId{102U}};
     auto projected = projectCppStaticEntityScript<test::BridgeBehavior>(
         "lux.test.bridge-behavior",
         "bridge-behavior-v1",
         *reflected,
         selected,
+        selected_symbols,
         CppStaticRecordSemanticResolver{nullptr, &resolveRecord}
     );
     assert(projected);
-    assert(projected->description().schema_version == 4U);
-    assert(projected->description().model ==
-        lux::rdesc::EScriptModel::ENTITY_BEHAVIOR);
+    assert(projected->description().schema_version == 5U);
     assert(projected->description().exports.size() == 2U);
     assert(projected->description().exports[0].args[0].canonical_name ==
         "lux.f32");
@@ -110,11 +112,13 @@ int main()
         lux::script::EScriptPassMode::CONST_REF);
 
     const std::array throwing{throwing_method};
+    const std::array throwing_symbols{lux::script::ScriptSymbolId{103U}};
     const auto rejected = projectCppStaticEntityScript<test::BridgeBehavior>(
         "lux.test.throwing",
         "throwing-v1",
         *reflected,
-        throwing
+        throwing,
+        throwing_symbols
     );
     assert(!rejected);
     assert(rejected.error() ==
@@ -128,10 +132,12 @@ int main()
     );
     assert(reflected_function && reflected_function->is_noexcept);
     const std::array functions{reflected_function};
+    const std::array function_symbols{lux::script::ScriptSymbolId{201U}};
     const auto global_projection = projectCppStaticGlobalScript(
         "lux.test.bridge-free",
         "bridge-free-v1",
-        functions
+        functions,
+        function_symbols
     );
     assert(global_projection);
     assert(global_projection->description().exports[0].args[0].canonical_name ==
@@ -158,7 +164,8 @@ int main()
                 systemTypeId(kBridgeSystem.canonical_name),
                 "bridge",
                 "value"}
-        }}};
+        }},
+        EScriptAttachmentScope::ENTITY};
     ecs::Registry registry;
     const auto entity = registry.create();
     registry.emplace<ScriptComponent>(entity, ScriptComponent{{mount}});
@@ -188,11 +195,6 @@ int main()
     {
         auto tampered = asset.content;
         tampered.description.module_name = "lux.test.tampered";
-        expect_contract_mismatch(tampered);
-    }
-    {
-        auto tampered = asset.content;
-        tampered.description.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
         expect_contract_mismatch(tampered);
     }
     {

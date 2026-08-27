@@ -399,8 +399,8 @@ namespace lux::simulation
             const auto compatibility = evaluateScriptBindingCompatibility(
                 description,
                 entity_scope
-                    ? lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
-                    : lux::rdesc::EScriptModel::GLOBAL_MODULE,
+                    ? EScriptAttachmentScope::ENTITY
+                    : EScriptAttachmentScope::SIMULATION,
                 function,
                 binding.target
             );
@@ -655,14 +655,6 @@ namespace lux::simulation
                     EScriptBindingError::INVALID_ASSET);
             }
             const bool entity_scope = self != ecs::NullEntity;
-            if (entity_scope !=
-                (resolved.asset->description.model ==
-                 lux::rdesc::EScriptModel::ENTITY_BEHAVIOR))
-            {
-                release_resolved();
-                return lux::cxx::unexpected(
-                    EScriptBindingError::SCOPE_MISMATCH);
-            }
             for (const auto& binding : authored.bindings)
             {
                 const auto* function = findFunction(*resolved.asset, binding.function);

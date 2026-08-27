@@ -12,6 +12,19 @@ namespace lux::authoring
 {
     namespace
     {
+        [[nodiscard]] bool validAbiKind(std::uint8_t value) noexcept
+        {
+            using Kind = lux::semantic::EAbiKind;
+            return value == static_cast<std::uint8_t>(Kind::BOOL) ||
+                value == static_cast<std::uint8_t>(Kind::I32) ||
+                value == static_cast<std::uint8_t>(Kind::U32) ||
+                value == static_cast<std::uint8_t>(Kind::I64) ||
+                value == static_cast<std::uint8_t>(Kind::U64) ||
+                value == static_cast<std::uint8_t>(Kind::F32) ||
+                value == static_cast<std::uint8_t>(Kind::F64) ||
+                value == static_cast<std::uint8_t>(Kind::STRUCT_REF);
+        }
+
         [[nodiscard]] std::string passName(
             lux::script::EScriptPassMode pass
         )
@@ -82,7 +95,8 @@ namespace lux::authoring
         {
             return entry(
                 canonical_name,
-                LUX_SCRIPT_VK_STRUCT_REF,
+                static_cast<std::uint8_t>(
+                    lux::semantic::EAbiKind::STRUCT_REF),
                 size,
                 alignment,
                 {lux::script::EScriptPassMode::CONST_REF},
@@ -106,8 +120,7 @@ namespace lux::authoring
             value.type_id != lux::script::scriptSemanticTypeId(
                 value.canonical_name) ||
             !validHexId(value.type_id_hex, value.type_id) ||
-            value.abi_kind == LUX_SCRIPT_VK_VOID ||
-            value.abi_kind > LUX_SCRIPT_VK_STRUCT_REF ||
+            !validAbiKind(value.abi_kind) ||
             value.size == 0U || value.alignment == 0U ||
             (value.alignment & (value.alignment - 1U)) != 0U ||
             value.allowed_parameter_passes.empty() ||
@@ -249,7 +262,8 @@ namespace lux::authoring
             auto step = result.add(entry(
                 lux::script::ScriptSemanticTypeTraits<
                     lux::simulation::SimulationStepInfo>::CanonicalName,
-                LUX_SCRIPT_VK_STRUCT_REF,
+                static_cast<std::uint8_t>(
+                    lux::semantic::EAbiKind::STRUCT_REF),
                 sizeof(lux::simulation::SimulationStepInfo),
                 alignof(lux::simulation::SimulationStepInfo),
                 {lux::script::EScriptPassMode::CONST_REF},
@@ -260,7 +274,7 @@ namespace lux::authoring
                 return lux::cxx::unexpected(step.error());
             auto stop = result.add(entry(
                 lux::simulation::BehaviorStopReasonCanonicalName,
-                LUX_SCRIPT_VK_UINT32,
+                static_cast<std::uint8_t>(lux::semantic::EAbiKind::U32),
                 sizeof(lux::simulation::EBehaviorStopReason),
                 alignof(lux::simulation::EBehaviorStopReason),
                 {lux::script::EScriptPassMode::VALUE},

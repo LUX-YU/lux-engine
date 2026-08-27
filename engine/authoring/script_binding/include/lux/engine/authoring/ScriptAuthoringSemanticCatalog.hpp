@@ -26,7 +26,8 @@ namespace lux::authoring
         std::string canonical_name;
         std::string type_id_hex;
         std::uint64_t type_id{};
-        std::uint8_t abi_kind{LUX_SCRIPT_VK_VOID};
+        std::uint8_t abi_kind{static_cast<std::uint8_t>(
+            lux::semantic::EAbiKind::VOID)};
         std::uint32_t size{};
         std::uint32_t alignment{};
         std::vector<lux::script::EScriptPassMode> allowed_parameter_passes;

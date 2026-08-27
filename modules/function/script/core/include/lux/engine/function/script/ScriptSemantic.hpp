@@ -19,52 +19,8 @@ namespace lux::script
         return lux::semantic::typeId(canonical_name);
     }
 
-    [[nodiscard]] constexpr ScriptSymbolId scriptSymbolId(
-        std::string_view canonical_symbol_identity
-    ) noexcept
-    {
-        const auto value = scriptSemanticTypeId(canonical_symbol_identity);
-        return value == InvalidScriptSymbolId ? 1U : value;
-    }
-
     using ScriptSemanticType = lux::semantic::Type;
     using ScriptFunctionSignatureView = lux::semantic::SignatureView;
-
-    [[nodiscard]] constexpr ScriptSymbolId scriptSymbolId(
-        std::string_view declaring_scope,
-        std::string_view function_name,
-        ScriptFunctionSignatureView signature
-    ) noexcept
-    {
-        std::uint64_t result = 14695981039346656037ULL;
-        const auto append = [&result](std::string_view value) noexcept
-        {
-            for (const auto character : value)
-            {
-                result ^= static_cast<std::uint8_t>(character);
-                result *= 1099511628211ULL;
-            }
-            result ^= 0xFFU;
-            result *= 1099511628211ULL;
-        };
-        append(declaring_scope);
-        append(function_name);
-        for (const auto& parameter : signature.parameters)
-        {
-            append(parameter.canonical_name);
-            result ^= static_cast<std::uint8_t>(parameter.pass);
-            result *= 1099511628211ULL;
-        }
-        result ^= 0xFEU;
-        result *= 1099511628211ULL;
-        for (const auto& return_type : signature.returns)
-        {
-            append(return_type.canonical_name);
-            result ^= static_cast<std::uint8_t>(return_type.pass);
-            result *= 1099511628211ULL;
-        }
-        return result == InvalidScriptSymbolId ? 1U : result;
-    }
 
     [[nodiscard]] constexpr bool sameScriptSignature(
         ScriptFunctionSignatureView left,

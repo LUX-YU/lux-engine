@@ -14,6 +14,12 @@
 
 namespace lux::simulation
 {
+    enum class EScriptAttachmentScope : std::uint8_t
+    {
+        SIMULATION,
+        ENTITY,
+    };
+
     struct ScriptMountId final
     {
         std::uint64_t value{};
@@ -103,6 +109,7 @@ namespace lux::simulation
         ScriptMountId id;
         lux::asset::AssetId script;
         std::vector<ScriptBindingDescription> bindings;
+        EScriptAttachmentScope scope{EScriptAttachmentScope::SIMULATION};
 
         friend bool operator==(
             const ScriptMountDescription&,

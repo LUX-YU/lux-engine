@@ -11,6 +11,7 @@ add_component(
     SOURCE_FILES
         src/ScriptBindingAuthoring.cpp
         src/ScriptAuthoringSemanticCatalog.cpp
+        src/ScriptSymbolLedger.cpp
 )
 component_include_directories(
     authoring_script_binding
@@ -66,6 +67,27 @@ add_test(
     NAME authoring_script_binding_test
     COMMAND authoring_script_binding_test
 )
+
+add_executable(
+    script_symbol_ledger_test
+    test/script_symbol_ledger_test.cpp
+)
+target_link_libraries(
+    script_symbol_ledger_test
+    PRIVATE lux::engine::authoring::authoring_script_binding
+)
+if(MSVC)
+    target_compile_options(script_symbol_ledger_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(script_symbol_ledger_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  script_symbol_ledger_test
+    LAYER   AUTHORING
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(NAME script_symbol_ledger_test COMMAND script_symbol_ledger_test)
 target_compile_definitions(
     authoring_script_binding_test
     PRIVATE

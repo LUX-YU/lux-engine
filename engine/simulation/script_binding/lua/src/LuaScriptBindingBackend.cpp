@@ -35,8 +35,7 @@ namespace lux::simulation
         {
             State* owner{};
             int table_ref{LUA_NOREF};
-            lux::rdesc::EScriptModel model{
-                lux::rdesc::EScriptModel::GLOBAL_MODULE};
+            bool entity_scope{};
             HostHandle* host_handle{};
         };
 
@@ -382,7 +381,7 @@ namespace lux::simulation
             auto* instance = new (std::nothrow) Instance{
                 std::addressof(self),
                 LUA_NOREF,
-                asset.description.model,
+                context.self != ecs::NullEntity,
                 nullptr};
             if (!instance)
                 return EScriptBackendResult::ALLOCATION_FAILURE;
@@ -400,8 +399,7 @@ namespace lux::simulation
                 lua_pop(self.state, 1);
             }
             lua_pop(self.state, 1);
-            if (asset.description.model ==
-                lux::rdesc::EScriptModel::ENTITY_BEHAVIOR)
+            if (instance->entity_scope)
             {
                 auto* handle = static_cast<HostHandle*>(
                     lua_newuserdata(self.state, sizeof(HostHandle)));
@@ -590,8 +588,7 @@ namespace lux::simulation
             const auto error_index = lua_gettop(self.state);
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, call.function_ref);
             std::uint32_t argument_count{};
-            if (call.instance->model ==
-                lux::rdesc::EScriptModel::ENTITY_BEHAVIOR)
+            if (call.instance->entity_scope)
             {
                 lua_rawgeti(
                     self.state,

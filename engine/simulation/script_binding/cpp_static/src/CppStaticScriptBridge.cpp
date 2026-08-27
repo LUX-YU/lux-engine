@@ -119,7 +119,10 @@ namespace lux::simulation
                 return lux::rdesc::ScriptValueType{
                     std::string{layout->canonical_name},
                     layout->type_id,
-                    pass};
+                    pass,
+                    layout->abi_kind,
+                    layout->size,
+                    layout->alignment};
             }
             // Non-builtin records and enums have no portable Script identity
             // until the caller explicitly supplies one.  Lifecycle stop
@@ -145,18 +148,27 @@ namespace lux::simulation
             return lux::rdesc::ScriptValueType{
                 std::string{layout.canonical_name},
                 layout.type_id,
-                pass};
+                pass,
+                layout.abi_kind,
+                layout.size,
+                layout.alignment};
         }
 
         [[nodiscard]] lux::cxx::expected<
             lux::rdesc::ScriptFunction,
             ECppStaticScriptBridgeError> projectInvokable(
-                std::string_view declaring_scope,
                 const lux::meta::RefInvokable& invokable,
+                lux::script::ScriptSymbolId assigned_symbol,
                 bool is_noexcept,
                 CppStaticRecordSemanticResolver resolver
             ) noexcept
         {
+            if (assigned_symbol == lux::script::InvalidScriptSymbolId)
+            {
+                return lux::cxx::unexpected(
+                    ECppStaticScriptBridgeError::INVALID_DESCRIPTOR
+                );
+            }
             if (!is_noexcept)
             {
                 return lux::cxx::unexpected(
@@ -207,29 +219,7 @@ namespace lux::simulation
                         return lux::cxx::unexpected(type.error());
                     projected.returns.push_back(std::move(*type));
                 }
-                std::vector<lux::script::ScriptSemanticType> parameters;
-                std::vector<lux::script::ScriptSemanticType> returns;
-                parameters.reserve(projected.args.size());
-                returns.reserve(projected.returns.size());
-                for (const auto& type : projected.args)
-                {
-                    parameters.push_back({
-                        type.type_id,
-                        type.canonical_name,
-                        type.pass});
-                }
-                for (const auto& type : projected.returns)
-                {
-                    returns.push_back({
-                        type.type_id,
-                        type.canonical_name,
-                        type.pass});
-                }
-                projected.symbol_id = lux::script::scriptSymbolId(
-                    declaring_scope,
-                    invokable.name,
-                    {parameters, returns}
-                );
+                projected.symbol_id = assigned_symbol;
                 return projected;
             }
             catch (const std::bad_alloc&)
@@ -247,6 +237,7 @@ namespace lux::simulation
         std::string descriptor_key;
         const lux::meta::RefClass* reflected_class{};
         void (*attach)(void*, ScriptInstanceHostContext&) noexcept{};
+        bool entity_scope{};
         std::vector<Callable> callables;
     };
 
@@ -290,11 +281,13 @@ namespace lux::simulation
             std::string_view descriptor_key,
             const lux::meta::RefClass& reflected_class,
             std::span<const lux::meta::RefMethod* const> methods,
+            std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types,
             void (*attach)(void*, ScriptInstanceHostContext&) noexcept
         ) noexcept
     {
         if (module_name.empty() || descriptor_key.empty() || !attach ||
+            methods.size() != symbols.size() ||
             !reflected_class.construct || !reflected_class.destruct ||
             reflected_class.type.size == 0U ||
             reflected_class.type.alignment == 0U)
@@ -307,16 +300,18 @@ namespace lux::simulation
         {
             auto state = std::make_unique<CppStaticScriptDescriptor::State>();
             state->description.module_name = module_name;
-            state->description.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
             state->description.body = lux::rdesc::CppStaticScript{
                 std::string{descriptor_key}};
             state->descriptor_key = descriptor_key;
             state->reflected_class = std::addressof(reflected_class);
             state->attach = attach;
+            state->entity_scope = true;
             state->description.exports.reserve(methods.size());
             state->callables.reserve(methods.size());
-            for (const auto* method : methods)
+            for (std::size_t method_index{}; method_index < methods.size();
+                 ++method_index)
             {
+                const auto* method = methods[method_index];
                 if (!method || method->owner_class != &reflected_class ||
                     method->is_static)
                 {
@@ -331,8 +326,8 @@ namespace lux::simulation
                     );
                 }
                 auto projected = projectInvokable(
-                    reflected_class.full_name,
                     method->invokable,
+                    symbols[method_index],
                     method->is_noexcept,
                     record_types
                 );
@@ -370,10 +365,12 @@ namespace lux::simulation
             std::string_view module_name,
             std::string_view descriptor_key,
             std::span<const lux::meta::RefFunction* const> functions,
+            std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types
         ) noexcept
     {
-        if (module_name.empty() || descriptor_key.empty())
+        if (module_name.empty() || descriptor_key.empty() ||
+            functions.size() != symbols.size())
         {
             return lux::cxx::unexpected(
                 ECppStaticScriptBridgeError::INVALID_DESCRIPTOR
@@ -383,14 +380,15 @@ namespace lux::simulation
         {
             auto state = std::make_unique<CppStaticScriptDescriptor::State>();
             state->description.module_name = module_name;
-            state->description.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
             state->description.body = lux::rdesc::CppStaticScript{
                 std::string{descriptor_key}};
             state->descriptor_key = descriptor_key;
             state->description.exports.reserve(functions.size());
             state->callables.reserve(functions.size());
-            for (const auto* function : functions)
+            for (std::size_t function_index{};
+                 function_index < functions.size(); ++function_index)
             {
+                const auto* function = functions[function_index];
                 if (!function)
                 {
                     return lux::cxx::unexpected(
@@ -398,8 +396,8 @@ namespace lux::simulation
                     );
                 }
                 auto projected = projectInvokable(
-                    module_name,
                     function->invokable,
+                    symbols[function_index],
                     function->is_noexcept,
                     record_types
                 );
@@ -501,7 +499,6 @@ namespace lux::simulation
             );
             if (!body)
                 return nullptr;
-            const CppStaticScriptDescriptor::State* executable_candidate{};
             for (const auto* descriptor : descriptors)
             {
                 if (!descriptor || !descriptor->state_)
@@ -510,15 +507,34 @@ namespace lux::simulation
                 {
                     return descriptor->state_.get();
                 }
-                if (descriptor->state_->description.module_name ==
-                        asset.description.module_name &&
-                    descriptor->state_->description.model ==
-                        asset.description.model)
+            }
+            const CppStaticScriptDescriptor::State* only_descriptor{};
+            std::size_t valid_descriptor_count{};
+            for (const auto* descriptor : descriptors)
+            {
+                if (descriptor && descriptor->state_)
                 {
-                    executable_candidate = descriptor->state_.get();
+                    only_descriptor = descriptor->state_.get();
+                    ++valid_descriptor_count;
                 }
             }
-            return executable_candidate;
+            if (valid_descriptor_count == 1U)
+                return only_descriptor;
+
+            const CppStaticScriptDescriptor::State* candidate{};
+            for (const auto* descriptor : descriptors)
+            {
+                if (!descriptor || !descriptor->state_ ||
+                    descriptor->state_->description.exports !=
+                        asset.description.exports)
+                {
+                    continue;
+                }
+                if (candidate)
+                    return nullptr;
+                candidate = descriptor->state_.get();
+            }
+            return candidate;
         }
 
         [[nodiscard]] static bool executableContractMatches(
@@ -536,7 +552,6 @@ namespace lux::simulation
             return asset_body && descriptor_body &&
                 asset.description.module_name ==
                     descriptor.description.module_name &&
-                asset.description.model == descriptor.description.model &&
                 asset_body->descriptor == descriptor_body->descriptor &&
                 asset.description.exports == descriptor.description.exports;
         }
@@ -558,6 +573,9 @@ namespace lux::simulation
             {
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             }
+            const bool entity_scope = context.self != ecs::NullEntity;
+            if (descriptor->entity_scope != entity_scope)
+                return EScriptBackendResult::UNSUPPORTED_MODEL;
             auto* instance = new (std::nothrow) Instance{descriptor, nullptr};
             if (!instance)
                 return EScriptBackendResult::ALLOCATION_FAILURE;

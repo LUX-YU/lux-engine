@@ -29,6 +29,7 @@ namespace lux::flowforge
     struct ExportMethodNode final
     {
         FlowForgeExportNodeId id;
+        lux::script::ScriptSymbolId symbol{};
         std::string name;
         std::vector<lux::rdesc::ScriptValueType> parameters;
         std::vector<lux::rdesc::ScriptValueType> returns;

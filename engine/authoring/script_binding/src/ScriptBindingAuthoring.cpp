@@ -1,4 +1,5 @@
 #include <lux/engine/authoring/ScriptBindingAuthoring.hpp>
+#include <lux/engine/simulation/SimulationStepInfo.hpp>
 
 #include <algorithm>
 #include <array>
@@ -10,6 +11,44 @@ namespace lux::authoring
 {
     namespace
     {
+        [[nodiscard]] lux::rdesc::ScriptValueType owningType(
+            lux::script::ScriptSemanticType type
+        )
+        {
+            if (const auto* layout =
+                    lux::script::scriptBuiltinLayout(type.type_id))
+            {
+                return {
+                    std::string{type.canonical_name},
+                    type.type_id,
+                    type.pass,
+                    layout->abi_kind,
+                    layout->size,
+                    layout->alignment};
+            }
+            if (type.canonical_name ==
+                lux::script::ScriptSemanticTypeTraits<
+                    lux::simulation::SimulationStepInfo>::CanonicalName)
+            {
+                return {
+                    std::string{type.canonical_name},
+                    type.type_id,
+                    type.pass,
+                    static_cast<std::uint8_t>(
+                        lux::semantic::EAbiKind::STRUCT_REF),
+                    sizeof(lux::simulation::SimulationStepInfo),
+                    alignof(lux::simulation::SimulationStepInfo)};
+            }
+            return {
+                std::string{type.canonical_name},
+                type.type_id,
+                type.pass,
+                static_cast<std::uint8_t>(
+                    lux::semantic::EAbiKind::STRUCT_REF),
+                1U,
+                1U};
+        }
+
         [[nodiscard]] const lux::rdesc::ScriptFunction* findFunction(
             const lux::rdesc::Script& script,
             lux::script::ScriptSymbolId symbol
@@ -64,18 +103,12 @@ namespace lux::authoring
             for (std::size_t index{}; index < hook.parameterCount(); ++index)
             {
                 const auto type = hook.parameterAt(index);
-                entry.parameters.push_back({
-                    std::string{type.canonical_name},
-                    type.type_id,
-                    type.pass});
+                entry.parameters.push_back(owningType(type));
             }
             for (std::size_t index{}; index < hook.returnCount(); ++index)
             {
                 const auto type = hook.returnAt(index);
-                entry.returns.push_back({
-                    std::string{type.canonical_name},
-                    type.type_id,
-                    type.pass});
+                entry.returns.push_back(owningType(type));
             }
         }
 
@@ -127,7 +160,7 @@ namespace lux::authoring
             {
                 const auto hook = system.hookPointAt(hook_index);
                 ScriptBindingTargetCatalogEntry global;
-                global.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
+                global.scope = EScriptAttachmentScope::SIMULATION;
                 global.target = SystemHookBindingTarget{
                     system.type(),
                     std::string{system.instanceName()},
@@ -137,7 +170,7 @@ namespace lux::authoring
                 result.push_back(global);
                 if (hook.cardinality() == ESystemHookCardinality::MULTI)
                 {
-                    global.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
+                    global.scope = EScriptAttachmentScope::ENTITY;
                     result.push_back(std::move(global));
                 }
             }
@@ -146,9 +179,9 @@ namespace lux::authoring
             {
                 const auto event = system.eventAt(event_index);
                 ScriptBindingTargetCatalogEntry entry;
-                entry.model = event.target() == ESystemEventTarget::GLOBAL
-                    ? lux::rdesc::EScriptModel::GLOBAL_MODULE
-                    : lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
+                entry.scope = event.target() == ESystemEventTarget::GLOBAL
+                    ? EScriptAttachmentScope::SIMULATION
+                    : EScriptAttachmentScope::ENTITY;
                 entry.target = SystemEventBindingTarget{
                     system.type(),
                     std::string{system.instanceName()},
@@ -158,7 +191,11 @@ namespace lux::authoring
                     entry.parameters.push_back({
                         std::string{event.payloadSchemaName()},
                         event.payloadSchemaHash(),
-                        lux::script::EScriptPassMode::CONST_REF});
+                        lux::script::EScriptPassMode::CONST_REF,
+                        static_cast<std::uint8_t>(
+                            lux::semantic::EAbiKind::STRUCT_REF),
+                        1U,
+                        1U});
                 }
                 result.push_back(std::move(entry));
             }
@@ -170,7 +207,7 @@ namespace lux::authoring
                  EBehaviorLifecyclePoint::STOP})
         {
             ScriptBindingTargetCatalogEntry entry;
-            entry.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
+            entry.scope = EScriptAttachmentScope::ENTITY;
             entry.target = BehaviorLifecycleBindingTarget{point};
             if (point == EBehaviorLifecyclePoint::STOP)
             {
@@ -178,7 +215,11 @@ namespace lux::authoring
                     std::string{BehaviorStopReasonCanonicalName},
                     lux::script::scriptSemanticTypeId(
                         BehaviorStopReasonCanonicalName),
-                    lux::script::EScriptPassMode::VALUE});
+                    lux::script::EScriptPassMode::VALUE,
+                    static_cast<std::uint8_t>(
+                        lux::semantic::EAbiKind::U32),
+                    sizeof(EBehaviorStopReason),
+                    alignof(EBehaviorStopReason)});
             }
             result.push_back(std::move(entry));
         }
@@ -188,6 +229,7 @@ namespace lux::authoring
     std::vector<std::size_t> compatibleScriptBindingTargets(
         const lux::rdesc::Script& script,
         lux::script::ScriptSymbolId symbol,
+        lux::simulation::EScriptAttachmentScope scope,
         const std::vector<ScriptBindingTargetCatalogEntry>& catalog
     )
     {
@@ -197,11 +239,11 @@ namespace lux::authoring
             return result;
         for (std::size_t index{}; index < catalog.size(); ++index)
         {
-            if (catalog[index].model == script.model &&
+            if (catalog[index].scope == scope &&
                 lux::simulation::evaluateScriptBindingSignatureCompatibility(
-                    script.model,
+                    scope,
                     *function,
-                    catalog[index].model,
+                    catalog[index].scope,
                     catalog[index].cardinality,
                     catalog[index].parameters,
                     catalog[index].returns
@@ -231,7 +273,7 @@ namespace lux::authoring
         const auto compatible = mapCompatibility(
             lux::simulation::evaluateScriptBindingCompatibility(
                 simulation,
-                script.model,
+                mount.scope,
                 *function,
                 binding.target
             )
@@ -325,7 +367,7 @@ namespace lux::authoring
                 ? mapCompatibility(
                     lux::simulation::evaluateScriptBindingCompatibility(
                         simulation,
-                        script.model,
+                        mount.scope,
                         *function,
                         binding.target
                     ))

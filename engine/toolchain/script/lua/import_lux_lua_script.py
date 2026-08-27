@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static Lua ---@lux.method -> canonical LXSA v2 importer."""
+"""Static Lua ---@lux.method -> canonical LXSA v3 importer."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ from dataclasses import dataclass
 
 
 MAGIC = 0x4153584C
-WIRE_VERSION = 2
-SCHEMA_VERSION = 4
+WIRE_VERSION = 3
+SCHEMA_VERSION = 5
 LUA_SOURCE_KIND = 1
-GLOBAL_MODULE = 0
-ENTITY_BEHAVIOR = 1
+SIMULATION_SCOPE = "SIMULATION"
+ENTITY_SCOPE = "ENTITY"
 VALUE_PASS = 0
 CONST_REF_PASS = 1
 
@@ -30,43 +30,15 @@ def fnv1a(text: str) -> int:
     return value
 
 
-def symbol_id(
-    scope: str,
-    name: str,
-    args: list[tuple[str, int]],
-    returns: list[tuple[str, int]],
-) -> int:
-    value = 14695981039346656037
-
-    def append(text: str) -> None:
-        nonlocal value
-        for byte in text.encode("utf-8"):
-            value ^= byte
-            value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-        value ^= 0xFF
-        value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-
-    append(scope)
-    append(name)
-    for canonical, pass_mode in args:
-        append(canonical)
-        value ^= pass_mode
-        value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-    value ^= 0xFE
-    value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-    for canonical, pass_mode in returns:
-        append(canonical)
-        value ^= pass_mode
-        value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-    return value or 1
-
-
 @dataclass(frozen=True)
 class Semantic:
     canonical: str
     type_id: int
     default_pass: int
     return_allowed: bool
+    abi_kind: int
+    size: int
+    alignment: int
 
 
 def load_semantics(path: pathlib.Path) -> dict[str, Semantic]:
@@ -97,10 +69,50 @@ def load_semantics(path: pathlib.Path) -> dict[str, Semantic]:
             type_id,
             default_pass,
             bool(value.get("return_allowed")),
+            int(value.get("abi_kind", 0)),
+            int(value.get("size", 0)),
+            int(value.get("alignment", 0)),
         )
+        semantic = result[canonical]
+        if (
+            semantic.abi_kind <= 0
+            or semantic.abi_kind > 255
+            or semantic.size <= 0
+            or semantic.size > 0xFFFFFFFF
+            or semantic.alignment <= 0
+            or semantic.alignment > 0xFFFFFFFF
+            or semantic.alignment & (semantic.alignment - 1)
+        ):
+            raise ValueError("invalid semantic layout")
         names.append(canonical)
     if names != sorted(names):
         raise ValueError("semantic catalog is not canonical")
+    return result
+
+
+def load_symbol_ledger(path: pathlib.Path) -> dict[str, int]:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("schema") != "lux-script-symbol-ledger" or document.get("version") != 1:
+        raise ValueError("unsupported script symbol ledger")
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError("script symbol ledger has no entries")
+    result: dict[str, int] = {}
+    symbols: set[int] = set()
+    for value in entries:
+        source_identity = value.get("source_identity")
+        symbol = int(value.get("symbol", 0))
+        if (
+            not isinstance(source_identity, str)
+            or not source_identity
+            or symbol <= 0
+            or symbol > 0xFFFFFFFFFFFFFFFF
+            or source_identity in result
+            or symbol in symbols
+        ):
+            raise ValueError("invalid script symbol ledger entry")
+        result[source_identity] = symbol
+        symbols.add(symbol)
     return result
 
 
@@ -125,10 +137,11 @@ RETURN = re.compile(r"^\s*---@return\s+(\S+)\s*$")
 
 def collect_exports(
     source: str,
-    model: int,
+    scope: str,
     entry: str,
     module_name: str,
     semantics: dict[str, Semantic],
+    symbols_by_source: dict[str, int],
 ) -> list[Export]:
     marked = False
     parameters: list[tuple[str, str]] = []
@@ -160,20 +173,20 @@ def collect_exports(
         if not marked:
             continue
         owner, separator, member, raw_arguments = match.groups()
-        if model == ENTITY_BEHAVIOR:
+        if scope == ENTITY_SCOPE:
             if owner != entry or separator != ":" or not member:
                 raise ValueError(
                     f"line {line_number}: EntityBehavior export requires '{entry}:method' colon syntax"
                 )
             name = member
-            scope = f"{module_name}.{entry}"
+            source_identity = f"{entry}:{name}"
         else:
             if separator or member:
                 raise ValueError(
                     f"line {line_number}: global export must be a module function"
                 )
             name = owner
-            scope = module_name
+            source_identity = f"{module_name}:{name}"
         arguments = [value.strip() for value in raw_arguments.split(",") if value.strip()]
         if "..." in arguments:
             raise ValueError(f"{name}: variadic parameters are unsupported")
@@ -194,12 +207,9 @@ def collect_exports(
             raise ValueError(f"{name}: unsupported return type '{return_name}'")
         if return_name != "void":
             return_types.append(semantics[return_name])
-        symbol = symbol_id(
-            scope,
-            name,
-            [(value.canonical, value.default_pass) for value in argument_types],
-            [(value.canonical, VALUE_PASS) for value in return_types],
-        )
+        symbol = symbols_by_source.get(source_identity, 0)
+        if symbol == 0:
+            raise ValueError(f"{name}: source identity '{source_identity}' is absent from symbol ledger")
         if symbol in symbols:
             raise ValueError(f"{name}: duplicate semantic symbol")
         symbols.add(symbol)
@@ -235,7 +245,6 @@ class Writer:
 
 def encode(
     module_name: str,
-    model: int,
     entry: str,
     exports: list[Export],
     payload: bytes,
@@ -246,7 +255,6 @@ def encode(
     writer.u32(WIRE_VERSION)
     writer.u32(SCHEMA_VERSION)
     writer.u32(LUA_SOURCE_KIND)
-    writer.u32(model)
     writer.string(module_name)
     writer.u32(len(exports))
     for function in exports:
@@ -257,11 +265,17 @@ def encode(
             writer.string(semantic.canonical)
             writer.u64(semantic.type_id)
             writer.u8(semantic.default_pass)
+            writer.u8(semantic.abi_kind)
+            writer.u32(semantic.size)
+            writer.u32(semantic.alignment)
         writer.u32(len(function.returns))
         for semantic in function.returns:
             writer.string(semantic.canonical)
             writer.u64(semantic.type_id)
             writer.u8(VALUE_PASS)
+            writer.u8(semantic.abi_kind)
+            writer.u32(semantic.size)
+            writer.u32(semantic.alignment)
     writer.u32(0)
     writer.string("lux-lua-static")
     writer.string("1")
@@ -279,23 +293,28 @@ def main() -> int:
     parser.add_argument("--source", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
     parser.add_argument("--semantic-catalog", required=True, type=pathlib.Path)
+    parser.add_argument("--symbol-ledger", required=True, type=pathlib.Path)
     parser.add_argument("--module", required=True)
     parser.add_argument("--entry", required=True)
     parser.add_argument(
-        "--model", required=True, choices=("GLOBAL_MODULE", "ENTITY_BEHAVIOR")
+        "--scope", required=True, choices=(SIMULATION_SCOPE, ENTITY_SCOPE)
     )
     arguments = parser.parse_args()
     try:
         payload = arguments.source.read_bytes()
         source = payload.decode("utf-8")
         semantics = load_semantics(arguments.semantic_catalog)
-        model = GLOBAL_MODULE if arguments.model == "GLOBAL_MODULE" else ENTITY_BEHAVIOR
+        symbols_by_source = load_symbol_ledger(arguments.symbol_ledger)
         exports = collect_exports(
-            source, model, arguments.entry, arguments.module, semantics
+            source,
+            arguments.scope,
+            arguments.entry,
+            arguments.module,
+            semantics,
+            symbols_by_source,
         )
         encoded = encode(
             arguments.module,
-            model,
             arguments.entry,
             exports,
             payload,

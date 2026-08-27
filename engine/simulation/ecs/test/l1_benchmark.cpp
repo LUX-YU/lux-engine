@@ -336,11 +336,8 @@ namespace
             id_bytes[0] = 0xB6U;
             asset_id = lux::asset::AssetId{id_bytes};
             asset.description.module_name = "l1.benchmark.binding";
-            const bool entity_model = kind == "hook-entity-multi" ||
+            const bool entity_scope = kind == "hook-entity-multi" ||
                 kind == "entity-targeted-event-sparse";
-            asset.description.model = entity_model
-                ? lux::rdesc::EScriptModel::ENTITY_BEHAVIOR
-                : lux::rdesc::EScriptModel::GLOBAL_MODULE;
             asset.description.body = lux::rdesc::CppStaticScript{"benchmark"};
             const auto hook_count = kind == "hook-global-multi" ? 4U : 1U;
             for (std::uint64_t symbol = 1U; symbol <= hook_count; ++symbol)
@@ -443,7 +440,7 @@ namespace
             if (!description)
                 throw std::runtime_error("binding description build failed");
 
-            if (entity_model)
+            if (entity_scope)
             {
                 const auto scripted_count = kind ==
                         "entity-targeted-event-sparse"
@@ -491,7 +488,8 @@ namespace
                             lux::simulation::ScriptComponent{{{
                                 lux::simulation::ScriptMountId{1U},
                                 asset_id,
-                                {{symbol, std::move(target)}}}}}
+                                {{symbol, std::move(target)}},
+                                lux::simulation::EScriptAttachmentScope::ENTITY}}}
                         );
                         entities.push_back(entity);
                         ++scripted_ordinal;

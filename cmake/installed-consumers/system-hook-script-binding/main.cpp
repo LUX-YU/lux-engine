@@ -112,11 +112,14 @@ int main()
         std::array<const lux::meta::RefMethod*, 5U> methods{};
         for (std::size_t index{}; index < methods.size(); ++index)
             methods[index] = std::addressof(reflected->methods[index]);
+        constexpr std::array<lux::script::ScriptSymbolId, 5U> symbols{
+            101U, 102U, 103U, 104U, 105U};
         auto projected = projectCppStaticEntityScript<ConsumerBehavior>(
             "consumer.behavior",
             "consumer-behavior-v1",
             *reflected,
             methods,
+            symbols,
             CppStaticRecordSemanticResolver{nullptr, &resolveRecord}
         );
         assert(projected);
@@ -144,7 +147,7 @@ int main()
             std::addressof(asset.content),
             lux::asset::AssetEncodeContext{unlimited()}
         );
-        assert(encoded_script && (*encoded_script)[4] == std::byte{2U});
+        assert(encoded_script && (*encoded_script)[4] == std::byte{3U});
         const auto decoded_script = script_codec.decode(
             *encoded_script,
             lux::asset::AssetDecodeContext{unlimited()}
@@ -154,8 +157,6 @@ int main()
             const lux::asset::ScriptAssetContent>(decoded_script->payload);
         assert(asset.content.description.module_name ==
             projected->description().module_name);
-        assert(asset.content.description.model ==
-            projected->description().model);
         assert(asset.content.description.body ==
             projected->description().body);
         assert(asset.content.description.exports ==
@@ -189,7 +190,8 @@ int main()
                     systemTypeId(kSystem.canonical_name),
                     "consumer",
                     "pulse"}},
-            }};
+            },
+            EScriptAttachmentScope::ENTITY};
 
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem("consumer", kSystem));
@@ -210,7 +212,7 @@ int main()
             assert(found != asset.content.description.exports.end());
             assert(evaluateScriptBindingCompatibility(
                     *description,
-                    asset.content.description.model,
+                    EScriptAttachmentScope::ENTITY,
                     *found,
                     binding.target
                 ) == EScriptBindingCompatibility::COMPATIBLE);

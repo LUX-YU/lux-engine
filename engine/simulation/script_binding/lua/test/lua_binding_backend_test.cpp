@@ -105,16 +105,9 @@ int main()
 
     lux::asset::ScriptAssetContent asset;
     asset.description.module_name = "lua.binding.fixture";
-    asset.description.model = lux::rdesc::EScriptModel::ENTITY_BEHAVIOR;
     asset.description.body = lux::rdesc::LuaSourceScript{"fixture"};
-    const lux::rdesc::ScriptValueType i32{
-        "lux.i32",
-        lux::script::scriptSemanticTypeId("lux.i32"),
-        lux::script::EScriptPassMode::VALUE};
-    const lux::rdesc::ScriptValueType boolean{
-        "lux.bool",
-        lux::script::scriptSemanticTypeId("lux.bool"),
-        lux::script::EScriptPassMode::VALUE};
+    const auto i32 = lux::rdesc::makeScriptValueType<std::int32_t>();
+    const auto boolean = lux::rdesc::makeScriptValueType<bool>();
     const lux::rdesc::ScriptFunction function{
         "tick",
         11U,
@@ -181,15 +174,20 @@ int main()
     auto descriptor = backend.descriptor();
     ScriptBackendInstance first_instance;
     ScriptBackendInstance second_instance;
+    ecs::Registry registry;
+    const auto first_entity = registry.create();
+    const auto second_entity = registry.create();
     assert(descriptor.createInstance(
         descriptor.context,
-        ScriptInstanceCreateContext{id, ScriptMountId{1U}},
+        ScriptInstanceCreateContext{
+            id, ScriptMountId{1U}, first_entity, nullptr},
         asset,
         first_instance
     ) == EScriptBackendResult::SUCCESS);
     assert(descriptor.createInstance(
         descriptor.context,
-        ScriptInstanceCreateContext{id, ScriptMountId{2U}},
+        ScriptInstanceCreateContext{
+            id, ScriptMountId{2U}, second_entity, nullptr},
         asset,
         second_instance
     ) == EScriptBackendResult::SUCCESS);

@@ -756,6 +756,32 @@ namespace lux::simulation
             ));
         try
         {
+            const auto resolve_hook_system =
+                [&](const SystemHookBindingTarget& target) noexcept
+                    -> const Impl::PendingSystem*
+                {
+                    if (!target.system_instance.empty())
+                    {
+                        const auto found = findSystem(
+                            impl_->systems,
+                            target.system_instance
+                        );
+                        return found != impl_->systems.end() &&
+                                found->type == target.system_type
+                            ? std::addressof(*found)
+                            : nullptr;
+                    }
+                    const Impl::PendingSystem* result{};
+                    for (const auto& system : impl_->systems)
+                    {
+                        if (system.type != target.system_type)
+                            continue;
+                        if (result)
+                            return nullptr;
+                        result = std::addressof(system);
+                    }
+                    return result;
+                };
             for (const auto& binding : mount.bindings)
             {
                 const auto validation = std::visit(
@@ -823,11 +849,53 @@ namespace lux::simulation
                                         return candidate.name == target.hook;
                                     }
                                 );
-                                return hook == resolved->hooks.end()
-                                    ? ESimulationDescriptionError::
-                                        SCRIPT_TARGET_MEMBER_NOT_FOUND
-                                    : std::optional<
-                                        ESimulationDescriptionError>{};
+                                if (hook == resolved->hooks.end())
+                                {
+                                    return ESimulationDescriptionError::
+                                        SCRIPT_TARGET_MEMBER_NOT_FOUND;
+                                }
+                                if (hook->cardinality ==
+                                    ESystemHookCardinality::SINGLE)
+                                {
+                                    std::size_t handlers{};
+                                    const auto count_handlers =
+                                        [&](const ScriptMountDescription& value)
+                                            noexcept
+                                        {
+                                            for (const auto& candidate_binding :
+                                                 value.bindings)
+                                            {
+                                                const auto* candidate =
+                                                    std::get_if<
+                                                        SystemHookBindingTarget>(
+                                                        std::addressof(
+                                                            candidate_binding.target));
+                                                if (!candidate ||
+                                                    candidate->hook != target.hook)
+                                                {
+                                                    continue;
+                                                }
+                                                if (resolve_hook_system(*candidate) ==
+                                                    resolved)
+                                                {
+                                                    ++handlers;
+                                                }
+                                            }
+                                        };
+                                    count_handlers(mount);
+                                    for (const auto& existing :
+                                         impl_->global_script_mounts)
+                                    {
+                                        count_handlers(existing);
+                                    }
+                                    if (handlers > 1U)
+                                    {
+                                        return ESimulationDescriptionError::
+                                            SINGLE_HOOK_MULTIPLE_HANDLERS;
+                                    }
+                                }
+                                return std::optional<
+                                    ESimulationDescriptionError>{};
                             }
                             else
                             {

@@ -1,9 +1,12 @@
 #include <lux/engine/authoring/ScriptBindingAuthoring.hpp>
+#include <lux/engine/authoring/ScriptAuthoringSemanticCatalog.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
 
 #include <array>
 #include <cassert>
+#include <fstream>
+#include <iterator>
 
 namespace
 {
@@ -103,4 +106,54 @@ int main()
     assert(diagnostics.size() == 1U);
     assert(diagnostics[0].error ==
         EScriptBindingAuthoringError::MISSING_SYMBOL);
+
+    lux::rdesc::Script global;
+    global.module_name = "authoring.global";
+    global.model = lux::rdesc::EScriptModel::GLOBAL_MODULE;
+    global.body = lux::rdesc::CppStaticScript{"global"};
+    global.exports = {
+        {"first", 2U, {}, {}},
+        {"second", 3U, {}, {}}};
+    const auto single_target = SystemHookBindingTarget{
+        systemTypeId(kSystem.canonical_name),
+        "fixture",
+        "single"};
+    ScriptMountDescription first_mount{
+        ScriptMountId{2U},
+        lux::asset::AssetId{asset_bytes},
+        {{2U, single_target}}};
+    ScriptMountDescription second_mount{
+        ScriptMountId{3U},
+        lux::asset::AssetId{asset_bytes},
+        {{3U, single_target}}};
+    const std::array composition{
+        ScriptBindingCompositionEntry{&global, &first_mount},
+        ScriptBindingCompositionEntry{&global, &second_mount}};
+    const auto composition_diagnostics =
+        diagnoseScriptBindingComposition(*simulation, composition);
+    assert(composition_diagnostics.size() == 1U);
+    assert(composition_diagnostics[0].error ==
+        EScriptBindingAuthoringError::SINGLE_HOOK_MULTIPLE_HANDLERS);
+    assert(composition_diagnostics[0].mount_index == 1U);
+    assert(addScriptBinding(
+        *simulation,
+        global,
+        first_mount,
+        ScriptBindingDescription{3U, single_target}
+    ) == EScriptBindingAuthoringError::SINGLE_HOOK_MULTIPLE_HANDLERS);
+
+    auto semantic_catalog = makeBaseScriptAuthoringSemanticCatalog();
+    assert(semantic_catalog);
+    assert(semantic_catalog->find("lux.f32"));
+    assert(semantic_catalog->find(
+        "lux.simulation.SimulationStepInfo"));
+    std::ifstream catalog_file(
+        LUX_SCRIPT_SEMANTIC_CATALOG,
+        std::ios::binary
+    );
+    assert(catalog_file);
+    const std::string installed_catalog{
+        std::istreambuf_iterator<char>{catalog_file},
+        std::istreambuf_iterator<char>{}};
+    assert(semantic_catalog->canonicalJson() + "\n" == installed_catalog);
 }

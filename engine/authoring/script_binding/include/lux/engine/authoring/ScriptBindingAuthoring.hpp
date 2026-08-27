@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace lux::authoring
@@ -31,6 +32,7 @@ namespace lux::authoring
         CARDINALITY_MISMATCH,
         SIGNATURE_MISMATCH,
         DUPLICATE_BINDING,
+        SINGLE_HOOK_MULTIPLE_HANDLERS,
         INVALID_INDEX,
         ALLOCATION_FAILURE,
     };
@@ -41,6 +43,13 @@ namespace lux::authoring
             EScriptBindingAuthoringError::SUCCESS};
         std::size_t binding_index{};
         lux::script::ScriptSymbolId symbol{};
+        std::size_t mount_index{};
+    };
+
+    struct ScriptBindingCompositionEntry final
+    {
+        const lux::rdesc::Script* script{};
+        const lux::simulation::ScriptMountDescription* mount{};
     };
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
@@ -82,5 +91,11 @@ namespace lux::authoring
         const lux::simulation::SimulationDescription& simulation,
         const lux::rdesc::Script& script,
         const lux::simulation::ScriptMountDescription& mount
+    );
+
+    [[nodiscard]] LUX_ENGINE_AUTHORING_SCRIPT_BINDING_PUBLIC
+    std::vector<ScriptBindingDiagnostic> diagnoseScriptBindingComposition(
+        const lux::simulation::SimulationDescription& simulation,
+        std::span<const ScriptBindingCompositionEntry> mounts
     );
 }

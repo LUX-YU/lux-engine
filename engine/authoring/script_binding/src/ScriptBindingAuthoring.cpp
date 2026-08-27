@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <iterator>
 #include <new>
 #include <type_traits>
 
@@ -64,6 +65,38 @@ namespace lux::authoring
                 entry.parameters.push_back(hook.parameterAt(index));
             for (std::size_t index{}; index < hook.returnCount(); ++index)
                 entry.returns.push_back(hook.returnAt(index));
+        }
+
+        [[nodiscard]] lux::simulation::SimulationHookPointView resolveHook(
+            const lux::simulation::SimulationDescription& simulation,
+            const lux::simulation::SystemHookBindingTarget& target,
+            std::string_view& instance
+        ) noexcept
+        {
+            lux::simulation::SimulationSystemView system;
+            if (!target.system_instance.empty())
+            {
+                system = simulation.findSystem(target.system_instance);
+                if (!system || system.type() != target.system_type)
+                    return {};
+            }
+            else
+            {
+                for (std::size_t index{};
+                     index < simulation.systemCount(); ++index)
+                {
+                    const auto candidate = simulation.systemAt(index);
+                    if (candidate.type() != target.system_type)
+                        continue;
+                    if (system)
+                        return {};
+                    system = candidate;
+                }
+            }
+            if (!system)
+                return {};
+            instance = system.instanceName();
+            return system.findHookPoint(target.hook);
         }
     }
 
@@ -192,6 +225,40 @@ namespace lux::authoring
         );
         if (compatible != EScriptBindingAuthoringError::SUCCESS)
             return compatible;
+        if (const auto* hook = std::get_if<
+                lux::simulation::SystemHookBindingTarget>(
+                std::addressof(binding.target)))
+        {
+            std::string_view target_instance;
+            const auto target_hook = resolveHook(
+                simulation,
+                *hook,
+                target_instance
+            );
+            if (target_hook && target_hook.cardinality() ==
+                lux::simulation::ESystemHookCardinality::SINGLE)
+            {
+                for (const auto& existing : mount.bindings)
+                {
+                    const auto* existing_hook = std::get_if<
+                        lux::simulation::SystemHookBindingTarget>(
+                        std::addressof(existing.target));
+                    if (!existing_hook || existing_hook->hook != hook->hook)
+                        continue;
+                    std::string_view existing_instance;
+                    const auto resolved = resolveHook(
+                        simulation,
+                        *existing_hook,
+                        existing_instance
+                    );
+                    if (resolved && existing_instance == target_instance)
+                    {
+                        return EScriptBindingAuthoringError::
+                            SINGLE_HOOK_MULTIPLE_HANDLERS;
+                    }
+                }
+            }
+        }
         try
         {
             mount.bindings.push_back(std::move(binding));
@@ -252,6 +319,79 @@ namespace lux::authoring
                 : EScriptBindingAuthoringError::MISSING_SYMBOL;
             if (error != EScriptBindingAuthoringError::SUCCESS)
                 result.push_back({error, index, binding.function});
+        }
+        return result;
+    }
+
+    std::vector<ScriptBindingDiagnostic> diagnoseScriptBindingComposition(
+        const lux::simulation::SimulationDescription& simulation,
+        std::span<const ScriptBindingCompositionEntry> mounts
+    )
+    {
+        std::vector<ScriptBindingDiagnostic> result;
+        struct SingleTarget final
+        {
+            std::string_view system_instance;
+            std::string_view hook;
+        };
+        std::vector<SingleTarget> singles;
+        for (std::size_t mount_index{};
+             mount_index < mounts.size(); ++mount_index)
+        {
+            const auto& entry = mounts[mount_index];
+            if (!entry.script || !entry.mount)
+                continue;
+            auto local = diagnoseScriptBindings(
+                simulation,
+                *entry.script,
+                *entry.mount
+            );
+            for (auto& diagnostic : local)
+                diagnostic.mount_index = mount_index;
+            result.insert(
+                result.end(),
+                std::make_move_iterator(local.begin()),
+                std::make_move_iterator(local.end())
+            );
+            for (std::size_t binding_index{};
+                 binding_index < entry.mount->bindings.size(); ++binding_index)
+            {
+                const auto& binding = entry.mount->bindings[binding_index];
+                const auto* target = std::get_if<
+                    lux::simulation::SystemHookBindingTarget>(
+                    std::addressof(binding.target));
+                if (!target)
+                    continue;
+                std::string_view instance;
+                const auto hook = resolveHook(simulation, *target, instance);
+                if (!hook || hook.cardinality() !=
+                    lux::simulation::ESystemHookCardinality::SINGLE)
+                {
+                    continue;
+                }
+                const auto duplicate = std::find_if(
+                    singles.begin(),
+                    singles.end(),
+                    [&](const SingleTarget& value) noexcept
+                    {
+                        return value.system_instance == instance &&
+                            value.hook == target->hook;
+                    }
+                );
+                if (duplicate != singles.end())
+                {
+                    result.push_back({
+                        EScriptBindingAuthoringError::
+                            SINGLE_HOOK_MULTIPLE_HANDLERS,
+                        binding_index,
+                        binding.function,
+                        mount_index});
+                }
+                else
+                {
+                    singles.push_back({instance, target->hook});
+                }
+            }
         }
         return result;
     }

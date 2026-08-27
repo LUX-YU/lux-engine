@@ -8,7 +8,9 @@ add_component(
     COMPONENT_NAME authoring_script_binding
     NAMESPACE      lux::engine::authoring
     OUTPUT_NAME    lux_engine_authoring_script_binding
-    SOURCE_FILES src/ScriptBindingAuthoring.cpp
+    SOURCE_FILES
+        src/ScriptBindingAuthoring.cpp
+        src/ScriptAuthoringSemanticCatalog.cpp
 )
 component_include_directories(
     authoring_script_binding
@@ -63,4 +65,14 @@ lux_classify_target(
 add_test(
     NAME authoring_script_binding_test
     COMMAND authoring_script_binding_test
+)
+target_compile_definitions(
+    authoring_script_binding_test
+    PRIVATE
+        LUX_SCRIPT_SEMANTIC_CATALOG="${CMAKE_CURRENT_SOURCE_DIR}/assets/lux-script-semantics-v1.json"
+)
+
+install(
+    FILES assets/lux-script-semantics-v1.json
+    DESTINATION share/lux-engine/script
 )

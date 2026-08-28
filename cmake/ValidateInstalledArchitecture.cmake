@@ -14,13 +14,28 @@ if(EXISTS "${prefix}/share/lux-engine-simulation-core")
         "Install surface exposes retired simulation-core package"
     )
 endif()
+foreach(retired_package IN ITEMS
+    "${prefix}/share/lux-engine-graph-kit"
+    "${prefix}/share/lux-engine-flowforge"
+)
+    if(EXISTS "${retired_package}")
+        message(FATAL_ERROR "Install surface exposes retired package: ${retired_package}")
+    endif()
+endforeach()
 
 file(GLOB_RECURSE installed_entries LIST_DIRECTORIES true "${prefix}/*")
 foreach(entry IN LISTS installed_entries)
     file(TO_CMAKE_PATH "${entry}" normalized)
-    if(normalized MATCHES "[/](legacy|sinclude|pinclude)([/]|$)" OR
+    set(is_lux_owned_path false)
+    if(normalized MATCHES "[/]include[/]lux[/]" OR
+       normalized MATCHES "[/]share[/]lux-engine")
+        set(is_lux_owned_path true)
+    endif()
+    if((is_lux_owned_path AND normalized MATCHES "[/](legacy|sinclude|pinclude)([/]|$)") OR
        normalized MATCHES "[/]ecs[/](detail|core/detail|schedule/detail)([/]|$)" OR
-       normalized MATCHES "[/]include[/]lux[/]engine[/]ecs([/]|$)")
+       normalized MATCHES "[/]include[/]lux[/]engine[/]ecs([/]|$)" OR
+       normalized MATCHES "[/]include[/]lux[/]engine[/]graph_kit([/]|$)" OR
+       normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]script([/]|$)")
         message(FATAL_ERROR
             "Install surface exposes quarantine/private detail: ${normalized}"
         )
@@ -34,6 +49,10 @@ foreach(entry IN LISTS installed_entries)
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]" AND
        name MATCHES "^(FrameInfo|SimulationExecution|SystemExecutionPoint|SystemHookPoint|SystemEventDescription|ScriptMountFacts|ScriptEventWriter|ScriptMetaAdapter|ScriptBindingSession|ScriptComponent|EntityBehavior|SystemEventBuffer|ScriptBindingCompatibility|ScriptMountDescription)\\.(h|hpp)$")
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
+    endif()
+    if(normalized MATCHES
+       "[/]include[/]lux[/]engine[/]simulation[/]ecs[/]TransformSystem[.]hpp$")
+        message(FATAL_ERROR "Install surface exposes retired Transform System path: ${normalized}")
     endif()
 endforeach()
 
@@ -59,7 +78,15 @@ file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
 )
 foreach(entry IN LISTS installed_text)
     file(TO_CMAKE_PATH "${entry}" normalized)
+    if(NOT normalized MATCHES "[/]include[/]lux[/]" AND
+       NOT normalized MATCHES "[/]share[/]lux-engine")
+        continue()
+    endif()
     file(READ "${entry}" content)
+    if(content MATCHES "(^|[\r\n])[ \t]*throw([ \t;(]|$)" OR
+       content MATCHES "takeOrThrow")
+        message(FATAL_ERROR "Installed public file exposes a throwing Lux API: ${entry}")
+    endif()
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
        content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|WorldSection|PersistentEntity|PersistentId|ComponentLoadBinding|ComponentLoadSet|ecs_load|section[ \\t]*=[ \\t]*(LOAD|OMIT)|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(|SystemExecutionPoint|SystemHookPoint|dispatch_point|ESystemEventTarget::BROADCAST|ScriptEventRegistry|ScriptBindingSession|ScriptComponent|EntityBehavior|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|PythonSourceScript|SemanticCatalog|TargetCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")

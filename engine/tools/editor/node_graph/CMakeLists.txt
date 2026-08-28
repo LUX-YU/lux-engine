@@ -1,5 +1,6 @@
 ## Domain-independent node graph editing UI.
 
+find_package(imgui REQUIRED COMPONENTS core)
 find_package(node_editor REQUIRED COMPONENTS node_editor)
 
 generate_visibility_header(
@@ -57,7 +58,8 @@ target_link_libraries(
 
 component_add_transitive_commands(
     node_graph_editor
-    "find_package (node_editor REQUIRED COMPONENTS node_editor)"
+    "find_package(imgui REQUIRED COMPONENTS core)"
+    "find_package(node_editor REQUIRED COMPONENTS node_editor)"
 )
 
 if(BUILD_TESTING)

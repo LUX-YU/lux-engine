@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "25992bb578ccc7765a0f238c582f62d5424352d1",
+  "verified_production_sha": "3a4a531bba6a778d5e105694a9b0833b12cea9ad",
+  "status": "PROCESS_WAVE_0_1_FREEZE_CANDIDATE_PENDING_INDEPENDENT_ACCEPTANCE",
+  "validation_worktree_clean": true,
+  "reference_amendment_sha256": "6D3E0E341DC1B3B0F211017DC4C1AE4538761F6947577B898428498D353CEA78",
+  "toolchain": {
+    "git": "2.48.1.windows.1",
+    "msvc": "19.44.35228 x64",
+    "cmake": "4.1.2",
+    "ninja": "1.11.1",
+    "python": "3.10.13",
+    "mlir_llvm": "18.1"
+  },
+  "tests": {
+    "developer_relwithdebinfo": {"passed": 96, "failed": 0, "second_build_no_work": true},
+    "developer_debug": {"passed": 83, "failed": 0, "second_build_no_work": true},
+    "player_relwithdebinfo": {"passed": 78, "failed": 0, "second_build_no_work": true},
+    "editor_relwithdebinfo": {"passed": 83, "failed": 0, "second_build_no_work": true},
+    "toolchain_relwithdebinfo": {"passed": 81, "failed": 0, "second_build_no_work": true},
+    "hardened_relwithdebinfo": {"passed": 101, "failed": 0, "second_build_no_work": true},
+    "fresh_developer_relwithdebinfo": {"passed": 96, "failed": 0, "second_build_no_work": true},
+    "installed_consumers": {"passed": 15, "failed": 0, "second_build_no_work": 15},
+    "source_architecture": "PASS",
+    "installed_architecture": "PASS",
+    "installed_forbidden_matches": 0
+  },
+  "benchmark_v1": {
+    "csv_count": 9,
+    "warmups_per_size": 5,
+    "samples_per_size": 30,
+    "scaling_rules_passed": 6,
+    "structural_checks_passed": 810,
+    "maximum_observed_exponent": 1.106,
+    "maximum_allowed_exponent": 1.25,
+    "row_git_commit": "3a4a531bba6a778d5e105694a9b0833b12cea9ad"
+  },
+  "artifact_sha256": {
+    "Timer.hpp": "154D39BF4F6E6F922B0122DAF994A7201AB2BC4C069E531086D483344A73C35F",
+    "PortSender.hpp": "3705E9D01F1928F2D2B4DAF7CD5DB99522DA950E93CEBABBA9E6C945A8E800E2",
+    "OperationPort.hpp": "1CDD4498B038551A7406FF2D67F06ED4C86EBB37FA6ACE72781E5AC1A2F6E813",
+    "process_execution_benchmark.exe": "62204CF98627F983E3577CE3EF46303DEA5FB6A46BCC839540E89D5D9EE270BC",
+    "installed_process_execution.dll": "9D12CDA72210B7E61EAAEA4023AEC25B4C99DA005F886B5104044E8C4490251B",
+    "installed_process_execution.lib": "E42F9D9EE031CF983B0F1927D3AB2158E0ABA70A68A651611BD3CB19EF975C2D"
+  },
+  "preserved_user_assets": {
+    "gitignore_patch_sha256": "2F62BC3AE0A7A34DFF006E697C37D919596CEA5D881252372CA17AC6C7451A5D",
+    "clang_format_sha256": "49CD7C903D36398F1A29B567A2CADD66124D5EB0E03CDA4E944ACB1FC83C3519"
+  },
+  "android": "NOT_RUN_BY_POLICY",
+  "dynamic_fanout": "NOT_FROZEN_DEFERRED_UNTIL_REAL_MODEL_OR_STREAMING_CONSUMER"
+}

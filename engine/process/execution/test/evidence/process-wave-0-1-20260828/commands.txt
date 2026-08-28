@@ -1,0 +1,55 @@
+Production SHA: 3a4a531bba6a778d5e105694a9b0833b12cea9ad
+All compiler and build commands ran from the Visual Studio 2022 x64 Developer environment.
+
+[RelWithDebInfo DEVELOPER]
+cmake -S E:/SyncForder/CodeRepos/lux-engine -B E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine --target all -- -j 4 -k 0
+ctest --test-dir E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine --output-on-failure
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine --target all -- -j 4 -k 0
+Result: 96/96 PASS; second build `ninja: no work to do`.
+
+[Debug DEVELOPER]
+cmake -S E:/SyncForder/CodeRepos/lux-engine -B E:/SyncForder/CodeRepos/build/Debug/lux-engine
+cmake --build E:/SyncForder/CodeRepos/build/Debug/lux-engine --target all -- -j 4 -k 0
+ctest --test-dir E:/SyncForder/CodeRepos/build/Debug/lux-engine --output-on-failure
+cmake --build E:/SyncForder/CodeRepos/build/Debug/lux-engine --target all -- -j 4 -k 0
+Result: 83/83 PASS; second build no-work.
+
+[PLAYER / EDITOR / TOOLCHAIN / Hardened]
+For each configured profile directory:
+cmake -S E:/SyncForder/CodeRepos/lux-engine -B <profile-build>
+cmake --build <profile-build> --target all -- -j 4 -k 0
+ctest --test-dir <profile-build> --output-on-failure
+cmake --build <profile-build> --target all -- -j 4 -k 0
+Results: PLAYER 78/78, EDITOR 83/83, TOOLCHAIN 81/81, Hardened 101/101; every second build no-work.
+TOOLCHAIN configuration detected MLIR/LLVM 18.1 and built the complete compiler closure.
+
+[Source architecture]
+cmake -DLUX_SOURCE_DIR=E:/SyncForder/CodeRepos/lux-engine -DLUX_BINARY_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine -DLUX_REPORT_PATH=<evidence>/source-architecture-report.txt -P E:/SyncForder/CodeRepos/lux-engine/cmake/ValidateSourceArchitecture.cmake
+Result: PASS.
+
+[Fresh build and install]
+cmake -S E:/SyncForder/CodeRepos/lux-engine -B E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-process-wave-fresh -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLUX_BUILD_PROFILE=DEVELOPER -DBUILD_TESTING=ON -DCMAKE_INSTALL_PREFIX=<evidence>/install -DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-process-wave-fresh --target all -- -j 4 -k 0
+ctest --test-dir E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-process-wave-fresh --output-on-failure
+cmake --install E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-process-wave-fresh
+Result: 96/96 PASS; install PASS; second build no-work.
+
+[Installed consumers]
+For each directory under cmake/installed-consumers:
+cmake -S <consumer> -B <consumer-build> -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=<fresh-install>;E:/SyncForder/CodeRepos/install/RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build <consumer-build> -- -j 4 -k 0
+cmake --build <consumer-build> -- -j 4 -k 0
+Result: 15/15 PASS; fifteen second builds no-work. The Process consumer executable returned zero.
+
+[Process benchmark v1]
+For each group in timer-schedule, timer-cancel, timer-fire and size in 10000, 100000, 1000000:
+process_execution_benchmark.exe --group <group> --size <size> --mode performance --output <csv>
+python engine/process/execution/test/benchmark/evaluate_process_execution_v1.py <9 csv files> --policy engine/process/execution/test/benchmark/process_execution_v1_policy.json
+Result: PASS: 6 scaling, 810 structural checks.
+CSV commit set: {3a4a531bba6a778d5e105694a9b0833b12cea9ad}.
+
+[Policy exclusions]
+Android configure/build/test: NOT RUN.
+Runtime-cardinality dynamic fan-out: NOT IMPLEMENTED and NOT FROZEN.
+FileIO and Render sender: deferred to later Process waves.

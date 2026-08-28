@@ -1,0 +1,23 @@
+Production SHA: 3a4a531bba6a778d5e105694a9b0833b12cea9ad
+
+Source architecture validation: PASS
+
+Installed architecture validation: PASS
+Required Process artifacts: 5
+Missing Process artifacts: 0
+Forbidden installed-path matches: 0
+
+PLAYER process_execution link closure: PASS
+Implementation objects:
+- Timer.cpp.obj
+- TimerFailureInjection.cpp.obj
+
+Forbidden PLAYER closure dependencies found: 0
+Checked categories: legacy, World, Simulation, Scene, Render, Authoring, Editor, Toolchain, Host, Asio, TBB,
+and private CPU-pool implementations.
+
+Process Wave 0 negative gates: PASS
+- Process source and CMake paths are included in the root architecture scan.
+- process_execution has no legacy or upper-layer dependency.
+- prohibited runtime wrappers, dynamic fan-out, coroutine runtime, BatchJoin and AsyncGraph are absent.
+- FileIO and Render sender remain deferred.

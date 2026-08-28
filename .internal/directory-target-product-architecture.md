@@ -14,6 +14,7 @@ engine/
   domain/
     world/
     simulation/
+  process/
   authoring/
   editor/
   toolchain/
@@ -21,6 +22,8 @@ engine/
 
 - `modules/` 是可复用 L0 package。
 - `engine/domain` 持有 World/Simulation runtime domain integration。
+- `engine/process` 是 L2 collection；当前 `execution` 叶包只提供 Timer 与 L0 OperationPort 的
+  Sender adapter，不拥有 CPU pool、main loop、Render thread 或 domain workflow。
 - `engine/authoring` 持有 authored state、composition 与诊断。
 - `engine/editor` 持有交互式 Editor UI/tooling。
 - `engine/toolchain` 持有离线 compiler、cook、package 与 build tool。
@@ -37,6 +40,9 @@ public include 与 namespace 使用职责概念名，不包含 `domain`、层级
 
 `modules/function/script` 与 `engine/domain/simulation/scripting` 都是 collection；Script backend、
 Script artifact 与 Simulation scripting core 各自是独立 package。
+
+`engine/process` 也是 collection；Wave 0/1 只配置 `execution`。File IO、Render sender、
+Asset/Streaming workflow 和 dynamic fan-out 在对应后续 Wave 到来前不得以空 package 或 shim 占位。
 
 ## Product closure
 

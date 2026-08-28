@@ -69,6 +69,10 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/domain/simulation/*/*/sinclude/*.hpp"
     "${source_root}/engine/domain/simulation/*/*/pinclude/*.hpp"
     "${source_root}/engine/domain/simulation/*/*/src/*.cpp"
+    "${source_root}/engine/process/*/include/*.hpp"
+    "${source_root}/engine/process/*/sinclude/*.hpp"
+    "${source_root}/engine/process/*/pinclude/*.hpp"
+    "${source_root}/engine/process/*/src/*.cpp"
     "${source_root}/engine/authoring/*/include/*.hpp"
     "${source_root}/engine/authoring/*/src/*.cpp"
     "${source_root}/engine/editor/*/include/*.hpp"
@@ -215,6 +219,21 @@ foreach(source IN LISTS production_sources)
            "#[ \t]*include[ \t]*[<\"]lux/engine/(process|scene|authoring|toolchain|editor|host)/")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' includes an upper-layer API."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/process/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"](lux/engine/(world|simulation|scene|render|authoring|editor|toolchain|host|runtime)/|asio/|tbb/|exec/static_thread_pool)|legacy/engine/runtime/execution")
+            message(FATAL_ERROR
+                "Architecture: Process execution source '${normalized}' depends on an upper/domain/legacy runtime."
+            )
+        endif()
+        if(content MATCHES
+           "ProcessRuntime|AsyncRuntime|AsyncRuntimeBuilder|ProcessBuilder|ProcessScope|ProcessScheduler|OperationRegistry|parallelTransform|BatchJoin|AsyncGraph|std::function")
+            message(FATAL_ERROR
+                "Architecture: Process execution source '${normalized}' restores a runtime wrapper, registry or deferred API."
             )
         endif()
     endif()
@@ -559,6 +578,8 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/engine/domain/simulation/CMakeLists.txt"
     "${source_root}/engine/domain/simulation/*/CMakeLists.txt"
     "${source_root}/engine/domain/simulation/*/*/CMakeLists.txt"
+    "${source_root}/engine/process/CMakeLists.txt"
+    "${source_root}/engine/process/*/CMakeLists.txt"
     "${source_root}/engine/authoring/CMakeLists.txt"
     "${source_root}/engine/authoring/*/CMakeLists.txt"
     "${source_root}/engine/editor/CMakeLists.txt"
@@ -584,6 +605,14 @@ foreach(source IN LISTS active_cmake)
         if(content MATCHES "async_port|AssetManager|AssetLoadPort")
             message(FATAL_ERROR
                 "Architecture: active L0 asset target restores runtime ownership/orchestration."
+            )
+        endif()
+    endif()
+    if(source MATCHES "/engine/process/")
+        if(content MATCHES
+           "legacy|lux::engine::(world|simulation|scene|render|authoring|editor|toolchain|host)|asio|TBB|static_thread_pool")
+            message(FATAL_ERROR
+                "Architecture: Process target '${source}' links an upper/domain/legacy execution dependency."
             )
         endif()
     endif()

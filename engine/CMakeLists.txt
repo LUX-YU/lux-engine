@@ -1,4 +1,5 @@
 add_subdirectory(domain)
+add_subdirectory(process)
 if(LUX_BUILD_PROFILE MATCHES "^(EDITOR|TOOLCHAIN)$")
     add_subdirectory(authoring)
 endif()

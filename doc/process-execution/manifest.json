@@ -1,0 +1,24 @@
+{
+  "name": "lux-process-execution-reference",
+  "status": "design-implementation-handoff-candidate",
+  "repository_main": "25992bb578ccc7765a0f238c582f62d5424352d1",
+  "verified_production_baseline": "07453d479538a0cae4037ea18725390c715b4bda",
+  "canonical_principle": "Process is a thin execution substrate; standard execution semantics are used directly.",
+  "public_new_concepts": [
+    "TimerQueue",
+    "TimerClient",
+    "FileIo",
+    "FileClient",
+    "portSender"
+  ],
+  "explicitly_rejected": [
+    "ProcessRuntime",
+    "AsyncRuntime",
+    "AsyncRuntimeBuilder",
+    "AsyncOperationContext",
+    "ProcessScope",
+    "ProcessScheduler",
+    "OperationRegistry",
+    "Process-owned parallel CPU pool"
+  ]
+}

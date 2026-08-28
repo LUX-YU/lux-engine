@@ -1,8 +1,8 @@
 #include <lux/engine/simulation/systems/ScriptSystem.hpp>
+#include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
 
 #include <lux/cxx/container/SlotMap.hpp>
 
-#include <entt/entity/sparse_set.hpp>
 #include <entt/signal/sigh.hpp>
 
 #include <algorithm>
@@ -122,16 +122,9 @@ namespace lux::simulation::script
         {
             std::uint32_t mount_slot{};
             std::uint32_t method_slot{};
-            ecs::Entity target{ecs::NullEntity};
-            HandlerKey previous{HandlerKey::invalid()};
-            HandlerKey next{HandlerKey::invalid()};
         };
 
-        struct TargetBucket final
-        {
-            HandlerKey head{HandlerKey::invalid()};
-            std::size_t size{};
-        };
+        using EventHandlerStorage = lux::simulation::detail::DenseEntityHandlerStorage<Handler>;
 
         struct PreparedMethod final
         {
@@ -144,7 +137,7 @@ namespace lux::simulation::script
             EBindingKind kind{EBindingKind::HOOK};
             std::uint32_t bucket_slot{};
             std::uint32_t method_slot{};
-            HandlerKey registration{HandlerKey::invalid()};
+            EndpointConnectionToken registration;
         };
 
         struct RuntimeMount final
@@ -179,9 +172,7 @@ namespace lux::simulation::script
             State *owner{};
             const ScriptEventEndpointDescriptor *endpoint{};
             EndpointConnectionToken token;
-            HandlerStorage handlers;
-            entt::basic_sparse_set<ecs::Entity> target_index;
-            std::vector<TargetBucket> target_buckets;
+            EventHandlerStorage handlers;
             std::size_t handler_capacity{};
         };
 
@@ -246,6 +237,16 @@ namespace lux::simulation::script
         std::size_t active_mount_count{};
         bool suppress_attachment_signal{};
         EPrepareState prepare_state{EPrepareState::CREATED};
+
+        [[nodiscard]] static constexpr EndpointConnectionToken hookToken(HandlerKey key) noexcept
+        {
+            return {key.index, key.gen};
+        }
+
+        [[nodiscard]] static constexpr HandlerKey hookKey(EndpointConnectionToken token) noexcept
+        {
+            return {token.slot, token.generation};
+        }
 
         [[nodiscard]] const ScriptBackendDescriptor *backend(lux::rdesc::Script::Kind kind) const noexcept
         {
@@ -357,9 +358,9 @@ namespace lux::simulation::script
                     bucket.handlers.reserve(bucket.handler_capacity);
                 for (auto &bucket : events)
                 {
-                    bucket.handlers.reserve(bucket.handler_capacity);
-                    bucket.target_index.reserve(bucket.handler_capacity);
-                    bucket.target_buckets.reserve(bucket.handler_capacity);
+                    const auto prepared = bucket.handlers.prepare(bucket.handler_capacity);
+                    if (prepared == EEndpointMutationError::ALLOCATION_FAILURE)
+                        return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
                 }
 
                 dirty_current.prepare(mounts.size());
@@ -429,143 +430,47 @@ namespace lux::simulation::script
                 bucket.owner->invoke(handler, frame);
         }
 
-        [[nodiscard]] std::size_t invokeEventTarget(
-            EventBucket &bucket,
-            const TargetBucket &target,
-            lux_script_call_frame &frame) noexcept
-        {
-            std::size_t calls{};
-            auto key = target.head;
-            while (key.isValid())
-            {
-                auto *handler = bucket.handlers.find(key);
-                if (handler == nullptr)
-                    break;
-
-                const auto next = handler->next;
-                invoke(*handler, frame);
-                ++calls;
-                key = next;
-            }
-            return calls;
-        }
-
         static void dispatchEvent(void *context, ecs::Entity entity, lux_script_call_frame &frame) noexcept
         {
             auto &bucket = *static_cast<EventBucket *>(context);
+            const auto invoke = [&bucket, &frame](Handler& handler) noexcept
+            {
+                bucket.owner->invoke(handler, frame);
+            };
             if (bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST)
             {
-                for (auto &handler : bucket.handlers.values())
-                    bucket.owner->invoke(handler, frame);
+                bucket.handlers.forEachAll(invoke);
                 return;
             }
-
-            if (!bucket.target_index.contains(entity))
-                return;
-            const auto index = bucket.target_index.index(entity);
-            static_cast<void>(bucket.owner->invokeEventTarget(bucket, bucket.target_buckets[index], frame));
+            bucket.handlers.forEachTarget(entity, invoke);
         }
 
-        [[nodiscard]] lux::cxx::expected<HandlerKey, EScriptSystemError> addEventHandler(
+        [[nodiscard]] lux::cxx::expected<EndpointConnectionToken, EScriptSystemError> addEventHandler(
             EventBucket &bucket,
             std::uint32_t mount_slot,
             std::uint32_t method_slot,
             ecs::Entity target) noexcept
         {
-            if (bucket.handlers.size() >= bucket.handler_capacity)
-                return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-
-            if (bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST)
-            {
-                const auto inserted = bucket.handlers.tryEmplace(
-                    Handler{mount_slot, method_slot, ecs::NullEntity}
-                );
-                return inserted
-                    ? lux::cxx::expected<HandlerKey, EScriptSystemError>(*inserted)
-                    : lux::cxx::expected<HandlerKey, EScriptSystemError>(
-                        lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE)
-                    );
-            }
-
-            if (target == ecs::NullEntity)
+            const bool is_broadcast = bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST;
+            if (!is_broadcast && target == ecs::NullEntity)
                 return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
 
-            bool inserted_target{};
-            try
-            {
-                if (!bucket.target_index.contains(target))
-                {
-                    bucket.target_index.push(target);
-                    bucket.target_buckets.push_back({});
-                    inserted_target = true;
-                }
-            }
-            catch (const std::bad_alloc &)
-            {
-                return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-            }
-
-            const auto target_index = bucket.target_index.index(target);
-            auto &target_bucket = bucket.target_buckets[target_index];
-            const auto old_head = target_bucket.head;
-            const auto inserted = bucket.handlers.tryEmplace(
-                Handler{
-                    mount_slot,
-                    method_slot,
-                    target,
-                    HandlerKey::invalid(),
-                    old_head
-                }
+            const auto inserted = bucket.handlers.connect(
+                target,
+                Handler{mount_slot, method_slot},
+                is_broadcast
             );
-            if (!inserted)
-            {
-                if (inserted_target)
-                    eraseEventTarget(bucket, target);
-                return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-            }
-
-            if (old_head.isValid())
-                bucket.handlers[old_head].previous = *inserted;
-            target_bucket.head = *inserted;
-            ++target_bucket.size;
-            return *inserted;
+            if (inserted)
+                return inserted.token;
+            const auto error = inserted.error == EEndpointMutationError::CAPACITY_EXCEEDED
+                ? EScriptSystemError::CAPACITY_EXCEEDED
+                : EScriptSystemError::ALLOCATION_FAILURE;
+            return lux::cxx::unexpected(error);
         }
 
-        void eraseEventTarget(EventBucket &bucket, ecs::Entity target) noexcept
+        void removeEventHandler(EventBucket &bucket, EndpointConnectionToken token) noexcept
         {
-            const auto index = bucket.target_index.index(target);
-            bucket.target_index.erase(target);
-            if (index + 1U != bucket.target_buckets.size())
-                bucket.target_buckets[index] = std::move(bucket.target_buckets.back());
-            bucket.target_buckets.pop_back();
-        }
-
-        void removeEventHandler(EventBucket &bucket, HandlerKey key) noexcept
-        {
-            const auto *stored = bucket.handlers.find(key);
-            if (stored == nullptr)
-                return;
-            if (bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST)
-            {
-                bucket.handlers.erase(key);
-                return;
-            }
-
-            const Handler handler = *stored;
-            const auto target_index = bucket.target_index.index(handler.target);
-            auto &target = bucket.target_buckets[target_index];
-            if (handler.previous.isValid())
-                bucket.handlers[handler.previous].next = handler.next;
-            else
-                target.head = handler.next;
-            if (handler.next.isValid())
-                bucket.handlers[handler.next].previous = handler.previous;
-
-            --target.size;
-            const bool remove_target = target.size == 0U;
-            bucket.handlers.erase(key);
-            if (remove_target)
-                eraseEventTarget(bucket, handler.target);
+            static_cast<void>(bucket.handlers.disconnect(token));
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> bindMount(std::uint32_t mount_slot) noexcept
@@ -582,11 +487,11 @@ namespace lux::simulation::script
                         return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
 
                     const auto inserted = bucket.handlers.tryEmplace(
-                        Handler{mount_slot, binding.method_slot, ecs::NullEntity}
+                        Handler{mount_slot, binding.method_slot}
                     );
                     if (!inserted)
                         return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-                    binding.registration = *inserted;
+                    binding.registration = hookToken(*inserted);
                     continue;
                 }
 
@@ -605,14 +510,14 @@ namespace lux::simulation::script
             for (std::size_t binding_slot{mount.binding_first}; binding_slot < binding_end; ++binding_slot)
             {
                 auto &binding = bindings[binding_slot];
-                if (!binding.registration.isValid())
+                if (!binding.registration.valid())
                     continue;
 
                 if (binding.kind == EBindingKind::HOOK)
-                    hooks[binding.bucket_slot].handlers.erase(binding.registration);
+                    hooks[binding.bucket_slot].handlers.erase(hookKey(binding.registration));
                 else
                     removeEventHandler(events[binding.bucket_slot], binding.registration);
-                binding.registration = HandlerKey::invalid();
+                binding.registration = {};
             }
         }
 

@@ -1,9 +1,8 @@
 #pragma once
 
 #include <lux/engine/simulation/HookPoint.hpp>
+#include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
-
-#include <entt/entity/sparse_set.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -82,6 +81,7 @@ namespace lux::simulation
                     : storage_(&storage), producer_(producer)
                 {
                     storage_->writer_active_[producer_] = 1U;
+                    ++storage_->active_writer_count_;
                 }
 
                 void release() noexcept
@@ -90,6 +90,7 @@ namespace lux::simulation
                         return;
 
                     storage_->writer_active_[producer_] = 0U;
+                    --storage_->active_writer_count_;
                     storage_ = nullptr;
                 }
 
@@ -121,6 +122,7 @@ namespace lux::simulation
                         producer.reserve(producer_capacity);
 
                     writer_active_.assign(producer_count, 0U);
+                    active_writer_count_ = 0U;
                     producer_capacity_ = producer_capacity;
                     prepared_ = true;
                     return EEndpointMutationError::NONE;
@@ -190,16 +192,12 @@ namespace lux::simulation
 
             [[nodiscard]] bool hasActiveWriter() const noexcept
             {
-                for (const auto active : writer_active_)
-                {
-                    if (active != 0U)
-                        return true;
-                }
-                return false;
+                return active_writer_count_ != 0U;
             }
 
             std::vector<std::vector<Occurrence>> producers_;
             std::vector<std::uint8_t> writer_active_;
+            std::size_t active_writer_count_{};
             std::size_t producer_capacity_{};
             bool prepared_{};
             bool draining_{};
@@ -386,27 +384,13 @@ namespace lux::simulation
     private:
         using Buffer = detail::EventOccurrenceBuffer<ecs::Entity, Payload>;
 
-        struct HandlerTag;
-
-        struct Handler;
-        using HandlerStorage = lux::cxx::SlotMap<Handler, HandlerTag>;
-        using HandlerKey = typename HandlerStorage::key_type;
-
         struct Handler final
         {
-            ecs::Entity target{ecs::NullEntity};
             void *context{};
             Callback callback{};
-            bool match_all{};
-            HandlerKey previous{HandlerKey::invalid()};
-            HandlerKey next{HandlerKey::invalid()};
         };
 
-        struct TargetBucket final
-        {
-            HandlerKey head{HandlerKey::invalid()};
-            std::size_t size{};
-        };
+        using HandlerStorage = detail::DenseEntityHandlerStorage<Handler>;
 
     public:
         using Writer = typename Buffer::Writer;
@@ -432,14 +416,12 @@ namespace lux::simulation
 
             try
             {
-                handlers_.clear();
-                handlers_.reserve(handler_capacity);
-                target_index_.clear();
-                target_index_.reserve(handler_capacity);
-                target_buckets_.clear();
-                target_buckets_.reserve(handler_capacity);
-                all_bucket_ = {};
-                handler_capacity_ = handler_capacity;
+                const auto handler_error = handlers_.prepare(handler_capacity);
+                if (handler_error != EEndpointMutationError::NONE)
+                {
+                    prepared_ = false;
+                    return handler_error;
+                }
                 prepared_ = true;
                 return EEndpointMutationError::NONE;
             }
@@ -478,26 +460,7 @@ namespace lux::simulation
             if (!token.valid())
                 return EEndpointMutationError::INVALID_TOKEN;
 
-            const auto key = toKey(token);
-            const auto *stored = handlers_.find(key);
-            if (stored == nullptr)
-                return EEndpointMutationError::INVALID_TOKEN;
-
-            const Handler handler = *stored;
-            auto &bucket = handler.match_all ? all_bucket_ : targetBucket(handler.target);
-            if (handler.previous.isValid())
-                handlers_[handler.previous].next = handler.next;
-            else
-                bucket.head = handler.next;
-            if (handler.next.isValid())
-                handlers_[handler.next].previous = handler.previous;
-
-            --bucket.size;
-            const bool remove_target = !handler.match_all && bucket.size == 0U;
-            handlers_.erase(key);
-            if (remove_target)
-                eraseTarget(handler.target);
-            return EEndpointMutationError::NONE;
+            return handlers_.disconnect(token);
         }
 
         [[nodiscard]] std::size_t drain() noexcept
@@ -505,9 +468,14 @@ namespace lux::simulation
             return buffer_.drain(
                 [&](const typename Buffer::Occurrence &occurrence) noexcept
                 {
-                    std::size_t calls = invokeBucket(all_bucket_, occurrence);
-                    if (target_index_.contains(occurrence.target))
-                        calls += invokeBucket(targetBucket(occurrence.target), occurrence);
+                    std::size_t calls{};
+                    const auto invoke = [&](Handler& handler) noexcept
+                    {
+                        handler.callback(handler.context, occurrence.target, occurrence.payload);
+                        ++calls;
+                    };
+                    handlers_.forEachAll(invoke);
+                    handlers_.forEachTarget(occurrence.target, invoke);
                     return calls;
                 }
             );
@@ -525,7 +493,7 @@ namespace lux::simulation
 
         [[nodiscard]] std::size_t targetBucketCount() const noexcept
         {
-            return target_buckets_.size();
+            return handlers_.targetBucketCount();
         }
 
     private:
@@ -538,91 +506,7 @@ namespace lux::simulation
             const auto error = topologyMutationError(callback);
             if (error != EEndpointMutationError::NONE)
                 return {{}, error};
-            if (handlers_.size() >= handler_capacity_)
-                return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
-
-            bool inserted_target{};
-            TargetBucket *bucket = &all_bucket_;
-            if (!match_all)
-            {
-                if (!target_index_.contains(target))
-                {
-                    try
-                    {
-                        target_index_.push(target);
-                        target_buckets_.push_back({});
-                        inserted_target = true;
-                    }
-                    catch (const std::bad_alloc &)
-                    {
-                        return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
-                    }
-                }
-                bucket = &targetBucket(target);
-            }
-
-            const auto old_head = bucket->head;
-            const auto inserted = handlers_.tryEmplace(
-                Handler{
-                    target,
-                    context,
-                    callback,
-                    match_all,
-                    HandlerKey::invalid(),
-                    old_head
-                }
-            );
-            if (!inserted)
-            {
-                if (inserted_target)
-                    eraseTarget(target);
-                return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
-            }
-
-            if (old_head.isValid())
-                handlers_[old_head].previous = *inserted;
-            bucket->head = *inserted;
-            ++bucket->size;
-            return {toToken(*inserted), EEndpointMutationError::NONE};
-        }
-
-        [[nodiscard]] std::size_t invokeBucket(
-            const TargetBucket &bucket,
-            const typename Buffer::Occurrence &occurrence) noexcept
-        {
-            std::size_t calls{};
-            auto key = bucket.head;
-            while (key.isValid())
-            {
-                const auto *handler = handlers_.find(key);
-                if (handler == nullptr)
-                    break;
-
-                const auto next = handler->next;
-                handler->callback(handler->context, occurrence.target, occurrence.payload);
-                ++calls;
-                key = next;
-            }
-            return calls;
-        }
-
-        [[nodiscard]] TargetBucket &targetBucket(ecs::Entity target) noexcept
-        {
-            return target_buckets_[target_index_.index(target)];
-        }
-
-        [[nodiscard]] const TargetBucket &targetBucket(ecs::Entity target) const noexcept
-        {
-            return target_buckets_[target_index_.index(target)];
-        }
-
-        void eraseTarget(ecs::Entity target) noexcept
-        {
-            const auto index = target_index_.index(target);
-            target_index_.erase(target);
-            if (index + 1U != target_buckets_.size())
-                target_buckets_[index] = std::move(target_buckets_.back());
-            target_buckets_.pop_back();
+            return handlers_.connect(target, Handler{context, callback}, match_all);
         }
 
         [[nodiscard]] EEndpointMutationError topologyMutationError(Callback callback) const noexcept
@@ -645,22 +529,8 @@ namespace lux::simulation
             return buffer_.mutationError();
         }
 
-        [[nodiscard]] static constexpr EndpointConnectionToken toToken(HandlerKey key) noexcept
-        {
-            return {key.index, key.gen};
-        }
-
-        [[nodiscard]] static constexpr HandlerKey toKey(EndpointConnectionToken token) noexcept
-        {
-            return {token.slot, token.generation};
-        }
-
         Buffer buffer_;
         HandlerStorage handlers_;
-        entt::basic_sparse_set<ecs::Entity> target_index_;
-        std::vector<TargetBucket> target_buckets_;
-        TargetBucket all_bucket_;
-        std::size_t handler_capacity_{};
         bool prepared_{};
     };
 }

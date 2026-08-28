@@ -161,16 +161,28 @@ int main()
 
     const auto new_connection = targeted.connect(new_entity, &exact_probe, &appendTargeted);
     assert(new_connection);
+    assert(new_connection.token.slot == old_connection.token.slot);
+    assert(new_connection.token.generation != old_connection.token.generation);
+    TargetedProbe removed_probe{{}, 20000};
+    TargetedProbe moved_probe{{}, 30000};
+    const auto removed_connection = targeted.connect(new_entity, &removed_probe, &appendTargeted);
+    const auto moved_connection = targeted.connect(new_entity, &moved_probe, &appendTargeted);
+    assert(removed_connection && moved_connection);
+    assert(targeted.disconnect(removed_connection.token) == EEndpointMutationError::NONE);
+    assert(targeted.disconnect(removed_connection.token) == EEndpointMutationError::INVALID_TOKEN);
     {
         auto producer_zero = targeted.begin(0U);
         assert(producer_zero.record(old_entity, 3));
         assert(producer_zero.record(new_entity, 2));
     }
-    assert(targeted.drain() == 3U);
+    assert(targeted.drain() == 4U);
     assert((exact_probe.values == std::vector<std::int32_t>{901, 902}));
     assert((all_probe.values == std::vector<std::int32_t>{10901, 10903, 10902}));
+    assert(removed_probe.values.empty());
+    assert((moved_probe.values == std::vector<std::int32_t>{30902}));
 
     assert(targeted.disconnect(new_connection.token) == EEndpointMutationError::NONE);
+    assert(targeted.disconnect(moved_connection.token) == EEndpointMutationError::NONE);
     assert(targeted.disconnect(all_connection.token) == EEndpointMutationError::NONE);
     assert(targeted.handlerCount() == 0U);
     assert(targeted.targetBucketCount() == 0U);

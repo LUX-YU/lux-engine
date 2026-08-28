@@ -76,7 +76,9 @@ add_executable(
 )
 target_link_libraries(
     simulation_endpoint_point_test
-    PRIVATE lux::engine::simulation::system
+    PRIVATE
+        lux::engine::simulation::system
+        lux::engine::core::task
 )
 if(MSVC)
     target_compile_options(simulation_endpoint_point_test PRIVATE /UNDEBUG)

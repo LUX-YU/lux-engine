@@ -710,6 +710,22 @@ if(dense_event_contract MATCHES
     )
 endif()
 
+set(event_point_header
+    "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/EventPoint.hpp"
+)
+file(READ "${event_point_header}" event_point_contract)
+string(CONCAT event_writer_counter_forbidden
+    "std::size_t active_writer_count_"
+    "|\\+\\+storage_->active_writer_count_"
+    "|--storage_->active_writer_count_"
+    "|active_writer_count_ = 0U"
+)
+if(event_point_contract MATCHES "${event_writer_counter_forbidden}")
+    message(FATAL_ERROR
+        "Architecture: EventOccurrenceBuffer restores racy non-atomic active Writer tracking."
+    )
+endif()
+
 set(lua_backend_source
     "${source_root}/engine/domain/simulation/scripting/lua/src/LuaScriptBackend.cpp"
 )

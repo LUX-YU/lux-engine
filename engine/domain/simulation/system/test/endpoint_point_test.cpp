@@ -1,10 +1,15 @@
 #include <lux/engine/simulation/EventPoint.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <entt/entity/entity.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <barrier>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <vector>
@@ -26,6 +31,11 @@ namespace
     void appendInt(void *context, std::int32_t value) noexcept
     {
         static_cast<std::vector<std::int32_t> *>(context)->push_back(value);
+    }
+
+    void incrementSize(void *context, const std::size_t &) noexcept
+    {
+        ++*static_cast<std::size_t *>(context);
     }
 
     void probeHookMutation(void *context, std::int32_t value) noexcept
@@ -186,5 +196,63 @@ int main()
     assert(targeted.disconnect(all_connection.token) == EEndpointMutationError::NONE);
     assert(targeted.handlerCount() == 0U);
     assert(targeted.targetBucketCount() == 0U);
+
+    constexpr std::size_t kConcurrentProducerCount = 4U;
+    constexpr std::size_t kConcurrentEpochCount = 256U;
+    EventPoint<SimulationBroadcastRoute, std::size_t> concurrent;
+    const auto concurrent_prepare = concurrent.prepare(kConcurrentProducerCount, kConcurrentEpochCount, 1U);
+    assert(concurrent_prepare == EEndpointMutationError::NONE);
+    std::size_t concurrent_callbacks{};
+    const auto concurrent_connection = concurrent.connect(&concurrent_callbacks, &incrementSize);
+    assert(concurrent_connection);
+
+    std::barrier writers_started{static_cast<std::ptrdiff_t>(kConcurrentProducerCount)};
+    std::barrier mutation_checked{static_cast<std::ptrdiff_t>(kConcurrentProducerCount)};
+    std::barrier writers_released{static_cast<std::ptrdiff_t>(kConcurrentProducerCount)};
+    std::atomic_bool concurrent_failure{};
+    lux::task::TaskGraphBuilder concurrent_builder;
+    for (std::size_t producer{}; producer < kConcurrentProducerCount; ++producer)
+    {
+        const auto added = concurrent_builder.add([&, producer]() noexcept
+        {
+            for (std::size_t epoch{}; epoch < kConcurrentEpochCount; ++epoch)
+            {
+                {
+                    auto writer = concurrent.begin(producer);
+                    if (!writer.record(producer * kConcurrentEpochCount + epoch))
+                        concurrent_failure.store(true, std::memory_order_relaxed);
+
+                    writers_started.arrive_and_wait();
+                    if (producer == 0U)
+                    {
+                        const auto prepare_error = concurrent.prepare(
+                            kConcurrentProducerCount,
+                            kConcurrentEpochCount,
+                            1U
+                        );
+                        if (prepare_error != EEndpointMutationError::WRITER_ACTIVE || concurrent.drain() != 0U)
+                            concurrent_failure.store(true, std::memory_order_relaxed);
+                    }
+                    mutation_checked.arrive_and_wait();
+                }
+                writers_released.arrive_and_wait();
+            }
+        });
+        assert(added);
+    }
+    auto concurrent_graph = std::move(concurrent_builder).build();
+    assert(concurrent_graph);
+    auto concurrent_executor = lux::task::TaskExecutor::create(
+        lux::task::TaskExecutorConfig{
+            static_cast<std::uint32_t>(kConcurrentProducerCount),
+            concurrent_graph->taskCount()
+        }
+    );
+    assert(concurrent_executor);
+    assert(concurrent_executor->execute(*concurrent_graph));
+    assert(!concurrent_failure.load(std::memory_order_relaxed));
+    assert(concurrent.drain() == kConcurrentProducerCount * kConcurrentEpochCount);
+    assert(concurrent_callbacks == kConcurrentProducerCount * kConcurrentEpochCount);
+    assert(concurrent.disconnect(concurrent_connection.token) == EEndpointMutationError::NONE);
     return 0;
 }

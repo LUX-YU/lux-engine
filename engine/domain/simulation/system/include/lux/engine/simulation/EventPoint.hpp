@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <new>
@@ -81,7 +82,7 @@ namespace lux::simulation
                     : storage_(&storage), producer_(producer)
                 {
                     storage_->writer_active_[producer_] = 1U;
-                    ++storage_->active_writer_count_;
+                    storage_->active_writer_count_.fetch_add(1U, std::memory_order_acq_rel);
                 }
 
                 void release() noexcept
@@ -90,7 +91,7 @@ namespace lux::simulation
                         return;
 
                     storage_->writer_active_[producer_] = 0U;
-                    --storage_->active_writer_count_;
+                    storage_->active_writer_count_.fetch_sub(1U, std::memory_order_acq_rel);
                     storage_ = nullptr;
                 }
 
@@ -122,7 +123,7 @@ namespace lux::simulation
                         producer.reserve(producer_capacity);
 
                     writer_active_.assign(producer_count, 0U);
-                    active_writer_count_ = 0U;
+                    active_writer_count_.store(0U, std::memory_order_relaxed);
                     producer_capacity_ = producer_capacity;
                     prepared_ = true;
                     return EEndpointMutationError::NONE;
@@ -136,6 +137,7 @@ namespace lux::simulation
 
             [[nodiscard]] Writer begin(std::size_t producer) noexcept
             {
+                // Each producer lane is a single-owner scheduler capability. Different lanes may begin concurrently.
                 const bool is_invalid_producer = producer >= producers_.size();
                 if (!prepared_ || draining_ || is_invalid_producer || writer_active_[producer] != 0U)
                     return {};
@@ -192,12 +194,12 @@ namespace lux::simulation
 
             [[nodiscard]] bool hasActiveWriter() const noexcept
             {
-                return active_writer_count_ != 0U;
+                return active_writer_count_.load(std::memory_order_acquire) != 0U;
             }
 
             std::vector<std::vector<Occurrence>> producers_;
             std::vector<std::uint8_t> writer_active_;
-            std::size_t active_writer_count_{};
+            std::atomic<std::size_t> active_writer_count_{0U};
             std::size_t producer_capacity_{};
             bool prepared_{};
             bool draining_{};

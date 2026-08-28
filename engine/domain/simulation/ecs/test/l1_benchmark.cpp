@@ -1,9 +1,12 @@
 #include <lux/engine/simulation/EventPoint.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/SimulationStepInfo.hpp>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/simulation/systems/ScriptSystem.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
@@ -43,6 +46,7 @@ namespace
     using Clock = std::chrono::steady_clock;
     using namespace lux::simulation;
     using namespace lux::simulation::ecs;
+    using namespace lux::simulation::script;
 
     std::atomic_size_t g_allocation_count{};
     std::atomic_bool g_count_allocations{};
@@ -106,6 +110,7 @@ namespace
             std::string_view{"owned-worker-event-buffer"},
             std::string_view{"script-detach"},
             std::string_view{"script-dirty"},
+            std::string_view{"script-prepare-scaling"},
             std::string_view{"ecs-snapshot"}};
         if (std::find(groups.begin(), groups.end(), result.group) ==
             groups.end())
@@ -189,7 +194,7 @@ namespace
         for (const auto& sample : samples)
         {
             const auto& value = sample.observation;
-            output << "10," << LUX_BENCHMARK_GIT_COMMIT << ','
+            output << "11," << LUX_BENCHMARK_GIT_COMMIT << ','
                    << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group << ','
                    << metric << ',' << options.size << ',' << sample.index
                    << ',' << sample.nanoseconds << ',' << sample.allocations
@@ -452,6 +457,196 @@ namespace
         std::atomic_bool failed{};
         lux::task::TaskGraph graph;
         std::unique_ptr<lux::task::TaskExecutor> executor;
+    };
+
+    inline constexpr SystemInstanceId kPrepareSystem{0x7101U};
+    inline constexpr HookPointId kPrepareHook{0x7102U};
+    inline constexpr lux::script::ScriptSymbolId kPrepareSymbol{0x7103U};
+
+    [[nodiscard]] lux::asset::AssetId prepareAssetId() noexcept
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes.front() = 0x71U;
+        return lux::asset::AssetId{bytes};
+    }
+
+    [[nodiscard]] SimulationDescription makePrepareSimulation()
+    {
+        constexpr std::array hooks{
+            makeHookPointSpec<void(const SimulationStepInfo&)>(kPrepareHook, "prepare")
+        };
+        const SystemDescription system{
+            .canonical_name = "lux.benchmark.ScriptPrepare",
+            .version = 1U,
+            .hooks = hooks,
+            .events = {}
+        };
+        SimulationDescriptionBuilder builder;
+        auto added = builder.addSystem(kPrepareSystem, "prepare", system);
+        if (!added)
+            throw std::runtime_error("prepare benchmark system rejected");
+        auto built = std::move(builder).build();
+        if (!built)
+            throw std::runtime_error("prepare benchmark simulation rejected");
+        return std::move(*built);
+    }
+
+    [[nodiscard]] lux::script::ScriptArtifact makePrepareArtifact()
+    {
+        const auto argument = lux::rdesc::makeScriptValueType<SimulationStepInfo>(
+            lux::semantic::EValuePass::CONST_REF
+        );
+        lux::rdesc::Script description;
+        description.module_name = "lux.benchmark.script.prepare";
+        description.exports = {{"prepare", kPrepareSymbol, {argument}, {}}};
+        description.body = lux::rdesc::CppStaticScript{"benchmark"};
+        auto artifact = lux::script::ScriptArtifact::create(std::move(description), {});
+        if (!artifact)
+            throw std::runtime_error("prepare benchmark artifact rejected");
+        return std::move(*artifact);
+    }
+
+    struct PrepareBackendState final
+    {
+        std::size_t instance_creates{};
+        std::size_t instance_destroys{};
+        std::size_t method_prepares{};
+        std::size_t method_releases{};
+    };
+
+    int prepareInvoke(lux_script_call_frame*) noexcept
+    {
+        return 0;
+    }
+
+    EScriptBackendResult createPrepareInstance(
+        void* context,
+        const ScriptInstanceCreateContext&,
+        const lux::script::ScriptArtifact&,
+        ScriptBackendInstance& output
+    ) noexcept
+    {
+        auto* state = static_cast<PrepareBackendState*>(context);
+        auto* instance = new (std::nothrow) std::byte{};
+        if (!instance)
+            return EScriptBackendResult::ALLOCATION_FAILURE;
+        ++state->instance_creates;
+        output.value = instance;
+        return EScriptBackendResult::SUCCESS;
+    }
+
+    EScriptBackendResult prepareBenchmarkMethod(
+        void* context,
+        ScriptBackendInstance instance,
+        const lux::rdesc::ScriptFunction&,
+        lux::script::BoundScriptCall& output
+    ) noexcept
+    {
+        ++static_cast<PrepareBackendState*>(context)->method_prepares;
+        output = {&prepareInvoke, instance.value};
+        return EScriptBackendResult::SUCCESS;
+    }
+
+    void releaseBenchmarkMethod(void* context, ScriptBackendInstance, lux::script::BoundScriptCall) noexcept
+    {
+        ++static_cast<PrepareBackendState*>(context)->method_releases;
+    }
+
+    void destroyPrepareInstance(void* context, ScriptBackendInstance instance) noexcept
+    {
+        ++static_cast<PrepareBackendState*>(context)->instance_destroys;
+        delete static_cast<std::byte*>(instance.value);
+    }
+
+    struct PrepareScalingState final
+    {
+        explicit PrepareScalingState(std::size_t count)
+            : simulation(makePrepareSimulation()), artifact(makePrepareArtifact()), asset_id(prepareAssetId())
+        {
+            ScriptSystemDescriptionBuilder builder;
+            for (std::size_t index{}; index < count; ++index)
+            {
+                ScriptMountDescription mount{
+                    ScriptMountId{index + 1U},
+                    asset_id,
+                    SimulationScriptMount{},
+                    true,
+                    {{kPrepareSymbol, HookScriptTarget{kPrepareSystem, kPrepareHook}}}
+                };
+                if (!builder.addMount(std::move(mount)))
+                    throw std::runtime_error("prepare benchmark mount rejected");
+            }
+            auto built = std::move(builder).build(simulation);
+            if (!built)
+                throw std::runtime_error("prepare benchmark description rejected");
+            description = std::move(*built);
+
+            if (hook.prepare(1U) != EEndpointMutationError::NONE)
+                throw std::runtime_error("prepare benchmark hook rejected");
+            bridge = std::make_unique<ScriptHookEndpoint<void(const SimulationStepInfo&)>>(
+                kPrepareSystem,
+                kPrepareHook,
+                hook
+            );
+            hook_descriptor = bridge->descriptor();
+            backend_descriptor = {
+                lux::rdesc::Script::Kind::CPP_STATIC,
+                &backend,
+                &createPrepareInstance,
+                &prepareBenchmarkMethod,
+                &releaseBenchmarkMethod,
+                &destroyPrepareInstance
+            };
+            auto created = ScriptSystem::create(
+                simulation,
+                description,
+                registry,
+                1U,
+                {this, &resolveArtifact},
+                {},
+                std::span{&backend_descriptor, 1U},
+                std::span{&hook_descriptor, 1U},
+                {}
+            );
+            if (!created)
+                throw std::runtime_error("prepare benchmark ScriptSystem create failed");
+            system = std::make_unique<ScriptSystem>(std::move(*created));
+        }
+
+        static bool resolveArtifact(
+            void* context,
+            const lux::asset::AssetId& asset,
+            ResolvedScriptArtifact& output
+        ) noexcept
+        {
+            auto* state = static_cast<PrepareScalingState*>(context);
+            if (asset != state->asset_id)
+                return false;
+            ++state->asset_resolutions;
+            output = {
+                &state->artifact,
+                state,
+                [](void* value) noexcept
+                {
+                    ++static_cast<PrepareScalingState*>(value)->asset_releases;
+                }
+            };
+            return true;
+        }
+
+        SimulationDescription simulation;
+        lux::script::ScriptArtifact artifact;
+        lux::asset::AssetId asset_id;
+        ScriptSystemDescription description;
+        ecs::Registry registry;
+        HookPoint<void(const SimulationStepInfo&)> hook;
+        std::unique_ptr<ScriptHookEndpoint<void(const SimulationStepInfo&)>> bridge;
+        ScriptHookEndpointDescriptor hook_descriptor;
+        PrepareBackendState backend;
+        ScriptBackendDescriptor backend_descriptor;
+        std::unique_ptr<ScriptSystem> system;
+        std::size_t asset_resolutions{};
+        std::size_t asset_releases{};
     };
 
     struct TaskState final
@@ -726,6 +921,30 @@ int main(int argc, char** argv)
                     .updates = state.entities.size(),
                     .notifications = count,
                     .dirty_marks = count};
+            });
+    }
+    else if (options->group == "script-prepare-scaling")
+    {
+        metric = "script_prepare_linear";
+        samples = measure(*options,
+            [&] { return std::make_unique<PrepareScalingState>(options->size); },
+            [&](PrepareScalingState& state)
+            {
+                if (!state.system->prepare())
+                    throw std::runtime_error("script prepare failed");
+                const auto active_instances = state.system->activeInstanceCount();
+                const auto lane_connections = state.hook.handlerCount();
+                if (!state.system->shutdown())
+                    throw std::runtime_error("script prepare shutdown failed");
+                return Observation{
+                    .updates = options->size,
+                    .callbacks = active_instances,
+                    .asset_resolution_delta = state.asset_resolutions,
+                    .target_resolution_delta = lane_connections,
+                    .dispatch_handlers_built = lane_connections,
+                    .instance_creates = state.backend.instance_creates,
+                    .method_prepares = state.backend.method_prepares
+                };
             });
     }
     else

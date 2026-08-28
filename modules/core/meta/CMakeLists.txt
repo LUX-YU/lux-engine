@@ -80,6 +80,15 @@ if(ENABLE_META_TEST)
     target_link_libraries(reflection_drain_test PRIVATE meta)
 
     if(NOT CMAKE_CROSSCOMPILING)
+        add_executable(runtime_object_test test/runtime_object_test.cpp)
+        target_link_libraries(runtime_object_test PRIVATE meta)
+        if(MSVC)
+            target_compile_options(runtime_object_test PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(runtime_object_test PRIVATE -UNDEBUG)
+        endif()
+        add_test(NAME runtime_object_test COMMAND runtime_object_test)
+
         add_executable(
             type_static_info_test
             ${CMAKE_CURRENT_SOURCE_DIR}/test/type_static_info_test.cpp

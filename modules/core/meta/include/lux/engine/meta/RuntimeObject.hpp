@@ -6,16 +6,25 @@
 
 #include "Meta.hpp"
 
+#include <lux/cxx/compile_time/expected.hpp>
+
 #include <cassert>
-#include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #include <new>
 #include <type_traits>
 #include <utility>
-#include <cstdint>
 
 namespace lux::meta
 {
+    enum class ERuntimeObjectError : std::uint8_t
+    {
+        INVALID_TYPE,
+        CONSTRUCTION_UNAVAILABLE,
+        ALLOCATION_FAILURE,
+        CONSTRUCTION_FAILURE,
+    };
+
     class RuntimeObject
     {
         /* ------------------------------------------------------------------ */
@@ -69,27 +78,53 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* 3. Reflected type: constructed from a RefClass                     */
         /* ------------------------------------------------------------------ */
-        explicit RuntimeObject(const RefClass* cls)
+        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError>
+        create(const RefClass* cls) noexcept
         {
-            auto* type_ptr = &cls->type;
-            setTagged(type_ptr, true);
-            if (!cls->construct)
-                std::abort();
-            void* p = ::operator new(type_ptr->size, std::align_val_t{SBO_ALIGN}, std::nothrow);
-            if (!p)
-                std::abort();
-            cls->construct(p);
-            storage_.heap = p;
+            if (cls == nullptr || !validHeapType(cls->type))
+                return lux::cxx::unexpected(ERuntimeObjectError::INVALID_TYPE);
+            if (!cls->construct || !cls->destruct)
+                return lux::cxx::unexpected(ERuntimeObjectError::CONSTRUCTION_UNAVAILABLE);
+
+            RuntimeObject result;
+            void* storage = allocate(cls->type);
+            if (storage == nullptr)
+                return lux::cxx::unexpected(ERuntimeObjectError::ALLOCATION_FAILURE);
+            try
+            {
+                cls->construct(storage);
+            }
+            catch (...)
+            {
+                deallocate(storage, cls->type);
+                return lux::cxx::unexpected(ERuntimeObjectError::CONSTRUCTION_FAILURE);
+            }
+            result.setTagged(&cls->type, true);
+            result.storage_.heap = storage;
+            return result;
         }
 
         // special support for std::string
-        explicit RuntimeObject(std::string str)
+        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError>
+        create(std::string value) noexcept
         {
             static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string");
-            setTagged(&string_class_meta->type, true);
-            void* p = ::operator new(sizeof(std::string), std::align_val_t{SBO_ALIGN});
-            new (p) std::string(std::move(str));
-            storage_.heap = p;
+            const bool is_invalid_metadata = string_class_meta == nullptr ||
+                !validHeapType(string_class_meta->type);
+            const bool is_layout_mismatch = !is_invalid_metadata &&
+                (string_class_meta->type.size != sizeof(std::string) ||
+                 string_class_meta->type.alignment != alignof(std::string));
+            if (is_invalid_metadata || is_layout_mismatch)
+                return lux::cxx::unexpected(ERuntimeObjectError::INVALID_TYPE);
+
+            RuntimeObject result;
+            void* storage = allocate(string_class_meta->type);
+            if (storage == nullptr)
+                return lux::cxx::unexpected(ERuntimeObjectError::ALLOCATION_FAILURE);
+            new (storage) std::string(std::move(value));
+            result.setTagged(&string_class_meta->type, true);
+            result.storage_.heap = storage;
+            return result;
         }
 
         // special support for std::string_view
@@ -97,6 +132,12 @@ namespace lux::meta
         {
             static_assert(sizeof(std::string_view) <= SBO_SIZE, "std::string_view size exceeds SBO_SIZE");
             static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string_view");
+            const bool is_invalid_metadata = string_class_meta == nullptr;
+            const bool is_layout_mismatch = !is_invalid_metadata &&
+                (string_class_meta->type.size != sizeof(std::string_view) ||
+                 string_class_meta->type.alignment != alignof(std::string_view));
+            if (is_invalid_metadata || is_layout_mismatch)
+                return;
             setTagged(&string_class_meta->type, false);
             new (storage_.sbo) std::string_view(str);
         }
@@ -122,20 +163,23 @@ namespace lux::meta
          *     their constructor to run) return an invalid object; callers
          *     must construct through RefClass::construct instead.            */
         /* ------------------------------------------------------------------ */
-        static RuntimeObject defaultOf(const RefType* type)
+        static RuntimeObject defaultOf(const RefType* type) noexcept
         {
             RuntimeObject obj;
-            if (!type || type->size == 0 || !type->traits.is_trivially_copyable)
+            if (!type || type->size == 0 || !validAlignment(type->alignment) ||
+                !type->traits.is_trivially_copyable)
                 return obj;
 
-            if (type->size <= SBO_SIZE)
+            if (fitsSbo(*type))
             {
                 obj.setTagged(type, false);
                 std::memset(obj.storage_.sbo, 0, type->size);
             }
             else
             {
-                void* p = ::operator new(type->size, std::align_val_t{SBO_ALIGN});
+                void* p = allocate(*type);
+                if (p == nullptr)
+                    return obj;
                 std::memset(p, 0, type->size);
                 obj.setTagged(type, true);
                 obj.storage_.heap = p;
@@ -187,7 +231,7 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* 7. Explicit copy                                                   */
         /* ------------------------------------------------------------------ */
-        bool copyTo(RuntimeObject& dst)
+        bool copyTo(RuntimeObject& dst) noexcept
         {
             return cloneImpl(dst);
         }
@@ -213,6 +257,42 @@ namespace lux::meta
         }
 
     private:
+        [[nodiscard]] static bool validAlignment(std::size_t alignment) noexcept
+        {
+            return alignment != 0U && (alignment & (alignment - 1U)) == 0U;
+        }
+
+        [[nodiscard]] static bool validHeapType(const RefType& type) noexcept
+        {
+            return type.size != 0U && validAlignment(type.alignment);
+        }
+
+        [[nodiscard]] static std::size_t allocationAlignment(const RefType& type) noexcept
+        {
+            return type.alignment > SBO_ALIGN ? type.alignment : SBO_ALIGN;
+        }
+
+        [[nodiscard]] static bool fitsSbo(const RefType& type) noexcept
+        {
+            return type.size <= SBO_SIZE && type.alignment <= SBO_ALIGN;
+        }
+
+        [[nodiscard]] static void* allocate(const RefType& type) noexcept
+        {
+            if (!validHeapType(type))
+                return nullptr;
+            return ::operator new(
+                type.size,
+                std::align_val_t{allocationAlignment(type)},
+                std::nothrow
+            );
+        }
+
+        static void deallocate(void* storage, const RefType& type) noexcept
+        {
+            ::operator delete(storage, std::align_val_t{allocationAlignment(type)});
+        }
+
         [[nodiscard]] const RefType* getType() const noexcept
         {
             return reinterpret_cast<const RefType*>(tagged_type_ & ~HEAP_BIT);
@@ -248,7 +328,7 @@ namespace lux::meta
                     auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
                     cls->destruct(storage_.heap);
                 }
-                ::operator delete(storage_.heap, std::align_val_t{SBO_ALIGN});
+                deallocate(storage_.heap, *type_ptr);
                 storage_.heap = nullptr;
             }
             tagged_type_ = 0;
@@ -257,7 +337,7 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* Clone (strong exception safety: build a temporary first, then swap it into dst) */
         /* ------------------------------------------------------------------ */
-        bool cloneImpl(RuntimeObject& dst)
+        bool cloneImpl(RuntimeObject& dst) noexcept
         {
             auto* type_ptr = getType();
             if (!type_ptr)
@@ -269,13 +349,22 @@ namespace lux::meta
             {
                 if (heap)
                 {
+                    if (type_ptr->traits.is_trivially_copyable)
+                    {
+                        std::memcpy(dst.storage_.heap, storage_.heap, type_ptr->size);
+                        return true;
+                    }
                     auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
-                    if (!cls->copy) // may be a null function pointer
+                    if (cls == nullptr || !cls->copy)
+                        return false;
+                    try
+                    {
+                        cls->copy(dst.storage_.heap, storage_.heap);
+                    }
+                    catch (...)
                     {
                         return false;
                     }
-
-                    cls->copy(dst.storage_.heap, storage_.heap);
                 }
                 else
                 {
@@ -289,13 +378,33 @@ namespace lux::meta
             RuntimeObject tmp;
             if (heap)
             {
-                auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
-                if (!cls->copy_construct)
-                    return false;
-                tmp.storage_.heap = ::operator new(type_ptr->size, std::align_val_t{SBO_ALIGN}, std::nothrow);
+                tmp.storage_.heap = allocate(*type_ptr);
                 if (!tmp.storage_.heap)
                     return false;
-                cls->copy_construct(tmp.storage_.heap, storage_.heap);
+                if (type_ptr->traits.is_trivially_copyable)
+                {
+                    std::memcpy(tmp.storage_.heap, storage_.heap, type_ptr->size);
+                }
+                else
+                {
+                    auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
+                    if (cls == nullptr || !cls->copy_construct)
+                    {
+                        deallocate(tmp.storage_.heap, *type_ptr);
+                        tmp.storage_.heap = nullptr;
+                        return false;
+                    }
+                    try
+                    {
+                        cls->copy_construct(tmp.storage_.heap, storage_.heap);
+                    }
+                    catch (...)
+                    {
+                        deallocate(tmp.storage_.heap, *type_ptr);
+                        tmp.storage_.heap = nullptr;
+                        return false;
+                    }
+                }
             }
             else
             {

@@ -22,7 +22,7 @@ target_link_libraries(
         lux::engine::simulation::ecs::core
         lux::engine::function::script_core
         lux::engine::resource::asset
-        lux::engine::resource::script_asset
+        lux::engine::function::script_artifact
         lux::engine::world
 )
 
@@ -33,7 +33,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
-    "find_package(lux-engine-resource-script REQUIRED COMPONENTS script_asset)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS script_artifact)"
     "find_package(lux-engine-world REQUIRED COMPONENTS world)"
 )
 

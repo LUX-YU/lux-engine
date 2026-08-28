@@ -560,11 +560,11 @@ namespace lux::simulation::script
         }
 
         [[nodiscard]] const DescriptorIndex* find(
-            const lux::asset::ScriptAssetContent& asset
+            const lux::script::ScriptArtifact& artifact
         ) const noexcept
         {
             const auto* body = std::get_if<lux::rdesc::CppStaticScript>(
-                std::addressof(asset.description.body)
+                std::addressof(artifact.description().body)
             );
             if (!body)
                 return nullptr;
@@ -575,37 +575,37 @@ namespace lux::simulation::script
         }
 
         [[nodiscard]] static bool executableContractMatches(
-            const lux::asset::ScriptAssetContent& asset,
+            const lux::script::ScriptArtifact& artifact,
             const CppStaticScriptDescriptor::State& descriptor
         ) noexcept
         {
             const auto* asset_body = std::get_if<lux::rdesc::CppStaticScript>(
-                std::addressof(asset.description.body)
+                std::addressof(artifact.description().body)
             );
             const auto* descriptor_body =
                 std::get_if<lux::rdesc::CppStaticScript>(
                     std::addressof(descriptor.description.body)
                 );
             return asset_body && descriptor_body &&
-                asset.description.module_name ==
+                artifact.description().module_name ==
                     descriptor.description.module_name &&
                 asset_body->descriptor == descriptor_body->descriptor &&
-                asset.description.exports == descriptor.description.exports;
+                artifact.description().exports == descriptor.description.exports;
         }
 
         static EScriptBackendResult createInstance(
             void* opaque,
             const ScriptInstanceCreateContext& context,
-            const lux::asset::ScriptAssetContent& asset,
+            const lux::script::ScriptArtifact& artifact,
             ScriptBackendInstance& result
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            const auto* descriptor_index = self.find(asset);
+            const auto* descriptor_index = self.find(artifact);
             if (!descriptor_index)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
             const auto& descriptor = *descriptor_index->descriptor;
-            if (!executableContractMatches(asset, descriptor))
+            if (!executableContractMatches(artifact, descriptor))
             {
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             }

@@ -32,7 +32,7 @@ namespace lux::simulation::script
         bool (*resolve)(
             void* context,
             const lux::asset::AssetId& asset,
-            const lux::asset::ScriptAssetContent& content,
+            const lux::script::ScriptArtifact& artifact,
             ResolvedNativeModule& result
         ) noexcept{};
     };

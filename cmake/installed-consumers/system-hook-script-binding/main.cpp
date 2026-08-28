@@ -1,6 +1,6 @@
 #include "ConsumerBehavior.hpp"
 
-#include <lux/engine/resource/asset/script/ScriptAsset.hpp>
+#include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
@@ -70,7 +70,7 @@ namespace
     {
         lux::asset::AssetId asset_id{assetId()};
         lux::world::WorldObjectId object{objectId()};
-        lux::asset::ScriptAssetContent asset;
+        std::shared_ptr<const lux::script::ScriptArtifact> artifact;
         lux::simulation::ecs::Entity entity{
             lux::simulation::ecs::NullEntity};
     };
@@ -78,13 +78,13 @@ namespace
     bool resolveAsset(
         void* context,
         const lux::asset::AssetId& id,
-        ResolvedScriptAsset& result
+        ResolvedScriptArtifact& result
     ) noexcept
     {
         auto& fixture = *static_cast<Fixture*>(context);
         if (id != fixture.asset_id)
             return false;
-        result.asset = std::addressof(fixture.asset);
+        result.artifact = fixture.artifact.get();
         return true;
     }
 
@@ -158,18 +158,19 @@ int main()
     assert(projected);
 
     Fixture fixture;
-    fixture.asset.description = projected->description();
-    const auto asset_codec = lux::asset::scriptAssetCodecDescriptor({});
+    auto artifact = lux::script::ScriptArtifact::create(projected->description(), {});
+    assert(artifact);
+    fixture.artifact = std::make_shared<lux::script::ScriptArtifact>(std::move(*artifact));
+    const auto asset_codec = lux::script::scriptArtifactCodecDescriptor({});
     const auto encoded_asset = asset_codec.encode(
-        std::addressof(fixture.asset),
+        fixture.artifact.get(),
         lux::asset::AssetEncodeContext{unlimited()});
     assert(encoded_asset && (*encoded_asset)[4] == std::byte{3U});
     const auto decoded_asset = asset_codec.decode(
         *encoded_asset,
         lux::asset::AssetDecodeContext{unlimited()});
     assert(decoded_asset);
-    fixture.asset = *std::static_pointer_cast<
-        const lux::asset::ScriptAssetContent>(decoded_asset->payload);
+    fixture.artifact = std::static_pointer_cast<const lux::script::ScriptArtifact>(decoded_asset->payload);
 
     SimulationDescriptionBuilder simulation_builder;
     assert(simulation_builder.addSystem(SystemId, "consumer", System));

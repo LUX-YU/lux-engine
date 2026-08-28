@@ -85,7 +85,6 @@ foreach(test_name IN ITEMS asset_codec_set_test cooked_asset_image_test)
     )
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
-
 foreach(test_name IN ITEMS pak_archive_public_test asset_storage_contract_test)
     add_executable(
         ${test_name}
@@ -104,4 +103,3 @@ foreach(test_name IN ITEMS pak_archive_public_test asset_storage_contract_test)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
-add_subdirectory(script)

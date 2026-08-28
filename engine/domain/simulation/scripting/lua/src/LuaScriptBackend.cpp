@@ -101,27 +101,27 @@ namespace lux::simulation::script
 
         [[nodiscard]] int prototypeFor(
             const ScriptInstanceCreateContext& context,
-            const lux::asset::ScriptAssetContent& asset
+            const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
             const auto found = prototypes.find(context.asset);
             if (found != prototypes.end())
                 return found->second;
-            if (asset.payload.empty())
+            if (artifact.payload().empty())
                 return LUA_NOREF;
             const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(
-                std::addressof(asset.description.body));
+                std::addressof(artifact.description().body));
             if (!body)
                 return LUA_NOREF;
             lua_rawgeti(state, LUA_REGISTRYINDEX, traceback_ref);
             const auto error_index = lua_gettop(state);
             const auto* source = reinterpret_cast<const char*>(
-                asset.payload.data());
+                artifact.payload().data());
             if (luaL_loadbufferx(
                     state,
                     source,
-                    asset.payload.size(),
-                    asset.description.module_name.c_str(),
+                    artifact.payload().size(),
+                    artifact.description().module_name.c_str(),
                     "t") != LUA_OK ||
                 lua_pcall(state, 0, 1, error_index) != LUA_OK)
             {
@@ -374,7 +374,7 @@ namespace lux::simulation::script
         static EScriptBackendResult createInstance(
             void* opaque,
             const ScriptInstanceCreateContext& context,
-            const lux::asset::ScriptAssetContent& asset,
+            const lux::script::ScriptArtifact& artifact,
             ScriptBackendInstance& result
         ) noexcept
         {
@@ -400,7 +400,7 @@ namespace lux::simulation::script
                         HOST_COMPONENT_CONTRACT_MISMATCH;
                 }
             }
-            const auto prototype = self.prototypeFor(context, asset);
+            const auto prototype = self.prototypeFor(context, artifact);
             if (prototype == LUA_NOREF)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
 

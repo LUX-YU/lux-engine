@@ -80,20 +80,21 @@ namespace
         return std::move(*built);
     }
 
-    [[nodiscard]] lux::asset::ScriptAssetContent makeAsset()
+    [[nodiscard]] lux::script::ScriptArtifact makeArtifact()
     {
         const auto argument = lux::rdesc::makeScriptValueType<
             SimulationStepInfo>(lux::script::EScriptPassMode::CONST_REF);
-        lux::asset::ScriptAssetContent asset;
-        asset.description.module_name = "lux.test.runtime.script";
-        asset.description.exports = {
+        lux::rdesc::Script description;
+        description.module_name = "lux.test.runtime.script";
+        description.exports = {
             {"on_tick", kHookSymbol, {argument}, {}},
             {"on_broadcast", kBroadcastSymbol, {argument}, {}},
             {"on_targeted", kTargetedSymbol, {argument}, {}},
             {"on_secondary", kSecondaryHookSymbol, {argument}, {}}};
-        asset.description.body = lux::rdesc::CppStaticScript{"fixture"};
-        assert(lux::rdesc::validScriptDescription(asset.description));
-        return asset;
+        description.body = lux::rdesc::CppStaticScript{"fixture"};
+        auto artifact = lux::script::ScriptArtifact::create(std::move(description), {});
+        assert(artifact);
+        return std::move(*artifact);
     }
 
     struct BackendState;
@@ -102,7 +103,7 @@ namespace
     {
         BackendState* owner{};
         ScriptBehavior* behavior{};
-        ScriptMountId mount;
+        bool entity_scope{};
     };
 
     struct PreparedCall final
@@ -123,7 +124,7 @@ namespace
         std::size_t broadcast_calls{};
         std::size_t targeted_calls{};
         std::size_t entity_calls{};
-        ScriptMountId fail_mount;
+        bool fail_entity{};
         lux::script::ScriptSymbolId fail_symbol{};
         ScriptSystem* system{};
         bool request_shutdown{};
@@ -147,13 +148,13 @@ namespace
             ++call.owner->targeted_calls;
         else
             return 7;
-        if (call.instance->mount == call.owner->fail_mount &&
+        if (call.instance->entity_scope == call.owner->fail_entity &&
             call.symbol == call.owner->fail_symbol)
         {
             return 9;
         }
         if (call.owner->request_shutdown && call.symbol == kHookSymbol &&
-            call.instance->mount == ScriptMountId{1U})
+            !call.instance->entity_scope)
         {
             call.owner->request_shutdown = false;
             const auto stopped = call.owner->system->shutdown();
@@ -166,7 +167,7 @@ namespace
     EScriptBackendResult createInstance(
         void* context,
         const ScriptInstanceCreateContext& create,
-        const lux::asset::ScriptAssetContent&,
+        const lux::script::ScriptArtifact&,
         ScriptBackendInstance& output
     ) noexcept
     {
@@ -174,7 +175,7 @@ namespace
         auto instance = new (std::nothrow) BackendInstance{
             &state,
             create.behavior,
-            create.mount};
+            std::holds_alternative<EntityScriptScope>(create.scope)};
         if (!instance)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         ++state.creates;
@@ -223,7 +224,7 @@ namespace
     {
         lux::asset::AssetId asset_id{assetId(9U)};
         lux::world::WorldObjectId object{objectId(8U)};
-        lux::asset::ScriptAssetContent asset{makeAsset()};
+        lux::script::ScriptArtifact artifact{makeArtifact()};
         ecs::Entity entity{ecs::NullEntity};
         std::size_t leases{};
         std::size_t releases{};
@@ -232,7 +233,7 @@ namespace
     bool resolveAsset(
         void* context,
         const lux::asset::AssetId& id,
-        ResolvedScriptAsset& output
+        ResolvedScriptArtifact& output
     ) noexcept
     {
         auto& fixture = *static_cast<Fixture*>(context);
@@ -240,7 +241,7 @@ namespace
             return false;
         ++fixture.leases;
         output = {
-            &fixture.asset,
+            &fixture.artifact,
             &fixture,
             [](void* value) noexcept
             {
@@ -398,7 +399,7 @@ int main()
     assert(backend_state.targeted_calls == 2U);
 
     const auto releases_before_fault = backend_state.releases;
-    backend_state.fail_mount = ScriptMountId{2U};
+    backend_state.fail_entity = true;
     backend_state.fail_symbol = kHookSymbol;
     assert(hook.dispatch(step) == 1U);
     assert(system.activeInstanceCount() == 1U);

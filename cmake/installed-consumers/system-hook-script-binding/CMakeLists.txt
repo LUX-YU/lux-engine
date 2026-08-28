@@ -4,8 +4,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 find_package(lux-engine-core REQUIRED COMPONENTS meta)
-find_package(lux-engine-function REQUIRED COMPONENTS script_core)
-find_package(lux-engine-resource-script REQUIRED COMPONENTS script_asset)
+find_package(lux-engine-function REQUIRED COMPONENTS script_artifact script_core)
 find_package(
     lux-engine-simulation
     REQUIRED COMPONENTS
@@ -41,7 +40,7 @@ target_link_libraries(
     lux_system_hook_script_consumer
     PRIVATE
         lux::engine::function::script_core
-        lux::engine::resource::script_asset
+        lux::engine::function::script_artifact
         lux::engine::simulation::description
         lux::engine::simulation::simulation_script
         lux::engine::simulation::simulation_script_cpp_static

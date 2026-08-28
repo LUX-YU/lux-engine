@@ -1,4 +1,4 @@
-#include <lux/engine/resource/asset/script/ScriptAsset.hpp>
+#include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
 
@@ -8,8 +8,15 @@
 #include <type_traits>
 #include <utility>
 
-namespace lux::asset
+namespace lux::script
 {
+    using lux::asset::AssetCodecDescriptor;
+    using lux::asset::AssetDecodeContext;
+    using lux::asset::AssetEncodeContext;
+    using lux::asset::AssetTypeId;
+    using lux::asset::DecodedAsset;
+    using lux::asset::EAssetCodecError;
+
     namespace
     {
         constexpr std::uint32_t kWireVersion = 3U;
@@ -198,33 +205,34 @@ namespace lux::asset
         [[nodiscard]] lux::cxx::expected<
             std::vector<std::byte>,
             EAssetCodecError>
-        encodeScriptAsset(
+        encodeScriptArtifact(
             const void* payload,
             const AssetEncodeContext& context
         ) noexcept
         {
             if (payload == nullptr)
                 return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-            const auto& asset = *static_cast<const ScriptAssetContent*>(payload);
-            if (!lux::rdesc::validScriptDescription(asset.description))
+            const auto& artifact = *static_cast<const ScriptArtifact*>(payload);
+            const auto& description = artifact.description();
+            if (!lux::rdesc::validScriptDescription(description))
                 return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
             try
             {
                 Writer writer;
-                writer.u32(ScriptAssetPrimaryMagic);
+                writer.u32(ScriptArtifactPrimaryMagic);
                 writer.u32(kWireVersion);
                 writer.u32(lux::rdesc::Script::kSchemaVersion);
-                writer.u32(static_cast<std::uint32_t>(asset.description.kind()));
-                writer.string(asset.description.module_name);
+                writer.u32(static_cast<std::uint32_t>(description.kind()));
+                writer.string(description.module_name);
 
-                if (asset.description.exports.size() >
+                if (description.exports.size() >
                     std::numeric_limits<std::uint32_t>::max())
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
                 writer.u32(static_cast<std::uint32_t>(
-                    asset.description.exports.size()));
-                for (const auto& function : asset.description.exports)
+                    description.exports.size()));
+                for (const auto& function : description.exports)
                 {
                     writer.string(function.name);
                     writer.u64(function.symbol_id);
@@ -237,13 +245,13 @@ namespace lux::asset
                 }
 
                 writer.u32(static_cast<std::uint32_t>(
-                    asset.description.dependencies.size()));
-                for (const auto& dependency : asset.description.dependencies)
+                    description.dependencies.size()));
+                for (const auto& dependency : description.dependencies)
                 {
                     writer.string(dependency.kind);
                     writer.string(dependency.id);
                 }
-                const auto& provenance = asset.description.provenance;
+                const auto& provenance = description.provenance;
                 writer.string(provenance.compiler_id);
                 writer.string(provenance.compiler_version);
                 writer.string(provenance.source_id);
@@ -251,13 +259,13 @@ namespace lux::asset
                 writer.string(provenance.built_at);
 
                 if (const auto* lua = std::get_if<lux::rdesc::LuaSourceScript>(
-                        &asset.description.body))
+                        &description.body))
                 {
                     writer.string(lua->entry);
                 }
                 else if (const auto* native =
                     std::get_if<lux::rdesc::NativeModuleScript>(
-                        &asset.description.body))
+                        &description.body))
                 {
                     writer.u32(native->abi_version);
                     writer.u64(native->state_layout_hash);
@@ -269,13 +277,13 @@ namespace lux::asset
                 }
                 else if (const auto* cpp_static =
                     std::get_if<lux::rdesc::CppStaticScript>(
-                        &asset.description.body))
+                        &description.body))
                 {
                     writer.string(cpp_static->descriptor);
                 }
 
-                writer.u64(asset.payload.size());
-                writer.raw(asset.payload);
+                writer.u64(artifact.payload().size());
+                writer.raw(artifact.payload());
                 if (!writer.valid())
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
 
@@ -295,7 +303,7 @@ namespace lux::asset
         }
 
         [[nodiscard]] lux::cxx::expected<DecodedAsset, EAssetCodecError>
-        decodeScriptAsset(
+        decodeScriptArtifact(
             std::span<const std::byte> bytes,
             const AssetDecodeContext& context
         ) noexcept
@@ -308,7 +316,7 @@ namespace lux::asset
                 std::uint32_t magic{}, wire{}, schema{}, kind{};
                 if (!reader.u32(magic) || !reader.u32(wire) ||
                     !reader.u32(schema) || !reader.u32(kind) ||
-                    magic != ScriptAssetPrimaryMagic || wire != kWireVersion ||
+                    magic != ScriptArtifactPrimaryMagic || wire != kWireVersion ||
                     schema != lux::rdesc::Script::kSchemaVersion ||
                     (kind != static_cast<std::uint32_t>(
                          lux::rdesc::Script::Kind::LUA_SOURCE) &&
@@ -320,9 +328,8 @@ namespace lux::asset
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
 
-                auto asset = std::make_shared<ScriptAssetContent>();
-                auto& description = asset->description;
-                std::size_t decoded = sizeof(ScriptAssetContent);
+                lux::rdesc::Script description;
+                std::size_t decoded = sizeof(ScriptArtifact);
                 const auto limit = context.limits.max_decoded_bytes;
                 if (decoded > limit ||
                     !reader.string(description.module_name, decoded, limit))
@@ -455,11 +462,19 @@ namespace lux::asset
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
-                asset->payload.assign(payload.begin(), payload.end());
+                std::vector<std::byte> artifact_payload(payload.begin(), payload.end());
                 decoded += static_cast<std::size_t>(payload_size);
                 if (!lux::rdesc::validScriptDescription(description))
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                return DecodedAsset{std::move(asset), decoded};
+                auto artifact = ScriptArtifact::create(std::move(description), std::move(artifact_payload));
+                if (!artifact)
+                {
+                    const auto error = artifact.error() == EScriptArtifactError::ALLOCATION_FAILURE
+                        ? EAssetCodecError::OUT_OF_MEMORY
+                        : EAssetCodecError::CODEC_FAILURE;
+                    return lux::cxx::unexpected(error);
+                }
+                return DecodedAsset{std::make_shared<ScriptArtifact>(std::move(*artifact)), decoded};
             }
             catch (const std::bad_alloc&)
             {
@@ -472,18 +487,48 @@ namespace lux::asset
         }
     }
 
-    AssetCodecDescriptor scriptAssetCodecDescriptor(
+    lux::cxx::expected<ScriptArtifact, EScriptArtifactError>
+    ScriptArtifact::create(lux::rdesc::Script description, std::vector<std::byte> payload) noexcept
+    {
+        if (!lux::rdesc::validScriptDescription(description))
+            return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+
+        ScriptArtifact artifact{std::move(description), std::move(payload)};
+        try
+        {
+            artifact.export_index_.reserve(artifact.description_.exports.size());
+            for (std::size_t index{}; index < artifact.description_.exports.size(); ++index)
+            {
+                const auto symbol = artifact.description_.exports[index].symbol_id;
+                if (!artifact.export_index_.emplace(symbol, index).second)
+                    return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+            }
+            return artifact;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(EScriptArtifactError::ALLOCATION_FAILURE);
+        }
+    }
+
+    const lux::rdesc::ScriptFunction* ScriptArtifact::findExport(ScriptSymbolId symbol) const noexcept
+    {
+        const auto found = export_index_.find(symbol);
+        return found == export_index_.end() ? nullptr : &description_.exports[found->second];
+    }
+
+    AssetCodecDescriptor scriptArtifactCodecDescriptor(
         std::shared_ptr<const void> code_lifetime
     )
     {
         return AssetCodecDescriptor{
-            AssetTypeId::fromName(ScriptAssetCanonicalName),
-            std::string(ScriptAssetCanonicalName),
-            ScriptAssetPrimaryMagic,
+            AssetTypeId::fromName(ScriptArtifactCanonicalName),
+            std::string(ScriptArtifactCanonicalName),
+            ScriptArtifactPrimaryMagic,
             0U,
-            lux::cxx::typeToken<ScriptAssetContent>(),
-            &decodeScriptAsset,
-            &encodeScriptAsset,
+            lux::cxx::typeToken<ScriptArtifact>(),
+            &decodeScriptArtifact,
+            &encodeScriptArtifact,
             std::move(code_lifetime)};
     }
 }

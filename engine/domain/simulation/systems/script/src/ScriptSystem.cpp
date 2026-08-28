@@ -128,7 +128,7 @@ namespace lux::simulation::script
             std::size_t method_count{};
             ScriptInstanceScope scope;
             ScriptBehavior behavior;
-            ResolvedScriptAsset asset;
+            ResolvedScriptArtifact artifact;
             const ScriptBackendDescriptor *backend{};
             ScriptBackendInstance backend_instance;
             ecs::Entity entity{ecs::NullEntity};
@@ -195,8 +195,8 @@ namespace lux::simulation::script
         const ScriptSystemDescription *description{};
         ecs::Registry *registry{};
         ScriptSystemOptions options;
-        ResidentScriptResolver assets;
-        ScriptWorldResolver world;
+        ScriptArtifactResolver artifacts;
+        WorldObjectResolver world;
         ScriptHostApi host;
         std::array<ScriptBackendDescriptor, kBackendKindCount> backends;
         std::vector<ScriptHookEndpointDescriptor> hook_endpoints;
@@ -280,21 +280,6 @@ namespace lux::simulation::script
             bucket.owner = this;
             bucket.endpoint = endpoint;
             return static_cast<std::uint32_t>(events.size() - 1U);
-        }
-
-        [[nodiscard]] const lux::rdesc::ScriptFunction *findExport(
-            const lux::rdesc::Script &script,
-            lux::script::ScriptSymbolId symbol) const noexcept
-        {
-            const auto found = std::find_if(
-                script.exports.begin(),
-                script.exports.end(),
-                [symbol](const auto &function) noexcept
-                {
-                    return function.symbol_id == symbol;
-                }
-            );
-            return found == script.exports.end() ? nullptr : std::addressof(*found);
         }
 
         [[nodiscard]] std::uint32_t ensureMethod(RuntimeMount &mount, lux::script::ScriptSymbolId symbol)
@@ -682,7 +667,7 @@ namespace lux::simulation::script
         {
             mount.scope = SimulationScriptScope{};
             mount.behavior = {};
-            mount.asset = {};
+            mount.artifact = {};
             mount.backend = nullptr;
             mount.backend_instance = {};
             mount.entity = ecs::NullEntity;
@@ -713,8 +698,8 @@ namespace lux::simulation::script
                 }
                 mount.backend->destroyInstance(mount.backend->context, mount.backend_instance);
             }
-            if (mount.asset.lease != nullptr && mount.asset.release != nullptr)
-                mount.asset.release(mount.asset.lease);
+            if (mount.artifact.lease != nullptr && mount.artifact.release != nullptr)
+                mount.artifact.release(mount.artifact.lease);
 
             deactivate(mount);
             resetMountRuntime(mount);
@@ -755,20 +740,20 @@ namespace lux::simulation::script
             }
             mount.behavior.attach(mount.scope, host);
 
-            if (!assets.resolve(assets.context, mount.authored->asset, mount.asset))
+            if (!artifacts.resolve(artifacts.context, mount.authored->asset, mount.artifact))
             {
                 resetMountRuntime(mount);
                 mount.state = EMountState::INACTIVE;
                 return lux::cxx::unexpected(EScriptSystemError::ASSET_NOT_RESIDENT);
             }
-            if (mount.asset.asset == nullptr ||
-                !lux::rdesc::validScriptDescription(mount.asset.asset->description))
+            if (mount.artifact.artifact == nullptr ||
+                !lux::rdesc::validScriptDescription(mount.artifact.artifact->description()))
             {
                 releaseMount(mount_slot, EMountState::INACTIVE, false);
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_ASSET);
             }
 
-            mount.backend = backend(mount.asset.asset->description.kind());
+            mount.backend = backend(mount.artifact.artifact->description().kind());
             if (mount.backend == nullptr)
             {
                 releaseMount(mount_slot, EMountState::INACTIVE, false);
@@ -777,14 +762,13 @@ namespace lux::simulation::script
 
             const ScriptInstanceCreateContext create_context{
                 mount.authored->asset,
-                mount.authored->id,
                 mount.scope,
                 std::addressof(mount.behavior)
             };
             const auto created = mount.backend->createInstance(
                 mount.backend->context,
                 create_context,
-                *mount.asset.asset,
+                *mount.artifact.artifact,
                 mount.backend_instance
             );
             if (created != EScriptBackendResult::SUCCESS)
@@ -798,7 +782,7 @@ namespace lux::simulation::script
             for (std::size_t method_slot{mount.method_first}; method_slot < method_end; ++method_slot)
             {
                 auto &method = methods[method_slot];
-                const auto *function = findExport(mount.asset.asset->description, method.symbol);
+                const auto* function = mount.artifact.artifact->findExport(method.symbol);
                 if (function == nullptr)
                 {
                     releaseMount(mount_slot, EMountState::INACTIVE, false);
@@ -824,7 +808,7 @@ namespace lux::simulation::script
             {
                 const auto &binding = bindings[binding_slot];
                 const auto &authored = mount.authored->bindings[binding_slot - mount.binding_first];
-                const auto *function = findExport(mount.asset.asset->description, methods[binding.method_slot].symbol);
+                const auto* function = mount.artifact.artifact->findExport(methods[binding.method_slot].symbol);
                 const bool is_hook = binding.kind == EBindingKind::HOOK;
                 const bool is_signature_valid = is_hook
                     ? sameHookSignature(*function, hooks[binding.bucket_slot].endpoint->signature)
@@ -1006,14 +990,14 @@ namespace lux::simulation::script
         const ScriptSystemDescription &description,
         ecs::Registry &registry,
         ScriptSystemOptions options,
-        ResidentScriptResolver assets,
-        ScriptWorldResolver world,
+        ScriptArtifactResolver artifacts,
+        WorldObjectResolver world,
         std::span<const ScriptBackendDescriptor> backends,
         std::span<const ScriptHookEndpointDescriptor> hooks,
         std::span<const ScriptEventEndpointDescriptor> events,
         ScriptHostApi host) noexcept
     {
-        if (options.failure_capacity == 0U || assets.resolve == nullptr)
+        if (options.failure_capacity == 0U || artifacts.resolve == nullptr)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
         std::array<ScriptBackendDescriptor, kBackendKindCount> backend_table{};
@@ -1083,7 +1067,7 @@ namespace lux::simulation::script
             state->description = std::addressof(description);
             state->registry = std::addressof(registry);
             state->options = options;
-            state->assets = assets;
+            state->artifacts = artifacts;
             state->world = world;
             state->host = host;
             state->backends = backend_table;

@@ -153,7 +153,7 @@ foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-simulation/simulation_description/lux-engine-simulation-simulation_description-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-asset/simulation_asset/lux-engine-simulation-asset-simulation_asset-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-ecs/core/lux-engine-simulation-ecs-core-config-targets.cmake"
-    "${prefix}/share/lux-engine-resource-script/script_asset/lux-engine-resource-script-script_asset-config-targets.cmake"
+    "${prefix}/share/lux-engine-function/script_artifact/lux-engine-function-script_artifact-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation/simulation_script/lux-engine-simulation-simulation_script-config-targets.cmake"
 )
     if(NOT EXISTS "${contract_file}")

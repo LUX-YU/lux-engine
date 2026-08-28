@@ -18,6 +18,25 @@
 
 namespace lux::simulation::script
 {
+    struct ResolvedScriptArtifact final
+    {
+        const lux::script::ScriptArtifact* artifact{};
+        void* lease{};
+        void (*release)(void*) noexcept{};
+    };
+
+    struct ScriptArtifactResolver final
+    {
+        void* context{};
+        bool (*resolve)(void*, const lux::asset::AssetId&, ResolvedScriptArtifact&) noexcept{};
+    };
+
+    struct WorldObjectResolver final
+    {
+        void* context{};
+        bool (*resolve)(void*, const lux::world::WorldObjectId&, ecs::Entity&) noexcept{};
+    };
+
     namespace detail
     {
         struct ScriptAttachment final
@@ -80,8 +99,8 @@ namespace lux::simulation::script
             const ScriptSystemDescription &description,
             ecs::Registry &registry,
             ScriptSystemOptions options,
-            ResidentScriptResolver assets,
-            ScriptWorldResolver world,
+            ScriptArtifactResolver artifacts,
+            WorldObjectResolver world,
             std::span<const ScriptBackendDescriptor> backends,
             std::span<const ScriptHookEndpointDescriptor> hooks,
             std::span<const ScriptEventEndpointDescriptor> events,

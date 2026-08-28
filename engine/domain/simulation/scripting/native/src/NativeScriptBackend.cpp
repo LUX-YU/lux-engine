@@ -181,15 +181,15 @@ namespace lux::simulation::script
 
         [[nodiscard]] bool executableContractMatches(
             const lux::script::NativeModule& module,
-            const lux::asset::ScriptAssetContent& asset
+            const lux::script::ScriptArtifact& artifact
         ) const noexcept
         {
             const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
-                std::addressof(asset.description.body)
+                std::addressof(artifact.description().body)
             );
             if (!body || body->abi_version != LUX_SCRIPT_ABI_VERSION ||
                 module.abiVersion() != LUX_SCRIPT_ABI_VERSION ||
-                module.name() != asset.description.module_name ||
+                module.name() != artifact.description().module_name ||
                 module.stateLayoutHash() != body->state_layout_hash ||
                 module.stateSize() != body->state_size ||
                 module.stateAlignment() != body->state_align)
@@ -197,13 +197,13 @@ namespace lux::simulation::script
                 return false;
             }
             const auto functions = module.functions();
-            if (functions.size() != asset.description.exports.size())
+            if (functions.size() != artifact.description().exports.size())
                 return false;
             for (std::size_t function_index{};
                  function_index < functions.size(); ++function_index)
             {
                 const auto& native = functions[function_index];
-                const auto& semantic = asset.description.exports[function_index];
+                const auto& semantic = artifact.description().exports[function_index];
                 if (!native.name || semantic.name != native.name ||
                     semantic.symbol_id != native.symbol_id ||
                     semantic.args.size() != native.arg_count ||
@@ -228,7 +228,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] EScriptBackendResult resolveModule(
             const lux::asset::AssetId& asset_id,
-            const lux::asset::ScriptAssetContent& asset,
+            const lux::script::ScriptArtifact& artifact,
             ModuleEntry*& result
         ) noexcept
         {
@@ -236,7 +236,7 @@ namespace lux::simulation::script
             if (found != module_index.end())
             {
                 auto& entry = modules[found->second];
-                if (!executableContractMatches(*entry.module, asset))
+                if (!executableContractMatches(*entry.module, artifact))
                 {
                     return EScriptBackendResult::
                         EXECUTABLE_CONTRACT_MISMATCH;
@@ -251,7 +251,7 @@ namespace lux::simulation::script
                 !resolver.resolve(
                     resolver.context,
                     asset_id,
-                    asset,
+                    artifact,
                     resolved
                 ) ||
                 !resolved.module)
@@ -260,7 +260,7 @@ namespace lux::simulation::script
                     resolved.release(resolved.lease);
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
             }
-            if (!executableContractMatches(*resolved.module, asset))
+            if (!executableContractMatches(*resolved.module, artifact))
             {
                 if (resolved.release)
                     resolved.release(resolved.lease);
@@ -277,7 +277,7 @@ namespace lux::simulation::script
                 module_appended = true;
                 auto& entry = modules.back();
                 const auto& body = std::get<lux::rdesc::NativeModuleScript>(
-                    asset.description.body
+                    artifact.description().body
                 );
                 if (!initializeStateSlab(entry, body))
                 {
@@ -343,13 +343,13 @@ namespace lux::simulation::script
         static EScriptBackendResult createInstance(
             void* opaque,
             const ScriptInstanceCreateContext& context,
-            const lux::asset::ScriptAssetContent& asset,
+            const lux::script::ScriptArtifact& artifact,
             ScriptBackendInstance& result
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
             const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
-                std::addressof(asset.description.body));
+                std::addressof(artifact.description().body));
             if (!body || body->state_align == 0U ||
                 (body->state_align & (body->state_align - 1U)) != 0U ||
                 body->state_defaults.size() > body->state_size)
@@ -361,7 +361,7 @@ namespace lux::simulation::script
             ModuleEntry* module{};
             const auto module_result = self.resolveModule(
                 context.asset,
-                asset,
+                artifact,
                 module
             );
             if (module_result != EScriptBackendResult::SUCCESS)

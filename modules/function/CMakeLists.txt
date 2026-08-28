@@ -46,6 +46,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         navigation_detour3d
         render_client
         render_standard_content
+        script_artifact
         script_core
     )
     if(LUX_ENABLE_FLOWFORGE_MLIR)
@@ -64,6 +65,7 @@ else()
         navigation_detour3d
         input
         animation
+        script_artifact
         script_core
         script_native
     )

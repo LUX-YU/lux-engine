@@ -46,7 +46,7 @@ add_executable(
 )
 target_link_libraries(
     lua_importer_contract_test
-    PRIVATE lux::engine::resource::script_asset
+    PRIVATE lux::engine::function::script_artifact
 )
 target_compile_definitions(
     lua_importer_contract_test

@@ -31,7 +31,7 @@ namespace
         static bool resolve(
             void* opaque,
             const lux::asset::AssetId& asset,
-            const lux::asset::ScriptAssetContent&,
+            const lux::script::ScriptArtifact&,
             lux::simulation::script::ResolvedNativeModule& result
         ) noexcept
         {
@@ -78,9 +78,9 @@ int main()
         3U);
     assert(*backend);
 
-    lux::asset::ScriptAssetContent asset;
-    asset.description.module_name = "native_fixture";
-    asset.description.body = lux::rdesc::NativeModuleScript{
+    lux::rdesc::Script description;
+    description.module_name = "native_fixture";
+    description.body = lux::rdesc::NativeModuleScript{
         LUX_SCRIPT_ABI_VERSION,
         module->stateLayoutHash(),
         64U,
@@ -103,16 +103,20 @@ int main()
             lux::rdesc::makeScriptValueType<float>(),
             lux::rdesc::makeScriptValueType<std::uint32_t>()},
         {}};
-    asset.description.exports = {increment, function, pair};
-    assert(lux::rdesc::validScriptDescription(asset.description));
+    description.exports = {increment, function, pair};
+    auto asset_result = lux::script::ScriptArtifact::create(description, {});
+    assert(asset_result);
+    auto asset = std::move(*asset_result);
 
-    auto second_asset = asset;
-    second_asset.description.module_name = "native_fixture_two";
+    auto second_description = description;
+    second_description.module_name = "native_fixture_two";
     auto& second_body = std::get<lux::rdesc::NativeModuleScript>(
-        second_asset.description.body
+        second_description.body
     );
     second_body.state_layout_hash = second_module->stateLayoutHash();
-    assert(lux::rdesc::validScriptDescription(second_asset.description));
+    auto second_asset_result = lux::script::ScriptArtifact::create(std::move(second_description), {});
+    assert(second_asset_result);
+    auto second_asset = std::move(*second_asset_result);
 
     auto descriptor = backend->descriptor();
     std::array<std::uint8_t, 16U> id_bytes{};
@@ -124,38 +128,47 @@ int main()
             descriptor.context,
             ScriptInstanceCreateContext{
                 lux::asset::AssetId{id_bytes},
-                ScriptMountId{99U}},
+                SimulationScriptScope{},
+                nullptr},
             content,
             rejected_instance
         ) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
         assert(!rejected_instance);
     };
     {
-        auto tampered = asset;
-        tampered.description.module_name = "wrong_native_module";
-        expect_contract_mismatch(tampered);
+        auto tampered_description = description;
+        tampered_description.module_name = "wrong_native_module";
+        auto tampered = lux::script::ScriptArtifact::create(std::move(tampered_description), {});
+        assert(tampered);
+        expect_contract_mismatch(*tampered);
     }
     {
-        auto tampered = asset;
+        auto tampered_description = description;
         auto& body = std::get<lux::rdesc::NativeModuleScript>(
-            tampered.description.body
+            tampered_description.body
         );
         body.abi_version = 1U;
-        expect_contract_mismatch(tampered);
+        auto tampered = lux::script::ScriptArtifact::create(std::move(tampered_description), {});
+        assert(tampered);
+        expect_contract_mismatch(*tampered);
     }
     {
-        auto tampered = asset;
+        auto tampered_description = description;
         auto& body = std::get<lux::rdesc::NativeModuleScript>(
-            tampered.description.body
+            tampered_description.body
         );
         ++body.state_layout_hash;
-        expect_contract_mismatch(tampered);
+        auto tampered = lux::script::ScriptArtifact::create(std::move(tampered_description), {});
+        assert(tampered);
+        expect_contract_mismatch(*tampered);
     }
     {
-        auto tampered = asset;
-        tampered.description.exports[1].args[0].pass =
+        auto tampered_description = description;
+        tampered_description.exports[1].args[0].pass =
             lux::script::EScriptPassMode::CONST_REF;
-        expect_contract_mismatch(tampered);
+        auto tampered = lux::script::ScriptArtifact::create(std::move(tampered_description), {});
+        assert(tampered);
+        expect_contract_mismatch(*tampered);
     }
     ScriptBackendInstance first_instance;
     ScriptBackendInstance second_instance;
@@ -164,7 +177,8 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             lux::asset::AssetId{id_bytes},
-            ScriptMountId{1U}},
+            SimulationScriptScope{},
+            nullptr},
         asset,
         first_instance
     ) == EScriptBackendResult::SUCCESS);
@@ -172,7 +186,8 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             lux::asset::AssetId{id_bytes},
-            ScriptMountId{2U}},
+            SimulationScriptScope{},
+            nullptr},
         asset,
         second_instance
     ) == EScriptBackendResult::SUCCESS);
@@ -182,7 +197,8 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             lux::asset::AssetId{id_bytes},
-            ScriptMountId{3U}},
+            SimulationScriptScope{},
+            nullptr},
         second_asset,
         third_instance
     ) == EScriptBackendResult::SUCCESS);
@@ -191,7 +207,8 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             lux::asset::AssetId{id_bytes},
-            ScriptMountId{4U}},
+            SimulationScriptScope{},
+            nullptr},
         asset,
         over_capacity
     ) == EScriptBackendResult::CAPACITY_EXCEEDED);
@@ -264,7 +281,8 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             lux::asset::AssetId{id_bytes},
-            ScriptMountId{5U}},
+            SimulationScriptScope{},
+            nullptr},
         asset,
         recycled_instance
     ) == EScriptBackendResult::SUCCESS);

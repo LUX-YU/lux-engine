@@ -116,8 +116,9 @@ int main()
         function_symbols);
     assert(global);
 
-    lux::asset::ScriptAssetContent entity_asset;
-    entity_asset.description = projected->description();
+    auto entity_asset_result = lux::script::ScriptArtifact::create(projected->description(), {});
+    assert(entity_asset_result);
+    auto entity_asset = std::move(*entity_asset_result);
     const std::array descriptors{std::addressof(*projected)};
     const std::array duplicate_descriptors{
         std::addressof(*projected),
@@ -133,7 +134,6 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             assetId(),
-            ScriptMountId{1U},
             EntityScriptScope{ecs::Entity{1U}},
             &behavior},
         entity_asset,
@@ -144,7 +144,7 @@ int main()
     assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
-        entity_asset.description.exports[0],
+        entity_asset.description().exports[0],
         call
     ) == EScriptBackendResult::SUCCESS);
     float value{3.5F};
@@ -159,17 +159,18 @@ int main()
     assert(call.invoke(&frame) == 0);
     assert(test::observed_value == value);
 
-    auto tampered = entity_asset;
-    tampered.description.module_name = "lux.test.tampered";
+    auto tampered_description = entity_asset.description();
+    tampered_description.module_name = "lux.test.tampered";
+    auto tampered = lux::script::ScriptArtifact::create(std::move(tampered_description), {});
+    assert(tampered);
     ScriptBackendInstance rejected_instance;
     assert(descriptor.createInstance(
         descriptor.context,
         ScriptInstanceCreateContext{
             assetId(),
-            ScriptMountId{2U},
             EntityScriptScope{ecs::Entity{2U}},
             &behavior},
-        tampered,
+        *tampered,
         rejected_instance
     ) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
 
@@ -180,7 +181,6 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             assetId(),
-            ScriptMountId{4U},
             EntityScriptScope{ecs::Entity{4U}},
             &behavior},
         entity_asset,
@@ -191,7 +191,7 @@ int main()
     assert(descriptor.prepareMethod(
         descriptor.context,
         recycled_instance,
-        entity_asset.description.exports[0],
+        entity_asset.description().exports[0],
         recycled_call
     ) == EScriptBackendResult::SUCCESS);
     assert(recycled_call.context == call.context);
@@ -202,8 +202,9 @@ int main()
     );
     descriptor.destroyInstance(descriptor.context, recycled_instance);
 
-    lux::asset::ScriptAssetContent global_asset;
-    global_asset.description = global->description();
+    auto global_asset_result = lux::script::ScriptArtifact::create(global->description(), {});
+    assert(global_asset_result);
+    auto global_asset = std::move(*global_asset_result);
     const std::array global_descriptors{std::addressof(*global)};
     CppStaticScriptBackend global_backend{global_descriptors, 1U};
     const auto global_descriptor = global_backend.descriptor();
@@ -212,7 +213,6 @@ int main()
         global_descriptor.context,
         ScriptInstanceCreateContext{
             assetId(),
-            ScriptMountId{3U},
             SimulationScriptScope{},
             nullptr},
         global_asset,
@@ -222,7 +222,7 @@ int main()
     assert(global_descriptor.prepareMethod(
         global_descriptor.context,
         global_instance,
-        global_asset.description.exports[0],
+        global_asset.description().exports[0],
         global_call
     ) == EScriptBackendResult::SUCCESS);
     std::int32_t input{4};

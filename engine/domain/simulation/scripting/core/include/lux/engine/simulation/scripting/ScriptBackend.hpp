@@ -1,9 +1,9 @@
 #pragma once
 
 #include <lux/engine/function/script/BoundScriptCall.hpp>
-#include <lux/engine/resource/asset/script/ScriptAsset.hpp>
+#include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
+#include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
-#include <lux/engine/simulation/systems/ScriptSystemDescription.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -156,33 +156,6 @@ namespace lux::simulation::script
         friend class ScriptSystem;
     };
 
-    struct ResolvedScriptAsset final
-    {
-        const lux::asset::ScriptAssetContent* asset{};
-        void* lease{};
-        void (*release)(void*) noexcept{};
-    };
-
-    struct ResidentScriptResolver final
-    {
-        void* context{};
-        bool (*resolve)(
-            void*,
-            const lux::asset::AssetId&,
-            ResolvedScriptAsset&
-        ) noexcept{};
-    };
-
-    struct ScriptWorldResolver final
-    {
-        void* context{};
-        bool (*resolve)(
-            void*,
-            const lux::world::WorldObjectId&,
-            ecs::Entity&
-        ) noexcept{};
-    };
-
     struct ScriptBackendInstance final
     {
         void* value{};
@@ -207,7 +180,6 @@ namespace lux::simulation::script
     struct ScriptInstanceCreateContext final
     {
         lux::asset::AssetId asset;
-        ScriptMountId mount;
         ScriptInstanceScope scope;
         ScriptBehavior* behavior{};
     };
@@ -219,7 +191,7 @@ namespace lux::simulation::script
         EScriptBackendResult (*createInstance)(
             void*,
             const ScriptInstanceCreateContext&,
-            const lux::asset::ScriptAssetContent&,
+            const lux::script::ScriptArtifact&,
             ScriptBackendInstance&
         ) noexcept{};
         EScriptBackendResult (*prepareMethod)(

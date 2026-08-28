@@ -1,6 +1,7 @@
 if(NOT TARGET script_core)
     add_subdirectory(core)
 endif()
+add_subdirectory(artifact)
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # The AOT compiler consumes only the backend contract.  Native loading is
     # needed by its optional end-to-end tests; Lua is a Runtime backend.

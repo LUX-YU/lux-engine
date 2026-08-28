@@ -140,9 +140,9 @@ int main()
     assert(backend);
     assert(backend.cachedTracebackCount() == 1U);
 
-    lux::asset::ScriptAssetContent asset;
-    asset.description.module_name = "lua.binding.fixture";
-    asset.description.body = lux::rdesc::LuaSourceScript{"fixture"};
+    lux::rdesc::Script description;
+    description.module_name = "lua.binding.fixture";
+    description.body = lux::rdesc::LuaSourceScript{"fixture"};
     const auto i32 = lux::rdesc::makeScriptValueType<std::int32_t>();
     const auto boolean = lux::rdesc::makeScriptValueType<bool>();
     const lux::rdesc::ScriptFunction function{
@@ -183,12 +183,12 @@ int main()
         18U,
         {},
         {i32}};
-    asset.description.exports.push_back(function);
-    asset.description.exports.push_back(bad_return);
-    asset.description.exports.push_back(escape_host);
-    asset.description.exports.push_back(probe_escaped_host);
-    asset.description.exports.push_back(on_collision);
-    asset.description.exports.push_back(collision_count);
+    description.exports.push_back(function);
+    description.exports.push_back(bad_return);
+    description.exports.push_back(escape_host);
+    description.exports.push_back(probe_escaped_host);
+    description.exports.push_back(on_collision);
+    description.exports.push_back(collision_count);
     constexpr std::string_view source = R"lua(
         local escaped_get = nil
         return {
@@ -220,10 +220,13 @@ int main()
             end
         }
     )lua";
-    asset.payload.reserve(source.size());
+    std::vector<std::byte> payload;
+    payload.reserve(source.size());
     for (const auto value : source)
-        asset.payload.push_back(static_cast<std::byte>(value));
-    assert(lux::rdesc::validScriptDescription(asset.description));
+        payload.push_back(static_cast<std::byte>(value));
+    auto asset_result = lux::script::ScriptArtifact::create(std::move(description), std::move(payload));
+    assert(asset_result);
+    auto asset = std::move(*asset_result);
 
     std::array<std::uint8_t, 16U> id_bytes{};
     id_bytes[0] = 7U;
@@ -232,7 +235,7 @@ int main()
     ScriptBackendInstance rejected_contract_instance;
     assert(contract_descriptor.createInstance(
         contract_descriptor.context,
-        ScriptInstanceCreateContext{id, ScriptMountId{100U}},
+        ScriptInstanceCreateContext{id, SimulationScriptScope{}, nullptr},
         asset,
         rejected_contract_instance
     ) == EScriptBackendResult::HOST_COMPONENT_CONTRACT_MISMATCH);
@@ -249,7 +252,6 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             id,
-            ScriptMountId{1U},
             EntityScriptScope{first_entity},
             &first_behavior},
         asset,
@@ -259,7 +261,6 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             id,
-            ScriptMountId{2U},
             EntityScriptScope{second_entity},
             &second_behavior},
         asset,
@@ -498,7 +499,6 @@ int main()
         descriptor.context,
         ScriptInstanceCreateContext{
             id,
-            ScriptMountId{3U},
             EntityScriptScope{second_entity},
             &second_behavior},
         asset,

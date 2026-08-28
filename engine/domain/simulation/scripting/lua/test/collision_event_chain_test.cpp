@@ -15,6 +15,8 @@
 #include <span>
 #include <string_view>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -113,7 +115,7 @@ namespace
         static bool resolve(
             void* opaque,
             const lux::asset::AssetId&,
-            const lux::asset::ScriptAssetContent&,
+            const lux::script::ScriptArtifact&,
             ResolvedNativeModule& result
         ) noexcept
         {
@@ -133,32 +135,34 @@ namespace
             alignof(CollisionEvent)};
     }
 
-    [[nodiscard]] lux::asset::ScriptAssetContent nativeAsset(
+    [[nodiscard]] lux::script::ScriptArtifact nativeArtifact(
         const lux::script::NativeModule& module
     )
     {
-        lux::asset::ScriptAssetContent asset;
-        asset.description.module_name = "native_collision_fixture";
-        asset.description.body = lux::rdesc::NativeModuleScript{
+        lux::rdesc::Script description;
+        description.module_name = "native_collision_fixture";
+        description.body = lux::rdesc::NativeModuleScript{
             LUX_SCRIPT_ABI_VERSION,
             module.stateLayoutHash(),
             64U,
             64U,
             {}};
-        asset.description.exports.push_back({
+        description.exports.push_back({
             "on_collision",
             kCollisionSymbol,
             {collisionType()},
             {}});
-        return asset;
+        auto artifact = lux::script::ScriptArtifact::create(std::move(description), {});
+        assert(artifact);
+        return std::move(*artifact);
     }
 
-    [[nodiscard]] lux::asset::ScriptAssetContent luaAsset()
+    [[nodiscard]] lux::script::ScriptArtifact luaArtifact()
     {
-        lux::asset::ScriptAssetContent asset;
-        asset.description.module_name = "lua_collision_fixture";
-        asset.description.body = lux::rdesc::LuaSourceScript{"fixture"};
-        asset.description.exports.push_back({
+        lux::rdesc::Script description;
+        description.module_name = "lua_collision_fixture";
+        description.body = lux::rdesc::LuaSourceScript{"fixture"};
+        description.exports.push_back({
             "on_collision",
             kCollisionSymbol,
             {collisionType()},
@@ -173,10 +177,13 @@ namespace
                 end
             }
         )lua";
-        asset.payload.reserve(source.size());
+        std::vector<std::byte> payload;
+        payload.reserve(source.size());
         for (const auto value : source)
-            asset.payload.push_back(static_cast<std::byte>(value));
-        return asset;
+            payload.push_back(static_cast<std::byte>(value));
+        auto artifact = lux::script::ScriptArtifact::create(std::move(description), std::move(payload));
+        assert(artifact);
+        return std::move(*artifact);
     }
 }
 
@@ -215,10 +222,8 @@ int main()
     std::array<std::uint8_t, 16U> id_bytes{};
     id_bytes[0] = 0xC0U;
     const lux::asset::AssetId asset_id{id_bytes};
-    auto native_asset = nativeAsset(*loaded);
-    auto lua_asset = luaAsset();
-    assert(lux::rdesc::validScriptDescription(native_asset.description));
-    assert(lux::rdesc::validScriptDescription(lua_asset.description));
+    auto native_asset = nativeArtifact(*loaded);
+    auto lua_asset = luaArtifact();
 
     ecs::Registry registry;
     const auto entity = registry.create();
@@ -229,7 +234,6 @@ int main()
     auto lua_descriptor = lua_backend.descriptor();
     const ScriptInstanceCreateContext context{
         asset_id,
-        ScriptMountId{1U},
         EntityScriptScope{entity},
         &behavior};
     assert(native_descriptor.createInstance(
@@ -250,13 +254,13 @@ int main()
     assert(native_descriptor.prepareMethod(
         native_descriptor.context,
         native_instance,
-        native_asset.description.exports[0],
+        native_asset.description().exports[0],
         native_subscriber.call
     ) == EScriptBackendResult::SUCCESS);
     assert(lua_descriptor.prepareMethod(
         lua_descriptor.context,
         lua_instance,
-        lua_asset.description.exports[0],
+        lua_asset.description().exports[0],
         lua_subscriber.call
     ) == EScriptBackendResult::SUCCESS);
 

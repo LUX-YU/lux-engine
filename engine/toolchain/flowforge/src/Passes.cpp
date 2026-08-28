@@ -439,7 +439,7 @@ static FlowForgeResult<int> runMainJITImpl(
 
     // Idempotently make sure the host LLVM target is registered. Calling
     // this from a translation unit that statically links the X86 codegen
-    // libs (via the flowforge_compiler dialect target) guarantees the X86
+    // libs (via the private dialect target) guarantees the X86
     // init code is actually pulled into the binary, regardless of whether
     // the caller's main() already did it.
     llvm::InitializeNativeTarget();

@@ -26,9 +26,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # navigation_detour3d's codec.  This lower-layer dependency is Recast-only
     # and must exist in the Toolchain profile without pulling Render/Vulkan.
     add_subdirectory(navigation)
-    if(LUX_ENABLE_FLOWFORGE_MLIR)
-        add_subdirectory(script)
-    endif()
+    add_subdirectory(script)
 else()
     add_subdirectory(animation)
     add_subdirectory(input)

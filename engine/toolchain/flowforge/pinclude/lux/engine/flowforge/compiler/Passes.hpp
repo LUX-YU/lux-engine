@@ -52,13 +52,13 @@ namespace lux::flowforge
     //   flowforge.token_merge -> replaced by its first input
     //   flowforge.start       -> erased
     // Runs the FlowForge -> CF pass on the IR's module in place.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowForgeResult<void> lowerToCF(IR& ir) noexcept;
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<void> lowerToCF(IR& ir) noexcept;
 
     // Drives the full pipeline: FlowForge -> CF -> LLVM dialect.
     // After this returns, the IR's module contains only `llvm.*` ops (plus
     // the builtin module), ready for `mlir::ExecutionEngine` JIT or LLVM IR
     // emission via `translateModuleToLLVMIR`.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowForgeResult<void> lowerToLLVM(IR& ir) noexcept;
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<void> lowerToLLVM(IR& ir) noexcept;
 
     // One-shot JIT: lowers the IR all the way down (if not already) and
     // runs `@main`. Returns the function's i32 return value (0 if `@main`
@@ -68,7 +68,7 @@ namespace lux::flowforge
     // For tests / quick experiments. Production callers should drive the
     // pipeline manually (lowerToLLVM + ExecutionEngine::create + lookup)
     // to register native symbols, control optimization level, etc.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowForgeResult<int> runMainJIT(IR& ir) noexcept;
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<int> runMainJIT(IR& ir) noexcept;
 
     /// A host function exposed to the JIT under the extern name a
     /// NATIVE_FUNC_CALL node declared (its RefInvokable::name). The address
@@ -84,7 +84,7 @@ namespace lux::flowforge
     // NATIVE_FUNC_CALL nodes resolve their extern declarations at JIT time
     // (the engine does NOT search the host process's exports on Windows).
     // This is the editor run-button path.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowForgeResult<int> runMainJIT(
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<int> runMainJIT(
         IR& ir,
         const std::vector<JitNativeSymbol>& native_symbols
     ) noexcept;

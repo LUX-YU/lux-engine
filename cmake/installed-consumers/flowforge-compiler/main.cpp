@@ -1,4 +1,4 @@
-#include <lux/engine/flowforge/compiler/ScriptArtifactCompiler.hpp>
+#include <lux/engine/flowforge/Compiler.hpp>
 
 #include <array>
 
@@ -16,7 +16,7 @@ int main()
     auto artifact = lux::flowforge::compileFlowForgeScript(
         "lux.consumer.flowforge",
         exports,
-        lux::flowforge::FlowForgeStateLayout{0U, 0U, 1U, {}}
+        lux::flowforge::StateLayout{}
     );
-    return artifact ? 0 : 1;
+    return artifact && artifact->findExport(1U) ? 0 : 1;
 }

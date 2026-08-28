@@ -91,29 +91,25 @@ mlir_tablegen(FlowForgeTypes.cpp.inc    --gen-typedef-defs   --typedefs-dialect=
 add_public_tablegen_target(FlowForgeDialectIncGen)
 
 # Create the FlowForge dialect library
-add_library(flowforge_compiler_dialect STATIC
+add_library(_flowforge_dialect STATIC
     FlowForgeDialect.cpp
-)
-add_library(
-    lux::engine::flowforge::flowforge_compiler_dialect
-    ALIAS flowforge_compiler_dialect
 )
 
 lux_classify_target(
-    TARGET flowforge_compiler_dialect
+    TARGET _flowforge_dialect
     LAYER TOOLCHAIN
     PRODUCT TOOLCHAIN
     ROLE DOMAIN
 )
 
-target_include_directories(flowforge_compiler_dialect PUBLIC
+target_include_directories(_flowforge_dialect PUBLIC
     ${FLOWFORGE_MODULE_DIR}/include
     ${FLOWFORGE_MODULE_DIR}/pinclude
     ${CMAKE_CURRENT_BINARY_DIR}
     ${MLIR_INCLUDE_DIRS}
 )
 
-add_dependencies(flowforge_compiler_dialect FlowForgeDialectIncGen)
+add_dependencies(_flowforge_dialect FlowForgeDialectIncGen)
 
 set(MLIR_PUBLIC_LIBS
     MLIRIR
@@ -137,7 +133,7 @@ set(MLIR_PUBLIC_LIBS
     MLIRLLVMToLLVMIRTranslation     # ExecutionEngine MLIR -> LLVM IR
 )
 
-target_link_libraries(flowforge_compiler_dialect PUBLIC
+target_link_libraries(_flowforge_dialect PUBLIC
     ${MLIR_PUBLIC_LIBS}
     MLIRSideEffectInterfaces
     MLIRControlFlowInterfaces
@@ -154,10 +150,10 @@ target_link_libraries(flowforge_compiler_dialect PUBLIC
 )
 
 # Ensure the dialect library uses position-independent code
-set_target_properties(flowforge_compiler_dialect PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(_flowforge_dialect PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(
-    flowforge_compiler_dialect
+    _flowforge_dialect
     PUBLIC
     ${LLVM_INCLUDE_DIRS}
     ${MLIR_INCLUDE_DIRS}

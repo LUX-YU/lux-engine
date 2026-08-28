@@ -46,7 +46,7 @@ namespace lux::flowforge
     class IR;
     class IRContext;
 
-    class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowScriptInstance
+    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowScriptInstance
     {
     public:
         /// Compile graph -> LLVM -> JIT engine. The instance must not outlive

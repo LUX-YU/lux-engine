@@ -1,17 +1,17 @@
-#include <lux/engine/flowforge/compiler/ScriptArtifactCompiler.hpp>
+#include <lux/engine/flowforge/Compiler.hpp>
 
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 
-#include <algorithm>
 #include <new>
+#include <unordered_set>
 
 namespace lux::flowforge
 {
-    lux::cxx::expected<FlowForgeScriptArtifact, EFlowForgeCompileError>
+    lux::cxx::expected<lux::script::ScriptArtifact, EFlowForgeCompileError>
     compileFlowForgeScript(
         std::string module_name,
         std::span<const ExportMethodNode> graph_exports,
-        FlowForgeStateLayout state
+        const StateLayout& state
     ) noexcept
     {
         try
@@ -27,29 +27,24 @@ namespace lux::flowforge
             if (!validFlowForgeExports(graph_exports))
                 return lux::cxx::unexpected(EFlowForgeCompileError::INVALID_GRAPH);
 
-            FlowForgeScriptArtifact result;
-            result.description.schema_version = lux::rdesc::Script::kSchemaVersion;
-            result.description.module_name = std::move(module_name);
-            result.description.body = lux::rdesc::NativeModuleScript{
+            lux::rdesc::Script description;
+            description.schema_version = lux::rdesc::Script::kSchemaVersion;
+            description.module_name = std::move(module_name);
+            description.body = lux::rdesc::NativeModuleScript{
                 LUX_SCRIPT_ABI_VERSION,
                 state.hash,
                 state.size,
                 state.align,
                 state.defaults
             };
-            result.abi.abi_version = LUX_SCRIPT_ABI_VERSION;
-            result.abi.state = std::move(state);
 
-            result.description.exports.reserve(graph_exports.size());
-            result.abi.symbols.reserve(graph_exports.size());
+            description.exports.reserve(graph_exports.size());
+            std::unordered_set<lux::script::ScriptSymbolId> symbols;
+            symbols.reserve(graph_exports.size());
             for (const auto& node : graph_exports)
             {
                 const auto symbol = node.symbol;
-                const bool is_duplicate_symbol = std::find(
-                    result.abi.symbols.begin(),
-                    result.abi.symbols.end(),
-                    symbol
-                ) != result.abi.symbols.end();
+                const bool is_duplicate_symbol = !symbols.insert(symbol).second;
                 if (symbol == lux::script::InvalidScriptSymbolId || is_duplicate_symbol)
                     return lux::cxx::unexpected(EFlowForgeCompileError::DUPLICATE_SYMBOL);
 
@@ -58,14 +53,21 @@ namespace lux::flowforge
                 function.symbol_id = symbol;
                 function.args = node.parameters;
                 function.returns = node.returns;
-                result.description.exports.push_back(std::move(function));
-                result.abi.symbols.push_back(symbol);
+                description.exports.push_back(std::move(function));
             }
 
-            if (!lux::rdesc::validScriptDescription(result.description))
+            if (!lux::rdesc::validScriptDescription(description))
                 return lux::cxx::unexpected(EFlowForgeCompileError::INVALID_DESCRIPTION);
 
-            return result;
+            auto artifact = lux::script::ScriptArtifact::create(std::move(description), {});
+            if (!artifact)
+            {
+                const auto error = artifact.error() == lux::script::EScriptArtifactError::ALLOCATION_FAILURE
+                    ? EFlowForgeCompileError::ALLOCATION_FAILURE
+                    : EFlowForgeCompileError::INVALID_DESCRIPTION;
+                return lux::cxx::unexpected(error);
+            }
+            return std::move(*artifact);
         }
         catch (const std::bad_alloc&)
         {

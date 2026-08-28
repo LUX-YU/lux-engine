@@ -58,7 +58,7 @@ namespace lux::flowforge
     using FlowForgeResult = lux::cxx::expected<T, FlowForgeFailure>;
 
     class IRImpl;
-    class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC IR
+    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC IR
     {
     public:
         IR();
@@ -76,7 +76,7 @@ namespace lux::flowforge
     // contract: any IR built via an MLIRBuilder(this) must be destroyed
     // BEFORE this IRContext — the context's destructor does not know about
     // outstanding modules, so a surviving IR would dangle.
-    class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC IRContext
+    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC IRContext
     {
     public:
         [[nodiscard]] static FlowForgeResult<IRContext> create() noexcept;
@@ -100,7 +100,7 @@ namespace lux::flowforge
     };
 
     class MLIRBuilderImpl;
-    class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC MLIRBuilder
+    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC MLIRBuilder
     {
     public:
         [[nodiscard]] static FlowForgeResult<MLIRBuilder> create(IRContext& context) noexcept;

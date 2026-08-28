@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static Lua ---@lux.method -> canonical LXSA v3 importer."""
+"""Package statically described Lua ---@lux.method exports as canonical LXSA v3."""
 
 from __future__ import annotations
 

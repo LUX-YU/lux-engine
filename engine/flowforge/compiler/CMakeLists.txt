@@ -24,14 +24,11 @@ target_compile_definitions(
 )
 target_link_libraries(
     flowforge_script_compiler
-    PUBLIC
-        lux::engine::flowforge::flowforge_script
-        lux::engine::authoring::authoring_script
+    PUBLIC lux::engine::flowforge::flowforge_script
 )
 component_add_transitive_commands(
     flowforge_script_compiler
     "find_package(lux-engine-flowforge REQUIRED COMPONENTS flowforge_script)"
-    "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_script)"
 )
 lux_classify_target(
     TARGET  flowforge_script_compiler

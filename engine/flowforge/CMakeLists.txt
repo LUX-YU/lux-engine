@@ -83,11 +83,14 @@ target_compile_definitions(
 )
 target_link_libraries(
     flowforge_script
-    PUBLIC lux::engine::simulation::simulation_script
+    PUBLIC
+        lux::engine::function::script_core
+        lux::engine::resource::description
 )
 component_add_transitive_commands(
     flowforge_script
-    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 lux_classify_target(
     TARGET  flowforge_script

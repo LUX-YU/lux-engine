@@ -2,7 +2,6 @@
 
 #include <lux/engine/flowforge/script/visibility.h>
 #include <lux/engine/description/Script.hpp>
-#include <lux/engine/simulation/script/ScriptSystemDescription.hpp>
 
 #include <cstdint>
 #include <span>
@@ -20,10 +19,7 @@ namespace lux::flowforge
             return value != 0U;
         }
 
-        friend bool operator==(
-            FlowForgeExportNodeId,
-            FlowForgeExportNodeId
-        ) noexcept = default;
+        friend bool operator==(FlowForgeExportNodeId, FlowForgeExportNodeId) noexcept = default;
     };
 
     struct ExportMethodNode final
@@ -35,15 +31,6 @@ namespace lux::flowforge
         std::vector<lux::rdesc::ScriptValueType> returns;
     };
 
-    struct BindingEdge final
-    {
-        FlowForgeExportNodeId export_node;
-        lux::simulation::script::ScriptBindingTarget target;
-    };
-
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_PUBLIC
-    bool validFlowForgeGraph(
-        std::span<const ExportMethodNode> exports,
-        std::span<const BindingEdge> bindings
-    ) noexcept;
+    bool validFlowForgeExports(std::span<const ExportMethodNode> exports) noexcept;
 }

@@ -2,8 +2,6 @@
 
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
 #include <lux/engine/description/Script.hpp>
-#include <lux/engine/simulation/SimulationDescription.hpp>
-#include <lux/engine/simulation/script/ScriptSystemDescription.hpp>
 #include <lux/engine/flowforge/compiler/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -35,8 +33,6 @@ namespace lux::flowforge
     {
         lux::rdesc::Script description;
         FlowForgeAotAbiManifest abi;
-        std::vector<lux::simulation::script::ScriptBindingDescription>
-            binding_template;
     };
 
     enum class EFlowForgeCompileError : std::uint8_t
@@ -45,18 +41,15 @@ namespace lux::flowforge
         INVALID_STATE_LAYOUT,
         DUPLICATE_SYMBOL,
         INVALID_GRAPH,
-        INCOMPATIBLE_BINDING,
         INVALID_DESCRIPTION,
+        ALLOCATION_FAILURE,
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC
     lux::cxx::expected<FlowForgeScriptArtifact, EFlowForgeCompileError>
     compileFlowForgeScript(
         std::string module_name,
-        bool simulation_scope,
         std::span<const ExportMethodNode> graph_exports,
-        std::span<const BindingEdge> graph_bindings,
-        const lux::simulation::SimulationDescription& simulation,
         FlowForgeStateLayout state
-    );
+    ) noexcept;
 }

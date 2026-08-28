@@ -128,6 +128,9 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   L3 Scene -> L4 Authoring -> L5 Toolchain -> L6 Product`。World 描述事实；Simulation
   同步解释和运行事实；ECS 只是 Simulation 内部机制；Process 负责异步、IO 与 residency；
   Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
+- source topology 固定用 `engine/domain/{world,simulation}` 表达 L1 ownership，
+  用 `engine/tools/{editor,toolchain}` 区分交互工具与离线工具；public include 与 namespace
+  仍使用概念名，不得把 `domain`、`tools` 或层级编号写进用户 API。
 - `WORLD` 与 `SIMULATION` 是 L1 sibling roots。纯 `world/core` 只能依赖 L0 primitives；
   `world/asset` 才能增加 L0 Asset/Serialization closure。Simulation 可依赖 World 与 L0，
   不得依赖 Process、Scene、Authoring、Toolchain、Editor 或 Host。旧 `RUNTIME` classifier
@@ -199,6 +202,15 @@ SPIR-V 反射编译器的解析成本。
 ---
 
 ## 诊断与错误
+
+### Lux semantic error 不使用 C++ exception
+
+Runtime/domain public API 默认使用 `noexcept` 与 `expected`/结构化 error。Lux-owned production
+代码不得主动 `throw`，Hook/Event record、dispatch、drain 与 System/Task 执行热路径不得出现
+`try/catch`。STL 分配与第三方库异常只允许在 Builder、Codec、fallible factory、Toolchain
+compiler 或明确的 plugin/foreign containment boundary 捕获，并必须立即转换为 Lux error；
+不得让异常跨 DLL、System、Task、Script ABI 或 plugin boundary。不得为此全局启用
+`-fno-exceptions` 或 `/EHs-`。
 
 ### 库不决定文字打到哪；宿主装配一次出口
 
@@ -292,3 +304,6 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface 
 - `-k 0` 让一次构建吐出全部错误
 - 改了 `CMakeLists.txt` 之后要**跑两轮**，第二轮应当 `ninja: no work to do`
 - **不得并发**跑构建与实机验证（obj 锁 / 半写 DLL 会造出假崩溃）
+- 默认验证矩阵不再包含 Android configure/build/CTest/closure；除非用户另行明确要求。
+  上述 Android install include 同步仍保留，它只是避免 meta-gen 读取旧公共头，不代表
+  Android 构建验证。

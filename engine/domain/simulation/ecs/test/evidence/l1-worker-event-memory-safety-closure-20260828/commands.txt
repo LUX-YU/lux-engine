@@ -1,0 +1,39 @@
+Production SHA: 07453d479538a0cae4037ea18725390c715b4bda
+All commands ran from Visual Studio 2022 Developer PowerShell x64 unless noted.
+
+[DEVELOPER RelWithDebInfo]
+cmake -S E:/SyncForder/CodeRepos/lux-engine -B E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine --target all -- -j 4 -k 0
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine --target all -- -j 4 -k 0
+Result: ninja: no work to do.
+ctest --test-dir E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine --output-on-failure -j 4
+Result: 94/94 PASS.
+
+[PLAYER RelWithDebInfo]
+cmake -S E:/SyncForder/CodeRepos/lux-engine -B E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-player
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-player --target all -- -j 4 -k 0
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-player --target all -- -j 4 -k 0
+Result: ninja: no work to do.
+ctest --test-dir E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-player --output-on-failure -j 4
+Result: 78/78 PASS.
+ninja -C E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-player -t targets all
+Result: zero matches for flowforge_compiler, node_graph_editor, MLIR, or LLVM.
+
+[TOOLCHAIN RelWithDebInfo]
+cmake -S E:/SyncForder/CodeRepos/lux-engine -B E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-toolchain
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-toolchain --target all -- -j 4 -k 0
+cmake --build E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-toolchain --target all -- -j 4 -k 0
+Result: ninja: no work to do.
+ctest --test-dir E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-toolchain --output-on-failure -j 4
+Result: 79/79 PASS, including the complete MLIR/LLVM FlowForge compiler.
+
+[Source architecture]
+cmake -DLUX_SOURCE_DIR=E:/SyncForder/CodeRepos/lux-engine -DLUX_BINARY_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine -DLUX_REPORT_PATH=E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/worker-event-architecture-debt.txt -P E:/SyncForder/CodeRepos/lux-engine/cmake/ValidateSourceArchitecture.cmake
+Result: PASS.
+
+[Benchmark v12]
+For each of the 25 files under csv/:
+ecs_l1_benchmark.exe --group <group> --mode performance --size <size> --output <csv>
+D:/Development/Anaconda3/python.exe engine/domain/simulation/ecs/test/benchmark/evaluate_l1_benchmark_v12.py <25 csv files> --policy engine/domain/simulation/ecs/test/benchmark/l1_benchmark_v12_policy.json
+Result: PASS: 7 scaling, 1 ratio, 3390 structural checks.
+CSV commit set: {07453d479538a0cae4037ea18725390c715b4bda}.

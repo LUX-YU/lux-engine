@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "verified_production_sha": "07453d479538a0cae4037ea18725390c715b4bda",
+  "baseline_evidence_sha": "06e18439fabf22253d7fd881de603dcc7e603ff2",
+  "previous_production_sha": "636dbb77a45ef749096514f7046b99e16c1534c9",
+  "status": "FREEZE_CANDIDATE_PENDING_INDEPENDENT_ACCEPTANCE",
+  "validation_worktree_clean": true,
+  "toolchain": {
+    "developer_shell": "Visual Studio 2022 Developer PowerShell 17.14.35",
+    "msvc": "19.44.35228 x64",
+    "cmake": "4.1.2",
+    "ninja": "1.11.1",
+    "python": "3.10.13",
+    "mlir_llvm": "18.1"
+  },
+  "tests": {
+    "developer_relwithdebinfo": { "passed": 94, "failed": 0, "second_build_no_work": true },
+    "player_relwithdebinfo": { "passed": 78, "failed": 0, "second_build_no_work": true },
+    "toolchain_relwithdebinfo": { "passed": 79, "failed": 0, "second_build_no_work": true },
+    "source_architecture": "PASS",
+    "player_forbidden_target_matches": 0
+  },
+  "benchmark_v12": {
+    "csv_count": 25,
+    "warmups_per_size": 5,
+    "samples_per_size": 30,
+    "scaling_rules_passed": 7,
+    "ratio_rules_passed": 1,
+    "structural_checks_passed": 3390,
+    "row_git_commit": "07453d479538a0cae4037ea18725390c715b4bda"
+  },
+  "tsan": {
+    "status": "NOT_RUN",
+    "required_gate": false,
+    "reason": "No compatible Clang/TSAN environment is installed on the validation host."
+  },
+  "android": "NOT_RUN_BY_POLICY",
+  "preserved_user_assets": {
+    "gitignore_patch_sha256": "2F62BC3AE0A7A34DFF006E697C37D919596CEA5D881252372CA17AC6C7451A5D",
+    "clang_format_sha256": "49CD7C903D36398F1A29B567A2CADD66124D5EB0E03CDA4E944ACB1FC83C3519"
+  }
+}

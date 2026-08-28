@@ -102,15 +102,16 @@ def validate_row(row: dict[str, object], failures: list[str]) -> int:
         }
     elif group == "entity-targeted-event-sparse":
         occurrences = min(size, 100000)
+        scripted_entities = min(size, 10000)
         expected = {
             "notifications": occurrences,
             "callbacks": occurrences * 2,
             "entities_examined": occurrences,
             "target_range_lookups": occurrences,
             "handlers_visited": occurrences * 2,
-            "target_ranges_built": size,
+            "target_ranges_built": scripted_entities,
             "dispatch_registration_lookups": 0,
-            "dispatch_handlers_built": size + 1,
+            "dispatch_handlers_built": scripted_entities + 1,
             "frame_builds": occurrences,
             "allocations": 0,
         }

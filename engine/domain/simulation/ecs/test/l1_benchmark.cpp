@@ -184,6 +184,44 @@ namespace
         return samples;
     }
 
+    template <class Setup, class Operation, class Reset>
+    [[nodiscard]] std::vector<Sample> measureReusable(
+        const Options& options,
+        Setup&& setup,
+        Operation&& operation,
+        Reset&& reset
+    )
+    {
+        auto state = setup();
+        for (std::size_t index{}; index < options.warmups; ++index)
+        {
+            static_cast<void>(operation(*state));
+            reset(*state);
+        }
+        std::vector<Sample> samples;
+        samples.reserve(options.samples);
+        for (std::size_t index{}; index < options.samples; ++index)
+        {
+            g_allocation_count.store(0U, std::memory_order_relaxed);
+            g_count_allocations.store(true, std::memory_order_release);
+            const auto begin = Clock::now();
+            const auto observation = operation(*state);
+            const auto end = Clock::now();
+            g_count_allocations.store(false, std::memory_order_release);
+            samples.push_back({
+                index,
+                static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()
+                ),
+                g_allocation_count.load(std::memory_order_relaxed),
+                observation
+            });
+            if (index + 1U < options.samples)
+                reset(*state);
+        }
+        return samples;
+    }
+
     void writeCsv(
         const Options& options,
         std::string_view metric,
@@ -341,24 +379,40 @@ namespace
                   std::size_t{100000U}
               ))
         {
-            entities.reserve(subscriber_count);
+            const auto scripted_entity_count = (std::min)(subscriber_count, std::size_t{10000U});
+            entities.reserve(scripted_entity_count);
             if (event.prepare(
                     1U,
                     occurrence_count,
-                    subscriber_count + 1U
+                    scripted_entity_count + 1U
                 ) != EEndpointMutationError::NONE)
             {
                 throw std::runtime_error("targeted event prepare failed");
             }
             if (!event.connectAll(&callbacks, &increment))
                 throw std::runtime_error("connect-all failed");
+            std::size_t scripted_index{};
             for (std::size_t index{}; index < subscriber_count; ++index)
             {
                 const auto entity = registry.create();
+                if (scripted_index >= scripted_entity_count)
+                    continue;
+                const auto selected_index = scripted_entity_count == 1U
+                    ? 0U
+                    : scripted_index * (subscriber_count - 1U) / (scripted_entity_count - 1U);
+                if (index != selected_index)
+                    continue;
                 entities.push_back(entity);
                 if (!event.connect(entity, &callbacks, &increment))
                     throw std::runtime_error("target connect failed");
+                ++scripted_index;
             }
+            resetOccurrences();
+        }
+
+        void resetOccurrences()
+        {
+            callbacks = 0U;
             auto writer = event.begin(0U);
             for (std::size_t index{}; index < occurrence_count; ++index)
             {
@@ -1058,7 +1112,7 @@ int main(int argc, char** argv)
     else if (options->group == "entity-targeted-event-sparse")
     {
         metric = "entity_targeted_event_sparse";
-        samples = measure(*options,
+        samples = measureReusable(*options,
             [&] { return std::make_unique<SparseState>(options->size); },
             [](SparseState& state)
             {
@@ -1072,7 +1126,8 @@ int main(int argc, char** argv)
                     .target_ranges_built = state.event.targetBucketCount(),
                     .dispatch_handlers_built = state.event.handlerCount(),
                     .frame_builds = state.occurrence_count};
-            });
+            },
+            [](SparseState& state) { state.resetOccurrences(); });
     }
     else if (options->group == "entity-targeted-event-dense")
     {

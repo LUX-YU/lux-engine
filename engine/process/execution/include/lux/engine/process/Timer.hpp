@@ -54,6 +54,7 @@ namespace lux::process
             std::size_t heap_index{static_cast<std::size_t>(-1)};
             std::atomic_bool cancel_requested{false};
             bool queued{};
+            bool cancellation_queued{};
             void (*complete)(TimerRequest*, bool stopped) noexcept {};
         };
 

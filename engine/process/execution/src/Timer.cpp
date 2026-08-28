@@ -112,6 +112,13 @@ namespace lux::process::detail
                 {
                     auto* request = cancelled.back();
                     cancelled.pop_back();
+                    const auto index = request->heap_index;
+                    const bool is_valid_index = request->queued && request->cancellation_queued &&
+                        index < heap.size() && heap[index] == request;
+                    if (!is_valid_index)
+                        continue;
+                    removeAt(index);
+                    request->cancellation_queued = false;
                     --outstanding;
                     const auto complete = request->complete;
                     lock.unlock();
@@ -158,7 +165,6 @@ namespace lux::process::detail
                 {
                     initiated = true;
                     stopping = true;
-                    shutdown_scratch.insert(shutdown_scratch.end(), cancelled.begin(), cancelled.end());
                     cancelled.clear();
                     shutdown_scratch.insert(shutdown_scratch.end(), heap.begin(), heap.end());
                     heap.clear();
@@ -166,6 +172,7 @@ namespace lux::process::detail
                     for (auto* request : shutdown_scratch)
                     {
                         request->queued = false;
+                        request->cancellation_queued = false;
                         request->heap_index = static_cast<std::size_t>(-1);
                     }
                 }
@@ -226,13 +233,13 @@ namespace lux::process::detail
             return;
         {
             std::lock_guard lock{state->mutex};
-            if (!request.queued)
+            if (!request.queued || request.cancellation_queued)
                 return;
             const auto index = request.heap_index;
             const bool is_valid_index = index < state->heap.size() && state->heap[index] == &request;
             if (!is_valid_index)
                 return;
-            state->removeAt(index);
+            request.cancellation_queued = true;
             state->cancelled.push_back(&request);
         }
         state->cv.notify_one();

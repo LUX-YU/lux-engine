@@ -1,0 +1,3 @@
+namespace lux::simulation::script
+{
+}

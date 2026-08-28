@@ -1,7 +1,7 @@
 #include <lux/engine/simulation/SystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/TransformSystem.hpp>
+#include <lux/engine/simulation/systems/TransformSystem.hpp>
 
 int
 main()

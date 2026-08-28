@@ -4,16 +4,27 @@ add_subdirectory(ecs/core)
 add_subdirectory(ecs/schema)
 add_subdirectory(ecs/snapshot)
 add_subdirectory(system)
-add_subdirectory(script)
+add_subdirectory(scripting)
+add_subdirectory(systems/script)
+add_subdirectory(scripting/cpp_static)
+if(TARGET script_native)
+    add_subdirectory(scripting/native)
+endif()
+if(TARGET script_lua AND NOT ANDROID)
+    add_subdirectory(scripting/lua)
+endif()
 add_subdirectory(ecs/task)
 add_subdirectory(ecs/hierarchy)
 add_subdirectory(ecs/transform)
+add_subdirectory(systems/transform)
 add_subdirectory(ecs)
 
 set(LUX_SIMULATION_COMPONENTS
     simulation_description
     simulation_script
+    simulation_scripting
     simulation_script_cpp_static
+    transform_system
 )
 if(TARGET simulation_script_native)
     list(APPEND

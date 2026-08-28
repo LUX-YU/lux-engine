@@ -11,6 +11,7 @@ find_package(
     REQUIRED COMPONENTS
         simulation_description
         simulation_script
+        simulation_scripting
         simulation_script_cpp_static
 )
 find_package(

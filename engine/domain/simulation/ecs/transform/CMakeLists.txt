@@ -13,7 +13,6 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_ecs_transform
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TransformSchema.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/TransformSystem.cpp
 )
 
 component_include_directories(
@@ -22,8 +21,6 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(
@@ -34,20 +31,17 @@ target_link_libraries(
     transform
     PUBLIC
         lux::engine::simulation::ecs::core
-        lux::engine::simulation::system
         lux::engine::simulation::ecs::schema
-        lux::engine::simulation::ecs::hierarchy
         lux::engine::simulation::ecs::snapshot
         lux::engine::core::math
         lux::engine::core::serialization
 )
-component_add_internal_dependencies(transform core schema hierarchy snapshot)
+component_add_internal_dependencies(transform core schema snapshot)
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema hierarchy snapshot)"
-    "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema snapshot)"
 )
 
 include_component_cmake_scripts(meta)
@@ -66,34 +60,4 @@ lux_classify_target(
     LAYER   SIMULATION
     PRODUCT RUNTIME
     ROLE    DOMAIN
-)
-
-add_executable(ecs_transform_test test/transform_test.cpp)
-target_include_directories(
-    ecs_transform_test
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../hierarchy/sinclude
-)
-target_link_libraries(
-    ecs_transform_test
-    PRIVATE
-        lux::engine::simulation::ecs::transform
-        lux::engine::simulation::ecs::snapshot
-)
-if(MSVC)
-    target_compile_options(ecs_transform_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(ecs_transform_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  ecs_transform_test
-    LAYER   SIMULATION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-add_test(NAME vnext_ecs_transform COMMAND ecs_transform_test)
-set_tests_properties(
-    vnext_ecs_transform
-    PROPERTIES LABELS "vnext;l1;transform;cpu"
 )

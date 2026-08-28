@@ -14,6 +14,11 @@ find_package(
     CONFIG REQUIRED
     COMPONENTS system
 )
+find_package(
+    lux-engine-simulation
+    CONFIG REQUIRED
+    COMPONENTS transform_system
+)
 
 add_executable(lux_l1_hierarchy_transform_consumer main.cpp)
 target_link_libraries(
@@ -21,4 +26,5 @@ target_link_libraries(
     PRIVATE
         lux::engine::simulation::ecs::hierarchy
         lux::engine::simulation::ecs::transform
+        lux::engine::simulation::transform_system
 )

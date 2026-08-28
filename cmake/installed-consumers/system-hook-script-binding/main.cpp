@@ -3,9 +3,9 @@
 #include <lux/engine/resource/asset/script/ScriptAsset.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include <lux/engine/simulation/script/ScriptSystem.hpp>
-#include <lux/engine/simulation/script/ScriptSystemDescriptionCodec.hpp>
-#include <lux/engine/simulation/script/cpp_static/CppStaticScriptBridge.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
+#include <lux/engine/simulation/systems/ScriptSystem.hpp>
+#include <lux/engine/simulation/systems/ScriptSystemDescriptionCodec.hpp>
 
 #include <array>
 #include <cassert>

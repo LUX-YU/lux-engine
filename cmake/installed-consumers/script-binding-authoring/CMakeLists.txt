@@ -4,7 +4,7 @@ project(lux_script_authoring_consumer LANGUAGES CXX)
 find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_script)
 find_package(
     lux-engine-simulation
-    REQUIRED COMPONENTS simulation_description simulation_script
+    REQUIRED COMPONENTS simulation_description simulation_script simulation_scripting
 )
 find_package(
     lux-engine-simulation-asset

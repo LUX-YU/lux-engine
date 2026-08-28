@@ -1,7 +1,7 @@
 #include <lux/engine/authoring/script/ScriptAuthoring.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include <lux/engine/simulation/script/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/simulation/systems/ScriptSystemDescriptionCodec.hpp>
 
 #include <array>
 #include <cassert>

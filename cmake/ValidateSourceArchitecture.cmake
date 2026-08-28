@@ -30,6 +30,7 @@ foreach(retired_root IN ITEMS
     "${source_root}/engine/simulation"
     "${source_root}/engine/world"
     "${source_root}/engine/domain/simulation/script_binding"
+    "${source_root}/engine/domain/simulation/script"
     "${source_root}/engine/authoring/script_binding"
     "${source_root}/engine/authoring/flowforge"
     "${source_root}/engine/toolchain"
@@ -117,8 +118,8 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|WORLD_BUSY|worldStructureWrite|HierarchyChangeCursor|HierarchyChanges|kHierarchyChangeCapacity|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(|EcsState|EcsMutation|SimulationEcsMutation|EcsChangeJournal|ChangeCursor|ComponentChanges|EntityChanges|EcsTaskAccess|EcsTaskResources|HierarchySystem|executeSimulationStep|FrameInfo" AND
-           NOT normalized MATCHES "/engine/domain/simulation/script/cpp_static/")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World([^A-Za-z0-9_]|$)|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|WORLD_BUSY|worldStructureWrite|HierarchyChangeCursor|HierarchyChanges|kHierarchyChangeCapacity|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(|EcsState|EcsMutation|SimulationEcsMutation|EcsChangeJournal|ChangeCursor|ComponentChanges|EntityChanges|EcsTaskAccess|EcsTaskResources|HierarchySystem|executeSimulationStep|FrameInfo" AND
+           NOT normalized MATCHES "/engine/domain/simulation/scripting/cpp_static/")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' restores retired vocabulary."
             )
@@ -137,7 +138,8 @@ foreach(source IN LISTS production_sources)
         endif()
         if(content MATCHES
            "on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<" AND
-           NOT normalized MATCHES "/engine/domain/simulation/(ecs/(hierarchy|transform)|script)/")
+           NOT normalized MATCHES
+               "/engine/domain/simulation/(ecs/(hierarchy|transform)|scripting|systems/(script|transform))/")
             message(FATAL_ERROR
                 "Architecture: EnTT signal ownership '${normalized}' is outside a concrete reactive Simulation subsystem."
             )
@@ -207,9 +209,9 @@ foreach(source IN LISTS production_sources)
 endforeach()
 
 set(script_backend_runtime_sources
-    "${source_root}/engine/domain/simulation/script/cpp_static/src/CppStaticScriptBridge.cpp"
-    "${source_root}/engine/domain/simulation/script/native/src/NativeScriptBackend.cpp"
-    "${source_root}/engine/domain/simulation/script/lua/src/LuaScriptBackend.cpp"
+    "${source_root}/engine/domain/simulation/scripting/cpp_static/src/CppStaticScriptBridge.cpp"
+    "${source_root}/engine/domain/simulation/scripting/native/src/NativeScriptBackend.cpp"
+    "${source_root}/engine/domain/simulation/scripting/lua/src/LuaScriptBackend.cpp"
 )
 foreach(source IN LISTS script_backend_runtime_sources)
     if(NOT EXISTS "${source}")
@@ -228,8 +230,10 @@ endforeach()
 # still being removed in staged commits. This prevents new code from rebuilding
 # the retired session/name-routing model under a different target name.
 file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
-    "${source_root}/engine/domain/simulation/script/*.hpp"
-    "${source_root}/engine/domain/simulation/script/*.cpp"
+    "${source_root}/engine/domain/simulation/scripting/*.hpp"
+    "${source_root}/engine/domain/simulation/scripting/*.cpp"
+    "${source_root}/engine/domain/simulation/systems/script/*.hpp"
+    "${source_root}/engine/domain/simulation/systems/script/*.cpp"
 )
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
@@ -416,7 +420,7 @@ foreach(source IN LISTS ecs_public_headers)
 endforeach()
 
 set(transform_system_source
-    "${source_root}/engine/domain/simulation/ecs/transform/src/TransformSystem.cpp"
+    "${source_root}/engine/domain/simulation/systems/transform/src/TransformSystem.cpp"
 )
 if(EXISTS "${transform_system_source}")
     file(READ "${transform_system_source}" transform_system_contract)

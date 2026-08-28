@@ -6,7 +6,7 @@ endif()
 find_package(LLVM CONFIG REQUIRED)
 find_package(MLIR REQUIRED CONFIG)
 
-set(_FFM_DIALECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../dialect)
+set(_FFM_DIALECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src/mlir)
 
 add_executable(
     flowforge_dialect_test

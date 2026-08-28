@@ -29,6 +29,8 @@ foreach(retired_root IN ITEMS
     "${source_root}/engine/authoring/script_binding"
     "${source_root}/engine/authoring/flowforge"
     "${source_root}/engine/tools"
+    "${source_root}/engine/toolchain/script"
+    "${source_root}/modules/resource/asset/script"
 )
     if(EXISTS "${retired_root}")
         message(FATAL_ERROR
@@ -75,6 +77,12 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/toolchain/*/src/*.cpp"
 )
 
+string(CONCAT retired_script_compression_vocabulary
+    "ScriptAssetContent|Script(CallFrame|Value|Signature)[.]hpp|"
+    "ScriptSemantic(Type|Layout|TypeTraits)|sameScriptSignature|scriptBuiltinLayout|"
+    "flowforge_script_compiler|flowforge_compiler_dialect"
+)
+
 foreach(source IN LISTS production_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
     file(READ "${source}" content)
@@ -86,7 +94,8 @@ foreach(source IN LISTS production_sources)
     endif()
 
     if(content MATCHES
-       "SystemExecutionPoint|SystemHookPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptEventRegistry|GlobalScriptBindingManager|ScriptBindingSession|ScriptComponent|EntityBehavior|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|PythonSourceScript|SemanticCatalog|TargetCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType")
+       "SystemExecutionPoint|SystemHookPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptEventRegistry|GlobalScriptBindingManager|ScriptBindingSession|ScriptComponent|EntityBehavior|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|PythonSourceScript|SemanticCatalog|TargetCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType" OR
+       content MATCHES "${retired_script_compression_vocabulary}")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' restores a retired SystemHook/ScriptBinding API."
         )
@@ -209,6 +218,73 @@ foreach(source IN LISTS production_sources)
             )
         endif()
     endif()
+endforeach()
+
+foreach(hot_runtime_root IN ITEMS
+    "${source_root}/engine/domain/simulation/system"
+    "${source_root}/engine/domain/simulation/systems/script"
+)
+    file(GLOB_RECURSE hot_runtime_sources LIST_DIRECTORIES false
+        "${hot_runtime_root}/*.hpp"
+        "${hot_runtime_root}/*.cpp"
+    )
+    foreach(source IN LISTS hot_runtime_sources)
+        file(READ "${source}" content)
+        if(content MATCHES "lux/engine/meta/RuntimeObject[.]hpp")
+            message(FATAL_ERROR
+                "Architecture: Simulation hot package '${source}' depends on RuntimeObject."
+            )
+        endif()
+    endforeach()
+endforeach()
+
+# A source root is either a leaf package or a collection. A leaf package may
+# use CMakeLists.txt below src/ for private implementation helpers, but it may
+# not also aggregate sibling production packages.
+file(GLOB_RECURSE production_cmake_files LIST_DIRECTORIES false
+    "${source_root}/modules/*/CMakeLists.txt"
+    "${source_root}/engine/*/CMakeLists.txt"
+)
+string(CONCAT package_auxiliary_root_pattern
+    "^(include|sinclude|pinclude|src|test|cmake|third_party|samples|"
+    "assets|template|generated|data)$"
+)
+foreach(cmake_file IN LISTS production_cmake_files)
+    file(TO_CMAKE_PATH "${cmake_file}" normalized_cmake)
+    if(normalized_cmake MATCHES "/(test|cmake|third_party|samples|assets|template|generated|data|src)/")
+        continue()
+    endif()
+
+    get_filename_component(package_root "${cmake_file}" DIRECTORY)
+    file(GLOB_RECURSE owned_package_sources LIST_DIRECTORIES false
+        "${package_root}/include/*.h"
+        "${package_root}/include/*.hpp"
+        "${package_root}/sinclude/*.h"
+        "${package_root}/sinclude/*.hpp"
+        "${package_root}/pinclude/*.h"
+        "${package_root}/pinclude/*.hpp"
+        "${package_root}/src/*.c"
+        "${package_root}/src/*.cpp"
+    )
+    if(NOT owned_package_sources)
+        continue()
+    endif()
+
+    file(GLOB direct_children LIST_DIRECTORIES true "${package_root}/*")
+    foreach(child IN LISTS direct_children)
+        if(NOT IS_DIRECTORY "${child}")
+            continue()
+        endif()
+        get_filename_component(child_name "${child}" NAME)
+        if(child_name MATCHES "${package_auxiliary_root_pattern}")
+            continue()
+        endif()
+        if(EXISTS "${child}/CMakeLists.txt")
+            message(FATAL_ERROR
+                "Architecture: package '${package_root}' also aggregates child package '${child_name}'."
+            )
+        endif()
+    endforeach()
 endforeach()
 
 set(script_backend_runtime_sources

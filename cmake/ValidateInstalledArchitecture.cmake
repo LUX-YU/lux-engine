@@ -17,6 +17,8 @@ endif()
 foreach(retired_package IN ITEMS
     "${prefix}/share/lux-engine-graph-kit"
     "${prefix}/share/lux-engine-flowforge"
+    "${prefix}/share/lux-engine-flowforge-script-compiler"
+    "${prefix}/share/lux-engine-resource-asset-script"
 )
     if(EXISTS "${retired_package}")
         message(FATAL_ERROR "Install surface exposes retired package: ${retired_package}")
@@ -35,7 +37,8 @@ foreach(entry IN LISTS installed_entries)
        normalized MATCHES "[/]ecs[/](detail|core/detail|schedule/detail)([/]|$)" OR
        normalized MATCHES "[/]include[/]lux[/]engine[/]ecs([/]|$)" OR
        normalized MATCHES "[/]include[/]lux[/]engine[/]graph_kit([/]|$)" OR
-       normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]script([/]|$)")
+       normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]script([/]|$)" OR
+       normalized MATCHES "[/]include[/]lux[/]engine[/]resource[/]asset[/]script([/]|$)")
         message(FATAL_ERROR
             "Install surface exposes quarantine/private detail: ${normalized}"
         )
@@ -76,6 +79,11 @@ file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
     "${prefix}/*.h"
     "${prefix}/*.cmake"
 )
+string(CONCAT retired_script_compression_vocabulary
+    "ScriptAssetContent|Script(CallFrame|Value|Signature)[.]hpp|"
+    "ScriptSemantic(Type|Layout|TypeTraits)|sameScriptSignature|scriptBuiltinLayout|"
+    "flowforge_script_compiler|flowforge_compiler_dialect"
+)
 foreach(entry IN LISTS installed_text)
     file(TO_CMAKE_PATH "${entry}" normalized)
     if(NOT normalized MATCHES "[/]include[/]lux[/]" AND
@@ -89,6 +97,7 @@ foreach(entry IN LISTS installed_text)
     endif()
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
        content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|WorldSection|PersistentEntity|PersistentId|ComponentLoadBinding|ComponentLoadSet|ecs_load|section[ \\t]*=[ \\t]*(LOAD|OMIT)|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(|SystemExecutionPoint|SystemHookPoint|dispatch_point|ESystemEventTarget::BROADCAST|ScriptEventRegistry|ScriptBindingSession|ScriptComponent|EntityBehavior|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|PythonSourceScript|SemanticCatalog|TargetCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance" OR
+       content MATCHES "${retired_script_compression_vocabulary}" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()

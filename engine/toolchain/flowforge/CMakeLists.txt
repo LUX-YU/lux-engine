@@ -71,7 +71,7 @@ if(LUX_ENABLE_FLOWFORGE_MLIR)
     find_package(LLVM CONFIG REQUIRED)
     find_package(MLIR CONFIG REQUIRED)
     set(FLOWFORGE_MODULE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-    add_subdirectory(dialect)
+    add_subdirectory(src/mlir)
 
     target_sources(
         flowforge_compiler
@@ -86,8 +86,8 @@ if(LUX_ENABLE_FLOWFORGE_MLIR)
         flowforge_compiler
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-            ${CMAKE_CURRENT_SOURCE_DIR}/dialect
-            ${CMAKE_CURRENT_BINARY_DIR}/dialect
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/mlir
+            ${CMAKE_CURRENT_BINARY_DIR}/src/mlir
             ${MLIR_INCLUDE_DIRS}
     )
     target_compile_definitions(flowforge_compiler PRIVATE LUX_FLOWFORGE_HAS_MLIR=1)

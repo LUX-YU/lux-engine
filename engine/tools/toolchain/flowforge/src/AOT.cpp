@@ -57,6 +57,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <new>
+#include <utility>
 
 // The descriptor globals are emitted as LLVM constant structs whose layout
 // must byte-match the C structs the runtime reads. The natural LLVM layout
@@ -466,9 +468,13 @@ namespace lux::flowforge
         }
     } // anonymous namespace
 
-    bool compileToObject(IRContext& ctx, const FlowGraph& graph,
-                         const AotOptions& options, AotArtifact& artifact_out,
-                         std::string* error_out)
+    static bool compileToObjectImpl(
+        IRContext& ctx,
+        const FlowGraph& graph,
+        const AotOptions& options,
+        AotArtifact& artifact_out,
+        std::string* error_out
+    )
     {
         const auto fail = [&](std::string msg) {
             if (error_out) *error_out = std::move(msg);
@@ -491,8 +497,10 @@ namespace lux::flowforge
         }
 
         // 1. The exact JIT lowering pipeline, then LLVM IR translation.
-        MLIRBuilder builder(&ctx);
-        auto built = builder.generateIR(graph);
+        auto builder = MLIRBuilder::create(ctx);
+        if (!builder)
+            return fail("MLIR builder creation failed");
+        auto built = builder->generateIR(graph);
         if (!built)
             return fail("compile failed: " + built.error().message);
         std::unique_ptr<IR> ir = std::move(built.value());
@@ -605,9 +613,12 @@ namespace lux::flowforge
         return true;
     }
 
-    bool linkSharedLibrary(const AotArtifact& artifact,
-                           const std::filesystem::path& out_dll,
-                           const AotOptions& options, std::string* error_out)
+    static bool linkSharedLibraryImpl(
+        const AotArtifact& artifact,
+        const std::filesystem::path& out_dll,
+        const AotOptions& options,
+        std::string* error_out
+    )
     {
         const auto fail = [&](std::string msg) {
             if (error_out) *error_out = std::move(msg);
@@ -656,5 +667,62 @@ namespace lux::flowforge
         if (!std::filesystem::exists(out_dll))
             return fail("linker reported success but produced no output");
         return true;
+    }
+
+    FlowForgeResult<AotArtifact> compileToObject(
+        IRContext& context,
+        const FlowGraph& graph,
+        const AotOptions& options
+    ) noexcept
+    {
+        try
+        {
+            AotArtifact artifact;
+            std::string message;
+            if (!compileToObjectImpl(context, graph, options, artifact, &message))
+            {
+                return lux::cxx::unexpected(FlowForgeFailure{
+                    .code = EFlowForgeError::AOT_CODEGEN_FAILED,
+                    .message = std::move(message)
+                });
+            }
+            return artifact;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+        }
+    }
+
+    FlowForgeResult<void> linkSharedLibrary(
+        const AotArtifact& artifact,
+        const std::filesystem::path& out_dll,
+        const AotOptions& options
+    ) noexcept
+    {
+        try
+        {
+            std::string message;
+            if (!linkSharedLibraryImpl(artifact, out_dll, options, &message))
+            {
+                return lux::cxx::unexpected(FlowForgeFailure{
+                    .code = EFlowForgeError::LINK_FAILED,
+                    .message = std::move(message)
+                });
+            }
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+        }
     }
 }

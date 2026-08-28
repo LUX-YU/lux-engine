@@ -18,6 +18,8 @@ namespace lux::asset::detail
 {
     using lux::serialization::ByteReader;
     using lux::serialization::ByteWriter;
+    using lux::serialization::ESerializationError;
+    using lux::serialization::SerializationFailure;
 
     namespace
     {
@@ -102,7 +104,17 @@ namespace lux::asset::detail
             return true;
         }
 
-        PakPage makePage(
+        template <class Value>
+        using SerializationResult = lux::cxx::expected<Value, SerializationFailure>;
+
+        [[nodiscard]] bool serializationFailed(std::string* error_out, SerializationFailure failure)
+        {
+            if (failure.code == ESerializationError::ALLOCATION_FAILURE)
+                return fail(error_out, "Pak allocation failed");
+            return fail(error_out, "Pak binary serialization failed");
+        }
+
+        [[nodiscard]] SerializationResult<PakPage> encodePage(
             EPakPageKind kind,
             std::uint8_t level,
             std::uint16_t count,
@@ -125,12 +137,36 @@ namespace lux::asset::detail
             writePageHeader(writer, header);
             if (!payload.empty())
                 writer.bytes(payload.data(), payload.size());
-            auto bytes = std::move(writer).takeOrThrow();
-            std::memcpy(page.data(), bytes.data(), bytes.size());
+            auto bytes = std::move(writer).take();
+            if (!bytes)
+                return lux::cxx::unexpected(bytes.error());
+
+            std::memcpy(page.data(), bytes->data(), bytes->size());
             return page;
         }
 
-        std::vector<std::byte> encodeEntryRows(std::span<const PakEntry> rows)
+        [[nodiscard]] bool makePage(
+            PakPage& output,
+            EPakPageKind kind,
+            std::uint8_t level,
+            std::uint16_t count,
+            std::uint64_t next_leaf_offset,
+            SerializationResult<std::vector<std::byte>> payload,
+            std::string* error_out
+        )
+        {
+            if (!payload)
+                return serializationFailed(error_out, payload.error());
+
+            auto encoded = encodePage(kind, level, count, next_leaf_offset, std::move(*payload));
+            if (!encoded)
+                return serializationFailed(error_out, encoded.error());
+
+            output = std::move(*encoded);
+            return true;
+        }
+
+        SerializationResult<std::vector<std::byte>> encodeEntryRows(std::span<const PakEntry> rows)
         {
             ByteWriter writer;
             for (const auto& row : rows)
@@ -148,10 +184,10 @@ namespace lux::asset::detail
                 if (!row.vpath.empty())
                     writer.bytes(row.vpath.data(), row.vpath.size());
             }
-            return std::move(writer).takeOrThrow();
+            return std::move(writer).take();
         }
 
-        std::vector<std::byte> encodeEntryChildren(std::span<const PageNode> children)
+        SerializationResult<std::vector<std::byte>> encodeEntryChildren(std::span<const PageNode> children)
         {
             ByteWriter writer;
             for (const auto& child : children)
@@ -160,10 +196,10 @@ namespace lux::asset::detail
                 writer.u64(child.offset);
                 writeDigest(writer, child.digest);
             }
-            return std::move(writer).takeOrThrow();
+            return std::move(writer).take();
         }
 
-        std::vector<std::byte> encodePathRows(std::span<const PakPathRow> rows)
+        SerializationResult<std::vector<std::byte>> encodePathRows(std::span<const PakPathRow> rows)
         {
             ByteWriter writer;
             for (const auto& row : rows)
@@ -173,10 +209,10 @@ namespace lux::asset::detail
                     writer.bytes(row.vpath.data(), row.vpath.size());
                 writeUuid(writer, row.id);
             }
-            return std::move(writer).takeOrThrow();
+            return std::move(writer).take();
         }
 
-        std::vector<std::byte> encodePathChildren(std::span<const PageNode> children)
+        SerializationResult<std::vector<std::byte>> encodePathChildren(std::span<const PageNode> children)
         {
             ByteWriter writer;
             for (const auto& child : children)
@@ -189,7 +225,7 @@ namespace lux::asset::detail
                 writer.u64(child.offset);
                 writeDigest(writer, child.digest);
             }
-            return std::move(writer).takeOrThrow();
+            return std::move(writer).take();
         }
 
         void finishPage(PageNode& node)
@@ -242,13 +278,18 @@ namespace lux::asset::detail
             {
                 const auto [begin, end] = chunks[i];
                 const auto next = i + 1u < level.size() ? level[i + 1u].offset : 0u;
-                level[i].page = makePage(
+                if (!makePage(
+                    level[i].page,
                     EPakPageKind::ENTRY_LEAF,
                     0u,
                     static_cast<std::uint16_t>(end - begin),
                     next,
-                    encodeEntryRows(std::span<const PakEntry>{entries}.subspan(begin, end - begin))
-                );
+                    encodeEntryRows(std::span<const PakEntry>{entries}.subspan(begin, end - begin)),
+                    error_out
+                ))
+                {
+                    return false;
+                }
                 finishPage(level[i]);
                 pages.push_back(level[i]);
             }
@@ -265,13 +306,18 @@ namespace lux::asset::detail
                     node.offset = next_offset;
                     next_offset += kPakPageSize;
                     node.maximum_id = level[begin + count - 1u].maximum_id;
-                    node.page = makePage(
+                    if (!makePage(
+                        node.page,
                         EPakPageKind::ENTRY_INTERNAL,
                         tree_level,
                         static_cast<std::uint16_t>(count),
                         0u,
-                        encodeEntryChildren(std::span<const PageNode>{level}.subspan(begin, count))
-                    );
+                        encodeEntryChildren(std::span<const PageNode>{level}.subspan(begin, count)),
+                        error_out
+                    ))
+                    {
+                        return false;
+                    }
                     finishPage(node);
                     pages.push_back(node);
                     parent.push_back(std::move(node));
@@ -328,13 +374,18 @@ namespace lux::asset::detail
             {
                 const auto [begin, end] = chunks[i];
                 const auto next = i + 1u < level.size() ? level[i + 1u].offset : 0u;
-                level[i].page = makePage(
+                if (!makePage(
+                    level[i].page,
                     EPakPageKind::PATH_LEAF,
                     0u,
                     static_cast<std::uint16_t>(end - begin),
                     next,
-                    encodePathRows(std::span<const PakPathRow>{rows}.subspan(begin, end - begin))
-                );
+                    encodePathRows(std::span<const PakPathRow>{rows}.subspan(begin, end - begin)),
+                    error_out
+                ))
+                {
+                    return false;
+                }
                 finishPage(level[i]);
                 pages.push_back(level[i]);
             }
@@ -361,13 +412,18 @@ namespace lux::asset::detail
                     node.offset = next_offset;
                     next_offset += kPakPageSize;
                     node.maximum_path = level[begin + count - 1u].maximum_path;
-                    node.page = makePage(
+                    if (!makePage(
+                        node.page,
                         EPakPageKind::PATH_INTERNAL,
                         tree_level,
                         static_cast<std::uint16_t>(count),
                         0u,
-                        encodePathChildren(std::span<const PageNode>{level}.subspan(begin, count))
-                    );
+                        encodePathChildren(std::span<const PageNode>{level}.subspan(begin, count)),
+                        error_out
+                    ))
+                    {
+                        return false;
+                    }
                     finishPage(node);
                     pages.push_back(node);
                     parent.push_back(std::move(node));
@@ -380,7 +436,7 @@ namespace lux::asset::detail
             return true;
         }
 
-        std::array<std::byte, kHeaderBytes> encodeHeader(const PakHeader& header)
+        SerializationResult<std::array<std::byte, kHeaderBytes>> encodeHeader(const PakHeader& header)
         {
             ByteWriter writer;
             writer.reserve(kHeaderBytes);
@@ -400,9 +456,12 @@ namespace lux::asset::detail
             writeDigest(writer, header.entry_root_digest);
             writeDigest(writer, header.path_root_digest);
             writer.bytes(header.reserved, sizeof(header.reserved));
-            auto bytes = std::move(writer).takeOrThrow();
+            auto bytes = std::move(writer).take();
+            if (!bytes)
+                return lux::cxx::unexpected(bytes.error());
+
             std::array<std::byte, kHeaderBytes> output{};
-            std::memcpy(output.data(), bytes.data(), bytes.size());
+            std::memcpy(output.data(), bytes->data(), bytes->size());
             return output;
         }
 
@@ -623,10 +682,16 @@ namespace lux::asset::detail
         header.entry_root_digest = entry_root.digest;
         header.path_root_digest = path_root.digest;
         const auto header_bytes = encodeHeader(header);
+        if (!header_bytes)
+        {
+            output.close();
+            std::filesystem::remove(temporary, ec);
+            return serializationFailed(error_out, header_bytes.error());
+        }
         output.seekp(0, std::ios::beg);
         output.write(
-            reinterpret_cast<const char*>(header_bytes.data()),
-            static_cast<std::streamsize>(header_bytes.size())
+            reinterpret_cast<const char*>(header_bytes->data()),
+            static_cast<std::streamsize>(header_bytes->size())
         );
         output.flush();
         if (!output)

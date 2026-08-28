@@ -30,6 +30,33 @@ namespace lux::world
 
     namespace
     {
+        template <class Rollback>
+        class MutationRollback final
+        {
+        public:
+            explicit MutationRollback(Rollback rollback) noexcept : rollback_(std::move(rollback))
+            {
+            }
+
+            MutationRollback(const MutationRollback &) = delete;
+            MutationRollback &operator=(const MutationRollback &) = delete;
+
+            ~MutationRollback()
+            {
+                if (active_)
+                    rollback_();
+            }
+
+            void commit() noexcept
+            {
+                active_ = false;
+            }
+
+        private:
+            Rollback rollback_;
+            bool active_{true};
+        };
+
         [[nodiscard]] WorldPartitionFailure staleWorkspaceFailure() noexcept
         {
             WorldPartitionFailure failure;
@@ -235,38 +262,34 @@ namespace lux::world
 
             bool partition_inserted = false;
             std::size_t assigned_inserted{};
-            try
-            {
-                partition_inserted = impl_->partition_ids.insert(id).second;
-                for (; assigned_inserted < copied.size(); ++assigned_inserted)
+            MutationRollback rollback(
+                [&]() noexcept
                 {
-                    const bool inserted = impl_->assigned_objects.insert(copied[assigned_inserted]).second;
-                    if (!inserted)
-                        break;
-                }
-                if (!partition_inserted || assigned_inserted != copied.size())
-                {
-                    for (std::size_t rollback{}; rollback < assigned_inserted; ++rollback)
-                        impl_->assigned_objects.erase(copied[rollback]);
+                    for (std::size_t rollback_index{}; rollback_index < assigned_inserted; ++rollback_index)
+                        impl_->assigned_objects.erase(copied[rollback_index]);
                     if (partition_inserted)
                         impl_->partition_ids.erase(id);
-                    const WorldObjectId duplicate =
-                        assigned_inserted < copied.size() ? copied[assigned_inserted] : WorldObjectId{};
-                    return lux::cxx::unexpected(
-                        partitionFailure(EWorldPartitionError::DUPLICATE_OBJECT_ASSIGNMENT, duplicate, id)
-                    );
                 }
+            );
 
-                impl_->partitions.push_back(Impl::PendingPartition{id, std::move(copied)});
-            }
-            catch (...)
+            partition_inserted = impl_->partition_ids.insert(id).second;
+            for (; assigned_inserted < copied.size(); ++assigned_inserted)
             {
-                for (std::size_t rollback{}; rollback < assigned_inserted; ++rollback)
-                    impl_->assigned_objects.erase(copied[rollback]);
-                if (partition_inserted)
-                    impl_->partition_ids.erase(id);
-                throw;
+                const bool inserted = impl_->assigned_objects.insert(copied[assigned_inserted]).second;
+                if (!inserted)
+                    break;
             }
+            if (!partition_inserted || assigned_inserted != copied.size())
+            {
+                const WorldObjectId duplicate =
+                    assigned_inserted < copied.size() ? copied[assigned_inserted] : WorldObjectId{};
+                return lux::cxx::unexpected(
+                    partitionFailure(EWorldPartitionError::DUPLICATE_OBJECT_ASSIGNMENT, duplicate, id)
+                );
+            }
+
+            impl_->partitions.push_back(Impl::PendingPartition{id, std::move(copied)});
+            rollback.commit();
             return {};
         }
         catch (const std::bad_alloc&)

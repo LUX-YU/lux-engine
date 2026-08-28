@@ -1,5 +1,6 @@
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
+#include <lux/engine/task/TaskExecutorFailureInjection.hpp>
 
 #include <atomic>
 #include <cassert>
@@ -13,13 +14,24 @@ main()
 {
     using namespace lux::task;
 
+    detail::failNextTaskExecutorOperationForTest(detail::ETaskExecutorFailurePoint::ALLOCATION);
+    auto allocation_failure = TaskExecutor::create(TaskExecutorConfig{1U, 1U});
+    assert(!allocation_failure);
+    assert(allocation_failure.error().code == ETaskExecutorError::ALLOCATION_FAILURE);
+
+    detail::failNextTaskExecutorOperationForTest(detail::ETaskExecutorFailurePoint::WORKER_CREATION);
+    auto worker_failure = TaskExecutor::create(TaskExecutorConfig{1U, 1U});
+    assert(!worker_failure);
+    assert(worker_failure.error().code == ETaskExecutorError::WORKER_CREATION_FAILURE);
+
     // Empty graph + zero-worker debug mode.
     {
         TaskGraphBuilder builder;
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{0U, 0U});
-        assert(executor.execute(*graph));
+        auto executor = TaskExecutor::create(TaskExecutorConfig{0U, 0U});
+        assert(executor);
+        assert(executor->execute(*graph));
     }
 
     // Explicit dependency is declared on the dependent task.
@@ -36,8 +48,9 @@ main()
         assert(b);
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
-        assert(executor.execute(*graph));
+        auto executor = TaskExecutor::create(TaskExecutorConfig{2U, 0U});
+        assert(executor);
+        assert(executor->execute(*graph));
         assert(value.load() == 2);
     }
 
@@ -53,8 +66,9 @@ main()
         auto graph = std::move(builder).build();
         assert(graph);
         assert(graph->dependencyCount() == 1U);
-        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
-        assert(executor.execute(*graph));
+        auto executor = TaskExecutor::create(TaskExecutorConfig{2U, 0U});
+        assert(executor);
+        assert(executor->execute(*graph));
     }
 
     // Completion-driven DAG: C may start immediately after B; it does not wait
@@ -82,8 +96,9 @@ main()
 
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
-        assert(executor.execute(*graph));
+        auto executor = TaskExecutor::create(TaskExecutorConfig{2U, 0U});
+        assert(executor);
+        assert(executor->execute(*graph));
         assert(c_ran.load(std::memory_order_acquire));
     }
 
@@ -99,8 +114,9 @@ main()
         assert(task);
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
-        assert(executor.execute(*graph));
+        auto executor = TaskExecutor::create(TaskExecutorConfig{2U, 0U});
+        assert(executor);
+        assert(executor->execute(*graph));
         assert(correct_thread.load(std::memory_order_acquire));
     }
 
@@ -145,9 +161,10 @@ main()
         }
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{4U, kTasks});
+        auto executor = TaskExecutor::create(TaskExecutorConfig{4U, kTasks});
+        assert(executor);
         for (std::size_t run{}; run < kRuns; ++run)
-            assert(executor.execute(*graph));
+            assert(executor->execute(*graph));
         assert(calls.load(std::memory_order_relaxed) == kTasks * kRuns);
     }
 
@@ -184,11 +201,12 @@ main()
         assert(terminal);
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{8U, kWidth + 2U});
+        auto executor = TaskExecutor::create(TaskExecutorConfig{8U, kWidth + 2U});
+        assert(executor);
         for (std::size_t run{}; run < 100U; ++run)
         {
             fan_out_calls.store(0U, std::memory_order_relaxed);
-            assert(executor.execute(*graph));
+            assert(executor->execute(*graph));
         }
     }
 
@@ -210,9 +228,10 @@ main()
         }
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{workers, kChain});
+        auto executor = TaskExecutor::create(TaskExecutorConfig{workers, kChain});
+        assert(executor);
         for (std::size_t run{}; run < 100U; ++run)
-            assert(executor.execute(*graph));
+            assert(executor->execute(*graph));
         assert(calls.load(std::memory_order_relaxed) == kChain * 100U);
     }
 

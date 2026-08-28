@@ -9,7 +9,6 @@
 #include <limits>
 #include <memory>
 #include <new>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -157,7 +156,7 @@ namespace lux::simulation
                 );
             }
 
-            [[nodiscard]] std::uint32_t ordinal(std::string_view value) const
+            [[nodiscard]] std::uint32_t ordinal(std::string_view value) const noexcept
             {
                 if (value.empty())
                     return kNoString;
@@ -167,9 +166,17 @@ namespace lux::simulation
                     value
                 );
                 if (found == strings_.end() || *found != value)
-                    throw std::logic_error("LXSD string was not collected");
+                {
+                    valid_ = false;
+                    return kNoString;
+                }
                 return static_cast<std::uint32_t>(
                     std::distance(strings_.begin(), found));
+            }
+
+            [[nodiscard]] bool valid() const noexcept
+            {
+                return valid_;
             }
 
             [[nodiscard]] Bytes encode() const
@@ -186,6 +193,7 @@ namespace lux::simulation
 
           private:
             std::vector<std::string> strings_;
+            mutable bool valid_{true};
         };
 
         struct TypeSource final
@@ -403,6 +411,9 @@ namespace lux::simulation
                     dependencies.u32(after);
                 }
 
+                if (!strings.valid())
+                    return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+
                 Bytes output;
                 output.u32(SimulationAssetPrimaryMagic);
                 output.u32(kWireVersion);
@@ -582,13 +593,16 @@ namespace lux::simulation
                 }
                 if (cursor != sections[0].bytes.size())
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                const auto stringAt = [&](std::uint32_t ordinal)
-                    -> std::string_view
+                bool invalid_string_ordinal{};
+                const auto stringAt = [&](std::uint32_t ordinal) noexcept -> std::string_view
                 {
                     if (ordinal == kNoString)
                         return {};
                     if (ordinal >= strings.size())
-                        throw std::out_of_range("LXSD string ordinal");
+                    {
+                        invalid_string_ordinal = true;
+                        return {};
+                    }
                     return strings[ordinal];
                 };
                 const auto countOf = [&](std::size_t section) noexcept
@@ -960,6 +974,9 @@ namespace lux::simulation
                     }
                     previous_dependency = {before, after};
                 }
+
+                if (invalid_string_ordinal)
+                    return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
 
                 auto built = std::move(builder).build();
                 if (!built || built->retainedBytes() >

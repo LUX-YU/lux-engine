@@ -33,6 +33,10 @@ namespace lux::simulation
         template <class Target, class Payload>
         class EventOccurrenceBuffer final
         {
+            static_assert(std::is_nothrow_copy_constructible_v<Payload>);
+            static_assert(std::is_nothrow_move_constructible_v<Payload>);
+            static_assert(std::is_nothrow_destructible_v<Payload>);
+
         public:
             struct Occurrence final
             {
@@ -180,15 +184,8 @@ namespace lux::simulation
                 if (values.size() >= producer_capacity_)
                     return false;
 
-                try
-                {
-                    values.push_back({std::move(target), std::move(payload)});
-                    return true;
-                }
-                catch (...)
-                {
-                    return false;
-                }
+                values.push_back({std::move(target), std::move(payload)});
+                return true;
             }
 
             [[nodiscard]] bool hasActiveWriter() const noexcept

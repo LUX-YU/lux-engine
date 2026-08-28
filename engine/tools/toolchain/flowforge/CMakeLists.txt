@@ -119,7 +119,29 @@ if(LUX_ENABLE_FLOWFORGE_MLIR)
         ROLE    DOMAIN
     )
     if(LUX_ENABLE_FLOWFORGE_COMPILER_TESTS)
-        add_subdirectory(test)
+        add_executable(
+            flowforge_compiler_contract_test
+            test/compiler_contract_test.cpp
+        )
+        target_link_libraries(
+            flowforge_compiler_contract_test
+            PRIVATE lux::engine::flowforge::flowforge_compiler
+        )
+        if(MSVC)
+            target_compile_options(flowforge_compiler_contract_test PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(flowforge_compiler_contract_test PRIVATE -UNDEBUG)
+        endif()
+        lux_classify_target(
+            TARGET  flowforge_compiler_contract_test
+            LAYER   TOOLCHAIN
+            PRODUCT TEST
+            ROLE    DOMAIN
+        )
+        add_test(
+            NAME flowforge_compiler_contract_test
+            COMMAND flowforge_compiler_contract_test
+        )
     endif()
 endif()
 

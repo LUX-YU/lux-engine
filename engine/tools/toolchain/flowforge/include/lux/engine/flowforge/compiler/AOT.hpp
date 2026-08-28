@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include <lux/engine/flowforge/compiler/IR.hpp>
 #include <lux/engine/flowforge/compiler/visibility.h>
 
 namespace lux::flowforge
@@ -67,23 +68,19 @@ namespace lux::flowforge
         std::filesystem::path linker;
     };
 
-    /// Graph -> FlowForge MLIR -> LLVM -> native object. Fills artifact_out
-    /// with the object bytes plus everything the manifest / loader needs.
-    /// Returns false (and writes error_out) on any build / lowering /
-    /// codegen failure.
-    LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC bool compileToObject(
-        IRContext&        ctx,
-        const FlowGraph&  graph,
-        const AotOptions& options,
-        AotArtifact&      artifact_out,
-        std::string*      error_out = nullptr);
+    /// Graph -> FlowForge MLIR -> LLVM -> native object.
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowForgeResult<AotArtifact> compileToObject(
+        IRContext& context,
+        const FlowGraph& graph,
+        const AotOptions& options
+    ) noexcept;
 
     /// Writes artifact.object next to out_dll (same stem, ".obj") and links
     /// it into a shared library at out_dll. Cook-time only — spawns the
     /// linker as an external process.
-    LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC bool linkSharedLibrary(
-        const AotArtifact&           artifact,
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowForgeResult<void> linkSharedLibrary(
+        const AotArtifact& artifact,
         const std::filesystem::path& out_dll,
-        const AotOptions&            options = {},
-        std::string*                 error_out = nullptr);
+        const AotOptions& options = {}
+    ) noexcept;
 }

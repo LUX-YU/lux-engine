@@ -94,6 +94,34 @@ add_test(
     COMMAND simulation_endpoint_point_test
 )
 
+add_executable(
+    simulation_throwing_event_payload_negative EXCLUDE_FROM_ALL
+    test/throwing_event_payload_negative.cpp
+)
+target_link_libraries(
+    simulation_throwing_event_payload_negative
+    PRIVATE lux::engine::simulation::system
+)
+lux_classify_target(
+    TARGET  simulation_throwing_event_payload_negative
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME simulation_throwing_event_payload_rejected
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=simulation_throwing_event_payload_negative
+        -DEXPECTED_PATTERN=throwing_event_payload_negative
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)
+set_tests_properties(
+    simulation_throwing_event_payload_rejected
+    PROPERTIES LABELS "l1;simulation;negative;exception"
+)
+
 include_component_cmake_scripts(meta)
 engine_add_type_runtime_info(
     NAME simulation_object_boundary_meta

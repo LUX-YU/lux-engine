@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 #include <sstream>
 
 namespace lux::flowforge
@@ -52,98 +53,118 @@ namespace lux::flowforge
         return sym;
     }
 
-    std::unique_ptr<FlowScriptInstance> FlowScriptInstance::compile(
-        IRContext&                   ctx,
-        const FlowGraph&             graph,
-        std::vector<JitNativeSymbol> extra_symbols,
-        std::string*                 error_out)
+    FlowForgeResult<std::unique_ptr<FlowScriptInstance>> FlowScriptInstance::compile(
+        IRContext& context,
+        const FlowGraph& graph,
+        std::vector<JitNativeSymbol> extra_symbols
+    ) noexcept
     {
-        const auto fail = [&](std::string msg) -> std::unique_ptr<FlowScriptInstance> {
-            if (error_out) *error_out = std::move(msg);
-            return nullptr;
-        };
-
-        llvm::InitializeNativeTarget();
-        llvm::InitializeNativeTargetAsmPrinter();
-
-        std::unique_ptr<FlowScriptInstance> inst(new FlowScriptInstance());
-
-        // Event table straight from the graph (no IR round trip needed).
-        for (const auto& storage : graph.nodes())
+        try
         {
-            const Node* n = storage.node.get();
-            if (!n || n->operation() != ENodeOperation::ON_EVENT) continue;
-            const auto& ev = static_cast<const OnEventNode&>(*n);
-            inst->events_.push_back(EventEntry{
-                ev.name(), eventSymbol(ev.name()), ev.paramInfos().size() });
-        }
+            llvm::InitializeNativeTarget();
+            llvm::InitializeNativeTargetAsmPrinter();
 
-        MLIRBuilder builder(&ctx);
-        auto built = builder.generateIR(graph);
-        if (!built)
-            return fail("compile failed: " + built.error().message);
-        inst->ir_ = std::move(built.value());
-        auto lowered = lowerToLLVM(*inst->ir_);
-        if (!lowered)
-            return fail("compile failed: " + lowered.error().message);
+            std::unique_ptr<FlowScriptInstance> inst(new FlowScriptInstance());
 
-        // Instance-state block: sized by the build-time layout, initialized
-        // with the declared variable defaults (see StateLayout.hpp). This
-        // instance OWNS its state — invoke() passes the base pointer as the
-        // hidden leading argument of every generated function.
-        inst->state_.assign(inst->ir_->impl().state_size, std::byte{0});
-        inst->resetInstanceState();
+            // Event table straight from the graph (no IR round trip needed).
+            for (const auto& storage : graph.nodes())
+            {
+                const Node* node = storage.node.get();
+                if (node == nullptr || node->operation() != ENodeOperation::ON_EVENT)
+                    continue;
+                const auto& event = static_cast<const OnEventNode&>(*node);
+                inst->events_.push_back(EventEntry{
+                    event.name(),
+                    eventSymbol(event.name()),
+                    event.paramInfos().size()
+                });
+            }
 
-        mlir::ModuleOp module = inst->ir_->impl().top_module.get();
-        auto* mlir_ctx = module.getContext();
-        mlir::registerBuiltinDialectTranslation(*mlir_ctx);
-        mlir::registerLLVMDialectTranslation(*mlir_ctx);
+            auto builder = MLIRBuilder::create(context);
+            if (!builder)
+                return lux::cxx::unexpected(std::move(builder.error()));
+            auto built = builder->generateIR(graph);
+            if (!built)
+                return lux::cxx::unexpected(std::move(built.error()));
+            inst->ir_ = std::move(*built);
+            auto lowered = lowerToLLVM(*inst->ir_);
+            if (!lowered)
+                return lux::cxx::unexpected(std::move(lowered.error()));
 
-        mlir::ExecutionEngineOptions engine_options;
-        engine_options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Default;
-        auto maybe_engine = mlir::ExecutionEngine::create(module, engine_options);
-        if (!maybe_engine)
-            return fail("ExecutionEngine::create failed: "
-                        + llvm::toString(maybe_engine.takeError()));
-        inst->engine_ = std::move(*maybe_engine);
+            // Instance-state block: sized by the build-time layout, initialized
+            // with the declared variable defaults (see StateLayout.hpp). This
+            // instance OWNS its state — invoke() passes the base pointer as the
+            // hidden leading argument of every generated function.
+            inst->state_.assign(inst->ir_->impl().state_size, std::byte{0});
+            inst->resetInstanceState();
+
+            mlir::ModuleOp module = inst->ir_->impl().top_module.get();
+            auto* mlir_context = module.getContext();
+            mlir::registerBuiltinDialectTranslation(*mlir_context);
+            mlir::registerLLVMDialectTranslation(*mlir_context);
+
+            mlir::ExecutionEngineOptions engine_options;
+            engine_options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Default;
+            auto maybe_engine = mlir::ExecutionEngine::create(module, engine_options);
+            if (!maybe_engine)
+            {
+                return lux::cxx::unexpected(FlowForgeFailure{
+                    .code = EFlowForgeError::JIT_ENGINE_CREATION_FAILED,
+                    .message = llvm::toString(maybe_engine.takeError())
+                });
+            }
+            inst->engine_ = std::move(*maybe_engine);
 
         // Bind host symbols: every reflected function's invoker trampoline
         // (under its _lfi_ symbol) + the caller's hand-written C-ABI hosts.
         // Name storage only needs to survive the registerSymbols call.
-        std::vector<std::pair<std::string, void*>> bound;
-        if (lux::meta::ReflectionRegistry::initialized())
-        {
-            for (const auto& fn_ptr :
-                 lux::meta::ReflectionRegistry::instance().functions())
+            std::vector<std::pair<std::string, void*>> bound;
+            if (lux::meta::ReflectionRegistry::initialized())
             {
-                const lux::meta::RefFunction* fn = fn_ptr.get();
-                if (!fn || !fn->invokable.invoker) continue;
-                bound.emplace_back(invokerSymbol(fn->invokable),
-                                   reinterpret_cast<void*>(fn->invokable.invoker));
-            }
-        }
-        for (const JitNativeSymbol& sym : extra_symbols)
-        {
-            if (sym.name && sym.address)
-                bound.emplace_back(sym.name, sym.address);
-        }
-        if (!bound.empty())
-        {
-            inst->engine_->registerSymbols(
-                [&](llvm::orc::MangleAndInterner mangle)
+                for (const auto& function : lux::meta::ReflectionRegistry::instance().functions())
                 {
-                    llvm::orc::SymbolMap map;
-                    for (const auto& [name, addr] : bound)
+                    const lux::meta::RefFunction* reflected = function.get();
+                    if (reflected == nullptr || reflected->invokable.invoker == nullptr)
+                        continue;
+                    bound.emplace_back(
+                        invokerSymbol(reflected->invokable),
+                        reinterpret_cast<void*>(reflected->invokable.invoker)
+                    );
+                }
+            }
+            for (const JitNativeSymbol& symbol : extra_symbols)
+            {
+                if (symbol.name != nullptr && symbol.address != nullptr)
+                    bound.emplace_back(symbol.name, symbol.address);
+            }
+            if (!bound.empty())
+            {
+                inst->engine_->registerSymbols(
+                    [&](llvm::orc::MangleAndInterner mangle)
                     {
-                        map[mangle(name)] = llvm::orc::ExecutorSymbolDef{
-                            llvm::orc::ExecutorAddr::fromPtr(addr),
-                            llvm::JITSymbolFlags::Exported};
+                        llvm::orc::SymbolMap map;
+                        for (const auto& [name, address] : bound)
+                        {
+                            map[mangle(name)] = llvm::orc::ExecutorSymbolDef{
+                                llvm::orc::ExecutorAddr::fromPtr(address),
+                                llvm::JITSymbolFlags::Exported
+                            };
+                        }
+                        return map;
                     }
-                    return map;
-                });
-        }
+                );
+            }
 
-        return inst;
+            return inst;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+        }
     }
 
     void FlowScriptInstance::resetInstanceState()
@@ -163,38 +184,65 @@ namespace lux::flowforge
         return false;
     }
 
-    bool FlowScriptInstance::invoke(std::string_view event,
-                                    std::span<void* const> args,
-                                    std::string* error_out)
+    FlowForgeResult<void> FlowScriptInstance::invoke(
+        std::string_view event,
+        std::span<void* const> args
+    ) noexcept
     {
-        const auto fail = [&](std::string msg) {
-            if (error_out) *error_out = std::move(msg);
-            return false;
-        };
-        if (!engine_) return fail("script instance has no engine");
+        try
+        {
+            const auto fail = [](EFlowForgeError code, std::string message) -> FlowForgeResult<void>
+            {
+                return lux::cxx::unexpected(FlowForgeFailure{.code = code, .message = std::move(message)});
+            };
+            if (!engine_)
+                return fail(EFlowForgeError::JIT_INVOCATION_FAILED, "script instance has no engine");
 
-        const EventEntry* entry = nullptr;
-        for (const auto& e : events_)
-            if (e.name == event) { entry = &e; break; }
-        if (!entry)
-            return fail("unknown event '" + std::string(event) + "'");
-        if (args.size() != entry->arg_count)
-            return fail("event '" + std::string(event) + "' expects "
-                        + std::to_string(entry->arg_count) + " argument(s), got "
-                        + std::to_string(args.size()));
+            const EventEntry* entry = nullptr;
+            for (const auto& candidate : events_)
+            {
+                if (candidate.name == event)
+                {
+                    entry = &candidate;
+                    break;
+                }
+            }
+            if (entry == nullptr)
+                return fail(EFlowForgeError::JIT_SYMBOL_LOOKUP_FAILED, "unknown event '" + std::string(event) + "'");
+            if (args.size() != entry->arg_count)
+            {
+                return fail(
+                    EFlowForgeError::JIT_INVOCATION_FAILED,
+                    "event '" + std::string(event) + "' expects " + std::to_string(entry->arg_count) +
+                        " argument(s), got " + std::to_string(args.size())
+                );
+            }
 
         // Packed convention: slot i points at the i-th argument's STORAGE.
         // Slot 0 is the hidden instance-state pointer, so its storage is a
         // local void* holding the block's base address (null when the graph
         // is stateless — generated code then never dereferences it).
-        void* state_base = state_.empty() ? nullptr
-                                          : static_cast<void*>(state_.data());
-        llvm::SmallVector<void*, 8> packed;
-        packed.reserve(args.size() + 1);
-        packed.push_back(&state_base);
-        packed.append(args.begin(), args.end());
-        if (llvm::Error err = engine_->invokePacked(entry->symbol, packed))
-            return fail("invoke failed: " + llvm::toString(std::move(err)));
-        return true;
+            void* state_base = state_.empty() ? nullptr : static_cast<void*>(state_.data());
+            llvm::SmallVector<void*, 8> packed;
+            packed.reserve(args.size() + 1);
+            packed.push_back(&state_base);
+            packed.append(args.begin(), args.end());
+            if (llvm::Error error = engine_->invokePacked(entry->symbol, packed))
+            {
+                return fail(
+                    EFlowForgeError::JIT_INVOCATION_FAILED,
+                    "invoke failed: " + llvm::toString(std::move(error))
+                );
+            }
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+        }
     }
 }

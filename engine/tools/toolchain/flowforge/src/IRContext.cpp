@@ -9,6 +9,7 @@
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 
+#include <new>
 #include <utility>
 
 namespace lux::flowforge
@@ -19,25 +20,47 @@ namespace lux::flowforge
     IRImpl& IR::impl() { return *impl_; }
     const IRImpl& IR::impl() const { return *impl_; }
 
-    std::string IR::toString() const
+    FlowForgeResult<std::string> IR::toString() const noexcept
     {
-        std::string result;
-        llvm::raw_string_ostream output(result);
-        if (mlir::ModuleOp module = impl_->top_module.get())
-            module.print(output);
-        else
-            output << "// Empty IR - module not generated yet\n";
-        return result;
+        try
+        {
+            std::string result;
+            llvm::raw_string_ostream output(result);
+            if (mlir::ModuleOp module = impl_->top_module.get())
+                module.print(output);
+            else
+                output << "// Empty IR - module not generated yet\n";
+            return result;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+        }
     }
 
-    IRContext::IRContext()
-        : context_(new mlir::MLIRContext)
+    FlowForgeResult<IRContext> IRContext::create() noexcept
     {
-        auto* context = static_cast<mlir::MLIRContext*>(context_);
-        context->loadDialect<mlir::flowforge::FlowForgeDialect>();
-        context->loadDialect<mlir::LLVM::LLVMDialect>();
-        context->loadDialect<mlir::func::FuncDialect>();
-        context->loadDialect<mlir::arith::ArithDialect>();
+        try
+        {
+            auto context = std::make_unique<mlir::MLIRContext>();
+            context->loadDialect<mlir::flowforge::FlowForgeDialect>();
+            context->loadDialect<mlir::LLVM::LLVMDialect>();
+            context->loadDialect<mlir::func::FuncDialect>();
+            context->loadDialect<mlir::arith::ArithDialect>();
+            return IRContext(context.release());
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::CONTEXT_CREATION_FAILED});
+        }
     }
 
     IRContext::IRContext(IRContext&& other) noexcept

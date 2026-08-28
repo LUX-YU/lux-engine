@@ -1,11 +1,11 @@
 #include <lux/engine/task/TaskExecutorDetail.hpp>
+#include <lux/engine/task/TaskExecutorFailureInjection.hpp>
 
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <limits>
 #include <new>
-#include <stdexcept>
 #include <utility>
 
 namespace lux::task::detail
@@ -37,10 +37,20 @@ namespace lux::task::detail
     TaskExecutorImpl::TaskExecutorImpl(TaskExecutorConfig config) : worker_count(config.worker_count)
     {
         if (worker_count != 0U)
+        {
             worker_ready = std::make_unique<ReadyStack[]>(worker_count);
+        }
 
         if (config.initial_task_capacity != 0U)
-            reserveOrThrow(config.initial_task_capacity);
+        {
+            reserveStorage(config.initial_task_capacity);
+        }
+    }
+
+    lux::cxx::expected<void, TaskExecutorFailure> TaskExecutorImpl::startWorkers() noexcept
+    {
+        if (consumeTaskExecutorFailureForTest(ETaskExecutorFailurePoint::WORKER_CREATION))
+            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::WORKER_CREATION_FAILURE});
 
         try
         {
@@ -50,16 +60,35 @@ namespace lux::task::detail
                 workers.emplace_back([this, worker]() noexcept { workerLoop(worker); });
             }
         }
+        catch (const std::bad_alloc&)
+        {
+            stopping.store(true, std::memory_order_release);
+            worker_event.fetch_add(1U, std::memory_order_release);
+            worker_event.notify_all();
+            for (auto& worker : workers)
+            {
+                if (worker.joinable())
+                {
+                    worker.join();
+                }
+            }
+            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
+        }
         catch (...)
         {
             stopping.store(true, std::memory_order_release);
             worker_event.fetch_add(1U, std::memory_order_release);
             worker_event.notify_all();
             for (auto& worker : workers)
+            {
                 if (worker.joinable())
+                {
                     worker.join();
-            throw;
+                }
+            }
+            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::WORKER_CREATION_FAILURE});
         }
+        return {};
     }
 
     TaskExecutorImpl::~TaskExecutorImpl() noexcept
@@ -72,7 +101,7 @@ namespace lux::task::detail
                 worker.join();
     }
 
-    void TaskExecutorImpl::reserveOrThrow(std::size_t capacity)
+    void TaskExecutorImpl::reserveStorage(std::size_t capacity)
     {
         if (capacity <= task_capacity)
             return;
@@ -91,7 +120,7 @@ namespace lux::task::detail
         }
         try
         {
-            reserveOrThrow(capacity);
+            reserveStorage(capacity);
             return {};
         }
         catch (...)
@@ -111,7 +140,7 @@ namespace lux::task::detail
 
         try
         {
-            reserveOrThrow(graph.taskCount());
+            reserveStorage(graph.taskCount());
         }
         catch (...)
         {

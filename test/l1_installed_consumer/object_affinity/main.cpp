@@ -51,8 +51,10 @@ main()
     auto graph = std::move(builder).build();
     if (!graph)
         return 4;
-    lux::task::TaskExecutor executor({0U, graph->taskCount()});
-    if (!executor.execute(*graph))
+    auto executor = lux::task::TaskExecutor::create({0U, graph->taskCount()});
+    if (!executor)
         return 5;
-    return count == 1U ? 0 : 6;
+    if (!executor->execute(*graph))
+        return 6;
+    return count == 1U ? 0 : 7;
 }

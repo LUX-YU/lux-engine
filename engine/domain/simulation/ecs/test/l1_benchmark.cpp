@@ -438,8 +438,14 @@ namespace
             if (!built)
                 throw std::runtime_error("worker graph build failed");
             graph = std::move(*built);
-            executor = std::make_unique<lux::task::TaskExecutor>(
-                lux::task::TaskExecutorConfig{4U, graph.taskCount()});
+            auto created = lux::task::TaskExecutor::create(
+                lux::task::TaskExecutorConfig{4U, graph.taskCount()}
+            );
+            if (!created)
+            {
+                throw std::runtime_error("worker executor creation failed");
+            }
+            executor = std::make_unique<lux::task::TaskExecutor>(std::move(*created));
         }
         EventPoint<SimulationBroadcastRoute, std::size_t> event;
         std::size_t callbacks{};
@@ -462,8 +468,14 @@ namespace
             if (!built)
                 throw std::runtime_error("task graph build failed");
             graph = std::move(*built);
-            executor = std::make_unique<lux::task::TaskExecutor>(
-                lux::task::TaskExecutorConfig{0U, graph.taskCount()});
+            auto created = lux::task::TaskExecutor::create(
+                lux::task::TaskExecutorConfig{0U, graph.taskCount()}
+            );
+            if (!created)
+            {
+                throw std::runtime_error("task executor creation failed");
+            }
+            executor = std::make_unique<lux::task::TaskExecutor>(std::move(*created));
         }
         std::atomic_size_t calls{};
         lux::task::TaskGraph graph;

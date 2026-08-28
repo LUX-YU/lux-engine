@@ -43,6 +43,7 @@ namespace lux::flowforge
         INVALID_GRAPH,
         INVALID_DESCRIPTION,
         ALLOCATION_FAILURE,
+        FOREIGN_EXCEPTION,
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC

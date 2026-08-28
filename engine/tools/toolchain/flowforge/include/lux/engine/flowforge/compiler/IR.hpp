@@ -14,9 +14,10 @@
 // reach into the wrapped mlir::ModuleOp should include the matching
 // IRImpl.hpp from pinclude/.
 //
-#include <string>
-#include <memory>
 #include <cstdint>
+#include <memory>
+#include <string>
+
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/flowforge/compiler/visibility.h>
 
@@ -30,13 +31,39 @@ namespace lux::flowforge
     class DataOutPin;
     class ExecOutPin;
 
+    enum class EFlowForgeError
+    {
+        GRAPH_INVALID,
+        ALLOCATION_FAILURE,
+        FOREIGN_EXCEPTION,
+        CONTEXT_CREATION_FAILED,
+        IR_VERIFICATION_FAILED,
+        LOWERING_FAILED,
+        JIT_ENGINE_CREATION_FAILED,
+        JIT_SYMBOL_LOOKUP_FAILED,
+        JIT_INVOCATION_FAILED,
+        AOT_CODEGEN_FAILED,
+        LINK_FAILED,
+    };
+
+    struct FlowForgeFailure
+    {
+        EFlowForgeError code = EFlowForgeError::GRAPH_INVALID;
+        std::string message;
+        std::uint64_t node_id = 0;
+        std::uint64_t pin_id = 0;
+    };
+
+    template <class T>
+    using FlowForgeResult = lux::cxx::expected<T, FlowForgeFailure>;
+
     class IRImpl;
     class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC IR
     {
     public:
         IR();
         ~IR();
-        std::string toString() const;
+        [[nodiscard]] FlowForgeResult<std::string> toString() const noexcept;
 
         IRImpl& impl();
         const IRImpl& impl() const;
@@ -45,27 +72,6 @@ namespace lux::flowforge
         std::unique_ptr<IRImpl> impl_;
     };
 
-    enum class EFlowForgeError
-    {
-        GRAPH_INVALID,
-        IR_VERIFICATION_FAILED,
-        LOWERING_FAILED,
-        JIT_ENGINE_CREATION_FAILED,
-        JIT_SYMBOL_LOOKUP_FAILED,
-        JIT_INVOCATION_FAILED,
-    };
-
-    struct FlowForgeFailure
-    {
-        EFlowForgeError code = EFlowForgeError::GRAPH_INVALID;
-        std::string     message;
-        std::uint64_t   node_id = 0;
-        std::uint64_t   pin_id = 0;
-    };
-
-    template<class T>
-    using FlowForgeResult = lux::cxx::expected<T, FlowForgeFailure>;
-
     // Owns the MLIRContext every IR produced through it lives in. Lifetime
     // contract: any IR built via an MLIRBuilder(this) must be destroyed
     // BEFORE this IRContext — the context's destructor does not know about
@@ -73,7 +79,8 @@ namespace lux::flowforge
     class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC IRContext
     {
     public:
-        IRContext();
+        [[nodiscard]] static FlowForgeResult<IRContext> create() noexcept;
+
         ~IRContext();
 
         IRContext(const IRContext&) = delete;
@@ -85,6 +92,10 @@ namespace lux::flowforge
         const void* context() const noexcept { return context_; }
 
     private:
+        explicit IRContext(void* context) noexcept : context_(context)
+        {
+        }
+
         void* context_ = nullptr;
     };
 
@@ -92,7 +103,8 @@ namespace lux::flowforge
     class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC MLIRBuilder
     {
     public:
-        MLIRBuilder(IRContext* context);
+        [[nodiscard]] static FlowForgeResult<MLIRBuilder> create(IRContext& context) noexcept;
+
         ~MLIRBuilder();
 
         MLIRBuilder(const MLIRBuilder&) = delete;
@@ -106,9 +118,11 @@ namespace lux::flowforge
         MLIRBuilder& operator=(MLIRBuilder&&) noexcept;
 
         [[nodiscard]] FlowForgeResult<std::unique_ptr<IR>>
-        generateIR(const FlowGraph& graph);
+        generateIR(const FlowGraph& graph) noexcept;
 
     private:
+        explicit MLIRBuilder(std::unique_ptr<MLIRBuilderImpl> impl) noexcept;
+
         std::unique_ptr<MLIRBuilderImpl> impl_;
     };
 } // namespace lux::flowforge

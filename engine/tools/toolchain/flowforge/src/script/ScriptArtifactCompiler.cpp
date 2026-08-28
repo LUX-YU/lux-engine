@@ -71,5 +71,9 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(EFlowForgeCompileError::ALLOCATION_FAILURE);
         }
+        catch (...)
+        {
+            return lux::cxx::unexpected(EFlowForgeCompileError::FOREIGN_EXCEPTION);
+        }
     }
 }

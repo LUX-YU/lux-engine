@@ -35,6 +35,7 @@ namespace lux::task
     {
         ALREADY_EXECUTING,
         ALLOCATION_FAILURE,
+        WORKER_CREATION_FAILURE,
     };
 
     struct TaskExecutorFailure final
@@ -52,7 +53,10 @@ namespace lux::task
     class LUX_CORE_TASK_PUBLIC TaskExecutor final
     {
     public:
-        explicit TaskExecutor(TaskExecutorConfig config);
+        [[nodiscard]] static lux::cxx::expected<TaskExecutor, TaskExecutorFailure> create(
+            TaskExecutorConfig config
+        ) noexcept;
+
         ~TaskExecutor() noexcept;
 
         TaskExecutor(TaskExecutor&&) noexcept;
@@ -72,6 +76,7 @@ namespace lux::task
 
     private:
         struct Impl;
+        explicit TaskExecutor(std::unique_ptr<Impl> impl) noexcept;
         std::unique_ptr<Impl> impl_;
     };
 }

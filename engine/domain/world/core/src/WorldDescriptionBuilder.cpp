@@ -30,6 +30,33 @@ namespace lux::world
 
     namespace
     {
+        template <class Rollback>
+        class MutationRollback final
+        {
+        public:
+            explicit MutationRollback(Rollback rollback) noexcept : rollback_(std::move(rollback))
+            {
+            }
+
+            MutationRollback(const MutationRollback &) = delete;
+            MutationRollback &operator=(const MutationRollback &) = delete;
+
+            ~MutationRollback()
+            {
+                if (active_)
+                    rollback_();
+            }
+
+            void commit() noexcept
+            {
+                active_ = false;
+            }
+
+        private:
+            Rollback rollback_;
+            bool active_{true};
+        };
+
         [[nodiscard]] WorldDescriptionFailure
         failure(EWorldDescriptionError code, WorldObjectId object = {}, WorldDataSchemaId schema = {}) noexcept
         {
@@ -68,15 +95,9 @@ namespace lux::world
         {
             const std::size_t index = impl_->objects.size();
             impl_->objects.push_back({id, {}});
-            try
-            {
-                impl_->object_index.emplace(id, index);
-            }
-            catch (...)
-            {
-                impl_->objects.pop_back();
-                throw;
-            }
+            MutationRollback rollback([&]() noexcept { impl_->objects.pop_back(); });
+            impl_->object_index.emplace(id, index);
+            rollback.commit();
             return {};
         }
         catch (const std::bad_alloc&)

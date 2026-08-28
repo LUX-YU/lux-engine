@@ -7,7 +7,6 @@
 #include <limits>
 #include <optional>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -95,19 +94,6 @@ namespace lux::serialization
             if (failure_)
             {
                 return lux::cxx::unexpected<SerializationFailure>(*failure_);
-            }
-            return std::move(bytes_);
-        }
-
-        [[nodiscard]] std::vector<std::byte> takeOrThrow() &&
-        {
-            if (failure_)
-            {
-                if (failure_->code == ESerializationError::ALLOCATION_FAILURE)
-                {
-                    throw std::bad_alloc{};
-                }
-                throw std::length_error("binary serialization limit exceeded");
             }
             return std::move(bytes_);
         }

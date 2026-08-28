@@ -17,6 +17,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskCallable.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskGraphBuilder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutorFailureInjection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutorWorker.cpp
 )
 
@@ -51,6 +52,7 @@ lux_classify_target(
 )
 
 add_executable(task_graph_test test/task_graph_test.cpp)
+target_include_directories(task_graph_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 target_link_libraries(task_graph_test PRIVATE lux::engine::core::task)
 if(MSVC)
     target_compile_options(task_graph_test PRIVATE /UNDEBUG)

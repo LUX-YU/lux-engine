@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <new>
 #include <vector>
 
 // Standard MLIR conversion + JIT plumbing.
@@ -365,12 +366,12 @@ namespace
     };
 } // anonymous
 
-std::unique_ptr<mlir::Pass> createFlowForgeToCFPass()
+static std::unique_ptr<mlir::Pass> createFlowForgeToCFPass()
 {
     return std::make_unique<FlowForgeToCFPass>();
 }
 
-FlowForgeResult<void> lowerToCF(IR& ir)
+static FlowForgeResult<void> lowerToCFImpl(IR& ir)
 {
     mlir::ModuleOp module = ir.impl().top_module.get();
     if (!module)
@@ -388,7 +389,7 @@ FlowForgeResult<void> lowerToCF(IR& ir)
     return {};
 }
 
-FlowForgeResult<void> lowerToLLVM(IR& ir)
+static FlowForgeResult<void> lowerToLLVMImpl(IR& ir)
 {
     mlir::ModuleOp module = ir.impl().top_module.get();
     if (!module)
@@ -424,12 +425,7 @@ FlowForgeResult<void> lowerToLLVM(IR& ir)
     return {};
 }
 
-FlowForgeResult<int> runMainJIT(IR& ir)
-{
-    return runMainJIT(ir, {});
-}
-
-FlowForgeResult<int> runMainJIT(
+static FlowForgeResult<int> runMainJITImpl(
     IR&                                 ir,
     const std::vector<JitNativeSymbol>& native_symbols
 )
@@ -455,7 +451,7 @@ FlowForgeResult<int> runMainJIT(
     mlir::registerBuiltinDialectTranslation(*ctx);
     mlir::registerLLVMDialectTranslation(*ctx);
 
-    auto lowered = lowerToLLVM(ir);
+    auto lowered = lowerToLLVMImpl(ir);
     if (!lowered)
         return lux::cxx::unexpected(std::move(lowered.error()));
 
@@ -516,6 +512,59 @@ FlowForgeResult<int> runMainJIT(
     auto* fnMain = reinterpret_cast<void(*)(void*)>(expectedFn.get());
     fnMain(state.data());
     return 0;
+}
+
+FlowForgeResult<void> lowerToCF(IR& ir) noexcept
+{
+    try
+    {
+        return lowerToCFImpl(ir);
+    }
+    catch (const std::bad_alloc&)
+    {
+        return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+    }
+    catch (...)
+    {
+        return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+    }
+}
+
+FlowForgeResult<void> lowerToLLVM(IR& ir) noexcept
+{
+    try
+    {
+        return lowerToLLVMImpl(ir);
+    }
+    catch (const std::bad_alloc&)
+    {
+        return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+    }
+    catch (...)
+    {
+        return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+    }
+}
+
+FlowForgeResult<int> runMainJIT(IR& ir) noexcept
+{
+    return runMainJIT(ir, {});
+}
+
+FlowForgeResult<int> runMainJIT(IR& ir, const std::vector<JitNativeSymbol>& native_symbols) noexcept
+{
+    try
+    {
+        return runMainJITImpl(ir, native_symbols);
+    }
+    catch (const std::bad_alloc&)
+    {
+        return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+    }
+    catch (...)
+    {
+        return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+    }
 }
 
 } // namespace lux::flowforge

@@ -174,8 +174,9 @@ main()
     assert(!systems.retain<ProbeSystem>(*id));
     assert(destroyed->load() == 0);
 
-    task::TaskExecutor executor(task::TaskExecutorConfig{1U, 0U});
-    assert(executor.execute(graph));
+    auto executor = task::TaskExecutor::create(task::TaskExecutorConfig{1U, 0U});
+    assert(executor);
+    assert(executor->execute(graph));
     assert(ticks.load() == 1);
 
     graph = task::TaskGraph{};
@@ -206,7 +207,7 @@ main()
         assert(systems.erase(*retained_id));
         assert(system_destroyed->load() == 0);
         assert(code_released->load() == 0);
-        assert(executor.execute(retained_graph));
+        assert(executor->execute(retained_graph));
         retained_graph = {};
         assert(system_destroyed->load() == 1);
         assert(code_released->load() == 1);

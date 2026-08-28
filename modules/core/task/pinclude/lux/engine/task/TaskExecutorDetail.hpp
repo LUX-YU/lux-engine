@@ -54,7 +54,9 @@ namespace lux::task::detail
         TaskExecutorImpl(const TaskExecutorImpl&) = delete;
         TaskExecutorImpl& operator=(const TaskExecutorImpl&) = delete;
 
-        void reserveOrThrow(std::size_t task_capacity);
+        [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure> startWorkers() noexcept;
+
+        void reserveStorage(std::size_t task_capacity);
 
         [[nodiscard]] lux::cxx::expected<void, TaskExecutorFailure> reserve(std::size_t task_capacity) noexcept;
 

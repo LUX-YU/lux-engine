@@ -2130,19 +2130,46 @@ namespace lux::flowforge {
     // ============================================================================
     // MLIRBuilder thin wrapper
     // ============================================================================
-    MLIRBuilder::MLIRBuilder(IRContext* ctx)
+    FlowForgeResult<MLIRBuilder> MLIRBuilder::create(IRContext& context) noexcept
     {
-        impl_ = std::make_unique<MLIRBuilderImpl>(
-            static_cast<mlir::MLIRContext*>(ctx->context())
-        );
+        try
+        {
+            auto impl = std::make_unique<MLIRBuilderImpl>(
+                static_cast<mlir::MLIRContext*>(context.context())
+            );
+            return MLIRBuilder(std::move(impl));
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+        }
+    }
+
+    MLIRBuilder::MLIRBuilder(std::unique_ptr<MLIRBuilderImpl> impl) noexcept : impl_(std::move(impl))
+    {
     }
 
     MLIRBuilder::~MLIRBuilder() = default;
     MLIRBuilder::MLIRBuilder(MLIRBuilder&&) noexcept = default;
     MLIRBuilder& MLIRBuilder::operator=(MLIRBuilder&&) noexcept = default;
-    FlowForgeResult<std::unique_ptr<IR>>
-    MLIRBuilder::generateIR(const FlowGraph& g) {
-        return impl_->generateMLIR(g);
+    FlowForgeResult<std::unique_ptr<IR>> MLIRBuilder::generateIR(const FlowGraph& graph) noexcept
+    {
+        try
+        {
+            return impl_->generateMLIR(graph);
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+        }
     }
 
 } // namespace lux::flowforge

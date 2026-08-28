@@ -82,6 +82,12 @@ foreach(source IN LISTS production_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
     file(READ "${source}" content)
 
+    if(content MATCHES "(^|[\r\n])[ \t]*throw([ \t;(]|$)")
+        message(FATAL_ERROR
+            "Architecture: production source '${normalized}' actively throws across the Lux failure boundary."
+        )
+    endif()
+
     if(content MATCHES
        "SystemExecutionPoint|SystemHookPoint|execution_points|dispatch_point|ESystemEventTarget::BROADCAST|ScriptEventRegistry|GlobalScriptBindingManager|ScriptBindingSession|ScriptComponent|EntityBehavior|LUX_SCRIPT_METHOD|LUX_BIND_POINT|LUX_BIND_EVENT|LUX_BEHAVIOR_LIFECYCLE|@lux[.]bind_(point|event)|default_bindings|EScriptBindingSetMode|ScriptMountFacts|ScriptEventWriter|CppBehaviorScript|PythonSourceScript|SemanticCatalog|TargetCatalog|entity_to_sidecar|entity_slots|hook_range_begin|hook_range_count|hot_path_(allocations|name_lookups|asset_lookups|signature_adaptations|scene_scans)|lua_pushlightuserdata[^;]*instance|value[.]name[ ]*==[ ]*node->name|struct[ ]+LuaComponentBinding[^}]*string_view|struct[ ]+(ScriptBindingTargetCatalogEntry|ExportMethodNode)[^}]*ScriptSemanticType")
         message(FATAL_ERROR
@@ -261,6 +267,12 @@ foreach(source IN LISTS generic_system_sources)
        "flushMutations|mutation_capacity|struct[ \t\r\n]+Mutation|mutations_")
         message(FATAL_ERROR
             "Architecture: generic System endpoint '${source}' restores deferred topology mutation."
+        )
+    endif()
+    if(content MATCHES
+       "(record|dispatch|drain)[^{]*[{][^}]*catch[ \t\r\n]*[(]")
+        message(FATAL_ERROR
+            "Architecture: Hook/Event hot path '${source}' contains exception handling."
         )
     endif()
 endforeach()
@@ -579,4 +591,6 @@ file(WRITE "${LUX_REPORT_PATH}"
     "configuration serialization includes in Engine/L1: 0\n"
     "component codecs/runtime-reflection persistence: 0\n"
     "binary serialization runtime-reflection closure: 0\n"
+    "active production throw statements: 0\n"
+    "Hook/Event hot-path catches: 0\n"
 )

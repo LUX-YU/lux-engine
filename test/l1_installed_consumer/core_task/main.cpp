@@ -15,8 +15,10 @@ main()
     if (!graph)
         return 2;
 
-    lux::task::TaskExecutor executor({0U, graph->taskCount()});
-    if (!executor.execute(*graph))
+    auto executor = lux::task::TaskExecutor::create({0U, graph->taskCount()});
+    if (!executor)
         return 3;
-    return value == 1 ? 0 : 4;
+    if (!executor->execute(*graph))
+        return 4;
+    return value == 1 ? 0 : 5;
 }

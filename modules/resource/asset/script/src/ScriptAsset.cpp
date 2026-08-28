@@ -5,7 +5,6 @@
 #include <cstring>
 #include <limits>
 #include <new>
-#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -38,7 +37,10 @@ namespace lux::asset
             void string(std::string_view value)
             {
                 if (value.size() > std::numeric_limits<std::uint32_t>::max())
-                    throw std::length_error("script asset string too large");
+                {
+                    valid_ = false;
+                    return;
+                }
                 u32(static_cast<std::uint32_t>(value.size()));
                 const auto* first = reinterpret_cast<const std::byte*>(value.data());
                 bytes_.insert(bytes_.end(), first, first + value.size());
@@ -54,8 +56,14 @@ namespace lux::asset
                 return std::move(bytes_);
             }
 
+            [[nodiscard]] bool valid() const noexcept
+            {
+                return valid_;
+            }
+
           private:
             std::vector<std::byte> bytes_;
+            bool valid_{true};
         };
 
         class Reader final
@@ -268,6 +276,9 @@ namespace lux::asset
 
                 writer.u64(asset.payload.size());
                 writer.raw(asset.payload);
+                if (!writer.valid())
+                    return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+
                 auto result = std::move(writer).finish();
                 if (result.size() > context.limits.max_encoded_bytes)
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);

@@ -78,14 +78,15 @@ main()
     assert(update && apply);
     auto graph = std::move(builder).build();
     assert(graph);
-    lux::task::TaskExecutor executor({0U, graph->taskCount()});
+    auto executor = lux::task::TaskExecutor::create({0U, graph->taskCount()});
+    assert(executor);
 
-    assert(executor.execute(*graph));
+    assert(executor->execute(*graph));
     assert(observer.calls == 1U);
     assert(!world.all_of<MaterialTextureResident>(entity));
     assert(lux::object::postEvent(weak, TextureReady{entity, 7U}) == lux::object::EEventPostStatus::POSTED);
     assert(queue.dispatchPending() == 1U);
-    assert(executor.execute(*graph));
+    assert(executor->execute(*graph));
     assert(world.get<MaterialTextureResident>(entity).texture == 7U);
 
     const auto old_revision = registry.revision();

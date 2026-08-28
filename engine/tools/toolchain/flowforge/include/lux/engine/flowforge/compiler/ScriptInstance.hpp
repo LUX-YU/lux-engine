@@ -49,14 +49,13 @@ namespace lux::flowforge
     class LUX_ENGINE_FLOWFORGE_SCRIPT_COMPILER_PUBLIC FlowScriptInstance
     {
     public:
-        /// Compile graph -> LLVM -> JIT engine. Returns nullptr (and writes
-        /// error_out) on a build/lowering/JIT failure. The instance must not
-        /// outlive `ctx` (the module lives in its MLIRContext).
-        static std::unique_ptr<FlowScriptInstance> compile(
-            IRContext&                   ctx,
-            const FlowGraph&             graph,
-            std::vector<JitNativeSymbol> extra_symbols = {},
-            std::string*                 error_out = nullptr);
+        /// Compile graph -> LLVM -> JIT engine. The instance must not outlive
+        /// `context` because the module lives in its MLIRContext.
+        [[nodiscard]] static FlowForgeResult<std::unique_ptr<FlowScriptInstance>> compile(
+            IRContext& context,
+            const FlowGraph& graph,
+            std::vector<JitNativeSymbol> extra_symbols = {}
+        ) noexcept;
 
         ~FlowScriptInstance();
         FlowScriptInstance(const FlowScriptInstance&) = delete;
@@ -70,8 +69,10 @@ namespace lux::flowforge
         /// parameter, `&some_float` for a scalar). The argument count must
         /// match the event's signature. The instance-state pointer is
         /// prepended internally — callers never pass it.
-        bool invoke(std::string_view event, std::span<void* const> args,
-                    std::string* error_out = nullptr);
+        [[nodiscard]] FlowForgeResult<void> invoke(
+            std::string_view event,
+            std::span<void* const> args
+        ) noexcept;
 
         /// The instance-state block: graph variables at their StateLayout
         /// offsets. Empty for a graph with no variables.

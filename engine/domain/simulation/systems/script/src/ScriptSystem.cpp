@@ -37,6 +37,15 @@ namespace lux::simulation::script
             EVENT,
         };
 
+        enum class EPrepareState : std::uint8_t
+        {
+            CREATED,
+            PREPARING,
+            ROLLBACK_PENDING,
+            PREPARED,
+            SHUT_DOWN,
+        };
+
         struct EndpointKey final
         {
             std::uint64_t system{};
@@ -236,8 +245,7 @@ namespace lux::simulation::script
         entt::connection destroyed;
         std::size_t active_mount_count{};
         bool suppress_attachment_signal{};
-        bool prepared{};
-        bool shut_down{};
+        EPrepareState prepare_state{EPrepareState::CREATED};
 
         [[nodiscard]] const ScriptBackendDescriptor *backend(lux::rdesc::Script::Kind kind) const noexcept
         {
@@ -964,9 +972,15 @@ namespace lux::simulation::script
             destroyed.release();
         }
 
-        void rollbackPrepare() noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> rollbackPrepare() noexcept
         {
-            static_cast<void>(disconnectEndpoints());
+            const auto disconnected = disconnectEndpoints();
+            if (!disconnected)
+            {
+                prepare_state = EPrepareState::ROLLBACK_PENDING;
+                return disconnected;
+            }
+
             releaseSignals();
             for (std::size_t index{mounts.size()}; index > 0U; --index)
                 releaseMount(static_cast<std::uint32_t>(index - 1U), EMountState::INACTIVE, true);
@@ -974,7 +988,8 @@ namespace lux::simulation::script
             dirty_current.clear();
             dirty_processing.clear();
             retirement_queue.clear();
-            prepared = false;
+            prepare_state = EPrepareState::CREATED;
+            return {};
         }
     };
 
@@ -1100,20 +1115,29 @@ namespace lux::simulation::script
 
     ScriptSystem::~ScriptSystem() noexcept
     {
-        if (state_ && !state_->shut_down && !shutdown())
+        if (state_ && state_->prepare_state != EPrepareState::SHUT_DOWN && !shutdown())
             std::terminate();
     }
 
     lux::cxx::expected<void, EScriptSystemError> ScriptSystem::prepare() noexcept
     {
-        if (!state_ || state_->shut_down)
+        if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
-        if (state_->prepared)
+        if (state_->prepare_state == EPrepareState::PREPARED)
             return {};
+        if (state_->prepare_state == EPrepareState::ROLLBACK_PENDING)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        if (state_->prepare_state == EPrepareState::PREPARING)
+            return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+
+        state_->prepare_state = EPrepareState::PREPARING;
 
         const auto layout = state_->buildLayout();
         if (!layout)
-            return layout;
+        {
+            const auto rolled_back = state_->rollbackPrepare();
+            return rolled_back ? layout : rolled_back;
+        }
 
         state_->constructed = state_->registry
             ->on_construct<detail::ScriptAttachment>()
@@ -1130,30 +1154,32 @@ namespace lux::simulation::script
             const auto prepared_mount = state_->prepareMount(static_cast<std::uint32_t>(mount_slot));
             if (!prepared_mount)
             {
-                state_->rollbackPrepare();
-                return prepared_mount;
+                const auto rolled_back = state_->rollbackPrepare();
+                return rolled_back ? prepared_mount : rolled_back;
             }
         }
 
         const auto connected = state_->connectEndpoints();
         if (!connected)
         {
-            state_->rollbackPrepare();
-            return connected;
+            const auto rolled_back = state_->rollbackPrepare();
+            return rolled_back ? connected : rolled_back;
         }
 
         state_->dirty_current.clear();
         state_->dirty_processing.clear();
         state_->retirement_queue.clear();
-        state_->prepared = true;
+        state_->prepare_state = EPrepareState::PREPARED;
         return {};
     }
 
     lux::cxx::expected<void, EScriptSystemError> ScriptSystem::flushMutations() noexcept
     {
-        if (!state_ || state_->shut_down)
+        if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
-        if (!state_->prepared)
+        if (state_->prepare_state == EPrepareState::ROLLBACK_PENDING)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        if (state_->prepare_state != EPrepareState::PREPARED)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
         for (const auto mount_slot : state_->retirement_queue)
@@ -1205,7 +1231,7 @@ namespace lux::simulation::script
 
     lux::cxx::expected<void, EScriptSystemError> ScriptSystem::shutdown() noexcept
     {
-        if (!state_ || state_->shut_down)
+        if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return {};
 
         const auto disconnected = state_->disconnectEndpoints();
@@ -1219,8 +1245,7 @@ namespace lux::simulation::script
         state_->dirty_current.clear();
         state_->dirty_processing.clear();
         state_->retirement_queue.clear();
-        state_->prepared = false;
-        state_->shut_down = true;
+        state_->prepare_state = EPrepareState::SHUT_DOWN;
         return {};
     }
 

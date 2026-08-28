@@ -262,6 +262,132 @@ namespace
         output = fixture.entity;
         return true;
     }
+
+    struct ControlledHookEndpoint final
+    {
+        HookPointId id;
+        bool fail_connect{};
+        bool busy_disconnect{};
+        void* lane_context{};
+        ScriptHookLane lane{};
+        std::size_t connect_count{};
+        std::size_t disconnect_count{};
+
+        [[nodiscard]] ScriptHookEndpointDescriptor descriptor() noexcept
+        {
+            return {
+                kSystem,
+                id,
+                lux::simulation::detail::EndpointSignatureStorage<
+                    void(const SimulationStepInfo&)>::view(),
+                this,
+                &connect,
+                &disconnect
+            };
+        }
+
+        static EndpointConnectResult connect(
+            void* context,
+            void* lane_context,
+            ScriptHookLane lane
+        ) noexcept
+        {
+            auto& self = *static_cast<ControlledHookEndpoint*>(context);
+            ++self.connect_count;
+            if (self.fail_connect)
+                return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
+            self.lane_context = lane_context;
+            self.lane = lane;
+            return {{1U, 1U}, EEndpointMutationError::NONE};
+        }
+
+        static EEndpointMutationError disconnect(
+            void* context,
+            EndpointConnectionToken token
+        ) noexcept
+        {
+            auto& self = *static_cast<ControlledHookEndpoint*>(context);
+            ++self.disconnect_count;
+            if (self.busy_disconnect)
+                return EEndpointMutationError::DISPATCH_ACTIVE;
+            if (!token.valid() || self.lane_context == nullptr)
+                return EEndpointMutationError::INVALID_TOKEN;
+            self.lane_context = nullptr;
+            self.lane = nullptr;
+            return EEndpointMutationError::NONE;
+        }
+    };
+
+    void testPrepareRollbackBusy()
+    {
+        auto simulation = makeSimulation();
+        Fixture fixture;
+        ecs::Registry registry;
+
+        ScriptSystemDescriptionBuilder authored;
+        assert(authored.addMount({
+            ScriptMountId{7U},
+            fixture.asset_id,
+            SimulationScriptMount{},
+            true,
+            {
+                {kHookSymbol, HookScriptTarget{kSystem, kHook}},
+                {kSecondaryHookSymbol, HookScriptTarget{kSystem, kSecondaryHook}}
+            }
+        }));
+        auto description = std::move(authored).build(simulation);
+        assert(description);
+
+        BackendState backend_state;
+        const std::array backends{ScriptBackendDescriptor{
+            lux::rdesc::Script::Kind::CPP_STATIC,
+            &backend_state,
+            &createInstance,
+            &prepareMethod,
+            &releaseMethod,
+            &destroyInstance
+        }};
+        ControlledHookEndpoint first{kHook, false, true};
+        ControlledHookEndpoint second{kSecondaryHook, true, false};
+        const std::array endpoints{first.descriptor(), second.descriptor()};
+        auto created = ScriptSystem::create(
+            simulation,
+            *description,
+            registry,
+            2U,
+            {&fixture, &resolveAsset},
+            {},
+            backends,
+            endpoints,
+            {}
+        );
+        assert(created);
+        auto system = std::move(*created);
+
+        const auto prepared = system.prepare();
+        assert(!prepared);
+        assert(prepared.error() == EScriptSystemError::ENDPOINT_BUSY);
+        assert(first.lane_context != nullptr);
+        assert(backend_state.creates == 1U);
+        assert(backend_state.prepares == 2U);
+        assert(backend_state.releases == 0U);
+        assert(backend_state.destroys == 0U);
+        assert(fixture.leases == 1U && fixture.releases == 0U);
+
+        const auto repeated_prepare = system.prepare();
+        assert(!repeated_prepare);
+        assert(repeated_prepare.error() == EScriptSystemError::ENDPOINT_BUSY);
+        const auto flushed = system.flushMutations();
+        assert(!flushed);
+        assert(flushed.error() == EScriptSystemError::ENDPOINT_BUSY);
+
+        first.busy_disconnect = false;
+        assert(system.shutdown());
+        assert(first.lane_context == nullptr);
+        assert(backend_state.releases == 2U);
+        assert(backend_state.destroys == 1U);
+        assert(fixture.leases == 1U && fixture.releases == 1U);
+    }
 }
 
 int main()
@@ -420,5 +546,6 @@ int main()
     assert(backend_state.destroys == 3U);
     assert(backend_state.releases == 10U);
     assert(fixture.leases == 3U && fixture.releases == 3U);
+    testPrepareRollbackBusy();
     return 0;
 }

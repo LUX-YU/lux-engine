@@ -832,6 +832,7 @@ namespace lux::simulation
                     source.configuration_schema_version;
                 record.capabilities = source.capabilities;
                 record.hooks.reserve(source.hooks.size());
+                record.hook_ordinals.reserve(source.hooks.size());
                 for (const auto& hook : source.hooks)
                 {
                     SimulationDescription::HookRecord hook_record;
@@ -846,11 +847,14 @@ namespace lux::simulation
                             parameter.pass
                         });
                     }
+                    record.hook_ordinals.emplace(hook.id.value, record.hooks.size());
                     record.hooks.push_back(std::move(hook_record));
                 }
                 record.events.reserve(source.events.size());
+                record.event_ordinals.reserve(source.events.size());
                 for (const auto& event : source.events)
                 {
+                    record.event_ordinals.emplace(event.id.value, record.events.size());
                     record.events.push_back({
                         event.id,
                         event.name,
@@ -878,6 +882,7 @@ namespace lux::simulation
                 total_configuration += source.configuration.size();
             }
             result.systems_.reserve(impl_->systems.size());
+            result.system_ordinals_.reserve(impl_->systems.size());
             result.configuration_payload_.reserve(total_configuration);
             for (auto& source : impl_->systems)
             {
@@ -890,6 +895,7 @@ namespace lux::simulation
                         return SystemTypeIdLess{}(candidate.type, id);
                     }
                 );
+                result.system_ordinals_.emplace(source.instance_id.value, result.systems_.size());
                 result.systems_.push_back({
                     source.instance_id,
                     std::move(source.instance_name),

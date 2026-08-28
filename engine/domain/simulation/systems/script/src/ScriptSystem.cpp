@@ -12,6 +12,7 @@
 #include <new>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,24 @@ namespace lux::simulation::script
         {
             HOOK,
             EVENT,
+        };
+
+        struct EndpointKey final
+        {
+            std::uint64_t system{};
+            std::uint64_t endpoint{};
+
+            friend bool operator==(EndpointKey, EndpointKey) noexcept = default;
+        };
+
+        struct EndpointKeyHash final
+        {
+            [[nodiscard]] std::size_t operator()(EndpointKey key) const noexcept
+            {
+                const auto system_hash = std::hash<std::uint64_t>{}(key.system);
+                const auto endpoint_hash = std::hash<std::uint64_t>{}(key.endpoint);
+                return system_hash ^ (endpoint_hash + 0x9e3779b9U + (system_hash << 6U) + (system_hash >> 2U));
+            }
         };
 
         [[nodiscard]] constexpr std::size_t backendIndex(lux::rdesc::Script::Kind kind) noexcept
@@ -201,6 +220,8 @@ namespace lux::simulation::script
         std::array<ScriptBackendDescriptor, kBackendKindCount> backends;
         std::vector<ScriptHookEndpointDescriptor> hook_endpoints;
         std::vector<ScriptEventEndpointDescriptor> event_endpoints;
+        std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> hook_endpoint_index;
+        std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> event_endpoint_index;
         std::vector<RuntimeMount> mounts;
         std::vector<RuntimeBinding> bindings;
         std::vector<PreparedMethod> methods;
@@ -226,74 +247,16 @@ namespace lux::simulation::script
             return std::addressof(backends[index]);
         }
 
-        [[nodiscard]] const ScriptHookEndpointDescriptor *findHookEndpoint(HookScriptTarget target) const noexcept
+        [[nodiscard]] std::optional<std::uint32_t> findHookEndpoint(HookScriptTarget target) const noexcept
         {
-            const auto found = std::find_if(
-                hook_endpoints.begin(),
-                hook_endpoints.end(),
-                [&](const auto &endpoint) noexcept
-                {
-                    return endpoint.system == target.system && endpoint.hook == target.hook;
-                }
-            );
-            return found == hook_endpoints.end() ? nullptr : std::addressof(*found);
+            const auto found = hook_endpoint_index.find({target.system.value, target.hook.value});
+            return found == hook_endpoint_index.end() ? std::nullopt : std::optional<std::uint32_t>{found->second};
         }
 
-        [[nodiscard]] const ScriptEventEndpointDescriptor *findEventEndpoint(EventScriptTarget target) const noexcept
+        [[nodiscard]] std::optional<std::uint32_t> findEventEndpoint(EventScriptTarget target) const noexcept
         {
-            const auto found = std::find_if(
-                event_endpoints.begin(),
-                event_endpoints.end(),
-                [&](const auto &endpoint) noexcept
-                {
-                    return endpoint.system == target.system && endpoint.event == target.event;
-                }
-            );
-            return found == event_endpoints.end() ? nullptr : std::addressof(*found);
-        }
-
-        [[nodiscard]] std::uint32_t ensureHookBucket(const ScriptHookEndpointDescriptor *endpoint)
-        {
-            for (std::size_t index{}; index < hooks.size(); ++index)
-            {
-                if (hooks[index].endpoint == endpoint)
-                    return static_cast<std::uint32_t>(index);
-            }
-
-            hooks.emplace_back();
-            auto &bucket = hooks.back();
-            bucket.owner = this;
-            bucket.endpoint = endpoint;
-            return static_cast<std::uint32_t>(hooks.size() - 1U);
-        }
-
-        [[nodiscard]] std::uint32_t ensureEventBucket(const ScriptEventEndpointDescriptor *endpoint)
-        {
-            for (std::size_t index{}; index < events.size(); ++index)
-            {
-                if (events[index].endpoint == endpoint)
-                    return static_cast<std::uint32_t>(index);
-            }
-
-            events.emplace_back();
-            auto &bucket = events.back();
-            bucket.owner = this;
-            bucket.endpoint = endpoint;
-            return static_cast<std::uint32_t>(events.size() - 1U);
-        }
-
-        [[nodiscard]] std::uint32_t ensureMethod(RuntimeMount &mount, lux::script::ScriptSymbolId symbol)
-        {
-            const auto method_end = mount.method_first + mount.method_count;
-            for (std::size_t index{mount.method_first}; index < method_end; ++index)
-            {
-                if (methods[index].symbol == symbol)
-                    return static_cast<std::uint32_t>(index);
-            }
-
-            methods.push_back({symbol, {}});
-            ++mount.method_count;
-            return static_cast<std::uint32_t>(methods.size() - 1U);
+            const auto found = event_endpoint_index.find({target.system.value, target.event.value});
+            return found == event_endpoint_index.end() ? std::nullopt : std::optional<std::uint32_t>{found->second};
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> buildLayout() noexcept
@@ -312,9 +275,19 @@ namespace lux::simulation::script
                 methods.clear();
                 methods.reserve(binding_capacity);
                 hooks.clear();
-                hooks.reserve(hook_endpoints.size());
+                hooks.resize(hook_endpoints.size());
+                for (std::size_t index{}; index < hooks.size(); ++index)
+                {
+                    hooks[index].owner = this;
+                    hooks[index].endpoint = std::addressof(hook_endpoints[index]);
+                }
                 events.clear();
-                events.reserve(event_endpoints.size());
+                events.resize(event_endpoints.size());
+                for (std::size_t index{}; index < events.size(); ++index)
+                {
+                    events[index].owner = this;
+                    events[index].endpoint = std::addressof(event_endpoints[index]);
+                }
 
                 for (std::size_t mount_slot{}; mount_slot < authored_mounts.size(); ++mount_slot)
                 {
@@ -326,29 +299,45 @@ namespace lux::simulation::script
                     if (!authored.enabled)
                         continue;
 
+                    std::unordered_map<lux::script::ScriptSymbolId, std::uint32_t> method_index;
+                    method_index.reserve(authored.bindings.size());
+
                     for (const auto &binding : authored.bindings)
                     {
                         RuntimeBinding runtime;
-                        runtime.method_slot = ensureMethod(mount, binding.symbol);
+                        const auto existing_method = method_index.find(binding.symbol);
+                        if (existing_method != method_index.end())
+                        {
+                            runtime.method_slot = existing_method->second;
+                        }
+                        else
+                        {
+                            if (methods.size() >= std::numeric_limits<std::uint32_t>::max())
+                                return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
+                            runtime.method_slot = static_cast<std::uint32_t>(methods.size());
+                            methods.push_back({binding.symbol, {}});
+                            method_index.emplace(binding.symbol, runtime.method_slot);
+                            ++mount.method_count;
+                        }
                         if (const auto *target = std::get_if<HookScriptTarget>(&binding.target))
                         {
-                            const auto *endpoint = findHookEndpoint(*target);
-                            if (endpoint == nullptr)
+                            const auto endpoint = findHookEndpoint(*target);
+                            if (!endpoint)
                                 return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_NOT_FOUND);
 
                             runtime.kind = EBindingKind::HOOK;
-                            runtime.bucket_slot = ensureHookBucket(endpoint);
+                            runtime.bucket_slot = *endpoint;
                             ++hooks[runtime.bucket_slot].handler_capacity;
                         }
                         else
                         {
                             const auto event_target = std::get<EventScriptTarget>(binding.target);
-                            const auto *endpoint = findEventEndpoint(event_target);
-                            if (endpoint == nullptr)
+                            const auto endpoint = findEventEndpoint(event_target);
+                            if (!endpoint)
                                 return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_NOT_FOUND);
 
                             runtime.kind = EBindingKind::EVENT;
-                            runtime.bucket_slot = ensureEventBucket(endpoint);
+                            runtime.bucket_slot = *endpoint;
                             ++events[runtime.bucket_slot].handler_capacity;
                         }
                         bindings.push_back(runtime);
@@ -903,6 +892,8 @@ namespace lux::simulation::script
         {
             for (auto &bucket : hooks)
             {
+                if (bucket.handler_capacity == 0U)
+                    continue;
                 const auto connected = bucket.endpoint->connect(
                     bucket.endpoint->context,
                     std::addressof(bucket),
@@ -914,6 +905,8 @@ namespace lux::simulation::script
             }
             for (auto &bucket : events)
             {
+                if (bucket.handler_capacity == 0U)
+                    continue;
                 const auto connected = bucket.endpoint->connect(
                     bucket.endpoint->context,
                     std::addressof(bucket),
@@ -1017,51 +1010,65 @@ namespace lux::simulation::script
             backend_table[index] = backend;
         }
 
-        for (std::size_t index{}; index < hooks.size(); ++index)
-        {
-            const auto described = simulation.findHookPoint(hooks[index].system, hooks[index].hook);
-            const bool is_invalid_identity = !hooks[index].system.valid() || !hooks[index].hook.valid();
-            const bool is_invalid_functions = hooks[index].connect == nullptr || hooks[index].disconnect == nullptr;
-            const bool is_invalid_signature = !described ||
-                described.parameterCount() != hooks[index].signature.parameters.size() ||
-                !hooks[index].signature.returns.empty();
-            if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
-                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-
-            for (std::size_t parameter{}; parameter < described.parameterCount(); ++parameter)
-            {
-                if (described.parameterAt(parameter) != hooks[index].signature.parameters[parameter])
-                    return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
-            }
-            for (std::size_t previous{}; previous < index; ++previous)
-            {
-                if (hooks[previous].system == hooks[index].system && hooks[previous].hook == hooks[index].hook)
-                    return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
-            }
-        }
-
-        for (std::size_t index{}; index < events.size(); ++index)
-        {
-            const auto described = simulation.findEvent(events[index].system, events[index].event);
-            const bool is_invalid_identity = !events[index].system.valid() || !events[index].event.valid();
-            const bool is_invalid_functions = events[index].connect == nullptr || events[index].disconnect == nullptr;
-            const bool is_invalid_signature = !described ||
-                described.route() != events[index].route ||
-                described.payloadType() != events[index].payload_type.type_id ||
-                described.payloadSchemaName() != events[index].payload_type.canonical_name ||
-                events[index].payload_type.pass != lux::semantic::EValuePass::CONST_REF;
-            if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
-                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-
-            for (std::size_t previous{}; previous < index; ++previous)
-            {
-                if (events[previous].system == events[index].system && events[previous].event == events[index].event)
-                    return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
-            }
-        }
-
         try
         {
+            std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> hook_endpoint_index;
+            std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> event_endpoint_index;
+            hook_endpoint_index.reserve(hooks.size());
+            event_endpoint_index.reserve(events.size());
+
+            for (std::size_t index{}; index < hooks.size(); ++index)
+            {
+                if (index >= std::numeric_limits<std::uint32_t>::max())
+                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
+
+                const auto described = simulation.findHookPoint(hooks[index].system, hooks[index].hook);
+                const bool is_invalid_identity = !hooks[index].system.valid() || !hooks[index].hook.valid();
+                const bool is_invalid_functions = hooks[index].connect == nullptr || hooks[index].disconnect == nullptr;
+                const bool is_invalid_signature = !described ||
+                    described.parameterCount() != hooks[index].signature.parameters.size() ||
+                    !hooks[index].signature.returns.empty();
+                if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
+                    return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+
+                for (std::size_t parameter{}; parameter < described.parameterCount(); ++parameter)
+                {
+                    if (described.parameterAt(parameter) != hooks[index].signature.parameters[parameter])
+                        return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
+                }
+                const auto inserted = hook_endpoint_index.emplace(
+                    EndpointKey{hooks[index].system.value, hooks[index].hook.value},
+                    static_cast<std::uint32_t>(index)
+                );
+                if (!inserted.second)
+                    return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
+            }
+
+            for (std::size_t index{}; index < events.size(); ++index)
+            {
+                if (index >= std::numeric_limits<std::uint32_t>::max())
+                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
+
+                const auto described = simulation.findEvent(events[index].system, events[index].event);
+                const bool is_invalid_identity = !events[index].system.valid() || !events[index].event.valid();
+                const bool is_invalid_functions = events[index].connect == nullptr ||
+                    events[index].disconnect == nullptr;
+                const bool is_invalid_signature = !described ||
+                    described.route() != events[index].route ||
+                    described.payloadType() != events[index].payload_type.type_id ||
+                    described.payloadSchemaName() != events[index].payload_type.canonical_name ||
+                    events[index].payload_type.pass != lux::semantic::EValuePass::CONST_REF;
+                if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
+                    return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+
+                const auto inserted = event_endpoint_index.emplace(
+                    EndpointKey{events[index].system.value, events[index].event.value},
+                    static_cast<std::uint32_t>(index)
+                );
+                if (!inserted.second)
+                    return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
+            }
+
             auto state = std::make_unique<State>();
             state->simulation = std::addressof(simulation);
             state->description = std::addressof(description);
@@ -1072,6 +1079,8 @@ namespace lux::simulation::script
             state->backends = backend_table;
             state->hook_endpoints.assign(hooks.begin(), hooks.end());
             state->event_endpoints.assign(events.begin(), events.end());
+            state->hook_endpoint_index = std::move(hook_endpoint_index);
+            state->event_endpoint_index = std::move(event_endpoint_index);
             state->failure_capacity = failure_capacity;
             state->failures.reserve(failure_capacity);
             return ScriptSystem(std::move(state));

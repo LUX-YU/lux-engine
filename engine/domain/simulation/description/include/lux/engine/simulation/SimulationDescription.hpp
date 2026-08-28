@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace lux::simulation
@@ -259,6 +260,8 @@ namespace lux::simulation
             std::vector<std::string> capabilities;
             std::vector<HookRecord> hooks;
             std::vector<EventRecord> events;
+            std::unordered_map<std::uint64_t, std::size_t> hook_ordinals;
+            std::unordered_map<std::uint64_t, std::size_t> event_ordinals;
         };
 
         struct SystemRecord final
@@ -281,6 +284,7 @@ namespace lux::simulation
         std::vector<std::byte> payload_;
         std::vector<SystemTypeRecord> system_types_;
         std::vector<SystemRecord> systems_;
+        std::unordered_map<std::uint64_t, std::size_t> system_ordinals_;
         std::vector<std::byte> configuration_payload_;
         std::vector<DependencyRecord> dependencies_;
 

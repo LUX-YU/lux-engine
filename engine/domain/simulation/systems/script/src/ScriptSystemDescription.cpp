@@ -2,10 +2,38 @@
 
 #include <algorithm>
 #include <new>
+#include <optional>
+#include <stdexcept>
 #include <type_traits>
 
 namespace lux::simulation::script
 {
+    std::size_t ScriptSystemDescriptionBuilder::BindingHash::operator()(
+        const ScriptBindingDescription& binding
+    ) const noexcept
+    {
+        const auto target_hash = std::visit(
+            [](const auto& target) noexcept
+            {
+                using Target = std::remove_cvref_t<decltype(target)>;
+                const auto endpoint = [&]() noexcept
+                {
+                    if constexpr (std::is_same_v<Target, HookScriptTarget>)
+                        return target.hook.value;
+                    else
+                        return target.event.value;
+                }();
+                const auto system_hash = std::hash<std::uint64_t>{}(target.system.value);
+                const auto endpoint_hash = std::hash<std::uint64_t>{}(endpoint);
+                const auto kind_hash = std::is_same_v<Target, HookScriptTarget> ? 0U : 1U;
+                return system_hash ^ (endpoint_hash << 1U) ^ kind_hash;
+            },
+            binding.target
+        );
+        const auto symbol_hash = std::hash<lux::script::ScriptSymbolId>{}(binding.symbol);
+        return symbol_hash ^ (target_hash + 0x9e3779b9U + (symbol_hash << 6U) + (symbol_hash >> 2U));
+    }
+
     lux::cxx::expected<void, EScriptSystemDescriptionError>
     ScriptSystemDescriptionBuilder::addMount(
         ScriptMountDescription mount
@@ -18,11 +46,13 @@ namespace lux::simulation::script
             return lux::cxx::unexpected(
                 EScriptSystemDescriptionError::INVALID_MOUNT);
         }
-        for (std::size_t index{}; index < mount.bindings.size(); ++index)
+        try
         {
-            const auto& binding = mount.bindings[index];
-            if (binding.symbol == lux::script::InvalidScriptSymbolId ||
-                !std::visit(
+            std::unordered_set<ScriptBindingDescription, BindingHash> binding_index;
+            binding_index.reserve(mount.bindings.size());
+            for (const auto& binding : mount.bindings)
+            {
+                const bool is_valid_target = std::visit(
                     [](const auto& target) noexcept
                     {
                         using Target = std::remove_cvref_t<decltype(target)>;
@@ -31,55 +61,58 @@ namespace lux::simulation::script
                         else
                             return target.system.valid() && target.event.valid();
                     },
-                    binding.target))
-            {
-                return lux::cxx::unexpected(
-                    EScriptSystemDescriptionError::INVALID_MOUNT);
+                    binding.target
+                );
+                if (binding.symbol == lux::script::InvalidScriptSymbolId || !is_valid_target)
+                    return lux::cxx::unexpected(EScriptSystemDescriptionError::INVALID_MOUNT);
+                if (!binding_index.insert(binding).second)
+                    return lux::cxx::unexpected(EScriptSystemDescriptionError::DUPLICATE_BINDING);
             }
-            if (std::find(
-                    mount.bindings.begin(),
-                    mount.bindings.begin() + index,
-                    binding) != mount.bindings.begin() + index)
+
+            if (mount_ids_.contains(mount.id.value))
+                return lux::cxx::unexpected(EScriptSystemDescriptionError::DUPLICATE_MOUNT_ID);
+
+            std::optional<lux::world::WorldObjectId> entity_object;
+            if (const auto* entity = std::get_if<EntityScriptMount>(&mount.scope))
             {
-                return lux::cxx::unexpected(
-                    EScriptSystemDescriptionError::DUPLICATE_BINDING);
+                entity_object = entity->object;
+                if (entity_objects_.contains(*entity_object))
+                    return lux::cxx::unexpected(EScriptSystemDescriptionError::INVALID_MOUNT);
             }
-        }
-        if (std::any_of(
-                mounts_.begin(),
-                mounts_.end(),
-                [&](const auto& existing) noexcept
-                {
-                    return existing.id == mount.id;
-                }))
-        {
-            return lux::cxx::unexpected(
-                EScriptSystemDescriptionError::DUPLICATE_MOUNT_ID);
-        }
-        if (const auto* entity = std::get_if<EntityScriptMount>(&mount.scope);
-            entity != nullptr && std::any_of(
-                mounts_.begin(),
-                mounts_.end(),
-                [&](const auto& existing) noexcept
-                {
-                    const auto* existing_entity =
-                        std::get_if<EntityScriptMount>(&existing.scope);
-                    return existing_entity &&
-                        existing_entity->object == entity->object;
-                }))
-        {
-            return lux::cxx::unexpected(
-                EScriptSystemDescriptionError::INVALID_MOUNT);
-        }
-        try
-        {
+
+            const auto mount_id = mount.id.value;
             mounts_.push_back(std::move(mount));
+            try
+            {
+                mount_ids_.insert(mount_id);
+                if (entity_object)
+                    entity_objects_.insert(*entity_object);
+            }
+            catch (const std::length_error&)
+            {
+                mount_ids_.erase(mount_id);
+                if (entity_object)
+                    entity_objects_.erase(*entity_object);
+                mounts_.pop_back();
+                return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
+            }
+            catch (const std::bad_alloc&)
+            {
+                mount_ids_.erase(mount_id);
+                if (entity_object)
+                    entity_objects_.erase(*entity_object);
+                mounts_.pop_back();
+                return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
+            }
             return {};
+        }
+        catch (const std::length_error&)
+        {
+            return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(
-                EScriptSystemDescriptionError::ALLOCATION_FAILURE);
+            return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
         }
     }
 

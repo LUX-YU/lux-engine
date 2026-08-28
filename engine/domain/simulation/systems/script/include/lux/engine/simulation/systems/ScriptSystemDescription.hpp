@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -126,6 +127,13 @@ namespace lux::simulation::script
         build(const SimulationDescription& simulation) && noexcept;
 
       private:
+        struct BindingHash final
+        {
+            [[nodiscard]] std::size_t operator()(const ScriptBindingDescription& binding) const noexcept;
+        };
+
         std::vector<ScriptMountDescription> mounts_;
+        std::unordered_set<std::uint64_t> mount_ids_;
+        std::unordered_set<lux::world::WorldObjectId, lux::world::WorldObjectIdHash> entity_objects_;
     };
 }

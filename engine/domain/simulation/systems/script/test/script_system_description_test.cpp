@@ -135,6 +135,53 @@ int main()
     assert(!rejected);
     assert(rejected.error() == EScriptSystemDescriptionError::SCOPE_MISMATCH);
 
+    ScriptSystemDescriptionBuilder duplicate_binding;
+    assert(!duplicate_binding.addMount(ScriptMountDescription{
+        ScriptMountId{4U},
+        makeAsset(4U),
+        SimulationScriptMount{},
+        true,
+        {{11U, HookScriptTarget{kSystem, kHook}}, {11U, HookScriptTarget{kSystem, kHook}}}
+    }));
+
+    ScriptSystemDescriptionBuilder duplicate_identity;
+    assert(duplicate_identity.addMount(ScriptMountDescription{
+        ScriptMountId{5U},
+        makeAsset(5U),
+        EntityScriptMount{makeObject(5U)},
+        true,
+        {{12U, HookScriptTarget{kSystem, kHook}}}
+    }));
+    assert(!duplicate_identity.addMount(ScriptMountDescription{
+        ScriptMountId{5U},
+        makeAsset(6U),
+        SimulationScriptMount{},
+        true,
+        {{13U, HookScriptTarget{kSystem, kHook}}}
+    }));
+    assert(!duplicate_identity.addMount(ScriptMountDescription{
+        ScriptMountId{6U},
+        makeAsset(6U),
+        EntityScriptMount{makeObject(5U)},
+        true,
+        {{13U, HookScriptTarget{kSystem, kHook}}}
+    }));
+
+    ScriptSystemDescriptionBuilder scaled;
+    constexpr std::size_t kMountCount{4096U};
+    for (std::size_t index{}; index < kMountCount; ++index)
+    {
+        assert(scaled.addMount(ScriptMountDescription{
+            ScriptMountId{100U + index},
+            makeAsset(7U),
+            SimulationScriptMount{},
+            true,
+            {{14U + index, HookScriptTarget{kSystem, kHook}}}
+        }));
+    }
+    auto scaled_description = std::move(scaled).build(simulation);
+    assert(scaled_description && scaled_description->mounts().size() == kMountCount);
+
     SimulationDescriptionBuilder simulation_builder;
     assert(addScriptSystemData(
         simulation_builder,

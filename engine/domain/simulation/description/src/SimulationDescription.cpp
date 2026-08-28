@@ -169,15 +169,10 @@ namespace lux::simulation
     ) const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
-        const auto& hooks = description_->system_types_[type].hooks;
-        const auto found = std::find_if(
-            hooks.begin(), hooks.end(),
-            [id](const auto& hook) noexcept { return hook.id == id; });
-        return found != hooks.end()
-            ? SimulationHookPointView(
-                *description_, system_index_,
-                static_cast<std::size_t>(std::distance(hooks.begin(), found)))
-            : SimulationHookPointView{};
+        const auto& ordinals = description_->system_types_[type].hook_ordinals;
+        const auto found = ordinals.find(id.value);
+        return found != ordinals.end() ? SimulationHookPointView(*description_, system_index_, found->second)
+                                       : SimulationHookPointView{};
     }
 
     SimulationHookPointView SimulationSystemView::findHookPoint(
@@ -232,15 +227,10 @@ namespace lux::simulation
     SimulationEventView SimulationSystemView::findEvent(EventPointId id) const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
-        const auto& events = description_->system_types_[type].events;
-        const auto found = std::find_if(
-            events.begin(), events.end(),
-            [id](const auto& event) noexcept { return event.id == id; });
-        return found != events.end()
-            ? SimulationEventView(
-                *description_, system_index_,
-                static_cast<std::size_t>(std::distance(events.begin(), found)))
-            : SimulationEventView{};
+        const auto& ordinals = description_->system_types_[type].event_ordinals;
+        const auto found = ordinals.find(id.value);
+        return found != ordinals.end() ? SimulationEventView(*description_, system_index_, found->second)
+                                       : SimulationEventView{};
     }
 
     SimulationHookPointView::SimulationHookPointView(
@@ -420,6 +410,8 @@ namespace lux::simulation
         addRetainedArray(result, payload_.capacity(), sizeof(std::byte));
         addRetainedArray(result, system_types_.capacity(), sizeof(SystemTypeRecord));
         addRetainedArray(result, systems_.capacity(), sizeof(SystemRecord));
+        addRetainedArray(result, system_ordinals_.size(), sizeof(decltype(system_ordinals_)::value_type));
+        addRetainedArray(result, system_ordinals_.bucket_count(), sizeof(void*));
         addRetainedArray(
             result,
             configuration_payload_.capacity(),
@@ -441,6 +433,10 @@ namespace lux::simulation
             addRetainedArray(result, type.capabilities.capacity(), sizeof(std::string));
             addRetainedArray(result, type.hooks.capacity(), sizeof(HookRecord));
             addRetainedArray(result, type.events.capacity(), sizeof(EventRecord));
+            addRetainedArray(result, type.hook_ordinals.size(), sizeof(decltype(type.hook_ordinals)::value_type));
+            addRetainedArray(result, type.hook_ordinals.bucket_count(), sizeof(void*));
+            addRetainedArray(result, type.event_ordinals.size(), sizeof(decltype(type.event_ordinals)::value_type));
+            addRetainedArray(result, type.event_ordinals.bucket_count(), sizeof(void*));
             for (const auto& capability : type.capabilities)
                 addRetainedArray(result, capability.capacity(), sizeof(char));
             for (const auto& hook : type.hooks)
@@ -516,20 +512,9 @@ namespace lux::simulation
         SystemInstanceId id
     ) const noexcept
     {
-        const auto found = std::lower_bound(
-            systems_.begin(),
-            systems_.end(),
-            id,
-            [](const SystemRecord& system, SystemInstanceId value) noexcept
-            {
-                return system.id < value;
-            }
-        );
-        return found != systems_.end() && found->id == id
-            ? SimulationSystemView(
-                *this,
-                static_cast<std::size_t>(std::distance(systems_.begin(), found)))
-            : SimulationSystemView{};
+        const auto found = system_ordinals_.find(id.value);
+        return found != system_ordinals_.end() ? SimulationSystemView(*this, found->second)
+                                               : SimulationSystemView{};
     }
 
     SimulationSystemView SimulationDescription::findSystem(

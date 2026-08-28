@@ -30,7 +30,7 @@ target_link_libraries(
     PUBLIC
         lux::engine::simulation::description
         lux::engine::simulation::system
-        lux::engine::simulation::simulation_scripting
+        lux::engine::simulation::simulation_scripting_core
         lux::engine::simulation::ecs::core
         lux::engine::function::script_core
         lux::engine::resource::asset
@@ -40,7 +40,7 @@ target_link_libraries(
 component_add_transitive_commands(
     simulation_script
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
-    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_scripting)"
+    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_scripting_core)"
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"

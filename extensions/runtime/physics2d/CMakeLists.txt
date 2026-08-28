@@ -159,7 +159,7 @@ endif()
 if(TARGET toolchain_game_export AND TARGET lux_player AND TARGET render_features)
     add_executable(
         game_export_extension_smoke
-        ${PROJECT_SOURCE_DIR}/engine/tools/toolchain/game_export/test/game_export_smoke.cpp
+        ${PROJECT_SOURCE_DIR}/engine/toolchain/game_export/test/game_export_smoke.cpp
     )
     lux_classify_target(
         TARGET  game_export_extension_smoke

@@ -68,5 +68,5 @@ add_test(NAME lua_importer_contract_test COMMAND lua_importer_contract_test)
 
 install(
     PROGRAMS ${_lua_importer}
-    DESTINATION share/lux-engine-toolchain/script/lua
+    DESTINATION share/lux-engine-toolchain/lua
 )

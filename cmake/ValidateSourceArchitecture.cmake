@@ -19,11 +19,6 @@ if(EXISTS "${source_root}/engine/ecs")
         "Architecture: retired top-level engine/ecs domain must not be restored."
     )
 endif()
-if(EXISTS "${source_root}/engine/editor")
-    message(FATAL_ERROR
-        "Architecture: Rev2 has no canonical Editor product; do not create a temporary editor tree."
-    )
-endif()
 foreach(retired_root IN ITEMS
     "${source_root}/engine/flowforge"
     "${source_root}/engine/graph_kit"
@@ -33,7 +28,7 @@ foreach(retired_root IN ITEMS
     "${source_root}/engine/domain/simulation/script"
     "${source_root}/engine/authoring/script_binding"
     "${source_root}/engine/authoring/flowforge"
-    "${source_root}/engine/toolchain"
+    "${source_root}/engine/tools"
 )
     if(EXISTS "${retired_root}")
         message(FATAL_ERROR
@@ -74,8 +69,10 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/domain/simulation/*/*/src/*.cpp"
     "${source_root}/engine/authoring/*/include/*.hpp"
     "${source_root}/engine/authoring/*/src/*.cpp"
-    "${source_root}/engine/tools/toolchain/*/include/*.hpp"
-    "${source_root}/engine/tools/toolchain/*/src/*.cpp"
+    "${source_root}/engine/editor/*/include/*.hpp"
+    "${source_root}/engine/editor/*/src/*.cpp"
+    "${source_root}/engine/toolchain/*/include/*.hpp"
+    "${source_root}/engine/toolchain/*/src/*.cpp"
 )
 
 foreach(source IN LISTS production_sources)
@@ -298,15 +295,15 @@ if(EXISTS "${source_root}/modules/function/flowforge")
     endforeach()
 endif()
 
-if(EXISTS "${source_root}/engine/tools/toolchain/flowforge")
+if(EXISTS "${source_root}/engine/toolchain/flowforge")
     string(CONCAT flowforge_compiler_forbidden
         "lux/engine/(simulation|authoring|editor)|"
         "lux::engine::(simulation|authoring|editor)|imgui::|[/\\]legacy[/\\]"
     )
     file(GLOB_RECURSE flowforge_compiler_sources LIST_DIRECTORIES false
-        "${source_root}/engine/tools/toolchain/flowforge/*.hpp"
-        "${source_root}/engine/tools/toolchain/flowforge/*.cpp"
-        "${source_root}/engine/tools/toolchain/flowforge/*.cmake"
+        "${source_root}/engine/toolchain/flowforge/*.hpp"
+        "${source_root}/engine/toolchain/flowforge/*.cpp"
+        "${source_root}/engine/toolchain/flowforge/*.cmake"
     )
     foreach(source IN LISTS flowforge_compiler_sources)
         file(READ "${source}" content)
@@ -318,11 +315,11 @@ if(EXISTS "${source_root}/engine/tools/toolchain/flowforge")
     endforeach()
 endif()
 
-if(EXISTS "${source_root}/engine/tools/editor/node_graph")
+if(EXISTS "${source_root}/engine/editor/node_graph")
     file(GLOB_RECURSE node_graph_editor_sources LIST_DIRECTORIES false
-        "${source_root}/engine/tools/editor/node_graph/*.hpp"
-        "${source_root}/engine/tools/editor/node_graph/*.cpp"
-        "${source_root}/engine/tools/editor/node_graph/*.cmake"
+        "${source_root}/engine/editor/node_graph/*.hpp"
+        "${source_root}/engine/editor/node_graph/*.cpp"
+        "${source_root}/engine/editor/node_graph/*.cmake"
     )
     foreach(source IN LISTS node_graph_editor_sources)
         file(READ "${source}" content)
@@ -488,8 +485,10 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/engine/domain/simulation/*/*/CMakeLists.txt"
     "${source_root}/engine/authoring/CMakeLists.txt"
     "${source_root}/engine/authoring/*/CMakeLists.txt"
-    "${source_root}/engine/tools/toolchain/CMakeLists.txt"
-    "${source_root}/engine/tools/toolchain/*/CMakeLists.txt"
+    "${source_root}/engine/editor/CMakeLists.txt"
+    "${source_root}/engine/editor/*/CMakeLists.txt"
+    "${source_root}/engine/toolchain/CMakeLists.txt"
+    "${source_root}/engine/toolchain/*/CMakeLists.txt"
 )
 foreach(source IN LISTS active_cmake)
     file(READ "${source}" content)

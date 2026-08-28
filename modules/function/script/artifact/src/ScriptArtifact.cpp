@@ -214,8 +214,6 @@ namespace lux::script
                 return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
             const auto& artifact = *static_cast<const ScriptArtifact*>(payload);
             const auto& description = artifact.description();
-            if (!lux::rdesc::validScriptDescription(description))
-                return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
             try
             {
                 Writer writer;
@@ -464,8 +462,6 @@ namespace lux::script
                 }
                 std::vector<std::byte> artifact_payload(payload.begin(), payload.end());
                 decoded += static_cast<std::size_t>(payload_size);
-                if (!lux::rdesc::validScriptDescription(description))
-                    return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 auto artifact = ScriptArtifact::create(std::move(description), std::move(artifact_payload));
                 if (!artifact)
                 {
@@ -490,7 +486,7 @@ namespace lux::script
     lux::cxx::expected<ScriptArtifact, EScriptArtifactError>
     ScriptArtifact::create(lux::rdesc::Script description, std::vector<std::byte> payload) noexcept
     {
-        if (!lux::rdesc::validScriptDescription(description))
+        if (!lux::rdesc::detail::validScriptBody(description))
             return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
 
         ScriptArtifact artifact{std::move(description), std::move(payload)};
@@ -499,7 +495,10 @@ namespace lux::script
             artifact.export_index_.reserve(artifact.description_.exports.size());
             for (std::size_t index{}; index < artifact.description_.exports.size(); ++index)
             {
-                const auto symbol = artifact.description_.exports[index].symbol_id;
+                const auto& function = artifact.description_.exports[index];
+                if (!lux::rdesc::detail::validScriptFunction(function))
+                    return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+                const auto symbol = function.symbol_id;
                 if (!artifact.export_index_.emplace(symbol, index).second)
                     return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
             }

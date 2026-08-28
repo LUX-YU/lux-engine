@@ -648,8 +648,7 @@ namespace lux::simulation::script
                 mount.state = EMountState::INACTIVE;
                 return lux::cxx::unexpected(EScriptSystemError::ASSET_NOT_RESIDENT);
             }
-            if (mount.artifact.artifact == nullptr ||
-                !lux::rdesc::validScriptDescription(mount.artifact.artifact->description()))
+            if (mount.artifact.artifact == nullptr)
             {
                 releaseMount(mount_slot, EMountState::INACTIVE, false);
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_ASSET);

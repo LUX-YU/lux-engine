@@ -5,6 +5,7 @@
 #include <new>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -308,6 +309,8 @@ namespace lux::simulation::script
             state->entity_scope = true;
             state->description.exports.reserve(methods.size());
             state->callables.reserve(methods.size());
+            std::unordered_set<lux::script::ScriptSymbolId> symbols_seen;
+            symbols_seen.reserve(methods.size());
             for (std::size_t method_index{}; method_index < methods.size();
                  ++method_index)
             {
@@ -334,13 +337,7 @@ namespace lux::simulation::script
                 if (!projected)
                     return lux::cxx::unexpected(projected.error());
                 const auto symbol = projected->symbol_id;
-                if (std::any_of(
-                        state->callables.begin(),
-                        state->callables.end(),
-                        [symbol](const auto& value) noexcept
-                        {
-                            return value.symbol == symbol;
-                        }))
+                if (!symbols_seen.emplace(symbol).second)
                 {
                     return lux::cxx::unexpected(
                         ECppStaticScriptBridgeError::DUPLICATE_SYMBOL
@@ -385,6 +382,8 @@ namespace lux::simulation::script
             state->descriptor_key = descriptor_key;
             state->description.exports.reserve(functions.size());
             state->callables.reserve(functions.size());
+            std::unordered_set<lux::script::ScriptSymbolId> symbols_seen;
+            symbols_seen.reserve(functions.size());
             for (std::size_t function_index{};
                  function_index < functions.size(); ++function_index)
             {
@@ -413,13 +412,7 @@ namespace lux::simulation::script
                     return lux::cxx::unexpected(projected.error());
                 }
                 const auto symbol = projected->symbol_id;
-                if (std::any_of(
-                        state->callables.begin(),
-                        state->callables.end(),
-                        [symbol](const auto& value) noexcept
-                        {
-                            return value.symbol == symbol;
-                        }))
+                if (!symbols_seen.emplace(symbol).second)
                 {
                     return lux::cxx::unexpected(
                         ECppStaticScriptBridgeError::DUPLICATE_SYMBOL
@@ -440,18 +433,63 @@ namespace lux::simulation::script
 
     struct CppStaticScriptBackend::State final
     {
+        struct ObjectSlab final
+        {
+            ObjectSlab() noexcept = default;
+            ObjectSlab(const ObjectSlab&) = delete;
+            ObjectSlab& operator=(const ObjectSlab&) = delete;
+
+            ObjectSlab(ObjectSlab&& other) noexcept
+                : data(std::exchange(other.data, nullptr)),
+                  alignment(std::exchange(other.alignment, 0U))
+            {
+            }
+
+            ObjectSlab& operator=(ObjectSlab&& other) noexcept
+            {
+                if (this == std::addressof(other))
+                    return *this;
+                reset();
+                data = std::exchange(other.data, nullptr);
+                alignment = std::exchange(other.alignment, 0U);
+                return *this;
+            }
+
+            ~ObjectSlab()
+            {
+                reset();
+            }
+
+            void reset() noexcept
+            {
+                if (data)
+                    ::operator delete(data, std::align_val_t{alignment});
+                data = nullptr;
+                alignment = 0U;
+            }
+
+            void* data{};
+            std::size_t alignment{};
+        };
+
         struct DescriptorIndex final
         {
             const CppStaticScriptDescriptor::State* descriptor{};
             std::unordered_map<
                 lux::script::ScriptSymbolId,
                 const Callable*> callables;
+            ObjectSlab objects;
+            std::vector<std::size_t> free_objects;
+            std::size_t object_stride{};
+            std::size_t instance_capacity{};
+            std::size_t active_instances{};
         };
 
         struct Instance final
         {
-            const DescriptorIndex* descriptor{};
+            DescriptorIndex* descriptor{};
             void* object{};
+            std::size_t object_slot{(std::numeric_limits<std::size_t>::max)()};
         };
 
         struct PreparedCall final
@@ -490,27 +528,38 @@ namespace lux::simulation::script
             }
         };
 
-        explicit State(
-            std::span<const CppStaticScriptDescriptor* const> source,
-            std::size_t capacity
-        )
-            : instance_capacity(capacity)
+        explicit State(std::span<const CppStaticScriptPoolDescription> pools)
         {
-            descriptors.assign(source.begin(), source.end());
-            descriptor_indexes.reserve(source.size());
-            descriptor_by_key.reserve(source.size());
+            descriptor_indexes.reserve(pools.size());
+            descriptor_by_key.reserve(pools.size());
             std::size_t maximum_parameters{};
             std::size_t prepared_capacity{};
-            for (const auto* descriptor : descriptors)
+            for (const auto& pool : pools)
             {
+                const auto* descriptor = pool.descriptor;
                 if (!descriptor || !descriptor->state_ ||
-                    descriptor->state_->descriptor_key.empty())
+                    descriptor->state_->descriptor_key.empty() ||
+                    pool.instance_capacity == 0U)
                 {
                     valid = false;
                     return;
                 }
+                const bool instance_capacity_overflow = instance_capacity >
+                    (std::numeric_limits<std::size_t>::max)() - pool.instance_capacity;
+                const bool prepared_capacity_overflow =
+                    !descriptor->state_->callables.empty() &&
+                    pool.instance_capacity >
+                        ((std::numeric_limits<std::size_t>::max)() - prepared_capacity) /
+                            descriptor->state_->callables.size();
+                if (instance_capacity_overflow || prepared_capacity_overflow)
+                {
+                    valid = false;
+                    return;
+                }
+
                 DescriptorIndex index;
                 index.descriptor = descriptor->state_.get();
+                index.instance_capacity = pool.instance_capacity;
                 index.callables.reserve(index.descriptor->callables.size());
                 for (const auto& callable : index.descriptor->callables)
                 {
@@ -530,6 +579,44 @@ namespace lux::simulation::script
                         invokable.parameters.size()
                     );
                 }
+                if (index.descriptor->reflected_class)
+                {
+                    const auto& type = index.descriptor->reflected_class->type;
+                    const bool valid_alignment = type.alignment != 0U &&
+                        (type.alignment & (type.alignment - 1U)) == 0U;
+                    const bool stride_overflow = valid_alignment &&
+                        type.size > (std::numeric_limits<std::size_t>::max)() -
+                            (type.alignment - 1U);
+                    if (type.size == 0U || !valid_alignment || stride_overflow)
+                    {
+                        valid = false;
+                        return;
+                    }
+                    index.object_stride = (type.size + type.alignment - 1U) &
+                        ~(type.alignment - 1U);
+                    if (pool.instance_capacity >
+                        (std::numeric_limits<std::size_t>::max)() / index.object_stride)
+                    {
+                        valid = false;
+                        return;
+                    }
+                    const auto slab_size = index.object_stride * pool.instance_capacity;
+                    index.objects.data = ::operator new(
+                        slab_size,
+                        std::align_val_t{type.alignment},
+                        std::nothrow
+                    );
+                    if (!index.objects.data)
+                    {
+                        error = ECppStaticScriptBridgeError::ALLOCATION_FAILURE;
+                        valid = false;
+                        return;
+                    }
+                    index.objects.alignment = type.alignment;
+                    index.free_objects.reserve(pool.instance_capacity);
+                    for (std::size_t slot = pool.instance_capacity; slot > 0U; --slot)
+                        index.free_objects.push_back(slot - 1U);
+                }
                 descriptor_indexes.push_back(std::move(index));
                 const auto descriptor_index = descriptor_indexes.size() - 1U;
                 if (!descriptor_by_key.emplace(
@@ -540,9 +627,9 @@ namespace lux::simulation::script
                     valid = false;
                     return;
                 }
-                prepared_capacity += descriptor->state_->callables.size();
+                instance_capacity += pool.instance_capacity;
+                prepared_capacity += descriptor->state_->callables.size() * pool.instance_capacity;
             }
-            prepared_capacity *= instance_capacity;
             instances.resize(instance_capacity);
             free_instances.reserve(instance_capacity);
             for (std::size_t index = instance_capacity; index > 0U; --index)
@@ -558,9 +645,21 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] const DescriptorIndex* find(
+        ~State()
+        {
+            for (auto& instance : instances)
+            {
+                if (instance.object && instance.descriptor &&
+                    instance.descriptor->descriptor->reflected_class)
+                {
+                    instance.descriptor->descriptor->reflected_class->destruct(instance.object);
+                }
+            }
+        }
+
+        [[nodiscard]] DescriptorIndex* find(
             const lux::script::ScriptArtifact& artifact
-        ) const noexcept
+        ) noexcept
         {
             const auto* body = std::get_if<lux::rdesc::CppStaticScript>(
                 std::addressof(artifact.description().body)
@@ -600,7 +699,7 @@ namespace lux::simulation::script
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            const auto* descriptor_index = self.find(artifact);
+            auto* descriptor_index = self.find(artifact);
             if (!descriptor_index)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
             const auto& descriptor = *descriptor_index->descriptor;
@@ -612,7 +711,10 @@ namespace lux::simulation::script
                 std::holds_alternative<EntityScriptScope>(context.scope);
             if (descriptor.entity_scope != entity_scope)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-            if (self.free_instances.empty())
+            if (self.free_instances.empty() ||
+                descriptor_index->active_instances >= descriptor_index->instance_capacity)
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            if (descriptor.reflected_class && descriptor_index->free_objects.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             const auto instance_slot = self.free_instances.back();
             self.free_instances.pop_back();
@@ -621,41 +723,25 @@ namespace lux::simulation::script
             instance->object = nullptr;
             if (descriptor.reflected_class)
             {
-                const auto& type = descriptor.reflected_class->type;
+                instance->object_slot = descriptor_index->free_objects.back();
+                descriptor_index->free_objects.pop_back();
+                instance->object = static_cast<std::byte*>(descriptor_index->objects.data) +
+                    instance->object_slot * descriptor_index->object_stride;
                 try
                 {
-                    instance->object = ::operator new(
-                        type.size,
-                        std::align_val_t{type.alignment},
-                        std::nothrow
-                    );
-                    if (!instance->object)
-                    {
-                        *instance = {};
-                        self.free_instances.push_back(instance_slot);
-                        return EScriptBackendResult::ALLOCATION_FAILURE;
-                    }
                     descriptor.reflected_class->construct(instance->object);
                     if (descriptor.attach && context.behavior)
-                        descriptor.attach(
-                            instance->object,
-                            *context.behavior
-                        );
+                        descriptor.attach(instance->object, *context.behavior);
                 }
                 catch (...)
                 {
-                    if (instance->object)
-                    {
-                        ::operator delete(
-                            instance->object,
-                            std::align_val_t{type.alignment}
-                        );
-                    }
+                    descriptor_index->free_objects.push_back(instance->object_slot);
                     *instance = {};
                     self.free_instances.push_back(instance_slot);
                     return EScriptBackendResult::CONSTRUCTION_FAILURE;
                 }
             }
+            ++descriptor_index->active_instances;
             ++self.active_instances;
             result.value = instance;
             return EScriptBackendResult::SUCCESS;
@@ -721,16 +807,12 @@ namespace lux::simulation::script
                 return;
             if (instance->object)
             {
-                const auto& type =
-                    instance->descriptor->descriptor->reflected_class->type;
                 instance->descriptor->descriptor->reflected_class->destruct(
                     instance->object
                 );
-                ::operator delete(
-                    instance->object,
-                    std::align_val_t{type.alignment}
-                );
+                instance->descriptor->free_objects.push_back(instance->object_slot);
             }
+            --instance->descriptor->active_instances;
             const auto index = static_cast<std::size_t>(
                 instance - self.instances.data()
             );
@@ -739,7 +821,6 @@ namespace lux::simulation::script
             --self.active_instances;
         }
 
-        std::vector<const CppStaticScriptDescriptor*> descriptors;
         std::vector<DescriptorIndex> descriptor_indexes;
         std::unordered_map<std::string_view, std::size_t> descriptor_by_key;
         std::vector<Instance> instances;
@@ -748,25 +829,30 @@ namespace lux::simulation::script
         std::vector<std::size_t> free_prepared_calls;
         std::size_t instance_capacity{};
         std::size_t active_instances{};
+        ECppStaticScriptBridgeError error{ECppStaticScriptBridgeError::INVALID_DESCRIPTOR};
         bool valid{true};
     };
 
-    CppStaticScriptBackend::CppStaticScriptBackend(
-        std::span<const CppStaticScriptDescriptor* const> descriptors,
-        std::size_t instance_capacity
-    ) noexcept
+    lux::cxx::expected<CppStaticScriptBackend, ECppStaticScriptBridgeError>
+    CppStaticScriptBackend::create(std::span<const CppStaticScriptPoolDescription> pools) noexcept
     {
-        if (descriptors.empty() || instance_capacity == 0U)
-            return;
+        if (pools.empty())
+            return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
         try
         {
-            state_ = std::make_unique<State>(descriptors, instance_capacity);
-            if (!state_->valid)
-                state_.reset();
+            auto state = std::make_unique<State>(pools);
+            if (!state->valid)
+                return lux::cxx::unexpected(state->error);
+            return CppStaticScriptBackend{std::move(state)};
         }
         catch (const std::bad_alloc&)
         {
+            return lux::cxx::unexpected(ECppStaticScriptBridgeError::ALLOCATION_FAILURE);
         }
+    }
+
+    CppStaticScriptBackend::CppStaticScriptBackend(std::unique_ptr<State> state) noexcept : state_(std::move(state))
+    {
     }
 
     CppStaticScriptBackend::~CppStaticScriptBackend() = default;

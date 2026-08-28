@@ -6,8 +6,10 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <new>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -145,89 +147,91 @@ namespace lux::rdesc
         }
     };
 
-    [[nodiscard]] inline bool validScriptDescription(
-        const Script& description
-    ) noexcept
+    namespace detail
     {
-        if (description.schema_version != Script::kSchemaVersion ||
-            description.module_name.empty() ||
-            description.kind() == Script::Kind::UNKNOWN)
-        {
-            return false;
-        }
-
-        const auto valid_type = [](const ScriptValueType& type) noexcept
+        [[nodiscard]] inline bool validScriptValueType(const ScriptValueType& type) noexcept
         {
             if (type.type_id == 0U || type.canonical_name.empty() ||
-                type.type_id != lux::semantic::typeId(
-                    type.canonical_name) ||
-                type.pass > lux::semantic::EValuePass::CONST_REF ||
-                type.abi_kind == 0U || type.size == 0U ||
-                type.alignment == 0U ||
-                (type.alignment & (type.alignment - 1U)) != 0U)
+                type.type_id != lux::semantic::typeId(type.canonical_name) ||
+                type.pass > lux::semantic::EValuePass::CONST_REF || type.abi_kind == 0U || type.size == 0U ||
+                type.alignment == 0U || (type.alignment & (type.alignment - 1U)) != 0U)
             {
                 return false;
             }
             const auto* builtin = lux::semantic::builtinLayout(type.type_id);
             return builtin == nullptr ||
-                (builtin->canonical_name == type.canonical_name &&
-                 builtin->abi_kind == type.abi_kind &&
-                 builtin->size == type.size &&
-                 builtin->alignment == type.alignment);
-        };
-        for (std::size_t index{}; index < description.exports.size(); ++index)
+                (builtin->canonical_name == type.canonical_name && builtin->abi_kind == type.abi_kind &&
+                 builtin->size == type.size && builtin->alignment == type.alignment);
+        }
+
+        [[nodiscard]] inline bool validScriptFunction(const ScriptFunction& function) noexcept
         {
-            const auto& function = description.exports[index];
-            if (function.name.empty() ||
-                function.symbol_id == lux::script::InvalidScriptSymbolId)
+            if (function.name.empty() || function.symbol_id == lux::script::InvalidScriptSymbolId)
             {
                 return false;
             }
-            for (std::size_t previous{}; previous < index; ++previous)
-            {
-                if (description.exports[previous].symbol_id == function.symbol_id)
-                {
-                    return false;
-                }
-            }
             for (const auto& argument : function.args)
             {
-                if (!valid_type(argument))
+                if (!validScriptValueType(argument))
                     return false;
             }
             for (const auto& result : function.returns)
             {
-                if (!valid_type(result) ||
-                    result.pass != lux::semantic::EValuePass::VALUE)
+                if (!validScriptValueType(result) || result.pass != lux::semantic::EValuePass::VALUE)
+                    return false;
+            }
+            return true;
+        }
+
+        [[nodiscard]] inline bool validScriptBody(const Script& description) noexcept
+        {
+            if (description.schema_version != Script::kSchemaVersion || description.module_name.empty() ||
+                description.kind() == Script::Kind::UNKNOWN)
+            {
+                return false;
+            }
+            if (const auto* native = std::get_if<NativeModuleScript>(&description.body))
+            {
+                if (native->abi_version == 0U || native->state_align == 0U ||
+                    (native->state_align & (native->state_align - 1U)) != 0U ||
+                    native->state_defaults.size() > native->state_size)
                 {
                     return false;
                 }
             }
-        }
-
-        if (const auto* native = std::get_if<NativeModuleScript>(
-                &description.body
-            ))
-        {
-            if (native->abi_version == 0U ||
-                native->state_align == 0U ||
-                (native->state_align & (native->state_align - 1U)) != 0U ||
-                native->state_defaults.size() > native->state_size)
+            if (const auto* cpp_static = std::get_if<CppStaticScript>(&description.body);
+                cpp_static != nullptr && cpp_static->descriptor.empty())
             {
                 return false;
             }
+            if (const auto* lua = std::get_if<LuaSourceScript>(&description.body);
+                lua != nullptr && lua->entry.empty())
+            {
+                return false;
+            }
+            return true;
         }
-        if (const auto* cpp_static = std::get_if<CppStaticScript>(
-                &description.body
-            ); cpp_static != nullptr && cpp_static->descriptor.empty())
+    }
+
+    [[nodiscard]] inline bool validScriptDescription(const Script& description) noexcept
+    {
+        if (!detail::validScriptBody(description))
+            return false;
+
+        try
+        {
+            std::unordered_set<lux::script::ScriptSymbolId> symbols;
+            symbols.reserve(description.exports.size());
+            for (const auto& function : description.exports)
+            {
+                if (!detail::validScriptFunction(function) || !symbols.insert(function.symbol_id).second)
+                    return false;
+            }
+            return true;
+        }
+        catch (const std::bad_alloc&)
         {
             return false;
         }
-        if (const auto* lua = std::get_if<LuaSourceScript>(&description.body);
-            lua != nullptr && lua->entry.empty())
-        {
-            return false;
-        }
-        return true;
     }
 }

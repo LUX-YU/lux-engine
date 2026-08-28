@@ -94,13 +94,19 @@ namespace lux::simulation::script
             CppStaticRecordSemanticResolver record_types = {}
         ) noexcept;
 
+    struct CppStaticScriptPoolDescription final
+    {
+        const CppStaticScriptDescriptor* descriptor{};
+        std::size_t instance_capacity{};
+    };
+
     class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC
         CppStaticScriptBackend final
     {
       public:
-        CppStaticScriptBackend(
-            std::span<const CppStaticScriptDescriptor* const> descriptors,
-            std::size_t instance_capacity
+        [[nodiscard]] static lux::cxx::expected<CppStaticScriptBackend, ECppStaticScriptBridgeError>
+        create(
+            std::span<const CppStaticScriptPoolDescription> pools
         ) noexcept;
         ~CppStaticScriptBackend();
         CppStaticScriptBackend(
@@ -121,6 +127,7 @@ namespace lux::simulation::script
 
       private:
         struct State;
+        explicit CppStaticScriptBackend(std::unique_ptr<State> state) noexcept;
         std::unique_ptr<State> state_;
     };
 }

@@ -119,14 +119,16 @@ int main()
     auto entity_asset_result = lux::script::ScriptArtifact::create(projected->description(), {});
     assert(entity_asset_result);
     auto entity_asset = std::move(*entity_asset_result);
-    const std::array descriptors{std::addressof(*projected)};
-    const std::array duplicate_descriptors{
-        std::addressof(*projected),
-        std::addressof(*projected)};
-    CppStaticScriptBackend duplicate_backend{duplicate_descriptors, 1U};
+    const std::array pools{CppStaticScriptPoolDescription{std::addressof(*projected), 1U}};
+    const std::array duplicate_pools{
+        CppStaticScriptPoolDescription{std::addressof(*projected), 1U},
+        CppStaticScriptPoolDescription{std::addressof(*projected), 1U}
+    };
+    auto duplicate_backend = CppStaticScriptBackend::create(duplicate_pools);
     assert(!duplicate_backend);
-    CppStaticScriptBackend backend{descriptors, 1U};
-    assert(backend);
+    auto backend_result = CppStaticScriptBackend::create(pools);
+    assert(backend_result);
+    auto backend = std::move(*backend_result);
     const auto descriptor = backend.descriptor();
     ScriptBehavior behavior;
     ScriptBackendInstance instance;
@@ -205,8 +207,10 @@ int main()
     auto global_asset_result = lux::script::ScriptArtifact::create(global->description(), {});
     assert(global_asset_result);
     auto global_asset = std::move(*global_asset_result);
-    const std::array global_descriptors{std::addressof(*global)};
-    CppStaticScriptBackend global_backend{global_descriptors, 1U};
+    const std::array global_pools{CppStaticScriptPoolDescription{std::addressof(*global), 1U}};
+    auto global_backend_result = CppStaticScriptBackend::create(global_pools);
+    assert(global_backend_result);
+    auto global_backend = std::move(*global_backend_result);
     const auto global_descriptor = global_backend.descriptor();
     ScriptBackendInstance global_instance;
     assert(global_descriptor.createInstance(

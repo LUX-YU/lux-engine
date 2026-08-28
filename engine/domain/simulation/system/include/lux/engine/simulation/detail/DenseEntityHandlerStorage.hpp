@@ -57,6 +57,7 @@ namespace lux::simulation::detail
                 target_buckets_.reserve(handler_capacity);
                 all_bucket_.handlers.clear();
                 handler_capacity_ = handler_capacity;
+                registration_lookups_ = 0U;
                 return EEndpointMutationError::NONE;
             }
             catch (const std::bad_alloc&)
@@ -146,6 +147,7 @@ namespace lux::simulation::detail
                 return EEndpointMutationError::INVALID_TOKEN;
             }
             const auto key = toKey(token);
+            ++registration_lookups_;
             const auto* stored = registrations_.find(key);
             if (stored == nullptr)
             {
@@ -202,6 +204,11 @@ namespace lux::simulation::detail
             return target_buckets_.size();
         }
 
+        [[nodiscard]] std::size_t registrationLookupCount() const noexcept
+        {
+            return registration_lookups_;
+        }
+
     private:
         [[nodiscard]] TargetBucket& targetBucket(ecs::Entity target) noexcept
         {
@@ -234,5 +241,6 @@ namespace lux::simulation::detail
         std::vector<TargetBucket> target_buckets_;
         TargetBucket all_bucket_;
         std::size_t handler_capacity_{};
+        std::size_t registration_lookups_{};
     };
 }

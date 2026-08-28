@@ -6,6 +6,10 @@
 #include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
+#if LUX_BENCHMARK_HAS_LUA
+#include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
+#endif
 #include <lux/engine/simulation/systems/ScriptSystem.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/task/TaskExecutor.hpp>
@@ -107,13 +111,21 @@ namespace
             std::string_view{"hook-entity-multi"},
             std::string_view{"global-event"},
             std::string_view{"entity-targeted-event-sparse"},
+            std::string_view{"entity-targeted-event-dense"},
             std::string_view{"owned-worker-event-buffer"},
             std::string_view{"script-detach"},
             std::string_view{"script-dirty"},
             std::string_view{"script-prepare-scaling"},
+            std::string_view{"cpp-static-object-slab"},
+            std::string_view{"script-artifact-export-scaling"},
             std::string_view{"ecs-snapshot"}};
-        if (std::find(groups.begin(), groups.end(), result.group) ==
-            groups.end())
+        const bool is_common_group = std::find(groups.begin(), groups.end(), result.group) != groups.end();
+#if LUX_BENCHMARK_HAS_LUA
+        const bool is_lua_group = result.group == "lua-prepared-call-pool";
+#else
+        const bool is_lua_group = false;
+#endif
+        if (!is_common_group && !is_lua_group)
             return std::nullopt;
         return result;
     }
@@ -124,6 +136,7 @@ namespace
         std::size_t asset_resolution_delta{}, target_resolution_delta{};
         std::size_t entities_examined{}, target_range_lookups{};
         std::size_t handlers_visited{}, target_ranges_built{};
+        std::size_t dispatch_registration_lookups{};
         std::size_t dispatch_handlers_built{}, instance_creates{};
         std::size_t method_prepares{}, frame_builds{};
         std::size_t bindings_removed{}, dirty_marks{};
@@ -189,12 +202,13 @@ namespace
                   "notifications,callbacks,asset_resolution_delta,"
                   "target_resolution_delta,entities_examined,"
                   "target_range_lookups,handlers_visited,target_ranges_built,"
+                  "dispatch_registration_lookups,"
                   "dispatch_handlers_built,instance_creates,method_prepares,"
                   "frame_builds,bindings_removed,dirty_marks\n";
         for (const auto& sample : samples)
         {
             const auto& value = sample.observation;
-            output << "11," << LUX_BENCHMARK_GIT_COMMIT << ','
+            output << "12," << LUX_BENCHMARK_GIT_COMMIT << ','
                    << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group << ','
                    << metric << ',' << options.size << ',' << sample.index
                    << ',' << sample.nanoseconds << ',' << sample.allocations
@@ -206,6 +220,7 @@ namespace
                    << value.target_range_lookups << ','
                    << value.handlers_visited << ','
                    << value.target_ranges_built << ','
+                   << value.dispatch_registration_lookups << ','
                    << value.dispatch_handlers_built << ','
                    << value.instance_creates << ',' << value.method_prepares
                    << ',' << value.frame_builds << ','
@@ -360,6 +375,34 @@ namespace
         std::vector<Entity> entities;
         EventPoint<EntityTargetedRoute<Entity>, std::size_t> event;
         std::size_t occurrence_count{};
+        std::size_t callbacks{};
+    };
+
+    struct DenseTargetedState final
+    {
+        static void increment(void* opaque, const Entity&, const std::size_t&) noexcept
+        {
+            ++*static_cast<std::size_t*>(opaque);
+        }
+
+        explicit DenseTargetedState(std::size_t handler_count)
+        {
+            entity = registry.create();
+            if (event.prepare(1U, 1U, handler_count) != EEndpointMutationError::NONE)
+                throw std::runtime_error("dense targeted event prepare failed");
+            for (std::size_t index{}; index < handler_count; ++index)
+            {
+                if (!event.connect(entity, &callbacks, &increment))
+                    throw std::runtime_error("dense targeted event connect failed");
+            }
+            auto writer = event.begin(0U);
+            if (!writer.record(entity, 1U))
+                throw std::runtime_error("dense targeted event record failed");
+        }
+
+        Registry registry;
+        Entity entity{NullEntity};
+        EventPoint<EntityTargetedRoute<Entity>, std::size_t> event;
         std::size_t callbacks{};
     };
 
@@ -649,6 +692,182 @@ namespace
         std::size_t asset_releases{};
     };
 
+    struct alignas(64) CppSlabObject final
+    {
+        std::uint64_t value{};
+    };
+
+    struct CppSlabState final
+    {
+        static constexpr lux::script::ScriptSymbolId kSymbol{0x7201U};
+
+        explicit CppSlabState(std::size_t count)
+        {
+            reflected_class.name = "CppSlabObject";
+            reflected_class.full_name = "lux::benchmark::CppSlabObject";
+            reflected_class.type = lux::meta::ref_type_of_v<CppSlabObject>;
+            reflected_class.construct = [](void* memory)
+            {
+                std::construct_at(static_cast<CppSlabObject*>(memory));
+            };
+            reflected_class.destruct = [](void* object)
+            {
+                std::destroy_at(static_cast<CppSlabObject*>(object));
+            };
+
+            reflected_method.invokable.name = "update";
+            reflected_method.invokable.full_name = "lux::benchmark::CppSlabObject::update";
+            reflected_method.invokable.return_type = lux::meta::ref_type_of_v<void>;
+            reflected_method.invokable.invoker = [](void* object, void**, void*)
+            {
+                ++static_cast<CppSlabObject*>(object)->value;
+            };
+            reflected_method.owner_class = std::addressof(reflected_class);
+            reflected_method.is_noexcept = true;
+
+            const std::array methods{std::addressof(reflected_method)};
+            const std::array symbols{kSymbol};
+            auto projected = projectCppStaticEntityScript(
+                "lux.benchmark.cpp-slab",
+                "cpp-slab-v1",
+                reflected_class,
+                methods,
+                symbols,
+                {}
+            );
+            if (!projected)
+                throw std::runtime_error("cpp slab descriptor projection failed");
+            script_descriptor.emplace(std::move(*projected));
+            auto created_artifact = lux::script::ScriptArtifact::create(script_descriptor->description(), {});
+            if (!created_artifact)
+                throw std::runtime_error("cpp slab artifact creation failed");
+            artifact.emplace(std::move(*created_artifact));
+            const std::array pools{CppStaticScriptPoolDescription{
+                std::addressof(*script_descriptor),
+                count
+            }};
+            auto created_backend = CppStaticScriptBackend::create(pools);
+            if (!created_backend)
+                throw std::runtime_error("cpp slab backend creation failed");
+            backend.emplace(std::move(*created_backend));
+            backend_descriptor = backend->descriptor();
+            instances.resize(count);
+        }
+
+        lux::meta::RefClass reflected_class;
+        lux::meta::RefMethod reflected_method;
+        std::optional<CppStaticScriptDescriptor> script_descriptor;
+        std::optional<lux::script::ScriptArtifact> artifact;
+        std::optional<CppStaticScriptBackend> backend;
+        ScriptBackendDescriptor backend_descriptor;
+        std::vector<ScriptBackendInstance> instances;
+    };
+
+#if LUX_BENCHMARK_HAS_LUA
+    struct LuaPoolState final
+    {
+        static constexpr std::size_t kMethodsPerInstance{8U};
+
+        explicit LuaPoolState(std::size_t count)
+        {
+            const bool capacity_overflow = count >
+                (std::numeric_limits<std::size_t>::max)() / kMethodsPerInstance;
+            if (capacity_overflow)
+                throw std::runtime_error("lua pool capacity overflow");
+            const auto call_count = count * kMethodsPerInstance;
+
+            lux::rdesc::Script description;
+            description.module_name = "lux.benchmark.lua-pool";
+            description.body = lux::rdesc::LuaSourceScript{"benchmark"};
+            std::string source{"return {"};
+            description.exports.reserve(kMethodsPerInstance);
+            for (std::size_t index{}; index < kMethodsPerInstance; ++index)
+            {
+                const auto name = "method_" + std::to_string(index);
+                description.exports.push_back({name, index + 1U, {}, {}});
+                source += name + "=function() end,";
+            }
+            source += "}";
+            std::vector<std::byte> payload;
+            payload.reserve(source.size());
+            for (const auto value : source)
+                payload.push_back(static_cast<std::byte>(value));
+            auto created_artifact = lux::script::ScriptArtifact::create(
+                std::move(description),
+                std::move(payload)
+            );
+            if (!created_artifact)
+                throw std::runtime_error("lua pool artifact creation failed");
+            artifact.emplace(std::move(*created_artifact));
+            auto created_backend = LuaScriptBackend::create(count, call_count);
+            if (!created_backend)
+                throw std::runtime_error("lua pool backend creation failed");
+            backend.emplace(std::move(*created_backend));
+            backend_descriptor = backend->descriptor();
+            instances.resize(count);
+            calls.resize(call_count);
+            for (std::size_t instance_index{}; instance_index < count; ++instance_index)
+            {
+                const auto result = backend_descriptor.createInstance(
+                    backend_descriptor.context,
+                    ScriptInstanceCreateContext{prepareAssetId(), SimulationScriptScope{}, nullptr},
+                    *artifact,
+                    instances[instance_index]
+                );
+                if (result != EScriptBackendResult::SUCCESS)
+                    throw std::runtime_error("lua pool instance creation failed");
+                for (std::size_t method_index{}; method_index < kMethodsPerInstance; ++method_index)
+                {
+                    const auto call_index = instance_index * kMethodsPerInstance + method_index;
+                    const auto prepared = backend_descriptor.prepareMethod(
+                        backend_descriptor.context,
+                        instances[instance_index],
+                        artifact->description().exports[method_index],
+                        calls[call_index]
+                    );
+                    if (prepared != EScriptBackendResult::SUCCESS)
+                        throw std::runtime_error("lua pool method preparation failed");
+                }
+            }
+        }
+
+        ~LuaPoolState()
+        {
+            for (std::size_t call_index{}; call_index < calls.size(); ++call_index)
+            {
+                const auto instance_index = call_index / kMethodsPerInstance;
+                backend_descriptor.releaseMethod(
+                    backend_descriptor.context,
+                    instances[instance_index],
+                    calls[call_index]
+                );
+            }
+            for (const auto instance : instances)
+                backend_descriptor.destroyInstance(backend_descriptor.context, instance);
+        }
+
+        std::optional<lux::script::ScriptArtifact> artifact;
+        std::optional<LuaScriptBackend> backend;
+        ScriptBackendDescriptor backend_descriptor;
+        std::vector<ScriptBackendInstance> instances;
+        std::vector<lux::script::BoundScriptCall> calls;
+    };
+#endif
+
+    struct ScriptArtifactScalingState final
+    {
+        explicit ScriptArtifactScalingState(std::size_t export_count)
+        {
+            description.module_name = "lux.benchmark.artifact-scaling";
+            description.body = lux::rdesc::CppStaticScript{"artifact-scaling-v1"};
+            description.exports.reserve(export_count);
+            for (std::size_t index{}; index < export_count; ++index)
+                description.exports.push_back({"export", index + 1U, {}, {}});
+        }
+
+        lux::rdesc::Script description;
+    };
+
     struct TaskState final
     {
         explicit TaskState(std::size_t count)
@@ -855,6 +1074,29 @@ int main(int argc, char** argv)
                     .frame_builds = state.occurrence_count};
             });
     }
+    else if (options->group == "entity-targeted-event-dense")
+    {
+        metric = "entity_targeted_event_dense";
+        samples = measure(*options,
+            [&] { return std::make_unique<DenseTargetedState>(options->size); },
+            [](DenseTargetedState& state)
+            {
+                const auto lookups_before = state.event.registrationLookupCount();
+                const auto calls = state.event.drain();
+                const auto lookups_after = state.event.registrationLookupCount();
+                return Observation{
+                    .notifications = 1U,
+                    .callbacks = state.callbacks,
+                    .entities_examined = 1U,
+                    .target_range_lookups = 1U,
+                    .handlers_visited = calls,
+                    .target_ranges_built = state.event.targetBucketCount(),
+                    .dispatch_registration_lookups = lookups_after - lookups_before,
+                    .dispatch_handlers_built = state.event.handlerCount(),
+                    .frame_builds = 1U
+                };
+            });
+    }
     else if (options->group == "owned-worker-event-buffer")
     {
         metric = "owned_worker_event_buffer";
@@ -945,6 +1187,86 @@ int main(int argc, char** argv)
                     .instance_creates = state.backend.instance_creates,
                     .method_prepares = state.backend.method_prepares
                 };
+            });
+    }
+    else if (options->group == "cpp-static-object-slab")
+    {
+        metric = "cpp_static_object_slab";
+        samples = measure(*options,
+            [&] { return std::make_unique<CppSlabState>(options->size); },
+            [](CppSlabState& state)
+            {
+                for (std::size_t index{}; index < state.instances.size(); ++index)
+                {
+                    const auto created = state.backend_descriptor.createInstance(
+                        state.backend_descriptor.context,
+                        ScriptInstanceCreateContext{
+                            prepareAssetId(),
+                            EntityScriptScope{Entity{static_cast<std::uint32_t>(index + 1U)}},
+                            nullptr
+                        },
+                        *state.artifact,
+                        state.instances[index]
+                    );
+                    if (created != EScriptBackendResult::SUCCESS)
+                        throw std::runtime_error("cpp slab instance creation failed");
+                }
+                for (const auto instance : state.instances)
+                    state.backend_descriptor.destroyInstance(state.backend_descriptor.context, instance);
+                return Observation{
+                    .updates = state.instances.size(),
+                    .instance_creates = state.instances.size()
+                };
+            });
+    }
+#if LUX_BENCHMARK_HAS_LUA
+    else if (options->group == "lua-prepared-call-pool")
+    {
+        metric = "lua_prepared_call_pool";
+        samples = measure(*options,
+            [&] { return std::make_unique<LuaPoolState>(options->size); },
+            [](LuaPoolState& state)
+            {
+                for (std::size_t call_index{}; call_index < state.calls.size(); ++call_index)
+                {
+                    const auto instance_index = call_index / LuaPoolState::kMethodsPerInstance;
+                    state.backend_descriptor.releaseMethod(
+                        state.backend_descriptor.context,
+                        state.instances[instance_index],
+                        state.calls[call_index]
+                    );
+                }
+                for (std::size_t call_index{}; call_index < state.calls.size(); ++call_index)
+                {
+                    const auto instance_index = call_index / LuaPoolState::kMethodsPerInstance;
+                    const auto method_index = call_index % LuaPoolState::kMethodsPerInstance;
+                    const auto prepared = state.backend_descriptor.prepareMethod(
+                        state.backend_descriptor.context,
+                        state.instances[instance_index],
+                        state.artifact->description().exports[method_index],
+                        state.calls[call_index]
+                    );
+                    if (prepared != EScriptBackendResult::SUCCESS)
+                        throw std::runtime_error("lua pooled method preparation failed");
+                }
+                return Observation{
+                    .updates = state.calls.size(),
+                    .method_prepares = state.calls.size()
+                };
+            });
+    }
+#endif
+    else if (options->group == "script-artifact-export-scaling")
+    {
+        metric = "script_artifact_export_scaling";
+        samples = measure(*options,
+            [&] { return std::make_unique<ScriptArtifactScalingState>(options->size); },
+            [](ScriptArtifactScalingState& state)
+            {
+                auto artifact = lux::script::ScriptArtifact::create(std::move(state.description), {});
+                if (!artifact)
+                    throw std::runtime_error("artifact scaling creation failed");
+                return Observation{.updates = artifact->description().exports.size()};
             });
     }
     else

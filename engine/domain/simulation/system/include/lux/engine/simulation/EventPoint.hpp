@@ -496,6 +496,11 @@ namespace lux::simulation
             return handlers_.targetBucketCount();
         }
 
+        [[nodiscard]] std::size_t registrationLookupCount() const noexcept
+        {
+            return handlers_.registrationLookupCount();
+        }
+
     private:
         [[nodiscard]] EndpointConnectResult connectImpl(
             ecs::Entity target,

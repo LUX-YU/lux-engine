@@ -59,8 +59,18 @@ target_link_libraries(
         lux::engine::simulation::ecs::hierarchy
         lux::engine::simulation::ecs::transform
         lux::engine::simulation::simulation_script
+        lux::engine::simulation::simulation_script_cpp_static
         lux::engine::core::object
 )
+if(TARGET simulation_script_lua)
+    target_compile_definitions(ecs_l1_benchmark PRIVATE LUX_BENCHMARK_HAS_LUA=1)
+    target_link_libraries(
+        ecs_l1_benchmark
+        PRIVATE lux::engine::simulation::simulation_script_lua
+    )
+else()
+    target_compile_definitions(ecs_l1_benchmark PRIVATE LUX_BENCHMARK_HAS_LUA=0)
+endif()
 lux_classify_target(
     TARGET  ecs_l1_benchmark
     LAYER   SIMULATION

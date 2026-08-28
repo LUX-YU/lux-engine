@@ -1,8 +1,3 @@
-if(NOT LUX_ENABLE_FLOWFORGE_MLIR)
-    message(STATUS "FlowForge MLIR tests skipped: LUX_ENABLE_FLOWFORGE_MLIR=OFF")
-    return()
-endif()
-
 find_package(LLVM CONFIG REQUIRED)
 find_package(MLIR REQUIRED CONFIG)
 

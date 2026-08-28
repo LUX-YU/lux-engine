@@ -229,9 +229,10 @@ int main()
     const std::array hook_endpoints{hook_bridge.descriptor()};
     const std::array event_endpoints{event_bridge.descriptor()};
 
-    const std::array descriptors{std::addressof(*projected)};
-    CppStaticScriptBackend backend{descriptors, 1U};
-    assert(backend);
+    const std::array pools{CppStaticScriptPoolDescription{std::addressof(*projected), 1U}};
+    auto backend_result = CppStaticScriptBackend::create(pools);
+    assert(backend_result);
+    auto backend = std::move(*backend_result);
     const std::array backends{backend.descriptor()};
     auto created = ScriptSystem::create(
         *simulation,

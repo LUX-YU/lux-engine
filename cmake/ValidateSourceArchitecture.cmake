@@ -638,6 +638,100 @@ foreach(source IN LISTS script_foundation_sources)
     endif()
 endforeach()
 
+set(script_system_source
+    "${source_root}/engine/domain/simulation/systems/script/src/ScriptSystem.cpp"
+)
+file(READ "${script_system_source}" script_system_contract)
+string(FIND
+    "${script_system_contract}"
+    "static_cast<void>(disconnectEndpoints())"
+    ignored_rollback_disconnect
+)
+if(NOT script_system_contract MATCHES "ROLLBACK_PENDING" OR
+   NOT ignored_rollback_disconnect EQUAL -1)
+    message(FATAL_ERROR
+        "Architecture: ScriptSystem prepare rollback can release a live Endpoint lane context."
+    )
+endif()
+
+set(scripting_core_cmake
+    "${source_root}/engine/domain/simulation/scripting/core/CMakeLists.txt"
+)
+file(READ "${scripting_core_cmake}" scripting_core_contract)
+if(NOT scripting_core_contract MATCHES "add_interface_component" OR
+   scripting_core_contract MATCHES "systems/script/include|SOURCE_FILES")
+    message(FATAL_ERROR
+        "Architecture: scripting core is not header-only or exports concrete ScriptSystem ownership."
+    )
+endif()
+
+set(flowforge_compiler_header
+    "${source_root}/engine/toolchain/flowforge/include/lux/engine/flowforge/Compiler.hpp"
+)
+file(READ "${flowforge_compiler_header}" flowforge_compiler_contract)
+if(flowforge_compiler_contract MATCHES
+   "AotArtifact|AotOptions|EFlowForgeCompileError|const ExportMethodNode")
+    message(FATAL_ERROR
+        "Architecture: FlowForge restores a public metadata-only or AOT helper compile surface."
+    )
+endif()
+file(GLOB_RECURSE flowforge_public_headers LIST_DIRECTORIES false
+    "${source_root}/engine/toolchain/flowforge/include/*.hpp"
+)
+list(LENGTH flowforge_public_headers flowforge_public_header_count)
+if(NOT flowforge_public_header_count EQUAL 1)
+    message(FATAL_ERROR
+        "Architecture: FlowForge compiler must expose only Compiler.hpp."
+    )
+endif()
+
+file(GLOB_RECURSE flowforge_compiler_sources LIST_DIRECTORIES false
+    "${source_root}/engine/toolchain/flowforge/*.hpp"
+    "${source_root}/engine/toolchain/flowforge/*.cpp"
+    "${source_root}/engine/toolchain/flowforge/CMakeLists.txt"
+)
+foreach(source IN LISTS flowforge_compiler_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "eventSymbolId|LUX_ENABLE_FLOWFORGE_MLIR")
+        message(FATAL_ERROR
+            "Architecture: FlowForge restores display-name identity or an optional MLIR compiler path."
+        )
+    endif()
+endforeach()
+
+set(dense_event_storage
+    "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp"
+)
+file(READ "${dense_event_storage}" dense_event_contract)
+if(dense_event_contract MATCHES
+   "HandlerKey previous|HandlerKey next|TargetBucket head")
+    message(FATAL_ERROR
+        "Architecture: targeted Event handlers restore intrusive linked execution."
+    )
+endif()
+
+set(lua_backend_source
+    "${source_root}/engine/domain/simulation/scripting/lua/src/LuaScriptBackend.cpp"
+)
+file(READ "${lua_backend_source}" lua_backend_contract)
+string(FIND "${lua_backend_contract}" "new (std::nothrow) Call" lua_call_new)
+string(FIND "${lua_backend_contract}" "delete call;" lua_call_delete)
+if(NOT lua_call_new EQUAL -1 OR NOT lua_call_delete EQUAL -1)
+    message(FATAL_ERROR
+        "Architecture: Lua restores per-prepared-call general heap allocation."
+    )
+endif()
+
+set(cpp_static_backend_source
+    "${source_root}/engine/domain/simulation/scripting/cpp_static/src/CppStaticScriptBridge.cpp"
+)
+file(READ "${cpp_static_backend_source}" cpp_static_backend_contract)
+if(cpp_static_backend_contract MATCHES "instance->object = ::operator new")
+    message(FATAL_ERROR
+        "Architecture: CppStatic restores per-instance object allocation."
+    )
+endif()
+
 file(GLOB_RECURSE ui_sources LIST_DIRECTORIES false
     "${source_root}/modules/function/ui/include/*.hpp"
     "${source_root}/modules/function/ui/sinclude/*.hpp"
@@ -668,4 +762,8 @@ file(WRITE "${LUX_REPORT_PATH}"
     "binary serialization runtime-reflection closure: 0\n"
     "active production throw statements: 0\n"
     "Hook/Event hot-path catches: 0\n"
+    "Script rollback lane-context lifetime debt: 0\n"
+    "FlowForge duplicate compiler/identity surfaces: 0\n"
+    "targeted Event intrusive handler execution: 0\n"
+    "per-instance/per-call backend heap allocations: 0\n"
 )

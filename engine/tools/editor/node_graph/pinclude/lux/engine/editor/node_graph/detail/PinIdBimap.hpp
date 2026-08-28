@@ -19,9 +19,9 @@
 #include <unordered_map>
 #include <utility>
 
-#include <lux/engine/graph_kit/GraphTypes.hpp>
+#include <lux/engine/editor/node_graph/GraphTypes.hpp>
 
-namespace lux::graphkit::detail
+namespace lux::editor::node_graph::detail
 {
     class PinIdBimap
     {
@@ -196,4 +196,4 @@ namespace lux::graphkit::detail
         std::unordered_map<std::uintptr_t, std::pair<GraphPinRef, GraphPinRef>> ed_to_link_;
     };
 
-} // namespace lux::graphkit::detail
+} // namespace lux::editor::node_graph::detail

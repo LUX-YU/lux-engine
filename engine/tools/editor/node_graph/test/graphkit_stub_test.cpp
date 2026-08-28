@@ -18,16 +18,16 @@
 #include <string>
 #include <vector>
 
-#include <lux/engine/graph_kit/GraphCommandStack.hpp>
-#include <lux/engine/graph_kit/GraphLayout.hpp>
-#include <lux/engine/graph_kit/GraphTypes.hpp>
-#include <lux/engine/graph_kit/IGraphSchema.hpp>
-#include <lux/engine/graph_kit/IGraphView.hpp>
-#include <lux/engine/graph_kit/detail/PinIdBimap.hpp>
+#include <lux/engine/editor/node_graph/GraphCommandStack.hpp>
+#include <lux/engine/editor/node_graph/GraphLayout.hpp>
+#include <lux/engine/editor/node_graph/GraphTypes.hpp>
+#include <lux/engine/editor/node_graph/IGraphSchema.hpp>
+#include <lux/engine/editor/node_graph/IGraphView.hpp>
+#include <lux/engine/editor/node_graph/detail/PinIdBimap.hpp>
 
 namespace
 {
-    using namespace lux::graphkit;
+    using namespace lux::editor::node_graph;
 
     int g_failed = 0;
 
@@ -454,7 +454,7 @@ static void testFallbackLayout()
 static void testPinIdBimap()
 {
     std::printf("-- detail::PinIdBimap --\n");
-    lux::graphkit::detail::PinIdBimap bimap;
+    lux::editor::node_graph::detail::PinIdBimap bimap;
 
     const GraphNodeRef n1{ 1 };
     const GraphNodeRef n2{ 2 };

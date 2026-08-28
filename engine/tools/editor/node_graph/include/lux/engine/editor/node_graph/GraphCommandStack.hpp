@@ -42,9 +42,9 @@
 #include "GraphTypes.hpp"
 #include "IGraphView.hpp"
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
-    class LUX_GRAPHKIT_PUBLIC GraphCommandStack
+    class LUX_NODE_GRAPH_EDITOR_PUBLIC GraphCommandStack
     {
     public:
         explicit GraphCommandStack(IGraphView* view = nullptr);
@@ -62,13 +62,15 @@ namespace lux::graphkit
         /// auto-wrap themselves.
         void beginTransaction(std::string label);
         void commitTransaction();
-        bool inTransaction() const noexcept { return in_transaction_; }
+        bool inTransaction() const noexcept
+        {
+            return in_transaction_;
+        }
 
         // ---- recorded primitives (execute through the view + record inverse) -
         /// Adds a node from a palette template (optionally placing it).
         /// Returns the new node (invalid on domain failure).
-        GraphNodeRef doAddNode(std::string_view template_id,
-                               std::optional<GraphVec2> pos = std::nullopt);
+        GraphNodeRef doAddNode(std::string_view template_id, std::optional<GraphVec2> pos = std::nullopt);
 
         /// Removes a node UNDOABLY: disconnects every incident link (recorded),
         /// then detaches the node, holding the capture for undo. One undo step.
@@ -90,16 +92,28 @@ namespace lux::graphkit
         // ---- undo / redo ------------------------------------------------------
         bool undo();
         bool redo();
-        bool canUndo() const noexcept { return !undo_stack_.empty(); }
-        bool canRedo() const noexcept { return !redo_stack_.empty(); }
-        std::size_t undoDepth() const noexcept { return undo_stack_.size(); }
+        bool canUndo() const noexcept
+        {
+            return !undo_stack_.empty();
+        }
+        bool canRedo() const noexcept
+        {
+            return !redo_stack_.empty();
+        }
+        std::size_t undoDepth() const noexcept
+        {
+            return undo_stack_.size();
+        }
 
         /// Monotonic counter of STRUCTURAL graph changes: bumps when a
         /// committed transaction (or an undo/redo replay of one) contains any
         /// op besides MOVE_NODE. Hosts poll it for bake-on-edit ("graph shape
         /// changed since I last compiled?") without a callback seam — node
         /// moves never trigger a rebake.
-        std::uint64_t structureRevision() const noexcept { return structure_revision_; }
+        std::uint64_t structureRevision() const noexcept
+        {
+            return structure_revision_;
+        }
 
     private:
         struct Op
@@ -113,18 +127,18 @@ namespace lux::graphkit
                 MOVE_NODE
             };
 
-            EKind        kind{};
-            GraphPinRef  from;       ///< CONNECT / DISCONNECT
-            GraphPinRef  to;         ///< CONNECT / DISCONNECT
-            GraphNodeRef node;       ///< ADD_NODE / REMOVE_NODE / MOVE_NODE
-            NodeCapture  capture;    ///< REMOVE: held after execute; ADD: held after undo
-            GraphVec2    old_pos;    ///< MOVE_NODE
-            GraphVec2    new_pos;    ///< MOVE_NODE
+            EKind kind{};
+            GraphPinRef from;    ///< CONNECT / DISCONNECT
+            GraphPinRef to;      ///< CONNECT / DISCONNECT
+            GraphNodeRef node;   ///< ADD_NODE / REMOVE_NODE / MOVE_NODE
+            NodeCapture capture; ///< REMOVE: held after execute; ADD: held after undo
+            GraphVec2 old_pos;   ///< MOVE_NODE
+            GraphVec2 new_pos;   ///< MOVE_NODE
         };
 
         struct Transaction
         {
-            std::string     label;
+            std::string label;
             std::vector<Op> ops;
         };
 
@@ -134,12 +148,12 @@ namespace lux::graphkit
         /// True when @p t holds any non-MOVE op (see structureRevision).
         static bool isStructural(const Transaction& t) noexcept;
 
-        IGraphView*              view_ = nullptr;
+        IGraphView* view_ = nullptr;
         std::vector<Transaction> undo_stack_;
         std::vector<Transaction> redo_stack_;
-        Transaction              pending_;
-        bool                     in_transaction_ = false;
-        std::uint64_t            structure_revision_ = 0;
+        Transaction pending_;
+        bool in_transaction_ = false;
+        std::uint64_t structure_revision_ = 0;
     };
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

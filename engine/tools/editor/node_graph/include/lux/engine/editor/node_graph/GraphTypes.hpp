@@ -20,9 +20,9 @@
 #include <string>
 #include <string_view>
 
-#include <lux/engine/graph_kit/visibility.h>
+#include <lux/engine/editor/node_graph/visibility.h>
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
     using node_id = std::uint64_t;
 
@@ -148,4 +148,4 @@ namespace lux::graphkit
         static ConnectResult no(std::string why) { return ConnectResult{ false, std::move(why) }; }
     };
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

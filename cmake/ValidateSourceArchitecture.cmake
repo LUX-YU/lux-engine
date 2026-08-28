@@ -276,17 +276,17 @@ if(EXISTS "${source_root}/engine/flowforge")
     endforeach()
 endif()
 
-if(EXISTS "${source_root}/engine/graph_kit")
-    file(GLOB_RECURSE graph_kit_sources LIST_DIRECTORIES false
-        "${source_root}/engine/graph_kit/*.hpp"
-        "${source_root}/engine/graph_kit/*.cpp"
-        "${source_root}/engine/graph_kit/*.cmake"
+if(EXISTS "${source_root}/engine/tools/editor/node_graph")
+    file(GLOB_RECURSE node_graph_editor_sources LIST_DIRECTORIES false
+        "${source_root}/engine/tools/editor/node_graph/*.hpp"
+        "${source_root}/engine/tools/editor/node_graph/*.cpp"
+        "${source_root}/engine/tools/editor/node_graph/*.cmake"
     )
-    foreach(source IN LISTS graph_kit_sources)
+    foreach(source IN LISTS node_graph_editor_sources)
         file(READ "${source}" content)
         if(content MATCHES "flowforge|engine/simulation|resource/asset|mlir|llvm|[/\\]legacy[/\\]")
             message(FATAL_ERROR
-                "Architecture: GraphKit package '${source}' is not domain independent."
+                "Architecture: Node Graph Editor package '${source}' is not domain independent."
             )
         endif()
     endforeach()

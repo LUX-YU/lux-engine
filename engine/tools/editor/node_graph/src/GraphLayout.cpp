@@ -1,8 +1,8 @@
-#include <lux/engine/graph_kit/GraphLayout.hpp>
+#include <lux/engine/editor/node_graph/GraphLayout.hpp>
 
 #include <vector>
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
     std::size_t layoutUnplacedNodes(IGraphView& view, GraphVec2 origin, GraphVec2 cell,
                                     std::uint32_t columns)
@@ -38,4 +38,4 @@ namespace lux::graphkit
         return unplaced.size();
     }
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

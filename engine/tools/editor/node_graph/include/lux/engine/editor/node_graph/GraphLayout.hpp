@@ -16,16 +16,16 @@
 #include "GraphTypes.hpp"
 #include "IGraphView.hpp"
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
     /// Lays out every UNPLACED node (nodePos() == nullopt) on a row-major grid
     /// starting at @p origin with @p cell spacing, @p columns per row. Placed
     /// nodes are untouched. Returns the number of nodes positioned.
-    LUX_GRAPHKIT_PUBLIC std::size_t layoutUnplacedNodes(
+    LUX_NODE_GRAPH_EDITOR_PUBLIC std::size_t layoutUnplacedNodes(
         IGraphView&   view,
         GraphVec2     origin  = GraphVec2{ 60.0f, 60.0f },
         GraphVec2     cell    = GraphVec2{ 260.0f, 180.0f },
         std::uint32_t columns = 4
     );
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

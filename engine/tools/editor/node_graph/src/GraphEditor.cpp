@@ -1,6 +1,7 @@
-#include <lux/engine/graph_kit/GraphEditor.hpp>
+#include <lux/engine/editor/node_graph/GraphEditor.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 #include <unordered_map>
@@ -9,13 +10,12 @@
 #include <imgui.h>
 #include <imgui_node_editor.h>
 
-#include <lux/engine/graph_kit/GraphLayout.hpp>
-#include <lux/engine/graph_kit/detail/PinIdBimap.hpp>
-#include <lux/engine/ui/SearchPopupElement.hpp>
+#include <lux/engine/editor/node_graph/GraphLayout.hpp>
+#include <lux/engine/editor/node_graph/detail/PinIdBimap.hpp>
 
 namespace ed = ax::NodeEditor;
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
     namespace
     {
@@ -68,12 +68,11 @@ namespace lux::graphkit
         detail::PinIdBimap  bimap;
         DeferredPopupQueue  popups;
 
-        // Palette popup (drawn AFTER the canvas ends; SearchPopupElement
-        // documents that requirement itself).
-        lux::ui::SearchPopupElement palette{ "GraphKitPalette" };
-        std::vector<std::string>    palette_template_ids; ///< select index -> template id
-        bool                        open_palette = false;
-        GraphVec2                   palette_spawn_pos{};
+        std::vector<std::string> palette_names;
+        std::vector<std::string> palette_template_ids;
+        std::array<char, 128> palette_filter{};
+        bool open_palette = false;
+        GraphVec2 palette_spawn_pos{};
 
         // Node context menu (schema nodeActions), also deferred out of canvas.
         bool         open_node_menu = false;
@@ -435,29 +434,43 @@ namespace lux::graphkit
             if (open_palette)
             {
                 open_palette = false;
-                std::vector<std::string> names;
+                palette_names.clear();
                 palette_template_ids.clear();
                 for (const NodeTemplate& t : schema->palette())
                 {
-                    names.push_back(t.category.empty() ? t.display_name
-                                                       : t.category + " / " + t.display_name);
+                    palette_names.push_back(
+                        t.category.empty() ? t.display_name : t.category + " / " + t.display_name
+                    );
                     palette_template_ids.push_back(t.id);
                 }
-                palette.setItems(names);
-                palette.setHint("add node...");
-                palette.setOnSelect(
-                    [this](std::uint32_t index)
+                palette_filter.fill('\0');
+                ImGui::OpenPopup("node_graph_palette");
+            }
+            if (ImGui::BeginPopup("node_graph_palette"))
+            {
+                ImGui::InputTextWithHint(
+                    "##node_graph_palette_filter",
+                    "add node...",
+                    palette_filter.data(),
+                    palette_filter.size()
+                );
+                const std::string_view filter{ palette_filter.data() };
+                for (std::size_t index = 0; index < palette_names.size(); ++index)
+                {
+                    const bool matches_filter =
+                        filter.empty() || palette_names[index].find(filter) != std::string::npos;
+                    if (matches_filter && ImGui::Selectable(palette_names[index].c_str()))
                     {
                         if (index < palette_template_ids.size())
                         {
                             commands.doAddNode(palette_template_ids[index], palette_spawn_pos);
                             needs_pos_sync = true;
                         }
+                        ImGui::CloseCurrentPopup();
                     }
-                );
-                palette.open();
+                }
+                ImGui::EndPopup();
             }
-            palette.draw();
 
             if (open_node_menu)
             {
@@ -672,4 +685,4 @@ namespace lux::graphkit
         impl_->want_navigate = true;
     }
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

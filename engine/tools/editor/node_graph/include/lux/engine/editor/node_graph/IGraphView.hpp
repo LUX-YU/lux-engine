@@ -32,7 +32,7 @@
 
 #include "GraphTypes.hpp"
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
     /// Opaque OWNING handle to a detached node. The domain adapter knows what
     /// is inside (e.g. a moved-out domain graph NodeStorage, or a cloned rdesc
@@ -98,4 +98,4 @@ namespace lux::graphkit
         virtual void reconstructNode(GraphNodeRef node) = 0;
     };
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

@@ -1,8 +1,8 @@
-#include <lux/engine/graph_kit/GraphCommandStack.hpp>
+#include <lux/engine/editor/node_graph/GraphCommandStack.hpp>
 
 #include <utility>
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
     GraphCommandStack::GraphCommandStack(IGraphView* view)
         : view_(view)
@@ -381,4 +381,4 @@ namespace lux::graphkit
         return ok;
     }
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

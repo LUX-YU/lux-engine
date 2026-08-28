@@ -24,7 +24,7 @@
 #include "GraphTypes.hpp"
 #include "IGraphView.hpp"
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
     /// A popup-shaped request raised from inside the node canvas, to be drawn
     /// by the HOST PANEL in normal panel space after the canvas ends.
@@ -120,4 +120,4 @@ namespace lux::graphkit
                                   DeferredPopupQueue& /*popups*/) {}
     };
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

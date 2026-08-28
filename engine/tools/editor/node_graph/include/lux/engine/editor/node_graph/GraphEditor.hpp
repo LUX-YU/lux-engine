@@ -37,9 +37,9 @@
 #include "IGraphSchema.hpp"
 #include "IGraphView.hpp"
 
-namespace lux::graphkit
+namespace lux::editor::node_graph
 {
-    class LUX_GRAPHKIT_PUBLIC GraphEditor
+    class LUX_NODE_GRAPH_EDITOR_PUBLIC GraphEditor
     {
     public:
         GraphEditor();
@@ -89,4 +89,4 @@ namespace lux::graphkit
         std::unique_ptr<Impl> impl_;
     };
 
-} // namespace lux::graphkit
+} // namespace lux::editor::node_graph

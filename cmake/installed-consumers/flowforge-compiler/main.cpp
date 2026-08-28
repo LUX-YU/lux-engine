@@ -1,22 +1,27 @@
 #include <lux/engine/flowforge/Compiler.hpp>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 
-#include <array>
+#include <memory>
 
 int main()
 {
-    const std::array exports{
+    lux::flowforge::FlowGraph graph;
+    const auto node_index = graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("tick"));
+    const auto node_id = graph.getNode(node_index).node->id();
+    if (!graph.addExport(
         lux::flowforge::ExportMethodNode{
             lux::flowforge::FlowForgeExportNodeId{1U},
+            node_id,
             1U,
-            "tick",
-            {},
-            {}
         }
-    };
+    ))
+    {
+        return 1;
+    }
     auto artifact = lux::flowforge::compileFlowForgeScript(
-        "lux.consumer.flowforge",
-        exports,
-        lux::flowforge::StateLayout{}
+        graph,
+        lux::flowforge::FlowForgeCompileOptions{.module_name = "lux.consumer.flowforge"}
     );
     return artifact && artifact->findExport(1U) ? 0 : 1;
 }

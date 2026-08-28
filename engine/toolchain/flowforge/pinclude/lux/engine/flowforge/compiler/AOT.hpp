@@ -29,25 +29,19 @@
 #include <vector>
 
 #include <lux/engine/flowforge/compiler/IR.hpp>
-#include <lux/engine/flowforge/compiler/visibility.h>
+#include <lux/engine/description/Script.hpp>
 
 namespace lux::flowforge
 {
     class FlowGraph;
     class IRContext;
 
-    struct AotEventDesc
-    {
-        std::string name;          ///< display name == NativeModule function name
-        std::size_t arg_count = 0; ///< payload parameter count
-    };
-
     struct AotArtifact
     {
         std::vector<std::byte>    object;      ///< native object (COFF) bytes
         std::string               module_name;
         std::vector<std::string>  imports;     ///< host symbols bind_host resolves
-        std::vector<AotEventDesc> events;
+        std::vector<lux::rdesc::ScriptFunction> exports;
 
         // Instance-state recipe (mirrors the JIT path's StateLayout): the
         // host allocates state_size bytes per instance, copies the defaults
@@ -58,29 +52,19 @@ namespace lux::flowforge
         std::vector<std::byte>    state_defaults;
     };
 
-    struct AotOptions
-    {
-        std::string module_name = "flowforge_script";
-
-        /// Optional linker override. Empty = the LUX_FLOWFORGE_LINKER
-        /// environment variable, then the lld-link discovered at build
-        /// time, then lld-link / link on PATH.
-        std::filesystem::path linker;
-    };
-
     /// Graph -> FlowForge MLIR -> LLVM -> native object.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<AotArtifact> compileToObject(
+    [[nodiscard]] FlowForgeResult<AotArtifact> compileToObject(
         IRContext& context,
         const FlowGraph& graph,
-        const AotOptions& options
+        const FlowForgeCompileOptions& options
     ) noexcept;
 
     /// Writes artifact.object next to out_dll (same stem, ".obj") and links
     /// it into a shared library at out_dll. Cook-time only — spawns the
     /// linker as an external process.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<void> linkSharedLibrary(
+    [[nodiscard]] FlowForgeResult<void> linkSharedLibrary(
         const AotArtifact& artifact,
         const std::filesystem::path& out_dll,
-        const AotOptions& options = {}
+        const FlowForgeCompileOptions& options
     ) noexcept;
 }

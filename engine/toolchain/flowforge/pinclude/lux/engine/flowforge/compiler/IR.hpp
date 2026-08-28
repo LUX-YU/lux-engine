@@ -14,12 +14,10 @@
 // reach into the wrapped mlir::ModuleOp should include the matching
 // IRImpl.hpp from pinclude/.
 //
-#include <cstdint>
 #include <memory>
 #include <string>
 
-#include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/flowforge/compiler/visibility.h>
+#include <lux/engine/flowforge/Compiler.hpp>
 
 namespace lux::flowforge
 {
@@ -31,34 +29,8 @@ namespace lux::flowforge
     class DataOutPin;
     class ExecOutPin;
 
-    enum class EFlowForgeError
-    {
-        GRAPH_INVALID,
-        ALLOCATION_FAILURE,
-        FOREIGN_EXCEPTION,
-        CONTEXT_CREATION_FAILED,
-        IR_VERIFICATION_FAILED,
-        LOWERING_FAILED,
-        JIT_ENGINE_CREATION_FAILED,
-        JIT_SYMBOL_LOOKUP_FAILED,
-        JIT_INVOCATION_FAILED,
-        AOT_CODEGEN_FAILED,
-        LINK_FAILED,
-    };
-
-    struct FlowForgeFailure
-    {
-        EFlowForgeError code = EFlowForgeError::GRAPH_INVALID;
-        std::string message;
-        std::uint64_t node_id = 0;
-        std::uint64_t pin_id = 0;
-    };
-
-    template <class T>
-    using FlowForgeResult = lux::cxx::expected<T, FlowForgeFailure>;
-
     class IRImpl;
-    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC IR
+    class IR
     {
     public:
         IR();
@@ -76,7 +48,7 @@ namespace lux::flowforge
     // contract: any IR built via an MLIRBuilder(this) must be destroyed
     // BEFORE this IRContext — the context's destructor does not know about
     // outstanding modules, so a surviving IR would dangle.
-    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC IRContext
+    class IRContext
     {
     public:
         [[nodiscard]] static FlowForgeResult<IRContext> create() noexcept;
@@ -100,7 +72,7 @@ namespace lux::flowforge
     };
 
     class MLIRBuilderImpl;
-    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC MLIRBuilder
+    class MLIRBuilder
     {
     public:
         [[nodiscard]] static FlowForgeResult<MLIRBuilder> create(IRContext& context) noexcept;

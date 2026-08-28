@@ -1,9 +1,7 @@
 message("-------- Plaform Layer --------")
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # Offline tools do not configure interactive platform domains.
-    if(LUX_ENABLE_FLOWFORGE_MLIR AND ENABLE_FLOWFORGE_TEST)
-        add_subdirectory(dynamic_library)
-    endif()
+    add_subdirectory(dynamic_library)
 else()
     add_subdirectory(gapi)
     add_subdirectory(window)
@@ -15,10 +13,7 @@ endif()
 
 # filewatch 只在非 Android 构建(见其 CMakeLists 头注释)——安装列表跟着条件。
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
-    set(LUX_PLATFORM_COMPONENTS)
-    if(LUX_ENABLE_FLOWFORGE_MLIR AND ENABLE_FLOWFORGE_TEST)
-        list(APPEND LUX_PLATFORM_COMPONENTS dynamic_library)
-    endif()
+    set(LUX_PLATFORM_COMPONENTS dynamic_library)
 else()
     set(LUX_PLATFORM_COMPONENTS
         gapi

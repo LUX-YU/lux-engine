@@ -31,6 +31,8 @@
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
 
+#include <lux/engine/core/semantic/SemanticType.hpp>
+#include <lux/engine/description/Script.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/meta/Meta.hpp>
 
@@ -58,6 +60,7 @@
 #include <cstring>
 #include <fstream>
 #include <new>
+#include <optional>
 #include <utility>
 
 // The descriptor globals are emitted as LLVM constant structs whose layout
@@ -77,72 +80,69 @@ namespace lux::flowforge
         struct EventInfo
         {
             const OnEventNode* node;
-            std::string        symbol;   // func symbol: lux_event_<sanitized>
+            std::string symbol;
+            lux::script::ScriptSymbolId authored_symbol{};
         };
 
-        uint8_t refTypeToValueKind(const lux::meta::RefType& rt)
+        [[nodiscard]] std::optional<lux::rdesc::ScriptValueType> projectType(
+            const lux::meta::RefType& type
+        )
         {
             using lux::meta::EBaseType;
             using lux::meta::ETypeQual;
-            switch (static_cast<ETypeQual>(rt.qtype.qual)) {
-                case ETypeQual::Ptr:
-                case ETypeQual::PtrToConst:
-                case ETypeQual::ConstPtr:
-                case ETypeQual::ConstPtrToConst:
-                    return LUX_SCRIPT_VK_OBJECT_PTR;
-                default: break;
+            const auto qualifier = static_cast<ETypeQual>(type.qtype.qual);
+            const bool is_unsupported_qualifier = qualifier != ETypeQual::Value &&
+                qualifier != ETypeQual::LRefToConst;
+            if (is_unsupported_qualifier)
+            {
+                return std::nullopt;
             }
-            switch (static_cast<EBaseType>(rt.qtype.base)) {
-                case EBaseType::Bool:   return LUX_SCRIPT_VK_BOOL;
-                case EBaseType::Int8:
-                case EBaseType::Int16:
-                case EBaseType::Int32:  return LUX_SCRIPT_VK_INT32;
-                case EBaseType::Uint8:
-                case EBaseType::Uint16:
-                case EBaseType::Uint32: return LUX_SCRIPT_VK_UINT32;
-                case EBaseType::Int64:  return LUX_SCRIPT_VK_INT64;
-                case EBaseType::Uint64: return LUX_SCRIPT_VK_UINT64;
-                case EBaseType::Float:  return LUX_SCRIPT_VK_FLOAT;
-                case EBaseType::Double: return LUX_SCRIPT_VK_DOUBLE;
-                case EBaseType::Record: return LUX_SCRIPT_VK_STRUCT_REF;
-                default:                return LUX_SCRIPT_VK_OBJECT_PTR;
-            }
-        }
 
-        uint8_t refTypeToPassMode(const lux::meta::RefType& rt)
-        {
-            return static_cast<lux::meta::EBaseType>(rt.qtype.base)
-                        == lux::meta::EBaseType::Record
-                ? uint8_t(LUX_SCRIPT_PASS_CONST_REF)
-                : uint8_t(LUX_SCRIPT_PASS_VALUE);
-        }
-
-        uint64_t eventSymbolId(
-            std::string_view module_name,
-            const OnEventNode& event
-        )
-        {
-            uint64_t hash = 0xcbf29ce484222325ULL;
-            const auto append = [&hash](const void* data, size_t size) {
-                const auto* bytes = static_cast<const unsigned char*>(data);
-                for (size_t index = 0; index < size; ++index) {
-                    hash ^= bytes[index];
-                    hash *= 0x100000001b3ULL;
+            const auto builtin = [&type]() -> std::optional<lux::rdesc::ScriptValueType>
+            {
+                switch (static_cast<EBaseType>(type.qtype.base))
+                {
+                case EBaseType::Bool:
+                    return lux::rdesc::makeScriptValueType<bool>();
+                case EBaseType::Int32:
+                    return lux::rdesc::makeScriptValueType<std::int32_t>();
+                case EBaseType::Uint32:
+                    return lux::rdesc::makeScriptValueType<std::uint32_t>();
+                case EBaseType::Int64:
+                    return lux::rdesc::makeScriptValueType<std::int64_t>();
+                case EBaseType::Uint64:
+                    return lux::rdesc::makeScriptValueType<std::uint64_t>();
+                case EBaseType::Float:
+                    return lux::rdesc::makeScriptValueType<float>();
+                case EBaseType::Double:
+                    return lux::rdesc::makeScriptValueType<double>();
+                default:
+                    return std::nullopt;
                 }
-            };
-            append(module_name.data(), module_name.size());
-            append(event.name().data(), event.name().size());
-            for (const auto& parameter : event.paramInfos()) {
-                const uint64_t type_id = parameter.type
-                    ? parameter.type->hash
-                    : 0U;
-                const uint8_t pass = parameter.type
-                    ? refTypeToPassMode(*parameter.type)
-                    : uint8_t(LUX_SCRIPT_PASS_VALUE);
-                append(&type_id, sizeof(type_id));
-                append(&pass, sizeof(pass));
+            }();
+            if (builtin)
+            {
+                const bool is_layout_mismatch = builtin->size != type.size || builtin->alignment != type.alignment;
+                if (is_layout_mismatch)
+                {
+                    return std::nullopt;
+                }
+                return builtin;
             }
-            return hash == 0U ? 1U : hash;
+
+            if (static_cast<EBaseType>(type.qtype.base) != EBaseType::Record || type.name.empty() || type.size == 0U ||
+                type.alignment == 0U || (type.alignment & (type.alignment - 1U)) != 0U)
+            {
+                return std::nullopt;
+            }
+            return lux::rdesc::ScriptValueType{
+                std::string(type.name),
+                lux::semantic::typeId(type.name),
+                lux::semantic::EValuePass::CONST_REF,
+                static_cast<std::uint8_t>(lux::semantic::EAbiKind::STRUCT_REF),
+                type.size,
+                type.alignment
+            };
         }
 
         llvm::Constant* makeCStr(llvm::Module& m, llvm::StringRef s,
@@ -310,6 +310,7 @@ namespace lux::flowforge
         bool emitModuleDesc(llvm::Module& m,
                             const std::string& module_name,
                             const std::vector<EventInfo>& events,
+                            const std::vector<lux::rdesc::ScriptFunction>& exports,
                             const std::vector<llvm::Function*>& wrappers,
                             uint64_t state_layout_hash,
                             uint32_t state_size,
@@ -355,32 +356,27 @@ namespace lux::flowforge
 
             llvm::SmallVector<llvm::Constant*, 8> fn_descs;
             for (size_t e = 0; e < events.size(); ++e) {
-                const auto& params = events[e].node->paramInfos();
+                const auto& function = exports[e];
+                const auto& params = function.args;
 
                 // Per-event argument type_desc array (may be empty).
                 llvm::Constant* args_ptr = null_ptr;
                 if (!params.empty()) {
                     llvm::SmallVector<llvm::Constant*, 8> arg_descs;
-                    for (const auto& p : params) {
-                        const auto* rt = p.type;
+                    for (const auto& parameter : params) {
                         arg_descs.push_back(llvm::ConstantStruct::get(
                             type_desc_ty,
                             {
                                 makeCStr(
                                     m,
-                                    rt ? rt->name : std::string_view{},
+                                    parameter.canonical_name,
                                     "_lfd_argname"
                                 ),
-                                llvm::ConstantInt::get(i64, rt ? rt->hash : 0),
-                                llvm::ConstantInt::get(i32, rt ? rt->size : 0),
-                                llvm::ConstantInt::get(
-                                    i32, rt ? rt->alignment : 0),
-                                llvm::ConstantInt::get(
-                                    i8, rt ? refTypeToValueKind(*rt)
-                                           : uint8_t(LUX_SCRIPT_VK_VOID)),
-                                llvm::ConstantInt::get(
-                                    i8, rt ? refTypeToPassMode(*rt)
-                                           : uint8_t(LUX_SCRIPT_PASS_VALUE)),
+                                llvm::ConstantInt::get(i64, parameter.type_id),
+                                llvm::ConstantInt::get(i32, parameter.size),
+                                llvm::ConstantInt::get(i32, parameter.alignment),
+                                llvm::ConstantInt::get(i8, parameter.abi_kind),
+                                llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(parameter.pass)),
                                 pad_zero,
                             }));
                     }
@@ -396,11 +392,8 @@ namespace lux::flowforge
                 fn_descs.push_back(llvm::ConstantStruct::get(
                     func_desc_ty,
                     {
-                        makeCStr(m, events[e].node->name(), "_lfd_fnname"),
-                        llvm::ConstantInt::get(
-                            i64,
-                            eventSymbolId(module_name, *events[e].node)
-                        ),
+                        makeCStr(m, function.name, "_lfd_fnname"),
+                        llvm::ConstantInt::get(i64, events[e].authored_symbol),
                         args_ptr,
                         llvm::ConstantInt::get(
                             i32, static_cast<uint32_t>(params.size())),
@@ -449,7 +442,7 @@ namespace lux::flowforge
             return true;
         }
 
-        std::string findLinker(const AotOptions& options)
+        std::string findLinker(const FlowForgeCompileOptions& options)
         {
             if (!options.linker.empty())
                 return options.linker.string();
@@ -471,7 +464,7 @@ namespace lux::flowforge
     static bool compileToObjectImpl(
         IRContext& ctx,
         const FlowGraph& graph,
-        const AotOptions& options,
+        const FlowForgeCompileOptions& options,
         AotArtifact& artifact_out,
         std::string* error_out
     )
@@ -484,16 +477,40 @@ namespace lux::flowforge
         artifact_out = AotArtifact{};
         artifact_out.module_name = options.module_name;
 
-        // Event table straight from the graph (same walk as the JIT host).
+        if (!validFlowForgeExports(graph))
+        {
+            return fail("invalid FlowGraph export declarations");
+        }
+
         std::vector<EventInfo> events;
-        for (const auto& storage : graph.nodes()) {
-            const Node* n = storage.node.get();
-            if (!n || n->operation() != ENodeOperation::ON_EVENT) continue;
-            const auto& ev = static_cast<const OnEventNode&>(*n);
+        events.reserve(graph.exports().size());
+        artifact_out.exports.reserve(graph.exports().size());
+        for (const auto& exported : graph.exports())
+        {
+            const auto* event = static_cast<const OnEventNode*>(graph.findNodeById(exported.entry_node_id));
+            lux::rdesc::ScriptFunction function;
+            function.name = std::string(event->name());
+            function.symbol_id = exported.symbol;
+            function.args.reserve(event->paramInfos().size());
+            for (const auto& parameter : event->paramInfos())
+            {
+                if (parameter.type == nullptr)
+                {
+                    return fail("export parameter has no semantic type");
+                }
+                auto projected = projectType(*parameter.type);
+                if (!projected)
+                {
+                    return fail("export parameter cannot be projected to the Script ABI");
+                }
+                function.args.push_back(std::move(*projected));
+            }
             events.push_back(EventInfo{
-                &ev, FlowScriptInstance::eventSymbol(ev.name()) });
-            artifact_out.events.push_back(AotEventDesc{
-                ev.name(), ev.paramInfos().size() });
+                event,
+                FlowScriptInstance::eventSymbol(event->name()),
+                exported.symbol
+            });
+            artifact_out.exports.push_back(std::move(function));
         }
 
         // 1. The exact JIT lowering pipeline, then LLVM IR translation.
@@ -566,8 +583,8 @@ namespace lux::flowforge
         // 5. Module descriptor + entry.
         {
             std::string err;
-            if (!emitModuleDesc(*llmod, options.module_name, events,
-                                wrappers, artifact_out.state_hash,
+            if (!emitModuleDesc(*llmod, options.module_name, events, artifact_out.exports, wrappers,
+                                artifact_out.state_hash,
                                 static_cast<uint32_t>(artifact_out.state_size),
                                 artifact_out.state_align, err))
                 return fail(std::move(err));
@@ -616,7 +633,7 @@ namespace lux::flowforge
     static bool linkSharedLibraryImpl(
         const AotArtifact& artifact,
         const std::filesystem::path& out_dll,
-        const AotOptions& options,
+        const FlowForgeCompileOptions& options,
         std::string* error_out
     )
     {
@@ -655,7 +672,14 @@ namespace lux::flowforge
         const std::string out_arg = "/OUT:" + out_dll.string();
         const std::string obj_arg = obj_path.string();
         llvm::SmallVector<llvm::StringRef, 8> args{
-            linker, "/DLL", "/NOENTRY", "/NODEFAULTLIB", out_arg, obj_arg };
+            linker,
+            "/DLL",
+            "/NOENTRY",
+            "/NODEFAULTLIB",
+            "/Brepro",
+            out_arg,
+            obj_arg
+        };
 
         std::string exec_err;
         const int rc = llvm::sys::ExecuteAndWait(
@@ -672,7 +696,7 @@ namespace lux::flowforge
     FlowForgeResult<AotArtifact> compileToObject(
         IRContext& context,
         const FlowGraph& graph,
-        const AotOptions& options
+        const FlowForgeCompileOptions& options
     ) noexcept
     {
         try
@@ -701,7 +725,7 @@ namespace lux::flowforge
     FlowForgeResult<void> linkSharedLibrary(
         const AotArtifact& artifact,
         const std::filesystem::path& out_dll,
-        const AotOptions& options
+        const FlowForgeCompileOptions& options
     ) noexcept
     {
         try

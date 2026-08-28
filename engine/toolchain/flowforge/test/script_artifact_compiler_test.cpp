@@ -1,45 +1,100 @@
 #include <lux/engine/flowforge/Compiler.hpp>
-#include <lux/engine/function/script/abi/lux_script_abi.h>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+#include <lux/engine/function/script/native/NativeModule.hpp>
 
-#include <array>
+#include <algorithm>
 #include <cassert>
+#include <memory>
+#include <vector>
+
+namespace
+{
+    lux::flowforge::FlowGraph makeGraph(
+        std::string_view display_name,
+        lux::script::ScriptSymbolId symbol
+    )
+    {
+        lux::flowforge::FlowGraph graph;
+        const auto node_index = graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>(display_name));
+        const auto node_id = graph.getNode(node_index).node->id();
+        const bool added = graph.addExport(lux::flowforge::ExportMethodNode{
+            lux::flowforge::FlowForgeExportNodeId{1U},
+            node_id,
+            symbol
+        });
+        assert(added);
+        return graph;
+    }
+}
 
 int main()
 {
-    using namespace lux::flowforge;
-
-    const auto i32 = lux::rdesc::makeScriptValueType<std::int32_t>();
-    const auto f32 = lux::rdesc::makeScriptValueType<float>();
-    const std::array exports{
-        ExportMethodNode{FlowForgeExportNodeId{1U}, 11U, "tick", {i32}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{2U}, 12U, "idle", {}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{3U}, 13U, "once", {f32}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{4U}, 14U, "foo", {i32}, {}},
-        ExportMethodNode{FlowForgeExportNodeId{5U}, 15U, "foo", {f32}, {}}
-    };
-
-    auto compiled = compileFlowForgeScript(
-        "gameplay.behavior",
-        exports,
-        StateLayout{{}, 16U, 16U, 0x1234U, {std::byte{1U}}}
+    constexpr lux::script::ScriptSymbolId Symbol = 0x1234U;
+    auto graph = makeGraph("tick", Symbol);
+    auto compiled = lux::flowforge::compileFlowForgeScript(
+        graph,
+        lux::flowforge::FlowForgeCompileOptions{.module_name = "gameplay.behavior"}
     );
     assert(compiled);
-    assert(compiled->description().exports.size() == 5U);
-    assert(compiled->description().exports[1].name == "idle");
-    const auto& native = std::get<lux::rdesc::NativeModuleScript>(compiled->description().body);
-    assert(native.abi_version == LUX_SCRIPT_ABI_VERSION);
-    assert(native.state_align == 16U);
-    assert(lux::rdesc::validScriptDescription(compiled->description()));
-    assert(compiled->findExport(15U) == &compiled->description().exports[4U]);
+    assert(!compiled->payload().empty());
+    assert(compiled->findExport(Symbol) == &compiled->description().exports.front());
 
-    auto duplicate_exports = exports;
-    duplicate_exports[4].symbol = duplicate_exports[3].symbol;
-    auto duplicate = compileFlowForgeScript(
-        "gameplay.behavior",
-        duplicate_exports,
-        StateLayout{{}, 16U, 16U, 0x1234U, {}}
+    auto loaded = lux::script::loadNativeModule(compiled->payload(), "gameplay.behavior");
+    assert(loaded);
+    assert(loaded->findFunction(Symbol) != nullptr);
+
+    lux_script_call_frame frame{};
+    assert(loaded->findFunction(Symbol)->invoke(&frame) == 0);
+
+    auto compiled_again = lux::flowforge::compileFlowForgeScript(
+        graph,
+        lux::flowforge::FlowForgeCompileOptions{.module_name = "gameplay.behavior"}
     );
-    assert(!duplicate);
-    assert(duplicate.error() == EFlowForgeCompileError::INVALID_GRAPH);
+    assert(compiled_again);
+    assert(compiled_again->description().exports == compiled->description().exports);
+    assert(std::ranges::equal(compiled_again->payload(), compiled->payload()));
+
+    auto renamed_graph = makeGraph("renamed_tick", Symbol);
+    auto renamed = lux::flowforge::compileFlowForgeScript(
+        renamed_graph,
+        lux::flowforge::FlowForgeCompileOptions{.module_name = "gameplay.behavior"}
+    );
+    assert(renamed);
+    auto renamed_module = lux::script::loadNativeModule(renamed->payload(), "gameplay.behavior");
+    assert(renamed_module);
+    assert(renamed_module->findFunction(Symbol) != nullptr);
+
+    auto duplicate = makeGraph("first", 1U);
+    const auto duplicate_node = duplicate.addNodes(std::make_unique<lux::flowforge::OnEventNode>("second"));
+    const auto duplicate_node_id = duplicate.getNode(duplicate_node).node->id();
+    assert(duplicate.addExport(lux::flowforge::ExportMethodNode{
+        lux::flowforge::FlowForgeExportNodeId{1U},
+        duplicate_node_id,
+        2U
+    }));
+    assert(!lux::flowforge::validFlowForgeExports(duplicate));
+
+    lux::flowforge::FlowGraph dangling;
+    assert(dangling.addExport(lux::flowforge::ExportMethodNode{
+        lux::flowforge::FlowForgeExportNodeId{1U},
+        42U,
+        1U
+    }));
+    assert(!lux::flowforge::validFlowForgeExports(dangling));
+
+    lux::flowforge::FlowGraph wrong_entry;
+    auto function = std::make_unique<lux::flowforge::FuncDefNode>(
+        "helper",
+        std::vector<lux::flowforge::FuncArgInfo>{}
+    );
+    const auto function_node = wrong_entry.addNodes(std::move(function));
+    const auto function_node_id = wrong_entry.getNode(function_node).node->id();
+    assert(wrong_entry.addExport(lux::flowforge::ExportMethodNode{
+        lux::flowforge::FlowForgeExportNodeId{1U},
+        function_node_id,
+        1U
+    }));
+    assert(!lux::flowforge::validFlowForgeExports(wrong_entry));
     return 0;
 }

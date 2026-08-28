@@ -102,7 +102,7 @@ lux_classify_target(
     ROLE DOMAIN
 )
 
-target_include_directories(_flowforge_dialect PUBLIC
+target_include_directories(_flowforge_dialect PRIVATE
     ${FLOWFORGE_MODULE_DIR}/include
     ${FLOWFORGE_MODULE_DIR}/pinclude
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -133,7 +133,7 @@ set(MLIR_PUBLIC_LIBS
     MLIRLLVMToLLVMIRTranslation     # ExecutionEngine MLIR -> LLVM IR
 )
 
-target_link_libraries(_flowforge_dialect PUBLIC
+target_link_libraries(_flowforge_dialect PRIVATE
     ${MLIR_PUBLIC_LIBS}
     MLIRSideEffectInterfaces
     MLIRControlFlowInterfaces
@@ -154,7 +154,7 @@ set_target_properties(_flowforge_dialect PROPERTIES POSITION_INDEPENDENT_CODE ON
 
 target_include_directories(
     _flowforge_dialect
-    PUBLIC
+    PRIVATE
     ${LLVM_INCLUDE_DIRS}
     ${MLIR_INCLUDE_DIRS}
     ${CMAKE_CURRENT_BINARY_DIR}

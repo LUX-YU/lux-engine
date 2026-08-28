@@ -1,8 +1,10 @@
 #pragma once
 
 #include <memory>
+#include <new>
 #include <vector>
 #include "NodeBase.hpp"
+#include <lux/engine/flowforge/script/ScriptGraph.hpp>
 #include <lux/cxx/container/SparseSet.hpp>
 
 namespace lux::flowforge
@@ -37,6 +39,37 @@ namespace lux::flowforge
         // class produces no export symbol, and DLL consumers
         // (e.g. engine::flowforge_compiler) get LNK2019.
         const std::vector<NodeStorage>& nodes() const;
+
+        [[nodiscard]] bool addExport(ExportMethodNode exported) noexcept
+        {
+            try
+            {
+                exports_.push_back(exported);
+                return true;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return false;
+            }
+        }
+
+        [[nodiscard]] bool removeExport(FlowForgeExportNodeId id) noexcept
+        {
+            for (auto iterator = exports_.begin(); iterator != exports_.end(); ++iterator)
+            {
+                if (iterator->id == id)
+                {
+                    exports_.erase(iterator);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        [[nodiscard]] const std::vector<ExportMethodNode>& exports() const noexcept
+        {
+            return exports_;
+        }
 
         // Every node entering the graph is re-keyed with a STABLE id from
         // the graph's monotonic counter (never recycled) — the pointer-based
@@ -204,6 +237,7 @@ namespace lux::flowforge
 
     private:
         std::vector<GraphVariable>              variables_;
+        std::vector<ExportMethodNode>           exports_;
         uint64_t                                next_var_id_{1};
         // Monotonic STABLE node-id counter (never recycled; serialized ids
         // bump it past themselves via addNodesWithId).

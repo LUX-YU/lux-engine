@@ -76,13 +76,6 @@ else()
     set(LUX_PROFILE_HAS_TOOLCHAIN OFF)
 endif()
 set(LUX_BUILD_COMPONENT_LUA_META OFF CACHE BOOL "Build Lua component metadata" FORCE)
-option(LUX_ENABLE_FLOWFORGE_MLIR "Build FlowForge MLIR backend" OFF)
-if(LUX_ENABLE_FLOWFORGE_MLIR AND
-   NOT LUX_BUILD_PROFILE MATCHES "^(EDITOR|TOOLCHAIN)$")
-    message(FATAL_ERROR
-        "LUX_ENABLE_FLOWFORGE_MLIR is available only to EDITOR/TOOLCHAIN profiles"
-    )
-endif()
 if(LUX_TARGET_OS STREQUAL "ANDROID")
     set(LUX_SCRIPT_HAS_LUA OFF CACHE BOOL "Build Lua backend" FORCE)
 else()

@@ -114,7 +114,6 @@
                 "-DENABLE_SHADERGEN_TEST=ON",
                 "-DENABLE_SHADERGEN_GLSL_TEST=ON",
                 "-DLUX_BUILD_PROFILE=DEVELOPER",
-                "-DLUX_ENABLE_FLOWFORGE_MLIR=ON",
                 "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
             ],
             "project_path": "{lux_root}/lux-engine",

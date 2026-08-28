@@ -47,11 +47,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         script_artifact
         script_core
     )
-    if(LUX_ENABLE_FLOWFORGE_MLIR)
-        if(ENABLE_FLOWFORGE_TEST)
-            list(APPEND LUX_FUNCTION_COMPONENTS script_native)
-        endif()
-    endif()
+    list(APPEND LUX_FUNCTION_COMPONENTS script_native)
 else()
     set(LUX_FUNCTION_COMPONENTS
         flowforge

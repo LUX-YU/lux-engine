@@ -34,7 +34,6 @@
 #include <string_view>
 #include <vector>
 
-#include <lux/engine/flowforge/compiler/visibility.h>
 #include "Passes.hpp"   // JitNativeSymbol
 
 namespace mlir { class ExecutionEngine; }
@@ -46,7 +45,7 @@ namespace lux::flowforge
     class IR;
     class IRContext;
 
-    class LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowScriptInstance
+    class FlowScriptInstance
     {
     public:
         /// Compile graph -> LLVM -> JIT engine. The instance must not outlive

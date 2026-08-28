@@ -78,6 +78,31 @@ lux_classify_target(
 )
 add_test(NAME process_port_sender_test COMMAND process_port_sender_test)
 
+add_executable(process_execution_benchmark test/process_execution_benchmark.cpp)
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE LUX_PROCESS_BENCHMARK_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(LUX_PROCESS_BENCHMARK_GIT_COMMIT STREQUAL "")
+    set(LUX_PROCESS_BENCHMARK_GIT_COMMIT "unknown")
+endif()
+target_compile_definitions(
+    process_execution_benchmark
+    PRIVATE
+        LUX_BENCHMARK_GIT_COMMIT="${LUX_PROCESS_BENCHMARK_GIT_COMMIT}"
+        LUX_BENCHMARK_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+)
+target_link_libraries(process_execution_benchmark PRIVATE lux::engine::process::process_execution)
+lux_classify_target(
+    TARGET  process_execution_benchmark
+    LAYER   PROCESS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+
 install_components(
     PROJECT_NAME lux-engine-process-execution
     VERSION      ${PROJECT_VERSION}

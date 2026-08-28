@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "performance_warmups": 5,
+  "performance_samples": 30,
+  "sizes": [10000, 100000, 1000000],
+  "scaling_rules": [
+    {"group": "timer-schedule", "maximum_exponent": 1.25},
+    {"group": "timer-cancel", "maximum_exponent": 1.25},
+    {"group": "timer-fire", "maximum_exponent": 1.25}
+  ]
+}

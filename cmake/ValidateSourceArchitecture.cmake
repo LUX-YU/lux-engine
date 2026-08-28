@@ -618,6 +618,44 @@ foreach(source IN LISTS active_cmake)
     endif()
 endforeach()
 
+set(process_timer_header
+    "${source_root}/engine/process/execution/include/lux/engine/process/Timer.hpp"
+)
+set(process_port_sender_header
+    "${source_root}/engine/process/execution/include/lux/engine/process/PortSender.hpp"
+)
+set(process_installed_consumer
+    "${source_root}/cmake/installed-consumers/process-execution/CMakeLists.txt"
+)
+foreach(required_process_file IN ITEMS
+    "${process_timer_header}"
+    "${process_port_sender_header}"
+    "${process_installed_consumer}"
+)
+    if(NOT EXISTS "${required_process_file}")
+        message(FATAL_ERROR
+            "Architecture: Process Wave 0 is missing '${required_process_file}'."
+        )
+    endif()
+endforeach()
+file(READ "${process_timer_header}" process_timer_contract)
+file(READ "${process_port_sender_header}" process_port_sender_contract)
+if(process_timer_contract MATCHES "sender_tag|operation_state_tag|capacity[ \\t]*\\{[1-9]|create[^;]*=")
+    message(FATAL_ERROR
+        "Architecture: Timer restores retired stdexec vocabulary or a hidden capacity default."
+    )
+endif()
+if(process_timer_contract MATCHES "shared_ptr[ \\t]*<[^>]*TimerRequest|unique_ptr[ \\t]*<[^>]*TimerRequest")
+    message(FATAL_ERROR
+        "Architecture: Timer request admission owns per-request heap state."
+    )
+endif()
+if(process_port_sender_contract MATCHES "sender_tag|operation_state_tag|shared_ptr|unique_ptr|std::function")
+    message(FATAL_ERROR
+        "Architecture: OperationPort sender restores allocation or retired stdexec vocabulary."
+    )
+endif()
+
 set(serialization_cmake
     "${source_root}/modules/core/serialization/CMakeLists.txt"
 )

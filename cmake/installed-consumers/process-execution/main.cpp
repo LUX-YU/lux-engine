@@ -1,0 +1,129 @@
+#include <lux/engine/process/PortSender.hpp>
+#include <lux/engine/process/Timer.hpp>
+
+#include <stdexec/execution.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <memory>
+#include <utility>
+
+namespace
+{
+    enum class EConsumerError : std::uint8_t
+    {
+        FAILED
+    };
+
+    struct Read final
+    {
+        using Value = int;
+        using Error = EConsumerError;
+
+        int value{};
+    };
+
+    class Endpoint final : public lux::async::detail::OperationEndpoint<Read>
+    {
+    public:
+        [[nodiscard]] lux::async::SubmitResult submit(
+            Read operation,
+            void* state,
+            void (*complete)(void*, Outcome&&) noexcept,
+            lux::async::SubmitOptions
+        ) noexcept override
+        {
+            complete(state, Outcome{operation.value});
+            return {};
+        }
+    };
+
+    struct TimerReceiver final
+    {
+        using receiver_concept = stdexec::receiver_t;
+
+        void set_value() && noexcept
+        {
+            completed->store(true, std::memory_order_release);
+            completed->notify_all();
+        }
+
+        void set_error(lux::process::ETimerError) && noexcept
+        {
+            failed->store(true, std::memory_order_release);
+            std::move(*this).set_value();
+        }
+
+        void set_stopped() && noexcept
+        {
+            failed->store(true, std::memory_order_release);
+            std::move(*this).set_value();
+        }
+
+        [[nodiscard]] stdexec::empty_env get_env() const noexcept
+        {
+            return {};
+        }
+
+        std::atomic_bool* completed{};
+        std::atomic_bool* failed{};
+    };
+
+    struct PortReceiver final
+    {
+        using receiver_concept = stdexec::receiver_t;
+
+        void set_value(int received) && noexcept
+        {
+            *value = received;
+        }
+
+        void set_error(lux::async::OperationFailure<EConsumerError>) && noexcept
+        {
+            *failed = true;
+        }
+
+        void set_stopped() && noexcept
+        {
+            *failed = true;
+        }
+
+        [[nodiscard]] stdexec::empty_env get_env() const noexcept
+        {
+            return {};
+        }
+
+        int* value{};
+        bool* failed{};
+    };
+}
+
+int main()
+{
+    auto created = lux::process::TimerQueue::create({1U});
+    if (!created)
+        return 1;
+    auto timer = std::move(*created);
+    std::atomic_bool completed{};
+    std::atomic_bool timer_failed{};
+    auto timer_state = stdexec::connect(
+        timer.client().after(std::chrono::steady_clock::duration::zero()),
+        TimerReceiver{&completed, &timer_failed}
+    );
+    stdexec::start(timer_state);
+    completed.wait(false, std::memory_order_acquire);
+    if (timer_failed.load(std::memory_order_acquire))
+        return 2;
+
+    auto endpoint = std::make_shared<Endpoint>();
+    lux::async::OperationPort<Read> port{endpoint};
+    int value{};
+    bool port_failed{};
+    auto port_state = stdexec::connect(
+        lux::process::portSender(port, Read{42}),
+        PortReceiver{&value, &port_failed}
+    );
+    stdexec::start(port_state);
+    return value == 42 && !port_failed ? 0 : 3;
+}

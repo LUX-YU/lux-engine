@@ -263,6 +263,10 @@ int main()
 {
     static_assert(stdexec::sender<lux::process::PortSender<Read>>);
 
+    Outcome<int> void_value;
+    runImmediate(EMode::VALUE, Notify{}, void_value);
+    assert(void_value.terminal == ETerminal::VALUE);
+
     Outcome<int> value;
     runImmediate(EMode::VALUE, Read{42}, value);
     assert(value.terminal == ETerminal::VALUE);

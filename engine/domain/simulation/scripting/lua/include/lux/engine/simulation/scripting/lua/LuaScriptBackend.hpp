@@ -39,6 +39,7 @@ namespace lux::simulation::script
 
     enum class ELuaScriptBindingBackendError : std::uint8_t
     {
+        INVALID_CAPACITY,
         INVALID_COMPONENT_CONTRACT,
         DUPLICATE_COMPONENT_NAME,
         INVALID_RECORD_MARSHALLER,
@@ -53,6 +54,7 @@ namespace lux::simulation::script
             LuaScriptBackend,
             ELuaScriptBindingBackendError> create(
                 std::size_t instance_capacity,
+                std::size_t prepared_call_capacity,
                 std::span<const LuaComponentBinding> components = {},
                 std::span<const LuaRecordMarshaller> record_marshallers = {}
             ) noexcept;

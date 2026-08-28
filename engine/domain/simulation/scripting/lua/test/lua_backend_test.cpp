@@ -96,6 +96,7 @@ int main()
         health_binding};
     const auto duplicate_backend = LuaScriptBackend::create(
         1U,
+        1U,
         duplicate_components
     );
     assert(!duplicate_backend);
@@ -107,6 +108,7 @@ int main()
     ++invalid_binding.size;
     const auto invalid_backend = LuaScriptBackend::create(
         1U,
+        1U,
         std::span{&invalid_binding, 1U}
     );
     assert(!invalid_backend);
@@ -115,6 +117,7 @@ int main()
         ELuaScriptBindingBackendError::INVALID_COMPONENT_CONTRACT
     );
     auto contract_backend_result = LuaScriptBackend::create(
+        1U,
         1U,
         std::span{&health_binding, 1U}
     );
@@ -132,6 +135,7 @@ int main()
         &pushCollisionEvent};
     auto created_backend = LuaScriptBackend::create(
         4U,
+        7U,
         {},
         std::span{&collision_marshaller, 1U}
     );
@@ -445,11 +449,27 @@ int main()
         nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, escape_call.context};
     assert(escape_call.invoke(&escape_frame) == 0);
 
+    lux::script::BoundScriptCall exhausted_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        function,
+        exhausted_call
+    ) == EScriptBackendResult::CAPACITY_EXCEEDED);
+    const auto recycled_call_context = bad_return_call.context;
     descriptor.releaseMethod(
         descriptor.context,
         first_instance,
         bad_return_call
     );
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        function,
+        exhausted_call
+    ) == EScriptBackendResult::SUCCESS);
+    assert(exhausted_call.context == recycled_call_context);
+    descriptor.releaseMethod(descriptor.context, first_instance, exhausted_call);
     descriptor.releaseMethod(descriptor.context, first_instance, first);
     descriptor.releaseMethod(descriptor.context, first_instance, escape_call);
     descriptor.destroyInstance(descriptor.context, first_instance);

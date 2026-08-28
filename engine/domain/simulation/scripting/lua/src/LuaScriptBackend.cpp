@@ -29,22 +29,48 @@ namespace lux::simulation::script
         struct Instance final
         {
             State* owner{};
+            lux::asset::AssetId asset;
             int table_ref{LUA_NOREF};
             bool entity_scope{};
             HostHandle* host_handle{};
             bool active{};
         };
 
-        struct Call final
+        struct FunctionKey final
         {
-            State* owner{};
-            Instance* instance{};
+            lux::asset::AssetId asset;
+            lux::script::ScriptSymbolId symbol{};
+
+            [[nodiscard]] bool operator==(const FunctionKey&) const noexcept = default;
+        };
+
+        struct FunctionKeyHash final
+        {
+            [[nodiscard]] std::size_t operator()(const FunctionKey& key) const noexcept
+            {
+                const auto asset_hash = std::hash<lux::asset::AssetId>{}(key.asset);
+                const auto symbol_hash = std::hash<lux::script::ScriptSymbolId>{}(key.symbol);
+                return asset_hash ^ (symbol_hash + 0x9E3779B9U + (asset_hash << 6U) + (asset_hash >> 2U));
+            }
+        };
+
+        struct LuaFunctionBinding final
+        {
+            lux::rdesc::ScriptFunction signature;
             int function_ref{LUA_NOREF};
             std::vector<const LuaRecordMarshaller*> argument_marshallers;
         };
 
+        struct PreparedCall final
+        {
+            Instance* instance{};
+            const LuaFunctionBinding* function{};
+            bool active{};
+        };
+
         State(
             std::size_t capacity,
+            std::size_t prepared_capacity,
             std::span<const LuaComponentBinding> source_components,
             std::span<const LuaRecordMarshaller> source_record_marshallers
         )
@@ -76,6 +102,12 @@ namespace lux::simulation::script
             free_instances.reserve(instance_capacity);
             for (std::size_t index = instance_capacity; index > 0U; --index)
                 free_instances.push_back(index - 1U);
+            function_bindings.reserve(prepared_capacity);
+            function_index.reserve(prepared_capacity);
+            prepared_calls.resize(prepared_capacity);
+            free_prepared_calls.reserve(prepared_capacity);
+            for (std::size_t index = prepared_capacity; index > 0U; --index)
+                free_prepared_calls.push_back(index - 1U);
             lua_pushcfunction(state, &State::traceback);
             traceback_ref = luaL_ref(state, LUA_REGISTRYINDEX);
         }
@@ -87,6 +119,11 @@ namespace lux::simulation::script
                 static_cast<void>(asset);
                 if (prototype != LUA_NOREF)
                     luaL_unref(state, LUA_REGISTRYINDEX, prototype);
+            }
+            for (const auto& function : function_bindings)
+            {
+                if (function.function_ref != LUA_NOREF)
+                    luaL_unref(state, LUA_REGISTRYINDEX, function.function_ref);
             }
             if (state && traceback_ref != LUA_NOREF)
                 luaL_unref(state, LUA_REGISTRYINDEX, traceback_ref);
@@ -408,6 +445,7 @@ namespace lux::simulation::script
             auto* instance = std::addressof(self.instances[instance_slot]);
             *instance = Instance{
                 std::addressof(self),
+                context.asset,
                 LUA_NOREF,
                 std::holds_alternative<EntityScriptScope>(context.scope),
                 nullptr,
@@ -464,52 +502,93 @@ namespace lux::simulation::script
             auto* instance = static_cast<Instance*>(instance_value.value);
             if (!instance || std::this_thread::get_id() != self.affinity)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            std::vector<const LuaRecordMarshaller*> argument_marshallers;
-            try
+            if (self.free_prepared_calls.empty())
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+
+            const FunctionKey key{instance->asset, function.symbol_id};
+            const LuaFunctionBinding* function_binding{};
+            const auto cached = self.function_index.find(key);
+            if (cached != self.function_index.end())
             {
-                argument_marshallers.reserve(function.args.size());
-                for (const auto& argument : function.args)
+                function_binding = std::addressof(self.function_bindings[cached->second]);
+                if (function_binding->signature != function)
+                    return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+            }
+            else
+            {
+                if (self.function_bindings.size() >= self.prepared_calls.size())
+                    return EScriptBackendResult::CAPACITY_EXCEEDED;
+                std::vector<const LuaRecordMarshaller*> argument_marshallers;
+                try
                 {
-                    const auto* record = self.recordMarshaller(argument);
-                    if (!self.supportedType(argument) && !record)
-                        return EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE;
-                    argument_marshallers.push_back(record);
+                    argument_marshallers.reserve(function.args.size());
+                    for (const auto& argument : function.args)
+                    {
+                        const auto* record = self.recordMarshaller(argument);
+                        if (!self.supportedType(argument) && !record)
+                            return EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE;
+                        argument_marshallers.push_back(record);
+                    }
+                    for (const auto& return_type : function.returns)
+                    {
+                        const bool unsupported_return = !self.supportedType(return_type) ||
+                            return_type.pass != lux::semantic::EValuePass::VALUE;
+                        if (unsupported_return)
+                            return EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE;
+                    }
+                }
+                catch (const std::bad_alloc&)
+                {
+                    return EScriptBackendResult::ALLOCATION_FAILURE;
+                }
+
+                const auto prototype = self.prototypes.find(instance->asset);
+                if (prototype == self.prototypes.end())
+                    return EScriptBackendResult::CONSTRUCTION_FAILURE;
+                lua_rawgeti(self.state, LUA_REGISTRYINDEX, prototype->second);
+                lua_getfield(self.state, -1, function.name.c_str());
+                lua_remove(self.state, -2);
+                if (!lua_isfunction(self.state, -1))
+                {
+                    lua_pop(self.state, 1);
+                    return EScriptBackendResult::CONSTRUCTION_FAILURE;
+                }
+                const auto function_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);
+                try
+                {
+                    const auto binding_index = self.function_bindings.size();
+                    self.function_bindings.push_back(LuaFunctionBinding{
+                        function,
+                        function_ref,
+                        std::move(argument_marshallers)
+                    });
+                    if (!self.function_index.emplace(key, binding_index).second)
+                    {
+                        self.function_bindings.pop_back();
+                        luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                    }
+                    function_binding = std::addressof(self.function_bindings.back());
+                }
+                catch (const std::bad_alloc&)
+                {
+                    if (!self.function_bindings.empty() &&
+                        self.function_bindings.back().function_ref == function_ref)
+                    {
+                        self.function_bindings.pop_back();
+                    }
+                    luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                    return EScriptBackendResult::ALLOCATION_FAILURE;
                 }
             }
-            catch (const std::bad_alloc&)
-            {
-                return EScriptBackendResult::ALLOCATION_FAILURE;
-            }
-            for (const auto& return_type : function.returns)
-            {
-                if (!self.supportedType(return_type) ||
-                    return_type.pass != lux::semantic::EValuePass::VALUE)
-                {
-                    return EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE;
-                }
-            }
-            lua_rawgeti(self.state, LUA_REGISTRYINDEX, instance->table_ref);
-            lua_getfield(self.state, -1, function.name.c_str());
-            lua_remove(self.state, -2);
-            if (!lua_isfunction(self.state, -1))
-            {
-                lua_pop(self.state, 1);
-                return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            }
-            const auto function_ref = luaL_ref(
-                self.state,
-                LUA_REGISTRYINDEX);
-            auto* call = new (std::nothrow) Call{
-                std::addressof(self),
-                instance,
-                function_ref,
-                std::move(argument_marshallers)};
-            if (!call)
-            {
-                luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
-                return EScriptBackendResult::ALLOCATION_FAILURE;
-            }
-            result = lux::script::BoundScriptCall{&State::invoke, call};
+
+            const auto call_slot = self.free_prepared_calls.back();
+            self.free_prepared_calls.pop_back();
+            auto& call = self.prepared_calls[call_slot];
+            call.instance = instance;
+            call.function = function_binding;
+            call.active = true;
+            result = lux::script::BoundScriptCall{&State::invoke, std::addressof(call)};
             return EScriptBackendResult::SUCCESS;
         }
 
@@ -634,13 +713,15 @@ namespace lux::simulation::script
         {
             if (!frame || !frame->user_context)
                 return -1;
-            auto& call = *static_cast<Call*>(frame->user_context);
-            auto& self = *call.owner;
+            auto& call = *static_cast<PreparedCall*>(frame->user_context);
+            if (!call.active || !call.instance || !call.function)
+                return -1;
+            auto& self = *call.instance->owner;
             if (std::this_thread::get_id() != self.affinity)
                 return -2;
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, self.traceback_ref);
             const auto error_index = lua_gettop(self.state);
-            lua_rawgeti(self.state, LUA_REGISTRYINDEX, call.function_ref);
+            lua_rawgeti(self.state, LUA_REGISTRYINDEX, call.function->function_ref);
             std::uint32_t argument_count{};
             if (call.instance->entity_scope)
             {
@@ -652,8 +733,8 @@ namespace lux::simulation::script
             }
             for (std::uint32_t index{}; index < frame->arg_count; ++index)
             {
-                const auto* record = index < call.argument_marshallers.size()
-                    ? call.argument_marshallers[index]
+                const auto* record = index < call.function->argument_marshallers.size()
+                    ? call.function->argument_marshallers[index]
                     : nullptr;
                 if (!pushArgument(self.state, frame->args[index], record))
                 {
@@ -695,17 +776,14 @@ namespace lux::simulation::script
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            auto* call = static_cast<Call*>(call_value.context);
-            if (!call)
+            auto* call = static_cast<PreparedCall*>(call_value.context);
+            if (!call || !call->active)
                 return;
-            if (call->function_ref != LUA_NOREF)
-            {
-                luaL_unref(
-                    self.state,
-                    LUA_REGISTRYINDEX,
-                    call->function_ref);
-            }
-            delete call;
+            call->instance = nullptr;
+            call->function = nullptr;
+            call->active = false;
+            const auto call_slot = static_cast<std::size_t>(call - self.prepared_calls.data());
+            self.free_prepared_calls.push_back(call_slot);
         }
 
         static void destroyInstance(
@@ -746,16 +824,23 @@ namespace lux::simulation::script
             record_marshaller_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
+        std::vector<LuaFunctionBinding> function_bindings;
+        std::unordered_map<FunctionKey, std::size_t, FunctionKeyHash> function_index;
+        std::vector<PreparedCall> prepared_calls;
+        std::vector<std::size_t> free_prepared_calls;
     };
 
     lux::cxx::expected<
         LuaScriptBackend,
         ELuaScriptBindingBackendError> LuaScriptBackend::create(
             std::size_t instance_capacity,
+            std::size_t prepared_call_capacity,
             std::span<const LuaComponentBinding> components,
             std::span<const LuaRecordMarshaller> record_marshallers
         ) noexcept
     {
+        if (instance_capacity == 0U || prepared_call_capacity == 0U)
+            return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         for (std::size_t index{}; index < components.size(); ++index)
         {
             const auto& component = components[index];
@@ -836,6 +921,7 @@ namespace lux::simulation::script
             return LuaScriptBackend{
                 std::make_unique<State>(
                     instance_capacity,
+                    prepared_call_capacity,
                     components,
                     record_marshallers
                 )};

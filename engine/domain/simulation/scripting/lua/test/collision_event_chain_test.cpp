@@ -213,6 +213,7 @@ int main()
         &pushCollision};
     auto lua_created = LuaScriptBackend::create(
         1U,
+        2U,
         {},
         std::span{&marshaller, 1U}
     );

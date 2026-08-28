@@ -11,8 +11,7 @@
 
 namespace lux::simulation::script
 {
-    inline constexpr std::string_view ScriptSystemDataCanonicalName{
-        "lux.simulation.script"};
+    inline constexpr std::string_view ScriptSystemDataCanonicalName{"lux.simulation.script"};
     inline constexpr std::uint32_t ScriptSystemWireMagic{0x5353584CU};
 
     struct ScriptSystemCodecLimits final
@@ -25,26 +24,22 @@ namespace lux::simulation::script
     [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
     SimulationDataSchemaId scriptSystemDataSchemaId();
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::expected<
-        std::vector<std::byte>,
-        EScriptSystemDescriptionError>
+    template<typename T> using ScriptSystemResult = lux::cxx::expected<T, EScriptSystemDescriptionError>;
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemResult<std::vector<std::byte>>
     encodeScriptSystemDescription(
         const ScriptSystemDescription& description,
         ScriptSystemCodecLimits limits
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::expected<
-        ScriptSystemDescription,
-        EScriptSystemDescriptionError>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemResult<ScriptSystemDescription>
     decodeScriptSystemDescription(
         std::span<const std::byte> bytes,
         const SimulationDescription& simulation,
         ScriptSystemCodecLimits limits
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::expected<
-        void,
-        EScriptSystemDescriptionError>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemResult<void>
     addScriptSystemData(
         SimulationDescriptionBuilder& builder,
         const ScriptSystemDescription& description,

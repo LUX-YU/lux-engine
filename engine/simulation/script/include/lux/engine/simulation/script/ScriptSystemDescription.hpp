@@ -26,98 +26,77 @@ namespace lux::simulation::script
             return value != 0U;
         }
 
-        friend constexpr auto operator<=>(ScriptMountId, ScriptMountId)
-            noexcept = default;
+        friend constexpr auto operator<=>(ScriptMountId, ScriptMountId) noexcept = default;
     };
 
     struct SimulationScriptMount final
     {
-        friend constexpr bool operator==(
-            SimulationScriptMount,
-            SimulationScriptMount
-        ) noexcept = default;
+        friend constexpr bool operator==(SimulationScriptMount, SimulationScriptMount) noexcept = default;
     };
 
     struct EntityScriptMount final
     {
         lux::world::WorldObjectId object;
 
-        friend bool operator==(
-            const EntityScriptMount&,
-            const EntityScriptMount&
-        ) noexcept = default;
+        friend bool operator==(const EntityScriptMount&, const EntityScriptMount&) noexcept = default;
     };
 
     using ScriptMountScope = std::variant<
         SimulationScriptMount,
-        EntityScriptMount>;
+        EntityScriptMount
+    >;
 
     struct HookScriptTarget final
     {
         SystemInstanceId system;
-        HookPointId hook;
+        HookPointId      hook;
 
-        friend constexpr bool operator==(
-            HookScriptTarget,
-            HookScriptTarget
-        ) noexcept = default;
+        friend constexpr bool operator==(HookScriptTarget, HookScriptTarget) noexcept = default;
     };
 
     struct EventScriptTarget final
     {
         SystemInstanceId system;
-        EventPointId event;
+        EventPointId     event;
 
-        friend constexpr bool operator==(
-            EventScriptTarget,
-            EventScriptTarget
-        ) noexcept = default;
+        friend constexpr bool operator==(EventScriptTarget, EventScriptTarget) noexcept = default;
     };
 
     using ScriptBindingTarget = std::variant<
         HookScriptTarget,
-        EventScriptTarget>;
+        EventScriptTarget
+    >;
 
     struct ScriptBindingDescription final
     {
-        lux::script::ScriptSymbolId symbol{
-            lux::script::InvalidScriptSymbolId};
-        ScriptBindingTarget target;
+        lux::script::ScriptSymbolId symbol{lux::script::InvalidScriptSymbolId};
+        ScriptBindingTarget         target;
 
-        friend bool operator==(
-            const ScriptBindingDescription&,
-            const ScriptBindingDescription&
-        ) noexcept = default;
+        friend bool operator==(const ScriptBindingDescription&, const ScriptBindingDescription&) noexcept = default;
     };
 
     struct ScriptMountDescription final
     {
-        ScriptMountId id;
-        lux::asset::AssetId asset;
-        ScriptMountScope scope;
-        bool enabled{true};
+        ScriptMountId               id;
+        lux::asset::AssetId         asset;
+        ScriptMountScope            scope;
+        bool                        enabled{true};
         std::vector<ScriptBindingDescription> bindings;
 
-        friend bool operator==(
-            const ScriptMountDescription&,
-            const ScriptMountDescription&
-        ) noexcept = default;
+        friend bool operator==(const ScriptMountDescription&, const ScriptMountDescription&) noexcept = default;
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemDescription final
     {
-      public:
+    public:
         static constexpr std::uint32_t kSchemaVersion{1U};
 
-        [[nodiscard]] std::span<const ScriptMountDescription> mounts() const
-            noexcept
+        [[nodiscard]] std::span<const ScriptMountDescription> mounts() const noexcept
         {
             return mounts_;
         }
 
-        [[nodiscard]] const ScriptMountDescription* findMount(
-            ScriptMountId id
-        ) const noexcept;
+        [[nodiscard]] const ScriptMountDescription* findMount(ScriptMountId id) const noexcept;
 
       private:
         std::vector<ScriptMountDescription> mounts_;
@@ -139,18 +118,13 @@ namespace lux::simulation::script
         ALLOCATION_FAILURE,
     };
 
-    class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
-        ScriptSystemDescriptionBuilder final
+    class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemDescriptionBuilder final
     {
-      public:
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            EScriptSystemDescriptionError>
+    public:
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemDescriptionError>
         addMount(ScriptMountDescription mount) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            ScriptSystemDescription,
-            EScriptSystemDescriptionError>
+        [[nodiscard]] lux::cxx::expected<ScriptSystemDescription, EScriptSystemDescriptionError>
         build(const SimulationDescription& simulation) && noexcept;
 
       private:

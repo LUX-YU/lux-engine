@@ -25,6 +25,8 @@ if(EXISTS "${source_root}/engine/editor")
     )
 endif()
 foreach(retired_root IN ITEMS
+    "${source_root}/engine/flowforge"
+    "${source_root}/engine/graph_kit"
     "${source_root}/engine/simulation/script_binding"
     "${source_root}/engine/authoring/script_binding"
     "${source_root}/engine/authoring/flowforge"
@@ -260,17 +262,42 @@ foreach(source IN LISTS generic_system_sources)
     endif()
 endforeach()
 
-if(EXISTS "${source_root}/engine/flowforge")
+if(EXISTS "${source_root}/modules/function/flowforge")
+    string(CONCAT flowforge_l0_forbidden
+        "lux/engine/(simulation|editor|toolchain)|"
+        "lux::engine::(simulation|editor|toolchain)|imgui::|"
+        "find_package[ \\t\\r\\n]*\\([ \\t]*(MLIR|LLVM)|[/\\]legacy[/\\]"
+    )
     file(GLOB_RECURSE flowforge_sources LIST_DIRECTORIES false
-        "${source_root}/engine/flowforge/*.hpp"
-        "${source_root}/engine/flowforge/*.cpp"
-        "${source_root}/engine/flowforge/*.cmake"
+        "${source_root}/modules/function/flowforge/*.hpp"
+        "${source_root}/modules/function/flowforge/*.cpp"
+        "${source_root}/modules/function/flowforge/*.cmake"
     )
     foreach(source IN LISTS flowforge_sources)
         file(READ "${source}" content)
-        if(content MATCHES "engine/editor/framework/graphkit|[/\\]legacy[/\\]")
+        if(content MATCHES "${flowforge_l0_forbidden}")
             message(FATAL_ERROR
-                "Architecture: FlowForge package '${source}' reaches a retired or UI implementation."
+                "Architecture: L0 FlowForge package '${source}' reaches an upper-layer implementation."
+            )
+        endif()
+    endforeach()
+endif()
+
+if(EXISTS "${source_root}/engine/tools/toolchain/flowforge")
+    string(CONCAT flowforge_compiler_forbidden
+        "lux/engine/(simulation|authoring|editor)|"
+        "lux::engine::(simulation|authoring|editor)|imgui::|[/\\]legacy[/\\]"
+    )
+    file(GLOB_RECURSE flowforge_compiler_sources LIST_DIRECTORIES false
+        "${source_root}/engine/tools/toolchain/flowforge/*.hpp"
+        "${source_root}/engine/tools/toolchain/flowforge/*.cpp"
+        "${source_root}/engine/tools/toolchain/flowforge/*.cmake"
+    )
+    foreach(source IN LISTS flowforge_compiler_sources)
+        file(READ "${source}" content)
+        if(content MATCHES "${flowforge_compiler_forbidden}")
+            message(FATAL_ERROR
+                "Architecture: FlowForge compiler '${source}' reaches Simulation, Authoring, or Editor."
             )
         endif()
     endforeach()

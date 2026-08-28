@@ -4,11 +4,12 @@ add_executable(
 )
 target_link_libraries(
     flowforge_dynamism_test
-    PRIVATE authoring_flowforge
+    PRIVATE flowforge
 )
 lux_classify_target(
     TARGET  flowforge_dynamism_test
-    LAYER   AUTHORING
+    LAYER   FUNCTION
     PRODUCT TEST
-    ROLE    DOMAIN
+    ROLE    FOUNDATION
 )
+add_test(NAME flowforge_dynamism COMMAND flowforge_dynamism_test)

@@ -24,11 +24,11 @@ target_compile_definitions(
 )
 target_link_libraries(
     flowforge_script_compiler
-    PUBLIC lux::engine::flowforge::flowforge_script
+    PUBLIC lux::engine::function::flowforge
 )
 component_add_transitive_commands(
     flowforge_script_compiler
-    "find_package(lux-engine-flowforge REQUIRED COMPONENTS flowforge_script)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS flowforge)"
 )
 lux_classify_target(
     TARGET  flowforge_script_compiler
@@ -68,7 +68,7 @@ option(LUX_ENABLE_FLOWFORGE_COMPILER_TESTS
 if(LUX_ENABLE_FLOWFORGE_MLIR)
     find_package(LLVM CONFIG REQUIRED)
     find_package(MLIR CONFIG REQUIRED)
-    set(FLOWFORGE_MODULE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
+    set(FLOWFORGE_MODULE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
     add_subdirectory(dialect)
 
     add_component(
@@ -103,14 +103,13 @@ if(LUX_ENABLE_FLOWFORGE_MLIR)
     target_link_libraries(
         flowforge_compiler
         PUBLIC
-            lux::engine::flowforge::flowforge_graph
+            lux::engine::function::flowforge
             lux::engine::function::script_core
         PRIVATE flowforge_compiler_dialect
     )
     component_add_transitive_commands(
         flowforge_compiler
-        "find_package(lux-engine-flowforge REQUIRED COMPONENTS flowforge_graph)"
-        "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
+        "find_package(lux-engine-function REQUIRED COMPONENTS flowforge script_core)"
         "find_package(MLIR REQUIRED CONFIG)"
     )
     lux_classify_target(
@@ -123,3 +122,15 @@ if(LUX_ENABLE_FLOWFORGE_MLIR)
         add_subdirectory(test)
     endif()
 endif()
+
+set(LUX_FLOWFORGE_COMPILER_COMPONENTS flowforge_script_compiler)
+if(TARGET flowforge_compiler)
+    list(APPEND LUX_FLOWFORGE_COMPILER_COMPONENTS flowforge_compiler)
+endif()
+
+install_components(
+    PROJECT_NAME lux-engine-flowforge-compiler
+    VERSION      ${PROJECT_VERSION}
+    NAMESPACE    lux::engine::flowforge
+    COMPONENTS   ${LUX_FLOWFORGE_COMPILER_COMPONENTS}
+)

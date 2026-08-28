@@ -1,19 +1,16 @@
 #pragma once
 
-#include <vector>
 #include <memory>
+#include <vector>
 #include "NodeBase.hpp"
 #include <lux/cxx/container/SparseSet.hpp>
 
 namespace lux::flowforge
 {
-	using NodeUserDataPtr = std::unique_ptr<void, void (*)(void*)>;
-
     struct NodeStorage
     {
         std::unique_ptr<Node> node;
-		size_t                index;
-        NodeUserDataPtr       user_data; // Optional user data for the node
+        size_t                index;
     };
 
     /**
@@ -45,16 +42,11 @@ namespace lux::flowforge
         // the graph's monotonic counter (never recycled) — the pointer-based
         // ids the convenience constructors self-assign are process-local.
         // Pin ids are re-derived from the node id (see makePinId).
-        size_t addNodes(std::unique_ptr<Node> node) {
-            return addNodes(std::move(node), NodeUserDataPtr(nullptr, [](void*) {}));
-        }
-
-        size_t addNodes(std::unique_ptr<Node> node, NodeUserDataPtr user_data) {
+        size_t addNodes(std::unique_ptr<Node> node)
+        {
             node->assignStableId(next_node_id_++);
-            auto idx = nodes_.emplace(
-                std::move(node), 0, std::move(user_data)
-            );
-			nodes_.at(idx).index = idx;
+            const auto idx = nodes_.emplace(std::move(node), 0);
+            nodes_.at(idx).index = idx;
             return idx;
         }
 
@@ -67,9 +59,7 @@ namespace lux::flowforge
             node->assignStableId(stable_id);
             if (stable_id >= next_node_id_)
                 next_node_id_ = stable_id + 1;
-            auto idx = nodes_.emplace(
-                std::move(node), 0, NodeUserDataPtr(nullptr, [](void*) {})
-            );
+            const auto idx = nodes_.emplace(std::move(node), 0);
             nodes_.at(idx).index = idx;
             return idx;
         }
@@ -91,23 +81,25 @@ namespace lux::flowforge
             return nullptr;
         }
 
-		bool removeNode(size_t index) {
+        bool removeNode(size_t index)
+        {
             if (!nodes_.contains(index))
             {
                 return false;
             }
             nodes_.erase(index);
             return true;
-		}
+        }
 
         /**
-         * @brief Detaches a node, MOVING its storage (node + user_data) out intact.
+         * @brief Detaches a node, moving its semantic storage out intact.
          *        Unlike removeNode the node object survives — the caller owns it and
          *        can restore it later via insertNodeAt (undo). The caller must drop
          *        the node's links first; the index is recycled like removeNode.
          * @return True if the index was live and the storage was moved out.
          */
-        bool extractNode(size_t index, NodeStorage& out) {
+        bool extractNode(size_t index, NodeStorage& out)
+        {
             return nodes_.extract(index, out);
         }
 
@@ -119,12 +111,9 @@ namespace lux::flowforge
          *        never be handed out again by a later addNodes.
          * @return True if the index was free and the node was inserted.
          */
-        bool insertNodeAt(size_t index, std::unique_ptr<Node> node) {
-            return insertNodeAt(index, std::move(node), NodeUserDataPtr(nullptr, [](void*) {}));
-        }
-
-        bool insertNodeAt(size_t index, std::unique_ptr<Node> node, NodeUserDataPtr user_data) {
-            if (!nodes_.try_emplace_at(index, std::move(node), 0, std::move(user_data)))
+        bool insertNodeAt(size_t index, std::unique_ptr<Node> node)
+        {
+            if (!nodes_.try_emplace_at(index, std::move(node), 0))
             {
                 return false;
             }
@@ -132,9 +121,10 @@ namespace lux::flowforge
             return true;
         }
 
-		bool hasNode(size_t index) const {
-			return nodes_.contains(index);
-		}
+        bool hasNode(size_t index) const
+        {
+            return nodes_.contains(index);
+        }
 
         NodeStorage& getNode(size_t idx) {
             return nodes_.at(idx);
@@ -219,7 +209,7 @@ namespace lux::flowforge
         // bump it past themselves via addNodesWithId).
         uint64_t                                next_node_id_{1};
         // start from one
-		lux::cxx::AutoSparseSet<NodeStorage, 1> nodes_;
+        lux::cxx::AutoSparseSet<NodeStorage, 1> nodes_;
     };
 
 } // namespace lux::flowforge

@@ -7,6 +7,11 @@ generate_visibility_header(
     GENERATE_FILE_PATH      lux/engine/function/visibility.h
 )
 
+if(NOT TARGET script_core)
+    add_subdirectory(script/core)
+endif()
+add_subdirectory(flowforge)
+
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # EntityScene cooks materialize built-in 3D component schemas. Their
     # schema-only ECS targets use the backend-neutral render client vocabulary
@@ -36,14 +41,13 @@ endif()
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     set(LUX_FUNCTION_COMPONENTS
         animation
+        flowforge
         navigation
         navigation_detour3d
         render_client
         render_standard_content
+        script_core
     )
-    if(TARGET script_core)
-        list(APPEND LUX_FUNCTION_COMPONENTS script_core)
-    endif()
     if(LUX_ENABLE_FLOWFORGE_MLIR)
         if(ENABLE_FLOWFORGE_TEST)
             list(APPEND LUX_FUNCTION_COMPONENTS script_native)
@@ -51,6 +55,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     endif()
 else()
     set(LUX_FUNCTION_COMPONENTS
+        flowforge
         render_client
         render_standard_content
         render_graph

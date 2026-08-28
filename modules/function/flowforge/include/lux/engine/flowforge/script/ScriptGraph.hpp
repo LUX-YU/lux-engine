@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/flowforge/script/visibility.h>
+#include <lux/engine/flowforge/visibility.h>
 #include <lux/engine/description/Script.hpp>
 
 #include <cstdint>
@@ -31,6 +31,6 @@ namespace lux::flowforge
         std::vector<lux::rdesc::ScriptValueType> returns;
     };
 
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_SCRIPT_PUBLIC
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC
     bool validFlowForgeExports(std::span<const ExportMethodNode> exports) noexcept;
 }

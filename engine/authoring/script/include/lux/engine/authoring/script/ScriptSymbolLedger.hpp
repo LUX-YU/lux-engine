@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/authoring/script/visibility.h>
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/function/script/ScriptSymbol.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 

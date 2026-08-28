@@ -83,7 +83,7 @@ namespace
     [[nodiscard]] lux::script::ScriptArtifact makeArtifact()
     {
         const auto argument = lux::rdesc::makeScriptValueType<
-            SimulationStepInfo>(lux::script::EScriptPassMode::CONST_REF);
+            SimulationStepInfo>(lux::semantic::EValuePass::CONST_REF);
         lux::rdesc::Script description;
         description.module_name = "lux.test.runtime.script";
         description.exports = {
@@ -336,7 +336,7 @@ int main()
         simulation,
         *description,
         registry,
-        ScriptSystemOptions{8U},
+        8U,
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         backends,

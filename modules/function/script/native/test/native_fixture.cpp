@@ -1,5 +1,5 @@
 #include <lux/engine/function/script/abi/lux_script_abi.h>
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/core/semantic/SemanticType.hpp>
 
 #include <cstdint>
 
@@ -51,7 +51,7 @@ namespace
 
     const lux_script_type_desc kFloatType{
         "lux.f32",
-        lux::script::scriptSemanticTypeId("lux.f32"),
+        lux::semantic::typeId("lux.f32"),
         sizeof(float),
         alignof(float),
         LUX_SCRIPT_VK_FLOAT,
@@ -59,7 +59,7 @@ namespace
 
     const lux_script_type_desc kUint32Type{
         "lux.u32",
-        lux::script::scriptSemanticTypeId("lux.u32"),
+        lux::semantic::typeId("lux.u32"),
         sizeof(std::uint32_t),
         alignof(std::uint32_t),
         LUX_SCRIPT_VK_UINT32,

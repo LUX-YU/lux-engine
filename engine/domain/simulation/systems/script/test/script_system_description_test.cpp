@@ -93,7 +93,6 @@ int main()
     ));
     auto description = std::move(builder).build(simulation);
     assert(description && description->mounts().size() == 2U);
-    assert(description->findMount(ScriptMountId{2U}));
 
     const ScriptSystemCodecLimits generous{
         std::numeric_limits<std::size_t>::max(),

@@ -50,7 +50,7 @@ namespace
             LUX_SCRIPT_VK_STRUCT_REF,
             {},
             sizeof(collision),
-            lux::script::scriptSemanticTypeId(kCollisionName),
+            lux::semantic::typeId(kCollisionName),
             const_cast<CollisionEvent*>(std::addressof(collision))};
         lux_script_call_frame frame{
             &slot,
@@ -91,7 +91,7 @@ namespace
     ) noexcept
     {
         const bool matches = type_id ==
-                lux::script::scriptSemanticTypeId(kCollisionName) &&
+                lux::semantic::typeId(kCollisionName) &&
             canonical_name == kCollisionName;
         if (!matches)
             return false;
@@ -102,7 +102,7 @@ namespace
             alignof(CollisionEvent),
             LUX_SCRIPT_VK_STRUCT_REF,
             static_cast<std::uint8_t>(
-                lux::script::EScriptPassMode::CONST_REF
+                lux::semantic::EValuePass::CONST_REF
             ),
             {}};
         return true;
@@ -128,8 +128,8 @@ namespace
     {
         return {
             std::string{kCollisionName},
-            lux::script::scriptSemanticTypeId(kCollisionName),
-            lux::script::EScriptPassMode::CONST_REF,
+            lux::semantic::typeId(kCollisionName),
+            lux::semantic::EValuePass::CONST_REF,
             LUX_SCRIPT_VK_STRUCT_REF,
             sizeof(CollisionEvent),
             alignof(CollisionEvent)};
@@ -205,7 +205,7 @@ int main()
     assert(native_backend);
 
     const LuaRecordMarshaller marshaller{
-        lux::script::scriptSemanticTypeId(kCollisionName),
+        lux::semantic::typeId(kCollisionName),
         std::string{kCollisionName},
         sizeof(CollisionEvent),
         alignof(CollisionEvent),

@@ -52,10 +52,10 @@ int main()
     asset.exports = {
         {"update", 1U, {
             lux::rdesc::makeScriptValueType<SimulationStepInfo>(
-                lux::script::EScriptPassMode::CONST_REF)}, {}},
+                lux::semantic::EValuePass::CONST_REF)}, {}},
         {"collision", 2U, {
             lux::rdesc::makeScriptValueType<std::int32_t>(
-                lux::script::EScriptPassMode::CONST_REF)}, {}}};
+                lux::semantic::EValuePass::CONST_REF)}, {}}};
     assert(lux::rdesc::validScriptDescription(asset));
 
     const auto hooks = compatibleHookTargets(

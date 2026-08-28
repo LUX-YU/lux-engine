@@ -1,4 +1,4 @@
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 
 #include <cstdint>
@@ -32,12 +32,12 @@ namespace
         "lux.physics.CollisionEvent"};
     const lux_script_type_desc kCollisionType{
         kCollisionName.data(),
-        lux::script::scriptSemanticTypeId(kCollisionName),
+        lux::semantic::typeId(kCollisionName),
         sizeof(CollisionEvent),
         alignof(CollisionEvent),
         LUX_SCRIPT_VK_STRUCT_REF,
         static_cast<std::uint8_t>(
-            lux::script::EScriptPassMode::CONST_REF
+            lux::semantic::EValuePass::CONST_REF
         ),
         {}};
     const lux_script_function_desc kFunctions[]{

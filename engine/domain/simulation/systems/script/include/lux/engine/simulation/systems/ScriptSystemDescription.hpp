@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/function/script/ScriptSymbol.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
 #include <lux/engine/simulation/systems/script/visibility.h>
@@ -95,8 +95,6 @@ namespace lux::simulation::script
         {
             return mounts_;
         }
-
-        [[nodiscard]] const ScriptMountDescription* findMount(ScriptMountId id) const noexcept;
 
       private:
         std::vector<ScriptMountDescription> mounts_;

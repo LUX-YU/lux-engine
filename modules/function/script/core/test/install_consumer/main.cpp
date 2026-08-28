@@ -1,12 +1,13 @@
+#include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/function/script/BoundScriptCall.hpp>
-#include <lux/engine/function/script/ScriptCallFrame.hpp>
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/function/script/ScriptSymbol.hpp>
 
-int
-main()
+#include <cstdint>
+
+int main()
 {
-    lux_script_call_frame raw{};
-    lux::script::CallFrame frame(raw);
-    lux::script::BoundScriptCall call{};
-    return &frame.raw() == &raw && !call && lux::script::makeScriptSemanticType<std::uint64_t>().type_id != 0U ? 0 : 1;
+    lux::script::BoundScriptCall call;
+    const auto type = lux::semantic::makeType<std::uint64_t>();
+    return !call && type.type_id != lux::semantic::InvalidTypeId &&
+        lux::script::InvalidScriptSymbolId == 0U ? 0 : 1;
 }

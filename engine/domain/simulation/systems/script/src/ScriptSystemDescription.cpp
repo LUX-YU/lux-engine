@@ -6,18 +6,6 @@
 
 namespace lux::simulation::script
 {
-    const ScriptMountDescription* ScriptSystemDescription::findMount(
-        ScriptMountId id
-    ) const noexcept
-    {
-        const auto found = std::find_if(
-            mounts_.begin(),
-            mounts_.end(),
-            [id](const auto& mount) noexcept { return mount.id == id; }
-        );
-        return found == mounts_.end() ? nullptr : std::addressof(*found);
-    }
-
     lux::cxx::expected<void, EScriptSystemDescriptionError>
     ScriptSystemDescriptionBuilder::addMount(
         ScriptMountDescription mount

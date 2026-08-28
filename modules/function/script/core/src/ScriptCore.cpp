@@ -1,4 +1,4 @@
-#include <lux/engine/function/script/ScriptCallFrame.hpp>
+#include <lux/engine/function/script/BoundScriptCall.hpp>
 #include <lux/engine/function/visibility.h>
 
 namespace lux::script::detail

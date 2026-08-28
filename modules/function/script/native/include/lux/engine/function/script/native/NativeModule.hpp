@@ -1,8 +1,9 @@
 #pragma once
 
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/function/script/ScriptResult.hpp>
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/function/script/ScriptSymbol.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/function/visibility.h>
 

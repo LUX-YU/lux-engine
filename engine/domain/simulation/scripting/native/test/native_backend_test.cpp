@@ -165,7 +165,7 @@ int main()
     {
         auto tampered_description = description;
         tampered_description.exports[1].args[0].pass =
-            lux::script::EScriptPassMode::CONST_REF;
+            lux::semantic::EValuePass::CONST_REF;
         auto tampered = lux::script::ScriptArtifact::create(std::move(tampered_description), {});
         assert(tampered);
         expect_contract_mismatch(*tampered);
@@ -245,7 +245,7 @@ int main()
         LUX_SCRIPT_VK_FLOAT,
         {},
         sizeof(delta),
-        lux::script::scriptSemanticTypeId("lux.f32"),
+        lux::semantic::typeId("lux.f32"),
         &delta};
     lux_script_call_frame frame{
         &argument, 1U, 0U, nullptr, 0U, 0U, nullptr, first.context};
@@ -260,7 +260,7 @@ int main()
 
     auto mismatched = function;
     mismatched.args[0].canonical_name = "lux.f64";
-    mismatched.args[0].type_id = lux::script::scriptSemanticTypeId("lux.f64");
+    mismatched.args[0].type_id = lux::semantic::typeId("lux.f64");
     lux::script::BoundScriptCall rejected;
     assert(descriptor.prepareMethod(
         descriptor.context,

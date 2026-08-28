@@ -141,7 +141,7 @@ namespace lux::simulation::script
             lux_script_type_desc& result
         ) const noexcept
         {
-            if (const auto* builtin = lux::script::scriptBuiltinLayout(
+            if (const auto* builtin = lux::semantic::builtinLayout(
                     semantic.type_id))
             {
                 if (builtin->canonical_name != semantic.canonical_name)

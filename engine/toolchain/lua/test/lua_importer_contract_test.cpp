@@ -41,14 +41,14 @@ int main()
     assert(description.exports[0].args[0].canonical_name ==
         "lux.simulation.SimulationStepInfo");
     assert(description.exports[0].args[0].pass ==
-        lux::script::EScriptPassMode::CONST_REF);
+        lux::semantic::EValuePass::CONST_REF);
     assert(description.exports[0].args[0].abi_kind == 10U);
     assert(description.exports[0].args[0].size == 16U);
     assert(description.exports[0].args[0].alignment == 8U);
     assert(description.exports[0].args[1].canonical_name ==
         "lux.test.CollisionEvent");
     assert(description.exports[0].args[1].pass ==
-        lux::script::EScriptPassMode::CONST_REF);
+        lux::semantic::EValuePass::CONST_REF);
     assert(description.exports[0].args[1].abi_kind == 10U);
     assert(description.exports[0].args[1].size == 8U);
     assert(description.exports[0].args[1].alignment == 4U);

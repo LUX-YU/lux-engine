@@ -13,7 +13,7 @@ namespace
     bool resolveRecord(
         void*,
         const lux::meta::RefType& type,
-        lux::script::ScriptSemanticLayout& result
+        lux::semantic::Layout& result
     ) noexcept
     {
         const auto* reflected = static_cast<const lux::meta::RefClass*>(
@@ -23,7 +23,7 @@ namespace
             return false;
         constexpr std::string_view name{"lux.test.BridgeRecord"};
         result = {
-            lux::script::scriptSemanticTypeId(name),
+            lux::semantic::typeId(name),
             name,
             LUX_SCRIPT_VK_STRUCT_REF,
             sizeof(lux::simulation::test::BridgeRecord),
@@ -86,7 +86,7 @@ int main()
     assert(projected->description().exports[1].args[0].canonical_name ==
         "lux.test.BridgeRecord");
     assert(projected->description().exports[1].args[0].pass ==
-        lux::script::EScriptPassMode::CONST_REF);
+        lux::semantic::EValuePass::CONST_REF);
 
     const std::array throwing{throwing_method};
     const std::array throwing_symbols{lux::script::ScriptSymbolId{103U}};
@@ -152,7 +152,7 @@ int main()
         LUX_SCRIPT_VK_FLOAT,
         {},
         sizeof(value),
-        lux::script::scriptSemanticTypeId("lux.f32"),
+        lux::semantic::typeId("lux.f32"),
         &value};
     lux_script_call_frame frame{
         &argument, 1U, 0U, nullptr, 0U, 0U, nullptr, call.context};
@@ -229,10 +229,10 @@ int main()
     std::int32_t output{};
     lux_script_value_slot input_slot{
         LUX_SCRIPT_VK_INT32, {}, sizeof(input),
-        lux::script::scriptSemanticTypeId("lux.i32"), &input};
+        lux::semantic::typeId("lux.i32"), &input};
     lux_script_value_slot output_slot{
         LUX_SCRIPT_VK_INT32, {}, sizeof(output),
-        lux::script::scriptSemanticTypeId("lux.i32"), &output};
+        lux::semantic::typeId("lux.i32"), &output};
     lux_script_call_frame global_frame{
         &input_slot, 1U, 0U, &output_slot, 1U, 0U, nullptr,
         global_call.context};

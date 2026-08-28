@@ -194,7 +194,7 @@ namespace lux::simulation::script
         const SimulationDescription *simulation{};
         const ScriptSystemDescription *description{};
         ecs::Registry *registry{};
-        ScriptSystemOptions options;
+        std::size_t failure_capacity{};
         ScriptArtifactResolver artifacts;
         WorldObjectResolver world;
         ScriptHostApi host;
@@ -383,7 +383,7 @@ namespace lux::simulation::script
             lux::script::ScriptSymbolId symbol = 0U,
             std::int32_t status = 0) noexcept
         {
-            if (failures.size() < options.failure_capacity)
+            if (failures.size() < failure_capacity)
                 failures.push_back({error, mount.authored->id, symbol, status});
         }
 
@@ -989,7 +989,7 @@ namespace lux::simulation::script
         const SimulationDescription &simulation,
         const ScriptSystemDescription &description,
         ecs::Registry &registry,
-        ScriptSystemOptions options,
+        std::size_t failure_capacity,
         ScriptArtifactResolver artifacts,
         WorldObjectResolver world,
         std::span<const ScriptBackendDescriptor> backends,
@@ -997,7 +997,7 @@ namespace lux::simulation::script
         std::span<const ScriptEventEndpointDescriptor> events,
         ScriptHostApi host) noexcept
     {
-        if (options.failure_capacity == 0U || artifacts.resolve == nullptr)
+        if (failure_capacity == 0U || artifacts.resolve == nullptr)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
         std::array<ScriptBackendDescriptor, kBackendKindCount> backend_table{};
@@ -1066,14 +1066,14 @@ namespace lux::simulation::script
             state->simulation = std::addressof(simulation);
             state->description = std::addressof(description);
             state->registry = std::addressof(registry);
-            state->options = options;
             state->artifacts = artifacts;
             state->world = world;
             state->host = host;
             state->backends = backend_table;
             state->hook_endpoints.assign(hooks.begin(), hooks.end());
             state->event_endpoints.assign(events.begin(), events.end());
-            state->failures.reserve(options.failure_capacity);
+            state->failure_capacity = failure_capacity;
+            state->failures.reserve(failure_capacity);
             return ScriptSystem(std::move(state));
         }
         catch (const std::bad_alloc &)

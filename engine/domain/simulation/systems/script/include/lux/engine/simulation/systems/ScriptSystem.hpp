@@ -45,11 +45,6 @@ namespace lux::simulation::script
         };
     }
 
-    struct ScriptSystemOptions final
-    {
-        std::size_t failure_capacity{};
-    };
-
     enum class EScriptSystemError : std::uint8_t
     {
         INVALID_INPUT,
@@ -98,7 +93,7 @@ namespace lux::simulation::script
             const SimulationDescription &simulation,
             const ScriptSystemDescription &description,
             ecs::Registry &registry,
-            ScriptSystemOptions options,
+            std::size_t failure_capacity,
             ScriptArtifactResolver artifacts,
             WorldObjectResolver world,
             std::span<const ScriptBackendDescriptor> backends,

@@ -53,14 +53,14 @@ namespace
                 LUX_SCRIPT_VK_INT32,
                 {},
                 sizeof(std::int32_t),
-                lux::script::scriptSemanticTypeId("lux.i32"),
+                lux::semantic::typeId("lux.i32"),
                 &values[index]};
         }
         return_slot = lux_script_value_slot{
             LUX_SCRIPT_VK_INT32,
             {},
             sizeof(result),
-            lux::script::scriptSemanticTypeId("lux.i32"),
+            lux::semantic::typeId("lux.i32"),
             &result};
         return {
             arguments.data(),
@@ -79,8 +79,8 @@ int main()
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    const auto* i32_layout = lux::script::scriptBuiltinLayout(
-        lux::script::scriptSemanticTypeId("lux.i32")
+    const auto* i32_layout = lux::semantic::builtinLayout(
+        lux::semantic::typeId("lux.i32")
     );
     assert(i32_layout);
     LuaComponentBinding health_binding{
@@ -124,7 +124,7 @@ int main()
     health_binding.canonical_name.clear();
 
     const LuaRecordMarshaller collision_marshaller{
-        lux::script::scriptSemanticTypeId("lux.physics.CollisionEvent"),
+        lux::semantic::typeId("lux.physics.CollisionEvent"),
         "lux.physics.CollisionEvent",
         sizeof(CollisionEvent),
         alignof(CollisionEvent),
@@ -138,7 +138,6 @@ int main()
     assert(created_backend);
     auto backend = std::move(*created_backend);
     assert(backend);
-    assert(backend.cachedTracebackCount() == 1U);
 
     lux::rdesc::Script description;
     description.module_name = "lua.binding.fixture";
@@ -170,10 +169,10 @@ int main()
         17U,
         {{
             "lux.physics.CollisionEvent",
-            lux::script::scriptSemanticTypeId(
+            lux::semantic::typeId(
                 "lux.physics.CollisionEvent"
             ),
-            lux::script::EScriptPassMode::CONST_REF,
+            lux::semantic::EValuePass::CONST_REF,
             LUX_SCRIPT_VK_STRUCT_REF,
             sizeof(CollisionEvent),
             alignof(CollisionEvent)}},
@@ -239,7 +238,6 @@ int main()
         asset,
         rejected_contract_instance
     ) == EScriptBackendResult::HOST_COMPONENT_CONTRACT_MISMATCH);
-    assert(contract_backend.loadedInstanceCount() == 0U);
     auto descriptor = backend.descriptor();
     ScriptBackendInstance first_instance;
     ScriptBackendInstance second_instance;
@@ -281,9 +279,6 @@ int main()
         function,
         second
     ) == EScriptBackendResult::SUCCESS);
-    assert(backend.loadedInstanceCount() == 2U);
-    assert(backend.chunkLoadCount() == 1U);
-    assert(backend.preparedReferenceCount() == 2U);
 
     lux::script::BoundScriptCall collision_call;
     lux::script::BoundScriptCall collision_count_call;
@@ -304,7 +299,7 @@ int main()
         LUX_SCRIPT_VK_STRUCT_REF,
         {},
         sizeof(collision),
-        lux::script::scriptSemanticTypeId("lux.physics.CollisionEvent"),
+        lux::semantic::typeId("lux.physics.CollisionEvent"),
         const_cast<CollisionEvent*>(std::addressof(collision))};
     lux_script_call_frame collision_frame{
         &collision_slot,
@@ -321,7 +316,7 @@ int main()
         LUX_SCRIPT_VK_INT32,
         {},
         sizeof(collision_count_value),
-        lux::script::scriptSemanticTypeId("lux.i32"),
+        lux::semantic::typeId("lux.i32"),
         &collision_count_value};
     lux_script_call_frame collision_count_frame{
         nullptr,
@@ -347,7 +342,7 @@ int main()
         LUX_SCRIPT_VK_INT32,
         {},
         sizeof(bad_result),
-        lux::script::scriptSemanticTypeId("lux.i32"),
+        lux::semantic::typeId("lux.i32"),
         &bad_result};
     lux_script_call_frame bad_return_frame{
         nullptr, 0U, 0U, &bad_result_slot, 1U, 0U,
@@ -407,8 +402,8 @@ int main()
     unsupported.symbol_id = 12U;
     unsupported.args = {{
         "lux.test.Record",
-        lux::script::scriptSemanticTypeId("lux.test.Record"),
-        lux::script::EScriptPassMode::CONST_REF}};
+        lux::semantic::typeId("lux.test.Record"),
+        lux::semantic::EValuePass::CONST_REF}};
     unsupported.returns.clear();
     lux::script::BoundScriptCall rejected;
     assert(descriptor.prepareMethod(
@@ -422,8 +417,8 @@ int main()
     u64.symbol_id = 14U;
     u64.args = {{
         "lux.u64",
-        lux::script::scriptSemanticTypeId("lux.u64"),
-        lux::script::EScriptPassMode::VALUE}};
+        lux::semantic::typeId("lux.u64"),
+        lux::semantic::EValuePass::VALUE}};
     u64.returns.clear();
     assert(descriptor.prepareMethod(
         descriptor.context,
@@ -464,7 +459,7 @@ int main()
         LUX_SCRIPT_VK_BOOL,
         {},
         sizeof(escaped_is_dead),
-        lux::script::scriptSemanticTypeId("lux.bool"),
+        lux::semantic::typeId("lux.bool"),
         &escaped_is_dead};
     lux_script_call_frame probe_frame{
         nullptr,
@@ -490,10 +485,7 @@ int main()
         second_instance,
         collision_count_call
     );
-    assert(backend.preparedReferenceCount() == 0U);
     descriptor.destroyInstance(descriptor.context, second_instance);
-    assert(backend.loadedInstanceCount() == 0U);
-    assert(backend.cachedTracebackCount() == 1U);
     ScriptBackendInstance recycled_instance;
     assert(descriptor.createInstance(
         descriptor.context,
@@ -505,6 +497,5 @@ int main()
         recycled_instance
     ) == EScriptBackendResult::SUCCESS);
     assert(recycled_instance.value == second_instance.value);
-    assert(backend.chunkLoadCount() == 1U);
     descriptor.destroyInstance(descriptor.context, recycled_instance);
 }

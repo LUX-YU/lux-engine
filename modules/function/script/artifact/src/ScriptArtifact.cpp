@@ -178,9 +178,9 @@ namespace lux::script
                 reader.u8(type.abi_kind) && reader.u32(type.size) &&
                 reader.u32(type.alignment) &&
                 pass <= static_cast<std::uint8_t>(
-                    lux::script::EScriptPassMode::CONST_REF
+                    lux::semantic::EValuePass::CONST_REF
                 ) &&
-                ((type.pass = static_cast<lux::script::EScriptPassMode>(pass)), true);
+                ((type.pass = static_cast<lux::semantic::EValuePass>(pass)), true);
         }
 
         template <class Type>

@@ -24,22 +24,23 @@ namespace lux::simulation::script
     [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
     SimulationDataSchemaId scriptSystemDataSchemaId();
 
-    template<typename T> using ScriptSystemResult = lux::cxx::expected<T, EScriptSystemDescriptionError>;
-
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemResult<std::vector<std::byte>>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
+    lux::cxx::expected<std::vector<std::byte>, EScriptSystemDescriptionError>
     encodeScriptSystemDescription(
         const ScriptSystemDescription& description,
         ScriptSystemCodecLimits limits
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemResult<ScriptSystemDescription>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
+    lux::cxx::expected<ScriptSystemDescription, EScriptSystemDescriptionError>
     decodeScriptSystemDescription(
         std::span<const std::byte> bytes,
         const SimulationDescription& simulation,
         ScriptSystemCodecLimits limits
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemResult<void>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
+    lux::cxx::expected<void, EScriptSystemDescriptionError>
     addScriptSystemData(
         SimulationDescriptionBuilder& builder,
         const ScriptSystemDescription& description,

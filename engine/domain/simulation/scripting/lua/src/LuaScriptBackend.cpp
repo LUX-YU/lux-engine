@@ -143,7 +143,6 @@ namespace lux::simulation::script
             try
             {
                 prototypes.emplace(context.asset, reference);
-                ++chunk_loads;
                 return reference;
             }
             catch (const std::bad_alloc&)
@@ -157,7 +156,7 @@ namespace lux::simulation::script
             const lux::rdesc::ScriptValueType& type
         ) const noexcept
         {
-            const auto* layout = lux::script::scriptBuiltinLayout(type.type_id);
+            const auto* layout = lux::semantic::builtinLayout(type.type_id);
             if (!layout || layout->canonical_name != type.canonical_name)
                 return false;
             switch (layout->abi_kind)
@@ -178,7 +177,7 @@ namespace lux::simulation::script
             const lux::rdesc::ScriptValueType& type
         ) const noexcept
         {
-            if (type.pass != lux::script::EScriptPassMode::CONST_REF)
+            if (type.pass != lux::semantic::EValuePass::CONST_REF)
                 return nullptr;
             const auto found = record_marshaller_index.find(type.type_id);
             if (found == record_marshaller_index.end())
@@ -450,7 +449,6 @@ namespace lux::simulation::script
             }
             const auto table_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);
             instance->table_ref = table_ref;
-            ++self.live_instances;
             result.value = instance;
             return EScriptBackendResult::SUCCESS;
         }
@@ -485,7 +483,7 @@ namespace lux::simulation::script
             for (const auto& return_type : function.returns)
             {
                 if (!self.supportedType(return_type) ||
-                    return_type.pass != lux::script::EScriptPassMode::VALUE)
+                    return_type.pass != lux::semantic::EValuePass::VALUE)
                 {
                     return EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE;
                 }
@@ -511,7 +509,6 @@ namespace lux::simulation::script
                 luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
                 return EScriptBackendResult::ALLOCATION_FAILURE;
             }
-            ++self.prepared_references;
             result = lux::script::BoundScriptCall{&State::invoke, call};
             return EScriptBackendResult::SUCCESS;
         }
@@ -707,8 +704,6 @@ namespace lux::simulation::script
                     self.state,
                     LUA_REGISTRYINDEX,
                     call->function_ref);
-                if (self.prepared_references != 0U)
-                    --self.prepared_references;
             }
             delete call;
         }
@@ -736,8 +731,6 @@ namespace lux::simulation::script
             );
             *instance = {};
             self.free_instances.push_back(instance_slot);
-            if (self.live_instances != 0U)
-                --self.live_instances;
         }
 
         lux::script::lua::ScriptEngine engine;
@@ -745,7 +738,6 @@ namespace lux::simulation::script
         std::thread::id affinity;
         int traceback_ref{LUA_NOREF};
         std::size_t instance_capacity{};
-        std::size_t live_instances{};
         std::unordered_map<lux::asset::AssetId, int> prototypes;
         std::vector<LuaComponentBinding> components;
         std::unordered_map<std::string_view, std::size_t> component_index;
@@ -754,8 +746,6 @@ namespace lux::simulation::script
             record_marshaller_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
-        std::size_t chunk_loads{};
-        std::size_t prepared_references{};
     };
 
     lux::cxx::expected<
@@ -769,7 +759,7 @@ namespace lux::simulation::script
         for (std::size_t index{}; index < components.size(); ++index)
         {
             const auto& component = components[index];
-            const auto* layout = lux::script::scriptBuiltinLayout(
+            const auto* layout = lux::semantic::builtinLayout(
                 component.semantic_type);
             const bool supported_kind = component.abi_kind ==
                     LUX_SCRIPT_VK_BOOL ||
@@ -781,7 +771,7 @@ namespace lux::simulation::script
             if (component.name.empty() || component.component_type == 0U ||
                 component.canonical_name.empty() ||
                 component.semantic_type !=
-                    lux::script::scriptSemanticTypeId(
+                    lux::semantic::typeId(
                         component.canonical_name) ||
                 !layout ||
                 layout->canonical_name != component.canonical_name ||
@@ -818,7 +808,7 @@ namespace lux::simulation::script
                 (marshaller.alignment & (marshaller.alignment - 1U)) == 0U;
             const bool valid_identity = marshaller.semantic_type != 0U &&
                 !marshaller.canonical_name.empty() &&
-                marshaller.semantic_type == lux::script::scriptSemanticTypeId(
+                marshaller.semantic_type == lux::semantic::typeId(
                     marshaller.canonical_name
                 );
             if (!valid_identity || marshaller.size == 0U ||
@@ -888,23 +878,4 @@ namespace lux::simulation::script
             &State::destroyInstance};
     }
 
-    std::size_t LuaScriptBackend::loadedInstanceCount() const noexcept
-    {
-        return state_ ? state_->live_instances : 0U;
-    }
-
-    std::size_t LuaScriptBackend::chunkLoadCount() const noexcept
-    {
-        return state_ ? state_->chunk_loads : 0U;
-    }
-
-    std::size_t LuaScriptBackend::preparedReferenceCount() const noexcept
-    {
-        return state_ ? state_->prepared_references : 0U;
-    }
-
-    std::size_t LuaScriptBackend::cachedTracebackCount() const noexcept
-    {
-        return state_ && state_->traceback_ref != LUA_NOREF ? 1U : 0U;
-    }
 }

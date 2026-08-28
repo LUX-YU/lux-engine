@@ -65,11 +65,6 @@ namespace lux::simulation::script
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
-        [[nodiscard]] std::size_t loadedInstanceCount() const noexcept;
-        [[nodiscard]] std::size_t chunkLoadCount() const noexcept;
-        [[nodiscard]] std::size_t preparedReferenceCount() const noexcept;
-        [[nodiscard]] std::size_t cachedTracebackCount() const noexcept;
-
       private:
         struct State;
         explicit LuaScriptBackend(

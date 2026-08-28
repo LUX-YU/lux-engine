@@ -101,7 +101,7 @@ namespace lux::authoring::script
             function.args[0].type_id == event.payloadType() &&
             function.args[0].canonical_name == event.payloadSchemaName() &&
             function.args[0].pass ==
-                lux::script::EScriptPassMode::CONST_REF;
+                lux::semantic::EValuePass::CONST_REF;
     }
 
     std::vector<lux::simulation::script::HookScriptTarget>

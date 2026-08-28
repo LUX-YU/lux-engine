@@ -104,7 +104,7 @@ namespace
     bool resolveRecord(
         void*,
         const lux::meta::RefType& type,
-        lux::script::ScriptSemanticLayout& result
+        lux::semantic::Layout& result
     ) noexcept
     {
         const auto* reflected = static_cast<const lux::meta::RefClass*>(
@@ -117,7 +117,7 @@ namespace
         }
         constexpr std::string_view name{"consumer.CollisionEvent"};
         result = {
-            lux::script::scriptSemanticTypeId(name),
+            lux::semantic::typeId(name),
             name,
             LUX_SCRIPT_VK_STRUCT_REF,
             sizeof(installed_consumer::CollisionEvent),
@@ -237,7 +237,7 @@ int main()
         *simulation,
         *decoded_script,
         registry,
-        ScriptSystemOptions{2U},
+        2U,
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         backends,

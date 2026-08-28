@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/visibility.h>
@@ -38,7 +39,7 @@ namespace lux::simulation::script
         bool (*resolve)(
             void* context,
             const lux::meta::RefType& type,
-            lux::script::ScriptSemanticLayout& result
+            lux::semantic::Layout& result
         ) noexcept{};
     };
 

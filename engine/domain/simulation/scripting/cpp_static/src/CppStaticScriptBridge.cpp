@@ -19,17 +19,16 @@ namespace lux::simulation::script
             const lux::meta::RefFunction* function{};
         };
 
-        [[nodiscard]] const lux::script::ScriptSemanticLayout* builtin(
+        [[nodiscard]] const lux::semantic::Layout* builtin(
             const lux::meta::RefType& type,
             std::uint64_t value_type_hash
         ) noexcept
         {
-            using lux::script::ScriptBuiltinSemanticLayouts;
             struct Mapping final
             {
                 lux::meta::EBaseType base;
                 std::uint64_t type_hash{};
-                lux::script::ScriptSemanticLayout layout;
+                lux::semantic::Layout layout;
             };
 #define LUX_META_BASE_BOOL Bool
 #define LUX_META_BASE_I32 Int32
@@ -43,8 +42,8 @@ namespace lux::simulation::script
             Mapping{                                                          \
                 lux::meta::EBaseType::LUX_META_BASE_VALUE(tag),                \
                 lux::cxx::type_hash<cpp_type>(),                               \
-                lux::script::ScriptSemanticLayout{                             \
-                    lux::script::scriptSemanticTypeId(canonical),              \
+                lux::semantic::Layout{                                         \
+                    lux::semantic::typeId(canonical),                          \
                     canonical,                                                 \
                     abi_kind_value,                                            \
                     sizeof(cpp_type),                                          \
@@ -86,7 +85,7 @@ namespace lux::simulation::script
             const auto qualifier = static_cast<lux::meta::ETypeQual>(
                 type.qtype.qual
             );
-            auto pass = lux::script::EScriptPassMode::VALUE;
+            auto pass = lux::semantic::EValuePass::VALUE;
             switch (qualifier)
             {
             case lux::meta::ETypeQual::Value:
@@ -98,7 +97,7 @@ namespace lux::simulation::script
                         ECppStaticScriptBridgeError::RETURN_NOT_SUPPORTED
                     );
                 }
-                pass = lux::script::EScriptPassMode::CONST_REF;
+                pass = lux::semantic::EValuePass::CONST_REF;
                 break;
             case lux::meta::ETypeQual::LRef:
                 return lux::cxx::unexpected(
@@ -135,10 +134,10 @@ namespace lux::simulation::script
                     ECppStaticScriptBridgeError::UNSUPPORTED_TYPE
                 );
             }
-            lux::script::ScriptSemanticLayout layout;
+            lux::semantic::Layout layout;
             if (!resolver.resolve(resolver.context, type, layout) ||
                 layout.type_id == 0U || layout.canonical_name.empty() ||
-                layout.type_id != lux::script::scriptSemanticTypeId(
+                layout.type_id != lux::semantic::typeId(
                     layout.canonical_name) ||
                 layout.size != type.size || layout.alignment != type.alignment)
             {

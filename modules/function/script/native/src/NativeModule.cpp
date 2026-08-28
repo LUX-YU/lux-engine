@@ -119,7 +119,7 @@ namespace lux::script
                 const auto valid_type = [](const lux_script_type_desc& type, bool is_return) noexcept {
                     const bool has_valid_name = type.name && type.name[0] != '\0';
                     const bool is_invalid_identity = !has_valid_name || type.type_id == InvalidScriptSymbolId ||
-                        type.type_id != scriptSemanticTypeId(type.name);
+                        type.type_id != lux::semantic::typeId(type.name);
                     const bool is_invalid_layout = type.size == 0U || type.align == 0U ||
                         (type.align & (type.align - 1U)) != 0U;
                     const bool is_invalid_abi_kind = type.kind < LUX_SCRIPT_VK_BOOL ||
@@ -132,7 +132,7 @@ namespace lux::script
                     {
                         return false;
                     }
-                    if (const auto* builtin = scriptBuiltinLayout(type.type_id))
+                    if (const auto* builtin = lux::semantic::builtinLayout(type.type_id))
                     {
                         const bool is_invalid_builtin = builtin->canonical_name != type.name ||
                             builtin->abi_kind != type.kind || builtin->size != type.size ||

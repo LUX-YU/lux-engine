@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/function/script/ScriptSemantic.hpp>
+#include <lux/engine/core/semantic/SemanticType.hpp>
+#include <lux/engine/function/script/ScriptSymbol.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -16,8 +17,7 @@ namespace lux::rdesc
     {
         std::string canonical_name;
         std::uint64_t type_id{};
-        lux::script::EScriptPassMode pass{
-            lux::script::EScriptPassMode::VALUE};
+        lux::semantic::EValuePass pass{lux::semantic::EValuePass::VALUE};
         std::uint8_t abi_kind{};
         std::uint32_t size{};
         std::uint32_t alignment{};
@@ -27,17 +27,15 @@ namespace lux::rdesc
     };
 
     template <class Value>
-        requires lux::script::ScriptSemanticTypeDeclared<Value>
+        requires lux::semantic::TypeDeclared<Value>
     [[nodiscard]] inline ScriptValueType makeScriptValueType(
-        lux::script::EScriptPassMode pass =
-            lux::script::EScriptPassMode::VALUE
+        lux::semantic::EValuePass pass = lux::semantic::EValuePass::VALUE
     )
     {
-        using Traits = lux::script::ScriptSemanticTypeTraits<
-            std::remove_cv_t<Value>>;
+        using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Value>>;
         return {
             std::string(Traits::CanonicalName),
-            lux::script::scriptSemanticTypeId(Traits::CanonicalName),
+            lux::semantic::typeId(Traits::CanonicalName),
             pass,
             Traits::AbiKind,
             Traits::Size,
@@ -161,16 +159,16 @@ namespace lux::rdesc
         const auto valid_type = [](const ScriptValueType& type) noexcept
         {
             if (type.type_id == 0U || type.canonical_name.empty() ||
-                type.type_id != lux::script::scriptSemanticTypeId(
+                type.type_id != lux::semantic::typeId(
                     type.canonical_name) ||
-                type.pass > lux::script::EScriptPassMode::CONST_REF ||
+                type.pass > lux::semantic::EValuePass::CONST_REF ||
                 type.abi_kind == 0U || type.size == 0U ||
                 type.alignment == 0U ||
                 (type.alignment & (type.alignment - 1U)) != 0U)
             {
                 return false;
             }
-            const auto* builtin = lux::script::scriptBuiltinLayout(type.type_id);
+            const auto* builtin = lux::semantic::builtinLayout(type.type_id);
             return builtin == nullptr ||
                 (builtin->canonical_name == type.canonical_name &&
                  builtin->abi_kind == type.abi_kind &&
@@ -200,7 +198,7 @@ namespace lux::rdesc
             for (const auto& result : function.returns)
             {
                 if (!valid_type(result) ||
-                    result.pass != lux::script::EScriptPassMode::VALUE)
+                    result.pass != lux::semantic::EValuePass::VALUE)
                 {
                     return false;
                 }

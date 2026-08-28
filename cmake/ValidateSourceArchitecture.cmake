@@ -27,17 +27,16 @@ endif()
 foreach(retired_root IN ITEMS
     "${source_root}/engine/flowforge"
     "${source_root}/engine/graph_kit"
-    "${source_root}/engine/simulation/script_binding"
+    "${source_root}/engine/simulation"
+    "${source_root}/engine/world"
+    "${source_root}/engine/domain/simulation/script_binding"
     "${source_root}/engine/authoring/script_binding"
     "${source_root}/engine/authoring/flowforge"
-    "${source_root}/engine/toolchain/flowforge"
+    "${source_root}/engine/toolchain"
 )
-    file(GLOB_RECURSE retired_entries LIST_DIRECTORIES false
-        "${retired_root}/*"
-    )
-    if(retired_entries)
+    if(EXISTS "${retired_root}")
         message(FATAL_ERROR
-            "Architecture: retired source root contains files: ${retired_root}"
+            "Architecture: retired source root remains present: ${retired_root}"
         )
     endif()
 endforeach()
@@ -60,22 +59,22 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/modules/*/*/src/*.cpp"
     "${source_root}/modules/*/*/*/include/*.hpp"
     "${source_root}/modules/*/*/*/src/*.cpp"
-    "${source_root}/engine/world/*/include/*.hpp"
-    "${source_root}/engine/world/*/sinclude/*.hpp"
-    "${source_root}/engine/world/*/pinclude/*.hpp"
-    "${source_root}/engine/world/*/src/*.cpp"
-    "${source_root}/engine/simulation/*/include/*.hpp"
-    "${source_root}/engine/simulation/*/sinclude/*.hpp"
-    "${source_root}/engine/simulation/*/pinclude/*.hpp"
-    "${source_root}/engine/simulation/*/src/*.cpp"
-    "${source_root}/engine/simulation/*/*/include/*.hpp"
-    "${source_root}/engine/simulation/*/*/sinclude/*.hpp"
-    "${source_root}/engine/simulation/*/*/pinclude/*.hpp"
-    "${source_root}/engine/simulation/*/*/src/*.cpp"
+    "${source_root}/engine/domain/world/*/include/*.hpp"
+    "${source_root}/engine/domain/world/*/sinclude/*.hpp"
+    "${source_root}/engine/domain/world/*/pinclude/*.hpp"
+    "${source_root}/engine/domain/world/*/src/*.cpp"
+    "${source_root}/engine/domain/simulation/*/include/*.hpp"
+    "${source_root}/engine/domain/simulation/*/sinclude/*.hpp"
+    "${source_root}/engine/domain/simulation/*/pinclude/*.hpp"
+    "${source_root}/engine/domain/simulation/*/src/*.cpp"
+    "${source_root}/engine/domain/simulation/*/*/include/*.hpp"
+    "${source_root}/engine/domain/simulation/*/*/sinclude/*.hpp"
+    "${source_root}/engine/domain/simulation/*/*/pinclude/*.hpp"
+    "${source_root}/engine/domain/simulation/*/*/src/*.cpp"
     "${source_root}/engine/authoring/*/include/*.hpp"
     "${source_root}/engine/authoring/*/src/*.cpp"
-    "${source_root}/engine/toolchain/*/include/*.hpp"
-    "${source_root}/engine/toolchain/*/src/*.cpp"
+    "${source_root}/engine/tools/toolchain/*/include/*.hpp"
+    "${source_root}/engine/tools/toolchain/*/src/*.cpp"
 )
 
 foreach(source IN LISTS production_sources)
@@ -110,7 +109,7 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
-    if(normalized MATCHES "/engine/simulation/")
+    if(normalized MATCHES "/engine/domain/simulation/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
             message(FATAL_ERROR
@@ -119,7 +118,7 @@ foreach(source IN LISTS production_sources)
         endif()
         if(content MATCHES
            "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|WORLD_BUSY|worldStructureWrite|HierarchyChangeCursor|HierarchyChanges|kHierarchyChangeCapacity|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(|EcsState|EcsMutation|SimulationEcsMutation|EcsChangeJournal|ChangeCursor|ComponentChanges|EntityChanges|EcsTaskAccess|EcsTaskResources|HierarchySystem|executeSimulationStep|FrameInfo" AND
-           NOT normalized MATCHES "/engine/simulation/script/cpp_static/")
+           NOT normalized MATCHES "/engine/domain/simulation/script/cpp_static/")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' restores retired vocabulary."
             )
@@ -138,7 +137,7 @@ foreach(source IN LISTS production_sources)
         endif()
         if(content MATCHES
            "on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<" AND
-           NOT normalized MATCHES "/engine/simulation/(ecs/(hierarchy|transform)|script)/")
+           NOT normalized MATCHES "/engine/domain/simulation/(ecs/(hierarchy|transform)|script)/")
             message(FATAL_ERROR
                 "Architecture: EnTT signal ownership '${normalized}' is outside a concrete reactive Simulation subsystem."
             )
@@ -165,7 +164,7 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
-    if(normalized MATCHES "/engine/simulation/(description|asset)/")
+    if(normalized MATCHES "/engine/domain/simulation/(description|asset)/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/object/|(^|[^A-Za-z0-9_])(Object|Signal|RefMethod|RefObject)([^A-Za-z0-9_]|$)")
             message(FATAL_ERROR
@@ -183,7 +182,7 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
-    if(normalized MATCHES "/engine/world/")
+    if(normalized MATCHES "/engine/domain/world/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"](lux/engine/ecs/|entt/|lux/engine/(simulation|scene|asset)/|lux/engine/math/)")
             message(FATAL_ERROR
@@ -197,7 +196,7 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
-    if(normalized MATCHES "/engine/simulation/")
+    if(normalized MATCHES "/engine/domain/simulation/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(process|scene|authoring|toolchain|editor|host)/")
             message(FATAL_ERROR
@@ -208,9 +207,9 @@ foreach(source IN LISTS production_sources)
 endforeach()
 
 set(script_backend_runtime_sources
-    "${source_root}/engine/simulation/script/cpp_static/src/CppStaticScriptBridge.cpp"
-    "${source_root}/engine/simulation/script/native/src/NativeScriptBackend.cpp"
-    "${source_root}/engine/simulation/script/lua/src/LuaScriptBackend.cpp"
+    "${source_root}/engine/domain/simulation/script/cpp_static/src/CppStaticScriptBridge.cpp"
+    "${source_root}/engine/domain/simulation/script/native/src/NativeScriptBackend.cpp"
+    "${source_root}/engine/domain/simulation/script/lua/src/LuaScriptBackend.cpp"
 )
 foreach(source IN LISTS script_backend_runtime_sources)
     if(NOT EXISTS "${source}")
@@ -229,8 +228,8 @@ endforeach()
 # still being removed in staged commits. This prevents new code from rebuilding
 # the retired session/name-routing model under a different target name.
 file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
-    "${source_root}/engine/simulation/script/*.hpp"
-    "${source_root}/engine/simulation/script/*.cpp"
+    "${source_root}/engine/domain/simulation/script/*.hpp"
+    "${source_root}/engine/domain/simulation/script/*.cpp"
 )
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
@@ -243,8 +242,8 @@ foreach(source IN LISTS script_system_sources)
 endforeach()
 
 file(GLOB_RECURSE generic_system_sources LIST_DIRECTORIES false
-    "${source_root}/engine/simulation/system/include/*.hpp"
-    "${source_root}/engine/simulation/system/src/*.cpp"
+    "${source_root}/engine/domain/simulation/system/include/*.hpp"
+    "${source_root}/engine/domain/simulation/system/src/*.cpp"
 )
 foreach(source IN LISTS generic_system_sources)
     file(READ "${source}" content)
@@ -324,7 +323,7 @@ foreach(capacity_header IN ITEMS
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetCodecSet.hpp"
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/CookedAssetImage.hpp"
     "${source_root}/modules/core/task/include/lux/engine/task/TaskExecutor.hpp"
-    "${source_root}/engine/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsCommandBuffer.hpp"
+    "${source_root}/engine/domain/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsCommandBuffer.hpp"
 )
     file(READ "${capacity_header}" capacity_contract)
     if(capacity_contract MATCHES
@@ -354,7 +353,7 @@ foreach(binary_header IN ITEMS
 endforeach()
 
 set(hierarchy_index_header
-    "${source_root}/engine/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/HierarchyIndex.hpp"
+    "${source_root}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/HierarchyIndex.hpp"
 )
 file(READ "${hierarchy_index_header}" hierarchy_index_contract)
 if(hierarchy_index_contract MATCHES
@@ -376,7 +375,7 @@ endforeach()
 
 foreach(source IN LISTS production_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/engine/simulation/ecs/schema/")
+    if(normalized MATCHES "/engine/domain/simulation/ecs/schema/")
         file(READ "${source}" content)
         if(content MATCHES
            "lux/engine/meta/|lux/cxx/reflection/")
@@ -404,7 +403,7 @@ if(DEFINED LUX_BINARY_DIR AND
 endif()
 
 file(GLOB_RECURSE ecs_public_headers LIST_DIRECTORIES false
-    "${source_root}/engine/simulation/ecs/*/include/*.hpp"
+    "${source_root}/engine/domain/simulation/ecs/*/include/*.hpp"
 )
 foreach(source IN LISTS ecs_public_headers)
     file(READ "${source}" content)
@@ -417,7 +416,7 @@ foreach(source IN LISTS ecs_public_headers)
 endforeach()
 
 set(transform_system_source
-    "${source_root}/engine/simulation/ecs/transform/src/TransformSystem.cpp"
+    "${source_root}/engine/domain/simulation/ecs/transform/src/TransformSystem.cpp"
 )
 if(EXISTS "${transform_system_source}")
     file(READ "${transform_system_source}" transform_system_contract)
@@ -430,8 +429,8 @@ if(EXISTS "${transform_system_source}")
 endif()
 
 foreach(component_header IN ITEMS
-    "${source_root}/engine/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp"
-    "${source_root}/engine/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"
+    "${source_root}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp"
+    "${source_root}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"
 )
     if(EXISTS "${component_header}")
         file(READ "${component_header}" component_contract)
@@ -466,15 +465,15 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/modules/*/*/CMakeLists.txt"
     "${source_root}/modules/*/*/*/CMakeLists.txt"
     "${source_root}/engine/CMakeLists.txt"
-    "${source_root}/engine/world/CMakeLists.txt"
-    "${source_root}/engine/world/*/CMakeLists.txt"
-    "${source_root}/engine/simulation/CMakeLists.txt"
-    "${source_root}/engine/simulation/*/CMakeLists.txt"
-    "${source_root}/engine/simulation/*/*/CMakeLists.txt"
+    "${source_root}/engine/domain/world/CMakeLists.txt"
+    "${source_root}/engine/domain/world/*/CMakeLists.txt"
+    "${source_root}/engine/domain/simulation/CMakeLists.txt"
+    "${source_root}/engine/domain/simulation/*/CMakeLists.txt"
+    "${source_root}/engine/domain/simulation/*/*/CMakeLists.txt"
     "${source_root}/engine/authoring/CMakeLists.txt"
     "${source_root}/engine/authoring/*/CMakeLists.txt"
-    "${source_root}/engine/toolchain/CMakeLists.txt"
-    "${source_root}/engine/toolchain/*/CMakeLists.txt"
+    "${source_root}/engine/tools/toolchain/CMakeLists.txt"
+    "${source_root}/engine/tools/toolchain/*/CMakeLists.txt"
 )
 foreach(source IN LISTS active_cmake)
     file(READ "${source}" content)

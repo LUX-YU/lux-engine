@@ -1,0 +1,5 @@
+if(LUX_BUILD_PROFILE STREQUAL "EDITOR")
+    add_subdirectory(editor)
+elseif(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
+    add_subdirectory(toolchain)
+endif()

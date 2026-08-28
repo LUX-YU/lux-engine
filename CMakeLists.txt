@@ -101,12 +101,12 @@ file(GLOB_RECURSE lux_architecture_inputs CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/modules/*.hpp"
     "${CMAKE_SOURCE_DIR}/modules/*.cpp"
     "${CMAKE_SOURCE_DIR}/modules/CMakeLists.txt"
-    "${CMAKE_SOURCE_DIR}/engine/world/*.hpp"
-    "${CMAKE_SOURCE_DIR}/engine/world/*.cpp"
-    "${CMAKE_SOURCE_DIR}/engine/world/CMakeLists.txt"
-    "${CMAKE_SOURCE_DIR}/engine/simulation/*.hpp"
-    "${CMAKE_SOURCE_DIR}/engine/simulation/*.cpp"
-    "${CMAKE_SOURCE_DIR}/engine/simulation/CMakeLists.txt"
+    "${CMAKE_SOURCE_DIR}/engine/domain/*.hpp"
+    "${CMAKE_SOURCE_DIR}/engine/domain/*.cpp"
+    "${CMAKE_SOURCE_DIR}/engine/domain/CMakeLists.txt"
+    "${CMAKE_SOURCE_DIR}/engine/tools/*.hpp"
+    "${CMAKE_SOURCE_DIR}/engine/tools/*.cpp"
+    "${CMAKE_SOURCE_DIR}/engine/tools/CMakeLists.txt"
 )
 set(lux_architecture_stamp "${CMAKE_BINARY_DIR}/lux-architecture-check.stamp")
 add_custom_command(

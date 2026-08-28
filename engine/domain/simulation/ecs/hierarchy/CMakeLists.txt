@@ -43,7 +43,7 @@ component_add_transitive_commands(
 )
 
 include_component_cmake_scripts(meta)
-include(${PROJECT_SOURCE_DIR}/engine/simulation/ecs/schema/cmake/engine_ecs_codegen.cmake)
+include(${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/cmake/engine_ecs_codegen.cmake)
 engine_target_add_ecs_component_codegen(
     NAME hierarchy_component_codegen
     TARGET hierarchy

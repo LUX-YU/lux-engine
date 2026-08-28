@@ -19,7 +19,7 @@ function(engine_target_add_ecs_component_codegen)
     lux_codegen_add_validation(
         JOB ${ARGS_NAME}
         NAME ecs_component_semantics
-        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/simulation/ecs/schema/template/ecs_component.validation.template
+        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/template/ecs_component.validation.template
     )
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}
@@ -31,7 +31,7 @@ function(engine_target_add_ecs_component_codegen)
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}
         NAME ecs_schema
-        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/simulation/ecs/schema/template/ecs_schema.template
+        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/template/ecs_schema.template
         OUTPUT_ROOT ${LUX_GENERATE_HEADER_DIR}
         OUTPUT_SUFFIX .ecs_schema.hpp
         JSON_FIELD "{\"projection_symbol\":\"${ARGS_SYMBOL}\"}"
@@ -39,7 +39,7 @@ function(engine_target_add_ecs_component_codegen)
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}
         NAME ecs_snapshot
-        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/simulation/ecs/schema/template/ecs_snapshot.template
+        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/template/ecs_snapshot.template
         OUTPUT_ROOT ${LUX_GENERATE_HEADER_DIR}
         OUTPUT_SUFFIX .ecs_snapshot.hpp
         JSON_FIELD "{\"projection_symbol\":\"${ARGS_SYMBOL}\"}"

@@ -108,6 +108,10 @@ namespace lux::async
             OperationEndpoint& operator=(const OperationEndpoint&) = delete;
             virtual ~OperationEndpoint() = default;
 
+            /// A successful admission owns completion_state until it invokes
+            /// complete exactly once. A rejected admission may invoke complete
+            /// synchronously before returning, but must not retain or invoke
+            /// completion_state after returning an error.
             [[nodiscard]] virtual SubmitResult submit(
                 T operation,
                 void* completion_state,
@@ -143,8 +147,10 @@ namespace lux::async
             return submit(std::move(operation), &completion_anchor, +[](void*, Outcome&&) noexcept {}, options);
         }
 
-        /// Low-level completion seam used by sender adapters. Callers must
-        /// keep completion_state alive until complete is invoked.
+        /// Low-level completion seam used by sender adapters. Successful
+        /// admission retains completion_state until complete is invoked once.
+        /// Rejection may complete synchronously; after an error is returned,
+        /// the callback state is no longer valid and must not be retained.
         [[nodiscard]] SubmitResult submit(
             T operation,
             void* completion_state,

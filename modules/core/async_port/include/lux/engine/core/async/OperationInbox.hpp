@@ -100,7 +100,14 @@ namespace lux::async
             }
             else if (previous == ECallbackPhase::SUBMITTING)
             {
-                static_cast<void>(state.release());
+                if (submitted)
+                {
+                    static_cast<void>(state.release());
+                }
+                else
+                {
+                    discard(*state);
+                }
             }
             else
             {

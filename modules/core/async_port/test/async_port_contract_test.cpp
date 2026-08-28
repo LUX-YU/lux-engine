@@ -1,6 +1,7 @@
 #include <lux/engine/core/async/OperationPort.hpp>
 #include <lux/engine/core/async/OperationInbox.hpp>
 
+#include <array>
 #include <cassert>
 #include <memory>
 #include <type_traits>
@@ -68,6 +69,39 @@ namespace
         void* state_{nullptr};
         void (*complete_)(void*, Outcome&&) noexcept {nullptr};
     };
+
+    class RejectingEndpoint final : public lux::async::detail::OperationEndpoint<Notify>
+    {
+    public:
+        explicit RejectingEndpoint(bool completes_synchronously) noexcept
+            : completes_synchronously_(completes_synchronously)
+        {
+        }
+
+        [[nodiscard]] lux::async::SubmitResult submit(
+            Notify,
+            void* state,
+            void (*complete)(void*, Outcome&&) noexcept,
+            lux::async::SubmitOptions
+        ) noexcept override
+        {
+            if (completes_synchronously_)
+            {
+                complete(
+                    state,
+                    lux::cxx::unexpected(
+                        lux::async::OperationFailure<ETestError>::runtime(
+                            lux::async::ESubmitError::QUEUE_FULL
+                        )
+                    )
+                );
+            }
+            return lux::cxx::unexpected(lux::async::ESubmitError::QUEUE_FULL);
+        }
+
+    private:
+        bool completes_synchronously_{};
+    };
 }
 
 int
@@ -112,4 +146,15 @@ main()
         assert(completion.outcome);
     }) == 1u);
     assert(deferred_inbox.terminal());
+
+    for (const bool completes_synchronously : std::array{false, true})
+    {
+        auto rejecting_endpoint = std::make_shared<RejectingEndpoint>(completes_synchronously);
+        lux::async::OperationPort<Notify> rejecting_port{rejecting_endpoint};
+        lux::async::OperationInbox<Notify, int> rejecting_inbox{1u};
+        const auto result = rejecting_inbox.submit(rejecting_port, Notify{45}, 10);
+        assert(!result);
+        assert(result.error() == lux::async::ESubmitError::QUEUE_FULL);
+        assert(rejecting_inbox.terminal());
+    }
 }

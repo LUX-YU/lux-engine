@@ -129,8 +129,8 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   同步解释和运行事实；ECS 只是 Simulation 内部机制；Process 负责异步、IO 与 residency；
   Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
 - source topology 固定用 `engine/domain/{world,simulation}` 表达 L1 ownership，
-  用 `engine/tools/{editor,toolchain}` 区分交互工具与离线工具；public include 与 namespace
-  仍使用概念名，不得把 `domain`、`tools` 或层级编号写进用户 API。
+  用 `engine/editor` 与 `engine/toolchain` 区分交互工具和离线工具；不得恢复同义叠加的
+  `engine/tools`。public include 与 namespace 仍使用概念名，不得把 `domain` 或层级编号写进用户 API。
 - `WORLD` 与 `SIMULATION` 是 L1 sibling roots。纯 `world/core` 只能依赖 L0 primitives；
   `world/asset` 才能增加 L0 Asset/Serialization closure。Simulation 可依赖 World 与 L0，
   不得依赖 Process、Scene、Authoring、Toolchain、Editor 或 Host。旧 `RUNTIME` classifier

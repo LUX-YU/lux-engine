@@ -133,3 +133,6 @@ cmake_language(DEFER CALL lux_write_unclassified_target_report)
 
 add_subdirectory(modules)
 add_subdirectory(engine)
+if(BUILD_TESTING)
+    add_subdirectory(test/architecture_probes)
+endif()

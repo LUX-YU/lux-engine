@@ -8,39 +8,37 @@
 #include <limits>
 #include <memory>
 #include <utility>
-#include <vector>
 
 namespace
 {
-    [[nodiscard]] lux::world::WorldObjectId objectId(std::uint8_t tail)
+    template <class Type>
+    [[nodiscard]] Type id(std::uint8_t tail)
     {
         std::array<std::uint8_t, 16> bytes{};
         bytes[15] = tail;
-        return lux::world::WorldObjectId{uuids::uuid(bytes)};
+        return Type{uuids::uuid(bytes)};
     }
 
     [[nodiscard]] lux::world::WorldDescription makeWorld()
     {
         using namespace lux::world;
+
         WorldDescriptionBuilder builder;
-        const auto schema_a = worldDataSchemaId("test.aa");
-        const auto schema_b = worldDataSchemaId("test.bb");
-        const auto first = objectId(1U);
-        const auto second = objectId(2U);
-        const std::array payload_a{std::byte{1U}, std::byte{2U}};
-        const std::array payload_b{std::byte{3U}};
-        assert(builder.addObject(second));
-        assert(builder.addObject(first));
-        assert(builder.addData(first, schema_b, 2U, payload_b));
-        assert(builder.addData(first, schema_a, 1U, payload_a));
+        assert(builder.setIdentity(id<WorldBundleId>(1U), id<WorldBundleGeneration>(2U), "world"));
+        assert(builder.addSchema(worldDataSchemaId("test.aa")));
+        assert(builder.addSchema(worldDataSchemaId("test.bb")));
+        assert(builder.setPartitioner({worldPartitionerId("test.grid"), 1U}, 4U));
+        assert(builder.addStorageVolume({"world.wvol0", 1U, 3U, 4096U}));
+        assert(builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 2U, {0U, 0U}}));
+        assert(builder.addPartitionTablePage({WorldPartitionOrdinal{2U}, 2U, {0U, 1U}}));
+        assert(builder.addPartitionIndex({worldPartitionIndexTypeId("test.grid"), 1U, {0U, 2U}}));
         auto result = std::move(builder).build();
         assert(result);
         return std::move(*result);
     }
 }
 
-int
-main()
+int main()
 {
     using namespace lux::asset;
     using namespace lux::world;
@@ -61,40 +59,61 @@ main()
     assert(!descriptor.encode(&world, AssetEncodeContext{AssetCodecLimits{0U, 0U, encoded->size() - 1U}}));
 
     const AssetDecodeContext generous_decode{
-        AssetCodecLimits{encoded->size(), std::numeric_limits<std::size_t>::max(), 0U}};
+        AssetCodecLimits{encoded->size(), std::numeric_limits<std::size_t>::max(), 0U}
+    };
     auto decoded = descriptor.decode(*encoded, generous_decode);
     assert(decoded);
     auto decoded_world = std::static_pointer_cast<const WorldDescription>(decoded->payload);
     assert(decoded_world);
-    assert(decoded_world->objectCount() == world.objectCount());
-    assert(decoded_world->dataCount() == world.dataCount());
+    assert(decoded_world->bundleId() == world.bundleId());
+    assert(decoded_world->generation() == world.generation());
+    assert(decoded_world->name() == world.name());
+    assert(decoded_world->schemas().size() == world.schemas().size());
+    for (std::size_t index{}; index < world.schemas().size(); ++index)
+        assert(decoded_world->schemas()[index] == world.schemas()[index]);
+    assert(decoded_world->partitioner().id == world.partitioner().id);
+    assert(decoded_world->partitioner().version == world.partitioner().version);
+    assert(decoded_world->partitionCount() == world.partitionCount());
+    assert(decoded_world->storageVolumes().size() == world.storageVolumes().size());
+    assert(decoded_world->partitionTable().pages().size() == world.partitionTable().pages().size());
+    assert(decoded_world->partitionIndexes().size() == world.partitionIndexes().size());
     assert(decoded->decoded_byte_count == decoded_world->retainedBytes());
+
     assert(!descriptor.decode(
         *encoded,
-        AssetDecodeContext{AssetCodecLimits{encoded->size() - 1U, std::numeric_limits<std::size_t>::max(), 0U}}));
+        AssetDecodeContext{AssetCodecLimits{encoded->size() - 1U, std::numeric_limits<std::size_t>::max(), 0U}}
+    ));
     assert(!descriptor.decode(*encoded, AssetDecodeContext{AssetCodecLimits{encoded->size(), 1U, 0U}}));
 
     auto trailing = *encoded;
     trailing.push_back(std::byte{});
     assert(!descriptor.decode(
         trailing,
-        AssetDecodeContext{AssetCodecLimits{trailing.size(), std::numeric_limits<std::size_t>::max(), 0U}}));
+        AssetDecodeContext{AssetCodecLimits{trailing.size(), std::numeric_limits<std::size_t>::max(), 0U}}
+    ));
+
     auto corrupt_magic = *encoded;
     corrupt_magic[0] ^= std::byte{0x01U};
     assert(!descriptor.decode(corrupt_magic, generous_decode));
+
+    auto corrupt_version = *encoded;
+    corrupt_version[4] ^= std::byte{0x01U};
+    assert(!descriptor.decode(corrupt_version, generous_decode));
+
     auto truncated = *encoded;
     truncated.pop_back();
     assert(!descriptor.decode(truncated, generous_decode));
 
-    // Both schema names are seven bytes, so their complete wire records have
-    // equal length. Swapping them produces a structurally valid but
-    // non-canonical schema table that decode must reject.
+    // Header 40 bytes + name record 9 bytes + schema count 4 bytes.
     auto noncanonical = *encoded;
-    constexpr std::size_t header_bytes = 48U;
-    constexpr std::size_t schema_record_bytes = 16U + 7U;
-    for (std::size_t index{}; index < schema_record_bytes; ++index)
+    constexpr std::size_t kSchemaOffset = 53U;
+    constexpr std::size_t kSchemaRecordBytes = 8U + 4U + 7U;
+    for (std::size_t index{}; index < kSchemaRecordBytes; ++index)
     {
-        std::swap(noncanonical[header_bytes + index], noncanonical[header_bytes + schema_record_bytes + index]);
+        std::swap(
+            noncanonical[kSchemaOffset + index],
+            noncanonical[kSchemaOffset + kSchemaRecordBytes + index]
+        );
     }
     assert(!descriptor.decode(noncanonical, generous_decode));
 

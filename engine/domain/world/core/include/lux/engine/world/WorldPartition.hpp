@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/world/WorldDescription.hpp>
 #include <lux/engine/world/WorldObjectId.hpp>
 #include <lux/engine/world/visibility.h>
 
@@ -17,6 +16,8 @@
 
 namespace lux::world
 {
+    class WorldDescriptionBuilder;
+
     struct WorldPartitionId final
     {
         uuids::uuid value;
@@ -53,6 +54,37 @@ namespace lux::world
         friend bool operator==(const WorldPartitionOrdinal&, const WorldPartitionOrdinal&) noexcept = default;
     };
 
+    struct WorldChunkReference final
+    {
+        std::uint32_t volume{};
+        std::uint32_t chunk{};
+
+        friend bool operator==(const WorldChunkReference&, const WorldChunkReference&) noexcept = default;
+    };
+
+    struct WorldPartitionTablePageDescription final
+    {
+        WorldPartitionOrdinal first;
+        std::uint32_t count{};
+        WorldChunkReference chunk;
+    };
+
+    class LUX_ENGINE_WORLD_PUBLIC WorldPartitionTable final
+    {
+    public:
+        WorldPartitionTable() noexcept = default;
+
+        [[nodiscard]] std::span<const WorldPartitionTablePageDescription> pages() const noexcept;
+
+        [[nodiscard]] const WorldPartitionTablePageDescription*
+        findPage(WorldPartitionOrdinal partition) const noexcept;
+
+    private:
+        std::vector<WorldPartitionTablePageDescription> pages_;
+
+        friend class WorldDescriptionBuilder;
+    };
+
     struct WorldPartitionIndexTypeId final
     {
         std::uint64_t hash{};
@@ -78,8 +110,17 @@ namespace lux::world
         std::vector<std::byte> payload;
     };
 
+    struct WorldPartitionIndexDescription final
+    {
+        WorldPartitionIndexTypeId type;
+        std::uint32_t version{};
+        WorldChunkReference root;
+    };
+
     enum class EWorldPartitionError : std::uint8_t
     {
+        INVALID_OBJECT_ID,
+        DUPLICATE_OBJECT_ID,
         INVALID_PARTITION_ID,
         DUPLICATE_PARTITION_ID,
         EMPTY_PARTITION,
@@ -91,7 +132,6 @@ namespace lux::world
         DUPLICATE_INDEX_TYPE,
         INVALID_PARTITIONER_ID,
         INVALID_PARTITIONER_VERSION,
-        WORKSPACE_STALE,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
         IMPLEMENTATION_FAILURE,
@@ -168,7 +208,7 @@ namespace lux::world
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionLayoutBuilder final
     {
     public:
-        explicit WorldPartitionLayoutBuilder(const WorldDescription& world);
+        explicit WorldPartitionLayoutBuilder(std::span<const WorldObjectId> objects);
         ~WorldPartitionLayoutBuilder();
         WorldPartitionLayoutBuilder(WorldPartitionLayoutBuilder&&) noexcept;
         WorldPartitionLayoutBuilder& operator=(WorldPartitionLayoutBuilder&&) noexcept;

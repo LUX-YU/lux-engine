@@ -4,23 +4,31 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <span>
+#include <string>
+#include <string_view>
 
 namespace lux::world
 {
     enum class EWorldDescriptionError : std::uint8_t
     {
-        INVALID_OBJECT_ID,
-        DUPLICATE_OBJECT_ID,
-        OBJECT_NOT_FOUND,
+        INVALID_BUNDLE_ID,
+        INVALID_GENERATION,
+        INVALID_NAME,
         INVALID_SCHEMA_ID,
         SCHEMA_HASH_COLLISION,
-        INVALID_SCHEMA_VERSION,
-        DUPLICATE_OBJECT_DATA,
-        DATA_NOT_FOUND,
+        DUPLICATE_SCHEMA,
+        INVALID_PARTITIONER,
+        INVALID_PARTITION_COUNT,
+        INVALID_VOLUME,
+        DUPLICATE_VOLUME_MEMBER,
+        INVALID_PARTITION_PAGE,
+        PARTITION_PAGE_GAP,
+        PARTITION_PAGE_OVERLAP,
+        INVALID_CHUNK_REFERENCE,
+        INVALID_INDEX,
+        DUPLICATE_INDEX_TYPE,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
     };
@@ -28,8 +36,10 @@ namespace lux::world
     struct WorldDescriptionFailure final
     {
         EWorldDescriptionError code{EWorldDescriptionError::ALLOCATION_FAILURE};
-        WorldObjectId object;
         WorldDataSchemaId schema;
+        WorldPartitionOrdinal partition;
+        WorldPartitionIndexTypeId index_type;
+        std::uint32_t volume{};
     };
 
     class LUX_ENGINE_WORLD_PUBLIC WorldDescriptionBuilder final
@@ -43,26 +53,24 @@ namespace lux::world
         WorldDescriptionBuilder(const WorldDescriptionBuilder&) = delete;
         WorldDescriptionBuilder& operator=(const WorldDescriptionBuilder&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addObject(WorldObjectId id) noexcept;
-
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> eraseObject(WorldObjectId id) noexcept;
-
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addData(
-            WorldObjectId object,
-            WorldDataSchemaId schema,
-            std::uint32_t version,
-            std::span<const std::byte> payload
-        ) noexcept;
-
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> setData(
-            WorldObjectId object,
-            WorldDataSchemaId schema,
-            std::uint32_t version,
-            std::span<const std::byte> payload
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
+        setIdentity(WorldBundleId bundle, WorldBundleGeneration generation, std::string_view name) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        eraseData(WorldObjectId object, const WorldDataSchemaId& schema) noexcept;
+        addSchema(WorldDataSchemaId schema) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
+        setPartitioner(WorldPartitionerDescriptor partitioner, std::uint32_t partition_count) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
+        addStorageVolume(WorldStorageVolumeDescription volume) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
+        addPartitionTablePage(WorldPartitionTablePageDescription page) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
+        addPartitionIndex(WorldPartitionIndexDescription index) noexcept;
+
         void clear() noexcept;
 
         [[nodiscard]] lux::cxx::expected<WorldDescription, WorldDescriptionFailure> build() && noexcept;
@@ -71,4 +79,4 @@ namespace lux::world
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::world

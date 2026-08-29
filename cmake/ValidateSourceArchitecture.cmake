@@ -134,6 +134,12 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
+    if(content MATCHES "WorldPartitionWorkspace|WorldPartitioner[.]hpp")
+        message(FATAL_ERROR
+            "Architecture: active source '${normalized}' restores the retired World partition workspace API."
+        )
+    endif()
+
     if(content MATCHES
        "#[ \t]*include[ \t]*[<\"]lux/cxx/serialization/|lux::cxx::ser")
         message(FATAL_ERROR

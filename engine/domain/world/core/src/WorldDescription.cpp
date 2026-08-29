@@ -1,6 +1,5 @@
 #include <lux/engine/world/WorldDescription.hpp>
 
-#include <algorithm>
 #include <limits>
 
 namespace lux::world
@@ -28,110 +27,24 @@ namespace lux::world
         }
     }
 
-    WorldDataView::WorldDataView(const WorldDescription& world, std::size_t data_index) noexcept
-        : world_(&world), data_index_(data_index)
-    {
-    }
-
-    const WorldDataSchemaId& WorldDataView::schema() const noexcept
-    {
-        const auto& record = world_->data_[data_index_];
-        return world_->schemas_[record.schema_ordinal];
-    }
-
-    std::uint32_t WorldDataView::version() const noexcept
-    {
-        return world_->data_[data_index_].version;
-    }
-
-    std::span<const std::byte> WorldDataView::payload() const noexcept
-    {
-        const auto& record = world_->data_[data_index_];
-        return std::span<const std::byte>(world_->payload_).subspan(record.payload_offset, record.payload_size);
-    }
-
-    WorldObjectView::WorldObjectView(const WorldDescription& world, std::size_t object_index) noexcept
-        : world_(&world), object_index_(object_index)
-    {
-    }
-
-    WorldObjectId WorldObjectView::id() const noexcept
-    {
-        return world_->objects_[object_index_].id;
-    }
-
-    std::size_t WorldObjectView::dataCount() const noexcept
-    {
-        return world_->objects_[object_index_].data_count;
-    }
-
-    WorldDataView WorldObjectView::dataAt(std::size_t index) const noexcept
-    {
-        if (world_ == nullptr)
-            return {};
-        const auto& object = world_->objects_[object_index_];
-        if (index >= object.data_count)
-            return {};
-        return WorldDataView(*world_, object.first_data + index);
-    }
-
-    WorldDataView WorldObjectView::findData(const WorldDataSchemaId& schema) const noexcept
-    {
-        if (world_ == nullptr || !schema.valid())
-            return {};
-
-        const auto schema_it =
-            std::lower_bound(world_->schemas_.begin(), world_->schemas_.end(), schema, WorldDataSchemaIdLess{});
-        if (schema_it == world_->schemas_.end() || *schema_it != schema)
-            return {};
-
-        const std::size_t schema_ordinal = static_cast<std::size_t>(std::distance(world_->schemas_.begin(), schema_it));
-        const auto& object = world_->objects_[object_index_];
-        const auto begin = world_->data_.begin() + static_cast<std::ptrdiff_t>(object.first_data);
-        const auto end = begin + static_cast<std::ptrdiff_t>(object.data_count);
-        const auto data_it = std::lower_bound(
-            begin,
-            end,
-            schema_ordinal,
-            [](const WorldDescription::DataRecord& record, std::size_t value) {
-                return record.schema_ordinal < value;
-            }
-        );
-        if (data_it == end || data_it->schema_ordinal != schema_ordinal)
-            return {};
-        return WorldDataView(*world_, static_cast<std::size_t>(std::distance(world_->data_.begin(), data_it)));
-    }
-
     bool WorldDescription::empty() const noexcept
     {
-        return objects_.empty();
+        return partition_count_ == 0U;
     }
 
-    std::size_t WorldDescription::objectCount() const noexcept
+    const WorldBundleId& WorldDescription::bundleId() const noexcept
     {
-        return objects_.size();
+        return bundle_id_;
     }
 
-    std::size_t WorldDescription::dataCount() const noexcept
+    const WorldBundleGeneration& WorldDescription::generation() const noexcept
     {
-        return data_.size();
+        return generation_;
     }
 
-    std::size_t WorldDescription::payloadBytes() const noexcept
+    std::string_view WorldDescription::name() const noexcept
     {
-        return payload_.size();
-    }
-
-    std::size_t WorldDescription::retainedBytes() const noexcept
-    {
-        std::size_t result{sizeof(WorldDescription)};
-        addRetainedArray(result, schemas_.capacity(), sizeof(WorldDataSchemaId));
-        addRetainedArray(result, objects_.capacity(), sizeof(ObjectRecord));
-        addRetainedArray(result, data_.capacity(), sizeof(DataRecord));
-        addRetainedArray(result, payload_.capacity(), sizeof(std::byte));
-        for (const auto& schema : schemas_)
-            addRetainedArray(result, schema.name.capacity(), sizeof(char));
-        return result;
+        return name_;
     }
 
     std::span<const WorldDataSchemaId> WorldDescription::schemas() const noexcept
@@ -139,25 +52,49 @@ namespace lux::world
         return schemas_;
     }
 
-    WorldObjectView WorldDescription::objectAt(std::size_t index) const noexcept
+    const WorldPartitionerDescriptor& WorldDescription::partitioner() const noexcept
     {
-        return index < objects_.size() ? WorldObjectView(*this, index) : WorldObjectView{};
+        return partitioner_;
     }
 
-    WorldObjectView WorldDescription::findObject(WorldObjectId id) const noexcept
+    std::uint32_t WorldDescription::partitionCount() const noexcept
     {
-        if (!id.valid())
-            return {};
-        const auto iterator = std::lower_bound(
-            objects_.begin(),
-            objects_.end(),
-            id,
-            [](const ObjectRecord& object, const WorldObjectId& value) {
-                return WorldObjectIdLess{}(object.id, value);
-            }
-        );
-        if (iterator == objects_.end() || iterator->id != id)
-            return {};
-        return WorldObjectView(*this, static_cast<std::size_t>(std::distance(objects_.begin(), iterator)));
+        return partition_count_;
     }
-}
+
+    std::span<const WorldStorageVolumeDescription> WorldDescription::storageVolumes() const noexcept
+    {
+        return storage_volumes_;
+    }
+
+    const WorldPartitionTable& WorldDescription::partitionTable() const noexcept
+    {
+        return partition_table_;
+    }
+
+    std::span<const WorldPartitionIndexDescription> WorldDescription::partitionIndexes() const noexcept
+    {
+        return partition_indexes_;
+    }
+
+    std::size_t WorldDescription::retainedBytes() const noexcept
+    {
+        std::size_t result{sizeof(WorldDescription)};
+        addRetainedArray(result, name_.capacity(), sizeof(char));
+        addRetainedArray(result, schemas_.capacity(), sizeof(WorldDataSchemaId));
+        addRetainedArray(result, storage_volumes_.capacity(), sizeof(WorldStorageVolumeDescription));
+        addRetainedArray(
+            result,
+            partition_table_.pages().size(),
+            sizeof(WorldPartitionTablePageDescription)
+        );
+        addRetainedArray(result, partition_indexes_.capacity(), sizeof(WorldPartitionIndexDescription));
+        for (const auto& schema : schemas_)
+            addRetainedArray(result, schema.name.capacity(), sizeof(char));
+        for (const auto& volume : storage_volumes_)
+            addRetainedArray(result, volume.member_name.capacity(), sizeof(char));
+        for (const auto& index : partition_indexes_)
+            addRetainedArray(result, index.type.name.capacity(), sizeof(char));
+        return result;
+    }
+} // namespace lux::world

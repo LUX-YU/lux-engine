@@ -1,372 +1,402 @@
 #include <lux/engine/world/WorldAssetCodec.hpp>
 
 #include <lux/engine/serialization/BinaryReader.hpp>
+#include <lux/engine/serialization/BinaryWriter.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 
-#include <algorithm>
 #include <array>
-#include <iterator>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <memory>
 #include <new>
+#include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace lux::world
 {
     namespace
     {
-        constexpr std::uint32_t kWireVersion = 1U;
-        constexpr std::size_t kHeaderBytes = 48U;
-        constexpr std::size_t kSchemaFixedBytes = 16U;
-        constexpr std::size_t kObjectFixedBytes = 24U;
-        constexpr std::size_t kDataFixedBytes = 20U;
-        constexpr std::size_t kDecodedSchemaBytes = 64U;
-        constexpr std::size_t kDecodedObjectBytes = 64U;
-        constexpr std::size_t kDecodedDataBytes = 64U;
+        inline constexpr std::uint32_t kWorldRootFormatVersion = 2U;
 
-        [[nodiscard]] auto codecFailure() noexcept
+        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, lux::asset::EAssetCodecError>
+        codecFailure() noexcept
         {
             return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
         }
 
-        [[nodiscard]] bool toSize(std::uint64_t value, std::size_t& result) noexcept
+        [[nodiscard]] bool writeBytes(
+            lux::serialization::BinaryWriter& writer,
+            std::span<const std::byte> bytes
+        ) noexcept
         {
-            if (value > std::numeric_limits<std::size_t>::max())
+            return static_cast<bool>(writer.writeBytes(bytes));
+        }
+
+        template <class Type>
+        [[nodiscard]] bool writeUnsigned(lux::serialization::BinaryWriter& writer, Type value) noexcept
+        {
+            return static_cast<bool>(writer.writeUnsigned(value));
+        }
+
+        [[nodiscard]] bool writeUuid(
+            lux::serialization::BinaryWriter& writer,
+            const uuids::uuid& value
+        ) noexcept
+        {
+            return writeBytes(writer, value.as_bytes());
+        }
+
+        [[nodiscard]] bool writeString(
+            lux::serialization::BinaryWriter& writer,
+            std::string_view value
+        ) noexcept
+        {
+            if (value.size() > std::numeric_limits<std::uint32_t>::max())
                 return false;
-            result = static_cast<std::size_t>(value);
+            return writeUnsigned(writer, static_cast<std::uint32_t>(value.size())) &&
+                   writeBytes(writer, std::as_bytes(std::span(value.data(), value.size())));
+        }
+
+        [[nodiscard]] bool readUuid(lux::serialization::BinaryReader& reader, uuids::uuid& value) noexcept
+        {
+            std::array<std::uint8_t, 16U> bytes{};
+            if (!reader.readBytes(std::as_writable_bytes(std::span(bytes))))
+                return false;
+            value = uuids::uuid(bytes);
             return true;
         }
 
-        [[nodiscard]] bool addSize(std::size_t& total, std::size_t value) noexcept
+        [[nodiscard]] bool readString(
+            lux::serialization::BinaryReader& reader,
+            std::size_t decoded_limit,
+            std::string& value
+        )
         {
-            if (value > std::numeric_limits<std::size_t>::max() - total)
+            auto size = reader.readUnsigned<std::uint32_t>();
+            if (!size || *size > reader.remaining() || *size > decoded_limit)
                 return false;
-            total += value;
-            return true;
+            value.resize(*size);
+            return static_cast<bool>(
+                reader.readBytes(std::as_writable_bytes(std::span(value.data(), value.size())))
+            );
         }
 
-        [[nodiscard]] bool multiplySize(std::size_t count, std::size_t stride, std::size_t& result) noexcept
+        [[nodiscard]] bool countFits(
+            std::uint32_t count,
+            std::size_t minimum_wire_bytes,
+            std::size_t remaining,
+            std::size_t decoded_limit,
+            std::size_t decoded_element_bytes
+        ) noexcept
         {
-            if (count != 0U && stride > std::numeric_limits<std::size_t>::max() / count)
+            if (minimum_wire_bytes != 0U && count > remaining / minimum_wire_bytes)
                 return false;
-            result = count * stride;
-            return true;
+            return decoded_element_bytes == 0U || count <= decoded_limit / decoded_element_bytes;
         }
 
-        class WireWriter final
+        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, lux::asset::EAssetCodecError> encodeWorld(
+            const void* payload,
+            const lux::asset::AssetEncodeContext& context
+        ) noexcept
         {
-        public:
-            explicit WireWriter(std::vector<std::byte>& bytes) noexcept : writer_(bytes)
-            {
-            }
-
-            void u32(std::uint32_t value) noexcept
-            {
-                if (ok_)
-                    ok_ = static_cast<bool>(writer_.writeUnsigned(value));
-            }
-
-            void u64(std::uint64_t value) noexcept
-            {
-                if (ok_)
-                    ok_ = static_cast<bool>(writer_.writeUnsigned(value));
-            }
-
-            void bytes(std::span<const std::byte> value) noexcept
-            {
-                if (ok_)
-                    ok_ = static_cast<bool>(writer_.writeBytes(value));
-            }
-
-            [[nodiscard]] bool ok() const noexcept
-            {
-                return ok_;
-            }
-
-        private:
-            lux::serialization::BinaryWriter writer_;
-            bool ok_{true};
-        };
-
-        template <class T> [[nodiscard]] bool readUnsigned(lux::serialization::BinaryReader& reader, T& value) noexcept
-        {
-            auto result = reader.readUnsigned<T>();
-            if (!result)
-                return false;
-            value = *result;
-            return true;
-        }
-
-        [[nodiscard]] lux::cxx::expected<lux::asset::DecodedAsset, lux::asset::EAssetCodecError>
-        decodeWorld(std::span<const std::byte> input, const lux::asset::AssetDecodeContext& context) noexcept
-        {
-            if (input.size() > context.limits.max_input_bytes || input.size() < kHeaderBytes)
-            {
+            if (payload == nullptr)
                 return codecFailure();
+
+            try
+            {
+                const auto& world = *static_cast<const WorldDescription*>(payload);
+                std::vector<std::byte> output;
+                lux::serialization::BinaryWriter writer(output);
+
+                const bool valid_counts =
+                    world.schemas().size() <= std::numeric_limits<std::uint32_t>::max() &&
+                    world.storageVolumes().size() <= std::numeric_limits<std::uint32_t>::max() &&
+                    world.partitionTable().pages().size() <= std::numeric_limits<std::uint32_t>::max() &&
+                    world.partitionIndexes().size() <= std::numeric_limits<std::uint32_t>::max();
+                if (!valid_counts)
+                    return codecFailure();
+
+                if (!writeUnsigned(writer, WorldAssetPrimaryMagic) ||
+                    !writeUnsigned(writer, kWorldRootFormatVersion) ||
+                    !writeUuid(writer, world.bundleId().value) ||
+                    !writeUuid(writer, world.generation().value) ||
+                    !writeString(writer, world.name()) ||
+                    !writeUnsigned(writer, static_cast<std::uint32_t>(world.schemas().size())))
+                {
+                    return codecFailure();
+                }
+
+                for (const auto& schema : world.schemas())
+                {
+                    if (!writeUnsigned(writer, schema.hash) || !writeString(writer, schema.name))
+                        return codecFailure();
+                }
+
+                if (!writeUnsigned(writer, world.partitioner().id.hash) ||
+                    !writeString(writer, world.partitioner().id.name) ||
+                    !writeUnsigned(writer, world.partitioner().version) ||
+                    !writeUnsigned(writer, world.partitionCount()) ||
+                    !writeUnsigned(writer, static_cast<std::uint32_t>(world.storageVolumes().size())))
+                {
+                    return codecFailure();
+                }
+
+                for (const auto& volume : world.storageVolumes())
+                {
+                    if (!writeString(writer, volume.member_name) ||
+                        !writeUnsigned(writer, volume.format_version) ||
+                        !writeUnsigned(writer, volume.chunk_count) ||
+                        !writeUnsigned(writer, volume.file_size))
+                    {
+                        return codecFailure();
+                    }
+                }
+
+                if (!writeUnsigned(
+                        writer,
+                        static_cast<std::uint32_t>(world.partitionTable().pages().size())
+                    ))
+                {
+                    return codecFailure();
+                }
+                for (const auto& page : world.partitionTable().pages())
+                {
+                    if (!writeUnsigned(writer, page.first.value) ||
+                        !writeUnsigned(writer, page.count) ||
+                        !writeUnsigned(writer, page.chunk.volume) ||
+                        !writeUnsigned(writer, page.chunk.chunk))
+                    {
+                        return codecFailure();
+                    }
+                }
+
+                if (!writeUnsigned(writer, static_cast<std::uint32_t>(world.partitionIndexes().size())))
+                    return codecFailure();
+                for (const auto& index : world.partitionIndexes())
+                {
+                    if (!writeUnsigned(writer, index.type.hash) ||
+                        !writeString(writer, index.type.name) ||
+                        !writeUnsigned(writer, index.version) ||
+                        !writeUnsigned(writer, index.root.volume) ||
+                        !writeUnsigned(writer, index.root.chunk))
+                    {
+                        return codecFailure();
+                    }
+                }
+
+                if (output.size() > context.limits.max_encoded_bytes)
+                    return codecFailure();
+                return output;
             }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(lux::asset::EAssetCodecError::OUT_OF_MEMORY);
+            }
+        }
+
+        [[nodiscard]] lux::cxx::expected<lux::asset::DecodedAsset, lux::asset::EAssetCodecError> decodeWorld(
+            std::span<const std::byte> input,
+            const lux::asset::AssetDecodeContext& context
+        ) noexcept
+        {
+            if (input.size() > context.limits.max_input_bytes)
+                return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
 
             try
             {
                 lux::serialization::BinaryReader reader(input);
-                std::uint32_t magic{};
-                std::uint32_t version{};
-                std::uint64_t schema_count_u64{};
-                std::uint64_t object_count_u64{};
-                std::uint64_t data_count_u64{};
-                std::uint64_t schema_name_bytes_u64{};
-                std::uint64_t payload_bytes_u64{};
-                const bool has_valid_header =
-                    readUnsigned(reader, magic) && readUnsigned(reader, version) &&
-                    readUnsigned(reader, schema_count_u64) && readUnsigned(reader, object_count_u64) &&
-                    readUnsigned(reader, data_count_u64) && readUnsigned(reader, schema_name_bytes_u64) &&
-                    readUnsigned(reader, payload_bytes_u64);
-                const bool is_invalid_header = !has_valid_header || magic != WorldAssetPrimaryMagic ||
-                    version != kWireVersion;
-                if (is_invalid_header)
+                auto magic = reader.readUnsigned<std::uint32_t>();
+                auto version = reader.readUnsigned<std::uint32_t>();
+                WorldBundleId bundle;
+                WorldBundleGeneration generation;
+                std::string name;
+                if (!magic || !version || *magic != WorldAssetPrimaryMagic ||
+                    *version != kWorldRootFormatVersion ||
+                    !readUuid(reader, bundle.value) ||
+                    !readUuid(reader, generation.value) ||
+                    !readString(reader, context.limits.max_decoded_bytes, name))
                 {
-                    return codecFailure();
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
-
-                std::size_t schema_count{};
-                std::size_t object_count{};
-                std::size_t data_count{};
-                std::size_t schema_name_bytes{};
-                std::size_t payload_bytes{};
-                const bool has_valid_counts =
-                    toSize(schema_count_u64, schema_count) && toSize(object_count_u64, object_count) &&
-                    toSize(data_count_u64, data_count) && toSize(schema_name_bytes_u64, schema_name_bytes) &&
-                    toSize(payload_bytes_u64, payload_bytes);
-                if (!has_valid_counts)
-                {
-                    return codecFailure();
-                }
-
-                std::size_t decoded_bytes = sizeof(WorldDescription);
-                std::size_t term{};
-                const bool has_valid_decoded_size =
-                    multiplySize(schema_count, kDecodedSchemaBytes, term) && addSize(decoded_bytes, term) &&
-                    multiplySize(object_count, kDecodedObjectBytes, term) && addSize(decoded_bytes, term) &&
-                    multiplySize(data_count, kDecodedDataBytes, term) && addSize(decoded_bytes, term) &&
-                    addSize(decoded_bytes, schema_name_bytes) && addSize(decoded_bytes, payload_bytes);
-                const bool is_invalid_decoded_size = !has_valid_decoded_size ||
-                    decoded_bytes > context.limits.max_decoded_bytes;
-                if (is_invalid_decoded_size)
-                {
-                    return codecFailure();
-                }
-
-                std::vector<WorldDataSchemaId> schemas;
-                schemas.reserve(schema_count);
-                std::size_t actual_name_bytes{};
-                for (std::size_t index{}; index < schema_count; ++index)
-                {
-                    std::uint64_t hash{};
-                    std::uint64_t name_size_u64{};
-                    std::size_t name_size{};
-                    const bool has_valid_schema_header =
-                        readUnsigned(reader, hash) && readUnsigned(reader, name_size_u64) &&
-                        toSize(name_size_u64, name_size);
-                    const bool is_invalid_schema = !has_valid_schema_header || name_size == 0U ||
-                        !addSize(actual_name_bytes, name_size) || name_size > reader.remaining();
-                    if (is_invalid_schema)
-                    {
-                        return codecFailure();
-                    }
-                    std::string name(name_size, '\0');
-                    if (!reader.readBytes({reinterpret_cast<std::byte*>(name.data()), name.size()}))
-                    {
-                        return codecFailure();
-                    }
-                    WorldDataSchemaId schema{hash, std::move(name)};
-                    if (!schema.valid() || (index != 0U && !WorldDataSchemaIdLess{}(schemas.back(), schema)))
-                    {
-                        return codecFailure();
-                    }
-                    schemas.push_back(std::move(schema));
-                }
-                if (actual_name_bytes != schema_name_bytes)
-                    return codecFailure();
 
                 WorldDescriptionBuilder builder;
-                WorldObjectId previous_object{};
-                bool have_previous_object{};
-                std::size_t actual_data_count{};
-                std::size_t actual_payload_bytes{};
-                for (std::size_t object_index{}; object_index < object_count; ++object_index)
-                {
-                    std::array<std::uint8_t, 16> object_bytes{};
-                    if (!reader.readBytes({reinterpret_cast<std::byte*>(object_bytes.data()), object_bytes.size()}))
-                    {
-                        return codecFailure();
-                    }
-                    WorldObjectId object{uuids::uuid(object_bytes)};
-                    std::uint64_t object_data_count_u64{};
-                    std::size_t object_data_count{};
-                    const bool is_invalid_object_identity =
-                        !object.valid() || (have_previous_object && !WorldObjectIdLess{}(previous_object, object));
-                    const bool has_valid_object_header = !is_invalid_object_identity &&
-                        readUnsigned(reader, object_data_count_u64) &&
-                        toSize(object_data_count_u64, object_data_count);
-                    const bool is_invalid_object = is_invalid_object_identity || !has_valid_object_header ||
-                        !addSize(actual_data_count, object_data_count) || actual_data_count > data_count ||
-                        !builder.addObject(object);
-                    if (is_invalid_object)
-                    {
-                        return codecFailure();
-                    }
-                    previous_object = object;
-                    have_previous_object = true;
+                if (!builder.setIdentity(bundle, generation, name))
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
 
-                    std::uint64_t previous_schema_ordinal{};
-                    bool have_previous_schema{};
-                    for (std::size_t data_index{}; data_index < object_data_count; ++data_index)
+                auto schema_count = reader.readUnsigned<std::uint32_t>();
+                if (!schema_count ||
+                    !countFits(
+                        *schema_count,
+                        sizeof(std::uint64_t) + sizeof(std::uint32_t),
+                        reader.remaining(),
+                        context.limits.max_decoded_bytes,
+                        sizeof(WorldDataSchemaId)
+                    ))
+                {
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                }
+                WorldDataSchemaId previous_schema;
+                for (std::uint32_t ordinal{}; ordinal < *schema_count; ++ordinal)
+                {
+                    auto hash = reader.readUnsigned<std::uint64_t>();
+                    std::string schema_name;
+                    if (!hash ||
+                        !readString(reader, context.limits.max_decoded_bytes, schema_name))
                     {
-                        std::uint64_t schema_ordinal{};
-                        std::uint32_t data_version{};
-                        std::uint64_t data_size_u64{};
-                        std::size_t data_size{};
-                        const bool has_valid_data_header =
-                            readUnsigned(reader, schema_ordinal) && readUnsigned(reader, data_version) &&
-                            readUnsigned(reader, data_size_u64);
-                        const bool is_invalid_data = !has_valid_data_header || schema_ordinal >= schema_count_u64 ||
-                            (have_previous_schema && schema_ordinal <= previous_schema_ordinal) ||
-                            data_version == 0U || !toSize(data_size_u64, data_size) ||
-                            !addSize(actual_payload_bytes, data_size) || actual_payload_bytes > payload_bytes ||
-                            data_size > reader.remaining();
-                        if (is_invalid_data)
-                        {
-                            return codecFailure();
-                        }
-                        std::vector<std::byte> payload(data_size);
-                        const auto payload_result = reader.readBytes(payload);
-                        const bool has_valid_payload = static_cast<bool>(payload_result);
-                        const bool is_invalid_payload = !has_valid_payload || !builder.addData(
-                            object,
-                            schemas[static_cast<std::size_t>(schema_ordinal)],
-                            data_version,
-                            payload);
-                        if (is_invalid_payload)
-                        {
-                            return codecFailure();
-                        }
-                        previous_schema_ordinal = schema_ordinal;
-                        have_previous_schema = true;
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                    }
+                    WorldDataSchemaId schema{*hash, std::move(schema_name)};
+                    if (!schema.valid() ||
+                        (ordinal != 0U && !WorldDataSchemaIdLess{}(previous_schema, schema)) ||
+                        !builder.addSchema(schema))
+                    {
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                    }
+                    previous_schema = std::move(schema);
+                }
+
+                auto partitioner_hash = reader.readUnsigned<std::uint64_t>();
+                std::string partitioner_name;
+                if (!partitioner_hash ||
+                    !readString(reader, context.limits.max_decoded_bytes, partitioner_name))
+                {
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                }
+                auto partitioner_version = reader.readUnsigned<std::uint32_t>();
+                auto partition_count = reader.readUnsigned<std::uint32_t>();
+                WorldPartitionerDescriptor partitioner{
+                    WorldPartitionerId{*partitioner_hash, std::move(partitioner_name)},
+                    partitioner_version ? *partitioner_version : 0U
+                };
+                if (!partitioner_version || !partition_count ||
+                    !builder.setPartitioner(std::move(partitioner), *partition_count))
+                {
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                }
+
+                auto volume_count = reader.readUnsigned<std::uint32_t>();
+                if (!volume_count ||
+                    !countFits(
+                        *volume_count,
+                        20U,
+                        reader.remaining(),
+                        context.limits.max_decoded_bytes,
+                        sizeof(WorldStorageVolumeDescription)
+                    ))
+                {
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                }
+                for (std::uint32_t ordinal{}; ordinal < *volume_count; ++ordinal)
+                {
+                    WorldStorageVolumeDescription volume;
+                    if (!readString(reader, context.limits.max_decoded_bytes, volume.member_name))
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                    auto format_version = reader.readUnsigned<std::uint32_t>();
+                    auto chunk_count = reader.readUnsigned<std::uint32_t>();
+                    auto file_size = reader.readUnsigned<std::uint64_t>();
+                    if (!format_version || !chunk_count || !file_size)
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                    volume.format_version = *format_version;
+                    volume.chunk_count = *chunk_count;
+                    volume.file_size = *file_size;
+                    if (!builder.addStorageVolume(std::move(volume)))
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                }
+
+                auto page_count = reader.readUnsigned<std::uint32_t>();
+                if (!page_count ||
+                    !countFits(
+                        *page_count,
+                        16U,
+                        reader.remaining(),
+                        context.limits.max_decoded_bytes,
+                        sizeof(WorldPartitionTablePageDescription)
+                    ))
+                {
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                }
+                std::uint32_t previous_page_end{};
+                for (std::uint32_t ordinal{}; ordinal < *page_count; ++ordinal)
+                {
+                    auto first = reader.readUnsigned<std::uint32_t>();
+                    auto count = reader.readUnsigned<std::uint32_t>();
+                    auto volume = reader.readUnsigned<std::uint32_t>();
+                    auto chunk = reader.readUnsigned<std::uint32_t>();
+                    if (!first || !count || !volume || !chunk ||
+                        (ordinal != 0U && *first != previous_page_end) ||
+                        *count > std::numeric_limits<std::uint32_t>::max() - *first)
+                    {
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                    }
+                    previous_page_end = *first + *count;
+                    if (!builder.addPartitionTablePage({
+                            WorldPartitionOrdinal{*first},
+                            *count,
+                            WorldChunkReference{*volume, *chunk}
+                        }))
+                    {
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                     }
                 }
-                const bool is_invalid_data = actual_data_count != data_count ||
-                    actual_payload_bytes != payload_bytes || reader.remaining() != 0U;
-                if (is_invalid_data)
+
+                auto index_count = reader.readUnsigned<std::uint32_t>();
+                if (!index_count ||
+                    !countFits(
+                        *index_count,
+                        24U,
+                        reader.remaining(),
+                        context.limits.max_decoded_bytes,
+                        sizeof(WorldPartitionIndexDescription)
+                    ))
                 {
-                    return codecFailure();
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
-                auto description = std::move(builder).build();
-                const bool is_invalid_description = !description ||
-                    description->objectCount() != object_count || description->dataCount() != data_count;
-                if (is_invalid_description)
+                WorldPartitionIndexTypeId previous_index;
+                for (std::uint32_t ordinal{}; ordinal < *index_count; ++ordinal)
                 {
-                    return codecFailure();
+                    auto hash = reader.readUnsigned<std::uint64_t>();
+                    std::string index_name;
+                    if (!hash || !readString(reader, context.limits.max_decoded_bytes, index_name))
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                    auto index_version = reader.readUnsigned<std::uint32_t>();
+                    auto volume = reader.readUnsigned<std::uint32_t>();
+                    auto chunk = reader.readUnsigned<std::uint32_t>();
+                    if (!index_version || !volume || !chunk)
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+
+                    WorldPartitionIndexDescription index{
+                        WorldPartitionIndexTypeId{*hash, std::move(index_name)},
+                        *index_version,
+                        WorldChunkReference{*volume, *chunk}
+                    };
+                    const bool is_noncanonical =
+                        ordinal != 0U &&
+                        !(previous_index.hash < index.type.hash ||
+                          (previous_index.hash == index.type.hash && previous_index.name < index.type.name));
+                    if (is_noncanonical || !builder.addPartitionIndex(index))
+                        return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                    previous_index = std::move(index.type);
                 }
-                const std::size_t retained_bytes = description->retainedBytes();
-                if (retained_bytes > context.limits.max_decoded_bytes)
-                    return codecFailure();
-                auto payload = std::make_shared<const WorldDescription>(std::move(*description));
-                return lux::asset::DecodedAsset{std::move(payload), retained_bytes};
+
+                if (reader.remaining() != 0U)
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+                auto world = std::move(builder).build();
+                if (!world || world->retainedBytes() > context.limits.max_decoded_bytes)
+                    return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
+
+                const std::size_t decoded_bytes = world->retainedBytes();
+                auto shared = std::make_shared<WorldDescription>(std::move(*world));
+                return lux::asset::DecodedAsset{std::move(shared), decoded_bytes};
             }
             catch (const std::bad_alloc&)
             {
                 return lux::cxx::unexpected(lux::asset::EAssetCodecError::OUT_OF_MEMORY);
             }
-            catch (...)
-            {
-                return codecFailure();
-            }
         }
-
-        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, lux::asset::EAssetCodecError>
-        encodeWorld(const void* payload, const lux::asset::AssetEncodeContext& context) noexcept
-        {
-            if (payload == nullptr)
-                return codecFailure();
-            const auto& world = *static_cast<const WorldDescription*>(payload);
-            try
-            {
-                std::size_t name_bytes{};
-                std::size_t encoded_bytes = kHeaderBytes;
-                std::size_t term{};
-                for (const auto& schema : world.schemas())
-                {
-                    if (!schema.valid() || !addSize(name_bytes, schema.name.size()))
-                    {
-                        return codecFailure();
-                    }
-                }
-                const bool has_valid_encoded_size =
-                    multiplySize(world.schemas().size(), kSchemaFixedBytes, term) &&
-                    addSize(encoded_bytes, term) && addSize(encoded_bytes, name_bytes) &&
-                    multiplySize(world.objectCount(), kObjectFixedBytes, term) &&
-                    addSize(encoded_bytes, term) && multiplySize(world.dataCount(), kDataFixedBytes, term) &&
-                    addSize(encoded_bytes, term) && addSize(encoded_bytes, world.payloadBytes());
-                const bool is_invalid_encoded_size = !has_valid_encoded_size ||
-                    encoded_bytes > context.limits.max_encoded_bytes;
-                if (is_invalid_encoded_size)
-                {
-                    return codecFailure();
-                }
-
-                std::vector<std::byte> bytes;
-                bytes.reserve(encoded_bytes);
-                WireWriter writer(bytes);
-                writer.u32(WorldAssetPrimaryMagic);
-                writer.u32(kWireVersion);
-                writer.u64(world.schemas().size());
-                writer.u64(world.objectCount());
-                writer.u64(world.dataCount());
-                writer.u64(name_bytes);
-                writer.u64(world.payloadBytes());
-                for (const auto& schema : world.schemas())
-                {
-                    writer.u64(schema.hash);
-                    writer.u64(schema.name.size());
-                    writer.bytes({reinterpret_cast<const std::byte*>(schema.name.data()), schema.name.size()});
-                }
-                for (std::size_t object_index{}; object_index < world.objectCount(); ++object_index)
-                {
-                    const auto object = world.objectAt(object_index);
-                    writer.bytes(object.id().value.as_bytes());
-                    writer.u64(object.dataCount());
-                    for (std::size_t data_index{}; data_index < object.dataCount(); ++data_index)
-                    {
-                        const auto data = object.dataAt(data_index);
-                        const auto schema = std::lower_bound(
-                            world.schemas().begin(),
-                            world.schemas().end(),
-                            data.schema(),
-                            WorldDataSchemaIdLess{}
-                        );
-                        if (schema == world.schemas().end() || *schema != data.schema())
-                        {
-                            return codecFailure();
-                        }
-                        writer.u64(static_cast<std::uint64_t>(std::distance(world.schemas().begin(), schema)));
-                        writer.u32(data.version());
-                        writer.u64(data.payload().size());
-                        writer.bytes(data.payload());
-                    }
-                }
-                if (!writer.ok() || bytes.size() != encoded_bytes)
-                    return codecFailure();
-                return bytes;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(lux::asset::EAssetCodecError::OUT_OF_MEMORY);
-            }
-            catch (...)
-            {
-                return codecFailure();
-            }
-        }
-    }
+    } // namespace
 
     lux::asset::AssetCodecDescriptor worldAssetCodecDescriptor(std::shared_ptr<const void> code_lifetime)
     {
@@ -378,6 +408,7 @@ namespace lux::world
             lux::cxx::typeToken<WorldDescription>(),
             &decodeWorld,
             &encodeWorld,
-            std::move(code_lifetime)};
+            std::move(code_lifetime)
+        };
     }
-}
+} // namespace lux::world

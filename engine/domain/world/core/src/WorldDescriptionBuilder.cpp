@@ -4,74 +4,76 @@
 #include <algorithm>
 #include <limits>
 #include <new>
-#include <unordered_map>
 #include <utility>
 
 namespace lux::world
 {
     struct WorldDescriptionBuilder::Impl final
     {
-        struct PendingData final
-        {
-            WorldDataSchemaId schema;
-            std::uint32_t version{};
-            std::vector<std::byte> payload;
-        };
-
-        struct PendingObject final
-        {
-            WorldObjectId id;
-            std::vector<PendingData> data;
-        };
-
-        std::vector<PendingObject> objects;
-        std::unordered_map<WorldObjectId, std::size_t, WorldObjectIdHash> object_index;
+        WorldBundleId bundle;
+        WorldBundleGeneration generation;
+        std::string name;
+        std::vector<WorldDataSchemaId> schemas;
+        WorldPartitionerDescriptor partitioner;
+        std::uint32_t partition_count{};
+        std::vector<WorldStorageVolumeDescription> volumes;
+        std::vector<WorldPartitionTablePageDescription> pages;
+        std::vector<WorldPartitionIndexDescription> indexes;
+        bool has_identity{};
+        bool has_partitioner{};
     };
 
     namespace
     {
-        template <class Rollback>
-        class MutationRollback final
+        [[nodiscard]] WorldDescriptionFailure failure(
+            EWorldDescriptionError code,
+            WorldDataSchemaId schema = {},
+            WorldPartitionOrdinal partition = {},
+            WorldPartitionIndexTypeId index_type = {},
+            std::uint32_t volume = 0U
+        ) noexcept
         {
-        public:
-            explicit MutationRollback(Rollback rollback) noexcept : rollback_(std::move(rollback))
-            {
-            }
-
-            MutationRollback(const MutationRollback &) = delete;
-            MutationRollback &operator=(const MutationRollback &) = delete;
-
-            ~MutationRollback()
-            {
-                if (active_)
-                    rollback_();
-            }
-
-            void commit() noexcept
-            {
-                active_ = false;
-            }
-
-        private:
-            Rollback rollback_;
-            bool active_{true};
-        };
-
-        [[nodiscard]] WorldDescriptionFailure
-        failure(EWorldDescriptionError code, WorldObjectId object = {}, WorldDataSchemaId schema = {}) noexcept
-        {
-            return {code, object, std::move(schema)};
+            return WorldDescriptionFailure{
+                code,
+                std::move(schema),
+                partition,
+                std::move(index_type),
+                volume
+            };
         }
 
-        template <class PendingObject>
-        [[nodiscard]] auto findData(PendingObject& object, const WorldDataSchemaId& schema) noexcept
+        [[nodiscard]] bool validMemberName(std::string_view name) noexcept
         {
-            return std::find_if(object.data.begin(), object.data.end(), [&](const auto& candidate) noexcept {
-                return candidate.schema == schema;
+            if (name.empty() || name.front() == '/' || name.front() == '\\' ||
+                name.find('\\') != std::string_view::npos || name.find(':') != std::string_view::npos)
+            {
+                return false;
             }
-            );
+
+            std::size_t first{};
+            while (first <= name.size())
+            {
+                const std::size_t separator = name.find('/', first);
+                const std::size_t last = separator == std::string_view::npos ? name.size() : separator;
+                const std::string_view segment = name.substr(first, last - first);
+                if (segment.empty() || segment == "." || segment == "..")
+                    return false;
+                if (separator == std::string_view::npos)
+                    break;
+                first = separator + 1U;
+            }
+            return true;
         }
-    }
+
+        [[nodiscard]] bool validChunkReference(
+            WorldChunkReference reference,
+            std::span<const WorldStorageVolumeDescription> volumes
+        ) noexcept
+        {
+            return reference.volume < volumes.size() &&
+                   reference.chunk < volumes[reference.volume].chunk_count;
+        }
+    } // namespace
 
     WorldDescriptionBuilder::WorldDescriptionBuilder() : impl_(std::make_unique<Impl>())
     {
@@ -81,256 +83,303 @@ namespace lux::world
     WorldDescriptionBuilder::WorldDescriptionBuilder(WorldDescriptionBuilder&&) noexcept = default;
     WorldDescriptionBuilder& WorldDescriptionBuilder::operator=(WorldDescriptionBuilder&&) noexcept = default;
 
-    lux::cxx::expected<void, WorldDescriptionFailure> WorldDescriptionBuilder::addObject(WorldObjectId id) noexcept
-    {
-        if (!id.valid())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_OBJECT_ID, id));
-        if (impl_->object_index.contains(id))
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::DUPLICATE_OBJECT_ID, id));
-        if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION))
-        {
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, id));
-        }
-        try
-        {
-            const std::size_t index = impl_->objects.size();
-            impl_->objects.push_back({id, {}});
-            MutationRollback rollback([&]() noexcept { impl_->objects.pop_back(); });
-            impl_->object_index.emplace(id, index);
-            rollback.commit();
-            return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, id));
-        }
-    }
-
-    lux::cxx::expected<void, WorldDescriptionFailure> WorldDescriptionBuilder::eraseObject(WorldObjectId id) noexcept
-    {
-        const auto found = impl_->object_index.find(id);
-        if (found == impl_->object_index.end())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::OBJECT_NOT_FOUND, id));
-
-        const std::size_t index = found->second;
-        const std::size_t last = impl_->objects.size() - 1U;
-        if (index != last)
-        {
-            impl_->objects[index] = std::move(impl_->objects[last]);
-            impl_->object_index[impl_->objects[index].id] = index;
-        }
-        impl_->objects.pop_back();
-        impl_->object_index.erase(found);
-        return {};
-    }
-
-    lux::cxx::expected<void, WorldDescriptionFailure> WorldDescriptionBuilder::addData(
-        WorldObjectId object,
-        WorldDataSchemaId schema,
-        std::uint32_t version,
-        std::span<const std::byte> payload
+    lux::cxx::expected<void, WorldDescriptionFailure> WorldDescriptionBuilder::setIdentity(
+        WorldBundleId bundle,
+        WorldBundleGeneration generation,
+        std::string_view name
     ) noexcept
     {
-        if (!schema.valid())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_SCHEMA_ID, object, std::move(schema)));
-        if (version == 0U)
-            return lux::cxx::unexpected(
-                failure(EWorldDescriptionError::INVALID_SCHEMA_VERSION, object, std::move(schema))
-            );
-        const auto object_it = impl_->object_index.find(object);
-        if (object_it == impl_->object_index.end())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::OBJECT_NOT_FOUND, object, std::move(schema)));
-        auto& target = impl_->objects[object_it->second];
-        if (findData(target, schema) != target.data.end())
-            return lux::cxx::unexpected(
-                failure(EWorldDescriptionError::DUPLICATE_OBJECT_DATA, object, std::move(schema))
-            );
+        if (!bundle.valid())
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_BUNDLE_ID));
+        if (!generation.valid())
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_GENERATION));
+        if (name.empty())
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_NAME));
         if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION))
-        {
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, object, std::move(schema)));
-        }
-        try
-        {
-            target.data.push_back({std::move(schema), version, std::vector<std::byte>(payload.begin(), payload.end())});
-            return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, object, std::move(schema)));
-        }
-    }
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
 
-    lux::cxx::expected<void, WorldDescriptionFailure> WorldDescriptionBuilder::setData(
-        WorldObjectId object,
-        WorldDataSchemaId schema,
-        std::uint32_t version,
-        std::span<const std::byte> payload
-    ) noexcept
-    {
-        if (!schema.valid())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_SCHEMA_ID, object, std::move(schema)));
-        if (version == 0U)
-            return lux::cxx::unexpected(
-                failure(EWorldDescriptionError::INVALID_SCHEMA_VERSION, object, std::move(schema))
-            );
-        const auto object_it = impl_->object_index.find(object);
-        if (object_it == impl_->object_index.end())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::OBJECT_NOT_FOUND, object, std::move(schema)));
-        auto& target = impl_->objects[object_it->second];
-        auto data_it = findData(target, schema);
-        if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION))
-        {
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, object, std::move(schema)));
-        }
         try
         {
-            std::vector<std::byte> replacement(payload.begin(), payload.end());
-            if (data_it == target.data.end())
-            {
-                target.data.push_back({std::move(schema), version, std::move(replacement)});
-            }
-            else
-            {
-                data_it->version = version;
-                data_it->payload = std::move(replacement);
-            }
+            std::string copied_name(name);
+            impl_->bundle = bundle;
+            impl_->generation = generation;
+            impl_->name = std::move(copied_name);
+            impl_->has_identity = true;
             return {};
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, object, std::move(schema)));
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
         }
     }
 
     lux::cxx::expected<void, WorldDescriptionFailure>
-    WorldDescriptionBuilder::eraseData(WorldObjectId object, const WorldDataSchemaId& schema) noexcept
+    WorldDescriptionBuilder::addSchema(WorldDataSchemaId schema) noexcept
     {
-        const auto object_it = impl_->object_index.find(object);
-        if (object_it == impl_->object_index.end())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::OBJECT_NOT_FOUND, object, schema));
-        auto& target = impl_->objects[object_it->second];
-        const auto data_it = findData(target, schema);
-        if (data_it == target.data.end())
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::DATA_NOT_FOUND, object, schema));
-        target.data.erase(data_it);
+        if (!schema.valid())
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_SCHEMA_ID, std::move(schema)));
+
+        for (const auto& existing : impl_->schemas)
+        {
+            if (existing.hash == schema.hash && existing.name != schema.name)
+            {
+                return lux::cxx::unexpected(
+                    failure(EWorldDescriptionError::SCHEMA_HASH_COLLISION, std::move(schema))
+                );
+            }
+            if (existing == schema)
+                return lux::cxx::unexpected(failure(EWorldDescriptionError::DUPLICATE_SCHEMA, std::move(schema)));
+        }
+        if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION))
+        {
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, std::move(schema)));
+        }
+
+        try
+        {
+            impl_->schemas.push_back(std::move(schema));
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE, std::move(schema)));
+        }
+    }
+
+    lux::cxx::expected<void, WorldDescriptionFailure> WorldDescriptionBuilder::setPartitioner(
+        WorldPartitionerDescriptor partitioner,
+        std::uint32_t partition_count
+    ) noexcept
+    {
+        if (!partitioner.id.valid() || partitioner.version == 0U)
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_PARTITIONER));
+
+        impl_->partitioner = std::move(partitioner);
+        impl_->partition_count = partition_count;
+        impl_->has_partitioner = true;
         return {};
+    }
+
+    lux::cxx::expected<void, WorldDescriptionFailure>
+    WorldDescriptionBuilder::addStorageVolume(WorldStorageVolumeDescription volume) noexcept
+    {
+        if (!validMemberName(volume.member_name) || volume.format_version == 0U)
+        {
+            return lux::cxx::unexpected(
+                failure(
+                    EWorldDescriptionError::INVALID_VOLUME,
+                    {},
+                    {},
+                    {},
+                    static_cast<std::uint32_t>(impl_->volumes.size())
+                )
+            );
+        }
+        for (const auto& existing : impl_->volumes)
+        {
+            if (existing.member_name == volume.member_name)
+            {
+                return lux::cxx::unexpected(
+                    failure(
+                        EWorldDescriptionError::DUPLICATE_VOLUME_MEMBER,
+                        {},
+                        {},
+                        {},
+                        static_cast<std::uint32_t>(impl_->volumes.size())
+                    )
+                );
+            }
+        }
+        if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION))
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
+
+        try
+        {
+            impl_->volumes.push_back(std::move(volume));
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
+        }
+    }
+
+    lux::cxx::expected<void, WorldDescriptionFailure>
+    WorldDescriptionBuilder::addPartitionTablePage(WorldPartitionTablePageDescription page) noexcept
+    {
+        if (page.count == 0U)
+        {
+            return lux::cxx::unexpected(
+                failure(EWorldDescriptionError::INVALID_PARTITION_PAGE, {}, page.first)
+            );
+        }
+        if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION))
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
+
+        try
+        {
+            impl_->pages.push_back(page);
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
+        }
+    }
+
+    lux::cxx::expected<void, WorldDescriptionFailure>
+    WorldDescriptionBuilder::addPartitionIndex(WorldPartitionIndexDescription index) noexcept
+    {
+        if (!index.type.valid() || index.version == 0U)
+        {
+            return lux::cxx::unexpected(
+                failure(EWorldDescriptionError::INVALID_INDEX, {}, {}, std::move(index.type))
+            );
+        }
+        for (const auto& existing : impl_->indexes)
+        {
+            if (existing.type.hash == index.type.hash && existing.type.name != index.type.name)
+            {
+                return lux::cxx::unexpected(
+                    failure(EWorldDescriptionError::INVALID_INDEX, {}, {}, std::move(index.type))
+                );
+            }
+            if (existing.type == index.type)
+            {
+                return lux::cxx::unexpected(
+                    failure(EWorldDescriptionError::DUPLICATE_INDEX_TYPE, {}, {}, std::move(index.type))
+                );
+            }
+        }
+        if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION))
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
+
+        try
+        {
+            impl_->indexes.push_back(std::move(index));
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
+        }
     }
 
     void WorldDescriptionBuilder::clear() noexcept
     {
-        impl_->objects.clear();
-        impl_->object_index.clear();
+        *impl_ = Impl{};
     }
 
     lux::cxx::expected<WorldDescription, WorldDescriptionFailure> WorldDescriptionBuilder::build() && noexcept
     {
+        if (!impl_->has_identity)
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_BUNDLE_ID));
+        if (!impl_->has_partitioner)
+            return lux::cxx::unexpected(failure(EWorldDescriptionError::INVALID_PARTITIONER));
         if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_BUILD_ALLOCATION))
-        {
             return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
-        }
         if (detail::consumeWorldFailureForTest(detail::EWorldFailurePoint::DESCRIPTION_BUILD_SIZE_OVERFLOW))
-        {
             return lux::cxx::unexpected(failure(EWorldDescriptionError::SIZE_OVERFLOW));
-        }
+
         try
         {
-            WorldDescription result;
+            std::sort(impl_->schemas.begin(), impl_->schemas.end(), WorldDataSchemaIdLess{});
             std::sort(
-                impl_->objects.begin(),
-                impl_->objects.end(),
-                [](const Impl::PendingObject& left, const Impl::PendingObject& right) noexcept {
-                    return WorldObjectIdLess{}(left.id, right.id);
+                impl_->pages.begin(),
+                impl_->pages.end(),
+                [](const WorldPartitionTablePageDescription& left,
+                   const WorldPartitionTablePageDescription& right) noexcept {
+                    return left.first.value < right.first.value;
+                }
+            );
+            std::sort(
+                impl_->indexes.begin(),
+                impl_->indexes.end(),
+                [](const WorldPartitionIndexDescription& left,
+                   const WorldPartitionIndexDescription& right) noexcept {
+                    return left.type.hash < right.type.hash ||
+                           (left.type.hash == right.type.hash && left.type.name < right.type.name);
                 }
             );
 
-            std::vector<WorldDataSchemaId> all_schemas;
-            std::size_t total_data{};
-            std::size_t total_payload{};
-            for (auto& object : impl_->objects)
+            std::uint64_t expected_partition{};
+            for (const auto& page : impl_->pages)
             {
-                if (object.data.size() > std::numeric_limits<std::size_t>::max() - total_data)
+                if (page.first.value < expected_partition)
                 {
-                    return lux::cxx::unexpected(failure(EWorldDescriptionError::SIZE_OVERFLOW, object.id));
-                }
-                total_data += object.data.size();
-                for (auto& data : object.data)
-                {
-                    if (data.payload.size() > std::numeric_limits<std::size_t>::max() - total_payload)
-                    {
-                        return lux::cxx::unexpected(
-                            failure(EWorldDescriptionError::SIZE_OVERFLOW, object.id, data.schema)
-                        );
-                    }
-                    total_payload += data.payload.size();
-                    all_schemas.push_back(data.schema);
-                }
-            }
-
-            std::sort(all_schemas.begin(), all_schemas.end(), WorldDataSchemaIdLess{});
-            for (std::size_t index = 1U; index < all_schemas.size(); ++index)
-            {
-                const auto& previous = all_schemas[index - 1U];
-                const auto& current = all_schemas[index];
-                if (previous.hash == current.hash && previous.name != current.name)
-                {
-                    return lux::cxx::unexpected(failure(EWorldDescriptionError::SCHEMA_HASH_COLLISION, {}, current));
-                }
-            }
-            const auto unique_end = std::unique(all_schemas.begin(), all_schemas.end());
-            std::vector<WorldDataSchemaId> unique_schemas;
-            unique_schemas.reserve(static_cast<std::size_t>(std::distance(all_schemas.begin(), unique_end)));
-            std::move(all_schemas.begin(), unique_end, std::back_inserter(unique_schemas));
-
-            result.schemas_ = std::move(unique_schemas);
-            result.objects_.reserve(impl_->objects.size());
-            result.data_.reserve(total_data);
-            result.payload_.reserve(total_payload);
-
-            for (auto& object : impl_->objects)
-            {
-                std::sort(
-                    object.data.begin(),
-                    object.data.end(),
-                    [](const Impl::PendingData& left, const Impl::PendingData& right) noexcept {
-                        return WorldDataSchemaIdLess{}(left.schema, right.schema);
-                    }
-                );
-
-                WorldDescription::ObjectRecord object_record;
-                object_record.id = object.id;
-                object_record.first_data = result.data_.size();
-                object_record.data_count = object.data.size();
-                for (auto& source : object.data)
-                {
-                    const auto schema_it = std::lower_bound(
-                        result.schemas_.begin(),
-                        result.schemas_.end(),
-                        source.schema,
-                        WorldDataSchemaIdLess{}
+                    return lux::cxx::unexpected(
+                        failure(EWorldDescriptionError::PARTITION_PAGE_OVERLAP, {}, page.first)
                     );
-                    WorldDescription::DataRecord data_record;
-                    data_record.schema_ordinal =
-                        static_cast<std::size_t>(std::distance(result.schemas_.begin(), schema_it));
-                    data_record.version = source.version;
-                    data_record.payload_offset = result.payload_.size();
-                    data_record.payload_size = source.payload.size();
-                    result.data_.push_back(data_record);
-                    result.payload_.insert(result.payload_.end(), source.payload.begin(), source.payload.end());
                 }
-                result.objects_.push_back(object_record);
+                if (page.first.value > expected_partition)
+                {
+                    return lux::cxx::unexpected(
+                        failure(EWorldDescriptionError::PARTITION_PAGE_GAP, {}, page.first)
+                    );
+                }
+                const std::uint64_t end = static_cast<std::uint64_t>(page.first.value) + page.count;
+                if (end > impl_->partition_count)
+                {
+                    return lux::cxx::unexpected(
+                        failure(EWorldDescriptionError::INVALID_PARTITION_PAGE, {}, page.first)
+                    );
+                }
+                if (!validChunkReference(page.chunk, impl_->volumes))
+                {
+                    return lux::cxx::unexpected(
+                        failure(
+                            EWorldDescriptionError::INVALID_CHUNK_REFERENCE,
+                            {},
+                            page.first,
+                            {},
+                            page.chunk.volume
+                        )
+                    );
+                }
+                expected_partition = end;
+            }
+            if (expected_partition != impl_->partition_count)
+            {
+                return lux::cxx::unexpected(
+                    failure(
+                        EWorldDescriptionError::PARTITION_PAGE_GAP,
+                        {},
+                        WorldPartitionOrdinal{static_cast<std::uint32_t>(expected_partition)}
+                    )
+                );
             }
 
-            impl_->objects.clear();
-            impl_->object_index.clear();
+            for (const auto& index : impl_->indexes)
+            {
+                if (!validChunkReference(index.root, impl_->volumes))
+                {
+                    return lux::cxx::unexpected(
+                        failure(
+                            EWorldDescriptionError::INVALID_CHUNK_REFERENCE,
+                            {},
+                            {},
+                            index.type,
+                            index.root.volume
+                        )
+                    );
+                }
+            }
+
+            WorldDescription result;
+            result.bundle_id_ = impl_->bundle;
+            result.generation_ = impl_->generation;
+            result.name_ = std::move(impl_->name);
+            result.schemas_ = std::move(impl_->schemas);
+            result.partitioner_ = std::move(impl_->partitioner);
+            result.partition_count_ = impl_->partition_count;
+            result.storage_volumes_ = std::move(impl_->volumes);
+            result.partition_table_.pages_ = std::move(impl_->pages);
+            result.partition_indexes_ = std::move(impl_->indexes);
             return result;
         }
         catch (const std::bad_alloc&)
         {
             return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
         }
-        catch (...)
-        {
-            return lux::cxx::unexpected(failure(EWorldDescriptionError::ALLOCATION_FAILURE));
-        }
     }
-}
+} // namespace lux::world

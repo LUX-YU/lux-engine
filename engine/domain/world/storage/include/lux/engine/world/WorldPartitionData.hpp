@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/world/WorldObjectId.hpp>
+#include <lux/engine/world/WorldDescription.hpp>
 #include <lux/engine/world/WorldPartition.hpp>
 #include <lux/engine/world/storage/visibility.h>
 
@@ -44,6 +45,8 @@ namespace lux::world
         }
 
         [[nodiscard]] WorldObjectId id() const noexcept;
+        [[nodiscard]] WorldBundleId bundle() const noexcept;
+        [[nodiscard]] WorldBundleGeneration generation() const noexcept;
         [[nodiscard]] std::size_t dataCount() const noexcept;
         [[nodiscard]] std::uint32_t schemaOrdinalAt(std::size_t index) const noexcept;
         [[nodiscard]] std::uint32_t schemaVersionAt(std::size_t index) const noexcept;
@@ -69,11 +72,15 @@ namespace lux::world
         WorldPartitionData(const WorldPartitionData&) = delete;
         WorldPartitionData& operator=(const WorldPartitionData&) = delete;
 
+        [[nodiscard]] WorldBundleId bundle() const noexcept;
+        [[nodiscard]] WorldBundleGeneration generation() const noexcept;
         [[nodiscard]] WorldPartitionOrdinal partition() const noexcept;
         [[nodiscard]] std::size_t objectCount() const noexcept;
         [[nodiscard]] WorldPartitionObjectView objectAt(std::size_t index) const noexcept;
 
     private:
+        WorldBundleId bundle_;
+        WorldBundleGeneration generation_;
         WorldPartitionOrdinal partition_;
         std::vector<detail::WorldDecodedObjectRecord> objects_;
         std::vector<detail::WorldDecodedDataRecord> data_;

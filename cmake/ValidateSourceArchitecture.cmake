@@ -635,6 +635,40 @@ if(EXISTS "${latest_exchange_header}")
     endif()
 endif()
 
+set(world_runtime_header
+    "${source_root}/engine/scene/runtime/world/include/lux/engine/scene/WorldRuntime.hpp"
+)
+set(world_runtime_source
+    "${source_root}/engine/scene/runtime/world/src/WorldRuntime.cpp"
+)
+set(world_partition_data_header
+    "${source_root}/engine/domain/world/storage/include/lux/engine/world/WorldPartitionData.hpp"
+)
+if(EXISTS "${world_runtime_header}" AND EXISTS "${world_runtime_source}")
+    file(READ "${world_runtime_header}" world_runtime_header_contract)
+    file(READ "${world_runtime_source}" world_runtime_source_contract)
+    if(NOT world_runtime_header_contract MATCHES "std::size_t[ \\t]+max_bytes" OR
+       world_runtime_source_contract MATCHES "512U[ \\t]*[*][ \\t]*1024U")
+        message(FATAL_ERROR
+            "Architecture: World partition load lost its Product-supplied byte budget."
+        )
+    endif()
+    if(NOT world_runtime_source_contract MATCHES "accounted_bytes[ \\t]*=")
+        message(FATAL_ERROR
+            "Architecture: World range IO does not account submitted bytes."
+        )
+    endif()
+endif()
+if(EXISTS "${world_partition_data_header}")
+    file(READ "${world_partition_data_header}" world_partition_data_contract)
+    if(NOT world_partition_data_contract MATCHES "WorldBundleId[ \\t]+bundle" OR
+       NOT world_partition_data_contract MATCHES "WorldBundleGeneration[ \\t]+generation")
+        message(FATAL_ERROR
+            "Architecture: WorldPartitionData is not bound to bundle generation identity."
+        )
+    endif()
+endif()
+
 foreach(component_header IN ITEMS
     "${source_root}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp"
     "${source_root}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"

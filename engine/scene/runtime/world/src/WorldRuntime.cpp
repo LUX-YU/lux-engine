@@ -106,6 +106,12 @@ namespace lux::scene
     {
         if (!object)
             return lux::cxx::unexpected(materializeFailure(EWorldMaterializeError::INVALID_OBJECT));
+        if (object.bundle() != world_->bundleId() || object.generation() != world_->generation())
+        {
+            return lux::cxx::unexpected(
+                materializeFailure(EWorldMaterializeError::INVALID_WORLD_SCHEMA)
+            );
+        }
 
         simulation::ecs::Entity entity{simulation::ecs::NullEntity};
         try
@@ -164,6 +170,14 @@ namespace lux::scene
         std::vector<simulation::ecs::Entity>* created
     ) const noexcept
     {
+        if (data.bundle() != world_->bundleId() || data.generation() != world_->generation())
+        {
+            if (created != nullptr)
+                created->clear();
+            return lux::cxx::unexpected(
+                materializeFailure(EWorldMaterializeError::INVALID_WORLD_SCHEMA)
+            );
+        }
         std::vector<simulation::ecs::Entity> local;
         try
         {
@@ -219,13 +233,14 @@ namespace lux::scene
         Impl(
             WorldStorageSource source_value,
             world::WorldPartitionOrdinal partition_value,
+            std::size_t max_bytes_value,
             std::stop_token stop_value,
             void* receiver_value,
             void (*value_fn)(void*, world::WorldPartitionData&&) noexcept,
             void (*error_fn)(void*, WorldStorageRuntimeFailure) noexcept,
             void (*stopped_fn)(void*) noexcept
         ) noexcept
-            : source(std::move(source_value)), partition(partition_value), stop(stop_value),
+            : source(std::move(source_value)), partition(partition_value), max_bytes(max_bytes_value), stop(stop_value),
               receiver(receiver_value), set_value(value_fn), set_error(error_fn), set_stopped(stopped_fn)
         {
         }
@@ -244,8 +259,10 @@ namespace lux::scene
                 code = EWorldStorageRuntimeError::BUNDLE_MISMATCH;
                 break;
             case Input::RANGE_OVERFLOW:
-            case Input::SIZE_LIMIT:
                 code = EWorldStorageRuntimeError::RANGE_OVERFLOW;
+                break;
+            case Input::SIZE_LIMIT:
+                code = EWorldStorageRuntimeError::LIMIT_EXCEEDED;
                 break;
             case Input::DIGEST_MISMATCH:
                 code = EWorldStorageRuntimeError::DIGEST_MISMATCH;
@@ -279,6 +296,14 @@ namespace lux::scene
                 set_stopped(receiver);
         }
 
+        void finishCodecFailure(world::detail::WorldStorageCodecFailure failure) noexcept
+        {
+            if (failure.code == world::detail::EWorldStorageCodecError::CANCELLED)
+                finishStopped();
+            else
+                finishError(mapFailure(failure));
+        }
+
         void submit(std::uint32_t volume, std::uint64_t offset, std::uint64_t size) noexcept
         {
             if (stop.stop_requested())
@@ -286,6 +311,13 @@ namespace lux::scene
                 finishStopped();
                 return;
             }
+            if (size > std::numeric_limits<std::size_t>::max() ||
+                static_cast<std::size_t>(size) > max_bytes)
+            {
+                finishError({EWorldStorageRuntimeError::LIMIT_EXCEEDED, volume, offset});
+                return;
+            }
+            const std::size_t accounted_bytes = static_cast<std::size_t>(size);
             callback_seen.store(false, std::memory_order_release);
             const auto submitted = source.readPort().submit(
                 ReadWorldStorageRange{volume, offset, size},
@@ -294,7 +326,8 @@ namespace lux::scene
                     auto& self = *static_cast<Impl*>(state);
                     self.callback_seen.store(true, std::memory_order_release);
                     self.complete(std::move(outcome));
-                }
+                },
+                lux::async::SubmitOptions{.accounted_bytes = accounted_bytes}
             );
             if (!submitted && !callback_seen.load(std::memory_order_acquire))
             {
@@ -342,11 +375,11 @@ namespace lux::scene
                     source.world().bundleId(),
                     source.world().generation(),
                     current.volume,
-                    volume_description.file_size
+                    volume_description
                 );
                 if (!decoded)
                 {
-                    finishError(mapFailure(decoded.error()));
+                    finishCodecFailure(decoded.error());
                     return;
                 }
                 header = *decoded;
@@ -373,6 +406,11 @@ namespace lux::scene
                     return;
                 }
                 descriptor = *decoded;
+                if (descriptor.stored_size > max_bytes || descriptor.decoded_size > max_bytes)
+                {
+                    finishError({EWorldStorageRuntimeError::LIMIT_EXCEEDED, current.volume, descriptor.offset});
+                    return;
+                }
                 stage = EStage::PAYLOAD;
                 submit(current.volume, descriptor.offset, descriptor.stored_size);
                 return;
@@ -381,11 +419,12 @@ namespace lux::scene
             auto decoded_payload = world::detail::decodeWorldStorageChunkPayload(
                 bytes,
                 descriptor,
-                512U * 1024U * 1024U
+                max_bytes,
+                stop
             );
             if (!decoded_payload)
             {
-                finishError(mapFailure(decoded_payload.error()));
+                finishCodecFailure(decoded_payload.error());
                 return;
             }
             if (reading_table)
@@ -399,11 +438,12 @@ namespace lux::scene
                     *decoded_payload,
                     table_page->first,
                     table_page->count,
-                    512U * 1024U * 1024U
+                    max_bytes,
+                    stop
                 );
                 if (!page)
                 {
-                    finishError(mapFailure(page.error()));
+                    finishCodecFailure(page.error());
                     return;
                 }
                 const auto* record = page->find(partition);
@@ -447,6 +487,12 @@ namespace lux::scene
             }
             try
             {
+                if (partition_bytes.size() > max_bytes ||
+                    decoded_payload->size() > max_bytes - partition_bytes.size())
+                {
+                    finishError({EWorldStorageRuntimeError::LIMIT_EXCEEDED, current.volume, descriptor.offset});
+                    return;
+                }
                 partition_bytes.insert(
                     partition_bytes.end(),
                     decoded_payload->begin(),
@@ -467,13 +513,16 @@ namespace lux::scene
 
             auto data = world::detail::decodeWorldPartitionData(
                 partition_bytes,
+                source.world().bundleId(),
+                source.world().generation(),
                 partition,
                 static_cast<std::uint32_t>(source.world().schemas().size()),
-                512U * 1024U * 1024U
+                max_bytes,
+                stop
             );
             if (!data)
             {
-                finishError(mapFailure(data.error()));
+                finishCodecFailure(data.error());
                 return;
             }
             if (!finished.exchange(true, std::memory_order_acq_rel))
@@ -482,9 +531,10 @@ namespace lux::scene
 
         void start() noexcept
         {
-            if (!source || partition.value >= source.world().partitionCount())
+            if (!source || max_bytes == 0U || partition.value >= source.world().partitionCount())
             {
-                finishError({EWorldStorageRuntimeError::INVALID_PARTITION});
+                finishError({max_bytes == 0U ? EWorldStorageRuntimeError::LIMIT_EXCEEDED
+                                             : EWorldStorageRuntimeError::INVALID_PARTITION});
                 return;
             }
             table_page = source.world().partitionTable().findPage(partition);
@@ -498,6 +548,7 @@ namespace lux::scene
 
         WorldStorageSource source;
         world::WorldPartitionOrdinal partition;
+        std::size_t max_bytes{};
         std::stop_token stop;
         void* receiver{};
         void (*set_value)(void*, world::WorldPartitionData&&) noexcept{};
@@ -519,6 +570,7 @@ namespace lux::scene
     detail::WorldPartitionLoadMachine::WorldPartitionLoadMachine(
         WorldStorageSource source,
         world::WorldPartitionOrdinal partition,
+        std::size_t max_bytes,
         std::stop_token stop,
         void* receiver,
         void (*set_value)(void*, world::WorldPartitionData&&) noexcept,
@@ -528,6 +580,7 @@ namespace lux::scene
         : impl_(std::make_unique<Impl>(
               std::move(source),
               partition,
+              max_bytes,
               stop,
               receiver,
               set_value,

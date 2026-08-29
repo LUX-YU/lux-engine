@@ -15,6 +15,16 @@ namespace lux::world
         return data_->objects_[object_index_].id;
     }
 
+    WorldBundleId WorldPartitionObjectView::bundle() const noexcept
+    {
+        return data_->bundle_;
+    }
+
+    WorldBundleGeneration WorldPartitionObjectView::generation() const noexcept
+    {
+        return data_->generation_;
+    }
+
     std::size_t WorldPartitionObjectView::dataCount() const noexcept
     {
         return data_->objects_[object_index_].data_count;
@@ -52,6 +62,16 @@ namespace lux::world
             record.payload_offset,
             record.payload_size
         );
+    }
+
+    WorldBundleId WorldPartitionData::bundle() const noexcept
+    {
+        return bundle_;
+    }
+
+    WorldBundleGeneration WorldPartitionData::generation() const noexcept
+    {
+        return generation_;
     }
 
     WorldPartitionOrdinal WorldPartitionData::partition() const noexcept

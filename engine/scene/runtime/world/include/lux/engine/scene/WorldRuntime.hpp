@@ -27,6 +27,7 @@ namespace lux::scene
         INVALID_VOLUME,
         BUNDLE_MISMATCH,
         RANGE_OVERFLOW,
+        LIMIT_EXCEEDED,
         IO_FAILURE,
         CORRUPT_DESCRIPTOR,
         DIGEST_MISMATCH,
@@ -131,6 +132,7 @@ namespace lux::scene
             WorldPartitionLoadMachine(
                 WorldStorageSource source,
                 world::WorldPartitionOrdinal partition,
+                std::size_t max_bytes,
                 std::stop_token stop,
                 void* receiver,
                 void (*set_value)(void*, world::WorldPartitionData&&) noexcept,
@@ -163,9 +165,10 @@ namespace lux::scene
             WorldPartitionLoadSender(
                 WorldStorageSource source,
                 world::WorldPartitionOrdinal partition,
+                std::size_t max_bytes,
                 std::stop_token stop
             ) noexcept
-                : source_(std::move(source)), partition_(partition), stop_(stop)
+                : source_(std::move(source)), partition_(partition), max_bytes_(max_bytes), stop_(stop)
             {
             }
 
@@ -178,6 +181,7 @@ namespace lux::scene
                 State(
                     WorldStorageSource source,
                     world::WorldPartitionOrdinal partition,
+                    std::size_t max_bytes,
                     std::stop_token stop,
                     Receiver receiver
                 )
@@ -185,6 +189,7 @@ namespace lux::scene
                       machine_(
                           std::move(source),
                           partition,
+                          max_bytes,
                           stop,
                           this,
                           [](void* state, world::WorldPartitionData&& value) noexcept {
@@ -224,6 +229,7 @@ namespace lux::scene
                 return State<std::decay_t<Receiver>>{
                     std::move(source_),
                     partition_,
+                    max_bytes_,
                     stop_,
                     std::forward<Receiver>(receiver)
                 };
@@ -237,6 +243,7 @@ namespace lux::scene
         private:
             WorldStorageSource source_;
             world::WorldPartitionOrdinal partition_;
+            std::size_t max_bytes_{};
             std::stop_token stop_;
         };
     } // namespace detail
@@ -244,9 +251,10 @@ namespace lux::scene
     [[nodiscard]] inline auto loadWorldPartition(
         WorldStorageSource source,
         world::WorldPartitionOrdinal partition,
+        std::size_t max_bytes,
         std::stop_token stop
     ) noexcept
     {
-        return detail::WorldPartitionLoadSender(std::move(source), partition, stop);
+        return detail::WorldPartitionLoadSender(std::move(source), partition, max_bytes, stop);
     }
 } // namespace lux::scene

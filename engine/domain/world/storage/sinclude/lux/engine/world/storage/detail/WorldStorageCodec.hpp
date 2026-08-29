@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <stop_token>
 #include <vector>
 
 namespace lux::world::detail
@@ -42,6 +43,7 @@ namespace lux::world::detail
         DIGEST_MISMATCH,
         UNSUPPORTED_CODEC,
         DECODE_FAILURE,
+        CANCELLED,
         ALLOCATION_FAILURE,
     };
 
@@ -98,7 +100,7 @@ namespace lux::world::detail
         WorldBundleId expected_bundle,
         WorldBundleGeneration expected_generation,
         std::uint32_t expected_volume,
-        std::uint64_t expected_file_size
+        const WorldStorageVolumeDescription& expected_description
     ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
@@ -114,7 +116,8 @@ namespace lux::world::detail
     decodeWorldStorageChunkPayload(
         std::span<const std::byte> stored_payload,
         const WorldStorageChunkDescriptor& descriptor,
-        std::size_t decoded_limit
+        std::size_t decoded_limit,
+        std::stop_token stop
     ) noexcept;
 
     struct WorldPartitionExtent final
@@ -158,7 +161,8 @@ namespace lux::world::detail
         std::span<const std::byte> wire,
         WorldPartitionOrdinal expected_first,
         std::uint32_t expected_count,
-        std::size_t decoded_limit
+        std::size_t decoded_limit,
+        std::stop_token stop
     ) noexcept;
 
     struct WorldEncodedDataRecord final
@@ -185,15 +189,20 @@ namespace lux::world::detail
     lux::cxx::expected<WorldPartitionData, WorldStorageCodecFailure>
     decodeWorldPartitionData(
         std::span<const std::byte> wire,
+        WorldBundleId bundle,
+        WorldBundleGeneration generation,
         WorldPartitionOrdinal expected_partition,
         std::uint32_t schema_count,
-        std::size_t decoded_limit
+        std::size_t decoded_limit,
+        std::stop_token stop
     ) noexcept;
 
     struct WorldPartitionDataAccess final
     {
         static void assign(
             WorldPartitionData& target,
+            WorldBundleId bundle,
+            WorldBundleGeneration generation,
             WorldPartitionOrdinal partition,
             std::vector<WorldDecodedObjectRecord> objects,
             std::vector<WorldDecodedDataRecord> data,

@@ -206,7 +206,7 @@ namespace lux::world::detail
         WorldBundleId expected_bundle,
         WorldBundleGeneration expected_generation,
         std::uint32_t expected_volume,
-        std::uint64_t expected_file_size
+        const WorldStorageVolumeDescription& expected_description
     ) noexcept
     {
         if (wire.size() != kWorldStorageVolumeHeaderWireSize)
@@ -248,7 +248,7 @@ namespace lux::world::detail
 
         if (*magic != kVolumeMagic)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::INVALID_MAGIC, expected_volume));
-        if (*version != kVolumeVersion)
+        if (*version != kVolumeVersion || expected_description.format_version != kVolumeVersion)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::UNSUPPORTED_VERSION, expected_volume));
         if (result.bundle != expected_bundle)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::BUNDLE_MISMATCH, expected_volume));
@@ -256,7 +256,9 @@ namespace lux::world::detail
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::GENERATION_MISMATCH, expected_volume));
         if (result.volume != expected_volume)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::VOLUME_MISMATCH, expected_volume));
-        if (result.file_size != expected_file_size || result.descriptor_stride != kWorldStorageChunkDescriptorWireSize ||
+        if (result.chunk_count != expected_description.chunk_count ||
+            result.file_size != expected_description.file_size ||
+            result.descriptor_stride != kWorldStorageChunkDescriptorWireSize ||
             result.descriptor_offset != kWorldStorageVolumeHeaderWireSize)
         {
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::CORRUPT_DESCRIPTOR, expected_volume));
@@ -352,7 +354,8 @@ namespace lux::world::detail
     decodeWorldStorageChunkPayload(
         std::span<const std::byte> stored_payload,
         const WorldStorageChunkDescriptor& descriptor,
-        std::size_t decoded_limit
+        std::size_t decoded_limit,
+        std::stop_token stop
     ) noexcept
     {
         if (stored_payload.size() != descriptor.stored_size ||
@@ -361,14 +364,28 @@ namespace lux::world::detail
         {
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::SIZE_LIMIT));
         }
+        if (stop.stop_requested())
+            return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
         if (descriptor.codec != EWorldStorageCodec::NONE)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::UNSUPPORTED_CODEC));
-        if (lux::cxx::algorithm::Sha256::hash(stored_payload) != descriptor.digest)
+
+        lux::cxx::algorithm::Sha256 hasher;
+        constexpr std::size_t kDigestSlice = 1024U * 1024U;
+        for (std::size_t offset{}; offset < stored_payload.size(); offset += kDigestSlice)
+        {
+            if (stop.stop_requested())
+                return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
+            hasher.update(stored_payload.subspan(offset, std::min(kDigestSlice, stored_payload.size() - offset)));
+        }
+        if (hasher.digest() != descriptor.digest)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::DIGEST_MISMATCH));
 
         try
         {
-            return std::vector<std::byte>(stored_payload.begin(), stored_payload.end());
+            auto result = std::vector<std::byte>(stored_payload.begin(), stored_payload.end());
+            if (stop.stop_requested())
+                return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
+            return result;
         }
         catch (const std::bad_alloc&)
         {
@@ -484,9 +501,12 @@ namespace lux::world::detail
         std::span<const std::byte> wire,
         WorldPartitionOrdinal expected_first,
         std::uint32_t expected_count,
-        std::size_t decoded_limit
+        std::size_t decoded_limit,
+        std::stop_token stop
     ) noexcept
     {
+        if (stop.stop_requested())
+            return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
         if (wire.size() > decoded_limit || wire.size() < kPartitionTableHeaderSize)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::SIZE_LIMIT));
 
@@ -525,6 +545,8 @@ namespace lux::world::detail
             std::uint32_t expected_extent{};
             for (std::uint32_t ordinal{}; ordinal < *record_count; ++ordinal)
             {
+                if ((ordinal & 1023U) == 0U && stop.stop_requested())
+                    return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
                 WorldPartitionRecord record;
                 if (!readUuid(reader, record.id.value))
                     return lux::cxx::unexpected(failure(EWorldStorageCodecError::DECODE_FAILURE));
@@ -550,6 +572,8 @@ namespace lux::world::detail
 
             for (std::uint32_t ordinal{}; ordinal < *extent_count; ++ordinal)
             {
+                if ((ordinal & 1023U) == 0U && stop.stop_requested())
+                    return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
                 auto volume = reader.readUnsigned<std::uint32_t>();
                 auto first_chunk = reader.readUnsigned<std::uint32_t>();
                 auto chunk_count = reader.readUnsigned<std::uint32_t>();
@@ -560,6 +584,8 @@ namespace lux::world::detail
                 }
                 result.extents.push_back({*volume, *first_chunk, *chunk_count});
             }
+            if (stop.stop_requested())
+                return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
             return result;
         }
         catch (const std::bad_alloc&)
@@ -686,11 +712,18 @@ namespace lux::world::detail
 
     lux::cxx::expected<WorldPartitionData, WorldStorageCodecFailure> decodeWorldPartitionData(
         std::span<const std::byte> wire,
+        WorldBundleId bundle,
+        WorldBundleGeneration generation,
         WorldPartitionOrdinal expected_partition,
         std::uint32_t schema_count,
-        std::size_t decoded_limit
+        std::size_t decoded_limit,
+        std::stop_token stop
     ) noexcept
     {
+        if (stop.stop_requested())
+            return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
+        if (!bundle.valid() || !generation.valid())
+            return lux::cxx::unexpected(failure(EWorldStorageCodecError::INVALID_INPUT));
         if (wire.size() > decoded_limit || wire.size() < kPartitionDataHeaderSize)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::SIZE_LIMIT));
 
@@ -741,6 +774,8 @@ namespace lux::world::detail
             WorldObjectId previous_object;
             for (std::uint32_t ordinal{}; ordinal < *object_count; ++ordinal)
             {
+                if ((ordinal & 1023U) == 0U && stop.stop_requested())
+                    return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
                 WorldDecodedObjectRecord record;
                 if (!readUuid(reader, record.id.value))
                     return lux::cxx::unexpected(failure(EWorldStorageCodecError::DECODE_FAILURE));
@@ -767,6 +802,8 @@ namespace lux::world::detail
             std::uint32_t previous_schema{};
             for (std::uint32_t ordinal{}; ordinal < *data_count; ++ordinal)
             {
+                if ((ordinal & 1023U) == 0U && stop.stop_requested())
+                    return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
                 while (object_index < objects.size() &&
                        data_in_object == objects[object_index].data_count)
                 {
@@ -806,12 +843,31 @@ namespace lux::world::detail
                 return lux::cxx::unexpected(failure(EWorldStorageCodecError::DECODE_FAILURE));
 
             payload.resize(static_cast<std::size_t>(*payload_size));
-            if (!reader.readBytes(payload) || reader.remaining() != 0U)
+            constexpr std::size_t kPayloadSlice = 1024U * 1024U;
+            for (std::size_t offset{}; offset < payload.size(); offset += kPayloadSlice)
+            {
+                if (stop.stop_requested())
+                    return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
+                if (!reader.readBytes(
+                        std::span<std::byte>(payload).subspan(
+                            offset,
+                            std::min(kPayloadSlice, payload.size() - offset)
+                        )
+                    ))
+                {
+                    return lux::cxx::unexpected(failure(EWorldStorageCodecError::DECODE_FAILURE));
+                }
+            }
+            if (reader.remaining() != 0U)
                 return lux::cxx::unexpected(failure(EWorldStorageCodecError::DECODE_FAILURE));
+            if (stop.stop_requested())
+                return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
 
             WorldPartitionData result;
             WorldPartitionDataAccess::assign(
                 result,
+                bundle,
+                generation,
                 expected_partition,
                 std::move(objects),
                 std::move(data),
@@ -827,12 +883,16 @@ namespace lux::world::detail
 
     void WorldPartitionDataAccess::assign(
         WorldPartitionData& target,
+        WorldBundleId bundle,
+        WorldBundleGeneration generation,
         WorldPartitionOrdinal partition,
         std::vector<WorldDecodedObjectRecord> objects,
         std::vector<WorldDecodedDataRecord> data,
         std::vector<std::byte> payload
     ) noexcept
     {
+        target.bundle_ = bundle;
+        target.generation_ = generation;
         target.partition_ = partition;
         target.objects_ = std::move(objects);
         target.data_ = std::move(data);

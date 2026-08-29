@@ -601,6 +601,40 @@ if(EXISTS "${system_registry_header}")
     endif()
 endif()
 
+set(scene_core_cmake "${source_root}/engine/scene/core/CMakeLists.txt")
+if(EXISTS "${scene_core_cmake}")
+    file(READ "${scene_core_cmake}" scene_core_target_contract)
+    if(scene_core_target_contract MATCHES
+       "lux::engine::(process|render)|stdexec|scene_runtime_world")
+        message(FATAL_ERROR
+            "Architecture: scene/core depends on Process, Render or runtime/world."
+        )
+    endif()
+endif()
+
+set(scene_world_runtime_cmake "${source_root}/engine/scene/runtime/world/CMakeLists.txt")
+if(EXISTS "${scene_world_runtime_cmake}")
+    file(READ "${scene_world_runtime_cmake}" scene_world_runtime_contract)
+    if(scene_world_runtime_contract MATCHES
+       "spatial3d|spatial2d|lux::engine::(render|editor|authoring|toolchain)")
+        message(FATAL_ERROR
+            "Architecture: scene/runtime/world acquired concrete policy or an upper-layer dependency."
+        )
+    endif()
+endif()
+
+set(latest_exchange_header
+    "${source_root}/engine/scene/runtime/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
+)
+if(EXISTS "${latest_exchange_header}")
+    file(READ "${latest_exchange_header}" latest_exchange_contract)
+    if(latest_exchange_contract MATCHES "mutex|condition_variable|wait[ \\t\\r\\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: LatestSpscExchange is no longer a non-blocking SPSC primitive."
+        )
+    endif()
+endif()
+
 foreach(component_header IN ITEMS
     "${source_root}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp"
     "${source_root}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"

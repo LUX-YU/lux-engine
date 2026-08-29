@@ -63,9 +63,11 @@ namespace
             lux::scene::ReadWorldStorageRange operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
-            lux::async::SubmitOptions
+            lux::async::SubmitOptions options
         ) noexcept override
         {
+            accounting_ok = accounting_ok && operation.size == options.accounted_bytes;
+            ++submits;
             if (operation.volume != 0U || operation.offset > bytes_.size() ||
                 operation.size > bytes_.size() - operation.offset)
             {
@@ -107,6 +109,10 @@ namespace
 
     private:
         std::vector<std::byte> bytes_;
+
+    public:
+        std::size_t submits{};
+        bool accounting_ok{true};
     };
 
     struct LoadReceiver final
@@ -207,9 +213,12 @@ int main()
     assert(wire);
     auto partition = decodeWorldPartitionData(
         *wire,
+        world->bundleId(),
+        world->generation(),
         WorldPartitionOrdinal{0U},
         2U,
-        std::numeric_limits<std::size_t>::max()
+        std::numeric_limits<std::size_t>::max(),
+        {}
     );
     assert(partition);
 
@@ -219,6 +228,30 @@ int main()
     assert(created.size() == 2U);
     assert(registry.get<const Transform3D>(created[0]).translation.isApprox(transform.translation));
     assert(!registry.all_of<Transform3D>(created[1]));
+
+    WorldDescriptionBuilder other_world_builder;
+    assert(other_world_builder.setIdentity(
+        world->bundleId(),
+        id<WorldBundleGeneration>(99U),
+        "other-generation"
+    ));
+    assert(other_world_builder.addSchema(worldDataSchemaId("lux.ecs.Transform3D")));
+    assert(other_world_builder.addSchema(worldDataSchemaId("test.unknown")));
+    assert(other_world_builder.setPartitioner({worldPartitionerId("test.none"), 1U}, 1U));
+    assert(other_world_builder.addStorageVolume({"other.wvol0", 1U, 1U, 1024U}));
+    assert(other_world_builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}));
+    auto other_world_value = std::move(other_world_builder).build();
+    assert(other_world_value);
+    auto other_materializer = scene::WorldMaterializer::create(
+        std::make_shared<WorldDescription>(std::move(*other_world_value)),
+        *components
+    );
+    assert(other_materializer);
+    const std::size_t identity_mismatch_before = registry.view<const Transform3D>().size();
+    auto identity_mismatch = other_materializer->partition(registry, *partition);
+    assert(!identity_mismatch);
+    assert(identity_mismatch.error().code == scene::EWorldMaterializeError::INVALID_WORLD_SCHEMA);
+    assert(registry.view<const Transform3D>().size() == identity_mismatch_before);
 
     auto malformed_payload = payload;
     malformed_payload.pop_back();
@@ -233,9 +266,12 @@ int main()
     assert(rollback_wire);
     auto rollback_partition = decodeWorldPartitionData(
         *rollback_wire,
+        world->bundleId(),
+        world->generation(),
         WorldPartitionOrdinal{0U},
         2U,
-        std::numeric_limits<std::size_t>::max()
+        std::numeric_limits<std::size_t>::max(),
+        {}
     );
     assert(rollback_partition);
 
@@ -290,19 +326,35 @@ int main()
     auto load_world_value = std::move(load_world_builder).build();
     assert(load_world_value);
     auto load_world = std::make_shared<WorldDescription>(std::move(*load_world_value));
+    auto memory_endpoint = std::make_shared<MemoryEndpoint>(*volume);
     auto load_source = scene::WorldStorageSource::create(
         load_world,
-        lux::async::OperationPort<scene::ReadWorldStorageRange>{
-            std::make_shared<MemoryEndpoint>(*volume)
-        }
+        lux::async::OperationPort<scene::ReadWorldStorageRange>{memory_endpoint}
     );
     assert(load_source);
+
+    std::optional<WorldPartitionData> limited_value;
+    std::optional<scene::WorldStorageRuntimeFailure> limited_error;
+    bool limited_stopped{};
+    auto limited_state = stdexec::connect(
+        scene::loadWorldPartition(*load_source, WorldPartitionOrdinal{0U}, 1U, {}),
+        LoadReceiver{&limited_value, &limited_error, &limited_stopped}
+    );
+    stdexec::start(limited_state);
+    assert(!limited_value);
+    assert(limited_error);
+    assert(limited_error->code == scene::EWorldStorageRuntimeError::LIMIT_EXCEEDED);
 
     std::optional<WorldPartitionData> loaded;
     std::optional<scene::WorldStorageRuntimeFailure> load_error;
     bool stopped{};
     auto load_state = stdexec::connect(
-        scene::loadWorldPartition(*load_source, WorldPartitionOrdinal{0U}, {}),
+        scene::loadWorldPartition(
+            *load_source,
+            WorldPartitionOrdinal{0U},
+            volume->size(),
+            {}
+        ),
         LoadReceiver{&loaded, &load_error, &stopped}
     );
     stdexec::start(load_state);
@@ -310,13 +362,20 @@ int main()
     assert(!load_error);
     assert(!stopped);
     assert(loaded->objectCount() == 2U);
+    assert(memory_endpoint->submits > 0U);
+    assert(memory_endpoint->accounting_ok);
 
     std::stop_source cancelled;
     cancelled.request_stop();
     loaded.reset();
     stopped = false;
     auto stopped_state = stdexec::connect(
-        scene::loadWorldPartition(*load_source, WorldPartitionOrdinal{0U}, cancelled.get_token()),
+        scene::loadWorldPartition(
+            *load_source,
+            WorldPartitionOrdinal{0U},
+            volume->size(),
+            cancelled.get_token()
+        ),
         LoadReceiver{&loaded, &load_error, &stopped}
     );
     stdexec::start(stopped_state);

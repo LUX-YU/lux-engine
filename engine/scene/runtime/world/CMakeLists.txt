@@ -71,6 +71,32 @@ lux_classify_target(
 )
 add_test(NAME scene_world_runtime_test COMMAND scene_world_runtime_test)
 
+add_executable(
+    scene_world_runtime_deferred_test
+    test/scene_world_runtime_deferred_test.cpp
+)
+target_link_libraries(
+    scene_world_runtime_deferred_test
+    PRIVATE
+        lux::engine::scene::scene_runtime_world
+        lux::engine::simulation::simulation_core
+)
+if(MSVC)
+    target_compile_options(scene_world_runtime_deferred_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(scene_world_runtime_deferred_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  scene_world_runtime_deferred_test
+    LAYER   SCENE
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)
+add_test(
+    NAME scene_world_runtime_deferred_test
+    COMMAND scene_world_runtime_deferred_test
+)
+
 install_components(
     PROJECT_NAME lux-engine-scene-world-runtime
     VERSION      ${PROJECT_VERSION}

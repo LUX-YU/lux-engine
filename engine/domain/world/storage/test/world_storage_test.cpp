@@ -81,6 +81,12 @@ int main()
     const auto generation = id<WorldBundleGeneration>(11U);
     auto volume = encodeWorldStorageVolume(bundle, generation, 0U, chunks);
     assert(volume);
+    const WorldStorageVolumeDescription volume_description{
+        "test.wvol0",
+        1U,
+        static_cast<std::uint32_t>(chunks.size()),
+        volume->size()
+    };
     assert(volume->size() >= kWorldStorageVolumeHeaderWireSize + chunks.size() * kWorldStorageChunkDescriptorWireSize);
 
     auto header = decodeWorldStorageVolumeHeader(
@@ -88,32 +94,59 @@ int main()
         bundle,
         generation,
         0U,
-        volume->size()
+        volume_description
     );
     assert(header);
     assert(header->chunk_count == chunks.size());
     assert(header->descriptor_stride == kWorldStorageChunkDescriptorWireSize);
+    auto wrong_format = volume_description;
+    wrong_format.format_version = 2U;
+    assert(!decodeWorldStorageVolumeHeader(
+        std::span<const std::byte>(*volume).first(kWorldStorageVolumeHeaderWireSize),
+        bundle,
+        generation,
+        0U,
+        wrong_format
+    ));
+    auto wrong_chunk_count = volume_description;
+    ++wrong_chunk_count.chunk_count;
+    assert(!decodeWorldStorageVolumeHeader(
+        std::span<const std::byte>(*volume).first(kWorldStorageVolumeHeaderWireSize),
+        bundle,
+        generation,
+        0U,
+        wrong_chunk_count
+    ));
+    auto wrong_file_size = volume_description;
+    ++wrong_file_size.file_size;
+    assert(!decodeWorldStorageVolumeHeader(
+        std::span<const std::byte>(*volume).first(kWorldStorageVolumeHeaderWireSize),
+        bundle,
+        generation,
+        0U,
+        wrong_file_size
+    ));
 
     assert(!decodeWorldStorageVolumeHeader(
         std::span<const std::byte>(*volume).first(kWorldStorageVolumeHeaderWireSize),
         id<WorldBundleId>(12U),
         generation,
         0U,
-        volume->size()
+        volume_description
     ));
     assert(!decodeWorldStorageVolumeHeader(
         std::span<const std::byte>(*volume).first(kWorldStorageVolumeHeaderWireSize),
         bundle,
         id<WorldBundleGeneration>(13U),
         0U,
-        volume->size()
+        volume_description
     ));
     assert(!decodeWorldStorageVolumeHeader(
         std::span<const std::byte>(*volume).first(kWorldStorageVolumeHeaderWireSize),
         bundle,
         generation,
         1U,
-        volume->size()
+        volume_description
     ));
 
     std::array<WorldStorageChunkDescriptor, 3U> descriptors;
@@ -145,7 +178,8 @@ int main()
                 static_cast<std::size_t>(descriptor.stored_size)
             ),
             descriptor,
-            std::numeric_limits<std::size_t>::max()
+            std::numeric_limits<std::size_t>::max(),
+            {}
         );
     };
 
@@ -160,7 +194,8 @@ int main()
         *decoded_page_chunk,
         WorldPartitionOrdinal{4U},
         2U,
-        std::numeric_limits<std::size_t>::max()
+        std::numeric_limits<std::size_t>::max(),
+        {}
     );
     assert(page);
     const auto* first_record = page->find(WorldPartitionOrdinal{4U});
@@ -174,16 +209,23 @@ int main()
 
     auto partition = decodeWorldPartitionData(
         *decoded_partition_chunk,
+        bundle,
+        generation,
         WorldPartitionOrdinal{7U},
         2U,
-        std::numeric_limits<std::size_t>::max()
+        std::numeric_limits<std::size_t>::max(),
+        {}
     );
     assert(partition);
+    assert(partition->bundle() == bundle);
+    assert(partition->generation() == generation);
     assert(partition->partition().value == 7U);
     assert(partition->objectCount() == 2U);
     const auto first_object = partition->objectAt(0U);
     assert(first_object);
     assert(first_object.id() == id<WorldObjectId>(1U));
+    assert(first_object.bundle() == bundle);
+    assert(first_object.generation() == generation);
     assert(first_object.dataCount() == 2U);
     assert(first_object.schemaOrdinalAt(0U) == 0U);
     assert(first_object.schemaVersionAt(1U) == 2U);
@@ -195,15 +237,21 @@ int main()
 
     assert(!decodeWorldPartitionData(
         *decoded_partition_chunk,
+        bundle,
+        generation,
         WorldPartitionOrdinal{8U},
         2U,
-        std::numeric_limits<std::size_t>::max()
+        std::numeric_limits<std::size_t>::max(),
+        {}
     ));
     assert(!decodeWorldPartitionData(
         *decoded_partition_chunk,
+        bundle,
+        generation,
         WorldPartitionOrdinal{7U},
         1U,
-        std::numeric_limits<std::size_t>::max()
+        std::numeric_limits<std::size_t>::max(),
+        {}
     ));
 
     auto corrupted_volume = *volume;
@@ -214,7 +262,8 @@ int main()
             static_cast<std::size_t>(descriptors[1].stored_size)
         ),
         descriptors[1],
-        std::numeric_limits<std::size_t>::max()
+        std::numeric_limits<std::size_t>::max(),
+        {}
     ));
 
     assert(!decodeWorldStorageChunkDescriptor(
@@ -225,6 +274,40 @@ int main()
         *header,
         0U
     ));
+
+    std::stop_source cancelled;
+    cancelled.request_stop();
+    auto cancelled_chunk = decodeWorldStorageChunkPayload(
+        std::span<const std::byte>(*volume).subspan(
+            static_cast<std::size_t>(descriptors[1].offset),
+            static_cast<std::size_t>(descriptors[1].stored_size)
+        ),
+        descriptors[1],
+        std::numeric_limits<std::size_t>::max(),
+        cancelled.get_token()
+    );
+    assert(!cancelled_chunk);
+    assert(cancelled_chunk.error().code == EWorldStorageCodecError::CANCELLED);
+    auto cancelled_page = decodeWorldPartitionTablePage(
+        *decoded_page_chunk,
+        WorldPartitionOrdinal{4U},
+        2U,
+        std::numeric_limits<std::size_t>::max(),
+        cancelled.get_token()
+    );
+    assert(!cancelled_page);
+    assert(cancelled_page.error().code == EWorldStorageCodecError::CANCELLED);
+    auto cancelled_partition = decodeWorldPartitionData(
+        *decoded_partition_chunk,
+        bundle,
+        generation,
+        WorldPartitionOrdinal{7U},
+        2U,
+        std::numeric_limits<std::size_t>::max(),
+        cancelled.get_token()
+    );
+    assert(!cancelled_partition);
+    assert(cancelled_partition.error().code == EWorldStorageCodecError::CANCELLED);
 
     return 0;
 }

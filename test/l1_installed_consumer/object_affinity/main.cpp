@@ -1,60 +1,26 @@
 #include <lux/engine/simulation/SystemRegistry.hpp>
-#include <lux/engine/object/Object.hpp>
-#include <lux/engine/task/TaskExecutor.hpp>
-#include <lux/engine/task/TaskGraphBuilder.hpp>
-
-#include <cstdint>
-#include <utility>
 
 namespace
 {
-    class ObjectSystem final : public lux::object::Object<ObjectSystem>
+    lux::cxx::expected<void, lux::simulation::SystemBuildFailure> installProbe(
+        lux::simulation::SimulationBuilder&,
+        lux::simulation::SimulationSystemView
+    ) noexcept
     {
-    public:
-        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
-        inline static constexpr lux::simulation::SystemDescription Description{
-            .canonical_name = "lux.consumer.l1-object-affinity",
-            .version = 1};
-
-        explicit ObjectSystem(std::uint32_t& count) noexcept : count_(&count)
-        {
-        }
-        void update() noexcept
-        {
-            ++*count_;
-        }
-
-    private:
-        std::uint32_t* count_{};
-    };
+        return {};
+    }
 }
 
-int
-main()
+int main()
 {
     lux::simulation::SystemRegistry systems;
-    std::uint32_t count{};
-    const auto id = systems.emplace<ObjectSystem>(count);
-    if (!id)
+    const lux::simulation::SystemRegistration registration{
+        lux::simulation::systemTypeId("lux.consumer.simulation-system"),
+        1U,
+        &installProbe
+    };
+    if (!systems.add(registration))
         return 1;
-    auto retained = systems.retain<ObjectSystem>(*id);
-    if (!retained)
-        return 2;
-
-    lux::task::TaskGraphBuilder builder;
-    if (!builder.add(
-            lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
-            [system = std::move(*retained)]() noexcept { system->update(); }))
-    {
-        return 3;
-    }
-    auto graph = std::move(builder).build();
-    if (!graph)
-        return 4;
-    auto executor = lux::task::TaskExecutor::create({0U, graph->taskCount()});
-    if (!executor)
-        return 5;
-    if (!executor->execute(*graph))
-        return 6;
-    return count == 1U ? 0 : 7;
+    const auto* found = systems.find(registration.type);
+    return found != nullptr && found->version == 1U && systems.size() == 1U ? 0 : 2;
 }

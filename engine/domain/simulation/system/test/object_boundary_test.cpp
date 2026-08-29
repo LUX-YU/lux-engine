@@ -2,13 +2,13 @@
 
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
-#include <lux/engine/simulation/SystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/SystemTaskResources.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <array>
 #include <cassert>
+#include <memory>
 #include <utility>
 
 namespace
@@ -43,12 +43,7 @@ main()
     Registry world;
     const Entity entity = world.create();
 
-    SystemRegistry registry;
-    const auto id = registry.emplace<MaterialTextureSystem>(queue.dispatcherRef());
-    assert(id);
-    auto retained = registry.retain<MaterialTextureSystem>(*id);
-    assert(retained);
-    auto system = std::move(*retained);
+    auto system = std::make_shared<MaterialTextureSystem>(queue.dispatcherRef());
     assert(system->prepare(4U));
     const auto weak = system->weakRef();
 
@@ -89,10 +84,7 @@ main()
     assert(executor->execute(*graph));
     assert(world.get<MaterialTextureResident>(entity).texture == 7U);
 
-    const auto old_revision = registry.revision();
-    assert(registry.erase(*id));
-    assert(registry.revision() == old_revision + 1U);
-    system = {};
+    system.reset();
     assert(!weak.expired());
     *graph = lux::task::TaskGraph{};
     assert(weak.expired());

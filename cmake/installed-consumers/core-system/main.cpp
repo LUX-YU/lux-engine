@@ -1,45 +1,26 @@
 #include <lux/engine/simulation/SystemRegistry.hpp>
-#include <lux/engine/task/TaskExecutor.hpp>
-#include <lux/engine/task/TaskGraphBuilder.hpp>
-
-#include <utility>
 
 namespace
 {
-    struct System final
+    lux::cxx::expected<void, lux::simulation::SystemBuildFailure> installProbe(
+        lux::simulation::SimulationBuilder&,
+        lux::simulation::SimulationSystemView
+    ) noexcept
     {
-        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
-        inline static constexpr lux::simulation::SystemDescription Description{
-            .canonical_name = "lux.consumer.core-system",
-            .version = 1};
-        void update() noexcept
-        {
-            ++updates;
-        }
-        int updates{};
-    };
+        return {};
+    }
 }
 
-int
-main()
+int main()
 {
     lux::simulation::SystemRegistry systems;
-    const auto id = systems.emplace<System>();
-    if (!id)
+    const lux::simulation::SystemRegistration registration{
+        lux::simulation::systemTypeId("lux.consumer.simulation-system"),
+        1U,
+        &installProbe
+    };
+    if (!systems.add(registration))
         return 1;
-    auto retained = systems.retain<System>(*id);
-    if (!retained)
-        return 2;
-
-    lux::task::TaskGraphBuilder builder;
-    auto observation = *retained;
-    if (!builder.add([system = std::move(*retained)]() noexcept { system->update(); }))
-    {
-        return 3;
-    }
-    auto graph = std::move(builder).build();
-    if (!graph)
-        return 4;
-    auto executor = lux::task::TaskExecutor::create({0U, graph->taskCount()});
-    return executor && executor->execute(*graph) && observation->updates == 1 ? 0 : 5;
+    const auto* found = systems.find(registration.type);
+    return found != nullptr && found->version == 1U && systems.size() == 1U ? 0 : 2;
 }

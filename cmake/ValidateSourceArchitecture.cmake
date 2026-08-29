@@ -582,6 +582,25 @@ if(EXISTS "${component_schema_header}")
     endif()
 endif()
 
+set(system_registry_header
+    "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/SystemRegistry.hpp"
+)
+if(EXISTS "${system_registry_header}")
+    file(READ "${system_registry_header}" system_registry_contract)
+    if(system_registry_contract MATCHES
+       "SystemLease|emplaceWithLifetime|retain[ \\t\\r\\n]*<|erase[ \\t\\r\\n]*\\(|revision[ \\t\\r\\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: SystemRegistry restored the retired live-instance owner facade."
+        )
+    endif()
+    if(NOT system_registry_contract MATCHES "SystemRegistration" OR
+       NOT system_registry_contract MATCHES "InstallSystemFn")
+        message(FATAL_ERROR
+            "Architecture: SystemRegistry is not the canonical type/install-thunk catalog."
+        )
+    endif()
+endif()
+
 foreach(component_header IN ITEMS
     "${source_root}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp"
     "${source_root}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"
@@ -604,6 +623,7 @@ foreach(installed_consumer IN ITEMS
     ecs_system
     large_world_transform
     object_affinity
+    simulation_runtime
     world
     world_storage
 )

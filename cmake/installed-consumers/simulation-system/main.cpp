@@ -1,24 +1,26 @@
 #include <lux/engine/simulation/SystemRegistry.hpp>
-#include <lux/engine/simulation/SystemAccessSpec.hpp>
 
 namespace
 {
-    struct Probe final
+    lux::cxx::expected<void, lux::simulation::SystemBuildFailure> installProbe(
+        lux::simulation::SimulationBuilder&,
+        lux::simulation::SimulationSystemView
+    ) noexcept
     {
-        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
-        inline static constexpr lux::simulation::SystemDescription Description{
-            .canonical_name = "lux.consumer.simulation-system",
-            .version = 1};
-    };
+        return {};
+    }
 }
 
-int
-main()
+int main()
 {
     lux::simulation::SystemRegistry systems;
-    const auto id = systems.emplace<Probe>();
-    if (!id)
+    const lux::simulation::SystemRegistration registration{
+        lux::simulation::systemTypeId("lux.consumer.simulation-system"),
+        1U,
+        &installProbe
+    };
+    if (!systems.add(registration))
         return 1;
-    const auto lease = systems.retain<Probe>(*id);
-    return lease ? 0 : 1;
+    const auto* found = systems.find(registration.type);
+    return found != nullptr && found->version == 1U && systems.size() == 1U ? 0 : 2;
 }

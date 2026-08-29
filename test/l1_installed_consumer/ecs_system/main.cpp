@@ -2,22 +2,25 @@
 
 namespace
 {
-    struct ProbeSystem final
+    lux::cxx::expected<void, lux::simulation::SystemBuildFailure> installProbe(
+        lux::simulation::SimulationBuilder&,
+        lux::simulation::SimulationSystemView
+    ) noexcept
     {
-        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
-        inline static constexpr lux::simulation::SystemDescription Description{
-            .canonical_name = "lux.consumer.l1-ecs-system",
-            .version = 1};
-    };
+        return {};
+    }
 }
 
-int
-main()
+int main()
 {
     lux::simulation::SystemRegistry systems;
-    const auto system = systems.emplace<ProbeSystem>();
-    if (!system)
+    const lux::simulation::SystemRegistration registration{
+        lux::simulation::systemTypeId("lux.consumer.simulation-system"),
+        1U,
+        &installProbe
+    };
+    if (!systems.add(registration))
         return 1;
-    const auto lease = systems.retain<ProbeSystem>(*system);
-    return lease && systems.contains(*system) ? 0 : 2;
+    const auto* found = systems.find(registration.type);
+    return found != nullptr && found->version == 1U && systems.size() == 1U ? 0 : 2;
 }

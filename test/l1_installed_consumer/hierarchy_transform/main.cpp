@@ -1,10 +1,8 @@
-#include <lux/engine/simulation/SystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/systems/TransformSystem.hpp>
 
-int
-main()
+int main()
 {
     using namespace lux::simulation;
     using namespace lux::simulation::ecs;
@@ -22,12 +20,8 @@ main()
     if (!deltas.prepare(16U))
         return 2;
 
-    SystemRegistry systems;
-    auto transform = systems.emplace<Transform3DSystem>(registry, hierarchy, deltas);
-    if (!transform)
+    Transform3DSystem transform(registry, hierarchy, deltas);
+    if (!transform.prepare(16U))
         return 3;
-    auto retained = systems.retain<Transform3DSystem>(*transform);
-    if (!retained || !retained->get().prepare(16U))
-        return 4;
-    return validSystemDescription(Transform3DSystem::Description) ? 0 : 5;
+    return validSystemDescription(Transform3DSystem::Description) ? 0 : 4;
 }

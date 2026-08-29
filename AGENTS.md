@@ -128,6 +128,10 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   L3 Scene -> L4 Authoring -> L5 Toolchain -> L6 Product`。World 描述事实；Simulation
   同步解释和运行事实；ECS 只是 Simulation 内部机制；Process 负责异步、IO 与 residency；
   Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
+- `World = durable/cooked facts + whole-world storage metadata`；`Simulation = concrete Systems +
+  synchronous rules + compiled schedule`；`Scene = one World + one authoritative Registry + one Simulation`。
+  Streaming policy 只属于 concrete developer System；Presentation 是可独立采样的 runtime concern，
+  不是 architecture layer。Canonical Transform2D/3D 与 WorldTransform2D/3D 一律使用 double。
 - source topology 固定用 `engine/domain/{world,simulation}` 表达 L1 ownership，
   用 `engine/editor` 与 `engine/toolchain` 区分交互工具和离线工具；不得恢复同义叠加的
   `engine/tools`。public include 与 namespace 仍使用概念名，不得把 `domain` 或层级编号写进用户 API。

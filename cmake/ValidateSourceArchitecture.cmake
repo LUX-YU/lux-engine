@@ -73,6 +73,14 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/process/*/sinclude/*.hpp"
     "${source_root}/engine/process/*/pinclude/*.hpp"
     "${source_root}/engine/process/*/src/*.cpp"
+    "${source_root}/engine/scene/*/include/*.hpp"
+    "${source_root}/engine/scene/*/sinclude/*.hpp"
+    "${source_root}/engine/scene/*/pinclude/*.hpp"
+    "${source_root}/engine/scene/*/src/*.cpp"
+    "${source_root}/engine/scene/*/*/include/*.hpp"
+    "${source_root}/engine/scene/*/*/sinclude/*.hpp"
+    "${source_root}/engine/scene/*/*/pinclude/*.hpp"
+    "${source_root}/engine/scene/*/*/src/*.cpp"
     "${source_root}/engine/authoring/*/include/*.hpp"
     "${source_root}/engine/authoring/*/src/*.cpp"
     "${source_root}/engine/editor/*/include/*.hpp"
@@ -116,6 +124,13 @@ foreach(source IN LISTS production_sources)
        "AssetManager|AssetRef|AssetLoadPort|AssetServices|asset_id_t")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' restores retired L0 asset ownership vocabulary."
+        )
+    endif()
+
+    if(normalized MATCHES "/engine/scene/" AND content MATCHES
+       "WorldStreamingBinding|StreamingManager|SceneServices|SceneContext|SystemFactoryRegistry|SimulationContext|WorldPartitionWorkspace|WorldMaterializationPlan|WorldMaterializationRegistry|TimeDomainRegistry|ClockManager|PresentationManager|LaneManager|ScenePhaseManager|AssetDemandKey|DemandTracker|ResidencyBridge|ResourceDemandRegistry")
+        message(FATAL_ERROR
+            "Architecture: new Scene production source '${normalized}' uses phase-held framework vocabulary."
         )
     endif()
 

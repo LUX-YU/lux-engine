@@ -15,6 +15,7 @@ engine/
     world/
     simulation/
   process/
+  scene/
   authoring/
   editor/
   toolchain/
@@ -24,12 +25,31 @@ engine/
 - `engine/domain` 持有 World/Simulation runtime domain integration。
 - `engine/process` 是 L2 collection；当前 `execution` 叶包只提供 Timer 与 L0 OperationPort 的
   Sender adapter，不拥有 CPU pool、main loop、Render thread 或 domain workflow。
+- `engine/scene` 是 L3 runtime composition：`core` 只组合一个 World、一个 authoritative Registry、
+  一个 Simulation 与 Scene cancellation source；`runtime/world` 提供机械 World IO/materialization；
+  `runtime/presentation` 首先承载 latest-state handoff。Streaming policy 只属于 concrete developer System。
 - `engine/authoring` 持有 authored state、composition 与诊断。
 - `engine/editor` 持有交互式 Editor UI/tooling。
 - `engine/toolchain` 持有离线 compiler、cook、package 与 build tool。
 - `engine/tools` 是同义叠加的退休目录，不得恢复。
 
 public include 与 namespace 使用职责概念名，不包含 `domain`、层级编号或物理聚合目录名。
+
+## L0–L3 canonical semantics
+
+```text
+World       = durable/cooked facts + whole-world storage metadata
+Simulation  = concrete Systems + synchronous rules + compiled schedule
+Process     = domain-blind asynchronous execution substrate
+Scene       = one World + one authoritative Registry + one Simulation
+Presentation= independently sampled runtime concern, not an architecture layer
+```
+
+Canonical user-facing `Transform2D/3D` 与 `WorldTransform2D/3D` 使用 double。Render、physics、nav
+等 consumer 只能在自己的 local-origin boundary 先用 double 相减，再显式 narrow 到 float/native。
+
+Scene 不拥有 mandatory streaming/index/residency/process/render/main-loop state；Simulation 不拥有
+World IO、partition lifecycle 或 wall clock；Process 不认识 Scene/World gameplay semantics。
 
 ## Package 与 collection
 

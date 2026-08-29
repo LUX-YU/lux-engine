@@ -3,6 +3,7 @@
 #include <lux/engine/task/TaskExecutorFailureInjection.hpp>
 
 #include <atomic>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -129,6 +130,77 @@ main()
         auto invalid = right.add(dependsOn(*foreign), []() noexcept {});
         assert(!invalid);
         assert(invalid.error().code == ETaskGraphError::INVALID_TASK);
+    }
+
+    // Dynamic dependency properties preserve the existing single validation path.
+    {
+        TaskGraphBuilder builder;
+        const std::array<TaskHandle, 0U> empty_dependencies{};
+        auto empty = builder.add(dependencies(empty_dependencies), []() noexcept {});
+        assert(empty);
+
+        std::atomic_uint completed{};
+        std::array<TaskHandle, 3U> predecessors;
+        for (auto& predecessor : predecessors)
+        {
+            auto task = builder.add([&completed]() noexcept { completed.fetch_add(1U, std::memory_order_release); });
+            assert(task);
+            predecessor = *task;
+        }
+        auto dependent = builder.add(
+            dependencies(predecessors),
+            [&completed, &predecessors]() noexcept {
+                assert(completed.load(std::memory_order_acquire) == predecessors.size());
+            }
+        );
+        assert(dependent);
+
+        auto graph = std::move(builder).build();
+        assert(graph);
+        auto executor = TaskExecutor::create(TaskExecutorConfig{3U, graph->taskCount()});
+        assert(executor);
+        assert(executor->execute(*graph));
+    }
+
+    {
+        TaskGraphBuilder builder;
+        auto predecessor = builder.add([]() noexcept {});
+        assert(predecessor);
+        const std::array duplicate_dependencies{*predecessor, *predecessor};
+        auto duplicate = builder.add(dependencies(duplicate_dependencies), []() noexcept {});
+        assert(!duplicate);
+        assert(duplicate.error().code == ETaskGraphError::DUPLICATE_DEPENDENCY);
+    }
+
+    {
+        TaskGraphBuilder builder;
+        auto predecessor = builder.add([]() noexcept {});
+        assert(predecessor);
+        const std::array aggregate{*predecessor};
+        auto duplicate = builder.add(dependsOn(*predecessor), dependencies(aggregate), []() noexcept {});
+        assert(!duplicate);
+        assert(duplicate.error().code == ETaskGraphError::DUPLICATE_DEPENDENCY);
+    }
+
+    {
+        TaskGraphBuilder left;
+        TaskGraphBuilder right;
+        auto foreign = left.add([]() noexcept {});
+        assert(foreign);
+        const std::array aggregate{*foreign};
+        auto invalid = right.add(dependencies(aggregate), []() noexcept {});
+        assert(!invalid);
+        assert(invalid.error().code == ETaskGraphError::INVALID_TASK);
+    }
+
+    {
+        TaskGraphBuilder builder;
+        auto first = builder.add([]() noexcept {});
+        assert(first);
+        const std::array aggregate{TaskHandle{first->owner, first->index + 1U}};
+        auto forward = builder.add(dependencies(aggregate), []() noexcept {});
+        assert(!forward);
+        assert(forward.error().code == ETaskGraphError::DEPENDENCY_MUST_PRECEDE_TASK);
     }
 
     // Graph owns code/data lifetime pins independently from the caller.

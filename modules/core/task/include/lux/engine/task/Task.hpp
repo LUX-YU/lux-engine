@@ -84,6 +84,12 @@ namespace lux::task
         TaskHandle task{};
     };
 
+    /** Owning dynamic dependency property. Consumed immediately by TaskGraphBuilder::add. */
+    struct TaskDependencies final
+    {
+        std::vector<TaskHandle> values;
+    };
+
     struct TaskAffinity final
     {
         ETaskAffinity value{ETaskAffinity::WORKER};
@@ -119,6 +125,18 @@ namespace lux::task
     [[nodiscard]] constexpr TaskDependency dependsOn(TaskHandle task) noexcept
     {
         return {task};
+    }
+
+    [[nodiscard]] inline TaskDependencies dependencies(std::span<const TaskHandle> values)
+    {
+        return TaskDependencies{std::vector<TaskHandle>(values.begin(), values.end())};
+    }
+
+    template <class Range>
+        requires requires(const Range& value) { std::span<const TaskHandle>(value); }
+    [[nodiscard]] TaskDependencies dependencies(const Range& values)
+    {
+        return dependencies(std::span<const TaskHandle>(values));
     }
 
     [[nodiscard]] constexpr TaskAffinity on(ETaskAffinity affinity) noexcept

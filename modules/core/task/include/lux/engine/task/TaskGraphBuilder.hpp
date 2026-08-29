@@ -25,6 +25,7 @@ namespace lux::task
         inline constexpr bool kTaskProperty = std::same_as<std::remove_cvref_t<Type>, TaskResourceAccess> ||
                                               std::same_as<std::remove_cvref_t<Type>, TaskResources> ||
                                               std::same_as<std::remove_cvref_t<Type>, TaskDependency> ||
+                                              std::same_as<std::remove_cvref_t<Type>, TaskDependencies> ||
                                               std::same_as<std::remove_cvref_t<Type>, TaskAffinity> ||
                                               std::same_as<std::remove_cvref_t<Type>, TaskLifetimePin>;
     }
@@ -125,6 +126,15 @@ namespace lux::task
         static void collectProperty(PendingTask& pending, TaskDependency property)
         {
             pending.dependencies.push_back(property.task);
+        }
+
+        static void collectProperty(PendingTask& pending, TaskDependencies property)
+        {
+            pending.dependencies.insert(
+                pending.dependencies.end(),
+                std::make_move_iterator(property.values.begin()),
+                std::make_move_iterator(property.values.end())
+            );
         }
 
         static void collectProperty(PendingTask& pending, TaskAffinity property) noexcept

@@ -941,9 +941,12 @@ WorldDescription& whose owner may disappear
 loadWorldPartition(
     WorldStorageSource source,
     world::WorldPartitionOrdinal partition,
+    std::size_t max_bytes,
     std::stop_token stop
 ) -> Sender<world::WorldPartitionData>;
 ```
+
+`max_bytes` 是 Product 显式提供的单 scalar P0 budget；runtime 不写死 partition size。
 
 最小 generic IO unit = partition。
 

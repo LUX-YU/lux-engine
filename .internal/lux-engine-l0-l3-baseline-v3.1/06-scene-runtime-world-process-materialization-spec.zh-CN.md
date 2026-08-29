@@ -195,7 +195,9 @@ root WorldDescription is retained
 BundleId
 Generation
 VolumeOrdinal
-format/file bounds
+root-declared format version
+root-declared chunk count
+root-declared file size and bounds
 ```
 
 禁止：
@@ -214,9 +216,14 @@ AssetVfs::pathOf(root) + string sibling guess
 [[nodiscard]] auto loadWorldPartition(
     WorldStorageSource source,
     world::WorldPartitionOrdinal partition,
+    std::size_t max_bytes,
     std::stop_token stop
 );
 ```
+
+`max_bytes` 必须非零，并同时约束每次 range read、stored/decoded chunk、partition-table page、
+assembled partition bytes 与 final partition decode。不新增 `WorldLoadLimits`；超限返回
+`LIMIT_EXCEEDED`，整数转换/算术溢出返回 `RANGE_OVERFLOW`。
 
 返回值必须满足 stdexec Sender contract，成功 value：
 
@@ -229,6 +236,7 @@ operation state 必须 own：
 ```text
 WorldStorageSource by value
 partition ordinal
+max bytes
 stop token/state
 all temporary decoded buffers required until completion
 ```
@@ -276,7 +284,8 @@ No parallel fanout framework needed。
 
 Phase 8 **不要求新增 public cache type**。
 
-如果 partition-table page重复读取成为明显成本，可在 `WorldStorageSource::Impl` 内做 bounded/private cache。
+如果 partition-table page重复读取成为明显成本，可在 provider `OperationPort` Endpoint 或
+load operation private state 内做 bounded/private cache；`WorldStorageSource` 不恢复 `Impl`。
 
 禁止 public：
 
@@ -549,6 +558,10 @@ PartitionEntityMap service
 Scene residency table
 ```
 
+`WorldPartitionData` 与其 object views 保留 `WorldBundleId + WorldBundleGeneration`。
+Materializer 在创建 Entity 前必须与自己 retained World identity 比较；mismatch 返回
+`INVALID_WORLD_SCHEMA`，不得按错误 schema ordinal 解释 payload。
+
 ---
 
 ## 18. Async cancellation contract
@@ -622,6 +635,7 @@ INVALID_PARTITION
 INVALID_VOLUME
 BUNDLE_MISMATCH
 RANGE_OVERFLOW
+LIMIT_EXCEEDED
 IO_FAILURE
 CORRUPT_DESCRIPTOR
 DIGEST_MISMATCH
@@ -651,7 +665,7 @@ ALLOCATION_FAILURE
 ```text
 copy Source keeps world/provider alive
 Source destruction after operation start does not invalidate operation
-BundleId/Generation/VolumeOrdinal verification
+BundleId/Generation/VolumeOrdinal/root format/chunk-count/file-size verification
 invalid range/overflow
 ```
 
@@ -665,6 +679,8 @@ cancel before start
 cancel during IO
 cancel during decode
 exact bytes read
+SubmitOptions.accounted_bytes equals requested bytes
+max_bytes covers range/stored/decoded/page/assembled partition
 no object-level IO
 ```
 
@@ -692,6 +708,8 @@ complete IO later
 no UAF
 weak completion discarded
 Host scope remains alive
+same bundle / stale generation completion rejected
+multi-volume + multi-extent runtime load
 ```
 
 Run ASAN/TSAN where supported。

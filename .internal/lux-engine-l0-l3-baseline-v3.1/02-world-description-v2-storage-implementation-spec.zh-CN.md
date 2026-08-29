@@ -316,7 +316,9 @@ magic/version
 BundleId
 Generation
 expected VolumeOrdinal
-chunk count
+root format_version == header/supported version
+root chunk_count == header chunk_count
+root file_size == header file_size
 file size bounds
 descriptor bounds
 ```
@@ -528,6 +530,8 @@ Phase 3 public runtime value/view：
 class WorldPartitionData final
 {
 public:
+    [[nodiscard]] WorldBundleId bundle() const noexcept;
+    [[nodiscard]] WorldBundleGeneration generation() const noexcept;
     [[nodiscard]] WorldPartitionOrdinal partition() const noexcept;
     [[nodiscard]] std::size_t objectCount() const noexcept;
     [[nodiscard]] WorldPartitionObjectView objectAt(std::size_t index) const noexcept;
@@ -535,6 +539,7 @@ public:
 ```
 
 `WorldPartitionObjectView` 应是 non-owning view into the decoded partition value，不为每 object 单独 heap allocate。
+它也暴露同一 bundle/generation identity，使 object-level materialization 能在创建 Entity 前验证 World。
 
 Object view 至少能迭代：
 

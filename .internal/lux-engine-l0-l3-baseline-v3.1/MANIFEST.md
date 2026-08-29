@@ -9,13 +9,13 @@ includes the approved corrections documented in `REPOSITORY-ERRATA.md`.
 
 | File | Lines | SHA-256 | Role |
 |---|---:|---|---|
-| `00-l0-l3-master-implementation-plan.zh-CN.md` | 1316 | `8994e6ffea30f9f69f3c39efc7afe85901c71f8b6db75cabdd08f8c2f362ba2a` | Normative master construction DAG / type budgets / barriers |
+| `00-l0-l3-master-implementation-plan.zh-CN.md` | 1319 | `9958e7842f4cf557d7f925499e73d36e341d57b25926a304a350b7c068891221` | Normative master construction DAG / type budgets / barriers |
 | `01-l0-taskgraph-dependency-list-prerequisite.zh-CN.md` | 232 | `bd2868aedd1482b274be91940e64fe6c9a7d6f84c3fec3ca5f5020e79fa14ffd` | Phase 1 — L0 TaskDependencies prerequisite |
-| `02-world-description-v2-storage-implementation-spec.zh-CN.md` | 718 | `d19d0cfbbeead3281348b5fbc5efed16d23ba5c3be4a83937d9a0e102f9b3854` | Phases 2–3 — World semantic + physical storage |
+| `02-world-description-v2-storage-implementation-spec.zh-CN.md` | 723 | `199ff60fdbfa761d048a7bc30ab5d4c5034d5c2f116ff197890fa3a522539d3c` | Phases 2–3 — World semantic + physical storage |
 | `03-ecs-double-precision-component-decode-prerequisite.zh-CN.md` | 594 | `4f2f16b86270b2007178356ef5bd553f9679226b8ff98dbf367e4bfd101841b8` | Phase 4 — canonical double + generated decode/emplace |
 | `04-simulation-system-registry-runtime-implementation-spec.zh-CN.md` | 909 | `4097832bf259818cf365bb3ff76fc9f0e16f758fc747f1abf7f843e0c4f9aea3` | Phase 5 — System type catalog + Simulation runtime |
 | `05-scene-core-description-runtime-composition-spec.zh-CN.md` | 489 | `ea45ceb353425a8493ea4738ae9b320c4cfd4c488258aa7af3ba0ebaabb59f61` | Phase 7 — SceneDescription + minimal Scene |
-| `06-scene-runtime-world-process-materialization-spec.zh-CN.md` | 713 | `d484e8af9e5b7ef2b3526dfd2c1f0e35840acd9c496024d14dbda572e1b6b592` | Phase 8 — WorldStorageSource/load/materialize mechanism |
+| `06-scene-runtime-world-process-materialization-spec.zh-CN.md` | 731 | `c2f27f07ddb1293d98ee8827fe1a844b7924ae2b1777974391f4bce38c7b84ee` | Phase 8 — WorldStorageSource/load/materialize mechanism |
 | `07-system-luxobject-streaming-resource-protocol.zh-CN.md` | 478 | `fd1453cd45b8fa883abb7db7b7ab1fddd334488c4368e7327c8c91ded05d2023` | Cross-phase concrete System/LuxObject/streaming constraints |
 | `08-engine-asset-residency-design-hold.zh-CN.md` | 192 | `10cf22ce05f159e40ee40f7f41d8b1fbf2ee7193f4071bb8b805e2a54c0be7eb` | Design Barrier A — ownership frozen, generic demand API held |
 | `09-runtime-execution-lanes-presentation-render-contract.zh-CN.md` | 621 | `110eeb88ba7c593934f79846283a9a31f5df3d9b668e97549a1dfd130888453b` | Phase 9 — latest-wins SPSC state exchange + lane contract |

@@ -578,6 +578,7 @@ foreach(installed_consumer IN ITEMS
     ecs_system
     object_affinity
     world
+    world_storage
 )
     if(NOT EXISTS
        "${source_root}/test/l1_installed_consumer/${installed_consumer}/CMakeLists.txt")

@@ -307,6 +307,35 @@ int main()
     assert(deferred.completions.load(std::memory_order_acquire) == 1U);
     assert(deferred.value == 71);
 
+    // A started operation owns its Endpoint through the Port value in the sender
+    // state. Requester-side Port/Endpoint destruction and a later stop request do
+    // not invalidate the completion state; a higher-level workflow may discard
+    // the completed value after observing its captured stop token.
+    std::weak_ptr<Endpoint<Read>> endpoint_lifetime;
+    {
+        auto endpoint = std::make_shared<Endpoint<Read>>(EMode::DEFERRED_VALUE);
+        endpoint_lifetime = endpoint;
+        lux::async::OperationPort<Read> port{endpoint};
+        stdexec::inplace_stop_source stop;
+        Outcome<int> late;
+        auto state = stdexec::connect(
+            lux::process::portSender(port, Read{91}),
+            Receiver<int>{&late, stop.get_token()}
+        );
+        endpoint.reset();
+        port = {};
+        stdexec::start(state);
+        static_cast<void>(stop.request_stop());
+        auto retained_endpoint = endpoint_lifetime.lock();
+        assert(retained_endpoint != nullptr);
+        retained_endpoint->finish();
+        retained_endpoint.reset();
+        assert(late.completions.load(std::memory_order_acquire) == 1U);
+        assert(late.terminal == ETerminal::VALUE);
+        assert(late.value == 91);
+    }
+    assert(endpoint_lifetime.expired());
+
     Outcome<int> missing;
     stdexec::inplace_stop_source missing_stop;
     auto missing_state = stdexec::connect(

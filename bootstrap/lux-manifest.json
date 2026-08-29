@@ -38,6 +38,14 @@
     ],
     "vcpkg_packages": [
         {
+            "name": "joltphysics",
+            "version": "5.5.0",
+            "features": ["double-precision"],
+            "overlay_port": "cmake/vcpkg-ports",
+            "platforms": ["host", "android"],
+            "why": "Physics3D private backend；host 与 Android 必须共享 JPH_DOUBLE_PRECISION ABI"
+        },
+        {
             "name": "recastnavigation",
             "version": "1.6.0",
             "platforms": ["host", "android"],

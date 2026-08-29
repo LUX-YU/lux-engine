@@ -118,11 +118,11 @@ def vcpkg_triplet(platform: str) -> str:
     return "x64-linux"
 
 
-def installed_vcpkg_packages(root: Path) -> dict[tuple[str, str], str]:
+def installed_vcpkg_packages(root: Path) -> dict[tuple[str, str], dict]:
     status = root / "installed" / "vcpkg" / "status"
     if not status.is_file():
         return {}
-    result: dict[tuple[str, str], str] = {}
+    result: dict[tuple[str, str], dict] = {}
     fields: dict[str, str] = {}
     for line in status.read_text(encoding="utf-8", errors="replace").splitlines() + [""]:
         if line:
@@ -134,7 +134,12 @@ def installed_vcpkg_packages(root: Path) -> dict[tuple[str, str], str]:
             name = fields.get("Package", "")
             triplet = fields.get("Architecture", "")
             if name and triplet:
-                result[(name, triplet)] = fields.get("Version", "")
+                entry = result.setdefault((name, triplet), {"version": "", "features": set()})
+                feature = fields.get("Feature", "")
+                if feature:
+                    entry["features"].add(feature)
+                else:
+                    entry["version"] = fields.get("Version", "")
         fields = {}
     return result
 
@@ -148,11 +153,19 @@ def check_package(package: dict, platform: str) -> tuple[bool, str]:
     installed = installed_vcpkg_packages(root)
     actual = installed.get((package["name"], triplet))
     required = package["version"]
-    if actual == required:
-        return True, f"{package['name']}:{triplet} {actual}"
+    required_features = set(package.get("features", []))
+    if actual and actual["version"] == required:
+        missing_features = required_features - actual["features"]
+        if not missing_features:
+            suffix = f"[{','.join(sorted(required_features))}]" if required_features else ""
+            return True, f"{package['name']}{suffix}:{triplet} {actual['version']}"
+        return False, (
+            f"{package['name']}:{triplet} {required} 缺少 feature: "
+            f"{', '.join(sorted(missing_features))}"
+        )
     if actual:
         return False, (
-            f"{package['name']}:{triplet} 需要 {required}，当前 {actual}"
+            f"{package['name']}:{triplet} 需要 {required}，当前 {actual['version']}"
         )
     return False, (
         f"{package['name']}:{triplet} {required} 未安装 —— {package['why']}"
@@ -315,14 +328,27 @@ def cmd_deps(args) -> int:
         print(_miss(f"找不到 vcpkg 可执行文件: {executable}"))
         return 1
     triplet = vcpkg_triplet(args.platform)
-    specifications = [
-        f"{package['name']}:{triplet}"
-        for package in packages_for(manifest, args.platform)
-    ]
+    packages = packages_for(manifest, args.platform)
+    specifications = []
+    overlay_ports = []
+    for package in packages:
+        features = package.get("features", [])
+        feature_suffix = f"[{','.join(features)}]" if features else ""
+        specifications.append(f"{package['name']}{feature_suffix}:{triplet}")
+        overlay_port = package.get("overlay_port")
+        if overlay_port:
+            overlay_path = HERE.parent / overlay_port
+            if overlay_path not in overlay_ports:
+                overlay_ports.append(overlay_path)
     if not specifications:
         print("该平台没有固定 vcpkg 包。")
         return 0
-    command = [str(executable), "install", *specifications]
+    # Feature changes rebuild an already installed binary package. vcpkg requires
+    # --recurse for that explicit ABI transition; without it `deps` can diagnose
+    # a missing feature but cannot repair the installation.
+    command = [str(executable), "install", *specifications, "--recurse"]
+    for overlay_port in overlay_ports:
+        command.extend(["--overlay-ports", str(overlay_port)])
     if args.platform == "android":
         command.extend([
             "--overlay-triplets",

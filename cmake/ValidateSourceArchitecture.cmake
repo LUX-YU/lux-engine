@@ -557,6 +557,31 @@ if(EXISTS "${transform_system_source}")
     endif()
 endif()
 
+set(transform_component_header
+    "${source_root}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"
+)
+if(EXISTS "${transform_component_header}")
+    file(READ "${transform_component_header}" transform_component_contract)
+    if(transform_component_contract MATCHES
+       "Eigen::(Vector2f|Vector3f|Quaternionf|Affine2f|Affine3f)|(^|[^A-Za-z0-9_])float[ \\t]+rotation")
+        message(FATAL_ERROR
+            "Architecture: canonical Transform2D/3D or WorldTransform2D/3D regressed to float."
+        )
+    endif()
+endif()
+
+set(component_schema_header
+    "${source_root}/engine/domain/simulation/ecs/schema/include/lux/engine/simulation/ecs/ComponentSchema.hpp"
+)
+if(EXISTS "${component_schema_header}")
+    file(READ "${component_schema_header}" component_schema_contract)
+    if(NOT component_schema_contract MATCHES "decode_emplace")
+        message(FATAL_ERROR
+            "Architecture: ComponentSchema is missing the generated decode/emplace prerequisite."
+        )
+    endif()
+endif()
+
 foreach(component_header IN ITEMS
     "${source_root}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp"
     "${source_root}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"
@@ -574,8 +599,10 @@ endforeach()
 
 foreach(installed_consumer IN ITEMS
     core_system
+    component_decode_emplace
     ecs_core
     ecs_system
+    large_world_transform
     object_affinity
     world
     world_storage

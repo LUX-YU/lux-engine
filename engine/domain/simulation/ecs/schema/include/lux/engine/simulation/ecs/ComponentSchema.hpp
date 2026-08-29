@@ -2,11 +2,15 @@
 
 #include <lux/engine/simulation/ecs/ComponentOperations.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchemaId.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <utility>
 
 namespace lux::simulation::ecs
@@ -17,12 +21,36 @@ namespace lux::simulation::ecs
         REBUILD,
     };
 
+    enum class EComponentDecodeError : std::uint8_t
+    {
+        INVALID_ENTITY,
+        UNSUPPORTED_VERSION,
+        MALFORMED_PAYLOAD,
+        UNSUPPORTED_TYPE,
+        COMPONENT_CONSTRUCTION_FAILURE,
+        ALLOCATION_FAILURE,
+    };
+
+    struct ComponentDecodeFailure final
+    {
+        EComponentDecodeError code{EComponentDecodeError::MALFORMED_PAYLOAD};
+        std::size_t offset{};
+    };
+
+    using DecodeEmplaceComponentFn = lux::cxx::expected<void, ComponentDecodeFailure> (*)(
+        Registry& registry,
+        Entity entity,
+        std::uint32_t encoded_schema_version,
+        std::span<const std::byte> encoded_payload
+    ) noexcept;
+
     struct ComponentSchema final
     {
         lux::cxx::TypeToken cpp_type;
         ComponentSchemaId id;
         std::uint32_t version{1};
         ComponentOperations operations;
+        DecodeEmplaceComponentFn decode_emplace{};
         EComponentSnapshotPolicy snapshot{EComponentSnapshotPolicy::COPY};
         std::shared_ptr<const void> code_lifetime;
     };
@@ -32,7 +60,8 @@ namespace lux::simulation::ecs
         ComponentSchemaId id,
         std::uint32_t version = 1,
         EComponentSnapshotPolicy snapshot = EComponentSnapshotPolicy::COPY,
-        std::shared_ptr<const void> code_lifetime = {}
+        std::shared_ptr<const void> code_lifetime = {},
+        DecodeEmplaceComponentFn decode_emplace = {}
     )
     {
         return ComponentSchema{
@@ -40,6 +69,7 @@ namespace lux::simulation::ecs
             std::move(id),
             version,
             componentOperations<Component>(),
+            decode_emplace,
             snapshot,
             std::move(code_lifetime)};
     }

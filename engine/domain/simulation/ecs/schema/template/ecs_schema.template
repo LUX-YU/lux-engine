@@ -1,5 +1,6 @@
 #pragma once
-// Generated module-local ECS schema projection. No registrar or persistence.
+// Generated module-local ECS schema projection with direct decode/emplace thunks.
+#include <lux/engine/simulation/ecs/ComponentDecode.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchema.hpp>
 #include <array>
 #include <span>
@@ -15,7 +16,9 @@ namespace lux::simulation::ecs::generated
 {% endif %}            makeComponentSchema<::{{ decl.fq_name }}>(
                 componentSchemaId("{{ annotation_get(decl, "schema") }}"),
                 {{ annotation_get(decl, "version") }}u,
-                {% if annotation_get(decl, "snapshot") == "REBUILD" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %}
+                {% if annotation_get(decl, "snapshot") == "REBUILD" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %},
+                {},
+                {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentDecodeEmplace<::{{ decl.fq_name }}, {{ annotation_get(decl, "version") }}u>(){% endif %}
             ){% set emitted = true %}{% endif %}{% endfor %}
         };
         return schemas;

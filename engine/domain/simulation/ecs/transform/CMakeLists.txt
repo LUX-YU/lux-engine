@@ -61,3 +61,27 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
+
+add_executable(transform_decode_test test/transform_decode_test.cpp)
+target_link_libraries(
+    transform_decode_test
+    PRIVATE
+        lux::engine::simulation::ecs::transform
+        lux::engine::simulation::ecs::hierarchy
+)
+if(MSVC)
+    target_compile_options(transform_decode_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(transform_decode_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  transform_decode_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(NAME vnext_transform_decode COMMAND transform_decode_test)
+set_tests_properties(
+    vnext_transform_decode
+    PROPERTIES LABELS "vnext;l1;transform;schema;cpu"
+)

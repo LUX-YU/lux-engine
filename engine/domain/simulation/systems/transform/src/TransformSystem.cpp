@@ -12,18 +12,18 @@ namespace lux::simulation
 
     namespace
     {
-        [[nodiscard]] Eigen::Affine2f localMatrix(const Transform2D& value) noexcept
+        [[nodiscard]] Eigen::Affine2d localMatrix(const Transform2D& value) noexcept
         {
-            Eigen::Affine2f result = Eigen::Affine2f::Identity();
+            Eigen::Affine2d result = Eigen::Affine2d::Identity();
             result.translate(value.translation);
             result.rotate(value.rotation);
             result.scale(value.scale);
             return result;
         }
 
-        [[nodiscard]] Eigen::Affine3f localMatrix(const Transform3D& value) noexcept
+        [[nodiscard]] Eigen::Affine3d localMatrix(const Transform3D& value) noexcept
         {
-            Eigen::Affine3f result = Eigen::Affine3f::Identity();
+            Eigen::Affine3d result = Eigen::Affine3d::Identity();
             result.translate(value.translation);
             result.rotate(value.rotation);
             result.scale(value.scale);
@@ -353,12 +353,12 @@ namespace lux::simulation
         };
     }
 
-    struct Transform2DSystem::Impl final : TransformState<Transform2D, WorldTransform2D, Eigen::Affine2f>
+    struct Transform2DSystem::Impl final : TransformState<Transform2D, WorldTransform2D, Eigen::Affine2d>
     {
         using TransformState::TransformState;
     };
 
-    struct Transform3DSystem::Impl final : TransformState<Transform3D, WorldTransform3D, Eigen::Affine3f>
+    struct Transform3DSystem::Impl final : TransformState<Transform3D, WorldTransform3D, Eigen::Affine3d>
     {
         using TransformState::TransformState;
     };

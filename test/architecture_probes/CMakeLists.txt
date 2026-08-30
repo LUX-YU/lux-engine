@@ -141,6 +141,81 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
             SKIP_RETURN_CODE 77
             TIMEOUT 120
     )
+
+    set(model_qualification_source
+        ${CMAKE_BINARY_DIR}/engine/toolchain/asset/model/fixtures/static/static_pbr.gltf
+    )
+    set(model_qualification_content
+        ${CMAKE_CURRENT_BINARY_DIR}/model_qualification/content
+    )
+    set(model_qualification_pak
+        ${CMAKE_CURRENT_BINARY_DIR}/model_qualification/content.luxpak
+    )
+    add_custom_command(
+        OUTPUT ${model_qualification_pak}
+        COMMAND $<TARGET_FILE:toolchain_model_cooker_static_test> --fixture-only
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${model_qualification_content}
+        COMMAND $<TARGET_FILE:lux_asset_packer>
+            --type model
+            --source_path ${model_qualification_source}
+            --target_path ${model_qualification_content}
+        COMMAND $<TARGET_FILE:lux_asset_packer>
+            --pack
+            --source_path ${model_qualification_content}
+            --target_path ${model_qualification_pak}
+        DEPENDS
+            lux_asset_packer
+            toolchain_model_cooker_static_test
+        VERBATIM
+    )
+    add_custom_target(
+        model_asset_vulkan_qualification_content
+        DEPENDS ${model_qualification_pak}
+    )
+    add_executable(
+        model_asset_vulkan_qualification
+        model_asset_vulkan_qualification.cpp
+    )
+    add_dependencies(
+        model_asset_vulkan_qualification
+        model_asset_vulkan_qualification_content
+    )
+    lux_add_build_tool_dependency(
+        CONSUMER model_asset_vulkan_qualification
+        TOOL lux_asset_packer
+    )
+    target_include_directories(
+        model_asset_vulkan_qualification
+        PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
+    )
+    target_compile_definitions(
+        model_asset_vulkan_qualification
+        PRIVATE LUX_MODEL_QUALIFICATION_PAK="${model_qualification_pak}"
+    )
+    target_link_libraries(
+        model_asset_vulkan_qualification
+        PRIVATE
+            render_features
+            lux::engine::function::render_vulkan
+            lux::engine::resource::asset
+    )
+    lux_classify_target(
+        TARGET  model_asset_vulkan_qualification
+        LAYER   HOST
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(
+        NAME model_asset_vulkan_qualification
+        COMMAND model_asset_vulkan_qualification
+    )
+    set_tests_properties(
+        model_asset_vulkan_qualification
+        PROPERTIES
+            LABELS "architecture;qualification;host;render;gpu;model;asset"
+            SKIP_RETURN_CODE 77
+            TIMEOUT 120
+    )
 endif()
 
 option(

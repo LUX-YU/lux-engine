@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <string_view>
 
 namespace
 {
@@ -41,11 +42,13 @@ namespace
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     const auto source = lux::toolchain::test::writeStaticPbrFixture(
         std::filesystem::path{LUX_MODEL_TEST_ROOT} / "static"
     );
+    if (argc == 2 && std::string_view{argv[1]} == "--fixture-only")
+        return 0;
     const auto cooked = lux::toolchain::cookModel(info(), source);
     if (!cooked)
         std::cerr << "static model cook failed: " << cooked.error().detail << '\n';

@@ -1,9 +1,11 @@
+#include <lux/cxx/algorithm/sha256.hpp>
+
+#include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/scene/SceneAssetCodec.hpp>
 
 #include <array>
 #include <cassert>
 #include <cstdint>
-#include <limits>
 #include <memory>
 
 namespace
@@ -19,31 +21,60 @@ namespace
 int main()
 {
     using namespace lux;
-    const scene::SceneDescription source{id(1U), id(2U)};
-    auto descriptor = scene::sceneAssetCodecDescriptor({});
-    assert(descriptor.canonical_name == scene::SceneAssetCanonicalName);
-    auto encoded = descriptor.encode(
-        &source,
-        asset::AssetEncodeContext{asset::AssetCodecLimits{0U, 0U, 40U}}
+    constexpr asset::AssetEncodeLimits encode_limits{1024U};
+    constexpr asset::AssetDecodeLimits decode_limits{1024U, 1024U, 4U};
+    const auto description = std::make_shared<const scene::SceneDescription>(
+        scene::SceneDescription{id(1U), id(2U)}
     );
-    assert(encoded && encoded->size() == 40U);
-    auto decoded = descriptor.decode(
-        *encoded,
-        asset::AssetDecodeContext{
-            asset::AssetCodecLimits{40U, std::numeric_limits<std::size_t>::max(), 0U}
-        }
+    const auto value = scene::SceneAsset::create(
+        asset::AssetInfo{id(3U), scene::SceneAsset::asset_type, 31U},
+        description
+    );
+    assert(value);
+    const auto encoded = asset::TAssetSerDeser<scene::SceneAsset>::encode(**value, encode_limits);
+    assert(encoded && encoded->size() == 440U);
+
+    const auto outer = asset::inspectCookedAssetImage(
+        (*value)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    );
+    assert(outer && outer->information().empty() && outer->data().size() == 40U);
+    const auto digest = lux::cxx::algorithm::Sha256::hash(outer->data().view());
+    const auto expected = lux::cxx::algorithm::Sha256Digest::fromHex(
+        "ff5add560504767ee622029d7c794ff8635749525df53d03be7d7dbcb97af6cd"
+    );
+    assert(expected && digest == *expected);
+
+    const auto decoded = asset::TAssetSerDeser<scene::SceneAsset>::decode(
+        (*value)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
     );
     assert(decoded);
-    const auto scene_value = std::static_pointer_cast<const scene::SceneDescription>(decoded->payload);
-    assert(scene_value->world == source.world);
-    assert(scene_value->simulation == source.simulation);
+    assert((*decoded)->data().world == description->world);
+    assert((*decoded)->data().simulation == description->simulation);
+    assert((*decoded)->as<scene::SceneAsset>() == decoded->get());
+
     auto trailing = *encoded;
     trailing.push_back(std::byte{});
-    assert(!descriptor.decode(
-        trailing,
-        asset::AssetDecodeContext{
-            asset::AssetCodecLimits{41U, std::numeric_limits<std::size_t>::max(), 0U}
-        }
+    assert(!asset::TAssetSerDeser<scene::SceneAsset>::decode(
+        (*value)->id(),
+        lux::cxx::SharedBytes<>::copyOf(trailing),
+        asset::AssetDecodeLimits{trailing.size(), trailing.size(), 4U}
+    ));
+
+    auto corrupt = *encoded;
+    corrupt[400U] ^= std::byte{1U};
+    assert(!asset::TAssetSerDeser<scene::SceneAsset>::decode(
+        (*value)->id(),
+        lux::cxx::SharedBytes<>::copyOf(corrupt),
+        decode_limits
+    ));
+    assert(!asset::TAssetSerDeser<scene::SceneAsset>::decode(
+        id(4U),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
     ));
     return 0;
 }

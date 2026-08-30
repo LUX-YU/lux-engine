@@ -23,7 +23,6 @@ add_component(
     OUTPUT_NAME    lux_engine_asset
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Asset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetCodecSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CookedAssetImage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/detail/CookedAssetWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/material/MaterialAssets.cpp
@@ -89,7 +88,6 @@ lux_classify_target(
 )
 
 foreach(test_name IN ITEMS
-    asset_codec_set_test
     cooked_asset_image_test
     typed_asset_test
     typed_material_asset_test

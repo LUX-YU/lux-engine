@@ -1,6 +1,5 @@
 #include <lux/engine/world/WorldAssetCodec.hpp>
 
-#include <lux/engine/resource/asset/AssetCodecSet.hpp>
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/resource/asset/detail/CookedAssetWriter.hpp>
 #include <lux/engine/serialization/BinaryReader.hpp>

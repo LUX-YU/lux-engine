@@ -5,6 +5,12 @@
 
 namespace lux::asset
 {
+    enum class EAssetCodecError : std::uint8_t
+    {
+        CODEC_FAILURE,
+        OUT_OF_MEMORY,
+    };
+
     inline constexpr std::uint32_t kNoLegacyAssetTypeTag = 0xFFFFFFFFU;
 
     enum class EAssetDecodeError : std::uint8_t

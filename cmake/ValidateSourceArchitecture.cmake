@@ -449,7 +449,7 @@ endif()
 
 foreach(capacity_header IN ITEMS
     "${source_root}/modules/core/serialization/include/lux/engine/serialization/SerializationError.hpp"
-    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetCodecSet.hpp"
+    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetSerDeser.hpp"
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/CookedAssetImage.hpp"
     "${source_root}/modules/core/task/include/lux/engine/task/TaskExecutor.hpp"
     "${source_root}/engine/domain/simulation/ecs/core/include/lux/engine/simulation/ecs/EcsCommandBuffer.hpp"
@@ -720,11 +720,9 @@ foreach(source IN LISTS installed_public_headers)
     endif()
     file(READ "${source}" content)
 
-    if(content MATCHES "AssetCodecDescriptor" AND
-       NOT normalized MATCHES
-           "/(modules/resource/asset/(include/.*/AssetCodecSet[.]hpp|src/AssetCodecSet[.]cpp)|engine/domain/world/asset/|engine/domain/simulation/asset/|engine/scene/asset/|modules/function/script/artifact/)")
+    if(content MATCHES "AssetCodecDescriptor|AssetCodecSet|DecodedAsset|AssetDecodeContext|AssetEncodeContext")
         message(FATAL_ERROR
-            "Architecture: '${normalized}' adds a new erased Asset codec after the typed-asset freeze."
+            "Architecture: '${normalized}' restores the retired erased Asset codec model."
         )
     endif()
     if(content MATCHES "#[ \t]*include[ \t]*[<\"]Jolt/|JPH::")

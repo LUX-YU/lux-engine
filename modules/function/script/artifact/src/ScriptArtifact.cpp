@@ -1,6 +1,5 @@
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 
-#include <lux/engine/resource/asset/AssetCodecSet.hpp>
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/resource/asset/detail/CookedAssetWriter.hpp>
 

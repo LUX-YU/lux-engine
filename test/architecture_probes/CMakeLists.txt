@@ -41,31 +41,33 @@ set_tests_properties(
     PROPERTIES LABELS "architecture;probe;host;physics3d;jolt"
 )
 
-add_executable(architecture_probe_render_lanes render_lane_probe.cpp)
-target_include_directories(
-    architecture_probe_render_lanes
-    PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
-)
-target_link_libraries(
-    architecture_probe_render_lanes
-    PRIVATE
-        lux::engine::function::render_vulkan
-        lux::engine::scene::scene_runtime_presentation
-)
-lux_classify_target(
-    TARGET  architecture_probe_render_lanes
-    LAYER   HOST
-    PRODUCT TEST
-    ROLE    COMPOSITION
-)
-add_test(NAME architecture_probe_render_lanes COMMAND architecture_probe_render_lanes)
-set_tests_properties(
-    architecture_probe_render_lanes
-    PROPERTIES
-        LABELS "architecture;probe;host;presentation;render;gpu"
-        SKIP_RETURN_CODE 77
-        TIMEOUT 30
-)
+if(TARGET render_vulkan)
+    add_executable(architecture_probe_render_lanes render_lane_probe.cpp)
+    target_include_directories(
+        architecture_probe_render_lanes
+        PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
+    )
+    target_link_libraries(
+        architecture_probe_render_lanes
+        PRIVATE
+            lux::engine::function::render_vulkan
+            lux::engine::scene::scene_runtime_presentation
+    )
+    lux_classify_target(
+        TARGET  architecture_probe_render_lanes
+        LAYER   HOST
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(NAME architecture_probe_render_lanes COMMAND architecture_probe_render_lanes)
+    set_tests_properties(
+        architecture_probe_render_lanes
+        PROPERTIES
+            LABELS "architecture;probe;host;presentation;render;gpu"
+            SKIP_RETURN_CODE 77
+            TIMEOUT 30
+    )
+endif()
 
 option(
     LUX_BUILD_PRELOADED_SPATIAL3D_PROBE

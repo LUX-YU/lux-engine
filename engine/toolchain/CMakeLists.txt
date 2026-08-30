@@ -1,2 +1,5 @@
 add_subdirectory(lua)
 add_subdirectory(flowforge)
+if(NOT TARGET toolchain_texture_cooker)
+    add_subdirectory(asset)
+endif()

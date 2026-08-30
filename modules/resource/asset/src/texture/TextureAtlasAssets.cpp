@@ -134,6 +134,13 @@ namespace lux::asset
                 const auto& frame = atlas.frames[index];
                 if (frame.name.empty() || frame.name.size() > kMaxString || !finite(frame.uv_rect) ||
                     !frame.pivot.allFinite()) return false;
+                const bool invalid_uv = frame.uv_rect.x() < 0.0F || frame.uv_rect.y() < 0.0F ||
+                    frame.uv_rect.z() <= 0.0F || frame.uv_rect.w() <= 0.0F ||
+                    frame.uv_rect.x() + frame.uv_rect.z() > 1.0F ||
+                    frame.uv_rect.y() + frame.uv_rect.w() > 1.0F;
+                const bool invalid_pivot = frame.pivot.x() < 0.0F || frame.pivot.x() > 1.0F ||
+                    frame.pivot.y() < 0.0F || frame.pivot.y() > 1.0F;
+                if (invalid_uv || invalid_pivot) return false;
                 for (std::size_t previous = 0U; previous < index; ++previous)
                     if (atlas.frames[previous].name == frame.name) return false;
             }

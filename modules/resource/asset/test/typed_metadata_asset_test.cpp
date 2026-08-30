@@ -2,6 +2,7 @@
 
 #include <lux/engine/resource/asset/animation/AnimationClipAsset.hpp>
 #include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 
 #include <Eigen/Geometry>
@@ -12,8 +13,10 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -53,7 +56,7 @@ namespace
     }
 
     template <class Asset>
-    void verify(
+    std::vector<std::byte> verify(
         const std::shared_ptr<const Asset>& asset,
         std::size_t expected_size,
         std::string_view expected_hash
@@ -72,6 +75,32 @@ namespace
         assert(decoded);
         const auto reencoded = lux::asset::TAssetSerDeser<Asset>::encode(**decoded, encode_limits);
         assert(reencoded && *reencoded == *encoded);
+        return *encoded;
+    }
+
+    template <class Asset, class Value>
+    void rejectInformationMutation(
+        std::vector<std::byte> encoded,
+        lux::asset::AssetId requested,
+        std::size_t relative_offset,
+        const Value& value
+    )
+    {
+        constexpr lux::asset::AssetDecodeLimits limits{1024U * 1024U, 1024U * 1024U, 4U};
+        auto owned = lux::cxx::SharedBytes<>::copyOf(encoded);
+        const auto image = lux::asset::inspectCookedAssetImage(owned, limits);
+        assert(image);
+        const auto information_offset = static_cast<std::size_t>(
+            image->information().data() - image->image().data()
+        );
+        assert(information_offset + relative_offset + sizeof(Value) <= encoded.size());
+        std::memcpy(encoded.data() + information_offset + relative_offset, &value, sizeof(Value));
+        const auto decoded = lux::asset::TAssetSerDeser<Asset>::decode(
+            requested,
+            lux::cxx::SharedBytes<>::copyOf(encoded),
+            limits
+        );
+        assert(!decoded);
     }
 } // namespace
 
@@ -92,11 +121,24 @@ int main()
         std::move(mesh)
     );
     assert(mesh_asset);
-    verify(
+    const auto mesh_wire = verify(
         *mesh_asset,
         708U,
         "55d3667e298f4b5a358cdd9979b348323d5c911ff5f5971f55beeaf181b5f765"
     );
+    rejectInformationMutation<lux::asset::MeshAsset>(mesh_wire, id(6U), 24U + 3U * sizeof(lux::rdesc::Vertex), 99U);
+
+    auto invalid_mesh = std::make_shared<lux::rdesc::Mesh>();
+    invalid_mesh->vertices = {vertex, vertex, vertex};
+    invalid_mesh->indices = {0U, 1U, 3U};
+    assert(!lux::asset::MeshAsset::create(info<lux::asset::MeshAsset>(60U), invalid_mesh));
+    invalid_mesh->indices = {0U, 1U, 2U};
+    invalid_mesh->vertices[0].position.x() = std::numeric_limits<float>::quiet_NaN();
+    assert(!lux::asset::MeshAsset::create(info<lux::asset::MeshAsset>(61U), invalid_mesh));
+    invalid_mesh->vertices[0].position.x() = 0.0F;
+    invalid_mesh->vertices[0].bone.bone_ids[0] = 0;
+    invalid_mesh->vertices[0].bone.weights[0] = 0.5F;
+    assert(!lux::asset::MeshAsset::create(info<lux::asset::MeshAsset>(62U), invalid_mesh));
 
     auto skeleton = std::make_shared<lux::rdesc::Skeleton>();
     lux::rdesc::Bone_t bone{};
@@ -110,11 +152,21 @@ int main()
         std::move(skeleton)
     );
     assert(skeleton_asset);
-    verify(
+    const auto skeleton_wire = verify(
         *skeleton_asset,
         576U,
         "0f9757141b0f49ac269a74901050c96d378d71858227e31b58e6aeca0ece0248"
     );
+    rejectInformationMutation<lux::asset::SkeletonAsset>(skeleton_wire, id(10U), 24U, std::int32_t{-2});
+
+    auto invalid_skeleton = std::make_shared<lux::rdesc::Skeleton>();
+    invalid_skeleton->bones.push_back({
+        "root",
+        -2,
+        Eigen::Affine3f::Identity(),
+        Eigen::Affine3f::Identity()
+    });
+    assert(!lux::asset::SkeletonAsset::create(info<lux::asset::SkeletonAsset>(63U), invalid_skeleton));
 
     auto clip = std::make_shared<lux::rdesc::AnimationClip>();
     clip->name = "idle";
@@ -134,10 +186,29 @@ int main()
         std::move(clip)
     );
     assert(animation_asset);
-    verify(
+    const auto animation_wire = verify(
         *animation_asset,
         496U,
         "c88929b5122c40953854b8828d48b87022a7711b8705e249d2df7145ef0baf50"
     );
+    rejectInformationMutation<lux::asset::AnimationClipAsset>(
+        animation_wire,
+        id(11U),
+        20U,
+        std::numeric_limits<float>::quiet_NaN()
+    );
+
+    auto invalid_clip = std::make_shared<lux::rdesc::AnimationClip>();
+    invalid_clip->name = "invalid";
+    invalid_clip->duration = 1.0F;
+    lux::rdesc::BoneTrack invalid_track{};
+    invalid_track.bone_index = 0;
+    invalid_track.times_t = {0.5F, 0.25F};
+    invalid_track.translations = {Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones()};
+    invalid_clip->tracks.push_back(std::move(invalid_track));
+    assert(!lux::asset::AnimationClipAsset::create(
+        info<lux::asset::AnimationClipAsset>(64U),
+        invalid_clip
+    ));
     return 0;
 }

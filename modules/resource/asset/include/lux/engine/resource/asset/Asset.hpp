@@ -7,6 +7,7 @@
 #include <lux/cxx/memory/SharedBytes.hpp>
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -90,6 +91,7 @@ namespace lux::asset
         ) noexcept
             : Asset(std::move(info), std::move(auxiliary)), data_(std::move(data))
         {
+            assert(data_);
         }
 
     private:

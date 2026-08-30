@@ -1,6 +1,7 @@
 #include <lux/cxx/algorithm/sha256.hpp>
 
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/resource/asset/texture/TextureAtlasAssets.hpp>
 
 #include <Eigen/Core>
@@ -13,6 +14,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -52,7 +54,7 @@ namespace
     }
 
     template <class Asset>
-    void verify(
+    std::vector<std::byte> verify(
         const std::shared_ptr<const Asset>& asset,
         std::size_t expected_size,
         std::string_view expected_hash
@@ -72,6 +74,30 @@ namespace
         assert(decoded);
         const auto reencoded = lux::asset::TAssetSerDeser<Asset>::encode(**decoded, encode_limits);
         assert(reencoded && *reencoded == *encoded);
+        return *encoded;
+    }
+
+    template <class Asset, class Value>
+    void rejectInformationMutation(
+        std::vector<std::byte> encoded,
+        lux::asset::AssetId requested,
+        std::size_t relative_offset,
+        const Value& value
+    )
+    {
+        constexpr lux::asset::AssetDecodeLimits limits{1024U * 1024U, 1024U * 1024U, 4U};
+        auto owned = lux::cxx::SharedBytes<>::copyOf(encoded);
+        const auto image = lux::asset::inspectCookedAssetImage(owned, limits);
+        assert(image);
+        const auto information_offset = static_cast<std::size_t>(
+            image->information().data() - image->image().data()
+        );
+        std::memcpy(encoded.data() + information_offset + relative_offset, &value, sizeof(Value));
+        assert(!lux::asset::TAssetSerDeser<Asset>::decode(
+            requested,
+            lux::cxx::SharedBytes<>::copyOf(encoded),
+            limits
+        ));
     }
 } // namespace
 
@@ -89,11 +115,16 @@ int main()
         std::move(model)
     );
     assert(model_asset);
-    verify(
+    const auto model_wire = verify(
         *model_asset,
         564U,
         "47e4ab994c3d3666cd34e92f5fc4b2e499a04bdf5d94a0940f13582c8b5a6215"
     );
+    rejectInformationMutation<lux::asset::ModelAsset>(model_wire, id(7U), 4U, 1U);
+
+    auto invalid_model = std::make_shared<lux::rdesc::ModelDescription>((*model_asset)->data());
+    invalid_model->nodes.front().children.push_back(0U);
+    assert(!lux::asset::ModelAsset::create(info<lux::asset::ModelAsset>(70U), invalid_model));
 
     auto atlas = std::make_shared<lux::rdesc::TextureAtlas>();
     atlas->name = "atlas";
@@ -108,11 +139,20 @@ int main()
         std::move(atlas)
     );
     assert(atlas_asset);
-    verify(
+    const auto atlas_wire = verify(
         *atlas_asset,
         477U,
         "2c0a7f6353760c6994065c143b169707c16191899076b53c0814604e5a86d2e1"
     );
+    const std::array<std::byte, 16U> null_id{};
+    rejectInformationMutation<lux::asset::TextureAtlasAsset>(atlas_wire, id(2U), 21U, null_id);
+
+    auto invalid_atlas = std::make_shared<lux::rdesc::TextureAtlas>((*atlas_asset)->data());
+    invalid_atlas->frames.front().uv_rect = Eigen::Vector4f{-0.1F, 0.0F, 0.5F, 1.0F};
+    assert(!lux::asset::TextureAtlasAsset::create(
+        info<lux::asset::TextureAtlasAsset>(20U),
+        invalid_atlas
+    ));
 
     auto clip = std::make_shared<lux::rdesc::FlipbookClip>();
     clip->name = "blink";
@@ -130,5 +170,12 @@ int main()
         469U,
         "38e7fa62a043f95947ba06b0a756118ec86ea33250195791038e541747a15533"
     );
+
+    auto invalid_clip = std::make_shared<lux::rdesc::FlipbookClip>((*clip_asset)->data());
+    invalid_clip->frames.front().duration = 0.0F;
+    assert(!lux::asset::FlipbookClipAsset::create(
+        info<lux::asset::FlipbookClipAsset>(30U),
+        invalid_clip
+    ));
     return 0;
 }

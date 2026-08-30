@@ -219,29 +219,6 @@ namespace
         return result;
     }
 
-    struct ProbedImage final
-    {
-        lux::asset::AssetId id;
-        std::uint32_t magic{};
-    };
-
-    [[nodiscard]] std::optional<ProbedImage> probeImage(lux::cxx::SharedBytes<> image)
-    {
-        constexpr std::size_t kMetadataOffset = 40U;
-        constexpr std::size_t kIdSize = 16U;
-        if (image.size() < kMetadataOffset + kIdSize)
-            return std::nullopt;
-        std::uint32_t magic{};
-        std::memcpy(&magic, image.data(), sizeof(magic));
-        std::array<std::uint8_t, kIdSize> id_bytes{};
-        for (std::size_t index = 0U; index < id_bytes.size(); ++index)
-            id_bytes[index] = std::to_integer<std::uint8_t>(image.data()[kMetadataOffset + index]);
-        ProbedImage result{lux::asset::AssetId{id_bytes}, magic};
-        if (result.id.isNull() || result.magic == 0U)
-            return std::nullopt;
-        return result;
-    }
-
     [[nodiscard]] lux::asset::AssetDecodeLimits imageLimits(lux::cxx::SharedBytes<> image) noexcept
     {
         return lux::asset::AssetDecodeLimits{
@@ -352,12 +329,10 @@ namespace
         const auto bytes = readOwned(path);
         if (!bytes)
             return 2;
-        const auto probe = probeImage(*bytes);
-        if (!probe)
-            return 3;
-        const auto image = lux::asset::inspectCookedAssetImage(probe->id, *bytes, imageLimits(*bytes));
+        const auto image = lux::asset::inspectCookedAssetImage(*bytes, imageLimits(*bytes));
         if (!image)
-            return 4;
+            return 3;
+        const auto id = image->metadata().id;
         std::cout << "magic=0x" << std::hex << image->magic() << std::dec
                   << " version=" << image->version()
                   << " info=" << image->information().size()
@@ -365,7 +340,7 @@ namespace
         if (image->magic() == lux::asset::TextureAsset::primary_magic)
         {
             const auto texture = lux::asset::TAssetSerDeser<lux::asset::TextureAsset>::decode(
-                probe->id, *bytes, imageLimits(*bytes)
+                id, *bytes, imageLimits(*bytes)
             );
             if (!texture)
                 return 5;
@@ -375,7 +350,7 @@ namespace
         else if (image->magic() == lux::asset::ShaderAsset::primary_magic)
         {
             const auto shader = lux::asset::TAssetSerDeser<lux::asset::ShaderAsset>::decode(
-                probe->id, *bytes, imageLimits(*bytes)
+                id, *bytes, imageLimits(*bytes)
             );
             if (!shader)
                 return 6;
@@ -401,11 +376,11 @@ namespace
         const auto bytes = readOwned(*input_text);
         if (!bytes)
             return 3;
-        const auto probe = probeImage(*bytes);
-        if (!probe || probe->magic != lux::asset::ShaderAsset::primary_magic)
+        const auto image = lux::asset::inspectCookedAssetImage(*bytes, imageLimits(*bytes));
+        if (!image || image->magic() != lux::asset::ShaderAsset::primary_magic)
             return 4;
         const auto shader = lux::asset::TAssetSerDeser<lux::asset::ShaderAsset>::decode(
-            probe->id,
+            image->metadata().id,
             *bytes,
             imageLimits(*bytes)
         );
@@ -471,15 +446,26 @@ namespace
         for (const auto& file : files)
         {
             const auto bytes = readOwned(file);
-            const auto probe = bytes ? probeImage(*bytes) : std::nullopt;
-            if (!bytes || !probe || !lux::asset::inspectCookedAssetImage(probe->id, *bytes, imageLimits(*bytes)))
+            if (!bytes)
+            {
+                std::cerr << "invalid cooked asset: " << file.string() << '\n';
+                return 5;
+            }
+            const auto image = lux::asset::inspectCookedAssetImage(*bytes, imageLimits(*bytes));
+            if (!image)
             {
                 std::cerr << "invalid cooked asset: " << file.string() << '\n';
                 return 5;
             }
             auto relative = file.lexically_relative(source);
             relative.replace_extension();
-            entries.push_back({probe->id, probe->magic, relative.generic_string(), file, {}});
+            entries.push_back({
+                image->metadata().id,
+                image->magic(),
+                relative.generic_string(),
+                file,
+                {}
+            });
         }
         std::string message;
         const std::string mount_hint = options.value("mount_hint").value_or("/Game");

@@ -131,13 +131,10 @@ namespace lux::asset
     }
 
     lux::cxx::expected<CookedAssetImage, AssetDecodeFailure> inspectCookedAssetImage(
-        AssetId requested,
         lux::cxx::SharedBytes<> image,
         const AssetDecodeLimits& limits
     ) noexcept
     {
-        if (requested.isNull())
-            return lux::cxx::unexpected(failure(EAssetDecodeError::INVALID_ASSET_ID));
         if (image.size() > limits.max_image_bytes)
             return lux::cxx::unexpected(failure(EAssetDecodeError::LIMIT_EXCEEDED));
         if (image.size() < sizeof(std::uint32_t) * 2U)
@@ -176,9 +173,6 @@ namespace lux::asset
                 }
                 if (metadata.id.isNull())
                     return lux::cxx::unexpected(failure(EAssetDecodeError::INVALID_ASSET_ID));
-                if (metadata.id != requested)
-                    return lux::cxx::unexpected(failure(EAssetDecodeError::ASSET_ID_MISMATCH));
-
                 std::size_t decoded_bytes{};
                 const auto account = [&](std::uint64_t size) noexcept {
                     if (size > limits.max_decoded_bytes - decoded_bytes)
@@ -256,5 +250,21 @@ namespace lux::asset
         {
             return lux::cxx::unexpected(failure(EAssetDecodeError::INVALID_LAYOUT));
         }
+    }
+
+    lux::cxx::expected<CookedAssetImage, AssetDecodeFailure> inspectCookedAssetImage(
+        AssetId requested,
+        lux::cxx::SharedBytes<> image,
+        const AssetDecodeLimits& limits
+    ) noexcept
+    {
+        if (requested.isNull())
+            return lux::cxx::unexpected(failure(EAssetDecodeError::INVALID_ASSET_ID));
+        auto inspected = inspectCookedAssetImage(std::move(image), limits);
+        if (!inspected)
+            return lux::cxx::unexpected(inspected.error());
+        if (inspected->metadata().id != requested)
+            return lux::cxx::unexpected(failure(EAssetDecodeError::ASSET_ID_MISMATCH));
+        return inspected;
     }
 } // namespace lux::asset

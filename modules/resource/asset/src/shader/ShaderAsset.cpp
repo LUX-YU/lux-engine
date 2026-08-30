@@ -2,6 +2,7 @@
 
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/resource/asset/detail/CookedAssetWriter.hpp>
+#include <lux/engine/resource/asset/detail/ShaderValidation.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -13,8 +14,6 @@ namespace lux::asset
 {
     namespace
     {
-        inline constexpr std::uint32_t kSpirvMagic = 0x07230203U;
-
         [[nodiscard]] AssetDecodeFailure decodeFailure(
             EAssetDecodeError code,
             std::size_t offset = 0U
@@ -33,14 +32,11 @@ namespace lux::asset
 
         [[nodiscard]] bool validSpirv(const lux::rdesc::Shader& shader) noexcept
         {
-            if (shader.data() == nullptr || shader.size() < sizeof(kSpirvMagic) ||
-                shader.size() % sizeof(std::uint32_t) != 0U)
-            {
-                return false;
-            }
-            std::uint32_t magic{};
-            std::memcpy(&magic, shader.data(), sizeof(magic));
-            return magic == kSpirvMagic;
+            if (shader.data() == nullptr) return false;
+            return detail::validSpirvBytes({
+                static_cast<const std::byte*>(shader.data()),
+                shader.size()
+            });
         }
 
         [[nodiscard]] bool canonicalizeAuxiliary(

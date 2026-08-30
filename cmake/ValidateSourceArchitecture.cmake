@@ -778,7 +778,49 @@ foreach(source IN LISTS typed_asset_production_sources)
             "Architecture: typed Asset production source '${source}' introduced forbidden glue vocabulary."
         )
     endif()
+    if(content MATCHES "ModelAssetData|MaterialAssetData|MaterialInstanceAssetData")
+        message(FATAL_ERROR
+            "Architecture: Asset production source '${source}' owns Resource domain data."
+        )
+    endif()
 endforeach()
+
+file(GLOB_RECURSE resource_description_sources LIST_DIRECTORIES false
+    "${source_root}/modules/resource/description/*.hpp"
+    "${source_root}/modules/resource/description/*.cpp"
+)
+foreach(source IN LISTS resource_description_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/resource/asset/")
+        message(FATAL_ERROR
+            "Architecture: Resource Description source '${source}' depends on the Asset package."
+        )
+    endif()
+    if(content MATCHES "OpaqueAssetId")
+        message(FATAL_ERROR
+            "Architecture: Resource Description source '${source}' restored opaque Asset identity."
+        )
+    endif()
+endforeach()
+
+if(EXISTS "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetId.hpp")
+    message(FATAL_ERROR "Architecture: retired Asset-layer AssetId header was restored.")
+endif()
+if(EXISTS "${source_root}/modules/resource/description/include/lux/engine/description/ImportedMaterialDesc.hpp")
+    message(FATAL_ERROR "Architecture: Toolchain import intermediate was restored to Resource Description.")
+endif()
+
+set(active_asset_packer_source
+    "${source_root}/engine/toolchain/asset/packer/src/AssetPacker.cpp"
+)
+if(EXISTS "${active_asset_packer_source}")
+    file(READ "${active_asset_packer_source}" active_asset_packer_contract)
+    if(active_asset_packer_contract MATCHES "kMetadataOffset|probeImage")
+        message(FATAL_ERROR
+            "Architecture: active Asset packer knows the cooked-envelope physical metadata offset."
+        )
+    endif()
+endif()
 
 file(GLOB_RECURSE runtime_asset_boundary_sources LIST_DIRECTORIES false
     "${source_root}/modules/resource/asset/*.hpp"
@@ -855,10 +897,12 @@ foreach(installed_consumer IN ITEMS
     ecs_system
     large_world_transform
     object_affinity
+    resource_descriptions
     resource_identity
     simulation_runtime
     world
     world_storage
+    typed_resource_assets
 )
     if(NOT EXISTS
        "${source_root}/test/l1_installed_consumer/${installed_consumer}/CMakeLists.txt")

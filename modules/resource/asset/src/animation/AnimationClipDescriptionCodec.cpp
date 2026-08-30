@@ -235,11 +235,16 @@ namespace lux::asset::detail
 
         std::uint8_t loop_u8 = 0;
         if (!c.u8(loop_u8)) return false;
+        if (loop_u8 > 1U) { c.fail("invalid loop flag"); return false; }
         out.loop = (loop_u8 != 0);
         // Skip 3 reserved bytes.
         std::uint8_t r0, r1, r2;
         if (!c.u8(r0) || !c.u8(r1) || !c.u8(r2)) return false;
-        (void)r0; (void)r1; (void)r2;
+        if (r0 != 0U || r1 != 0U || r2 != 0U)
+        {
+            c.fail("non-zero reserved bytes");
+            return false;
+        }
 
         if (!c.u32(track_count)) return false;
         if (track_count > kMaxAcTrackCount) { c.fail("track count too large"); return false; }

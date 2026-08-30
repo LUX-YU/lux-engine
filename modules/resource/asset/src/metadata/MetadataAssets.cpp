@@ -63,14 +63,51 @@ namespace lux::asset
             }
             for (const auto index : mesh.indices)
                 if (index >= mesh.vertices.size()) return false;
+            for (const auto& vertex : mesh.vertices)
+            {
+                if (!vertex.position.allFinite() || !vertex.normal.allFinite() ||
+                    !vertex.tangent.allFinite() || !vertex.uv.allFinite() ||
+                    !vertex.bitangent.allFinite())
+                {
+                    return false;
+                }
+                float weight_sum{};
+                for (std::uint8_t influence = 0U; influence < lux::rdesc::max_bone_influence; ++influence)
+                {
+                    const int bone = vertex.bone.bone_ids[influence];
+                    const float weight = vertex.bone.weights[influence];
+                    if (bone < -1 || !std::isfinite(weight) || weight < 0.0F || (weight > 0.0F && bone < 0))
+                        return false;
+                    if (weight > 0.0F)
+                    {
+                        for (std::uint8_t previous = 0U; previous < influence; ++previous)
+                        {
+                            if (vertex.bone.weights[previous] > 0.0F &&
+                                vertex.bone.bone_ids[previous] == bone)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                    weight_sum += weight;
+                }
+                if (weight_sum > 0.0F && std::abs(weight_sum - 1.0F) > 1.0e-4F)
+                    return false;
+            }
+            std::size_t previous_index_count = mesh.indices.size();
             for (const auto& lod : mesh.lods)
             {
-                if (!std::isfinite(lod.error) || lod.indices.size() > detail::kMaxMeshIndexCount)
+                if (!std::isfinite(lod.error) || lod.error < 0.0F || lod.indices.empty() ||
+                    lod.indices.size() % 3U != 0U || lod.indices.size() >= previous_index_count ||
+                    lod.indices.size() > detail::kMaxMeshIndexCount)
                     return false;
                 for (const auto index : lod.indices)
                     if (index >= mesh.vertices.size()) return false;
+                previous_index_count = lod.indices.size();
             }
-            return !mesh.bounds || (mesh.bounds->min.allFinite() && mesh.bounds->max.allFinite());
+            return !mesh.bounds ||
+                (mesh.bounds->min.allFinite() && mesh.bounds->max.allFinite() &&
+                 (mesh.bounds->min.array() <= mesh.bounds->max.array()).all());
         }
 
         [[nodiscard]] bool validSkeleton(const lux::rdesc::Skeleton& skeleton) noexcept
@@ -80,24 +117,28 @@ namespace lux::asset
             {
                 return false;
             }
+            std::size_t root_count{};
             for (std::size_t index = 0U; index < skeleton.bones.size(); ++index)
             {
                 const auto& bone = skeleton.bones[index];
                 if (bone.name.empty() || bone.name.size() > detail::kMaxSkelStringLen ||
-                    bone.parent_index >= static_cast<std::int32_t>(index) ||
+                    bone.parent_index < -1 || bone.parent_index >= static_cast<std::int32_t>(index) ||
                     !bone.bind_local.matrix().allFinite() || !bone.inv_bind_world.matrix().allFinite())
                 {
                     return false;
                 }
+                if (bone.parent_index == -1) ++root_count;
+                for (std::size_t previous = 0U; previous < index; ++previous)
+                    if (skeleton.bones[previous].name == bone.name) return false;
             }
-            return true;
+            return root_count != 0U;
         }
 
         [[nodiscard]] bool validAnimation(const lux::rdesc::AnimationClip& clip) noexcept
         {
             if (clip.name.empty() || clip.name.size() > detail::kMaxAcStringLen ||
                 !std::isfinite(clip.duration) || clip.duration <= 0.0F ||
-                clip.tracks.size() > detail::kMaxAcTrackCount)
+                clip.tracks.empty() || clip.tracks.size() > detail::kMaxAcTrackCount)
             {
                 return false;
             }
@@ -111,21 +152,30 @@ namespace lux::asset
                     track.times_s.size() > detail::kMaxAcKeyCount;
                 if (track.bone_index < 0 || count_mismatch || count_overflow)
                     return false;
-                const auto sortedFinite = [](const std::vector<float>& times) noexcept {
-                    float previous = -std::numeric_limits<float>::infinity();
-                    for (const float time : times)
+                const auto sortedFinite = [duration = clip.duration](const std::vector<float>& times) noexcept {
+                    float previous{};
+                    for (std::size_t index = 0U; index < times.size(); ++index)
                     {
-                        if (!std::isfinite(time) || time < previous)
+                        const float time = times[index];
+                        if (!std::isfinite(time) || time < 0.0F || time > duration ||
+                            (index != 0U && time <= previous))
                             return false;
                         previous = time;
                     }
                     return true;
                 };
+                if (track.times_t.empty() && track.times_r.empty() && track.times_s.empty()) return false;
                 if (!sortedFinite(track.times_t) || !sortedFinite(track.times_r) || !sortedFinite(track.times_s))
                     return false;
                 for (const auto& value : track.translations) if (!value.allFinite()) return false;
-                for (const auto& value : track.rotations) if (!value.coeffs().allFinite()) return false;
+                for (const auto& value : track.rotations)
+                    if (!value.coeffs().allFinite() || std::abs(value.norm() - 1.0F) > 1.0e-4F) return false;
                 for (const auto& value : track.scales) if (!value.allFinite()) return false;
+                for (const auto& previous : clip.tracks)
+                {
+                    if (&previous == &track) break;
+                    if (previous.bone_index == track.bone_index) return false;
+                }
             }
             return true;
         }

@@ -76,6 +76,8 @@ int main()
     std::memcpy(fixture.data() + offset, auxiliary_bytes.data(), auxiliary_bytes.size());
 
     auto owner = lux::cxx::SharedBytes<>::copyOf(fixture);
+    const auto embedded = inspectCookedAssetImage(owner, generous_limits);
+    assert(embedded && embedded->metadata().id == requested);
     const auto decoded = inspectCookedAssetImage(requested, owner, generous_limits);
     assert(decoded);
     assert(decoded->magic() == header.magic);

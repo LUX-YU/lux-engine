@@ -2,6 +2,7 @@
 
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/resource/asset/detail/CookedAssetWriter.hpp>
+#include <lux/engine/resource/asset/detail/ShaderValidation.hpp>
 
 #include <algorithm>
 #include <array>
@@ -40,17 +41,13 @@ namespace lux::asset
             return true;
         }
 
-        [[nodiscard]] bool hasSpirvMagic(std::span<const std::uint32_t> words) noexcept
-        {
-            return words.empty() || words.front() == 0x07230203U;
-        }
-
         [[nodiscard]] bool validMaterial(const lux::rdesc::MaterialDescription& data) noexcept
         {
             const auto alpha_mode = static_cast<std::uint8_t>(data.alpha_mode);
             if (data.parameter_count > lux::rdesc::MaterialDescription::kMaxParams ||
                 alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::Blend) ||
-                !hasSpirvMagic(data.gbuffer_spirv) || !hasSpirvMagic(data.forward_spirv)) return false;
+                !detail::validSpirvWords(data.gbuffer_spirv) ||
+                !detail::validSpirvWords(data.forward_spirv)) return false;
             for (std::size_t parameter = 0U; parameter < data.parameter_count; ++parameter)
                 for (const float value : data.parameter_defaults[parameter]) if (!std::isfinite(value)) return false;
             return true;

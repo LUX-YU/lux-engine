@@ -10,10 +10,11 @@ Lux Asset runtime returns immutable concrete typed assets. `Asset` owns common m
 `TAsset<T>` owns `shared_ptr<const T>`. Concrete final asset classes declare their canonical `AssetTypeId`, canonical name
 and primary magic. Public typed decode no longer returns `shared_ptr<const void>` and does not use `TypeToken`.
 
-All `.luxasset` images use the existing cooked-asset outer envelope. The Loader parses that envelope once from owned
-`SharedBytes`, verifies that its non-null AssetId equals the AssetId requested from the Provider, and then invokes the
-concrete typed SerDeser. A type-specific payload never encodes or synthesizes its own self AssetId. `AssetInfo.type` is
-supplied by the concrete asset class; the outer `legacy_type_tag` is compatibility/validation data only.
+All `.luxasset` images use the existing cooked-asset outer envelope. Typed decode invokes the generic cooked-envelope
+parser exactly once from owned `SharedBytes` before decoding its type-specific payload. Runtime decode additionally
+verifies that the embedded non-null AssetId equals the AssetId requested from the Provider. A type-specific payload never
+encodes or synthesizes its own self AssetId. `AssetInfo.type` is supplied by the concrete asset class; the outer
+`legacy_type_tag` is compatibility/validation data only.
 
 World bundle identity/generation remain World payload identity and never substitute for AssetId. Transient domain values
 without an assigned AssetId are not Assets.

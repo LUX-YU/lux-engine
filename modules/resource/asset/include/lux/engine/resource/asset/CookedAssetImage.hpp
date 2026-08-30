@@ -35,6 +35,12 @@ namespace lux::asset
 
     [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<CookedAssetImage, AssetDecodeFailure>
     inspectCookedAssetImage(
+        lux::cxx::SharedBytes<> image,
+        const AssetDecodeLimits& limits
+    ) noexcept;
+
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<CookedAssetImage, AssetDecodeFailure>
+    inspectCookedAssetImage(
         AssetId requested,
         lux::cxx::SharedBytes<> image,
         const AssetDecodeLimits& limits

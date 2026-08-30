@@ -452,31 +452,19 @@ namespace lux::scene
                     finishError({EWorldStorageRuntimeError::INVALID_PARTITION});
                     return;
                 }
-                try
-                {
-                    for (const auto& extent : page->partitionExtents(*record))
-                    {
-                        if (extent.volume >= source.world().storageVolumes().size())
-                        {
-                            finishError({EWorldStorageRuntimeError::INVALID_VOLUME, extent.volume});
-                            return;
-                        }
-                        for (std::uint32_t chunk{}; chunk < extent.chunk_count; ++chunk)
-                            partition_chunks.push_back({extent.volume, extent.first_chunk + chunk});
-                    }
-                }
-                catch (const std::bad_alloc&)
-                {
-                    finishError({EWorldStorageRuntimeError::ALLOCATION_FAILURE});
-                    return;
-                }
-                if (partition_chunks.empty())
+                partition_page = std::move(*page);
+                record = partition_page.find(partition);
+                if (record == nullptr || record->extent_count == 0U)
                 {
                     finishError({EWorldStorageRuntimeError::DECODE_FAILURE});
                     return;
                 }
-                chunk_index = 0U;
-                beginChunk(partition_chunks[0], false);
+                first_partition_extent = record->first_extent;
+                partition_extent_count = record->extent_count;
+                partition_extent_index = 0U;
+                chunk_in_extent = 0U;
+                if (!beginNextPartitionChunk())
+                    finishError({EWorldStorageRuntimeError::DECODE_FAILURE});
                 return;
             }
 
@@ -504,13 +492,61 @@ namespace lux::scene
                 finishError({EWorldStorageRuntimeError::ALLOCATION_FAILURE});
                 return;
             }
-            ++chunk_index;
-            if (chunk_index < partition_chunks.size())
+            if (beginNextPartitionChunk())
             {
-                beginChunk(partition_chunks[chunk_index], false);
                 return;
             }
 
+            finishPartition();
+        }
+
+        [[nodiscard]] bool beginNextPartitionChunk() noexcept
+        {
+            while (partition_extent_index < partition_extent_count)
+            {
+                const std::size_t extent_ordinal = static_cast<std::size_t>(first_partition_extent) +
+                    partition_extent_index;
+                if (extent_ordinal >= partition_page.extents.size())
+                {
+                    finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR});
+                    return true;
+                }
+                const auto& extent = partition_page.extents[extent_ordinal];
+                if (chunk_in_extent == 0U)
+                {
+                    if (extent.volume >= source.world().storageVolumes().size())
+                    {
+                        finishError({EWorldStorageRuntimeError::INVALID_VOLUME, extent.volume});
+                        return true;
+                    }
+                    const auto volume_chunks = source.world().storageVolumes()[extent.volume].chunk_count;
+                    const bool invalid_first = extent.first_chunk > volume_chunks;
+                    const bool invalid_count = extent.chunk_count == 0U ||
+                        (!invalid_first && extent.chunk_count > volume_chunks - extent.first_chunk);
+                    if (invalid_first || invalid_count)
+                    {
+                        finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR, extent.volume});
+                        return true;
+                    }
+                }
+                if (chunk_in_extent < extent.chunk_count)
+                {
+                    const world::WorldChunkReference reference{
+                        extent.volume,
+                        extent.first_chunk + chunk_in_extent
+                    };
+                    ++chunk_in_extent;
+                    beginChunk(reference, false);
+                    return true;
+                }
+                ++partition_extent_index;
+                chunk_in_extent = 0U;
+            }
+            return false;
+        }
+
+        void finishPartition() noexcept
+        {
             auto data = world::detail::decodeWorldPartitionData(
                 partition_bytes,
                 source.world().bundleId(),
@@ -562,8 +598,11 @@ namespace lux::scene
         const world::WorldPartitionTablePageDescription* table_page{};
         world::detail::WorldStorageVolumeHeader header;
         world::detail::WorldStorageChunkDescriptor descriptor;
-        std::vector<world::WorldChunkReference> partition_chunks;
-        std::size_t chunk_index{};
+        world::detail::WorldPartitionTablePage partition_page;
+        std::uint32_t first_partition_extent{};
+        std::uint32_t partition_extent_count{};
+        std::uint32_t partition_extent_index{};
+        std::uint32_t chunk_in_extent{};
         std::vector<std::byte> partition_bytes;
     };
 

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <span>
 #include <stdexec/execution.hpp>
@@ -305,6 +306,57 @@ int main()
             saw_volume1 = saw_volume1 || request.operation.volume == 1U;
         }
         assert(saw_volume0 && saw_volume1);
+    }
+
+    {
+        const auto bundle = id<WorldBundleId>(31U);
+        const auto generation = id<WorldBundleGeneration>(32U);
+        const std::array records{
+            WorldPartitionRecord{id<WorldPartitionId>(33U), 0U, 1U}
+        };
+        const std::array extents{
+            WorldPartitionExtent{0U, 0U, (std::numeric_limits<std::uint32_t>::max)()}
+        };
+        auto page = encodeWorldPartitionTablePage(WorldPartitionOrdinal{0U}, records, extents);
+        assert(page);
+        const std::array chunks{
+            WorldStorageChunkInput{
+                EWorldStorageChunkKind::PARTITION_TABLE_PAGE,
+                EWorldStorageCodec::NONE,
+                *page
+            }
+        };
+        auto volume = encodeWorldStorageVolume(bundle, generation, 0U, chunks);
+        assert(volume);
+
+        WorldDescriptionBuilder builder;
+        assert(builder.setIdentity(bundle, generation, "hostile-extent"));
+        assert(builder.addSchema(worldDataSchemaId("test.empty")));
+        assert(builder.setPartitioner({worldPartitionerId("test.hostile"), 1U}, 1U));
+        assert(builder.addStorageVolume({"hostile.wvol0", 1U, 1U, volume->size()}));
+        assert(builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}));
+        auto world_value = std::move(builder).build();
+        assert(world_value);
+        auto world = std::make_shared<WorldDescription>(std::move(*world_value));
+        auto endpoint = std::make_shared<DeferredMemoryEndpoint>(
+            std::vector<std::vector<std::byte>>{*volume}
+        );
+        auto source = scene::WorldStorageSource::create(
+            world,
+            async::OperationPort<scene::ReadWorldStorageRange>{endpoint}
+        );
+        assert(source);
+
+        ReceiverState result;
+        auto operation = stdexec::connect(
+            scene::loadWorldPartition(*source, WorldPartitionOrdinal{0U}, volume->size(), {}),
+            Receiver{&result}
+        );
+        stdexec::start(operation);
+        drive(*endpoint, result);
+        assert(result.error);
+        assert(result.error->code == scene::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
+        assert(endpoint->requests.size() == 3U);
     }
 
     {

@@ -70,10 +70,10 @@ namespace
 
 int main()
 {
-    auto material = std::make_shared<lux::asset::MaterialAssetData>();
+    auto material = std::make_shared<lux::rdesc::MaterialDescription>();
     material->parameter_count = 1U;
     material->parameter_defaults[0] = {0.25F, 0.5F, 0.75F, 1.0F};
-    material->alpha_mode = 2U;
+    material->alpha_mode = lux::rdesc::EAlphaMode::Blend;
     material->double_sided = true;
     material->gbuffer_spirv = {0x07230203U, 0x00010000U};
     material->forward_spirv = {0x07230203U, 0x00010001U};
@@ -89,14 +89,14 @@ int main()
         "34ddba8c3a78463d048553fa3d44481a737646895b6797e8fb62e19e9bd1fd8f"
     );
 
-    auto instance = std::make_shared<lux::asset::MaterialInstanceAssetData>();
+    auto instance = std::make_shared<lux::rdesc::MaterialInstanceDescription>();
     instance->parent_material_id = id(4U);
     instance->param_override_mask = 1U;
     instance->params[0][0] = 0.5F;
     instance->tex_override_mask = 1U;
     instance->texture_slot_ids[0] = id(1U);
     instance->render_state_override = 1U;
-    instance->alpha_mode = 2U;
+    instance->alpha_mode = lux::rdesc::EAlphaMode::Blend;
     instance->double_sided = true;
     const auto instance_asset = lux::asset::MaterialInstanceAsset::create(
         info<lux::asset::MaterialInstanceAsset>(5U),

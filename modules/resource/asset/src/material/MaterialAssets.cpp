@@ -45,24 +45,39 @@ namespace lux::asset
             return words.empty() || words.front() == 0x07230203U;
         }
 
-        [[nodiscard]] bool validMaterial(const MaterialAssetData& data) noexcept
+        [[nodiscard]] bool validMaterial(const lux::rdesc::MaterialDescription& data) noexcept
         {
-            if (data.parameter_count > MaterialAssetData::kMaxParams ||
+            const auto alpha_mode = static_cast<std::uint8_t>(data.alpha_mode);
+            if (data.parameter_count > lux::rdesc::MaterialDescription::kMaxParams ||
+                alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::Blend) ||
                 !hasSpirvMagic(data.gbuffer_spirv) || !hasSpirvMagic(data.forward_spirv)) return false;
             for (std::size_t parameter = 0U; parameter < data.parameter_count; ++parameter)
                 for (const float value : data.parameter_defaults[parameter]) if (!std::isfinite(value)) return false;
             return true;
         }
 
-        [[nodiscard]] bool validMaterialInstance(const MaterialInstanceAssetData& data) noexcept
+        [[nodiscard]] bool validMaterialInstance(const lux::rdesc::MaterialInstanceDescription& data) noexcept
         {
-            constexpr std::uint32_t param_mask = (1U << MaterialInstanceAssetData::kMaxParams) - 1U;
-            constexpr std::uint32_t texture_mask = (1U << MaterialInstanceAssetData::kMaxTextures) - 1U;
+            constexpr std::uint32_t param_mask =
+                (1U << lux::rdesc::MaterialInstanceDescription::kMaxParams) - 1U;
+            constexpr std::uint32_t texture_mask =
+                (1U << lux::rdesc::MaterialInstanceDescription::kMaxTextures) - 1U;
+            const auto alpha_mode = static_cast<std::uint8_t>(data.alpha_mode);
             if (data.parent_material_id.isNull() || (data.param_override_mask & ~param_mask) != 0U ||
-                (data.tex_override_mask & ~texture_mask) != 0U) return false;
-            for (std::uint32_t parameter = 0U; parameter < MaterialInstanceAssetData::kMaxParams; ++parameter)
+                (data.tex_override_mask & ~texture_mask) != 0U || data.render_state_override > 1U ||
+                alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::Blend)) return false;
+            for (std::uint32_t parameter = 0U;
+                 parameter < lux::rdesc::MaterialInstanceDescription::kMaxParams;
+                 ++parameter)
                 if ((data.param_override_mask & (1U << parameter)) != 0U)
                     for (const float value : data.params[parameter]) if (!std::isfinite(value)) return false;
+            for (std::uint32_t slot = 0U;
+                 slot < lux::rdesc::MaterialInstanceDescription::kMaxTextures;
+                 ++slot)
+            {
+                const bool is_overridden = (data.tex_override_mask & (1U << slot)) != 0U;
+                if (is_overridden == data.texture_slot_ids[slot].isNull()) return false;
+            }
             return true;
         }
 
@@ -184,7 +199,7 @@ namespace lux::asset
 
     MaterialAsset::MaterialAsset(
         AssetInfo info,
-        std::shared_ptr<const MaterialAssetData> data,
+        std::shared_ptr<const lux::rdesc::MaterialDescription> data,
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
@@ -193,7 +208,7 @@ namespace lux::asset
 
     lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure> MaterialAsset::create(
         AssetInfo info,
-        std::shared_ptr<const MaterialAssetData> data,
+        std::shared_ptr<const lux::rdesc::MaterialDescription> data,
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
     {
@@ -210,7 +225,7 @@ namespace lux::asset
 
     MaterialInstanceAsset::MaterialInstanceAsset(
         AssetInfo info,
-        std::shared_ptr<const MaterialInstanceAssetData> data,
+        std::shared_ptr<const lux::rdesc::MaterialInstanceDescription> data,
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
@@ -220,7 +235,7 @@ namespace lux::asset
     lux::cxx::expected<std::shared_ptr<const MaterialInstanceAsset>, AssetDecodeFailure>
     MaterialInstanceAsset::create(
         AssetInfo info,
-        std::shared_ptr<const MaterialInstanceAssetData> data,
+        std::shared_ptr<const lux::rdesc::MaterialInstanceDescription> data,
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
     {
@@ -247,18 +262,22 @@ namespace lux::asset
         try
         {
             Reader reader{image->information().view()};
-            auto data = std::make_shared<MaterialAssetData>();
-            std::uint32_t version{}, texture_count{};
+            auto data = std::make_shared<lux::rdesc::MaterialDescription>();
+            std::uint32_t version{}, texture_count{}, alpha_mode{};
             std::uint8_t double_sided{};
             if (!reader.pod(version) || version != kMaterialVersion ||
-                !reader.pod(data->parameter_count) || data->parameter_count > MaterialAssetData::kMaxParams)
+                !reader.pod(data->parameter_count) ||
+                data->parameter_count > lux::rdesc::MaterialDescription::kMaxParams)
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
             for (std::size_t parameter = 0U; parameter < data->parameter_count; ++parameter)
                 for (auto& value : data->parameter_defaults[parameter]) if (!reader.pod(value))
                     return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            if (!reader.pod(data->alpha_mode) || !reader.pod(double_sided) || double_sided > 1U ||
-                !reader.pod(texture_count) || texture_count > MaterialAssetData::kMaxTextures)
+            if (!reader.pod(alpha_mode) ||
+                alpha_mode > static_cast<std::uint32_t>(lux::rdesc::EAlphaMode::Blend) ||
+                !reader.pod(double_sided) || double_sided > 1U || !reader.pod(texture_count) ||
+                texture_count > lux::rdesc::MaterialDescription::kMaxTextures)
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            data->alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha_mode);
             data->double_sided = double_sided != 0U;
             std::uint32_t previous_slot{};
             for (std::uint32_t item = 0U; item < texture_count; ++item)
@@ -266,7 +285,8 @@ namespace lux::asset
                 std::uint32_t slot{};
                 AssetId id;
                 if (!reader.pod(slot) || !reader.id(id) || id.isNull() ||
-                    slot >= MaterialAssetData::kMaxTextures || (item != 0U && slot <= previous_slot))
+                    slot >= lux::rdesc::MaterialDescription::kMaxTextures ||
+                    (item != 0U && slot <= previous_slot))
                     return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
                 data->texture_slot_ids[slot] = id;
                 previous_slot = slot;
@@ -319,12 +339,12 @@ namespace lux::asset
             writer.pod(asset.data().parameter_count);
             for (std::size_t parameter = 0U; parameter < asset.data().parameter_count; ++parameter)
                 for (const float value : asset.data().parameter_defaults[parameter]) writer.pod(value);
-            writer.pod(asset.data().alpha_mode);
+            writer.pod(static_cast<std::uint32_t>(asset.data().alpha_mode));
             writer.pod(static_cast<std::uint8_t>(asset.data().double_sided ? 1U : 0U));
             std::uint32_t texture_count{};
             for (const auto id : asset.data().texture_slot_ids) if (!id.isNull()) ++texture_count;
             writer.pod(texture_count);
-            for (std::uint32_t slot = 0U; slot < MaterialAssetData::kMaxTextures; ++slot)
+            for (std::uint32_t slot = 0U; slot < lux::rdesc::MaterialDescription::kMaxTextures; ++slot)
             {
                 if (asset.data().texture_slot_ids[slot].isNull()) continue;
                 writer.pod(slot);
@@ -357,23 +377,29 @@ namespace lux::asset
         try
         {
             Reader reader{image->information().view()};
-            auto data = std::make_shared<MaterialInstanceAssetData>();
-            std::uint32_t version{}, double_sided{};
+            auto data = std::make_shared<lux::rdesc::MaterialInstanceDescription>();
+            std::uint32_t version{}, double_sided{}, alpha_mode{};
             if (!reader.pod(version) || version > kMaterialInstanceVersion || !reader.id(data->parent_material_id) ||
                 !reader.pod(data->param_override_mask))
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            for (std::uint32_t parameter = 0U; parameter < MaterialInstanceAssetData::kMaxParams; ++parameter)
+            for (std::uint32_t parameter = 0U;
+                 parameter < lux::rdesc::MaterialInstanceDescription::kMaxParams;
+                 ++parameter)
                 if ((data->param_override_mask & (1U << parameter)) != 0U)
                     for (auto& value : data->params[parameter]) if (!reader.pod(value))
                         return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
             if (!reader.pod(data->tex_override_mask))
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            for (std::uint32_t slot = 0U; slot < MaterialInstanceAssetData::kMaxTextures; ++slot)
+            for (std::uint32_t slot = 0U;
+                 slot < lux::rdesc::MaterialInstanceDescription::kMaxTextures;
+                 ++slot)
                 if ((data->tex_override_mask & (1U << slot)) != 0U && !reader.id(data->texture_slot_ids[slot]))
                     return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            if (!reader.pod(data->render_state_override) || !reader.pod(data->alpha_mode) ||
+            if (!reader.pod(data->render_state_override) || !reader.pod(alpha_mode) ||
+                alpha_mode > static_cast<std::uint32_t>(lux::rdesc::EAlphaMode::Blend) ||
                 !reader.pod(double_sided) || double_sided > 1U || reader.offset != reader.bytes.size())
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            data->alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha_mode);
             data->double_sided = double_sided != 0U;
             if (!validMaterialInstance(*data))
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
@@ -412,15 +438,19 @@ namespace lux::asset
             writer.pod(kMaterialInstanceVersion);
             writer.id(asset.data().parent_material_id);
             writer.pod(asset.data().param_override_mask);
-            for (std::uint32_t parameter = 0U; parameter < MaterialInstanceAssetData::kMaxParams; ++parameter)
+            for (std::uint32_t parameter = 0U;
+                 parameter < lux::rdesc::MaterialInstanceDescription::kMaxParams;
+                 ++parameter)
                 if ((asset.data().param_override_mask & (1U << parameter)) != 0U)
                     for (const float value : asset.data().params[parameter]) writer.pod(value);
             writer.pod(asset.data().tex_override_mask);
-            for (std::uint32_t slot = 0U; slot < MaterialInstanceAssetData::kMaxTextures; ++slot)
+            for (std::uint32_t slot = 0U;
+                 slot < lux::rdesc::MaterialInstanceDescription::kMaxTextures;
+                 ++slot)
                 if ((asset.data().tex_override_mask & (1U << slot)) != 0U)
                     writer.id(asset.data().texture_slot_ids[slot]);
             writer.pod(asset.data().render_state_override);
-            writer.pod(asset.data().alpha_mode);
+            writer.pod(static_cast<std::uint32_t>(asset.data().alpha_mode));
             writer.pod(static_cast<std::uint32_t>(asset.data().double_sided ? 1U : 0U));
             return wrap(asset, std::move(writer.bytes), limits);
         }

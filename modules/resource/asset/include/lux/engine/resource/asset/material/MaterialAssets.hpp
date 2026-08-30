@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/description/ShaderInfo.hpp>
+#include <lux/engine/description/Material.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/visibility.h>
@@ -8,7 +8,6 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <string_view>
@@ -16,38 +15,7 @@
 
 namespace lux::asset
 {
-    struct MaterialAssetData final
-    {
-        inline static constexpr std::uint32_t kMaxParams = 16U;
-        inline static constexpr std::uint32_t kMaxTextures = 8U;
-
-        std::array<std::array<float, 4U>, kMaxParams> parameter_defaults{};
-        std::uint32_t parameter_count{};
-        std::uint32_t alpha_mode{};
-        bool double_sided{};
-        std::vector<std::uint32_t> gbuffer_spirv;
-        lux::rdesc::ShaderInfo gbuffer_info;
-        std::vector<std::uint32_t> forward_spirv;
-        lux::rdesc::ShaderInfo forward_info;
-        std::array<AssetId, kMaxTextures> texture_slot_ids{};
-    };
-
-    struct MaterialInstanceAssetData final
-    {
-        inline static constexpr std::uint32_t kMaxParams = MaterialAssetData::kMaxParams;
-        inline static constexpr std::uint32_t kMaxTextures = MaterialAssetData::kMaxTextures;
-
-        AssetId parent_material_id;
-        std::uint32_t param_override_mask{};
-        std::array<std::array<float, 4U>, kMaxParams> params{};
-        std::uint32_t tex_override_mask{};
-        std::array<AssetId, kMaxTextures> texture_slot_ids{};
-        std::uint32_t render_state_override{};
-        std::uint32_t alpha_mode{};
-        bool double_sided{};
-    };
-
-    class LUX_ASSET_PUBLIC MaterialAsset final : public TAsset<MaterialAssetData>
+    class LUX_ASSET_PUBLIC MaterialAsset final : public TAsset<lux::rdesc::MaterialDescription>
     {
     public:
         inline static constexpr std::string_view canonical_name{"lux.material"};
@@ -58,19 +26,19 @@ namespace lux::asset
         [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure>
         create(
             AssetInfo info,
-            std::shared_ptr<const MaterialAssetData> data,
+            std::shared_ptr<const lux::rdesc::MaterialDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
         ) noexcept;
 
     private:
         MaterialAsset(
             AssetInfo info,
-            std::shared_ptr<const MaterialAssetData> data,
+            std::shared_ptr<const lux::rdesc::MaterialDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary
         ) noexcept;
     };
 
-    class LUX_ASSET_PUBLIC MaterialInstanceAsset final : public TAsset<MaterialInstanceAssetData>
+    class LUX_ASSET_PUBLIC MaterialInstanceAsset final : public TAsset<lux::rdesc::MaterialInstanceDescription>
     {
     public:
         inline static constexpr std::string_view canonical_name{"lux.material-instance"};
@@ -83,14 +51,14 @@ namespace lux::asset
             AssetDecodeFailure
         > create(
             AssetInfo info,
-            std::shared_ptr<const MaterialInstanceAssetData> data,
+            std::shared_ptr<const lux::rdesc::MaterialInstanceDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
         ) noexcept;
 
     private:
         MaterialInstanceAsset(
             AssetInfo info,
-            std::shared_ptr<const MaterialInstanceAssetData> data,
+            std::shared_ptr<const lux::rdesc::MaterialInstanceDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary
         ) noexcept;
     };

@@ -108,7 +108,8 @@ namespace lux::asset::detail
             if (encoded_size > limits.max_encoded_bytes)
                 return lux::cxx::unexpected(failure(EAssetEncodeError::LIMIT_EXCEEDED));
 
-            WireHeaderV2 header{};
+            WireHeaderV2 header;
+            std::memset(&header, 0, sizeof(header));
             header.magic = request.primary_magic;
             header.version = kCookedAssetVersionV2;
             header.info_offset = sizeof(WireHeaderV2);

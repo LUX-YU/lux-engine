@@ -657,6 +657,27 @@ if(EXISTS "${jolt_l1_probe}")
     endif()
 endif()
 
+set(render_lane_probe "${source_root}/test/architecture_probes/render_lane_probe.cpp")
+if(EXISTS "${render_lane_probe}")
+    file(READ "${render_lane_probe}" render_lane_probe_contract)
+    if(NOT render_lane_probe_contract MATCHES "DeviceRenderFixture" OR
+       NOT render_lane_probe_contract MATCHES "LatestSpscExchange<PresentationState>" OR
+       NOT render_lane_probe_contract MATCHES "trySubmitFrame" OR
+       NOT render_lane_probe_contract MATCHES "frame_ring_backpressure" OR
+       NOT render_lane_probe_contract MATCHES "validation_errors" OR
+       NOT render_lane_probe_contract MATCHES "readback")
+        message(FATAL_ERROR
+            "Architecture: Render lane probe lost its real Vulkan/frame-ring/latest-state evidence path."
+        )
+    endif()
+    if(render_lane_probe_contract MATCHES
+       "ecs::Registry|SceneServices|SimulationIngress|TimeDomain|TickGroup|GenericStreamingSource")
+        message(FATAL_ERROR
+            "Architecture: Render lane probe acquired live ECS traversal or a held generic runtime abstraction."
+        )
+    endif()
+endif()
+
 file(GLOB_RECURSE installed_public_headers LIST_DIRECTORIES false
     "${source_root}/modules/*.h"
     "${source_root}/modules/*.hpp"

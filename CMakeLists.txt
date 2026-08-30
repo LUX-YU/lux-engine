@@ -109,6 +109,8 @@ file(GLOB_RECURSE lux_architecture_inputs CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/engine/toolchain/*.hpp"
     "${CMAKE_SOURCE_DIR}/engine/toolchain/*.cpp"
     "${CMAKE_SOURCE_DIR}/engine/toolchain/CMakeLists.txt"
+    "${CMAKE_SOURCE_DIR}/test/architecture_probes/*.cpp"
+    "${CMAKE_SOURCE_DIR}/test/architecture_probes/CMakeLists.txt"
 )
 set(lux_architecture_stamp "${CMAKE_BINARY_DIR}/lux-architecture-check.stamp")
 add_custom_command(

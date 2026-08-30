@@ -82,11 +82,11 @@ else()
     option(LUX_SCRIPT_HAS_LUA "Build Lua backend" ON)
 endif()
 
-# Asset and shader cooking belongs to a future content/toolchain layer. The L0
-# libraries compile without invoking the quarantined Engine host tools.
-set(LUX_BUILD_PACKED_RENDER_CONTENT OFF CACHE BOOL
-    "Compile and embed built-in render content" FORCE)
-set(ENABLE_RENDER_TEST OFF CACHE BOOL "Enable render integration tests" FORCE)
+# Asset and shader cooking is an explicit build-tool path. Default runtime
+# profiles do not invoke a host packer; qualification/toolchain builds opt in.
+option(LUX_BUILD_PACKED_RENDER_CONTENT "Compile and embed built-in render content" OFF)
+option(ENABLE_RENDER_TEST "Enable render integration tests" OFF)
+set(LUX_ASSET_PACKER_EXECUTABLE "" CACHE FILEPATH "Optional explicit host lux_asset_packer executable")
 set(ENABLE_ASSET_TEST OFF CACHE BOOL "Enable legacy asset integration tests" FORCE)
 
 file(GLOB_RECURSE lux_architecture_inputs CONFIGURE_DEPENDS

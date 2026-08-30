@@ -579,7 +579,7 @@ namespace lux::render
             const auto* gpu_record = meshes->getGpuRecord(mesh);
             auto* material_slot = materials->slotRecord(material);
             const bool is_dead_instance = !instances->isAlive(slot);
-            const bool is_missing_previous = previous == nullptr;
+            const bool is_missing_previous = !previous;
             const bool is_missing_gpu_record = gpu_record == nullptr;
             const bool is_missing_material_slot = material_slot == nullptr;
             const bool is_invalid_input = is_dead_instance || is_missing_previous || is_missing_gpu_record ||

@@ -31,6 +31,11 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakCodec.cpp
 )
 
+component_add_cmake_scripts(
+    asset
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/add_asset.cmake
+)
+
 component_include_directories(
     asset
     BUILD_TIME_EXPORT

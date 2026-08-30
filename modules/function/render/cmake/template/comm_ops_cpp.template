@@ -18,7 +18,7 @@
 {%- for rec_idx in marked_record_decls -%}{%- set r = decl_from_index(rec_idx) -%}{%- if annotation_has(r, "luxop::config") -%}{%- set cfg_index = rec_idx -%}{%- endif -%}{%- endfor -%}
 {%- set cfg = decl_from_index(cfg_index) -%}
 {%- set prefix = annotation_get_for_or(cfg, "luxop::config", "prefix", "") -%}
-{%- set feature_header = annotation_get_for_or(cfg, "luxop::config", "feature_header", "") -%}
+{%- set feature_header = replace(annotation_get_for_or(cfg, "luxop::config", "feature_header", ""), " ", "") -%}
 {%- set feature_type = annotation_get_for_or(cfg, "luxop::config", "feature", "") -%}
 {%- set feature_id = annotation_get_for_or(cfg, "luxop::config", "id", "") -%}
 {%- set display = annotation_get_for_or(cfg, "luxop::config", "display", "") -%}

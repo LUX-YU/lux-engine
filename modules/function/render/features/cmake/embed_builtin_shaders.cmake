@@ -39,7 +39,16 @@ function(embed_builtin_shaders)
     endif()
 
     # Locate packer
-    if(TARGET lux_asset_packer)
+    if(LUX_ASSET_PACKER_EXECUTABLE)
+        if(NOT EXISTS "${LUX_ASSET_PACKER_EXECUTABLE}")
+            message(FATAL_ERROR
+                "[embed_builtin_shaders] LUX_ASSET_PACKER_EXECUTABLE does not exist: "
+                "${LUX_ASSET_PACKER_EXECUTABLE}"
+            )
+        endif()
+        set(_packer "${LUX_ASSET_PACKER_EXECUTABLE}")
+        set(_packer_dep "")
+    elseif(TARGET lux_asset_packer)
         set(_packer "$<TARGET_FILE:lux_asset_packer>")
         set(_packer_dep lux_asset_packer)
     else()

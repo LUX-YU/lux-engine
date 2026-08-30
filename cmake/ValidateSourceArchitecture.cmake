@@ -678,6 +678,35 @@ if(EXISTS "${render_lane_probe}")
     endif()
 endif()
 
+set(spatial3d_preloaded_probe
+    "${source_root}/test/architecture_probes/spatial3d_preloaded_probe.cpp"
+)
+if(EXISTS "${spatial3d_preloaded_probe}")
+    file(READ "${spatial3d_preloaded_probe}" spatial3d_preloaded_contract)
+    if(NOT spatial3d_preloaded_contract MATCHES "loadWorldPartition" OR
+       NOT spatial3d_preloaded_contract MATCHES "WorldMaterializer" OR
+       NOT spatial3d_preloaded_contract MATCHES "PreloadedSpatial3DSystem" OR
+       NOT spatial3d_preloaded_contract MATCHES "JPH::PhysicsSystem" OR
+       NOT spatial3d_preloaded_contract MATCHES "tryCreateTexture2DCopy" OR
+       NOT spatial3d_preloaded_contract MATCHES "uploadGraphMaterial" OR
+       NOT spatial3d_preloaded_contract MATCHES "uploadMesh" OR
+       NOT spatial3d_preloaded_contract MATCHES "state.physics_position[ \t]*-[ \t]*render_origin")
+        message(FATAL_ERROR
+            "Architecture: preloaded Spatial3D probe lost a World/Jolt/Render vertical-slice seam."
+        )
+    endif()
+    string(CONCAT spatial3d_preloaded_forbidden
+        "DemandKey|DemandTracker|ResidencyBridge|ResourceDemandRegistry|TimeDomain|TickGroup|"
+        "SimulationIngress|GenericStreamingSource|PhysicsOrigin|FloatingOrigin|OriginRebaseSystem|"
+        "RebaseDistance|shiftAllBodies|PhysicsPrecisionMode|JoltSingleBackend|JoltDoubleBackend"
+    )
+    if(spatial3d_preloaded_contract MATCHES "${spatial3d_preloaded_forbidden}")
+        message(FATAL_ERROR
+            "Architecture: preloaded Spatial3D probe promoted a held generic/origin abstraction."
+        )
+    endif()
+endif()
+
 file(GLOB_RECURSE installed_public_headers LIST_DIRECTORIES false
     "${source_root}/modules/*.h"
     "${source_root}/modules/*.hpp"

@@ -822,6 +822,49 @@ if(EXISTS "${active_asset_packer_source}")
     endif()
 endif()
 
+file(GLOB_RECURSE active_asset_toolchain_sources LIST_DIRECTORIES false
+    "${source_root}/engine/toolchain/asset/*.hpp"
+    "${source_root}/engine/toolchain/asset/*.cpp"
+)
+string(CONCAT asset_toolchain_forbidden_types
+    "AssetManager|AssetManager2|AssetCookContext|AssetCookRegistry|AssetProductRegistry|"
+    "AssetBatchManager|ResourceGraphManager|AssetServices|AssetRuntimeContext|AssetRegistry2"
+)
+foreach(source IN LISTS active_asset_toolchain_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "${asset_toolchain_forbidden_types}")
+        message(FATAL_ERROR
+            "Architecture: active Asset Toolchain source '${source}' restored Manager/Context/Registry orchestration."
+        )
+    endif()
+endforeach()
+
+set(imported_material_header
+    "${source_root}/engine/toolchain/asset/material/include/lux/engine/toolchain/asset/material/ImportedMaterialDescription.hpp"
+)
+if(EXISTS "${imported_material_header}")
+    file(READ "${imported_material_header}" imported_material_contract)
+    if(imported_material_contract MATCHES "texture_index|OpaqueAssetId" OR
+       NOT imported_material_contract MATCHES "AssetId[ \t]+texture")
+        message(FATAL_ERROR
+            "Architecture: imported Material Toolchain contract lost direct Texture Asset identity."
+        )
+    endif()
+endif()
+
+file(GLOB_RECURSE authoring_material_sources LIST_DIRECTORIES false
+    "${source_root}/engine/authoring/material/*.hpp"
+    "${source_root}/engine/authoring/material/*.cpp"
+)
+foreach(source IN LISTS authoring_material_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "namespace[ \t]+lux::rdesc")
+        message(FATAL_ERROR
+            "Architecture: MaterialGraph source '${source}' was restored to Resource Description ownership."
+        )
+    endif()
+endforeach()
+
 file(GLOB_RECURSE runtime_asset_boundary_sources LIST_DIRECTORIES false
     "${source_root}/modules/resource/asset/*.hpp"
     "${source_root}/modules/resource/asset/*.cpp"

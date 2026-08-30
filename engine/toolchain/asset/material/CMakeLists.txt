@@ -23,7 +23,7 @@ generate_visibility_header(
 set(lux_material_shader_source_dir
     "${CMAKE_SOURCE_DIR}/modules/function/render/features/assets/shaders"
 )
-set(lux_material_shader_emitted_dir "${CMAKE_BINARY_DIR}/lglsl_emitted")
+set(lux_material_shader_emitted_dir "${CMAKE_BINARY_DIR}/material_lglsl_emitted")
 set(lux_material_lighting_source
     "${lux_material_shader_source_dir}/lighting_common.lglslh"
 )

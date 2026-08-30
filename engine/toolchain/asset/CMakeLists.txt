@@ -3,3 +3,4 @@ set(LUX_SHADER_COOKER_TEST_SPIRV
 )
 add_subdirectory(shader)
 add_subdirectory(texture)
+add_subdirectory(packer)

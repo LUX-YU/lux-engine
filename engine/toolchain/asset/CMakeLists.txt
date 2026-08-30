@@ -4,6 +4,7 @@ set(LUX_SHADER_COOKER_TEST_SPIRV
 add_subdirectory(shader)
 add_subdirectory(texture)
 add_subdirectory(material)
+add_subdirectory(model)
 add_subdirectory(packer)
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)
@@ -16,5 +17,6 @@ if(LUX_PROFILE_HAS_TOOLCHAIN)
             toolchain_shader_emitter
             toolchain_texture_cooker
             toolchain_material_cooker
+            toolchain_model_cooker
     )
 endif()

@@ -186,7 +186,7 @@ namespace lux::shadergen::material
         // Legacy (Phong) imports collapse to PBR with metallic=0 / roughness=0.5.
         const float metallic  = d.legacy_lit ? 0.0f : d.metallic;
         const float roughness = d.legacy_lit ? 0.5f : d.roughness;
-        b.bind(EAttr::Metallic, scalar("Metallic", metallic, metallic_roughness_texture, 2));
+        b.bind(EAttr::Metallic, scalar("Metallic", metallic, metallic_roughness_texture, 0));
         b.bind(EAttr::Roughness, scalar("Roughness", roughness, metallic_roughness_texture, 1));
 
         if (normal_texture)

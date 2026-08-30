@@ -28,8 +28,10 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/detail/CookedAssetWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/material/MaterialAssets.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/metadata/MetadataAssets.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ModelAsset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/ShaderAsset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAtlasAssets.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetVfs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/VirtualPath.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakArchive.cpp
@@ -92,6 +94,7 @@ foreach(test_name IN ITEMS
     typed_asset_test
     typed_material_asset_test
     typed_metadata_asset_test
+    typed_model_2d_asset_test
     typed_shader_asset_test
     typed_texture_asset_test
 )

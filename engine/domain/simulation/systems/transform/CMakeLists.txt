@@ -19,6 +19,7 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../ecs/hierarchy/sinclude
     INSTALL_TIME include
 )
 
@@ -34,12 +35,14 @@ target_link_libraries(
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::hierarchy
         lux::engine::simulation::ecs::transform
+    PRIVATE lux::engine::simulation::simulation_core
 )
 
 component_add_transitive_commands(
     transform_system
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core hierarchy transform)"
+    "find_package(lux-engine-simulation-core REQUIRED COMPONENTS simulation_core)"
 )
 
 lux_classify_target(
@@ -61,6 +64,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::simulation::transform_system
         lux::engine::simulation::ecs::snapshot
+        lux::engine::simulation::simulation_core
 )
 if(MSVC)
     target_compile_options(transform_system_test PRIVATE /UNDEBUG)

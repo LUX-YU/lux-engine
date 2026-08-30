@@ -2,6 +2,7 @@
 
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
 #include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/SystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -13,7 +14,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
+#include <vector>
 
 namespace lux::simulation
 {
@@ -97,4 +100,18 @@ namespace lux::simulation
         std::unique_ptr<Impl> impl_;
         friend struct detail::TransformSystemTestAccess;
     };
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC const SystemDescription&
+    transformSystemDescription() noexcept;
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC std::span<const SystemRegistration>
+    transformSystemRegistrations() noexcept;
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC lux::cxx::expected<
+        std::vector<std::byte>,
+        ETransformUpdateError
+    > makeTransformSystemConfiguration(
+        std::size_t entity_capacity,
+        ecs::EcsCommandProducerCapacity command_capacity
+    ) noexcept;
 }

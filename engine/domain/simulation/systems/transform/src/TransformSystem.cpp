@@ -1,8 +1,13 @@
 #include <lux/engine/simulation/systems/TransformSystem.hpp>
 
+#include <lux/engine/simulation/SimulationBuilder.hpp>
+#include <lux/engine/simulation/ecs/hierarchy/detail/HierarchyMaintenance.hpp>
+
 #include <entt/signal/sigh.hpp>
 
 #include <algorithm>
+#include <array>
+#include <limits>
 #include <new>
 #include <vector>
 
@@ -423,5 +428,200 @@ namespace lux::simulation
     std::size_t Transform3DSystem::retainedDenseBytes() const noexcept
     {
         return impl_->retainedDenseBytes();
+    }
+
+    namespace
+    {
+        inline constexpr std::array kRegisteredTransformCapabilities{
+            std::string_view{"transform.2d"},
+            std::string_view{"transform.3d"}
+        };
+
+        class RegisteredTransformSystem final
+        {
+        public:
+            inline static constexpr auto Access = makeSystemAccessSpec<
+                ComponentRead<Transform2D>,
+                ComponentWrite<WorldTransform2D>,
+                ComponentRead<Transform3D>,
+                ComponentWrite<WorldTransform3D>,
+                ExternalWrite<HierarchyIndex>,
+                ExternalWrite<HierarchyDeltaBatch>>();
+            inline static constexpr SystemDescription Description{
+                .canonical_name = "lux.transform",
+                .version = 1U,
+                .configuration_schema_name = "lux.transform.Configuration",
+                .configuration_schema_version = 1U,
+                .capabilities = kRegisteredTransformCapabilities
+            };
+
+            explicit RegisteredTransformSystem(Registry& registry)
+                : maintenance_(registry, hierarchy_, deltas_),
+                  transform2d_(registry, hierarchy_, deltas_),
+                  transform3d_(registry, hierarchy_, deltas_)
+            {
+            }
+
+            ~RegisteredTransformSystem() noexcept = default;
+
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
+            prepare(std::size_t entity_capacity) noexcept
+            {
+                auto deltas = deltas_.prepare(entity_capacity);
+                if (!deltas)
+                    return mapHierarchyFailure(deltas.error());
+                auto maintenance = maintenance_.prepare(entity_capacity);
+                if (!maintenance)
+                    return mapHierarchyFailure(maintenance.error());
+                auto transform2d = transform2d_.prepare(entity_capacity);
+                if (!transform2d)
+                    return transform2d;
+                return transform3d_.prepare(entity_capacity);
+            }
+
+            [[nodiscard]] bool update(EcsCommandWriter& commands) noexcept
+            {
+                const auto maintained = maintenance_.update();
+                if (!maintained)
+                    return false;
+                const auto updated2d = transform2d_.update(commands);
+                if (!updated2d)
+                    return false;
+                const auto updated3d = transform3d_.update(commands);
+                return static_cast<bool>(updated3d);
+            }
+
+        private:
+            [[nodiscard]] static lux::cxx::expected<void, ETransformUpdateError>
+            mapHierarchyFailure(EHierarchyError error) noexcept
+            {
+                if (error == EHierarchyError::ALLOCATION_FAILURE)
+                    return lux::cxx::unexpected(ETransformUpdateError::ALLOCATION_FAILURE);
+                if (error == EHierarchyError::CAPACITY_EXCEEDED)
+                    return lux::cxx::unexpected(ETransformUpdateError::CAPACITY_EXCEEDED);
+                return lux::cxx::unexpected(ETransformUpdateError::INVALID_HIERARCHY);
+            }
+
+            HierarchyIndex hierarchy_;
+            HierarchyDeltaBatch deltas_;
+            ecs::detail::HierarchyMaintenance maintenance_;
+            Transform2DSystem transform2d_;
+            Transform3DSystem transform3d_;
+        };
+
+        [[nodiscard]] bool readU64(
+            std::span<const std::byte> bytes,
+            std::size_t offset,
+            std::uint64_t& value
+        ) noexcept
+        {
+            if (offset > bytes.size() || sizeof(value) > bytes.size() - offset)
+                return false;
+            value = 0U;
+            for (std::size_t index = 0U; index < sizeof(value); ++index)
+                value |= static_cast<std::uint64_t>(std::to_integer<std::uint8_t>(bytes[offset + index])) << (index * 8U);
+            return true;
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, SystemBuildFailure> installTransformSystem(
+            SimulationBuilder& builder,
+            SimulationSystemView description
+        ) noexcept
+        {
+            const auto payload = description.configurationPayload();
+            std::uint64_t entity_capacity{}, command_count{}, command_bytes{};
+            const bool valid_wire = payload.size() == sizeof(std::uint64_t) * 3U &&
+                readU64(payload, 0U, entity_capacity) &&
+                readU64(payload, sizeof(std::uint64_t), command_count) &&
+                readU64(payload, sizeof(std::uint64_t) * 2U, command_bytes);
+            const bool values_fit = valid_wire && entity_capacity != 0U && command_count != 0U && command_bytes != 0U &&
+                entity_capacity <= (std::numeric_limits<std::size_t>::max)() &&
+                command_count <= (std::numeric_limits<std::size_t>::max)() &&
+                command_bytes <= (std::numeric_limits<std::size_t>::max)();
+            if (!values_fit)
+            {
+                return lux::cxx::unexpected(SystemBuildFailure{
+                    ESystemBuildError::INVALID_DESCRIPTION,
+                    description.instanceId()
+                });
+            }
+
+            auto system = builder.emplaceSystem<RegisteredTransformSystem>(
+                description.instanceId(),
+                builder.registry()
+            );
+            if (!system)
+                return lux::cxx::unexpected(system.error());
+            const auto prepared = (*system)->prepare(static_cast<std::size_t>(entity_capacity));
+            if (!prepared)
+            {
+                const auto code = prepared.error() == ETransformUpdateError::ALLOCATION_FAILURE
+                    ? ESystemBuildError::ALLOCATION_FAILURE
+                    : ESystemBuildError::CONSTRUCTION_FAILURE;
+                return lux::cxx::unexpected(SystemBuildFailure{code, description.instanceId()});
+            }
+            return builder.addSystemCommandTask<RegisteredTransformSystem>(
+                description.instanceId(),
+                EcsCommandProducerCapacity{
+                    static_cast<std::size_t>(command_count),
+                    static_cast<std::size_t>(command_bytes)
+                },
+                [](RegisteredTransformSystem& value, EcsCommandWriter& commands) noexcept {
+                    return value.update(commands);
+                }
+            );
+        }
+    } // namespace
+
+    const SystemDescription& transformSystemDescription() noexcept
+    {
+        return RegisteredTransformSystem::Description;
+    }
+
+    std::span<const SystemRegistration> transformSystemRegistrations() noexcept
+    {
+        static const std::array registrations{
+            SystemRegistration{
+                systemTypeId(RegisteredTransformSystem::Description.canonical_name),
+                RegisteredTransformSystem::Description.version,
+                &installTransformSystem
+            }
+        };
+        return registrations;
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, ETransformUpdateError> makeTransformSystemConfiguration(
+        std::size_t entity_capacity,
+        EcsCommandProducerCapacity command_capacity
+    ) noexcept
+    {
+        if (entity_capacity == 0U || command_capacity.max_commands == 0U ||
+            command_capacity.max_payload_bytes == 0U)
+        {
+            return lux::cxx::unexpected(ETransformUpdateError::CAPACITY_EXCEEDED);
+        }
+        try
+        {
+            std::vector<std::byte> result(sizeof(std::uint64_t) * 3U);
+            const std::array values{
+                static_cast<std::uint64_t>(entity_capacity),
+                static_cast<std::uint64_t>(command_capacity.max_commands),
+                static_cast<std::uint64_t>(command_capacity.max_payload_bytes)
+            };
+            for (std::size_t field = 0U; field < values.size(); ++field)
+            {
+                for (std::size_t byte = 0U; byte < sizeof(std::uint64_t); ++byte)
+                {
+                    result[field * sizeof(std::uint64_t) + byte] = static_cast<std::byte>(
+                        (values[field] >> (byte * 8U)) & 0xFFU
+                    );
+                }
+            }
+            return result;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(ETransformUpdateError::ALLOCATION_FAILURE);
+        }
     }
 }

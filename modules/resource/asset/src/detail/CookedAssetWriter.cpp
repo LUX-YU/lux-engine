@@ -66,7 +66,8 @@ namespace lux::asset::detail
     ) noexcept
     {
         const bool invalid_metadata = request.metadata.id.isNull() || !request.metadata.type;
-        const bool invalid_payload = request.primary_magic == 0U || request.data.empty();
+        const bool invalid_payload = request.primary_magic == 0U ||
+            (request.information.empty() && request.data.empty());
         if (invalid_metadata || invalid_payload)
             return lux::cxx::unexpected(failure(EAssetEncodeError::INVALID_ASSET));
 

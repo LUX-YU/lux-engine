@@ -26,6 +26,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetCodecSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CookedAssetImage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/detail/CookedAssetWriter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/metadata/MetadataAssets.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/ShaderAsset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAsset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetVfs.cpp
@@ -33,6 +34,9 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakArchive.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakAssetProvider.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/mesh/MeshDescriptionCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/SkeletonDescriptionCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/AnimationClipDescriptionCodec.cpp
 )
 
 component_add_cmake_scripts(
@@ -85,6 +89,7 @@ foreach(test_name IN ITEMS
     asset_codec_set_test
     cooked_asset_image_test
     typed_asset_test
+    typed_metadata_asset_test
     typed_shader_asset_test
     typed_texture_asset_test
 )

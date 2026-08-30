@@ -22,7 +22,7 @@ includes the approved corrections documented in `REPOSITORY-ERRATA.md`.
 | `10-topology-cmake-architecture-gates.zh-CN.md` | 512 | `921bfa2ceeb5642766290359d9b98f816862e8325a17fe949bd5c8ca22781e35` | CMake/target/package architecture gates |
 | `11-architecture-probes-3d-2d-pixel-robot.zh-CN.md` | 536 | `4951e7dc0e3833961669245d13ff18423f07b43c972384f10df6c0ff1725b03f` | Phase 10 — four product architecture probes |
 | `12-p1-backlog.zh-CN.md` | 39 | `8b70a3815c371c87eafc90dc47676b55d59355b195f90b5294b94e641ce41d5f` | P1 backlog after Barrier B |
-| `ARCHITECTURE-GAPS.md` | 12 | `2c860d91fde35f2686807623668a009ff3339f32ecbaa94929134d37f3a386af` | Active architecture gap log |
+| `ARCHITECTURE-GAPS.md` | 13 | `1247a5ad02a6592a97d962761c08265f68ae6f527a7a33e76dbe72c576d57d53` | Active architecture gap log |
 | `README.md` | 254 | `fcb307a962913524294e5577450523b915201452cbfb6db14af9b4082f4665cb` | Package entry point / ordered reading guide |
 | `REPOSITORY-ERRATA.md` | 27 | `8dced54d37140c52bb66891ba72a5092fbef3068de7f9ecbb07fa3380e627e9c` | Approved repository-specific corrections |
 

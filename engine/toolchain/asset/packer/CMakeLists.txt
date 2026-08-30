@@ -37,6 +37,11 @@ if(LUX_PROFILE_HAS_TOOLCHAIN)
         RUNTIME DESTINATION bin
         COMPONENT lux_toolchain
     )
+    install(
+        FILES $<TARGET_RUNTIME_DLLS:lux_asset_packer>
+        DESTINATION bin
+        COMPONENT lux_toolchain
+    )
 endif()
 
 if(BUILD_TESTING)

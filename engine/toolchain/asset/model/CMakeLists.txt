@@ -56,6 +56,32 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+if(WIN32 AND LUX_PROFILE_HAS_TOOLCHAIN)
+    get_target_property(lux_assimp_runtime assimp::assimp IMPORTED_LOCATION_RELEASE)
+    if(NOT lux_assimp_runtime)
+        get_target_property(lux_assimp_runtime assimp::assimp IMPORTED_LOCATION)
+    endif()
+    get_filename_component(lux_assimp_runtime_dir "${lux_assimp_runtime}" DIRECTORY)
+    set(lux_assimp_runtime_dependencies)
+    foreach(runtime_name IN ITEMS poly2tri.dll minizip.dll zlib1.dll kubazip.dll pugixml.dll)
+        unset(runtime_dependency)
+        unset(runtime_dependency CACHE)
+        find_file(
+            runtime_dependency
+            NAMES ${runtime_name}
+            PATHS "${lux_assimp_runtime_dir}"
+            NO_DEFAULT_PATH
+            REQUIRED
+        )
+        list(APPEND lux_assimp_runtime_dependencies "${runtime_dependency}")
+    endforeach()
+    install(
+        FILES ${lux_assimp_runtime_dependencies}
+        DESTINATION bin
+        COMPONENT lux_toolchain
+    )
+endif()
+
 foreach(test_name IN ITEMS
     toolchain_model_cooker_static_test
     toolchain_model_cooker_skinned_test

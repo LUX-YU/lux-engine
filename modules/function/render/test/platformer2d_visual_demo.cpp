@@ -231,7 +231,7 @@ namespace
     {
         auto atlas = std::make_unique<lux::rdesc::TextureAtlas>();
         atlas->name = "player";
-        atlas->texture_uuid = lux::asset::opaqueFromAssetId(sheet);
+        atlas->texture = sheet;
         for (int i = 0; i < 4; ++i)
             atlas->frames.push_back(
                 {"run" + std::to_string(i),
@@ -245,7 +245,7 @@ namespace
         const auto makeClip = [&](const char* uuid, const char* name, std::vector<lux::rdesc::FlipbookFrame> frames) {
             auto clip = std::make_unique<lux::rdesc::FlipbookClip>();
             clip->name = name;
-            clip->atlas_uuid = lux::asset::opaqueFromAssetId(atlas_id);
+            clip->atlas = atlas_id;
             clip->frames = std::move(frames);
             clip->loop = true;
             auto info = makeInfo(uuid, lux::asset::EAssetType::FLIPBOOK_CLIP);

@@ -94,7 +94,7 @@ int main()
 
     auto atlas = std::make_shared<lux::rdesc::TextureAtlas>();
     atlas->name = "atlas";
-    atlas->texture_uuid = lux::asset::opaqueFromAssetId(id(1U));
+    atlas->texture = id(1U);
     atlas->frames.push_back({
         "idle",
         Eigen::Vector4f{0.0F, 0.0F, 0.5F, 1.0F},
@@ -113,7 +113,7 @@ int main()
 
     auto clip = std::make_shared<lux::rdesc::FlipbookClip>();
     clip->name = "blink";
-    clip->atlas_uuid = lux::asset::opaqueFromAssetId(id(2U));
+    clip->atlas = id(2U);
     clip->frames.push_back({0U, 0.125F});
     clip->events.push_back({0U, 7U});
     clip->loop = false;

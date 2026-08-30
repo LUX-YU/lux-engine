@@ -5,18 +5,17 @@
  *        sub-rects of one texture) and image ANIMATION CLIP (a frame
  *        sequence over an atlas). A2-00 / A2-01.
  *
- * Both are pure metadata — the pixels live in the referenced TEXTURE asset.
- * Like every rdesc type, these know nothing about the asset system: asset
- * references are carried as OPAQUE 16-byte uuid values (the asset layer
- * converts to/from the asset layer's strong soft identity); the description module keeps its
- * "no asset headers" boundary (the ImportedMaterialDesc convention).
+ * Both are pure metadata — the pixels live in independently loadable assets.
+ * Cross-Asset relations use the stable Resource identity directly; storage
+ * codecs may still encode that identity as the same compact 16-byte UUID.
  *
  * The two types share one header deliberately: a clip is meaningless without
  * the atlas vocabulary, and they are always consumed together by the 2D kit.
  */
 
+#include <lux/engine/resource/identity/AssetId.hpp>
+
 #include <Eigen/Core>
-#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -24,17 +23,6 @@
 
 namespace lux::rdesc
 {
-    /// Opaque asset reference (the raw bytes of a uuid). All-zero = null.
-    using OpaqueAssetId = std::array<std::uint8_t, 16>;
-
-    [[nodiscard]] inline bool isNullOpaqueAssetId(const OpaqueAssetId& id) noexcept
-    {
-        for (const auto b : id)
-            if (b != 0)
-                return false;
-        return true;
-    }
-
     // ── A2-00: image atlas ─────────────────────────────────────────────────
 
     /// One named frame: a uv sub-rect (x, y, w, h in [0,1]) + a normalised
@@ -52,7 +40,7 @@ namespace lux::rdesc
     struct TextureAtlas
     {
         std::string name;
-        OpaqueAssetId texture_uuid{}; ///< the TEXTURE asset (opaque)
+        lux::asset::AssetId texture; ///< the independently loadable TextureAsset
         std::vector<AtlasFrame> frames;
 
         /// Linear scan by name (atlases hold tens of frames; a map is not
@@ -89,7 +77,7 @@ namespace lux::rdesc
     struct FlipbookClip
     {
         std::string name;
-        OpaqueAssetId atlas_uuid{}; ///< the TEXTURE_ATLAS asset (opaque)
+        lux::asset::AssetId atlas; ///< the independently loadable TextureAtlasAsset
         std::vector<FlipbookFrame> frames;
         std::vector<FlipbookEvent> events;
         bool loop{true};

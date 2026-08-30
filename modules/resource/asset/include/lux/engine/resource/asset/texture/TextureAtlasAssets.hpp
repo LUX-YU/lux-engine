@@ -15,14 +15,6 @@
 
 namespace lux::asset
 {
-    [[nodiscard]] LUX_ASSET_PUBLIC AssetId assetIdFromOpaque(
-        const lux::rdesc::OpaqueAssetId& raw
-    ) noexcept;
-
-    [[nodiscard]] LUX_ASSET_PUBLIC lux::rdesc::OpaqueAssetId opaqueFromAssetId(
-        AssetId id
-    ) noexcept;
-
     class LUX_ASSET_PUBLIC TextureAtlasAsset final : public TAsset<lux::rdesc::TextureAtlas>
     {
     public:

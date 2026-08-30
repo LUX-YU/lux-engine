@@ -4,6 +4,7 @@
 #include <lux/engine/resource/asset/detail/CookedAssetWriter.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -68,6 +69,12 @@ namespace lux::asset
                 pod(static_cast<std::uint32_t>(value.size()));
                 raw(value.data(), value.size());
             }
+
+            void id(AssetId value)
+            {
+                const auto bytes_value = value.bytes();
+                raw(bytes_value.data(), bytes_value.size());
+            }
         };
 
         struct Reader final
@@ -99,6 +106,15 @@ namespace lux::asset
                 value.resize(size);
                 return raw(value.data(), size);
             }
+
+            [[nodiscard]] bool id(AssetId& value) noexcept
+            {
+                std::array<std::uint8_t, 16U> bytes_value{};
+                if (!raw(bytes_value.data(), bytes_value.size()))
+                    return false;
+                value = AssetId{bytes_value};
+                return true;
+            }
         };
 
         [[nodiscard]] bool finite(const Eigen::Vector4f& value) noexcept
@@ -109,7 +125,7 @@ namespace lux::asset
         [[nodiscard]] bool validAtlas(const lux::rdesc::TextureAtlas& atlas) noexcept
         {
             if (atlas.name.empty() || atlas.name.size() > kMaxString ||
-                lux::rdesc::isNullOpaqueAssetId(atlas.texture_uuid) || atlas.frames.size() > kMaxItems)
+                atlas.texture.isNull() || atlas.frames.size() > kMaxItems)
             {
                 return false;
             }
@@ -127,7 +143,7 @@ namespace lux::asset
         [[nodiscard]] bool validClip(const lux::rdesc::FlipbookClip& clip) noexcept
         {
             if (clip.name.empty() || clip.name.size() > kMaxString ||
-                lux::rdesc::isNullOpaqueAssetId(clip.atlas_uuid) || clip.frames.empty() ||
+                clip.atlas.isNull() || clip.frames.empty() ||
                 clip.frames.size() > kMaxItems || clip.events.size() > kMaxItems)
             {
                 return false;
@@ -146,7 +162,7 @@ namespace lux::asset
             writer.pod(kEndian);
             writer.pod(kVersion);
             writer.string(atlas.name);
-            writer.raw(atlas.texture_uuid.data(), atlas.texture_uuid.size());
+            writer.id(atlas.texture);
             writer.pod(static_cast<std::uint32_t>(atlas.frames.size()));
             for (const auto& frame : atlas.frames)
             {
@@ -165,7 +181,7 @@ namespace lux::asset
             std::uint32_t magic{}, endian{}, version{}, count{}, trailer{};
             if (!reader.pod(magic) || !reader.pod(endian) || !reader.pod(version) ||
                 magic != kAtlasMagic || endian != kEndian || version != kVersion ||
-                !reader.string(atlas.name) || !reader.raw(atlas.texture_uuid.data(), atlas.texture_uuid.size()) ||
+                !reader.string(atlas.name) || !reader.id(atlas.texture) ||
                 !reader.pod(count) || count > kMaxItems)
             {
                 return false;
@@ -188,7 +204,7 @@ namespace lux::asset
             writer.pod(kEndian);
             writer.pod(kVersion);
             writer.string(clip.name);
-            writer.raw(clip.atlas_uuid.data(), clip.atlas_uuid.size());
+            writer.id(clip.atlas);
             writer.pod(static_cast<std::uint8_t>(clip.loop ? 1U : 0U));
             writer.pod(std::uint8_t{});
             writer.pod(std::uint8_t{});
@@ -216,7 +232,7 @@ namespace lux::asset
             std::uint8_t loop{}, reserved{};
             if (!reader.pod(magic) || !reader.pod(endian) || !reader.pod(version) ||
                 magic != kClipMagic || endian != kEndian || version != kVersion ||
-                !reader.string(clip.name) || !reader.raw(clip.atlas_uuid.data(), clip.atlas_uuid.size()) ||
+                !reader.string(clip.name) || !reader.id(clip.atlas) ||
                 !reader.pod(loop) || loop > 1U || !reader.pod(reserved) || reserved != 0U ||
                 !reader.pod(reserved) || reserved != 0U || !reader.pod(reserved) || reserved != 0U ||
                 !reader.pod(frame_count) || frame_count > kMaxItems)
@@ -298,20 +314,6 @@ namespace lux::asset
             );
         }
     } // namespace
-
-    AssetId assetIdFromOpaque(const lux::rdesc::OpaqueAssetId& raw) noexcept
-    {
-        return AssetId{raw};
-    }
-
-    lux::rdesc::OpaqueAssetId opaqueFromAssetId(AssetId id) noexcept
-    {
-        lux::rdesc::OpaqueAssetId result{};
-        const auto bytes = id.bytes();
-        for (std::size_t index = 0U; index < result.size(); ++index)
-            result[index] = std::to_integer<std::uint8_t>(bytes[index]);
-        return result;
-    }
 
     TextureAtlasAsset::TextureAtlasAsset(
         AssetInfo info,

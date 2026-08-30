@@ -103,18 +103,34 @@ int main()
     assert(addScriptSystemData(final_builder, *authored, limits));
     auto description = std::move(final_builder).build();
     assert(description);
-    const auto codec = simulationAssetCodecDescriptor({});
-    const auto encoded = codec.encode(
-        std::addressof(*description),
-        lux::asset::AssetEncodeContext{unlimited()});
-    assert(encoded && (*encoded)[4] == std::byte{5U});
-    const auto decoded = codec.decode(
-        *encoded,
-        lux::asset::AssetDecodeContext{unlimited()});
+    auto description_owner = std::make_shared<const SimulationDescription>(std::move(*description));
+    std::array<std::uint8_t, 16U> simulation_asset_id{};
+    simulation_asset_id.back() = 9U;
+    auto simulation_asset = SimulationAsset::create(
+        lux::asset::AssetInfo{
+            lux::asset::AssetId{simulation_asset_id},
+            SimulationAsset::asset_type,
+            0U
+        },
+        description_owner
+    );
+    assert(simulation_asset);
+    const auto encoded = lux::asset::TAssetSerDeser<SimulationAsset>::encode(
+        **simulation_asset,
+        lux::asset::AssetEncodeLimits{std::numeric_limits<std::size_t>::max()}
+    );
+    assert(encoded);
+    const auto decoded = lux::asset::TAssetSerDeser<SimulationAsset>::decode(
+        (*simulation_asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        lux::asset::AssetDecodeLimits{
+            encoded->size(),
+            std::numeric_limits<std::size_t>::max(),
+            0U
+        }
+    );
     assert(decoded);
-    const auto restored = std::static_pointer_cast<
-        const SimulationDescription>(decoded->payload);
-    const auto data = restored->findData(scriptSystemDataSchemaId());
+    const auto data = (*decoded)->data().findData(scriptSystemDataSchemaId());
     assert(data && data.version() == ScriptSystemDescription::kSchemaVersion);
     return 0;
 }

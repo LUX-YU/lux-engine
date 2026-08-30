@@ -1,7 +1,9 @@
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
+#include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
 #include <lux/engine/simulation/asset/SystemDescriptionCompatibility.hpp>
+#include <lux/cxx/algorithm/sha256.hpp>
 
 #include <array>
 #include <cassert>
@@ -10,6 +12,7 @@
 #include <limits>
 #include <memory>
 #include <utility>
+#include <iostream>
 
 struct CollisionEvent final
 {
@@ -39,6 +42,13 @@ namespace
     inline constexpr HookPointId kPhysicsBefore{301U};
     inline constexpr HookPointId kPhysicsAfter{302U};
     inline constexpr EventPointId kCollision{401U};
+
+    [[nodiscard]] lux::asset::AssetId assetId(std::uint8_t tail)
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes.back() = tail;
+        return lux::asset::AssetId{bytes};
+    }
 
     inline constexpr std::array kPhysicsCapabilities{
         std::string_view{"physics.simulate"}};
@@ -79,15 +89,6 @@ int main()
     using namespace lux::asset;
     using namespace lux::simulation;
 
-    auto code_lifetime = std::make_shared<int>(7);
-    auto descriptor = simulationAssetCodecDescriptor(code_lifetime);
-    assert(descriptor.type ==
-        AssetTypeId::fromName(SimulationAssetCanonicalName));
-    assert(descriptor.primary_magic == SimulationAssetPrimaryMagic);
-    assert(descriptor.legacy_magic == 0U);
-    assert(descriptor.cpp_payload_type ==
-        lux::cxx::typeToken<SimulationDescription>());
-
     SimulationDescriptionBuilder builder;
     const auto schema_a = simulationDataSchemaId("test.aa");
     const auto schema_b = simulationDataSchemaId("test.bb");
@@ -115,78 +116,90 @@ int main()
     assert(builder.addDependency(kPhysicsInstance, kAnimationInstance));
     auto description = std::move(builder).build();
     assert(description);
-
-    auto encoded = descriptor.encode(
-        std::addressof(*description),
-        AssetEncodeContext{AssetCodecLimits{
-            0U,
-            0U,
-            std::numeric_limits<std::size_t>::max()}}
+    auto description_owner = std::make_shared<const SimulationDescription>(std::move(*description));
+    auto asset = SimulationAsset::create(
+        AssetInfo{assetId(7U), SimulationAsset::asset_type, 23U},
+        description_owner
     );
+    assert(asset);
+    constexpr AssetEncodeLimits encode_limits{1024U * 1024U};
+    constexpr AssetDecodeLimits decode_limits{1024U * 1024U, 1024U * 1024U, 4U};
+    auto encoded = TAssetSerDeser<SimulationAsset>::encode(**asset, encode_limits);
     assert(encoded);
-    assert((*encoded)[4] == std::byte{5U});
-    assert(!descriptor.encode(
-        std::addressof(*description),
-        AssetEncodeContext{AssetCodecLimits{0U, 0U, encoded->size() - 1U}}
+    const auto outer = inspectCookedAssetImage(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    );
+    assert(outer && outer->information().empty() && outer->data().size() == 865U);
+    const auto digest = lux::cxx::algorithm::Sha256::hash(outer->data().view());
+    const auto expected_digest = lux::cxx::algorithm::Sha256Digest::fromHex(
+        "8151e12e91b262bea50ac877fa893591dfa1a24162db55d295405dda8a65a492"
+    );
+    assert(expected_digest && digest == *expected_digest);
+    assert(outer->data().view()[4] == std::byte{5U});
+    assert(!TAssetSerDeser<SimulationAsset>::encode(
+        **asset,
+        AssetEncodeLimits{encoded->size() - 1U}
     ));
 
-    const AssetDecodeContext generous{AssetCodecLimits{
-        encoded->size(),
-        std::numeric_limits<std::size_t>::max(),
-        0U}};
-    auto decoded = descriptor.decode(*encoded, generous);
+    auto decoded = TAssetSerDeser<SimulationAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    );
     assert(decoded);
-    auto value = std::static_pointer_cast<const SimulationDescription>(
-        decoded->payload);
-    assert(value && value->dataCount() == 2U && value->systemCount() == 2U);
-    assert(value->dependencyCount() == 1U);
-    const auto physics = value->findSystem(kPhysicsInstance);
+    const auto& value = (*decoded)->data();
+    assert(value.dataCount() == 2U && value.systemCount() == 2U);
+    assert(value.dependencyCount() == 1U);
+    const auto physics = value.findSystem(kPhysicsInstance);
     assert(physics && physics.instanceName() == "physics");
     assert(lux::simulation::asset::matchesCurrentSystemDescription<
         PhysicsSystem>(physics));
     assert(physics.findHookPoint(kPhysicsAfter));
     assert(physics.findEvent(kCollision).route() ==
         EEventRoute::ENTITY_TARGETED);
-    assert(value->dependencyAt(0U).after().instanceId() ==
+    assert(value.dependencyAt(0U).after().instanceId() ==
         kAnimationInstance);
-    assert(decoded->decoded_byte_count == value->retainedBytes());
 
-    auto reencoded = descriptor.encode(
-        value.get(),
-        AssetEncodeContext{AssetCodecLimits{
-            0U,
-            0U,
-            std::numeric_limits<std::size_t>::max()}}
-    );
+    auto reencoded = TAssetSerDeser<SimulationAsset>::encode(**decoded, encode_limits);
     assert(reencoded && *reencoded == *encoded);
 
     for (const auto old_version : {1U, 2U, 3U, 4U})
     {
         auto old_wire = *encoded;
-        old_wire[4] = static_cast<std::byte>(old_version);
-        assert(!descriptor.decode(old_wire, generous));
+        old_wire[404U] = static_cast<std::byte>(old_version);
+        assert(!TAssetSerDeser<SimulationAsset>::decode(
+            (*asset)->id(),
+            lux::cxx::SharedBytes<>::copyOf(old_wire),
+            decode_limits
+        ));
     }
     auto trailing = *encoded;
     trailing.push_back(std::byte{});
-    assert(!descriptor.decode(
-        trailing,
-        AssetDecodeContext{AssetCodecLimits{
-            trailing.size(),
-            std::numeric_limits<std::size_t>::max(),
-            0U}}
+    assert(!TAssetSerDeser<SimulationAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(trailing),
+        AssetDecodeLimits{trailing.size(), trailing.size(), 4U}
     ));
     auto corrupt_magic = *encoded;
-    corrupt_magic[0] ^= std::byte{1U};
-    assert(!descriptor.decode(corrupt_magic, generous));
+    corrupt_magic[400U] ^= std::byte{1U};
+    assert(!TAssetSerDeser<SimulationAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(corrupt_magic),
+        decode_limits
+    ));
     auto corrupt_directory = *encoded;
-    corrupt_directory[40] ^= std::byte{1U};
-    assert(!descriptor.decode(corrupt_directory, generous));
-    assert(!descriptor.decode(
-        *encoded,
-        AssetDecodeContext{AssetCodecLimits{
-            encoded->size() - 1U,
-            std::numeric_limits<std::size_t>::max(),
-            0U}}
+    corrupt_directory[440U] ^= std::byte{1U};
+    assert(!TAssetSerDeser<SimulationAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(corrupt_directory),
+        decode_limits
+    ));
+    assert(!TAssetSerDeser<SimulationAsset>::decode(
+        assetId(8U),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
     ));
     return 0;
 }

@@ -176,6 +176,7 @@ int main()
     assert(simulation_builder.addSystem(SystemId, "consumer", System));
     auto simulation = std::move(simulation_builder).build();
     assert(simulation);
+    auto simulation_owner = std::make_shared<const SimulationDescription>(std::move(*simulation));
 
     ScriptSystemDescriptionBuilder script_builder;
     assert(script_builder.addMount({
@@ -185,7 +186,7 @@ int main()
         true,
         {{ValueSymbol, HookScriptTarget{SystemId, ValueHook}},
          {EventSymbol, EventScriptTarget{SystemId, PulseEvent}}}}));
-    auto script_description = std::move(script_builder).build(*simulation);
+    auto script_description = std::move(script_builder).build(*simulation_owner);
     assert(script_description);
     const ScriptSystemCodecLimits wire_limits{
         std::numeric_limits<std::size_t>::max(),
@@ -197,18 +198,29 @@ int main()
     assert(encoded_script);
     const auto decoded_script = decodeScriptSystemDescription(
         *encoded_script,
-        *simulation,
+        *simulation_owner,
         wire_limits);
     assert(decoded_script);
 
-    const auto simulation_codec = simulationAssetCodecDescriptor({});
-    const auto encoded_simulation = simulation_codec.encode(
-        std::addressof(*simulation),
-        lux::asset::AssetEncodeContext{unlimited()});
-    assert(encoded_simulation && (*encoded_simulation)[4] == std::byte{5U});
-    assert(simulation_codec.decode(
-        *encoded_simulation,
-        lux::asset::AssetDecodeContext{unlimited()}));
+    auto simulation_asset = SimulationAsset::create(
+        lux::asset::AssetInfo{assetId(), SimulationAsset::asset_type, 0U},
+        simulation_owner
+    );
+    assert(simulation_asset);
+    const auto encoded_simulation = lux::asset::TAssetSerDeser<SimulationAsset>::encode(
+        **simulation_asset,
+        lux::asset::AssetEncodeLimits{std::numeric_limits<std::size_t>::max()}
+    );
+    assert(encoded_simulation);
+    assert(lux::asset::TAssetSerDeser<SimulationAsset>::decode(
+        (*simulation_asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded_simulation),
+        lux::asset::AssetDecodeLimits{
+            encoded_simulation->size(),
+            std::numeric_limits<std::size_t>::max(),
+            0U
+        }
+    ));
 
     ecs::Registry registry;
     fixture.entity = registry.create();
@@ -235,7 +247,7 @@ int main()
     auto backend = std::move(*backend_result);
     const std::array backends{backend.descriptor()};
     auto created = ScriptSystem::create(
-        *simulation,
+        *simulation_owner,
         *decoded_script,
         registry,
         2U,

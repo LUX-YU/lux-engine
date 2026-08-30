@@ -1,7 +1,7 @@
 # ADR-20260830 — Typed Asset Framework and Cooked Envelope
 
 - Date: 2026-08-30
-- Status: Accepted for implementation
+- Status: Implemented
 - Scope: Asset object model, typed SerDeser boundary, cooked-image identity
 
 ## Decision
@@ -31,9 +31,14 @@ Mature typed asset payload/codec/cooker logic may be ported from legacy into act
 `EAssetType`, filesystem-owning SerDeser, SerDeser factory, manager registration, load/unload state and compatibility shims
 must not return.
 
-`AssetCodecSet` is frozen during migration. Concrete descriptor producers are deleted as their typed SerDesers land. After
-the final migration it is either removed when unused or reduced to a private magic/type-to-typed-thunk Loader table if a
-real dynamic dispatch consumer remains.
+The migration found no production consumer that knew only a magic/type and required runtime decoder discovery.
+`AssetCodecSet`, `AssetCodecDescriptor`, `DecodedAsset`, codec contexts and the `TypeToken` payload dispatch were therefore
+deleted after the final concrete descriptor producer disappeared. No typed/untyped adapter remains.
+
+The active typed set now covers Texture, Shader, Mesh, Skeleton, AnimationClip, Material, MaterialInstance, Model,
+TextureAtlas, FlipbookClip, ScriptArtifact, WorldDescription, SimulationDescription and SceneDescription. The mature
+description codecs and rgbcx/bc7enc implementation were selectively moved into active private packages; none of the old
+Manager/SerDeser-factory runtime returned.
 
 ## Held boundaries
 

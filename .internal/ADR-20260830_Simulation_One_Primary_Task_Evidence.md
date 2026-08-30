@@ -41,6 +41,10 @@ ScriptSystem remains Held. No Asset/backend capability bag is added to Simulatio
 
 ## Consequences
 
-The preloaded 3D and Render evidence work may proceed without a Simulation scheduling API change. Transform registration
-remains Held until a domain-local correction can preserve one maintenance owner and one-primary-task semantics. Generic
-timing, phase, ingress, streaming and demand types remain prohibited.
+The follow-up Transform ownership review resolved the held lower-domain gap without a scheduling addendum. One
+package-private registered Transform composition owns `HierarchyIndex`, `HierarchyDeltaBatch` and
+`HierarchyMaintenance`; its single command primary task executes maintenance exactly once, then the existing 2D and 3D
+propagation mechanisms against the same delta batch. Any step failure discards the shared command producer. Public
+`SimulationBuilder` remains unchanged and the one-primary-task decision stands.
+
+Generic timing, phase, ingress, streaming and demand types remain prohibited.

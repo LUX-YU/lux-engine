@@ -748,6 +748,57 @@ foreach(typed_asset_header IN ITEMS
     endif()
 endforeach()
 
+file(GLOB_RECURSE typed_asset_production_sources LIST_DIRECTORIES false
+    "${source_root}/modules/resource/asset/*.hpp"
+    "${source_root}/modules/resource/asset/*.cpp"
+    "${source_root}/modules/function/script/artifact/*.hpp"
+    "${source_root}/modules/function/script/artifact/*.cpp"
+    "${source_root}/engine/domain/world/asset/*.hpp"
+    "${source_root}/engine/domain/world/asset/*.cpp"
+    "${source_root}/engine/domain/simulation/asset/*.hpp"
+    "${source_root}/engine/domain/simulation/asset/*.cpp"
+    "${source_root}/engine/scene/asset/*.hpp"
+    "${source_root}/engine/scene/asset/*.cpp"
+)
+string(CONCAT typed_asset_forbidden_types
+    "AssetRuntimeContext|AssetServices|AssetManager2|AssetRegistry2|AssetBridge|AssetRuntimeBridge|"
+    "AssetDemandRegistry|AssetResidencyManager|TextureManager|TextureCodecRegistry|"
+    "TextureCookProfileRegistry|SerializationContext"
+)
+foreach(source IN LISTS typed_asset_production_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "TAssetSerDeser" AND content MATCHES
+       "#[ \t]*include[ \t]*[<\"][^\">]*(filesystem|AssetProvider|OperationPort|AssetManager)")
+        message(FATAL_ERROR
+            "Architecture: typed SerDeser '${source}' owns IO, Provider, Port, or Manager concerns."
+        )
+    endif()
+    if(content MATCHES "${typed_asset_forbidden_types}")
+        message(FATAL_ERROR
+            "Architecture: typed Asset production source '${source}' introduced forbidden glue vocabulary."
+        )
+    endif()
+endforeach()
+
+file(GLOB_RECURSE runtime_asset_boundary_sources LIST_DIRECTORIES false
+    "${source_root}/modules/resource/asset/*.hpp"
+    "${source_root}/modules/resource/asset/*.cpp"
+    "${source_root}/engine/domain/*.hpp"
+    "${source_root}/engine/domain/*.cpp"
+    "${source_root}/engine/process/*.hpp"
+    "${source_root}/engine/process/*.cpp"
+    "${source_root}/engine/scene/*.hpp"
+    "${source_root}/engine/scene/*.cpp"
+)
+foreach(source IN LISTS runtime_asset_boundary_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "#[ \t]*include[ \t]*[<\"](stb_image|spirv_cross|bc7enc|rgbcx)")
+        message(FATAL_ERROR
+            "Architecture: Runtime source '${source}' includes a Toolchain texture/shader dependency."
+        )
+    endif()
+endforeach()
+
 set(world_runtime_header
     "${source_root}/engine/scene/runtime/world/include/lux/engine/scene/WorldRuntime.hpp"
 )

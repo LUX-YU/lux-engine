@@ -1115,6 +1115,10 @@ foreach(required_domain_consumer IN ITEMS domain-partition domain-world-identity
         )
     endif()
 endforeach()
+
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/process-world/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed Process World consumer.")
+endif()
 file(READ "${process_timer_header}" process_timer_contract)
 file(READ "${process_port_sender_header}" process_port_sender_contract)
 if(process_timer_contract MATCHES "sender_tag|operation_state_tag|capacity[ \\t]*\\{[1-9]|create[^;]*=")

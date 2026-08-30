@@ -1,4 +1,5 @@
-#include <lux/engine/scene/WorldRuntime.hpp>
+#include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
+#include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/serialization/BinaryWriter.hpp>
 #include <lux/engine/serialization/Serialization.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
@@ -29,11 +30,11 @@ namespace
     }
 
     class Endpoint final
-        : public lux::async::OperationPort<lux::scene::ReadWorldStorageRange>::Endpoint
+        : public lux::async::OperationPort<lux::process::world::ReadWorldStorageRange>::Endpoint
     {
     public:
         [[nodiscard]] lux::async::SubmitResult submit(
-            lux::scene::ReadWorldStorageRange,
+            lux::process::world::ReadWorldStorageRange,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             lux::async::SubmitOptions
@@ -42,8 +43,8 @@ namespace
             complete(
                 state,
                 lux::cxx::unexpected(
-                    lux::async::OperationFailure<lux::scene::WorldStorageRuntimeFailure>::domain(
-                        {lux::scene::EWorldStorageRuntimeError::IO_FAILURE}
+                    lux::async::OperationFailure<lux::process::world::WorldStorageRuntimeFailure>::domain(
+                        {lux::process::world::EWorldStorageRuntimeError::IO_FAILURE}
                     )
                 )
             );
@@ -52,7 +53,7 @@ namespace
     };
 
     class MemoryEndpoint final
-        : public lux::async::OperationPort<lux::scene::ReadWorldStorageRange>::Endpoint
+        : public lux::async::OperationPort<lux::process::world::ReadWorldStorageRange>::Endpoint
     {
     public:
         explicit MemoryEndpoint(std::vector<std::byte> bytes) : bytes_(std::move(bytes))
@@ -60,7 +61,7 @@ namespace
         }
 
         [[nodiscard]] lux::async::SubmitResult submit(
-            lux::scene::ReadWorldStorageRange operation,
+            lux::process::world::ReadWorldStorageRange operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             lux::async::SubmitOptions options
@@ -74,8 +75,8 @@ namespace
                 complete(
                     state,
                     lux::cxx::unexpected(
-                        lux::async::OperationFailure<lux::scene::WorldStorageRuntimeFailure>::domain(
-                            {lux::scene::EWorldStorageRuntimeError::RANGE_OVERFLOW}
+                        lux::async::OperationFailure<lux::process::world::WorldStorageRuntimeFailure>::domain(
+                            {lux::process::world::EWorldStorageRuntimeError::RANGE_OVERFLOW}
                         )
                     )
                 );
@@ -98,8 +99,8 @@ namespace
                 complete(
                     state,
                     lux::cxx::unexpected(
-                        lux::async::OperationFailure<lux::scene::WorldStorageRuntimeFailure>::domain(
-                            {lux::scene::EWorldStorageRuntimeError::ALLOCATION_FAILURE}
+                        lux::async::OperationFailure<lux::process::world::WorldStorageRuntimeFailure>::domain(
+                            {lux::process::world::EWorldStorageRuntimeError::ALLOCATION_FAILURE}
                         )
                     )
                 );
@@ -124,7 +125,7 @@ namespace
             result->emplace(std::move(value));
         }
 
-        void set_error(lux::scene::WorldStorageRuntimeFailure value) && noexcept
+        void set_error(lux::process::world::WorldStorageRuntimeFailure value) && noexcept
         {
             error->emplace(value);
         }
@@ -140,7 +141,7 @@ namespace
         }
 
         std::optional<lux::world::WorldPartitionData>* result{};
-        std::optional<lux::scene::WorldStorageRuntimeFailure>* error{};
+        std::optional<lux::process::world::WorldStorageRuntimeFailure>* error{};
         bool* stopped{};
     };
 }
@@ -163,10 +164,10 @@ int main()
     assert(world_value);
     auto world = std::make_shared<WorldDescription>(std::move(*world_value));
 
-    assert(!scene::WorldStorageSource::create({}, {}));
-    auto source = scene::WorldStorageSource::create(
+    assert(!process::world::WorldStorageSource::create({}, {}));
+    auto source = process::world::WorldStorageSource::create(
         world,
-        lux::async::OperationPort<scene::ReadWorldStorageRange>{std::make_shared<Endpoint>()}
+        lux::async::OperationPort<process::world::ReadWorldStorageRange>{std::make_shared<Endpoint>()}
     );
     assert(source);
     assert(source->world().bundleId() == world->bundleId());
@@ -327,29 +328,29 @@ int main()
     assert(load_world_value);
     auto load_world = std::make_shared<WorldDescription>(std::move(*load_world_value));
     auto memory_endpoint = std::make_shared<MemoryEndpoint>(*volume);
-    auto load_source = scene::WorldStorageSource::create(
+    auto load_source = process::world::WorldStorageSource::create(
         load_world,
-        lux::async::OperationPort<scene::ReadWorldStorageRange>{memory_endpoint}
+        lux::async::OperationPort<process::world::ReadWorldStorageRange>{memory_endpoint}
     );
     assert(load_source);
 
     std::optional<WorldPartitionData> limited_value;
-    std::optional<scene::WorldStorageRuntimeFailure> limited_error;
+    std::optional<process::world::WorldStorageRuntimeFailure> limited_error;
     bool limited_stopped{};
     auto limited_state = stdexec::connect(
-        scene::loadWorldPartition(*load_source, lux::partition::PartitionOrdinal{0U}, 1U, {}),
+        process::world::loadWorldPartition(*load_source, lux::partition::PartitionOrdinal{0U}, 1U, {}),
         LoadReceiver{&limited_value, &limited_error, &limited_stopped}
     );
     stdexec::start(limited_state);
     assert(!limited_value);
     assert(limited_error);
-    assert(limited_error->code == scene::EWorldStorageRuntimeError::LIMIT_EXCEEDED);
+    assert(limited_error->code == process::world::EWorldStorageRuntimeError::LIMIT_EXCEEDED);
 
     std::optional<WorldPartitionData> loaded;
-    std::optional<scene::WorldStorageRuntimeFailure> load_error;
+    std::optional<process::world::WorldStorageRuntimeFailure> load_error;
     bool stopped{};
     auto load_state = stdexec::connect(
-        scene::loadWorldPartition(
+        process::world::loadWorldPartition(
             *load_source,
             lux::partition::PartitionOrdinal{0U},
             volume->size(),
@@ -370,7 +371,7 @@ int main()
     loaded.reset();
     stopped = false;
     auto stopped_state = stdexec::connect(
-        scene::loadWorldPartition(
+        process::world::loadWorldPartition(
             *load_source,
             lux::partition::PartitionOrdinal{0U},
             volume->size(),

@@ -11,7 +11,7 @@ add_component(
     COMPONENT_NAME scene_runtime_world
     NAMESPACE      lux::engine::scene
     OUTPUT_NAME    lux_engine_scene_runtime_world
-    SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldRuntime.cpp
+    SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldMaterializer.cpp
 )
 component_include_directories(
     scene_runtime_world
@@ -33,7 +33,6 @@ target_link_libraries(
         lux::engine::scene::scene_core
         lux::engine::world::storage
         lux::engine::simulation::ecs::schema
-        lux::engine::core::async_port
         lux::cxx::memory
 )
 component_add_transitive_commands(
@@ -42,7 +41,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_core)"
     "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS async_port)"
 )
 lux_classify_target(
     TARGET  scene_runtime_world
@@ -56,6 +54,7 @@ target_link_libraries(
     scene_world_runtime_test
     PRIVATE
         lux::engine::scene::scene_runtime_world
+        lux::engine::process::process_world
         lux::engine::simulation::ecs::transform
 )
 if(MSVC)
@@ -79,6 +78,7 @@ target_link_libraries(
     scene_world_runtime_deferred_test
     PRIVATE
         lux::engine::scene::scene_runtime_world
+        lux::engine::process::process_world
         lux::engine::simulation::simulation_core
 )
 if(MSVC)

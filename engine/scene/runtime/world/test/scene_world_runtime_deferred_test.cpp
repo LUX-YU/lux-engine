@@ -1,5 +1,6 @@
 #include <lux/engine/scene/Scene.hpp>
-#include <lux/engine/scene/WorldRuntime.hpp>
+#include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
+#include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 #include <lux/engine/world/storage/detail/WorldStorageCodec.hpp>
@@ -34,12 +35,12 @@ namespace
     }
 
     class DeferredMemoryEndpoint final
-        : public async::OperationPort<scene::ReadWorldStorageRange>::Endpoint
+        : public async::OperationPort<process::world::ReadWorldStorageRange>::Endpoint
     {
     public:
         struct Request final
         {
-            scene::ReadWorldStorageRange operation;
+            process::world::ReadWorldStorageRange operation;
             std::size_t accounted_bytes{};
         };
 
@@ -49,7 +50,7 @@ namespace
         }
 
         [[nodiscard]] async::SubmitResult submit(
-            scene::ReadWorldStorageRange operation,
+            process::world::ReadWorldStorageRange operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             async::SubmitOptions options
@@ -80,8 +81,8 @@ namespace
                 pending.complete(
                     pending.state,
                     lux::cxx::unexpected(
-                        async::OperationFailure<scene::WorldStorageRuntimeFailure>::domain(
-                            {scene::EWorldStorageRuntimeError::RANGE_OVERFLOW, operation.volume, operation.offset}
+                        async::OperationFailure<process::world::WorldStorageRuntimeFailure>::domain(
+                            {process::world::EWorldStorageRuntimeError::RANGE_OVERFLOW, operation.volume, operation.offset}
                         )
                     )
                 );
@@ -104,7 +105,7 @@ namespace
     private:
         struct Pending final
         {
-            scene::ReadWorldStorageRange operation;
+            process::world::ReadWorldStorageRange operation;
             void* state{};
             void (*complete)(void*, Outcome&&) noexcept{};
         };
@@ -116,7 +117,7 @@ namespace
     struct ReceiverState final
     {
         std::optional<WorldPartitionData> value;
-        std::optional<scene::WorldStorageRuntimeFailure> error;
+        std::optional<process::world::WorldStorageRuntimeFailure> error;
         bool stopped{};
         bool delivered{};
         bool completed{};
@@ -136,7 +137,7 @@ namespace
             state->completed = true;
         }
 
-        void set_error(scene::WorldStorageRuntimeFailure error) && noexcept
+        void set_error(process::world::WorldStorageRuntimeFailure error) && noexcept
         {
             state->error = error;
             state->completed = true;
@@ -250,14 +251,14 @@ namespace
             return std::make_shared<WorldDescription>(std::move(*result));
         }
 
-        [[nodiscard]] scene::WorldStorageSource source(
+        [[nodiscard]] process::world::WorldStorageSource source(
             const std::shared_ptr<DeferredMemoryEndpoint>& endpoint,
             std::shared_ptr<const WorldDescription> selected_world = {}
         ) const
         {
-            auto result = scene::WorldStorageSource::create(
+            auto result = process::world::WorldStorageSource::create(
                 selected_world ? std::move(selected_world) : world,
-                async::OperationPort<scene::ReadWorldStorageRange>{endpoint}
+                async::OperationPort<process::world::ReadWorldStorageRange>{endpoint}
             );
             assert(result);
             return *result;
@@ -283,7 +284,7 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(fixture.volumes);
         ReceiverState result;
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(
+            process::world::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -341,21 +342,21 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(
             std::vector<std::vector<std::byte>>{*volume}
         );
-        auto source = scene::WorldStorageSource::create(
+        auto source = process::world::WorldStorageSource::create(
             world,
-            async::OperationPort<scene::ReadWorldStorageRange>{endpoint}
+            async::OperationPort<process::world::ReadWorldStorageRange>{endpoint}
         );
         assert(source);
 
         ReceiverState result;
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(*source, lux::partition::PartitionOrdinal{0U}, volume->size(), {}),
+            process::world::loadWorldPartition(*source, lux::partition::PartitionOrdinal{0U}, volume->size(), {}),
             Receiver{&result}
         );
         stdexec::start(operation);
         drive(*endpoint, result);
         assert(result.error);
-        assert(result.error->code == scene::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
+        assert(result.error->code == process::world::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
         assert(endpoint->requests.size() == 3U);
     }
 
@@ -364,7 +365,7 @@ int main()
         std::stop_source stop;
         ReceiverState result;
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(
+            process::world::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -384,7 +385,7 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(fixture.volumes);
         ReceiverState result;
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(
+            process::world::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.single_chunk_limit,
@@ -395,7 +396,7 @@ int main()
         stdexec::start(operation);
         drive(*endpoint, result);
         assert(result.error);
-        assert(result.error->code == scene::EWorldStorageRuntimeError::LIMIT_EXCEEDED);
+        assert(result.error->code == process::world::EWorldStorageRuntimeError::LIMIT_EXCEEDED);
     }
 
     {
@@ -403,7 +404,7 @@ int main()
         ReceiverState result;
         auto stale_world = fixture.buildWorld(id<WorldBundleGeneration>(3U), 2U);
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(
+            process::world::loadWorldPartition(
                 fixture.source(endpoint, stale_world),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -414,7 +415,7 @@ int main()
         stdexec::start(operation);
         endpoint->completeNext();
         assert(result.error);
-        assert(result.error->code == scene::EWorldStorageRuntimeError::BUNDLE_MISMATCH);
+        assert(result.error->code == process::world::EWorldStorageRuntimeError::BUNDLE_MISMATCH);
     }
 
     {
@@ -422,7 +423,7 @@ int main()
         ReceiverState result;
         auto wrong_chunks = fixture.buildWorld(fixture.generation, 3U);
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(
+            process::world::loadWorldPartition(
                 fixture.source(endpoint, wrong_chunks),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -433,7 +434,7 @@ int main()
         stdexec::start(operation);
         endpoint->completeNext();
         assert(result.error);
-        assert(result.error->code == scene::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
+        assert(result.error->code == process::world::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
     }
 
     {
@@ -452,7 +453,7 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(fixture.volumes);
         ReceiverState result;
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(
+            process::world::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -472,7 +473,7 @@ int main()
         auto requester = std::make_shared<int>(42);
         ReceiverState result;
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(
+            process::world::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),

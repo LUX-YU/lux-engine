@@ -1,4 +1,4 @@
-#include <lux/engine/scene/WorldRuntime.hpp>
+#include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
 #include <lux/engine/world/storage/detail/WorldStorageCodec.hpp>
 
 #include <atomic>
@@ -6,7 +6,7 @@
 #include <new>
 #include <utility>
 
-namespace lux::scene
+namespace lux::process::world
 {
     namespace
     {
@@ -14,19 +14,10 @@ namespace lux::scene
         {
             return WorldStorageRuntimeFailure{EWorldStorageRuntimeError::INVALID_SOURCE};
         }
-
-        [[nodiscard]] WorldMaterializeFailure materializeFailure(
-            EWorldMaterializeError code,
-            std::size_t object = 0U,
-            std::size_t data = 0U
-        ) noexcept
-        {
-            return WorldMaterializeFailure{code, {}, object, data};
-        }
     } // namespace
 
     WorldStorageSource::WorldStorageSource(
-        std::shared_ptr<const world::WorldDescription> world,
+        std::shared_ptr<const lux::world::WorldDescription> world,
         lux::async::OperationPort<ReadWorldStorageRange> read_port
     ) noexcept
         : world_(std::move(world)), read_port_(std::move(read_port))
@@ -34,7 +25,7 @@ namespace lux::scene
     }
 
     lux::cxx::expected<WorldStorageSource, WorldStorageRuntimeFailure> WorldStorageSource::create(
-        std::shared_ptr<const world::WorldDescription> world,
+        std::shared_ptr<const lux::world::WorldDescription> world,
         lux::async::OperationPort<ReadWorldStorageRange> read_port
     ) noexcept
     {
@@ -48,7 +39,7 @@ namespace lux::scene
         return world_ != nullptr && static_cast<bool>(read_port_);
     }
 
-    const world::WorldDescription& WorldStorageSource::world() const noexcept
+    const lux::world::WorldDescription& WorldStorageSource::world() const noexcept
     {
         return *world_;
     }
@@ -56,167 +47,6 @@ namespace lux::scene
     const lux::async::OperationPort<ReadWorldStorageRange>& WorldStorageSource::readPort() const noexcept
     {
         return read_port_;
-    }
-
-    WorldMaterializer::WorldMaterializer(
-        std::shared_ptr<const world::WorldDescription> world,
-        simulation::ecs::ComponentSchemaSet components,
-        std::vector<const simulation::ecs::ComponentSchema*> mappings
-    ) noexcept
-        : world_(std::move(world)), components_(std::move(components)), mappings_(std::move(mappings))
-    {
-    }
-
-    lux::cxx::expected<WorldMaterializer, WorldMaterializeFailure> WorldMaterializer::create(
-        std::shared_ptr<const world::WorldDescription> world,
-        simulation::ecs::ComponentSchemaSet components
-    ) noexcept
-    {
-        if (!world)
-        {
-            return lux::cxx::unexpected(
-                materializeFailure(EWorldMaterializeError::INVALID_WORLD_SCHEMA)
-            );
-        }
-
-        try
-        {
-            std::vector<const simulation::ecs::ComponentSchema*> mappings;
-            mappings.reserve(world->schemas().size());
-            for (const auto& schema : world->schemas())
-            {
-                mappings.push_back(
-                    components.find(simulation::ecs::componentSchemaId(schema.name))
-                );
-            }
-            return WorldMaterializer(std::move(world), std::move(components), std::move(mappings));
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(
-                materializeFailure(EWorldMaterializeError::ALLOCATION_FAILURE)
-            );
-        }
-    }
-
-    lux::cxx::expected<simulation::ecs::Entity, WorldMaterializeFailure> WorldMaterializer::object(
-        simulation::ecs::Registry& registry,
-        world::WorldPartitionObjectView object
-    ) const noexcept
-    {
-        if (!object)
-            return lux::cxx::unexpected(materializeFailure(EWorldMaterializeError::INVALID_OBJECT));
-        if (object.bundle() != world_->bundleId() || object.generation() != world_->generation())
-        {
-            return lux::cxx::unexpected(
-                materializeFailure(EWorldMaterializeError::INVALID_WORLD_SCHEMA)
-            );
-        }
-
-        simulation::ecs::Entity entity{simulation::ecs::NullEntity};
-        try
-        {
-            entity = registry.create();
-            for (std::size_t data{}; data < object.dataCount(); ++data)
-            {
-                const std::uint32_t ordinal = object.schemaOrdinalAt(data);
-                if (ordinal >= mappings_.size())
-                {
-                    registry.destroy(entity);
-                    return lux::cxx::unexpected(
-                        materializeFailure(EWorldMaterializeError::INVALID_WORLD_SCHEMA, 0U, data)
-                    );
-                }
-                const auto* schema = mappings_[ordinal];
-                if (schema == nullptr)
-                    continue;
-                if (schema->decode_emplace == nullptr)
-                {
-                    registry.destroy(entity);
-                    return lux::cxx::unexpected(
-                        materializeFailure(EWorldMaterializeError::COMPONENT_DECODE_FAILURE, 0U, data)
-                    );
-                }
-                auto decoded = schema->decode_emplace(
-                    registry,
-                    entity,
-                    object.schemaVersionAt(data),
-                    object.payloadAt(data)
-                );
-                if (!decoded)
-                {
-                    registry.destroy(entity);
-                    WorldMaterializeFailure failure =
-                        materializeFailure(EWorldMaterializeError::COMPONENT_DECODE_FAILURE, 0U, data);
-                    failure.component = decoded.error();
-                    return lux::cxx::unexpected(std::move(failure));
-                }
-            }
-            return entity;
-        }
-        catch (const std::bad_alloc&)
-        {
-            if (registry.valid(entity))
-                registry.destroy(entity);
-            return lux::cxx::unexpected(
-                materializeFailure(EWorldMaterializeError::ALLOCATION_FAILURE)
-            );
-        }
-    }
-
-    lux::cxx::expected<void, WorldMaterializeFailure> WorldMaterializer::partition(
-        simulation::ecs::Registry& registry,
-        const world::WorldPartitionData& data,
-        std::vector<simulation::ecs::Entity>* created
-    ) const noexcept
-    {
-        if (data.bundle() != world_->bundleId() || data.generation() != world_->generation())
-        {
-            if (created != nullptr)
-                created->clear();
-            return lux::cxx::unexpected(
-                materializeFailure(EWorldMaterializeError::INVALID_WORLD_SCHEMA)
-            );
-        }
-        std::vector<simulation::ecs::Entity> local;
-        try
-        {
-            local.reserve(data.objectCount());
-            for (std::size_t object_index{}; object_index < data.objectCount(); ++object_index)
-            {
-                auto entity = object(registry, data.objectAt(object_index));
-                if (!entity)
-                {
-                    for (const auto value : local)
-                    {
-                        if (registry.valid(value))
-                            registry.destroy(value);
-                    }
-                    if (created != nullptr)
-                        created->clear();
-                    auto failure = entity.error();
-                    failure.object = object_index;
-                    return lux::cxx::unexpected(std::move(failure));
-                }
-                local.push_back(*entity);
-            }
-            if (created != nullptr)
-                *created = std::move(local);
-            return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            for (const auto value : local)
-            {
-                if (registry.valid(value))
-                    registry.destroy(value);
-            }
-            if (created != nullptr)
-                created->clear();
-            return lux::cxx::unexpected(
-                materializeFailure(EWorldMaterializeError::ALLOCATION_FAILURE)
-            );
-        }
     }
 
     struct detail::WorldPartitionLoadMachine::Impl final
@@ -236,7 +66,7 @@ namespace lux::scene
             std::size_t max_bytes_value,
             std::stop_token stop_value,
             void* receiver_value,
-            void (*value_fn)(void*, world::WorldPartitionData&&) noexcept,
+            void (*value_fn)(void*, lux::world::WorldPartitionData&&) noexcept,
             void (*error_fn)(void*, WorldStorageRuntimeFailure) noexcept,
             void (*stopped_fn)(void*) noexcept
         ) noexcept
@@ -246,10 +76,10 @@ namespace lux::scene
         }
 
         [[nodiscard]] WorldStorageRuntimeFailure mapFailure(
-            world::detail::WorldStorageCodecFailure failure
+            lux::world::detail::WorldStorageCodecFailure failure
         ) const noexcept
         {
-            using Input = world::detail::EWorldStorageCodecError;
+            using Input = lux::world::detail::EWorldStorageCodecError;
             EWorldStorageRuntimeError code{EWorldStorageRuntimeError::DECODE_FAILURE};
             switch (failure.code)
             {
@@ -296,9 +126,9 @@ namespace lux::scene
                 set_stopped(receiver);
         }
 
-        void finishCodecFailure(world::detail::WorldStorageCodecFailure failure) noexcept
+        void finishCodecFailure(lux::world::detail::WorldStorageCodecFailure failure) noexcept
         {
-            if (failure.code == world::detail::EWorldStorageCodecError::CANCELLED)
+            if (failure.code == lux::world::detail::EWorldStorageCodecError::CANCELLED)
                 finishStopped();
             else
                 finishError(mapFailure(failure));
@@ -335,7 +165,7 @@ namespace lux::scene
             }
         }
 
-        void beginChunk(world::WorldChunkReference reference, bool table) noexcept
+        void beginChunk(lux::world::WorldChunkReference reference, bool table) noexcept
         {
             if (reference.volume >= source.world().storageVolumes().size())
             {
@@ -345,7 +175,7 @@ namespace lux::scene
             current = reference;
             reading_table = table;
             stage = EStage::HEADER;
-            submit(reference.volume, 0U, world::detail::kWorldStorageVolumeHeaderWireSize);
+            submit(reference.volume, 0U, lux::world::detail::kWorldStorageVolumeHeaderWireSize);
         }
 
         void complete(Outcome&& outcome) noexcept
@@ -370,7 +200,7 @@ namespace lux::scene
             const auto& volume_description = source.world().storageVolumes()[current.volume];
             if (stage == EStage::HEADER)
             {
-                auto decoded = world::detail::decodeWorldStorageVolumeHeader(
+                auto decoded = lux::world::detail::decodeWorldStorageVolumeHeader(
                     bytes,
                     source.world().bundleId(),
                     source.world().generation(),
@@ -399,7 +229,7 @@ namespace lux::scene
             }
             if (stage == EStage::DESCRIPTOR)
             {
-                auto decoded = world::detail::decodeWorldStorageChunkDescriptor(bytes, header, current.chunk);
+                auto decoded = lux::world::detail::decodeWorldStorageChunkDescriptor(bytes, header, current.chunk);
                 if (!decoded)
                 {
                     finishError(mapFailure(decoded.error()));
@@ -416,7 +246,7 @@ namespace lux::scene
                 return;
             }
 
-            auto decoded_payload = world::detail::decodeWorldStorageChunkPayload(
+            auto decoded_payload = lux::world::detail::decodeWorldStorageChunkPayload(
                 bytes,
                 descriptor,
                 max_bytes,
@@ -429,12 +259,12 @@ namespace lux::scene
             }
             if (reading_table)
             {
-                if (descriptor.kind != world::detail::EWorldStorageChunkKind::PARTITION_TABLE_PAGE)
+                if (descriptor.kind != lux::world::detail::EWorldStorageChunkKind::PARTITION_TABLE_PAGE)
                 {
                     finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR, current.volume});
                     return;
                 }
-                auto page = world::detail::decodeWorldPartitionTablePage(
+                auto page = lux::world::detail::decodeWorldPartitionTablePage(
                     *decoded_payload,
                     table_page->first,
                     table_page->count,
@@ -468,7 +298,7 @@ namespace lux::scene
                 return;
             }
 
-            if (descriptor.kind != world::detail::EWorldStorageChunkKind::WORLD_PARTITION_DATA)
+            if (descriptor.kind != lux::world::detail::EWorldStorageChunkKind::WORLD_PARTITION_DATA)
             {
                 finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR, current.volume});
                 return;
@@ -531,7 +361,7 @@ namespace lux::scene
                 }
                 if (chunk_in_extent < extent.chunk_count)
                 {
-                    const world::WorldChunkReference reference{
+                    const lux::world::WorldChunkReference reference{
                         extent.volume,
                         extent.first_chunk + chunk_in_extent
                     };
@@ -547,7 +377,7 @@ namespace lux::scene
 
         void finishPartition() noexcept
         {
-            auto data = world::detail::decodeWorldPartitionData(
+            auto data = lux::world::detail::decodeWorldPartitionData(
                 partition_bytes,
                 source.world().bundleId(),
                 source.world().generation(),
@@ -587,18 +417,18 @@ namespace lux::scene
         std::size_t max_bytes{};
         std::stop_token stop;
         void* receiver{};
-        void (*set_value)(void*, world::WorldPartitionData&&) noexcept{};
+        void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept{};
         void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept{};
         void (*set_stopped)(void*) noexcept{};
         std::atomic_bool finished{};
         std::atomic_bool callback_seen{};
         EStage stage{EStage::HEADER};
         bool reading_table{};
-        world::WorldChunkReference current;
-        const world::WorldPartitionTablePageDescription* table_page{};
-        world::detail::WorldStorageVolumeHeader header;
-        world::detail::WorldStorageChunkDescriptor descriptor;
-        world::detail::WorldPartitionTablePage partition_page;
+        lux::world::WorldChunkReference current;
+        const lux::world::WorldPartitionTablePageDescription* table_page{};
+        lux::world::detail::WorldStorageVolumeHeader header;
+        lux::world::detail::WorldStorageChunkDescriptor descriptor;
+        lux::world::detail::WorldPartitionTablePage partition_page;
         std::uint32_t first_partition_extent{};
         std::uint32_t partition_extent_count{};
         std::uint32_t partition_extent_index{};
@@ -612,7 +442,7 @@ namespace lux::scene
         std::size_t max_bytes,
         std::stop_token stop,
         void* receiver,
-        void (*set_value)(void*, world::WorldPartitionData&&) noexcept,
+        void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept,
         void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept,
         void (*set_stopped)(void*) noexcept
     )

@@ -17,12 +17,12 @@ includes the approved corrections documented in `REPOSITORY-ERRATA.md`.
 | `05-scene-core-description-runtime-composition-spec.zh-CN.md` | 489 | `ea45ceb353425a8493ea4738ae9b320c4cfd4c488258aa7af3ba0ebaabb59f61` | Phase 7 — SceneDescription + minimal Scene |
 | `06-scene-runtime-world-process-materialization-spec.zh-CN.md` | 731 | `c2f27f07ddb1293d98ee8827fe1a844b7924ae2b1777974391f4bce38c7b84ee` | Phase 8 — WorldStorageSource/load/materialize mechanism |
 | `07-system-luxobject-streaming-resource-protocol.zh-CN.md` | 478 | `fd1453cd45b8fa883abb7db7b7ab1fddd334488c4368e7327c8c91ded05d2023` | Cross-phase concrete System/LuxObject/streaming constraints |
-| `08-engine-asset-residency-design-hold.zh-CN.md` | 192 | `10cf22ce05f159e40ee40f7f41d8b1fbf2ee7193f4071bb8b805e2a54c0be7eb` | Design Barrier A — ownership frozen, generic demand API held |
+| `08-engine-asset-residency-design-hold.zh-CN.md` | 212 | `e565ae24686c17caa843da2a75540e155be7f88c799a224552d0c20d39dbc26a` | Design Barrier A — ownership frozen, generic demand API held |
 | `09-runtime-execution-lanes-presentation-render-contract.zh-CN.md` | 621 | `110eeb88ba7c593934f79846283a9a31f5df3d9b668e97549a1dfd130888453b` | Phase 9 — latest-wins SPSC state exchange + lane contract |
 | `10-topology-cmake-architecture-gates.zh-CN.md` | 512 | `921bfa2ceeb5642766290359d9b98f816862e8325a17fe949bd5c8ca22781e35` | CMake/target/package architecture gates |
 | `11-architecture-probes-3d-2d-pixel-robot.zh-CN.md` | 536 | `4951e7dc0e3833961669245d13ff18423f07b43c972384f10df6c0ff1725b03f` | Phase 10 — four product architecture probes |
 | `12-p1-backlog.zh-CN.md` | 39 | `8b70a3815c371c87eafc90dc47676b55d59355b195f90b5294b94e641ce41d5f` | P1 backlog after Barrier B |
-| `ARCHITECTURE-GAPS.md` | 13 | `1247a5ad02a6592a97d962761c08265f68ae6f527a7a33e76dbe72c576d57d53` | Active architecture gap log |
+| `ARCHITECTURE-GAPS.md` | 14 | `92a2f3f0f06ecad655616125bb45a3ee159a5120721c52c9051e5ab2dab56517` | Active architecture gap log |
 | `README.md` | 254 | `fcb307a962913524294e5577450523b915201452cbfb6db14af9b4082f4665cb` | Package entry point / ordered reading guide |
 | `REPOSITORY-ERRATA.md` | 27 | `8dced54d37140c52bb66891ba72a5092fbef3068de7f9ecbb07fa3380e627e9c` | Approved repository-specific corrections |
 

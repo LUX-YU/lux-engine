@@ -190,3 +190,23 @@ Return to Design Barrier A.
 ```
 
 这是 intentional design barrier，不是缺失实现。
+
+---
+
+## 9. 2026-08-30 Barrier A evidence review
+
+真实 preloaded Spatial3D slice 已证明：两个 World object 可共享同一组 GPU Mesh/Material/Texture handle；释放第一个
+instance 后第二个继续渲染；最终释放后 slot 可回收，Texture generation 从 1 变为 2。
+
+但该 slice 使用 procedural/preloaded CPU payload，尚未证明：
+
+```text
+AssetId -> cooked provider -> CPU decode
+async duplicate completion
+failure / retry / cancellation
+World generation replacement
+cross-Scene / second-domain ownership
+```
+
+结论固定为 `needs more evidence`。本轮不批准 generic demand/residency surface，Phase G Full 3D Streaming 继续被
+Barrier A 阻断；所有禁用类型与 future invariants 保持不变。

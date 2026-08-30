@@ -14,7 +14,7 @@ add_component(
     OUTPUT_NAME    lux_engine_toolchain_shader_asset_cooker
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderCooker.cpp
-        ${CMAKE_SOURCE_DIR}/legacy/engine/toolchain/shader/src/SpirvReflection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SpirvReflection.cpp
 )
 
 component_include_directories(
@@ -23,7 +23,7 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE ${CMAKE_SOURCE_DIR}/legacy/engine/toolchain/shader/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(

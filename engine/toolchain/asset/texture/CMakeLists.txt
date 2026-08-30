@@ -4,7 +4,7 @@ find_path(LUX_STB_INCLUDE_DIR NAMES stb_image.h REQUIRED)
 # Toolchain BUILD_TOOL compiles them; they never enter a Runtime/Player link
 # or interface closure.
 set(LUX_BC_ENCODER_SOURCE_DIR
-    "${CMAKE_SOURCE_DIR}/legacy/modules/resource/asset-runtime/third_party/bc7enc_rdo"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/bc7enc_rdo"
 )
 
 generate_visibility_header(

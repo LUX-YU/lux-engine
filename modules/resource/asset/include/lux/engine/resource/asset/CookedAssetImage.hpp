@@ -1,59 +1,68 @@
 #pragma once
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/asset/Asset.hpp>
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/memory/SharedBytes.hpp>
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
-#include <span>
+#include <vector>
 
 namespace lux::asset
 {
-    inline constexpr std::uint32_t kCookedAssetVersionV1 = 20250128u;
-    inline constexpr std::uint32_t kCookedAssetVersionV2 = 20260606u;
-
-    enum class ECookedAssetImageError : std::uint8_t
+    namespace detail
     {
-        TRUNCATED,
-        UNSUPPORTED_VERSION,
-        INVALID_LAYOUT,
-        LIMIT_EXCEEDED,
-    };
+        struct CookedAssetImageAccess;
+    }
+
+    inline constexpr std::uint32_t kCookedAssetVersionV1 = 20250128U;
+    inline constexpr std::uint32_t kCookedAssetVersionV2 = 20260606U;
 
     struct CookedAssetMetadata final
     {
         AssetId id;
-        std::uint32_t legacy_type_tag{};
+        std::uint32_t legacy_type_tag{kNoLegacyAssetTypeTag};
         std::uint64_t date{};
-        std::array<char, 64> display_name{};
-        std::array<char, 256> source_path{};
+        std::array<char, 64U> display_name{};
+        std::array<char, 256U> source_path{};
         std::uint64_t source_mtime{};
     };
 
-    struct CookedAssetImageView final
+    class CookedAssetImage;
+
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<CookedAssetImage, AssetDecodeFailure>
+    inspectCookedAssetImage(
+        AssetId requested,
+        lux::cxx::SharedBytes<> image,
+        const AssetDecodeLimits& limits
+    ) noexcept;
+
+    class LUX_ASSET_PUBLIC CookedAssetImage final
     {
-        std::uint32_t magic{};
-        std::uint32_t version{};
-        CookedAssetMetadata metadata;
-        std::span<const std::byte> info;
-        std::span<const std::byte> data;
-        std::span<const std::byte> auxiliary_payloads;
+    public:
+        CookedAssetImage() noexcept = default;
+
+        [[nodiscard]] std::uint32_t magic() const noexcept;
+        [[nodiscard]] std::uint32_t version() const noexcept;
+        [[nodiscard]] const CookedAssetMetadata& metadata() const noexcept;
+        [[nodiscard]] const lux::cxx::SharedBytes<>& image() const noexcept;
+        [[nodiscard]] const lux::cxx::SharedBytes<>& information() const noexcept;
+        [[nodiscard]] const lux::cxx::SharedBytes<>& data() const noexcept;
+        [[nodiscard]] std::span<const AssetAuxiliaryPayload> auxiliaryPayloads() const noexcept;
+
+    private:
+        std::uint32_t magic_{};
+        std::uint32_t version_{};
+        CookedAssetMetadata metadata_;
+        lux::cxx::SharedBytes<> image_;
+        lux::cxx::SharedBytes<> information_;
+        lux::cxx::SharedBytes<> data_;
+        std::vector<AssetAuxiliaryPayload> auxiliary_;
+
+        friend struct detail::CookedAssetImageAccess;
     };
 
-    struct CookedAssetImageLimits final
-    {
-        CookedAssetImageLimits() = delete;
-
-        explicit constexpr CookedAssetImageLimits(std::size_t image_bytes) noexcept : max_image_bytes(image_bytes)
-        {
-        }
-
-        std::size_t max_image_bytes;
-    };
-
-    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<CookedAssetImageView, ECookedAssetImageError>
-    inspectCookedAssetImage(std::span<const std::byte> image, const CookedAssetImageLimits& limits) noexcept;
 } // namespace lux::asset

@@ -719,9 +719,33 @@ foreach(source IN LISTS installed_public_headers)
         continue()
     endif()
     file(READ "${source}" content)
+
+    if(content MATCHES "AssetCodecDescriptor" AND
+       NOT normalized MATCHES
+           "/(modules/resource/asset/(include/.*/AssetCodecSet[.]hpp|src/AssetCodecSet[.]cpp)|engine/domain/world/asset/|engine/domain/simulation/asset/|engine/scene/asset/|modules/function/script/artifact/)")
+        message(FATAL_ERROR
+            "Architecture: '${normalized}' adds a new erased Asset codec after the typed-asset freeze."
+        )
+    endif()
     if(content MATCHES "#[ \t]*include[ \t]*[<\"]Jolt/|JPH::")
         message(FATAL_ERROR
             "Architecture: installed public header '${source}' exposes private Jolt ABI."
+        )
+    endif()
+endforeach()
+
+foreach(typed_asset_header IN ITEMS
+    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/Asset.hpp"
+    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetSerDeser.hpp"
+    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/CookedAssetImage.hpp"
+)
+    if(NOT EXISTS "${typed_asset_header}")
+        message(FATAL_ERROR "Architecture: missing typed Asset contract '${typed_asset_header}'.")
+    endif()
+    file(READ "${typed_asset_header}" typed_asset_contract)
+    if(typed_asset_contract MATCHES "TypeToken|DecodedAsset|EAssetType|shared_ptr<const[ \t]+void>|void[ \t]*[*]")
+        message(FATAL_ERROR
+            "Architecture: typed Asset contract '${typed_asset_header}' restored erased or closed-type vocabulary."
         )
     endif()
 endforeach()

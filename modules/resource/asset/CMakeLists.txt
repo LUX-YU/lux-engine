@@ -22,6 +22,7 @@ add_component(
     NAMESPACE      lux::engine::resource
     OUTPUT_NAME    lux_engine_asset
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Asset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetCodecSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CookedAssetImage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetVfs.cpp
@@ -73,7 +74,7 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-foreach(test_name IN ITEMS asset_codec_set_test cooked_asset_image_test)
+foreach(test_name IN ITEMS asset_codec_set_test cooked_asset_image_test typed_asset_test)
     add_executable(
         ${test_name}
         ${CMAKE_CURRENT_SOURCE_DIR}/test/${test_name}.cpp
@@ -82,6 +83,11 @@ foreach(test_name IN ITEMS asset_codec_set_test cooked_asset_image_test)
         ${test_name}
         PRIVATE lux::engine::resource::asset
     )
+    if(MSVC)
+        target_compile_options(${test_name} PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(${test_name} PRIVATE -UNDEBUG)
+    endif()
     lux_classify_target(
         TARGET  ${test_name}
         LAYER   RESOURCE

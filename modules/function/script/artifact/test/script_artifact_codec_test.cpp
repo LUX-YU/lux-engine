@@ -1,5 +1,7 @@
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
+#include <lux/engine/resource/asset/CookedAssetImage.hpp>
 
+#include <array>
 #include <cassert>
 #include <limits>
 #include <memory>
@@ -18,41 +20,67 @@ int main()
     );
     assert(source_result);
     auto source = std::move(*source_result);
-
-    const auto descriptor = script::scriptArtifactCodecDescriptor(std::make_shared<int>(1));
-    const asset::AssetCodecLimits limits{
-        std::numeric_limits<std::size_t>::max(),
-        std::numeric_limits<std::size_t>::max(),
-        std::numeric_limits<std::size_t>::max()
-    };
-    auto encoded = descriptor.encode(&source, asset::AssetEncodeContext{limits});
+    std::array<std::uint8_t, 16U> id_bytes{};
+    id_bytes.back() = 1U;
+    auto typed = script::ScriptArtifactAsset::create(
+        asset::AssetInfo{
+            asset::AssetId{id_bytes},
+            script::ScriptArtifactAsset::asset_type,
+            0U
+        },
+        std::make_shared<const script::ScriptArtifact>(std::move(source))
+    );
+    assert(typed);
+    constexpr asset::AssetEncodeLimits encode_limits{1024U * 1024U};
+    constexpr asset::AssetDecodeLimits decode_limits{1024U * 1024U, 1024U * 1024U, 4U};
+    auto encoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::encode(**typed, encode_limits);
     assert(encoded);
-    assert((*encoded)[4] == std::byte{3U});
+    const auto image = asset::inspectCookedAssetImage(
+        (*typed)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    );
+    assert(image && image->data().view()[4] == std::byte{3U});
 
-    auto decoded = descriptor.decode(*encoded, asset::AssetDecodeContext{limits});
+    auto decoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
+        (*typed)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    );
     assert(decoded);
-    const auto artifact = std::static_pointer_cast<const script::ScriptArtifact>(decoded->payload);
-    assert(artifact->description().schema_version == 5U);
-    assert(artifact->description().exports.front().symbol_id == 11U);
-    assert(artifact->payload().size() == source.payload().size());
-    assert(artifact->findExport(11U) == std::addressof(artifact->description().exports.front()));
-    assert(artifact->findExport(12U) == nullptr);
+    const auto& artifact = (*decoded)->data();
+    assert(artifact.description().schema_version == 5U);
+    assert(artifact.description().exports.front().symbol_id == 11U);
+    assert(artifact.payload().size() == 3U);
+    assert(artifact.findExport(11U) == std::addressof(artifact.description().exports.front()));
+    assert(artifact.findExport(12U) == nullptr);
 
     auto old_schema = *encoded;
-    old_schema[8] = std::byte{3U};
-    assert(!descriptor.decode(old_schema, asset::AssetDecodeContext{limits}));
+    old_schema[408U] = std::byte{3U};
+    assert(!asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
+        (*typed)->id(), lux::cxx::SharedBytes<>::copyOf(old_schema), decode_limits
+    ));
     auto old_wire = *encoded;
-    old_wire[4] = std::byte{1U};
-    assert(!descriptor.decode(old_wire, asset::AssetDecodeContext{limits}));
+    old_wire[404U] = std::byte{1U};
+    assert(!asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
+        (*typed)->id(), lux::cxx::SharedBytes<>::copyOf(old_wire), decode_limits
+    ));
     auto corrupt_kind = *encoded;
-    corrupt_kind[12] = std::byte{0xFFU};
-    assert(!descriptor.decode(corrupt_kind, asset::AssetDecodeContext{limits}));
-    assert(!descriptor.decode(
-        *encoded,
-        asset::AssetDecodeContext{asset::AssetCodecLimits{encoded->size(), 1U, 0U}}
+    corrupt_kind[412U] = std::byte{0xFFU};
+    assert(!asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
+        (*typed)->id(), lux::cxx::SharedBytes<>::copyOf(corrupt_kind), decode_limits
+    ));
+    assert(!asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
+        (*typed)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        asset::AssetDecodeLimits{encoded->size(), 1U, 0U}
     ));
     auto trailing = *encoded;
     trailing.push_back(std::byte{});
-    assert(!descriptor.decode(trailing, asset::AssetDecodeContext{limits}));
+    assert(!asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
+        (*typed)->id(),
+        lux::cxx::SharedBytes<>::copyOf(trailing),
+        asset::AssetDecodeLimits{trailing.size(), trailing.size(), 4U}
+    ));
     return 0;
 }

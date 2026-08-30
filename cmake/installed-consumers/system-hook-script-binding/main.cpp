@@ -161,16 +161,33 @@ int main()
     auto artifact = lux::script::ScriptArtifact::create(projected->description(), {});
     assert(artifact);
     fixture.artifact = std::make_shared<lux::script::ScriptArtifact>(std::move(*artifact));
-    const auto asset_codec = lux::script::scriptArtifactCodecDescriptor({});
-    const auto encoded_asset = asset_codec.encode(
-        fixture.artifact.get(),
-        lux::asset::AssetEncodeContext{unlimited()});
-    assert(encoded_asset && (*encoded_asset)[4] == std::byte{3U});
-    const auto decoded_asset = asset_codec.decode(
-        *encoded_asset,
-        lux::asset::AssetDecodeContext{unlimited()});
+    auto artifact_asset = lux::script::ScriptArtifactAsset::create(
+        lux::asset::AssetInfo{
+            fixture.asset_id,
+            lux::script::ScriptArtifactAsset::asset_type,
+            0U
+        },
+        fixture.artifact
+    );
+    assert(artifact_asset);
+    const auto encoded_asset = lux::asset::TAssetSerDeser<
+        lux::script::ScriptArtifactAsset>::encode(
+        **artifact_asset,
+        lux::asset::AssetEncodeLimits{std::numeric_limits<std::size_t>::max()}
+    );
+    assert(encoded_asset);
+    const auto decoded_asset = lux::asset::TAssetSerDeser<
+        lux::script::ScriptArtifactAsset>::decode(
+        fixture.asset_id,
+        lux::cxx::SharedBytes<>::copyOf(*encoded_asset),
+        lux::asset::AssetDecodeLimits{
+            encoded_asset->size(),
+            std::numeric_limits<std::size_t>::max(),
+            0U
+        }
+    );
     assert(decoded_asset);
-    fixture.artifact = std::static_pointer_cast<const lux::script::ScriptArtifact>(decoded_asset->payload);
+    fixture.artifact = (*decoded_asset)->sharedData();
 
     SimulationDescriptionBuilder simulation_builder;
     assert(simulation_builder.addSystem(SystemId, "consumer", System));

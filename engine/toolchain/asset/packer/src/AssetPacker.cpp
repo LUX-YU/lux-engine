@@ -7,10 +7,13 @@
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/toolchain/asset/shader/ShaderCooker.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureCooker.hpp>
+#include <lux/engine/toolchain/asset/model/ModelCooker.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -67,7 +70,8 @@ namespace
                 return std::nullopt;
             name.erase(0U, 2U);
             const bool flag = name == "inspect" || name == "embed" || name == "pack" ||
-                name == "pak_inspect" || name == "no_mips";
+                name == "pak_inspect" || name == "no_mips" || name == "left_handed" ||
+                name == "no_animations";
             if (flag)
             {
                 result.flags.push_back(std::move(name));
@@ -228,6 +232,166 @@ namespace
         };
     }
 
+    [[nodiscard]] std::optional<float> finiteFloat(const Options& options, std::string_view name, float fallback)
+    {
+        const auto text = options.value(name);
+        if (!text) return fallback;
+        float value{};
+        const auto parsed = std::from_chars(text->data(), text->data() + text->size(), value);
+        if (parsed.ec != std::errc{} || parsed.ptr != text->data() + text->size() || !std::isfinite(value))
+            return std::nullopt;
+        return value;
+    }
+
+    template <class Asset>
+    [[nodiscard]] std::optional<std::vector<std::byte>> encodeAsset(const Asset& asset)
+    {
+        const auto encoded = lux::asset::TAssetSerDeser<Asset>::encode(
+            asset,
+            lux::asset::AssetEncodeLimits{(std::numeric_limits<std::size_t>::max)()}
+        );
+        if (!encoded) return std::nullopt;
+        auto owned = lux::cxx::SharedBytes<>::copyOf(*encoded);
+        if (!lux::asset::inspectCookedAssetImage(asset.id(), owned, imageLimits(owned)))
+            return std::nullopt;
+        return *encoded;
+    }
+
+    [[nodiscard]] fs::path assetOutputPath(
+        const fs::path& root,
+        std::string_view type,
+        lux::asset::AssetId id
+    )
+    {
+        return root / type / (uuids::to_string(id.uuid()) + ".luxasset");
+    }
+
+    template <class Asset>
+    [[nodiscard]] bool writeAsset(
+        const fs::path& root,
+        std::string_view type,
+        const std::shared_ptr<const Asset>& asset
+    )
+    {
+        if (!asset) return false;
+        const auto encoded = encodeAsset(*asset);
+        return encoded && publishFile(assetOutputPath(root, type, asset->id()), *encoded);
+    }
+
+    [[nodiscard]] bool writeModelProduct(
+        const fs::path& root,
+        const lux::toolchain::ModelCookProduct& product
+    )
+    {
+        if (!writeAsset(root, "model", product.model)) return false;
+        for (const auto& mesh : product.meshes)
+            if (!writeAsset(root, "mesh", mesh)) return false;
+        for (const auto& material : product.materials)
+            if (!writeAsset(root, "material", material)) return false;
+        for (const auto& texture : product.textures)
+            if (!writeAsset(root, "texture", texture)) return false;
+        if (product.skeleton && !writeAsset(root, "skeleton", *product.skeleton)) return false;
+        for (const auto& animation : product.animations)
+            if (!writeAsset(root, "animation", animation)) return false;
+        return true;
+    }
+
+    [[nodiscard]] bool publishModelDirectory(
+        const fs::path& target,
+        const lux::toolchain::ModelCookProduct& product
+    )
+    {
+        if (target.empty() || target == target.root_path()) return false;
+        fs::path staging = target;
+        staging += ".staging";
+        fs::path backup = target;
+        backup += ".backup";
+        std::error_code error;
+        fs::remove_all(staging, error);
+        if (error) return false;
+        fs::create_directories(staging, error);
+        if (error || !writeModelProduct(staging, product))
+        {
+            fs::remove_all(staging, error);
+            return false;
+        }
+        fs::remove_all(backup, error);
+        if (error) return false;
+        const bool had_target = fs::exists(target, error) && !error;
+        if (had_target)
+        {
+            fs::rename(target, backup, error);
+            if (error) return false;
+        }
+        fs::rename(staging, target, error);
+        if (error)
+        {
+            if (had_target)
+            {
+                std::error_code restore_error;
+                fs::rename(backup, target, restore_error);
+            }
+            return false;
+        }
+        if (had_target) fs::remove_all(backup, error);
+        return !error;
+    }
+
+    [[nodiscard]] int cookModelAssets(
+        const Options& options,
+        const fs::path& source,
+        const fs::path& target,
+        lux::cxx::SharedBytes<> source_bytes
+    )
+    {
+        const auto scale = finiteFloat(options, "uniform_scale", 1.0F);
+        const auto x = finiteFloat(options, "pre_rotate_x_deg", 0.0F);
+        const auto y = finiteFloat(options, "pre_rotate_y_deg", 0.0F);
+        const auto z = finiteFloat(options, "pre_rotate_z_deg", 0.0F);
+        if (!scale || *scale <= 0.0F || !x || !y || !z)
+        {
+            std::cerr << "invalid model transform options\n";
+            return 4;
+        }
+        constexpr float degrees_to_radians = 3.14159265358979323846F / 180.0F;
+        const Eigen::Quaternionf rotation =
+            Eigen::AngleAxisf(*z * degrees_to_radians, Eigen::Vector3f::UnitZ()) *
+            Eigen::AngleAxisf(*y * degrees_to_radians, Eigen::Vector3f::UnitY()) *
+            Eigen::AngleAxisf(*x * degrees_to_radians, Eigen::Vector3f::UnitX());
+        std::ostringstream identity_options;
+        identity_options << std::setprecision(9) << *scale << ':' << *x << ':' << *y << ':' << *z << ':'
+                         << options.has("left_handed") << ':' << !options.has("no_animations");
+        const auto cooked = lux::toolchain::cookModel(
+            metadata(
+                deterministicId("model", identity_options.str(), source_bytes),
+                lux::asset::ModelAsset::asset_type,
+                source
+            ),
+            source,
+            lux::toolchain::ModelCookConfiguration{
+                rotation,
+                *scale,
+                options.has("left_handed"),
+                !options.has("no_animations")
+            }
+        );
+        if (!cooked)
+        {
+            std::cerr << "model cook failed: " << cooked.error().detail << '\n';
+            return 5;
+        }
+        if (!publishModelDirectory(target, *cooked))
+        {
+            std::cerr << "cannot transactionally publish model Asset set\n";
+            return 6;
+        }
+        std::cout << "packed model assets="
+                  << 1U + cooked->meshes.size() + cooked->materials.size() + cooked->textures.size() +
+                         (cooked->skeleton ? 1U : 0U) + cooked->animations.size()
+                  << " target=" << target.string() << '\n';
+        return 0;
+    }
+
     [[nodiscard]] int cookAsset(const Options& options)
     {
         const auto type = options.value("type");
@@ -246,6 +410,9 @@ namespace
             std::cerr << "cannot read source image\n";
             return 3;
         }
+
+        if (*type == "model")
+            return cookModelAssets(options, source, target, *source_bytes);
 
         std::vector<std::byte> encoded;
         if (*type == "texture")
@@ -312,7 +479,7 @@ namespace
         }
         else
         {
-            std::cerr << "unsupported asset type; expected shader or texture\n";
+            std::cerr << "unsupported asset type; expected shader, texture, or model\n";
             return 9;
         }
         if (!publishFile(target, encoded))
@@ -357,10 +524,19 @@ namespace
             std::cout << "shader_entries=" << (*shader)->data().info.entry_points.size()
                       << " spirv=" << (*shader)->data().shader.size() << '\n';
         }
+        else if (image->magic() == lux::asset::ModelAsset::primary_magic)
+        {
+            const auto model = lux::asset::TAssetSerDeser<lux::asset::ModelAsset>::decode(
+                id, *bytes, imageLimits(*bytes)
+            );
+            if (!model) return 7;
+            std::cout << "model_primitives=" << (*model)->data().primitives.size()
+                      << " nodes=" << (*model)->data().nodes.size() << '\n';
+        }
         else
         {
             std::cerr << "unsupported typed asset magic\n";
-            return 7;
+            return 8;
         }
         return 0;
     }
@@ -493,8 +669,10 @@ namespace
 
     void usage()
     {
-        std::cerr << "lux_asset_packer --type shader|texture --source_path <path> --target_path <path>\n"
+        std::cerr << "lux_asset_packer --type shader|texture|model --source_path <path> --target_path <path>\n"
                   << "  [--texture_format <format>] [--texture_color_space srgb|linear|data] [--no_mips]\n"
+                  << "  [--uniform_scale <value>] [--pre_rotate_x_deg <value>] [--pre_rotate_y_deg <value>]\n"
+                  << "  [--pre_rotate_z_deg <value>] [--left_handed] [--no_animations]\n"
                   << "  --inspect | --embed | --pack | --pak_inspect\n";
     }
 } // namespace

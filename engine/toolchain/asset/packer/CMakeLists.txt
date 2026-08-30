@@ -9,6 +9,7 @@ target_link_libraries(
         lux::engine::resource::asset
         lux::engine::toolchain::toolchain_shader_asset_cooker
         lux::engine::toolchain::toolchain_texture_cooker
+        lux::engine::toolchain::toolchain_model_cooker
 )
 
 lux_classify_target(
@@ -91,4 +92,60 @@ if(BUILD_TESTING)
         ROLE    COMPOSITION
     )
     add_test(NAME toolchain_asset_packer_embed_test COMMAND toolchain_asset_packer_embed_test)
+
+    set(model_packer_smoke_root ${CMAKE_CURRENT_BINARY_DIR}/model_smoke/assets)
+    set(model_packer_smoke_pak ${CMAKE_CURRENT_BINARY_DIR}/model_smoke/static_model.luxpak)
+    set(model_packer_source
+        ${CMAKE_BINARY_DIR}/engine/toolchain/asset/model/fixtures/static/static_pbr.gltf
+    )
+    add_test(
+        NAME toolchain_asset_packer_model_test
+        COMMAND ${CMAKE_COMMAND}
+            -DPACKER=$<TARGET_FILE:lux_asset_packer>
+            -DMODEL_SOURCE=${model_packer_source}
+            -DOUTPUT_ROOT=${model_packer_smoke_root}
+            -DPAK=${model_packer_smoke_pak}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/test/ModelPackerSmoke.cmake
+    )
+    set_tests_properties(
+        toolchain_asset_packer_model_test
+        PROPERTIES
+            FIXTURES_REQUIRED model_source_fixture
+            TIMEOUT 120
+    )
+
+    add_executable(
+        toolchain_model_pak_roundtrip_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/ModelPakRoundtripTest.cpp
+    )
+    target_compile_definitions(
+        toolchain_model_pak_roundtrip_test
+        PRIVATE LUX_MODEL_TEST_PAK="${model_packer_smoke_pak}"
+    )
+    target_link_libraries(
+        toolchain_model_pak_roundtrip_test
+        PRIVATE lux::engine::resource::asset
+    )
+    if(MSVC)
+        target_compile_options(toolchain_model_pak_roundtrip_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(toolchain_model_pak_roundtrip_test PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(
+        TARGET  toolchain_model_pak_roundtrip_test
+        LAYER   TOOLCHAIN
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(
+        NAME toolchain_model_pak_roundtrip_test
+        COMMAND toolchain_model_pak_roundtrip_test
+    )
+    set_tests_properties(
+        toolchain_model_pak_roundtrip_test
+        PROPERTIES
+            DEPENDS toolchain_asset_packer_model_test
+            FIXTURES_REQUIRED model_source_fixture
+            TIMEOUT 60
+    )
 endif()

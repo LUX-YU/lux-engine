@@ -180,7 +180,8 @@ namespace
             return left.schema_ordinal < right.schema_ordinal;
         });
         const std::array objects{
-            WorldEncodedObjectRecord{id<WorldObjectId>(3U), data}
+            WorldEncodedObjectRecord{id<WorldObjectId>(3U), data},
+            WorldEncodedObjectRecord{id<WorldObjectId>(4U), data}
         };
         auto partition_wire = encodeWorldPartitionData(WorldPartitionOrdinal{0U}, objects);
         if (!partition_wire)
@@ -677,6 +678,15 @@ namespace
         bool material_ready{};
         bool mesh_ready{};
         bool instance_ready{};
+        bool duplicate_instance_ready{};
+        bool survived_first_release{};
+        bool final_release_empty{};
+        bool texture_generation_changed{};
+        std::uint32_t alive_after_first_release{};
+        std::uint32_t texture_index{};
+        std::uint32_t texture_generation{};
+        std::uint32_t recreated_texture_index{};
+        std::uint32_t recreated_texture_generation{};
         std::uint32_t lit_pixels{};
     };
 
@@ -825,6 +835,8 @@ namespace
         result.texture_ready = texture.status == 0U && !texture.handle.isNull();
         if (!result.texture_ready)
             throw std::runtime_error("Spatial3D texture upload failed");
+        result.texture_index = texture.handle.index;
+        result.texture_generation = texture.handle.gen;
 
         GraphMaterialData graph_material{};
         graph_material.tex_bindless[0] = texture.handle.index;
@@ -874,6 +886,22 @@ namespace
         if (!result.instance_ready)
             throw std::runtime_error("Spatial3D mesh instance failed");
 
+        float duplicate_transform[16];
+        std::copy(std::begin(transform), std::end(transform), std::begin(duplicate_transform));
+        duplicate_transform[12] = state.render_relative.x() - 1.0F;
+        const auto duplicate_instance = fixture.await(addTransientMeshInstance(
+            MeshStackProxy{fixture.session(), mesh_ops},
+            scene.scene_id,
+            mesh.handle,
+            material.handle,
+            duplicate_transform,
+            kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible | (1U << 31U)
+        ));
+        result.duplicate_instance_ready =
+            duplicate_instance.status == MeshInstanceCreateStatus::Ok && duplicate_instance.object;
+        if (!result.duplicate_instance_ready)
+            throw std::runtime_error("Spatial3D duplicate-interest instance failed");
+
         const float identity[16] = {
             1.0F, 0.0F, 0.0F, 0.0F,
             0.0F, 1.0F, 0.0F, 0.0F,
@@ -920,7 +948,51 @@ namespace
                 graph.data()
             );
         }
+        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, instance.object});
+        fixture.flush(4);
+        const auto after_first = fixture.awaitControl(
+            MeshStackControlClient{fixture.control(), mesh_ops}.stats({scene.scene_id})
+        );
+        result.alive_after_first_release = after_first.alive_instances;
+        const auto surviving_pixels = fixture.readback(scene);
+        std::uint32_t surviving_lit{};
+        for (std::size_t offset = 0U; offset + 3U < surviving_pixels.size(); offset += 4U)
+        {
+            if ((surviving_pixels[offset] | surviving_pixels[offset + 1U] | surviving_pixels[offset + 2U]) != 0U)
+                ++surviving_lit;
+        }
+        result.survived_first_release = after_first.alive_instances == 1U && surviving_lit > 0U;
+
+        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, duplicate_instance.object});
+        fixture.flush(4);
+        const auto after_final = fixture.awaitControl(
+            MeshStackControlClient{fixture.control(), mesh_ops}.stats({scene.scene_id})
+        );
+        result.final_release_empty = after_final.alive_instances == 0U;
+
+        MeshStackControlClient{fixture.control(), mesh_ops}.destroyMesh({mesh.handle});
+        MaterialControlClient{fixture.control(), material_ops}.destroyMaterial({material.handle});
         fixture.control().destroyTexture(texture.handle);
+        fixture.flush(4);
+
+        auto recreated_request = fixture.uploadClientForTest().tryCreateTexture2DCopy(
+            texture_bytes,
+            16,
+            16,
+            4,
+            EPixelFormat::RGBA8_UNORM,
+            true
+        );
+        if (!recreated_request)
+            throw std::runtime_error("Spatial3D texture generation probe admission failed");
+        const auto recreated_texture = fixture.awaitUpload(std::move(*recreated_request));
+        if (recreated_texture.status != 0U || recreated_texture.handle.isNull())
+            throw std::runtime_error("Spatial3D texture generation probe failed");
+        result.recreated_texture_index = recreated_texture.handle.index;
+        result.recreated_texture_generation = recreated_texture.handle.gen;
+        result.texture_generation_changed = recreated_texture.handle.index == texture.handle.index &&
+            recreated_texture.handle.gen != texture.handle.gen;
+        fixture.control().destroyTexture(recreated_texture.handle);
         return result;
     }
 }
@@ -958,7 +1030,7 @@ int main()
             return 4;
         std::vector<Entity> created;
         auto materialized = materializer->partition((*scene)->registry(), partition, &created);
-        if (!materialized || created.size() != 1U)
+        if (!materialized || created.size() != 2U)
         {
             std::fprintf(
                 stderr,
@@ -998,12 +1070,16 @@ int main()
             return 77;
         }
         const bool assets_ready = rendered.texture_ready && rendered.material_ready && rendered.mesh_ready;
-        const bool gpu_ok = assets_ready && rendered.instance_ready && rendered.lit_pixels > 0U;
+        const bool lifecycle_ok = rendered.duplicate_instance_ready && rendered.survived_first_release &&
+            rendered.final_release_empty && rendered.texture_generation_changed;
+        const bool gpu_ok = assets_ready && rendered.instance_ready && rendered.lit_pixels > 0U && lifecycle_ok;
         const bool validation_ok = validation_errors.load(std::memory_order_relaxed) == 0;
         std::printf(
             "io_submits=%llu,accounting=%u,entities=%llu,partition=%u,jolt_contact=%u,"
             "physics_x=%.9f,render_relative_x=%.9f,texture=%u,material=%u,mesh=%u,instance=%u,"
-            "lit_pixels=%u,validation_errors=%d\n",
+            "duplicate_instance=%u,alive_after_first_release=%u,survived_first_release=%u,"
+            "final_release_empty=%u,texture_slot=%u,texture_generation=%u,recreated_texture_slot=%u,"
+            "recreated_texture_generation=%u,texture_generation_changed=%u,lit_pixels=%u,validation_errors=%d\n",
             static_cast<unsigned long long>(endpoint->submits),
             endpoint->accounting_ok ? 1U : 0U,
             static_cast<unsigned long long>(created.size()),
@@ -1015,6 +1091,15 @@ int main()
             rendered.material_ready ? 1U : 0U,
             rendered.mesh_ready ? 1U : 0U,
             rendered.instance_ready ? 1U : 0U,
+            rendered.duplicate_instance_ready ? 1U : 0U,
+            rendered.alive_after_first_release,
+            rendered.survived_first_release ? 1U : 0U,
+            rendered.final_release_empty ? 1U : 0U,
+            rendered.texture_index,
+            rendered.texture_generation,
+            rendered.recreated_texture_index,
+            rendered.recreated_texture_generation,
+            rendered.texture_generation_changed ? 1U : 0U,
             rendered.lit_pixels,
             validation_errors.load(std::memory_order_relaxed)
         );

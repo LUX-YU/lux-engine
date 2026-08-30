@@ -18,3 +18,25 @@ foreach(probe IN ITEMS spatial3d spatial2d pixel robot)
         PROPERTIES LABELS "architecture;probe;host"
     )
 endforeach()
+
+find_package(Jolt CONFIG REQUIRED)
+
+add_executable(architecture_probe_jolt_l1 jolt_l1_probe.cpp)
+target_link_libraries(
+    architecture_probe_jolt_l1
+    PRIVATE
+        Jolt::Jolt
+        lux::engine::simulation::simulation_core
+        lux::engine::simulation::ecs::transform
+)
+lux_classify_target(
+    TARGET  architecture_probe_jolt_l1
+    LAYER   HOST
+    PRODUCT TEST
+    ROLE    COMPOSITION
+)
+add_test(NAME architecture_probe_jolt_l1 COMMAND architecture_probe_jolt_l1)
+set_tests_properties(
+    architecture_probe_jolt_l1
+    PROPERTIES LABELS "architecture;probe;host;physics3d;jolt"
+)

@@ -635,6 +635,47 @@ if(EXISTS "${latest_exchange_header}")
     endif()
 endif()
 
+set(jolt_l1_probe "${source_root}/test/architecture_probes/jolt_l1_probe.cpp")
+if(EXISTS "${jolt_l1_probe}")
+    file(READ "${jolt_l1_probe}" jolt_l1_probe_contract)
+    string(CONCAT jolt_l1_forbidden
+        "PhysicsOrigin|FloatingOrigin|OriginRebaseSystem|RebaseDistance|"
+        "shiftAllBodies|PhysicsPrecisionMode|JoltSingleBackend|JoltDoubleBackend"
+    )
+    if(NOT jolt_l1_probe_contract MATCHES "#ifndef[ \t]+JPH_DOUBLE_PRECISION" OR
+       NOT jolt_l1_probe_contract MATCHES "same_as<JPH::Real,[ \t]*double>" OR
+       NOT jolt_l1_probe_contract MATCHES "same_as<JPH::RVec3,[ \t]*JPH::DVec3>" OR
+       NOT jolt_l1_probe_contract MATCHES "addSystemTask<JoltProbeSystem>")
+        message(FATAL_ERROR
+            "Architecture: Jolt L1 probe lost its double-position ABI or concrete one-task Simulation seam."
+        )
+    endif()
+    if(jolt_l1_probe_contract MATCHES "${jolt_l1_forbidden}")
+        message(FATAL_ERROR
+            "Architecture: Jolt L1 probe restored a forbidden origin/rebase or runtime precision abstraction."
+        )
+    endif()
+endif()
+
+file(GLOB_RECURSE installed_public_headers LIST_DIRECTORIES false
+    "${source_root}/modules/*.h"
+    "${source_root}/modules/*.hpp"
+    "${source_root}/engine/*.h"
+    "${source_root}/engine/*.hpp"
+)
+foreach(source IN LISTS installed_public_headers)
+    file(TO_CMAKE_PATH "${source}" normalized)
+    if(NOT normalized MATCHES "/include/")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES "#[ \t]*include[ \t]*[<\"]Jolt/|JPH::")
+        message(FATAL_ERROR
+            "Architecture: installed public header '${source}' exposes private Jolt ABI."
+        )
+    endif()
+endforeach()
+
 set(world_runtime_header
     "${source_root}/engine/scene/runtime/world/include/lux/engine/scene/WorldRuntime.hpp"
 )

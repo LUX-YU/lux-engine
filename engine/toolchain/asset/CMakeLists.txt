@@ -3,4 +3,18 @@ set(LUX_SHADER_COOKER_TEST_SPIRV
 )
 add_subdirectory(shader)
 add_subdirectory(texture)
+add_subdirectory(material)
 add_subdirectory(packer)
+
+if(LUX_PROFILE_HAS_TOOLCHAIN)
+    install_components(
+        PROJECT_NAME lux-engine-toolchain-asset
+        VERSION      ${PROJECT_VERSION}
+        NAMESPACE    lux::engine::toolchain
+        COMPONENTS
+            toolchain_shader_asset_cooker
+            toolchain_shader_emitter
+            toolchain_texture_cooker
+            toolchain_material_cooker
+    )
+endif()

@@ -15,6 +15,12 @@ add_subdirectory(resource)
 # LUX_HOST_TOOLS_PREFIX instead of configuring a target binary.
 if(NOT CMAKE_CROSSCOMPILING AND
    (LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT))
+    if(NOT TARGET authoring_material)
+        add_subdirectory(
+            "${CMAKE_SOURCE_DIR}/engine/authoring/material"
+            "${CMAKE_BINARY_DIR}/engine/authoring/material"
+        )
+    endif()
     add_subdirectory(
         "${CMAKE_SOURCE_DIR}/engine/toolchain/asset"
         "${CMAKE_BINARY_DIR}/engine/toolchain/asset"

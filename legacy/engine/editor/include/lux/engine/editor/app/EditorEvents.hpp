@@ -24,7 +24,7 @@
  * Add an event here only when a real, ORDER-INDEPENDENT fan-out appears.
  */
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <cstdint>
 #include <filesystem>

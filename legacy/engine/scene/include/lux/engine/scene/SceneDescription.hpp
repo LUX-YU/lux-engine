@@ -10,7 +10,7 @@
 
 #include <lux/engine/extensions/ExtensionId.hpp>
 #include <lux/engine/ecs/scene_format/SceneSectionManifest.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <cstddef>
 #include <cstdint>

@@ -12,7 +12,7 @@
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <cstddef>
 #include <cstdint>

@@ -6,8 +6,8 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/engine/resource/visibility.h
 )
 
-# Resource owns two installable packages. Asset contains its identity, core,
-# codec, and pak implementation behind one public component.
+# Resource identity is the leaf shared by descriptions and Asset storage.
+add_subdirectory(identity)
 add_subdirectory(description)
 add_subdirectory(asset)
 
@@ -15,6 +15,7 @@ install_components(
 	PROJECT_NAME	lux-engine-resource
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource
-	COMPONENTS		description
+	COMPONENTS		identity
+                    description
                     asset
 )

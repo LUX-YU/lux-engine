@@ -10,7 +10,7 @@
  * pull the full ECS resolver implementation into every host translation unit.
  */
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 
 #include <cstdint>

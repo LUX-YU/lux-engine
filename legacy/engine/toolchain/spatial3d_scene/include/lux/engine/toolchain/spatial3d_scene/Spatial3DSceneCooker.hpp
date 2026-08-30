@@ -13,7 +13,7 @@
 #include <lux/engine/toolchain/spatial3d_scene/visibility.h>
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/Spatial3DStreamingPolicy.hpp>

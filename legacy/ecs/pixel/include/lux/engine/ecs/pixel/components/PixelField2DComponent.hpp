@@ -14,7 +14,7 @@
 // ============================================================================
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <cstdint>
 

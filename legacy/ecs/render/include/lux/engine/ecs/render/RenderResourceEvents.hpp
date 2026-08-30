@@ -15,7 +15,7 @@
  *    验组件仍引用该资产(死实体送达 = 自然空操作)。
  */
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <cstdint>
 #include <string>

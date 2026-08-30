@@ -1,4 +1,3 @@
-find_package(stduuid CONFIG REQUIRED)
 find_package(
     lux-cxx
     CONFIG
@@ -62,10 +61,10 @@ target_compile_definitions(asset PRIVATE LUX_ASSET_LIBRARY)
 target_link_libraries(
     asset
     PUBLIC
-        stduuid
         lux::cxx::algorithm
         lux::cxx::compile_time
         lux::cxx::memory
+        lux::engine::resource::identity
         lux::engine::resource::description
     PRIVATE
         lux::cxx::core
@@ -74,10 +73,9 @@ target_link_libraries(
 
 component_add_transitive_commands(
     asset
-    "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
 )
 
 lux_classify_target(

@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/visibility.h>

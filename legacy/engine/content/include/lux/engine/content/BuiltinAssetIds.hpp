@@ -11,7 +11,7 @@
  * 引用过这些 id,**永不改动**(改动 = 既有内容全部悬空)。
  */
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/content/visibility.h>
 
 namespace lux::engine::content

@@ -25,13 +25,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::world
         lux::engine::simulation::simulation_core
-        lux::engine::resource::asset
+        lux::engine::resource::identity
 )
 component_add_transitive_commands(
     scene_core
     "find_package(lux-engine-world REQUIRED COMPONENTS world)"
     "find_package(lux-engine-simulation-core REQUIRED COMPONENTS simulation_core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
 lux_classify_target(
     TARGET  scene_core

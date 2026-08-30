@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 namespace lux::scene
 {

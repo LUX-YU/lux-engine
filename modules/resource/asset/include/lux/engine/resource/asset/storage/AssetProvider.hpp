@@ -4,7 +4,7 @@
 // complete .luxasset or another opaque record (for example a Scene Section).
 // Interpretation, residency and reference counting belong to the caller.
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/resource/asset/AssetStorageError.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 

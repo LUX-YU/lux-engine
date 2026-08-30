@@ -10,7 +10,7 @@
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/function/render/standard/content/visibility.h>
 
 #include <array>

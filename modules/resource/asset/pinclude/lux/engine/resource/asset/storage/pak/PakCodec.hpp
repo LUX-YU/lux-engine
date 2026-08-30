@@ -8,7 +8,7 @@
 
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 

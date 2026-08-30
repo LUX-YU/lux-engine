@@ -5,7 +5,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/authoring/world/WorldPartition.hpp>
 #include <lux/engine/math/Position.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <uuid.h>
 

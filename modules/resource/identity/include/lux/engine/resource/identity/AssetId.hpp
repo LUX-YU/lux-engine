@@ -51,7 +51,8 @@ namespace lux::asset
     inline const AssetId NullAssetId{};
 } // namespace lux::asset
 
-template <> struct std::hash<lux::asset::AssetId>
+template <>
+struct std::hash<lux::asset::AssetId>
 {
     std::size_t operator()(const lux::asset::AssetId& value) const noexcept
     {

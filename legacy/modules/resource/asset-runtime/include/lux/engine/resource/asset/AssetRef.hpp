@@ -22,7 +22,7 @@
  * 头注释记过这个坑)。非反射组件(AnimatorCacheComponent 等)无约束。
  */
 
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 
 namespace lux::asset

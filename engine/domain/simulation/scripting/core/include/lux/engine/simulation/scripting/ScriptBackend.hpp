@@ -2,7 +2,7 @@
 
 #include <lux/engine/function/script/BoundScriptCall.hpp>
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
 
 #include <cstddef>

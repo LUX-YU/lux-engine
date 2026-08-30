@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/function/script/ScriptSymbol.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
 #include <lux/engine/simulation/systems/script/visibility.h>
 #include <lux/engine/world/WorldObjectId.hpp>

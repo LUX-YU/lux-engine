@@ -855,6 +855,7 @@ foreach(installed_consumer IN ITEMS
     ecs_system
     large_world_transform
     object_affinity
+    resource_identity
     simulation_runtime
     world
     world_storage

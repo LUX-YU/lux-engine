@@ -12,7 +12,7 @@
 
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/runtime/execution/AsyncOperation.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <memory>
 #include <string>

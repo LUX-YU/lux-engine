@@ -13,7 +13,7 @@
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/ecs/entity_scene/visibility.h>
-#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <cstddef>
 #include <cstdint>

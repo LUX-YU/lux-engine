@@ -4,8 +4,6 @@ set(DESCRIPTION_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderInfo.cpp
 )
 
-find_package(stduuid CONFIG REQUIRED)
-
 add_component(
     COMPONENT_NAME  description
     NAMESPACE       lux::engine::resource
@@ -31,15 +29,15 @@ target_link_libraries(description
         lux::cxx::memory
         lux::engine::core::math
         lux::engine::function::script_core
-        stduuid
+        lux::engine::resource::identity
 )
 
 component_add_transitive_commands(
     description
-    "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
 
 lux_classify_target(

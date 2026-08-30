@@ -159,6 +159,12 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
+    if(content MATCHES "WorldPartitionOrdinal|WorldPartitionIndexTypeId|worldPartitionIndexTypeId")
+        message(FATAL_ERROR
+            "Architecture: active source '${normalized}' uses retired World-owned partition identity."
+        )
+    endif()
+
     if(content MATCHES
        "#[ \t]*include[ \t]*[<\"]lux/cxx/serialization/|lux::cxx::ser")
         message(FATAL_ERROR
@@ -252,6 +258,11 @@ foreach(source IN LISTS production_sources)
                 "Architecture: descriptive World source '${normalized}' contains ECS semantics."
             )
         endif()
+        if(content MATCHES "Spatial(2D|3D)PartitionIndex")
+            message(FATAL_ERROR
+                "Architecture: World source '${normalized}' owns a runtime Spatial index object."
+            )
+        endif()
     endif()
 
     if(normalized MATCHES "/engine/domain/partition/")
@@ -302,6 +313,11 @@ foreach(source IN LISTS production_sources)
            "#[ \t]*include[ \t]*[<\"]lux/engine/(simulation|scene|render|authoring|editor|toolchain|host|runtime|extensions)/")
             message(FATAL_ERROR
                 "Architecture: Process World workflow '${normalized}' depends on Simulation, Scene or an upper layer."
+            )
+        endif()
+        if(content MATCHES "WorldMaterializer|simulation::ecs|entt::|Registry")
+            message(FATAL_ERROR
+                "Architecture: Process World workflow '${normalized}' owns Scene/ECS adoption."
             )
         endif()
     elseif(normalized MATCHES "/engine/process/asset/")
@@ -792,6 +808,13 @@ foreach(source IN LISTS installed_public_headers)
         )
     endif()
 endforeach()
+
+if(EXISTS "${source_root}/engine/domain/world/core/include/lux/engine/world/WorldObjectId.hpp")
+    message(FATAL_ERROR "Architecture: retired World-owned WorldObjectId header remains installed in source.")
+endif()
+if(EXISTS "${source_root}/engine/scene/runtime/world/include/lux/engine/scene/WorldRuntime.hpp")
+    message(FATAL_ERROR "Architecture: retired Scene WorldRuntime aggregate header remains in source.")
+endif()
 
 foreach(typed_asset_header IN ITEMS
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/Asset.hpp"

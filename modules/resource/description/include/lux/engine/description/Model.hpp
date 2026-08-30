@@ -1,22 +1,34 @@
 #pragma once
-#include <string>
-#include <vector>
-#include <memory>
+
+#include <lux/engine/resource/identity/AssetId.hpp>
+
+#include <Eigen/Geometry>
+
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 namespace lux::rdesc
 {
-    struct ModelMeshInfo
+    struct ModelPrimitive final
     {
-        uint32_t mesh_index{0};
-        uint32_t material_index{0};
-        std::string name;
+        lux::asset::AssetId mesh;
+        lux::asset::AssetId material;
     };
 
-    struct ModelNode
+    struct ModelNode final
     {
-        std::vector<std::unique_ptr<ModelNode>> children;
-        std::vector<ModelMeshInfo> mesh_infos;
-        std::string name;
+        Eigen::Affine3f local_transform{Eigen::Affine3f::Identity()};
+        std::vector<std::uint32_t> primitives;
+        std::vector<std::uint32_t> children;
     };
-}
+
+    struct ModelDescription final
+    {
+        std::uint32_t root_node{};
+        std::vector<ModelPrimitive> primitives;
+        std::vector<ModelNode> nodes;
+        std::optional<lux::asset::AssetId> skeleton;
+        std::vector<lux::asset::AssetId> animations;
+    };
+} // namespace lux::rdesc

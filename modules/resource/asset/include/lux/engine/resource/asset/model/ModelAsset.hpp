@@ -10,22 +10,12 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string_view>
 #include <vector>
 
 namespace lux::asset
 {
-    struct ModelAssetData final
-    {
-        std::shared_ptr<const lux::rdesc::ModelNode> node_tree;
-        std::vector<AssetId> mesh_assets;
-        std::vector<AssetId> material_assets;
-        std::optional<AssetId> skeleton_asset;
-        std::vector<AssetId> animation_assets;
-    };
-
-    class LUX_ASSET_PUBLIC ModelAsset final : public TAsset<ModelAssetData>
+    class LUX_ASSET_PUBLIC ModelAsset final : public TAsset<lux::rdesc::ModelDescription>
     {
     public:
         inline static constexpr std::string_view canonical_name{"lux.model"};
@@ -36,14 +26,14 @@ namespace lux::asset
         [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const ModelAsset>, AssetDecodeFailure>
         create(
             AssetInfo info,
-            std::shared_ptr<const ModelAssetData> data,
+            std::shared_ptr<const lux::rdesc::ModelDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
         ) noexcept;
 
     private:
         ModelAsset(
             AssetInfo info,
-            std::shared_ptr<const ModelAssetData> data,
+            std::shared_ptr<const lux::rdesc::ModelDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary
         ) noexcept;
     };

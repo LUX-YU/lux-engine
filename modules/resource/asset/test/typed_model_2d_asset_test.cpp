@@ -61,7 +61,8 @@ namespace
         constexpr lux::asset::AssetEncodeLimits encode_limits{1024U * 1024U};
         constexpr lux::asset::AssetDecodeLimits decode_limits{1024U * 1024U, 1024U * 1024U, 4U};
         const auto encoded = lux::asset::TAssetSerDeser<Asset>::encode(*asset, encode_limits);
-        assert(encoded && encoded->size() == expected_size);
+        assert(encoded);
+        assert(encoded->size() == expected_size);
         assert(sha256(*encoded) == expected_hash);
         const auto decoded = lux::asset::TAssetSerDeser<Asset>::decode(
             asset->id(),
@@ -76,11 +77,13 @@ namespace
 
 int main()
 {
-    auto model = std::make_shared<lux::asset::ModelAssetData>();
-    model->mesh_assets.push_back(id(6U));
-    model->material_assets.push_back(id(4U));
-    model->skeleton_asset = id(10U);
-    model->animation_assets.push_back(id(11U));
+    auto model = std::make_shared<lux::rdesc::ModelDescription>();
+    model->primitives.push_back({id(6U), id(4U)});
+    model->nodes.push_back({});
+    model->nodes.front().local_transform.translation() = Eigen::Vector3f{1.0F, 2.0F, 3.0F};
+    model->nodes.front().primitives.push_back(0U);
+    model->skeleton = id(10U);
+    model->animations.push_back(id(11U));
     const auto model_asset = lux::asset::ModelAsset::create(
         info<lux::asset::ModelAsset>(7U),
         std::move(model)
@@ -88,8 +91,8 @@ int main()
     assert(model_asset);
     verify(
         *model_asset,
-        485U,
-        "715aa44f5c17fb9fcf23fb2f91bc35b2c4b9db084ba6325ce5dcfc92822558be"
+        564U,
+        "47e4ab994c3d3666cd34e92f5fc4b2e499a04bdf5d94a0940f13582c8b5a6215"
     );
 
     auto atlas = std::make_shared<lux::rdesc::TextureAtlas>();

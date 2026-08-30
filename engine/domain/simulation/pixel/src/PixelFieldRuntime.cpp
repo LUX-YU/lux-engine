@@ -131,11 +131,16 @@ namespace lux::simulation
 
             try
             {
+                const auto required = chunks.size() + 1U;
+                current_active.reserve(required);
+                next_active.reserve(required);
+                resident_keys.reserve(required);
                 auto chunk = std::make_unique<Chunk>();
                 auto* result = chunk.get();
                 chunks.emplace(key, std::move(chunk));
-                current_active.reserve(chunks.size());
-                next_active.reserve(chunks.size());
+                resident_keys.insert(
+                    std::lower_bound(resident_keys.begin(), resident_keys.end(), key),
+                    key);
                 return result;
             }
             catch (const std::bad_alloc&)
@@ -172,22 +177,6 @@ namespace lux::simulation
                 chunk.next_listed = true;
                 next_active.push_back(key);
             }
-        }
-
-        void scheduleChangedCell(std::int64_t x, std::int64_t y) noexcept
-        {
-            if (!valid(x, y))
-                return;
-            const auto key = keyFor(x, y);
-            auto* chunk = findChunk(key);
-            if (!chunk)
-                return;
-            const auto local_x = static_cast<std::uint32_t>(x) & kChunkMask;
-            const auto local_y = static_cast<std::uint32_t>(y) & kChunkMask;
-            if (stepping)
-                scheduleNext(key, *chunk, local_x, local_y);
-            else
-                scheduleCurrent(key, *chunk, local_x, local_y);
         }
 
         [[nodiscard]] PixelMaterialId cellUnchecked(
@@ -269,29 +258,34 @@ namespace lux::simulation
                  tile_y >= 0;
                  --tile_y)
             {
-                const bool reverse_tiles = ((step_index + static_cast<std::uint64_t>(tile_y)) & 1ULL) != 0ULL;
+                const bool reverse_tiles =
+                    ((step_index + static_cast<std::uint64_t>(tile_y)) & 1ULL) != 0ULL;
                 for (std::uint32_t tile_offset = 0U; tile_offset < kTilesPerAxis; ++tile_offset)
                 {
                     const auto tile_x = reverse_tiles
                         ? (kTilesPerAxis - 1U - tile_offset)
                         : tile_offset;
-                    const auto tile = static_cast<std::uint32_t>(tile_y) * kTilesPerAxis + tile_x;
+                    const auto tile =
+                        static_cast<std::uint32_t>(tile_y) * kTilesPerAxis + tile_x;
                     if (chunk.active_tiles[tile] == 0U)
                         continue;
 
                     const auto minimum_x = tile_x * kTileSize;
                     const auto minimum_y = static_cast<std::uint32_t>(tile_y) * kTileSize;
-                    for (std::int32_t local_y = static_cast<std::int32_t>(minimum_y + kTileSize) - 1;
+                    for (std::int32_t local_y =
+                             static_cast<std::int32_t>(minimum_y + kTileSize) - 1;
                          local_y >= static_cast<std::int32_t>(minimum_y);
                          --local_y)
                     {
-                        const bool reverse_x = ((step_index + static_cast<std::uint64_t>(base_y + local_y)) & 1ULL) != 0ULL;
+                        const bool reverse_x =
+                            ((step_index + static_cast<std::uint64_t>(base_y + local_y)) & 1ULL) != 0ULL;
                         for (std::uint32_t offset = 0U; offset < kTileSize; ++offset)
                         {
                             const auto local_x = reverse_x
                                 ? (minimum_x + kTileSize - 1U - offset)
                                 : (minimum_x + offset);
-                            const auto index = cellIndex(local_x, static_cast<std::uint32_t>(local_y));
+                            const auto index =
+                                cellIndex(local_x, static_cast<std::uint32_t>(local_y));
                             ++cells_scanned_last;
                             if (chunk.moved[index] != 0U)
                                 continue;
@@ -321,13 +315,10 @@ namespace lux::simulation
                                     continue;
                                 }
                             }
-                            else
+                            else if (tryMove(x, y, x + first, y, id) ||
+                                     tryMove(x, y, x + second, y, id))
                             {
-                                if (tryMove(x, y, x + first, y, id) ||
-                                    tryMove(x, y, x + second, y, id))
-                                {
-                                    continue;
-                                }
+                                continue;
                             }
                         }
                     }
@@ -338,6 +329,7 @@ namespace lux::simulation
         PixelFieldConfiguration configuration;
         std::vector<PixelMaterialDefinition> materials;
         std::unordered_map<std::uint64_t, std::unique_ptr<Chunk>> chunks;
+        std::vector<std::uint64_t> resident_keys;
         std::vector<std::uint64_t> current_active;
         std::vector<std::uint64_t> next_active;
         std::uint64_t step_index{};
@@ -493,27 +485,12 @@ namespace lux::simulation
             fnvAppend(hash, definition.density);
             fnvAppend(hash, definition.rgba8);
         }
-
-        try
+        for (const auto key : impl_->resident_keys)
         {
-            std::vector<std::uint64_t> keys;
-            keys.reserve(impl_->chunks.size());
-            for (const auto& [key, _] : impl_->chunks)
-                keys.push_back(key);
-            std::sort(keys.begin(), keys.end());
-            for (const auto key : keys)
-            {
-                fnvAppend(hash, key);
-                const auto* chunk = impl_->findChunk(key);
-                for (const auto value : chunk->cells)
-                    fnvAppend(hash, value);
-            }
-        }
-        catch (const std::bad_alloc&)
-        {
-            // Diagnostic hashing must remain noexcept. Allocation failure is
-            // represented by a stable sentinel mixed into the partial hash.
-            fnvAppend(hash, std::uint64_t{0xFFFFFFFFFFFFFFFFULL});
+            fnvAppend(hash, key);
+            const auto* chunk = impl_->findChunk(key);
+            for (const auto value : chunk->cells)
+                fnvAppend(hash, value);
         }
         return hash;
     }

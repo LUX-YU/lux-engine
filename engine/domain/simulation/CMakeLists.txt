@@ -11,6 +11,7 @@ add_subdirectory(core)
 add_subdirectory(ecs/hierarchy)
 add_subdirectory(ecs/transform)
 add_subdirectory(systems/transform)
+add_subdirectory(pixel)
 add_subdirectory(ecs)
 
 set(LUX_SIMULATION_COMPONENTS
@@ -19,6 +20,7 @@ set(LUX_SIMULATION_COMPONENTS
     simulation_scripting_core
     simulation_script_cpp_static
     transform_system
+    pixel
 )
 if(TARGET simulation_script_native)
     list(APPEND

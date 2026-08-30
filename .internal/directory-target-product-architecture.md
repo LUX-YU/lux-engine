@@ -12,6 +12,9 @@ modules/
 
 engine/
   domain/
+    partition/
+    spatial/
+    world_identity/
     world/
     simulation/
   process/
@@ -22,9 +25,13 @@ engine/
 ```
 
 - `modules/` 是可复用 L0 package。
-- `engine/domain` 持有 World/Simulation runtime domain integration。
-- `engine/process` 是 L2 collection；当前 `execution` 叶包只提供 Timer 与 L0 OperationPort 的
-  Sender adapter，不拥有 CPU pool、main loop、Render thread 或 domain workflow。
+- `engine/domain/world_identity` 与 `engine/domain/partition` 是中立的 L1 engine-domain identity；
+  `engine/domain/spatial` 是具体空间查询机制。
+  两者不拥有 World、Simulation 或 streaming policy。
+- `engine/domain/world` 与 `engine/domain/simulation` 是 sibling runtime domains，均可依赖窄义 `DOMAIN`
+  foundation，但不得互相依赖。
+- `engine/process` 是 L2 collection；`execution` 叶包保持领域盲，具体 `world`/`asset` 叶包可拥有明确的
+  time-spanning workflow，但不得把领域语义反向塞入 execution。
 - `engine/scene` 是 L3 runtime composition：`core` 只组合一个 World、一个 authoritative Registry、
   一个 Simulation 与 Scene cancellation source；`runtime/world` 提供机械 World IO/materialization；
   `runtime/presentation` 首先承载 latest-state handoff。Streaming policy 只属于 concrete developer System。
@@ -40,7 +47,7 @@ public include 与 namespace 使用职责概念名，不包含 `domain`、层级
 ```text
 World       = durable/cooked facts + whole-world storage metadata
 Simulation  = concrete Systems + synchronous rules + compiled schedule
-Process     = domain-blind asynchronous execution substrate
+Process     = domain-blind execution substrate + package-scoped asynchronous domain workflows
 Scene       = one World + one authoritative Registry + one Simulation
 Presentation= independently sampled runtime concern, not an architecture layer
 ```
@@ -49,7 +56,7 @@ Canonical user-facing `Transform2D/3D` 与 `WorldTransform2D/3D` 使用 double�
 等 consumer 只能在自己的 local-origin boundary 先用 double 相减，再显式 narrow 到 float/native。
 
 Scene 不拥有 mandatory streaming/index/residency/process/render/main-loop state；Simulation 不拥有
-World IO、partition lifecycle 或 wall clock；Process 不认识 Scene/World gameplay semantics。
+World IO、partition lifecycle 或 wall clock；Process workflow不得认识 Scene 或 gameplay policy。
 
 ## Package 与 collection
 
@@ -61,8 +68,8 @@ World IO、partition lifecycle 或 wall clock；Process 不认识 Scene/World ga
 `modules/function/script` 与 `engine/domain/simulation/scripting` 都是 collection；Script backend、
 Script artifact 与 Simulation scripting core 各自是独立 package。
 
-`engine/process` 也是 collection；Wave 0/1 只配置 `execution`。File IO、Render sender、
-Asset/Streaming workflow 和 dynamic fan-out 在对应后续 Wave 到来前不得以空 package 或 shim 占位。
+`engine/process` 也是 collection；`execution` 只提供通用 Sender/Timer mechanism。`world` 与 `asset` 仅在
+存在真实workflow时创建；Render sender、Streaming owner和dynamic fan-out不得以空package或shim占位。
 
 ## Product closure
 

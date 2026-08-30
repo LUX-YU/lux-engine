@@ -9,13 +9,19 @@
 
 namespace lux::world
 {
+    using domain::WorldObjectId;
+    using domain::WorldObjectIdHash;
+    using domain::WorldObjectIdLess;
+    using partition::PartitionIndexTypeId;
+    using partition::PartitionOrdinal;
+
     std::span<const WorldPartitionTablePageDescription> WorldPartitionTable::pages() const noexcept
     {
         return pages_;
     }
 
     const WorldPartitionTablePageDescription*
-    WorldPartitionTable::findPage(WorldPartitionOrdinal partition) const noexcept
+    WorldPartitionTable::findPage(PartitionOrdinal partition) const noexcept
     {
         const auto iterator = std::upper_bound(
             pages_.begin(),
@@ -38,9 +44,9 @@ namespace lux::world
     {
     }
 
-    WorldPartitionOrdinal WorldPartitionView::ordinal() const noexcept
+    PartitionOrdinal WorldPartitionView::ordinal() const noexcept
     {
-        return WorldPartitionOrdinal{static_cast<std::uint32_t>(partition_index_)};
+        return PartitionOrdinal{static_cast<std::uint32_t>(partition_index_)};
     }
 
     WorldPartitionId WorldPartitionView::id() const noexcept
@@ -136,7 +142,7 @@ namespace lux::world
             EWorldPartitionError code,
             WorldObjectId object = {},
             WorldPartitionId partition = {},
-            WorldPartitionIndexTypeId index_type = {}
+            PartitionIndexTypeId index_type = {}
         ) noexcept
         {
             return WorldPartitionFailure{code, object, partition, std::move(index_type), 0U};
@@ -407,7 +413,7 @@ namespace lux::world
     }
 
     const WorldPartitionIndexArtifact*
-    WorldPartitionBuildProduct::findIndex(const WorldPartitionIndexTypeId& type) const noexcept
+    WorldPartitionBuildProduct::findIndex(const PartitionIndexTypeId& type) const noexcept
     {
         if (!type.valid())
             return nullptr;
@@ -415,7 +421,7 @@ namespace lux::world
             indexes_.begin(),
             indexes_.end(),
             type,
-            [](const WorldPartitionIndexArtifact& artifact, const WorldPartitionIndexTypeId& value) noexcept {
+            [](const WorldPartitionIndexArtifact& artifact, const PartitionIndexTypeId& value) noexcept {
                 return artifact.type.hash < value.hash ||
                        (artifact.type.hash == value.hash && artifact.type.name < value.name);
             }

@@ -10,7 +10,7 @@ namespace lux::world
     {
     }
 
-    WorldObjectId WorldPartitionObjectView::id() const noexcept
+    domain::WorldObjectId WorldPartitionObjectView::id() const noexcept
     {
         return data_->objects_[object_index_].id;
     }
@@ -74,7 +74,7 @@ namespace lux::world
         return generation_;
     }
 
-    WorldPartitionOrdinal WorldPartitionData::partition() const noexcept
+    partition::PartitionOrdinal WorldPartitionData::partition() const noexcept
     {
         return partition_;
     }

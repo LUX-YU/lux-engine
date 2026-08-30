@@ -32,9 +32,9 @@ namespace
         assert(builder.addSchema(worldDataSchemaId("test.bb")));
         assert(builder.setPartitioner({worldPartitionerId("test.grid"), 1U}, 4U));
         assert(builder.addStorageVolume({"world.wvol0", 1U, 3U, 4096U}));
-        assert(builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 2U, {0U, 0U}}));
-        assert(builder.addPartitionTablePage({WorldPartitionOrdinal{2U}, 2U, {0U, 1U}}));
-        assert(builder.addPartitionIndex({worldPartitionIndexTypeId("test.grid"), 1U, {0U, 2U}}));
+        assert(builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 2U, {0U, 0U}}));
+        assert(builder.addPartitionTablePage({lux::partition::PartitionOrdinal{2U}, 2U, {0U, 1U}}));
+        assert(builder.addPartitionIndex({lux::partition::partitionIndexTypeId("test.grid"), 1U, {0U, 2U}}));
         auto result = std::move(builder).build();
         assert(result);
         return std::move(*result);

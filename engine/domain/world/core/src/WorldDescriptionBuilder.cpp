@@ -8,6 +8,9 @@
 
 namespace lux::world
 {
+    using partition::PartitionIndexTypeId;
+    using partition::PartitionOrdinal;
+
     struct WorldDescriptionBuilder::Impl final
     {
         WorldBundleId bundle;
@@ -28,8 +31,8 @@ namespace lux::world
         [[nodiscard]] WorldDescriptionFailure failure(
             EWorldDescriptionError code,
             WorldDataSchemaId schema = {},
-            WorldPartitionOrdinal partition = {},
-            WorldPartitionIndexTypeId index_type = {},
+            PartitionOrdinal partition = {},
+            PartitionIndexTypeId index_type = {},
             std::uint32_t volume = 0U
         ) noexcept
         {
@@ -344,7 +347,7 @@ namespace lux::world
                     failure(
                         EWorldDescriptionError::PARTITION_PAGE_GAP,
                         {},
-                        WorldPartitionOrdinal{static_cast<std::uint32_t>(expected_partition)}
+                        PartitionOrdinal{static_cast<std::uint32_t>(expected_partition)}
                     )
                 );
             }

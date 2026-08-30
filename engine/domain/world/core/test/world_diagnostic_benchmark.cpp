@@ -49,7 +49,7 @@ int main(int argc, char** argv)
         !builder.addSchema(worldDataSchemaId("benchmark.transform")) ||
         !builder.setPartitioner({worldPartitionerId("benchmark.grid"), 1U}, kPartitionCount) ||
         !builder.addStorageVolume({"benchmark.wvol0", 1U, 1U, 4096U}) ||
-        !builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, kPartitionCount, {0U, 0U}}))
+        !builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, kPartitionCount, {0U, 0U}}))
     {
         return 1;
     }
@@ -62,7 +62,7 @@ int main(int argc, char** argv)
     const auto lookup_begin = Clock::now();
     for (std::uint32_t partition{}; partition < kPartitionCount; ++partition)
     {
-        const auto* page = world->partitionTable().findPage(WorldPartitionOrdinal{partition});
+        const auto* page = world->partitionTable().findPage(lux::partition::PartitionOrdinal{partition});
         if (page == nullptr)
             return 3;
         lookup_checksum += page->first.value + page->count;
@@ -70,10 +70,10 @@ int main(int argc, char** argv)
     const auto lookup_end = Clock::now();
 
     constexpr std::size_t kObjectCount = 100'000U;
-    std::vector<WorldObjectId> objects;
+    std::vector<lux::domain::WorldObjectId> objects;
     objects.reserve(kObjectCount);
     for (std::size_t index{}; index < kObjectCount; ++index)
-        objects.push_back(id<WorldObjectId>(index + 1U));
+        objects.push_back(id<lux::domain::WorldObjectId>(index + 1U));
 
     const auto layout_begin = Clock::now();
     WorldPartitionLayoutBuilder layout_builder(objects);
@@ -83,7 +83,7 @@ int main(int argc, char** argv)
         const std::size_t count = std::min(kObjectsPerPartition, objects.size() - first);
         if (!layout_builder.addPartition(
                 id<WorldPartitionId>(first / kObjectsPerPartition + 1U),
-                std::span<const WorldObjectId>(objects).subspan(first, count)
+                std::span<const lux::domain::WorldObjectId>(objects).subspan(first, count)
             ))
         {
             return 4;

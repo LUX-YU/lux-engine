@@ -37,8 +37,8 @@ namespace lux::world
     {
         EWorldDescriptionError code{EWorldDescriptionError::ALLOCATION_FAILURE};
         WorldDataSchemaId schema;
-        WorldPartitionOrdinal partition;
-        WorldPartitionIndexTypeId index_type;
+        partition::PartitionOrdinal partition;
+        partition::PartitionIndexTypeId index_type;
         std::uint32_t volume{};
     };
 

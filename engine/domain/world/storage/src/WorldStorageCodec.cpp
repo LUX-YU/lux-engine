@@ -12,6 +12,10 @@
 
 namespace lux::world::detail
 {
+    using domain::WorldObjectId;
+    using domain::WorldObjectIdLess;
+    using partition::PartitionOrdinal;
+
     namespace
     {
         inline constexpr std::uint32_t kVolumeMagic = 0x4c4f5657U;
@@ -394,7 +398,7 @@ namespace lux::world::detail
     }
 
     const WorldPartitionRecord*
-    WorldPartitionTablePage::find(WorldPartitionOrdinal partition) const noexcept
+    WorldPartitionTablePage::find(PartitionOrdinal partition) const noexcept
     {
         if (partition.value < first.value)
             return nullptr;
@@ -414,7 +418,7 @@ namespace lux::world::detail
 
     lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldPartitionTablePage(
-        WorldPartitionOrdinal first,
+        PartitionOrdinal first,
         std::span<const WorldPartitionRecord> records,
         std::span<const WorldPartitionExtent> extents
     ) noexcept
@@ -499,7 +503,7 @@ namespace lux::world::detail
     lux::cxx::expected<WorldPartitionTablePage, WorldStorageCodecFailure>
     decodeWorldPartitionTablePage(
         std::span<const std::byte> wire,
-        WorldPartitionOrdinal expected_first,
+        PartitionOrdinal expected_first,
         std::uint32_t expected_count,
         std::size_t decoded_limit,
         std::stop_token stop
@@ -596,7 +600,7 @@ namespace lux::world::detail
 
     lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldPartitionData(
-        WorldPartitionOrdinal partition,
+        PartitionOrdinal partition,
         std::span<const WorldEncodedObjectRecord> objects
     ) noexcept
     {
@@ -714,7 +718,7 @@ namespace lux::world::detail
         std::span<const std::byte> wire,
         WorldBundleId bundle,
         WorldBundleGeneration generation,
-        WorldPartitionOrdinal expected_partition,
+        PartitionOrdinal expected_partition,
         std::uint32_t schema_count,
         std::size_t decoded_limit,
         std::stop_token stop
@@ -885,7 +889,7 @@ namespace lux::world::detail
         WorldPartitionData& target,
         WorldBundleId bundle,
         WorldBundleGeneration generation,
-        WorldPartitionOrdinal partition,
+        PartitionOrdinal partition,
         std::vector<WorldDecodedObjectRecord> objects,
         std::vector<WorldDecodedDataRecord> data,
         std::vector<std::byte> payload

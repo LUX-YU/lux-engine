@@ -1,10 +1,10 @@
 #pragma once
 
+#include <lux/engine/domain/WorldObjectId.hpp>
 #include <lux/engine/function/script/ScriptSymbol.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
 #include <lux/engine/simulation/systems/script/visibility.h>
-#include <lux/engine/world/WorldObjectId.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -37,7 +37,7 @@ namespace lux::simulation::script
 
     struct EntityScriptMount final
     {
-        lux::world::WorldObjectId object;
+        lux::domain::WorldObjectId object;
 
         friend bool operator==(const EntityScriptMount&, const EntityScriptMount&) noexcept = default;
     };
@@ -134,6 +134,6 @@ namespace lux::simulation::script
 
         std::vector<ScriptMountDescription> mounts_;
         std::unordered_set<std::uint64_t> mount_ids_;
-        std::unordered_set<lux::world::WorldObjectId, lux::world::WorldObjectIdHash> entity_objects_;
+        std::unordered_set<lux::domain::WorldObjectId, lux::domain::WorldObjectIdHash> entity_objects_;
     };
 }

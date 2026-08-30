@@ -24,7 +24,7 @@ includes the approved corrections documented in `REPOSITORY-ERRATA.md`.
 | `12-p1-backlog.zh-CN.md` | 39 | `8b70a3815c371c87eafc90dc47676b55d59355b195f90b5294b94e641ce41d5f` | P1 backlog after Barrier B |
 | `ARCHITECTURE-GAPS.md` | 14 | `7b586acfc01d0cf99ee60a2a84310537608011ea13fbe9567007a94bad88daa9` | Active architecture gap log |
 | `README.md` | 254 | `fcb307a962913524294e5577450523b915201452cbfb6db14af9b4082f4665cb` | Package entry point / ordered reading guide |
-| `REPOSITORY-ERRATA.md` | 27 | `8dced54d37140c52bb66891ba72a5092fbef3068de7f9ecbb07fa3380e627e9c` | Approved repository-specific corrections |
+| `REPOSITORY-ERRATA.md` | 38 | `de9ca3f09d6fed23d29600c4f128e7d97b1476649a5dbf1ebaa580d8f3e9ec0c` | Approved repository-specific corrections |
 
 ## Construction phases
 

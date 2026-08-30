@@ -39,11 +39,11 @@ int main()
         WorldEncodedDataRecord{0U, 1U, payload_c}
     };
     const std::array objects{
-        WorldEncodedObjectRecord{id<WorldObjectId>(1U), first_data},
-        WorldEncodedObjectRecord{id<WorldObjectId>(2U), second_data}
+        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(1U), first_data},
+        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(2U), second_data}
     };
 
-    auto partition_wire = encodeWorldPartitionData(WorldPartitionOrdinal{7U}, objects);
+    auto partition_wire = encodeWorldPartitionData(lux::partition::PartitionOrdinal{7U}, objects);
     assert(partition_wire);
 
     const std::array records{
@@ -55,7 +55,7 @@ int main()
         WorldPartitionExtent{1U, 0U, 2U},
         WorldPartitionExtent{0U, 3U, 1U}
     };
-    auto page_wire = encodeWorldPartitionTablePage(WorldPartitionOrdinal{4U}, records, extents);
+    auto page_wire = encodeWorldPartitionTablePage(lux::partition::PartitionOrdinal{4U}, records, extents);
     assert(page_wire);
 
     const std::array index_wire{std::byte{9U}, std::byte{8U}};
@@ -192,17 +192,17 @@ int main()
 
     auto page = decodeWorldPartitionTablePage(
         *decoded_page_chunk,
-        WorldPartitionOrdinal{4U},
+        lux::partition::PartitionOrdinal{4U},
         2U,
         std::numeric_limits<std::size_t>::max(),
         {}
     );
     assert(page);
-    const auto* first_record = page->find(WorldPartitionOrdinal{4U});
-    const auto* second_record = page->find(WorldPartitionOrdinal{5U});
+    const auto* first_record = page->find(lux::partition::PartitionOrdinal{4U});
+    const auto* second_record = page->find(lux::partition::PartitionOrdinal{5U});
     assert(first_record != nullptr);
     assert(second_record != nullptr);
-    assert(page->find(WorldPartitionOrdinal{6U}) == nullptr);
+    assert(page->find(lux::partition::PartitionOrdinal{6U}) == nullptr);
     assert(page->partitionExtents(*first_record).size() == 2U);
     assert(page->partitionExtents(*first_record)[1].volume == 1U);
     assert(page->partitionExtents(*second_record).size() == 1U);
@@ -211,7 +211,7 @@ int main()
         *decoded_partition_chunk,
         bundle,
         generation,
-        WorldPartitionOrdinal{7U},
+        lux::partition::PartitionOrdinal{7U},
         2U,
         std::numeric_limits<std::size_t>::max(),
         {}
@@ -223,7 +223,7 @@ int main()
     assert(partition->objectCount() == 2U);
     const auto first_object = partition->objectAt(0U);
     assert(first_object);
-    assert(first_object.id() == id<WorldObjectId>(1U));
+    assert(first_object.id() == id<lux::domain::WorldObjectId>(1U));
     assert(first_object.bundle() == bundle);
     assert(first_object.generation() == generation);
     assert(first_object.dataCount() == 2U);
@@ -239,7 +239,7 @@ int main()
         *decoded_partition_chunk,
         bundle,
         generation,
-        WorldPartitionOrdinal{8U},
+        lux::partition::PartitionOrdinal{8U},
         2U,
         std::numeric_limits<std::size_t>::max(),
         {}
@@ -248,7 +248,7 @@ int main()
         *decoded_partition_chunk,
         bundle,
         generation,
-        WorldPartitionOrdinal{7U},
+        lux::partition::PartitionOrdinal{7U},
         1U,
         std::numeric_limits<std::size_t>::max(),
         {}
@@ -290,7 +290,7 @@ int main()
     assert(cancelled_chunk.error().code == EWorldStorageCodecError::CANCELLED);
     auto cancelled_page = decodeWorldPartitionTablePage(
         *decoded_page_chunk,
-        WorldPartitionOrdinal{4U},
+        lux::partition::PartitionOrdinal{4U},
         2U,
         std::numeric_limits<std::size_t>::max(),
         cancelled.get_token()
@@ -301,7 +301,7 @@ int main()
         *decoded_partition_chunk,
         bundle,
         generation,
-        WorldPartitionOrdinal{7U},
+        lux::partition::PartitionOrdinal{7U},
         2U,
         std::numeric_limits<std::size_t>::max(),
         cancelled.get_token()

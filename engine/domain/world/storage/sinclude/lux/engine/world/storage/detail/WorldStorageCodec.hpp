@@ -136,12 +136,12 @@ namespace lux::world::detail
 
     struct LUX_ENGINE_WORLD_STORAGE_PUBLIC WorldPartitionTablePage final
     {
-        WorldPartitionOrdinal first;
+        partition::PartitionOrdinal first;
         std::vector<WorldPartitionRecord> records;
         std::vector<WorldPartitionExtent> extents;
 
         [[nodiscard]] const WorldPartitionRecord*
-        find(WorldPartitionOrdinal partition) const noexcept;
+        find(partition::PartitionOrdinal partition) const noexcept;
 
         [[nodiscard]] std::span<const WorldPartitionExtent>
         partitionExtents(const WorldPartitionRecord& record) const noexcept;
@@ -150,7 +150,7 @@ namespace lux::world::detail
     [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
     lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldPartitionTablePage(
-        WorldPartitionOrdinal first,
+        partition::PartitionOrdinal first,
         std::span<const WorldPartitionRecord> records,
         std::span<const WorldPartitionExtent> extents
     ) noexcept;
@@ -159,7 +159,7 @@ namespace lux::world::detail
     lux::cxx::expected<WorldPartitionTablePage, WorldStorageCodecFailure>
     decodeWorldPartitionTablePage(
         std::span<const std::byte> wire,
-        WorldPartitionOrdinal expected_first,
+        partition::PartitionOrdinal expected_first,
         std::uint32_t expected_count,
         std::size_t decoded_limit,
         std::stop_token stop
@@ -174,14 +174,14 @@ namespace lux::world::detail
 
     struct WorldEncodedObjectRecord final
     {
-        WorldObjectId id;
+        domain::WorldObjectId id;
         std::span<const WorldEncodedDataRecord> data;
     };
 
     [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
     lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldPartitionData(
-        WorldPartitionOrdinal partition,
+        partition::PartitionOrdinal partition,
         std::span<const WorldEncodedObjectRecord> objects
     ) noexcept;
 
@@ -191,7 +191,7 @@ namespace lux::world::detail
         std::span<const std::byte> wire,
         WorldBundleId bundle,
         WorldBundleGeneration generation,
-        WorldPartitionOrdinal expected_partition,
+        partition::PartitionOrdinal expected_partition,
         std::uint32_t schema_count,
         std::size_t decoded_limit,
         std::stop_token stop
@@ -203,7 +203,7 @@ namespace lux::world::detail
             WorldPartitionData& target,
             WorldBundleId bundle,
             WorldBundleGeneration generation,
-            WorldPartitionOrdinal partition,
+            partition::PartitionOrdinal partition,
             std::vector<WorldDecodedObjectRecord> objects,
             std::vector<WorldDecodedDataRecord> data,
             std::vector<std::byte> payload

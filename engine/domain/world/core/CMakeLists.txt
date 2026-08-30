@@ -1,4 +1,3 @@
-find_package(stduuid CONFIG REQUIRED)
 find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
 generate_visibility_header(
@@ -34,10 +33,17 @@ target_include_directories(
 )
 
 target_compile_definitions(world PRIVATE LUX_ENGINE_WORLD_LIBRARY)
-target_link_libraries(world PUBLIC stduuid lux::cxx::compile_time)
+target_link_libraries(
+    world
+    PUBLIC
+        lux::engine::domain::domain_world_identity
+        lux::engine::partition::partition_core
+        lux::cxx::compile_time
+)
 component_add_transitive_commands(
     world
-    "find_package(stduuid CONFIG REQUIRED)"
+    "find_package(lux-engine-domain-world-identity REQUIRED COMPONENTS domain_world_identity)"
+    "find_package(lux-engine-domain-partition REQUIRED COMPONENTS partition_core)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 

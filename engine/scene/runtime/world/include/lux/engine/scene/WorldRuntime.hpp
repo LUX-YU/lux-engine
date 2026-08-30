@@ -131,7 +131,7 @@ namespace lux::scene
         public:
             WorldPartitionLoadMachine(
                 WorldStorageSource source,
-                world::WorldPartitionOrdinal partition,
+                partition::PartitionOrdinal partition,
                 std::size_t max_bytes,
                 std::stop_token stop,
                 void* receiver,
@@ -164,7 +164,7 @@ namespace lux::scene
 
             WorldPartitionLoadSender(
                 WorldStorageSource source,
-                world::WorldPartitionOrdinal partition,
+                partition::PartitionOrdinal partition,
                 std::size_t max_bytes,
                 std::stop_token stop
             ) noexcept
@@ -180,7 +180,7 @@ namespace lux::scene
 
                 State(
                     WorldStorageSource source,
-                    world::WorldPartitionOrdinal partition,
+                    partition::PartitionOrdinal partition,
                     std::size_t max_bytes,
                     std::stop_token stop,
                     Receiver receiver
@@ -242,7 +242,7 @@ namespace lux::scene
 
         private:
             WorldStorageSource source_;
-            world::WorldPartitionOrdinal partition_;
+            partition::PartitionOrdinal partition_;
             std::size_t max_bytes_{};
             std::stop_token stop_;
         };
@@ -250,7 +250,7 @@ namespace lux::scene
 
     [[nodiscard]] inline auto loadWorldPartition(
         WorldStorageSource source,
-        world::WorldPartitionOrdinal partition,
+        partition::PartitionOrdinal partition,
         std::size_t max_bytes,
         std::stop_token stop
     ) noexcept

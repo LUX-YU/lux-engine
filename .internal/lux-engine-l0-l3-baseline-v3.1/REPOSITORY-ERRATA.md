@@ -25,3 +25,14 @@ OperationPort<ReadWorldStorageRange>
 ```
 
 Provider-specific state 由 `OperationPort` Endpoint 私有持有。`create()` 只验证非空 world 和有效 port。
+
+## Erratum 3 — L1 shared partition identity and Process workflow placement
+
+后续runtime-foundation review批准了窄义 `DOMAIN` classifier。`PartitionOrdinal` 与
+`PartitionIndexTypeId` 下沉到中立 `engine/domain/partition`，避免 Simulation 依赖 World，也避免把
+room/portal 等partition index误分类为Spatial。World继续拥有durable partition identity、table、descriptor与
+opaque artifact。
+
+Phase 8 的storage workflow从Scene下沉到 `engine/process/world`；`engine/process/execution` 仍严格领域盲。
+Scene只保留World data到Registry的materialization/adoption。Asset typed load Sender位于独立
+`engine/process/asset`，不授权Asset lifecycle/residency manager。

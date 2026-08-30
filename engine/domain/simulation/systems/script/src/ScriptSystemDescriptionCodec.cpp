@@ -322,7 +322,7 @@ namespace lux::simulation::script
                 else
                 {
                     mount.scope = EntityScriptMount{
-                        lux::world::WorldObjectId{uuids::uuid{object}}};
+                        lux::domain::WorldObjectId{uuids::uuid{object}}};
                 }
                 mount.enabled = enabled != 0U;
                 std::uint32_t binding_first{}, mount_binding_count{};

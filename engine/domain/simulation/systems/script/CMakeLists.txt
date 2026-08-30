@@ -33,9 +33,9 @@ target_link_libraries(
         lux::engine::simulation::simulation_scripting_core
         lux::engine::simulation::ecs::core
         lux::engine::function::script_core
+        lux::engine::domain::domain_world_identity
         lux::engine::resource::identity
         lux::engine::function::script_artifact
-        lux::engine::world
 )
 component_add_transitive_commands(
     simulation_script
@@ -44,9 +44,9 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
+    "find_package(lux-engine-domain-world-identity REQUIRED COMPONENTS domain_world_identity)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_artifact)"
-    "find_package(lux-engine-world REQUIRED COMPONENTS world)"
 )
 lux_classify_target(
     TARGET  simulation_script

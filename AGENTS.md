@@ -124,7 +124,7 @@ if (is_invalid_descriptor)
 SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake target 和安装产品
 必须同时表达同一职责，禁止只搬文件而保留反向链接，或只改 target 名而让源码继续跨层 include。
 
-- Canonical ontology 固定为 `L0 Modules -> L1 World + Simulation -> L2 Process ->
+- Canonical ontology 固定为 `L0 Modules -> L1 Domain foundation + World + Simulation -> L2 Process ->
   L3 Scene -> L4 Authoring -> L5 Toolchain -> L6 Product`。World 描述事实；Simulation
   同步解释和运行事实；ECS 只是 Simulation 内部机制；Process 负责异步、IO 与 residency；
   Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
@@ -132,11 +132,13 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   synchronous rules + compiled schedule`；`Scene = one World + one authoritative Registry + one Simulation`。
   Streaming policy 只属于 concrete developer System；Presentation 是可独立采样的 runtime concern，
   不是 architecture layer。Canonical Transform2D/3D 与 WorldTransform2D/3D 一律使用 double。
-- source topology 固定用 `engine/domain/{world,simulation}` 表达 L1 ownership，
+- source topology 固定用 `engine/domain/{world_identity,partition,spatial,world,simulation}` 表达 L1 ownership，
   用 `engine/editor` 与 `engine/toolchain` 区分交互工具和离线工具；不得恢复同义叠加的
   `engine/tools`。public include 与 namespace 仍使用概念名，不得把 `domain` 或层级编号写进用户 API。
-- `WORLD` 与 `SIMULATION` 是 L1 sibling roots。纯 `world/core` 只能依赖 L0 primitives；
-  `world/asset` 才能增加 L0 Asset/Serialization closure。Simulation 可依赖 World 与 L0，
+- `DOMAIN` 只分类引擎专属、被 World/Simulation 共同依赖的窄义 L1 foundation；不得建立
+  `domain/common`、`domain/utils` 或 `domain/services`。`WORLD` 与 `SIMULATION` 是 L1 sibling roots。
+  纯 `world/core` 只能依赖 L0 与 DOMAIN primitives；`world/asset` 才能增加 L0 Asset/Serialization closure。
+  Simulation 可依赖 DOMAIN 与 L0，但不得依赖 World，
   不得依赖 Process、Scene、Authoring、Toolchain、Editor 或 Host。旧 `RUNTIME` classifier
   只对白名单存量 extension 暂留；新 L2/L3 target 必须分别使用 `PROCESS/SCENE`。
 - 所有 production target 必须调用 `lux_classify_target(TARGET ... LAYER ... PRODUCT ... ROLE ...)`。
@@ -146,8 +148,8 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   `LUX_BUILD_EDITOR`。同一 Developer 构建树里的 `lux_player` 也必须保持 runtime-clean。
 - BUILD_TOOL 关系只用 `lux_add_build_tool_dependency()`、custom command 与 generated file；
   shader compiler、asset packer、meta generator 不得作为 Runtime link dependency。
-- 存量 `engine/runtime/execution` 是待迁移的领域盲基础设施，只链接 stdexec、standalone Asio、oneTBB、
-  concurrentqueue 与 lux-cxx 基础组件；Asset/Render/Log 是它的 client，方向不得反转。
+- `engine/process/execution` 是领域盲基础设施；`engine/process/world` 与 `engine/process/asset` 可拥有明确的
+  time-spanning workflow。领域workflow不得反向进入 execution，也不得依赖 Scene、Render 或 gameplay policy。
 - Render 固定为 `render_client/render_graph/render_vulkan/render_features` 四 target。
   Simulation extraction 与 FrameCoordinator 只依赖 client；无 render integration pack 的 Scene 必须 headless。
 - Authoring 保存可编辑源数据，Toolchain 执行 authoring→cooked，Player 只读取 RuntimeLaunchManifest

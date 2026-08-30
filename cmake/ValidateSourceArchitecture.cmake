@@ -38,6 +38,13 @@ foreach(retired_root IN ITEMS
         )
     endif()
 endforeach()
+foreach(forbidden_domain_root IN ITEMS common utils services)
+    if(EXISTS "${source_root}/engine/domain/${forbidden_domain_root}")
+        message(FATAL_ERROR
+            "Architecture: generic engine/domain/${forbidden_domain_root} is forbidden; use a concrete domain leaf."
+        )
+    endif()
+endforeach()
 if(NOT EXISTS "${source_root}/legacy/ecs" OR
    NOT EXISTS "${source_root}/legacy/engine" OR
    NOT EXISTS "${source_root}/legacy/modules/resource/asset-runtime")
@@ -61,6 +68,18 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/domain/world/*/sinclude/*.hpp"
     "${source_root}/engine/domain/world/*/pinclude/*.hpp"
     "${source_root}/engine/domain/world/*/src/*.cpp"
+    "${source_root}/engine/domain/world_identity/include/*.hpp"
+    "${source_root}/engine/domain/world_identity/sinclude/*.hpp"
+    "${source_root}/engine/domain/world_identity/pinclude/*.hpp"
+    "${source_root}/engine/domain/world_identity/src/*.cpp"
+    "${source_root}/engine/domain/partition/*/include/*.hpp"
+    "${source_root}/engine/domain/partition/*/sinclude/*.hpp"
+    "${source_root}/engine/domain/partition/*/pinclude/*.hpp"
+    "${source_root}/engine/domain/partition/*/src/*.cpp"
+    "${source_root}/engine/domain/spatial/*/include/*.hpp"
+    "${source_root}/engine/domain/spatial/*/sinclude/*.hpp"
+    "${source_root}/engine/domain/spatial/*/pinclude/*.hpp"
+    "${source_root}/engine/domain/spatial/*/src/*.cpp"
     "${source_root}/engine/domain/simulation/*/include/*.hpp"
     "${source_root}/engine/domain/simulation/*/sinclude/*.hpp"
     "${source_root}/engine/domain/simulation/*/pinclude/*.hpp"
@@ -149,9 +168,9 @@ foreach(source IN LISTS production_sources)
 
     if(normalized MATCHES "/engine/domain/simulation/")
         if(content MATCHES
-           "#[ \t]*include[ \t]*[<\"]lux/engine/(scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(world|scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
             message(FATAL_ERROR
-                "Architecture: L1 Simulation source '${normalized}' includes an upper-layer API."
+                "Architecture: L1 Simulation source '${normalized}' includes World or an upper-layer API."
             )
         endif()
         if(content MATCHES
@@ -235,28 +254,70 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
-    if(normalized MATCHES "/engine/domain/simulation/")
+    if(normalized MATCHES "/engine/domain/partition/")
         if(content MATCHES
-           "#[ \t]*include[ \t]*[<\"]lux/engine/(process|scene|authoring|toolchain|editor|host)/")
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
             message(FATAL_ERROR
-                "Architecture: L1 Simulation source '${normalized}' includes an upper-layer API."
+                "Architecture: neutral Partition source '${normalized}' depends on a concrete or upper domain."
             )
         endif()
     endif()
 
-    if(normalized MATCHES "/engine/process/")
+    if(normalized MATCHES "/engine/domain/world_identity/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
+            message(FATAL_ERROR
+                "Architecture: World identity source '${normalized}' depends on a concrete or upper domain."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/domain/spatial/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
+            message(FATAL_ERROR
+                "Architecture: Spatial foundation source '${normalized}' depends on World, Simulation or an upper layer."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/domain/simulation/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(world|process|scene|authoring|toolchain|editor|host)/")
+            message(FATAL_ERROR
+                "Architecture: L1 Simulation source '${normalized}' includes World or an upper-layer API."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/process/execution/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"](lux/engine/(world|simulation|scene|render|authoring|editor|toolchain|host|runtime)/|asio/|tbb/|exec/static_thread_pool)|legacy/engine/runtime/execution")
             message(FATAL_ERROR
                 "Architecture: Process execution source '${normalized}' depends on an upper/domain/legacy runtime."
             )
         endif()
+    elseif(normalized MATCHES "/engine/process/world/")
         if(content MATCHES
-           "ProcessRuntime|AsyncRuntime|AsyncRuntimeBuilder|ProcessBuilder|ProcessScope|ProcessScheduler|OperationRegistry|parallelTransform|BatchJoin|AsyncGraph|std::function")
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(simulation|scene|render|authoring|editor|toolchain|host|runtime|extensions)/")
             message(FATAL_ERROR
-                "Architecture: Process execution source '${normalized}' restores a runtime wrapper, registry or deferred API."
+                "Architecture: Process World workflow '${normalized}' depends on Simulation, Scene or an upper layer."
             )
         endif()
+    elseif(normalized MATCHES "/engine/process/asset/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|scene|render|authoring|editor|toolchain|host|runtime|extensions)/")
+            message(FATAL_ERROR
+                "Architecture: Process Asset workflow '${normalized}' depends on a domain or upper layer."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/process/" AND content MATCHES
+       "ProcessRuntime|AsyncRuntime|AsyncRuntimeBuilder|ProcessBuilder|ProcessScope|ProcessScheduler|OperationRegistry|parallelTransform|BatchJoin|AsyncGraph|std::function")
+        message(FATAL_ERROR
+            "Architecture: Process source '${normalized}' restores a runtime wrapper, registry or deferred API."
+        )
     endif()
 endforeach()
 
@@ -964,6 +1025,11 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/engine/CMakeLists.txt"
     "${source_root}/engine/domain/world/CMakeLists.txt"
     "${source_root}/engine/domain/world/*/CMakeLists.txt"
+    "${source_root}/engine/domain/world_identity/CMakeLists.txt"
+    "${source_root}/engine/domain/partition/CMakeLists.txt"
+    "${source_root}/engine/domain/partition/*/CMakeLists.txt"
+    "${source_root}/engine/domain/spatial/CMakeLists.txt"
+    "${source_root}/engine/domain/spatial/*/CMakeLists.txt"
     "${source_root}/engine/domain/simulation/CMakeLists.txt"
     "${source_root}/engine/domain/simulation/*/CMakeLists.txt"
     "${source_root}/engine/domain/simulation/*/*/CMakeLists.txt"
@@ -997,11 +1063,25 @@ foreach(source IN LISTS active_cmake)
             )
         endif()
     endif()
-    if(source MATCHES "/engine/process/")
+    if(source MATCHES "/engine/process/execution/")
         if(content MATCHES
            "legacy|lux::engine::(world|simulation|scene|render|authoring|editor|toolchain|host)|asio|TBB|static_thread_pool")
             message(FATAL_ERROR
                 "Architecture: Process target '${source}' links an upper/domain/legacy execution dependency."
+            )
+        endif()
+    elseif(source MATCHES "/engine/process/world/")
+        if(content MATCHES
+           "legacy|lux::engine::(simulation|scene|render|authoring|editor|toolchain|host)|asio|TBB|static_thread_pool")
+            message(FATAL_ERROR
+                "Architecture: Process World target '${source}' links an upper/domain/legacy dependency."
+            )
+        endif()
+    elseif(source MATCHES "/engine/process/asset/")
+        if(content MATCHES
+           "legacy|lux::engine::(world|simulation|scene|render|authoring|editor|toolchain|host)|asio|TBB|static_thread_pool")
+            message(FATAL_ERROR
+                "Architecture: Process Asset target '${source}' links a domain/upper/legacy dependency."
             )
         endif()
     endif()
@@ -1024,6 +1104,14 @@ foreach(required_process_file IN ITEMS
     if(NOT EXISTS "${required_process_file}")
         message(FATAL_ERROR
             "Architecture: Process Wave 0 is missing '${required_process_file}'."
+        )
+    endif()
+endforeach()
+
+foreach(required_domain_consumer IN ITEMS domain-partition domain-world-identity)
+    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_domain_consumer}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "Architecture: missing installed Domain consumer '${required_domain_consumer}'."
         )
     endif()
 endforeach()

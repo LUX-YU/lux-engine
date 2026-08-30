@@ -333,7 +333,7 @@ namespace lux::world
                     }
                     previous_page_end = *first + *count;
                     if (!builder.addPartitionTablePage({
-                            WorldPartitionOrdinal{*first},
+                            partition::PartitionOrdinal{*first},
                             *count,
                             WorldChunkReference{*volume, *chunk}
                         }))
@@ -354,7 +354,7 @@ namespace lux::world
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
-                WorldPartitionIndexTypeId previous_index;
+                partition::PartitionIndexTypeId previous_index;
                 for (std::uint32_t ordinal{}; ordinal < *index_count; ++ordinal)
                 {
                     auto hash = reader.readUnsigned<std::uint64_t>();
@@ -368,7 +368,7 @@ namespace lux::world
                         return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
 
                     WorldPartitionIndexDescription index{
-                        WorldPartitionIndexTypeId{*hash, std::move(index_name)},
+                        partition::PartitionIndexTypeId{*hash, std::move(index_name)},
                         *index_version,
                         WorldChunkReference{*volume, *chunk}
                     };

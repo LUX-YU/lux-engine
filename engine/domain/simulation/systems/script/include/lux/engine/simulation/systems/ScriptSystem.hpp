@@ -34,7 +34,7 @@ namespace lux::simulation::script
     struct WorldObjectResolver final
     {
         void* context{};
-        bool (*resolve)(void*, const lux::world::WorldObjectId&, ecs::Entity&) noexcept{};
+        bool (*resolve)(void*, const lux::domain::WorldObjectId&, ecs::Entity&) noexcept{};
     };
 
     namespace detail

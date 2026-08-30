@@ -71,6 +71,8 @@ namespace
 {
     using namespace lux::simulation;
     using namespace lux::simulation::ecs;
+    using namespace lux::domain;
+    using namespace lux::partition;
     using namespace lux::world;
     using namespace lux::world::detail;
 
@@ -183,7 +185,7 @@ namespace
             WorldEncodedObjectRecord{id<WorldObjectId>(3U), data},
             WorldEncodedObjectRecord{id<WorldObjectId>(4U), data}
         };
-        auto partition_wire = encodeWorldPartitionData(WorldPartitionOrdinal{0U}, objects);
+        auto partition_wire = encodeWorldPartitionData(PartitionOrdinal{0U}, objects);
         if (!partition_wire)
             throw std::runtime_error("World partition encode failed");
 
@@ -193,7 +195,7 @@ namespace
         const std::array extents{
             WorldPartitionExtent{0U, 1U, 1U}
         };
-        auto page_wire = encodeWorldPartitionTablePage(WorldPartitionOrdinal{0U}, records, extents);
+        auto page_wire = encodeWorldPartitionTablePage(PartitionOrdinal{0U}, records, extents);
         if (!page_wire)
             throw std::runtime_error("World table page encode failed");
 
@@ -221,7 +223,7 @@ namespace
             !builder.addSchema(worldDataSchemaId(RenderableSchemaName)) ||
             !builder.setPartitioner({worldPartitionerId("lux.test.spatial3d.index"), 1U}, 1U) ||
             !builder.addStorageVolume({"preloaded.wvol0", 1U, 2U, volume->size()}) ||
-            !builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}))
+            !builder.addPartitionTablePage({PartitionOrdinal{0U}, 1U, {0U, 0U}}))
         {
             throw std::runtime_error("World description build input failed");
         }
@@ -348,7 +350,7 @@ namespace
         auto state = stdexec::connect(
             lux::scene::loadWorldPartition(
                 *source,
-                WorldPartitionOrdinal{0U},
+                PartitionOrdinal{0U},
                 cooked.volume.size(),
                 stop
             ),
@@ -511,11 +513,11 @@ namespace
 
     struct Spatial3DIndex final
     {
-        [[nodiscard]] WorldPartitionOrdinal query(const Eigen::Vector3d& point) const noexcept
+        [[nodiscard]] PartitionOrdinal query(const Eigen::Vector3d& point) const noexcept
         {
             return point.x() >= 1.0e12 - 1.0 && point.x() <= 1.0e12 + 1.0
-                ? WorldPartitionOrdinal{0U}
-                : WorldPartitionOrdinal{std::numeric_limits<std::uint32_t>::max()};
+                ? PartitionOrdinal{0U}
+                : PartitionOrdinal{std::numeric_limits<std::uint32_t>::max()};
         }
     };
 
@@ -523,7 +525,7 @@ namespace
     {
         bool ran{};
         bool contact{};
-        WorldPartitionOrdinal partition{};
+        PartitionOrdinal partition{};
         Eigen::Vector3d physics_position{};
         PreloadedRenderable renderable;
     };
@@ -555,7 +557,7 @@ namespace
             const Entity entity = *view.begin();
             const auto& transform = view.get<const Transform3D>(entity);
             const auto& renderable = view.get<const PreloadedRenderable>(entity);
-            const WorldPartitionOrdinal partition = index_.query(transform.translation);
+            const PartitionOrdinal partition = index_.query(transform.translation);
             if (partition.value != 0U)
                 return false;
 

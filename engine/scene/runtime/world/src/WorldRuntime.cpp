@@ -232,7 +232,7 @@ namespace lux::scene
 
         Impl(
             WorldStorageSource source_value,
-            world::WorldPartitionOrdinal partition_value,
+            partition::PartitionOrdinal partition_value,
             std::size_t max_bytes_value,
             std::stop_token stop_value,
             void* receiver_value,
@@ -583,7 +583,7 @@ namespace lux::scene
         }
 
         WorldStorageSource source;
-        world::WorldPartitionOrdinal partition;
+        partition::PartitionOrdinal partition;
         std::size_t max_bytes{};
         std::stop_token stop;
         void* receiver{};
@@ -608,7 +608,7 @@ namespace lux::scene
 
     detail::WorldPartitionLoadMachine::WorldPartitionLoadMachine(
         WorldStorageSource source,
-        world::WorldPartitionOrdinal partition,
+        partition::PartitionOrdinal partition,
         std::size_t max_bytes,
         std::stop_token stop,
         void* receiver,

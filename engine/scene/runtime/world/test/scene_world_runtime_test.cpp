@@ -158,7 +158,7 @@ int main()
     assert(world_builder.addSchema(worldDataSchemaId("test.unknown")));
     assert(world_builder.setPartitioner({worldPartitionerId("test.none"), 1U}, 1U));
     assert(world_builder.addStorageVolume({"materialize.wvol0", 1U, 1U, 1024U}));
-    assert(world_builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}));
+    assert(world_builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 1U, {0U, 0U}}));
     auto world_value = std::move(world_builder).build();
     assert(world_value);
     auto world = std::make_shared<WorldDescription>(std::move(*world_value));
@@ -206,16 +206,16 @@ int main()
         WorldEncodedDataRecord{unknown_ordinal, 1U, std::span<const std::byte>{}}
     };
     const std::array objects{
-        WorldEncodedObjectRecord{id<WorldObjectId>(1U), first_data},
-        WorldEncodedObjectRecord{id<WorldObjectId>(2U), unknown_data}
+        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(1U), first_data},
+        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(2U), unknown_data}
     };
-    auto wire = encodeWorldPartitionData(WorldPartitionOrdinal{0U}, objects);
+    auto wire = encodeWorldPartitionData(lux::partition::PartitionOrdinal{0U}, objects);
     assert(wire);
     auto partition = decodeWorldPartitionData(
         *wire,
         world->bundleId(),
         world->generation(),
-        WorldPartitionOrdinal{0U},
+        lux::partition::PartitionOrdinal{0U},
         2U,
         std::numeric_limits<std::size_t>::max(),
         {}
@@ -239,7 +239,7 @@ int main()
     assert(other_world_builder.addSchema(worldDataSchemaId("test.unknown")));
     assert(other_world_builder.setPartitioner({worldPartitionerId("test.none"), 1U}, 1U));
     assert(other_world_builder.addStorageVolume({"other.wvol0", 1U, 1U, 1024U}));
-    assert(other_world_builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}));
+    assert(other_world_builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 1U, {0U, 0U}}));
     auto other_world_value = std::move(other_world_builder).build();
     assert(other_world_value);
     auto other_materializer = scene::WorldMaterializer::create(
@@ -259,16 +259,16 @@ int main()
         WorldEncodedDataRecord{transform_ordinal, 1U, malformed_payload}
     };
     const std::array rollback_objects{
-        WorldEncodedObjectRecord{id<WorldObjectId>(3U), first_data},
-        WorldEncodedObjectRecord{id<WorldObjectId>(4U), malformed_data}
+        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(3U), first_data},
+        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(4U), malformed_data}
     };
-    auto rollback_wire = encodeWorldPartitionData(WorldPartitionOrdinal{0U}, rollback_objects);
+    auto rollback_wire = encodeWorldPartitionData(lux::partition::PartitionOrdinal{0U}, rollback_objects);
     assert(rollback_wire);
     auto rollback_partition = decodeWorldPartitionData(
         *rollback_wire,
         world->bundleId(),
         world->generation(),
-        WorldPartitionOrdinal{0U},
+        lux::partition::PartitionOrdinal{0U},
         2U,
         std::numeric_limits<std::size_t>::max(),
         {}
@@ -287,7 +287,7 @@ int main()
     };
     const std::array table_extents{WorldPartitionExtent{0U, 1U, 1U}};
     auto table_wire = encodeWorldPartitionTablePage(
-        WorldPartitionOrdinal{0U},
+        lux::partition::PartitionOrdinal{0U},
         table_records,
         table_extents
     );
@@ -322,7 +322,7 @@ int main()
     assert(load_world_builder.addSchema(worldDataSchemaId("test.unknown")));
     assert(load_world_builder.setPartitioner({worldPartitionerId("test.load"), 1U}, 1U));
     assert(load_world_builder.addStorageVolume({"load.wvol0", 1U, 2U, volume->size()}));
-    assert(load_world_builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}));
+    assert(load_world_builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 1U, {0U, 0U}}));
     auto load_world_value = std::move(load_world_builder).build();
     assert(load_world_value);
     auto load_world = std::make_shared<WorldDescription>(std::move(*load_world_value));
@@ -337,7 +337,7 @@ int main()
     std::optional<scene::WorldStorageRuntimeFailure> limited_error;
     bool limited_stopped{};
     auto limited_state = stdexec::connect(
-        scene::loadWorldPartition(*load_source, WorldPartitionOrdinal{0U}, 1U, {}),
+        scene::loadWorldPartition(*load_source, lux::partition::PartitionOrdinal{0U}, 1U, {}),
         LoadReceiver{&limited_value, &limited_error, &limited_stopped}
     );
     stdexec::start(limited_state);
@@ -351,7 +351,7 @@ int main()
     auto load_state = stdexec::connect(
         scene::loadWorldPartition(
             *load_source,
-            WorldPartitionOrdinal{0U},
+            lux::partition::PartitionOrdinal{0U},
             volume->size(),
             {}
         ),
@@ -372,7 +372,7 @@ int main()
     auto stopped_state = stdexec::connect(
         scene::loadWorldPartition(
             *load_source,
-            WorldPartitionOrdinal{0U},
+            lux::partition::PartitionOrdinal{0U},
             volume->size(),
             cancelled.get_token()
         ),

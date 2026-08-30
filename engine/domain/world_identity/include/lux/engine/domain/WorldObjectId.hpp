@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <functional>
 
-namespace lux::world
+namespace lux::domain
 {
     namespace detail
     {
@@ -19,7 +19,9 @@ namespace lux::world
                 const auto left_byte = std::to_integer<std::uint8_t>(left_bytes[index]);
                 const auto right_byte = std::to_integer<std::uint8_t>(right_bytes[index]);
                 if (left_byte != right_byte)
+                {
                     return left_byte < right_byte;
+                }
             }
             return false;
         }

@@ -169,10 +169,10 @@ namespace
         Fixture()
         {
             const std::array objects{
-                WorldEncodedObjectRecord{id<WorldObjectId>(1U), {}},
-                WorldEncodedObjectRecord{id<WorldObjectId>(2U), {}}
+                WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(1U), {}},
+                WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(2U), {}}
             };
-            auto partition = encodeWorldPartitionData(WorldPartitionOrdinal{0U}, objects);
+            auto partition = encodeWorldPartitionData(lux::partition::PartitionOrdinal{0U}, objects);
             assert(partition);
             const std::size_t split = partition->size() / 2U;
             std::vector<std::byte> first(partition->begin(), partition->begin() + split);
@@ -185,7 +185,7 @@ namespace
                 WorldPartitionExtent{0U, 1U, 1U},
                 WorldPartitionExtent{1U, 0U, 1U}
             };
-            auto page = encodeWorldPartitionTablePage(WorldPartitionOrdinal{0U}, records, extents);
+            auto page = encodeWorldPartitionTablePage(lux::partition::PartitionOrdinal{0U}, records, extents);
             assert(page);
             single_chunk_limit = std::max({
                 kWorldStorageVolumeHeaderWireSize,
@@ -244,7 +244,7 @@ namespace
                 1U,
                 volumes[1].size()
             }));
-            assert(builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}));
+            assert(builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 1U, {0U, 0U}}));
             auto result = std::move(builder).build();
             assert(result);
             return std::make_shared<WorldDescription>(std::move(*result));
@@ -285,7 +285,7 @@ int main()
         auto operation = stdexec::connect(
             scene::loadWorldPartition(
                 fixture.source(endpoint),
-                WorldPartitionOrdinal{0U},
+                lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
                 {}
             ),
@@ -317,7 +317,7 @@ int main()
         const std::array extents{
             WorldPartitionExtent{0U, 0U, (std::numeric_limits<std::uint32_t>::max)()}
         };
-        auto page = encodeWorldPartitionTablePage(WorldPartitionOrdinal{0U}, records, extents);
+        auto page = encodeWorldPartitionTablePage(lux::partition::PartitionOrdinal{0U}, records, extents);
         assert(page);
         const std::array chunks{
             WorldStorageChunkInput{
@@ -334,7 +334,7 @@ int main()
         assert(builder.addSchema(worldDataSchemaId("test.empty")));
         assert(builder.setPartitioner({worldPartitionerId("test.hostile"), 1U}, 1U));
         assert(builder.addStorageVolume({"hostile.wvol0", 1U, 1U, volume->size()}));
-        assert(builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 0U}}));
+        assert(builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 1U, {0U, 0U}}));
         auto world_value = std::move(builder).build();
         assert(world_value);
         auto world = std::make_shared<WorldDescription>(std::move(*world_value));
@@ -349,7 +349,7 @@ int main()
 
         ReceiverState result;
         auto operation = stdexec::connect(
-            scene::loadWorldPartition(*source, WorldPartitionOrdinal{0U}, volume->size(), {}),
+            scene::loadWorldPartition(*source, lux::partition::PartitionOrdinal{0U}, volume->size(), {}),
             Receiver{&result}
         );
         stdexec::start(operation);
@@ -366,7 +366,7 @@ int main()
         auto operation = stdexec::connect(
             scene::loadWorldPartition(
                 fixture.source(endpoint),
-                WorldPartitionOrdinal{0U},
+                lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
                 stop.get_token()
             ),
@@ -386,7 +386,7 @@ int main()
         auto operation = stdexec::connect(
             scene::loadWorldPartition(
                 fixture.source(endpoint),
-                WorldPartitionOrdinal{0U},
+                lux::partition::PartitionOrdinal{0U},
                 fixture.single_chunk_limit,
                 {}
             ),
@@ -405,7 +405,7 @@ int main()
         auto operation = stdexec::connect(
             scene::loadWorldPartition(
                 fixture.source(endpoint, stale_world),
-                WorldPartitionOrdinal{0U},
+                lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
                 {}
             ),
@@ -424,7 +424,7 @@ int main()
         auto operation = stdexec::connect(
             scene::loadWorldPartition(
                 fixture.source(endpoint, wrong_chunks),
-                WorldPartitionOrdinal{0U},
+                lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
                 {}
             ),
@@ -454,7 +454,7 @@ int main()
         auto operation = stdexec::connect(
             scene::loadWorldPartition(
                 fixture.source(endpoint),
-                WorldPartitionOrdinal{0U},
+                lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
                 scene_owner->stopToken()
             ),
@@ -474,7 +474,7 @@ int main()
         auto operation = stdexec::connect(
             scene::loadWorldPartition(
                 fixture.source(endpoint),
-                WorldPartitionOrdinal{0U},
+                lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
                 {}
             ),

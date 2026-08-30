@@ -137,4 +137,27 @@ add_subdirectory(modules)
 add_subdirectory(engine)
 if(BUILD_TESTING)
     add_subdirectory(test/architecture_probes)
+    set(lux_architecture_layer_probe_source "${CMAKE_SOURCE_DIR}/cmake/tests/architecture-layer-probe")
+    function(lux_add_architecture_layer_probe name consumer dependency should_fail)
+        set(probe_binary "${CMAKE_BINARY_DIR}/architecture-layer-probes/${name}")
+        add_test(
+            NAME ${name}
+            COMMAND ${CMAKE_COMMAND}
+                "-S${lux_architecture_layer_probe_source}"
+                "-B${probe_binary}"
+                "-DLUX_ENGINE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+                "-DCONSUMER_LAYER=${consumer}"
+                "-DDEPENDENCY_LAYER=${dependency}"
+        )
+        if(should_fail)
+            set_tests_properties(${name} PROPERTIES WILL_FAIL TRUE)
+        endif()
+        set_tests_properties(${name} PROPERTIES LABELS "architecture;l1" TIMEOUT 30)
+    endfunction()
+    lux_add_architecture_layer_probe(architecture_world_domain_positive WORLD DOMAIN FALSE)
+    lux_add_architecture_layer_probe(architecture_simulation_domain_positive SIMULATION DOMAIN FALSE)
+    lux_add_architecture_layer_probe(architecture_simulation_world_negative SIMULATION WORLD TRUE)
+    lux_add_architecture_layer_probe(architecture_domain_world_negative DOMAIN WORLD TRUE)
+    lux_add_architecture_layer_probe(architecture_domain_simulation_negative DOMAIN SIMULATION TRUE)
+    lux_add_architecture_layer_probe(architecture_process_world_positive PROCESS WORLD FALSE)
 endif()

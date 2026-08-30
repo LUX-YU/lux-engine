@@ -32,8 +32,8 @@ namespace
         if (partition_count != 0U)
         {
             assert(builder.addStorageVolume({"test-world.wvol0", 1U, 2U, 4096U}));
-            assert(builder.addPartitionTablePage({WorldPartitionOrdinal{0U}, partition_count, {0U, 0U}}));
-            assert(builder.addPartitionIndex({worldPartitionIndexTypeId("test.grid"), 1U, {0U, 1U}}));
+            assert(builder.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, partition_count, {0U, 0U}}));
+            assert(builder.addPartitionIndex({lux::partition::partitionIndexTypeId("test.grid"), 1U, {0U, 1U}}));
         }
 
         auto result = std::move(builder).build();
@@ -79,9 +79,9 @@ int main()
     assert(world.partitionCount() == 4U);
     assert(world.storageVolumes().size() == 1U);
     assert(world.partitionTable().pages().size() == 1U);
-    assert(world.partitionTable().findPage(WorldPartitionOrdinal{0U}) != nullptr);
-    assert(world.partitionTable().findPage(WorldPartitionOrdinal{3U}) != nullptr);
-    assert(world.partitionTable().findPage(WorldPartitionOrdinal{4U}) == nullptr);
+    assert(world.partitionTable().findPage(lux::partition::PartitionOrdinal{0U}) != nullptr);
+    assert(world.partitionTable().findPage(lux::partition::PartitionOrdinal{3U}) != nullptr);
+    assert(world.partitionTable().findPage(lux::partition::PartitionOrdinal{4U}) == nullptr);
     assert(world.partitionIndexes().size() == 1U);
 
     {
@@ -89,7 +89,7 @@ int main()
         assert(gap.setIdentity(id<WorldBundleId>(3U), id<WorldBundleGeneration>(4U), "gap"));
         assert(gap.setPartitioner({worldPartitionerId("test.gap"), 1U}, 4U));
         assert(gap.addStorageVolume({"gap.wvol0", 1U, 1U, 64U}));
-        assert(gap.addPartitionTablePage({WorldPartitionOrdinal{1U}, 3U, {0U, 0U}}));
+        assert(gap.addPartitionTablePage({lux::partition::PartitionOrdinal{1U}, 3U, {0U, 0U}}));
         auto result = std::move(gap).build();
         assert(!result);
         assert(result.error().code == EWorldDescriptionError::PARTITION_PAGE_GAP);
@@ -100,8 +100,8 @@ int main()
         assert(overlap.setIdentity(id<WorldBundleId>(5U), id<WorldBundleGeneration>(6U), "overlap"));
         assert(overlap.setPartitioner({worldPartitionerId("test.overlap"), 1U}, 4U));
         assert(overlap.addStorageVolume({"overlap.wvol0", 1U, 2U, 64U}));
-        assert(overlap.addPartitionTablePage({WorldPartitionOrdinal{0U}, 3U, {0U, 0U}}));
-        assert(overlap.addPartitionTablePage({WorldPartitionOrdinal{2U}, 2U, {0U, 1U}}));
+        assert(overlap.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 3U, {0U, 0U}}));
+        assert(overlap.addPartitionTablePage({lux::partition::PartitionOrdinal{2U}, 2U, {0U, 1U}}));
         auto result = std::move(overlap).build();
         assert(!result);
         assert(result.error().code == EWorldDescriptionError::PARTITION_PAGE_OVERLAP);
@@ -116,7 +116,7 @@ int main()
         ));
         assert(invalid_reference.setPartitioner({worldPartitionerId("test.invalid-reference"), 1U}, 1U));
         assert(invalid_reference.addStorageVolume({"invalid-reference.wvol0", 1U, 1U, 64U}));
-        assert(invalid_reference.addPartitionTablePage({WorldPartitionOrdinal{0U}, 1U, {0U, 1U}}));
+        assert(invalid_reference.addPartitionTablePage({lux::partition::PartitionOrdinal{0U}, 1U, {0U, 1U}}));
         auto result = std::move(invalid_reference).build();
         assert(!result);
         assert(result.error().code == EWorldDescriptionError::INVALID_CHUNK_REFERENCE);
@@ -149,10 +149,10 @@ int main()
     assert(million.retainedBytes() <= world.retainedBytes() + 256U);
 
     const std::array objects{
-        id<WorldObjectId>(1U),
-        id<WorldObjectId>(2U),
-        id<WorldObjectId>(3U),
-        id<WorldObjectId>(4U)
+        id<lux::domain::WorldObjectId>(1U),
+        id<lux::domain::WorldObjectId>(2U),
+        id<lux::domain::WorldObjectId>(3U),
+        id<lux::domain::WorldObjectId>(4U)
     };
 
     {
@@ -170,10 +170,10 @@ int main()
         auto product = WorldPartitionBuildProduct::build(
             {worldPartitionerId("test.layout"), 1U},
             std::move(*layout),
-            {{worldPartitionIndexTypeId("test.layout"), 1U, {std::byte{1U}}}}
+            {{lux::partition::partitionIndexTypeId("test.layout"), 1U, {std::byte{1U}}}}
         );
         assert(product);
-        assert(product->findIndex(worldPartitionIndexTypeId("test.layout")) != nullptr);
+        assert(product->findIndex(lux::partition::partitionIndexTypeId("test.layout")) != nullptr);
     }
 
     {
@@ -195,7 +195,7 @@ int main()
 
     {
         WorldPartitionLayoutBuilder unknown(objects);
-        const std::array values{id<WorldObjectId>(99U)};
+        const std::array values{id<lux::domain::WorldObjectId>(99U)};
         auto result = unknown.addPartition(id<WorldPartitionId>(1U), values);
         assert(!result);
         assert(result.error().code == EWorldPartitionError::UNKNOWN_OBJECT);

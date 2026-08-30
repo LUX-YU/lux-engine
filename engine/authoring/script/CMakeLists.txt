@@ -82,10 +82,3 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 add_test(NAME script_symbol_ledger_test COMMAND script_symbol_ledger_test)
-
-install_components(
-    PROJECT_NAME lux-engine-authoring
-    VERSION      ${PROJECT_VERSION}
-    NAMESPACE    lux::engine::authoring
-    COMPONENTS   authoring_script
-)

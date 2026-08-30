@@ -19,6 +19,14 @@ find_package(
 )
 
 include_component_cmake_scripts(lux::engine::core::meta)
+if(NOT COMMAND engine_add_type_runtime_info)
+    get_target_property(
+        installed_meta_assets
+        lux::engine::core::meta
+        IMPORTED_ASSETS_PREFIX
+    )
+    include("${installed_meta_assets}/cmake_scripts/engine_type_runtime_info.cmake")
+endif()
 engine_add_type_runtime_info(
     NAME installed_script_system_meta
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/ConsumerBehavior.hpp

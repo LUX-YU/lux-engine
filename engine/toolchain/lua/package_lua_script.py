@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import pathlib
 import re
@@ -20,6 +21,9 @@ SIMULATION_SCOPE = "SIMULATION"
 ENTITY_SCOPE = "ENTITY"
 VALUE_PASS = 0
 CONST_REF_PASS = 1
+OUTER_VERSION = 20260606
+OUTER_HEADER_SIZE = 400
+NO_LEGACY_TYPE_TAG = 0xFFFFFFFF
 
 
 def fnv1a(text: str) -> int:
@@ -292,6 +296,31 @@ def encode(
     return bytes(writer.data)
 
 
+def wrap_typed_asset(payload: bytes, module_name: str, source_id: str) -> bytes:
+    digest = bytearray(hashlib.sha256(payload).digest()[:16])
+    digest[6] = (digest[6] & 0x0F) | 0x40
+    digest[8] = (digest[8] & 0x3F) | 0x80
+    display = module_name.encode("utf-8")[:63]
+    source = source_id.encode("utf-8")[:255]
+    header = bytearray(OUTER_HEADER_SIZE)
+    struct.pack_into(
+        "<IIQQQQ",
+        header,
+        0,
+        MAGIC,
+        OUTER_VERSION,
+        OUTER_HEADER_SIZE,
+        0,
+        OUTER_HEADER_SIZE,
+        len(payload),
+    )
+    header[40:56] = digest
+    struct.pack_into("<I", header, 56, NO_LEGACY_TYPE_TAG)
+    header[72 : 72 + len(display)] = display
+    header[136 : 136 + len(source)] = source
+    return bytes(header) + payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, type=pathlib.Path)
@@ -317,11 +346,16 @@ def main() -> int:
             semantics,
             symbols_by_source,
         )
-        encoded = encode(
+        inner = encode(
             arguments.module,
             arguments.entry,
             exports,
             payload,
+            arguments.source.name,
+        )
+        encoded = wrap_typed_asset(
+            inner,
+            arguments.module,
             arguments.source.name,
         )
         arguments.output.parent.mkdir(parents=True, exist_ok=True)

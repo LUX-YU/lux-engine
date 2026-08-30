@@ -1,6 +1,7 @@
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 
 #include <cassert>
+#include <array>
 #include <cstddef>
 #include <fstream>
 #include <limits>
@@ -21,19 +22,22 @@ int main()
     );
     assert(input);
 
-    const auto codec = lux::script::scriptArtifactCodecDescriptor({});
-    const lux::asset::AssetCodecLimits limits{
-        std::numeric_limits<std::size_t>::max(),
-        std::numeric_limits<std::size_t>::max(),
-        std::numeric_limits<std::size_t>::max()};
-    const auto decoded = codec.decode(
-        bytes,
-        lux::asset::AssetDecodeContext{limits}
+    std::array<std::uint8_t, 16U> id_bytes{};
+    for (std::size_t index = 0U; index < id_bytes.size(); ++index)
+        id_bytes[index] = std::to_integer<std::uint8_t>(bytes[40U + index]);
+    const lux::asset::AssetId requested{id_bytes};
+    const auto decoded = lux::asset::TAssetSerDeser<
+        lux::script::ScriptArtifactAsset>::decode(
+        requested,
+        lux::cxx::SharedBytes<>::copyOf(bytes),
+        lux::asset::AssetDecodeLimits{
+            bytes.size(),
+            std::numeric_limits<std::size_t>::max(),
+            0U
+        }
     );
     assert(decoded);
-    const auto asset = std::static_pointer_cast<
-        const lux::script::ScriptArtifact>(decoded->payload);
-    const auto& description = asset->description();
+    const auto& description = (*decoded)->data().description();
     assert(description.kind() == lux::rdesc::Script::Kind::LUA_SOURCE);
     assert(description.exports.size() == 1U);
     assert(description.exports[0].name == "tick");
@@ -54,9 +58,10 @@ int main()
     assert(description.exports[0].args[1].alignment == 4U);
     assert(description.exports[0].args[2].canonical_name == "lux.f32");
     assert(description.exports[0].returns[0].canonical_name == "lux.i32");
-    const auto encoded = codec.encode(
-        asset.get(),
-        lux::asset::AssetEncodeContext{limits}
+    const auto encoded = lux::asset::TAssetSerDeser<
+        lux::script::ScriptArtifactAsset>::encode(
+        **decoded,
+        lux::asset::AssetEncodeLimits{std::numeric_limits<std::size_t>::max()}
     );
     assert(encoded);
     assert(*encoded == bytes);

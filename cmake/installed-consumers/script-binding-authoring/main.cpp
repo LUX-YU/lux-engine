@@ -25,13 +25,6 @@ namespace
         .version = 1U,
         .hooks = Hooks};
 
-    lux::asset::AssetCodecLimits unlimited()
-    {
-        return {
-            std::numeric_limits<std::size_t>::max(),
-            std::numeric_limits<std::size_t>::max(),
-            std::numeric_limits<std::size_t>::max()};
-    }
 }
 
 int main()

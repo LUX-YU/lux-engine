@@ -58,14 +58,6 @@ namespace
         return lux::world::WorldObjectId{uuids::uuid{bytes}};
     }
 
-    [[nodiscard]] lux::asset::AssetCodecLimits unlimited()
-    {
-        return {
-            std::numeric_limits<std::size_t>::max(),
-            std::numeric_limits<std::size_t>::max(),
-            std::numeric_limits<std::size_t>::max()};
-    }
-
     struct Fixture final
     {
         lux::asset::AssetId asset_id{assetId()};

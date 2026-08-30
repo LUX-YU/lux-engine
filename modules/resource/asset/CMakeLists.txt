@@ -25,6 +25,8 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Asset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetCodecSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CookedAssetImage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/detail/CookedAssetWriter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAsset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetVfs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/VirtualPath.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakArchive.cpp
@@ -43,7 +45,9 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
 )
 
 target_compile_definitions(asset PRIVATE LUX_ASSET_LIBRARY)
@@ -55,6 +59,7 @@ target_link_libraries(
         lux::cxx::algorithm
         lux::cxx::compile_time
         lux::cxx::memory
+        lux::engine::resource::description
     PRIVATE
         lux::cxx::core
         lux::engine::core::serialization
@@ -65,6 +70,7 @@ component_add_transitive_commands(
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 
 lux_classify_target(
@@ -74,7 +80,7 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-foreach(test_name IN ITEMS asset_codec_set_test cooked_asset_image_test typed_asset_test)
+foreach(test_name IN ITEMS asset_codec_set_test cooked_asset_image_test typed_asset_test typed_texture_asset_test)
     add_executable(
         ${test_name}
         ${CMAKE_CURRENT_SOURCE_DIR}/test/${test_name}.cpp

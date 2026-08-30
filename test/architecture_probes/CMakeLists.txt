@@ -69,6 +69,80 @@ if(TARGET render_vulkan)
     )
 endif()
 
+if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDER_CONTENT)
+    set(texture_qualification_content ${CMAKE_CURRENT_BINARY_DIR}/texture_qualification/content)
+    set(texture_qualification_asset ${texture_qualification_content}/checker.luxasset)
+    set(texture_qualification_pak ${CMAKE_CURRENT_BINARY_DIR}/texture_qualification/content.luxpak)
+    add_custom_command(
+        OUTPUT ${texture_qualification_asset}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${texture_qualification_content}
+        COMMAND $<TARGET_FILE:lux_asset_packer>
+            --type texture
+            --source_path ${PROJECT_SOURCE_DIR}/modules/function/render/features/assets/textures/ringed_gas_giant_planet.png
+            --target_path ${texture_qualification_asset}
+            --texture_format bc3_srgb
+            --texture_color_space srgb
+        DEPENDS
+            lux_asset_packer
+            ${PROJECT_SOURCE_DIR}/modules/function/render/features/assets/textures/ringed_gas_giant_planet.png
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT ${texture_qualification_pak}
+        COMMAND $<TARGET_FILE:lux_asset_packer>
+            --pack
+            --source_path ${texture_qualification_content}
+            --target_path ${texture_qualification_pak}
+        DEPENDS lux_asset_packer ${texture_qualification_asset}
+        VERBATIM
+    )
+    add_custom_target(
+        texture_asset_vulkan_qualification_content
+        DEPENDS ${texture_qualification_pak}
+    )
+    add_executable(
+        texture_asset_vulkan_qualification
+        texture_asset_vulkan_qualification.cpp
+    )
+    add_dependencies(
+        texture_asset_vulkan_qualification
+        texture_asset_vulkan_qualification_content
+    )
+    lux_add_build_tool_dependency(
+        CONSUMER texture_asset_vulkan_qualification
+        TOOL lux_asset_packer
+    )
+    target_include_directories(
+        texture_asset_vulkan_qualification
+        PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
+    )
+    target_compile_definitions(
+        texture_asset_vulkan_qualification
+        PRIVATE LUX_TEXTURE_QUALIFICATION_PAK="${texture_qualification_pak}"
+    )
+    target_link_libraries(
+        texture_asset_vulkan_qualification
+        PRIVATE
+            render_features
+            lux::engine::function::render_vulkan
+            lux::engine::resource::asset
+    )
+    lux_classify_target(
+        TARGET  texture_asset_vulkan_qualification
+        LAYER   HOST
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(NAME texture_asset_vulkan_qualification COMMAND texture_asset_vulkan_qualification)
+    set_tests_properties(
+        texture_asset_vulkan_qualification
+        PROPERTIES
+            LABELS "architecture;qualification;host;render;gpu;texture;asset"
+            SKIP_RETURN_CODE 77
+            TIMEOUT 120
+    )
+endif()
+
 option(
     LUX_BUILD_PRELOADED_SPATIAL3D_PROBE
     "Build the gated World/Jolt/Render preloaded Spatial3D vertical slice"

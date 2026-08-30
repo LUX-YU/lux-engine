@@ -1,3 +1,6 @@
+#include <lux/cxx/algorithm/sha256.hpp>
+
+#include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/world/WorldAssetCodec.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 
@@ -7,6 +10,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 
 namespace
@@ -14,7 +18,7 @@ namespace
     template <class Type>
     [[nodiscard]] Type id(std::uint8_t tail)
     {
-        std::array<std::uint8_t, 16> bytes{};
+        std::array<std::uint8_t, 16U> bytes{};
         bytes[15] = tail;
         return Type{uuids::uuid(bytes)};
     }
@@ -22,7 +26,6 @@ namespace
     [[nodiscard]] lux::world::WorldDescription makeWorld()
     {
         using namespace lux::world;
-
         WorldDescriptionBuilder builder;
         assert(builder.setIdentity(id<WorldBundleId>(1U), id<WorldBundleGeneration>(2U), "world"));
         assert(builder.addSchema(worldDataSchemaId("test.aa")));
@@ -36,77 +39,83 @@ namespace
         assert(result);
         return std::move(*result);
     }
-}
+
+    [[nodiscard]] std::string sha256(std::span<const std::byte> bytes)
+    {
+        const auto digest = lux::cxx::algorithm::Sha256::hash(bytes);
+        std::array<char, lux::cxx::algorithm::Sha256Digest::hex_size> text{};
+        digest.formatHex(text);
+        return {text.data(), text.size()};
+    }
+} // namespace
 
 int main()
 {
     using namespace lux::asset;
     using namespace lux::world;
+    constexpr AssetEncodeLimits encode_limits{1024U * 1024U};
+    constexpr AssetDecodeLimits decode_limits{1024U * 1024U, 1024U * 1024U, 4U};
 
-    auto code_lifetime = std::make_shared<int>(42);
-    auto descriptor = worldAssetCodecDescriptor(code_lifetime);
-    assert(descriptor.type == AssetTypeId::fromName(WorldAssetCanonicalName));
-    assert(descriptor.canonical_name == WorldAssetCanonicalName);
-    assert(descriptor.primary_magic == WorldAssetPrimaryMagic);
-    assert(descriptor.legacy_magic == 0U);
-    assert(descriptor.cpp_payload_type == lux::cxx::typeToken<WorldDescription>());
-    assert(code_lifetime.use_count() == 2U);
-
-    auto world = makeWorld();
-    const AssetEncodeContext generous_encode{AssetCodecLimits{0U, 0U, std::numeric_limits<std::size_t>::max()}};
-    auto encoded = descriptor.encode(&world, generous_encode);
+    auto world = std::make_shared<const WorldDescription>(makeWorld());
+    auto asset = WorldAsset::create(
+        AssetInfo{id<AssetId>(9U), WorldAsset::asset_type, 17U},
+        world
+    );
+    assert(asset);
+    auto encoded = TAssetSerDeser<WorldAsset>::encode(**asset, encode_limits);
     assert(encoded);
-    assert(!descriptor.encode(&world, AssetEncodeContext{AssetCodecLimits{0U, 0U, encoded->size() - 1U}}));
+    const auto outer = inspectCookedAssetImage(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    );
+    assert(outer);
+    assert(outer->information().empty());
+    assert(outer->data().size() == 228U);
+    assert(sha256(outer->data().view()) ==
+        "dea3eca1af27b347bc525dbdb328437dad8c22cbb599bace44c7b10eb8064993");
 
-    const AssetDecodeContext generous_decode{
-        AssetCodecLimits{encoded->size(), std::numeric_limits<std::size_t>::max(), 0U}
-    };
-    auto decoded = descriptor.decode(*encoded, generous_decode);
+    const auto decoded = TAssetSerDeser<WorldAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    );
     assert(decoded);
-    auto decoded_world = std::static_pointer_cast<const WorldDescription>(decoded->payload);
-    assert(decoded_world);
-    assert(decoded_world->bundleId() == world.bundleId());
-    assert(decoded_world->generation() == world.generation());
-    assert(decoded_world->name() == world.name());
-    assert(decoded_world->schemas().size() == world.schemas().size());
-    for (std::size_t index{}; index < world.schemas().size(); ++index)
-        assert(decoded_world->schemas()[index] == world.schemas()[index]);
-    assert(decoded_world->partitioner().id == world.partitioner().id);
-    assert(decoded_world->partitioner().version == world.partitioner().version);
-    assert(decoded_world->partitionCount() == world.partitionCount());
-    assert(decoded_world->storageVolumes().size() == world.storageVolumes().size());
-    assert(decoded_world->partitionTable().pages().size() == world.partitionTable().pages().size());
-    assert(decoded_world->partitionIndexes().size() == world.partitionIndexes().size());
-    assert(decoded->decoded_byte_count == decoded_world->retainedBytes());
+    const auto& value = (*decoded)->data();
+    assert(value.bundleId() == world->bundleId());
+    assert(value.generation() == world->generation());
+    assert(value.name() == world->name());
+    assert(value.schemas().size() == world->schemas().size());
+    assert(value.partitionCount() == world->partitionCount());
+    assert(value.storageVolumes().size() == world->storageVolumes().size());
+    assert(value.partitionTable().pages().size() == world->partitionTable().pages().size());
+    assert(value.partitionIndexes().size() == world->partitionIndexes().size());
 
-    assert(!descriptor.decode(
-        *encoded,
-        AssetDecodeContext{AssetCodecLimits{encoded->size() - 1U, std::numeric_limits<std::size_t>::max(), 0U}}
-    ));
-    assert(!descriptor.decode(*encoded, AssetDecodeContext{AssetCodecLimits{encoded->size(), 1U, 0U}}));
+    const auto limited = TAssetSerDeser<WorldAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        AssetDecodeLimits{encoded->size(), 1U, 4U}
+    );
+    assert(!limited && limited.error().code == EAssetDecodeError::LIMIT_EXCEEDED);
 
     auto trailing = *encoded;
     trailing.push_back(std::byte{});
-    assert(!descriptor.decode(
-        trailing,
-        AssetDecodeContext{AssetCodecLimits{trailing.size(), std::numeric_limits<std::size_t>::max(), 0U}}
+    assert(!TAssetSerDeser<WorldAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(trailing),
+        AssetDecodeLimits{trailing.size(), trailing.size(), 4U}
     ));
 
     auto corrupt_magic = *encoded;
-    corrupt_magic[0] ^= std::byte{0x01U};
-    assert(!descriptor.decode(corrupt_magic, generous_decode));
+    corrupt_magic[400U] ^= std::byte{0x01U};
+    assert(!TAssetSerDeser<WorldAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(corrupt_magic),
+        decode_limits
+    ));
 
-    auto corrupt_version = *encoded;
-    corrupt_version[4] ^= std::byte{0x01U};
-    assert(!descriptor.decode(corrupt_version, generous_decode));
-
-    auto truncated = *encoded;
-    truncated.pop_back();
-    assert(!descriptor.decode(truncated, generous_decode));
-
-    // Header 40 bytes + name record 9 bytes + schema count 4 bytes.
     auto noncanonical = *encoded;
-    constexpr std::size_t kSchemaOffset = 53U;
+    constexpr std::size_t kSchemaOffset = 400U + 53U;
     constexpr std::size_t kSchemaRecordBytes = 8U + 4U + 7U;
     for (std::size_t index{}; index < kSchemaRecordBytes; ++index)
     {
@@ -115,7 +124,16 @@ int main()
             noncanonical[kSchemaOffset + kSchemaRecordBytes + index]
         );
     }
-    assert(!descriptor.decode(noncanonical, generous_decode));
+    assert(!TAssetSerDeser<WorldAsset>::decode(
+        (*asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(noncanonical),
+        decode_limits
+    ));
 
+    assert(!TAssetSerDeser<WorldAsset>::decode(
+        id<AssetId>(10U),
+        lux::cxx::SharedBytes<>::copyOf(*encoded),
+        decode_limits
+    ));
     return 0;
 }

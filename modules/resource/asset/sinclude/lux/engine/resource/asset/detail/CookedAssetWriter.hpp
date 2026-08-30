@@ -23,7 +23,7 @@ namespace lux::asset::detail
         std::span<const AssetAuxiliaryPayload> auxiliary;
     };
 
-    [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
     encodeCookedAssetImage(
         const CookedAssetWriteRequest& request,
         const AssetEncodeLimits& limits

@@ -1,11 +1,15 @@
 #include <lux/engine/world/WorldAssetCodec.hpp>
 
-#include <memory>
+#include <type_traits>
 
 int
 main()
 {
-    auto pin = std::make_shared<int>(1);
-    const auto descriptor = lux::world::worldAssetCodecDescriptor(pin);
-    return descriptor.primary_magic == lux::world::WorldAssetPrimaryMagic ? 0 : 1;
+    static_assert(std::is_same_v<
+        lux::world::WorldAsset::data_type,
+        lux::world::WorldDescription
+    >);
+    static_assert(lux::world::WorldAsset::asset_type ==
+        lux::asset::AssetTypeId::fromName("lux.world.description"));
+    return lux::world::WorldAsset::primary_magic == lux::world::WorldAssetPrimaryMagic ? 0 : 1;
 }

@@ -46,9 +46,9 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
 )
 
 target_compile_definitions(asset PRIVATE LUX_ASSET_LIBRARY)

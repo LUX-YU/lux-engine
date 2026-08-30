@@ -192,41 +192,56 @@ namespace lux::simulation
                 static_cast<std::uint32_t>(y) & kChunkMask)];
         }
 
-        [[nodiscard]] bool resident(std::int64_t x, std::int64_t y) const noexcept
-        {
-            return valid(x, y) && findChunk(keyFor(x, y)) != nullptr;
-        }
-
         [[nodiscard]] bool tryMove(
-            std::int64_t source_x,
-            std::int64_t source_y,
-            std::int64_t target_x,
-            std::int64_t target_y,
+            std::uint64_t source_key,
+            Chunk& source_chunk,
+            std::uint32_t source_local_x,
+            std::uint32_t source_local_y,
+            std::int32_t delta_x,
+            std::int32_t delta_y,
             PixelMaterialId source_material
         ) noexcept
         {
-            if (!resident(target_x, target_y))
-                return false;
+            const auto target_local_x = static_cast<std::int32_t>(source_local_x) + delta_x;
+            const auto target_local_y = static_cast<std::int32_t>(source_local_y) + delta_y;
 
-            const auto target_key = keyFor(target_x, target_y);
-            auto* target_chunk = findChunk(target_key);
-            const auto target_local_x = static_cast<std::uint32_t>(target_x) & kChunkMask;
-            const auto target_local_y = static_cast<std::uint32_t>(target_y) & kChunkMask;
-            const auto target_index = cellIndex(target_local_x, target_local_y);
+            Chunk* target_chunk = &source_chunk;
+            std::uint64_t target_key = source_key;
+            std::uint32_t target_x{};
+            std::uint32_t target_y{};
+
+            if (target_local_x >= 0 && target_local_x < static_cast<std::int32_t>(kChunkSize) &&
+                target_local_y >= 0 && target_local_y < static_cast<std::int32_t>(kChunkSize))
+            {
+                target_x = static_cast<std::uint32_t>(target_local_x);
+                target_y = static_cast<std::uint32_t>(target_local_y);
+            }
+            else
+            {
+                const auto global_x =
+                    static_cast<std::int64_t>(chunkX(source_key)) * kChunkSize + source_local_x + delta_x;
+                const auto global_y =
+                    static_cast<std::int64_t>(chunkY(source_key)) * kChunkSize + source_local_y + delta_y;
+                if (!valid(global_x, global_y))
+                    return false;
+                target_key = keyFor(global_x, global_y);
+                target_chunk = findChunk(target_key);
+                if (!target_chunk)
+                    return false;
+                target_x = static_cast<std::uint32_t>(global_x) & kChunkMask;
+                target_y = static_cast<std::uint32_t>(global_y) & kChunkMask;
+            }
+
+            const auto target_index = cellIndex(target_x, target_y);
             if (target_chunk->cells[target_index] != kEmptyPixelMaterial)
                 return false;
 
-            const auto source_key = keyFor(source_x, source_y);
-            auto* source_chunk = findChunk(source_key);
-            const auto source_local_x = static_cast<std::uint32_t>(source_x) & kChunkMask;
-            const auto source_local_y = static_cast<std::uint32_t>(source_y) & kChunkMask;
             const auto source_index = cellIndex(source_local_x, source_local_y);
-
-            source_chunk->cells[source_index] = kEmptyPixelMaterial;
+            source_chunk.cells[source_index] = kEmptyPixelMaterial;
             target_chunk->cells[target_index] = source_material;
             target_chunk->moved[target_index] = 1U;
-            scheduleNext(source_key, *source_chunk, source_local_x, source_local_y);
-            scheduleNext(target_key, *target_chunk, target_local_x, target_local_y);
+            scheduleNext(source_key, source_chunk, source_local_x, source_local_y);
+            scheduleNext(target_key, *target_chunk, target_x, target_y);
             ++moved_cells_last;
             return true;
         }
@@ -251,7 +266,6 @@ namespace lux::simulation
 
         void stepChunk(std::uint64_t key, Chunk& chunk) noexcept
         {
-            const auto base_x = static_cast<std::int64_t>(chunkX(key)) * kChunkSize;
             const auto base_y = static_cast<std::int64_t>(chunkY(key)) * kChunkSize;
 
             for (std::int32_t tile_y = static_cast<std::int32_t>(kTilesPerAxis) - 1;
@@ -284,8 +298,8 @@ namespace lux::simulation
                             const auto local_x = reverse_x
                                 ? (minimum_x + kTileSize - 1U - offset)
                                 : (minimum_x + offset);
-                            const auto index =
-                                cellIndex(local_x, static_cast<std::uint32_t>(local_y));
+                            const auto local_y_u32 = static_cast<std::uint32_t>(local_y);
+                            const auto index = cellIndex(local_x, local_y_u32);
                             ++cells_scanned_last;
                             if (chunk.moved[index] != 0U)
                                 continue;
@@ -300,23 +314,21 @@ namespace lux::simulation
                                 continue;
                             }
 
-                            const auto x = base_x + local_x;
-                            const auto y = base_y + local_y;
-                            if (tryMove(x, y, x, y + 1, id))
+                            if (tryMove(key, chunk, local_x, local_y_u32, 0, 1, id))
                                 continue;
 
                             const auto first = reverse_x ? 1 : -1;
                             const auto second = -first;
                             if (phase == EPixelMaterialPhase::POWDER)
                             {
-                                if (tryMove(x, y, x + first, y + 1, id) ||
-                                    tryMove(x, y, x + second, y + 1, id))
+                                if (tryMove(key, chunk, local_x, local_y_u32, first, 1, id) ||
+                                    tryMove(key, chunk, local_x, local_y_u32, second, 1, id))
                                 {
                                     continue;
                                 }
                             }
-                            else if (tryMove(x, y, x + first, y, id) ||
-                                     tryMove(x, y, x + second, y, id))
+                            else if (tryMove(key, chunk, local_x, local_y_u32, first, 0, id) ||
+                                     tryMove(key, chunk, local_x, local_y_u32, second, 0, id))
                             {
                                 continue;
                             }

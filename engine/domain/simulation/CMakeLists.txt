@@ -10,6 +10,7 @@ add_subdirectory(ecs/task)
 add_subdirectory(core)
 add_subdirectory(ecs/hierarchy)
 add_subdirectory(ecs/transform)
+add_subdirectory(ecs/visual)
 add_subdirectory(systems/transform)
 add_subdirectory(ecs)
 

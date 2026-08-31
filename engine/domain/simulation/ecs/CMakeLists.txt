@@ -6,6 +6,7 @@ foreach(component IN ITEMS
     ecs_task
     hierarchy
     transform
+    visual
 )
     if(TARGET ${component})
         list(APPEND _lux_ecs_components ${component})

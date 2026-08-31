@@ -1,6 +1,6 @@
 # Large 3D Scene Performance Qualification
 
-- Code revision: `e7b562b7e52bb02c11d7444040e7a781a93a6468`
+- Code revision: `55cca1c132ab03f2a4c4588e65dbe58afa3d46d1`
 - Product: `large_3d_scene_performance_qualification`
 - Classification: HOST / TEST / COMPOSITION
 - Configuration: RelWithDebInfo, full Render content, real physical Vulkan GPU
@@ -13,7 +13,8 @@
 
 - 1280 x 720 offscreen Render target with GPU readback.
 - 100 x 100 retained Render entities (10,000 total).
-- One shared typed Mesh/Material/Texture asset set loaded through Pak/VFS and explicit AssetId upload.
+- One shared typed Mesh/Material/Texture asset set loaded through Pak/VFS; AssetId resolution remains in L3 and pure
+  Render receives only ready `RMeshHandle`/`RMaterialHandle` values.
 - The source triangle is expanded to a 64-triangle local cluster: 192 vertices per instance, approximately 640,000
   submitted scene triangles before culling.
 - One directional light and 32 colored point lights.
@@ -26,13 +27,13 @@
 ```text
 server_instances=10000
 server_lights=33
-full_sync_ms=0.853
-initial_state_apply_ms=34.101
-state_update_mean_ms=0.856
-frame_mean_ms=0.436
-frame_p95_ms=0.787
-gpu_frame_mean_ms=0.515929
-gpu_frame_p95_ms=0.526624
+full_sync_ms=3.336
+initial_state_apply_ms=32.111
+state_update_mean_ms=0.734
+frame_mean_ms=0.432
+frame_p95_ms=0.772
+gpu_frame_mean_ms=0.515094
+gpu_frame_p95_ms=0.526752
 gpu_samples=79
 lit_pixels=162342
 luminance_variance=0.03477081

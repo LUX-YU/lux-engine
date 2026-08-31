@@ -1253,6 +1253,28 @@ foreach(render_resource_file IN ITEMS
         )
     endif()
 endforeach()
+
+foreach(render_qualification_source IN ITEMS
+    model_asset_vulkan_qualification.cpp
+    l1_l3_render_sync_3d_qualification.cpp
+    large_3d_scene_performance_qualification.cpp
+    l1_l3_render_lane_window_qualification.cpp
+)
+    if(NOT EXISTS "${source_root}/test/architecture_probes/${render_qualification_source}")
+        message(FATAL_ERROR
+            "Architecture: missing split Render qualification '${render_qualification_source}'."
+        )
+    endif()
+endforeach()
+file(READ "${source_root}/test/architecture_probes/CMakeLists.txt" render_qualification_cmake)
+if(render_qualification_cmake MATCHES
+   "l1_l3_render_sync_3d_qualification[ \t\r\n]+model_asset_vulkan_qualification[.]cpp|large_3d_scene_performance_qualification[ \t\r\n]+model_asset_vulkan_qualification[.]cpp")
+    message(FATAL_ERROR "Architecture: Render qualifications restore macro-reused source ownership.")
+endif()
+if(NOT render_qualification_cmake MATCHES
+   "LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION[ \t\r\n]+[^\r\n]*[ \t\r\n]+OFF")
+    message(FATAL_ERROR "Architecture: visible-window Render qualification is not default OFF.")
+endif()
 file(READ "${process_timer_header}" process_timer_contract)
 file(READ "${process_port_sender_header}" process_port_sender_contract)
 if(process_timer_contract MATCHES "sender_tag|operation_state_tag|capacity[ \\t]*\\{[1-9]|create[^;]*=")

@@ -69,6 +69,47 @@ if(TARGET render_vulkan)
     )
 endif()
 
+option(
+    LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION
+    "Build the opt-in visible-window Simulation/Presentation/Render lane qualification"
+    OFF
+)
+if(LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION AND TARGET render_vulkan)
+    add_executable(
+        l1_l3_render_lane_window_qualification
+        l1_l3_render_lane_window_qualification.cpp
+    )
+    target_include_directories(
+        l1_l3_render_lane_window_qualification
+        PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
+    )
+    target_link_libraries(
+        l1_l3_render_lane_window_qualification
+        PRIVATE
+            lux::engine::function::render_vulkan
+            lux::engine::scene::scene_runtime_presentation
+            lux::engine::simulation::simulation_core
+            lux::engine::simulation::transform_system
+    )
+    lux_classify_target(
+        TARGET  l1_l3_render_lane_window_qualification
+        LAYER   HOST
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(
+        NAME l1_l3_render_lane_window_qualification
+        COMMAND l1_l3_render_lane_window_qualification
+    )
+    set_tests_properties(
+        l1_l3_render_lane_window_qualification
+        PROPERTIES
+            LABELS "architecture;qualification;host;simulation;presentation;render;gpu;window"
+            SKIP_RETURN_CODE 77
+            TIMEOUT 30
+    )
+endif()
+
 if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDER_CONTENT)
     set(texture_qualification_content ${CMAKE_CURRENT_BINARY_DIR}/texture_qualification/content)
     set(texture_qualification_asset ${texture_qualification_content}/checker.luxasset)
@@ -220,7 +261,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
 
     add_executable(
         l1_l3_render_sync_3d_qualification
-        model_asset_vulkan_qualification.cpp
+        l1_l3_render_sync_3d_qualification.cpp
     )
     add_dependencies(
         l1_l3_render_sync_3d_qualification
@@ -234,7 +275,6 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
         l1_l3_render_sync_3d_qualification
         PRIVATE
             LUX_MODEL_QUALIFICATION_PAK="${model_qualification_pak}"
-            LUX_L1_L3_RENDER_SYNC_QUALIFICATION=1
     )
     target_link_libraries(
         l1_l3_render_sync_3d_qualification
@@ -264,7 +304,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     )
     add_executable(
         large_3d_scene_performance_qualification
-        model_asset_vulkan_qualification.cpp
+        large_3d_scene_performance_qualification.cpp
     )
     add_dependencies(
         large_3d_scene_performance_qualification
@@ -278,7 +318,6 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
         large_3d_scene_performance_qualification
         PRIVATE
             LUX_MODEL_QUALIFICATION_PAK="${model_qualification_pak}"
-            LUX_LARGE_3D_SCENE_PERFORMANCE=1
             LUX_LARGE_3D_SCENE_SCREENSHOT="${large_3d_scene_screenshot}"
     )
     target_link_libraries(

@@ -15,8 +15,8 @@
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // TypeId, opcodes, CommandTraits
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp>      // EOpKind / FeatureOpIds / reply_type_id_of_v
 #include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>
-#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp> // RLightHandle
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/function/render/client/core/RenderEntityId.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <Eigen/Core>
@@ -39,10 +39,16 @@ namespace lux::render
     //  Feature-scoped operation name constants (allocated dynamically at
     //  register_ops_fn time; the client reads the ids from the registration reply)
     // =========================================================================
-    struct LUX_OP(lane = program, kind = resource, name = CreateLight, method = createLight, reply = LightCreatedReply)
-        CreateLightPayload
+    struct LUX_OP(
+        lane = program,
+        kind = stream,
+        name = UpsertLight,
+        method = upsertLight,
+        bulk = LightBatch,
+        bulk_method = upsertLights) UpsertLightPayload
     {
-        RenderSceneId scene_id{}; // light is created in THIS scene
+        RenderSceneId scene_id{};
+        RenderEntityId entity{};
         std::uint32_t transition_milliseconds{0u};
         uint8_t light_type{0}; // 0=Dir, 1=Point, 2=Spot, 3=Area
         RenderLargePosition3D spatial_position{};
@@ -63,52 +69,16 @@ namespace lux::render
         float cascade_splits[kShadowCascadeSlots]{0.1f, 0.25f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         float area_size[2]{1.f, 1.f};
     };
-    static_assert(std::is_trivially_copyable_v<CreateLightPayload>);
+    static_assert(std::is_trivially_copyable_v<UpsertLightPayload>);
 
-    struct LUX_OP(
-        lane = program,
-        kind = stream,
-        name = UpdateLight,
-        method = updateLight,
-        opcode = resource,
-        bulk = LightBatch,
-        bulk_method = updateLights) UpdateLightPayload
-    {
-        RenderSceneId scene_id{}; // which scene owns `handle`
-        RLightHandle handle{};
-        uint8_t light_type{0};
-        RenderLargePosition3D spatial_position{};
-        float direction[3]{0.f, -1.f, 0.f};
-        float color[3]{1.f, 1.f, 1.f};
-        float intensity{1.f};
-        float range{10.f};
-        float attenuation_constant{1.f};
-        float attenuation_linear{0.09f};
-        float attenuation_quadratic{0.032f};
-        float inner_cone_angle{0.5236f};
-        float outer_cone_angle{0.7854f};
-        uint32_t flags{0};
-        uint32_t shadow_map_size{1024};
-        float shadow_bias{0.005f};
-        float shadow_normal_bias{0.01f};
-        uint32_t cascade_count{4};
-        float cascade_splits[kShadowCascadeSlots]{0.1f, 0.25f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-        float area_size[2]{1.f, 1.f};
-    };
-    static_assert(std::is_trivially_copyable_v<UpdateLightPayload>);
-
-    // dedicated struct (not DestroyResourcePayload<RLightHandle>) because a
-    // light handle is only meaningful paired with its owning scene — per-scene
-    // LightResources free-lists are independent, so the same {index,gen} can be
-    // valid in two scenes.
-    struct LUX_OP(lane = program, kind = stream, name = DestroyLight, method = destroyLight, opcode = resource)
-        DestroyLightPayload
+    // Light identity is the owning scene plus its stable Render entity.
+    struct LUX_OP(lane = program, kind = stream, name = RemoveLight, method = removeLight) RemoveLightPayload
     {
         RenderSceneId scene_id{};
-        RLightHandle handle{};
+        RenderEntityId entity{};
         std::uint32_t transition_milliseconds{0u};
     };
-    static_assert(std::is_trivially_copyable_v<DestroyLightPayload>);
+    static_assert(std::is_trivially_copyable_v<RemoveLightPayload>);
 
     struct LightStatsReply final
     {
@@ -132,34 +102,20 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<LightStatsPayload>);
 
-    // The light-field tail (light_type .. area_size) is byte-identical in
-    // CreateLightPayload and UpdateLightPayload; scene_id (and, for Update, the
-    // handle) precede it. Copies between the two MUST be bounded to this tail —
-    // NEVER sizeof(CreateLightPayload), which would overrun past scene_id.
 #ifndef __LUX_PARSE_TIME__
-    // 布局安全网只服务真编译;解析期(libclang + annotate 属性)对注解结构的
-    // offsetof 判非常量,门掉 —— 生成器不消费这些断言。
-    static_assert(std::is_standard_layout_v<CreateLightPayload>);
-    static_assert(std::is_standard_layout_v<UpdateLightPayload>);
-#endif
-    inline constexpr std::size_t kLightPayloadTailBytes =
-#ifdef __LUX_PARSE_TIME__
-        0; // 解析期占位(见上)
-#else
-        sizeof(CreateLightPayload) - offsetof(CreateLightPayload, light_type);
-    static_assert(
-        kLightPayloadTailBytes == sizeof(UpdateLightPayload) - offsetof(UpdateLightPayload, light_type),
-        "Create/Update light payload shared tail must have identical layout");
+    static_assert(std::is_standard_layout_v<UpsertLightPayload>);
 #endif
 
     // =========================================================================
     //  LightDescriptor ↔ flat payload conversion
     // =========================================================================
 
-    inline CreateLightPayload toLightPayload(RenderSceneId scene_id, const LightDescriptor& desc)
+    inline UpsertLightPayload
+    toLightPayload(RenderSceneId scene_id, RenderEntityId entity, const LightDescriptor& desc)
     {
-        CreateLightPayload p{};
+        UpsertLightPayload p{};
         p.scene_id = scene_id;
+        p.entity = entity;
 
         std::visit(
             [&](auto&& arg) {
@@ -229,7 +185,7 @@ namespace lux::render
         return p;
     }
 
-    inline LightDescriptor fromLightPayload(const CreateLightPayload& p)
+    inline LightDescriptor fromLightPayload(const UpsertLightPayload& p)
     {
         switch (p.light_type)
         {
@@ -295,39 +251,6 @@ namespace lux::render
         }
     }
 
-    inline UpdateLightPayload
-    toUpdateLightPayload(RenderSceneId scene_id, RLightHandle handle, const LightDescriptor& desc)
-    {
-        auto cp = toLightPayload(scene_id, desc);
-        UpdateLightPayload up{};
-        up.scene_id = scene_id;
-        up.handle = handle;
-        // Copy ONLY the shared light-field tail (light_type .. area_size).
-        // NOT sizeof(CreateLightPayload) — that would overrun past scene_id.
-        std::memcpy(&up.light_type, &cp.light_type, kLightPayloadTailBytes);
-        return up;
-    }
-
-    inline LightDescriptor fromUpdateLightPayload(const UpdateLightPayload& p)
-    {
-        CreateLightPayload cp{};
-        // Copy ONLY the shared light-field tail (see toUpdateLightPayload).
-        std::memcpy(&cp.light_type, &p.light_type, kLightPayloadTailBytes);
-        return fromLightPayload(cp);
-    }
-
-    // =========================================================================
-    //  Reply payload + CommandTraits (moved out of core RenderProtocol.hpp —
-    //  createLight is the one light op that REPLIES, with the new RLightHandle).
-    //  Delivery is by request_id; reply_type_id is a fixed reply-domain tag.
-    // =========================================================================
-    struct LightCreatedReply
-    {
-        RLightHandle handle{};
-        uint32_t status{0};
-    };
-    static_assert(std::is_trivially_copyable_v<LightCreatedReply>);
-
     /// 无客户端创建参数 —— 空 tag 承载特性身份(数据型基础特性,
     /// SinglePerScene:第二实例只是同一注册表资源上的空壳,拒绝之)。
     struct LUX_COMM_CONFIG(
@@ -345,12 +268,11 @@ namespace lux::render
 
     // ── 便捷面(§7.5):LightDescriptor 变体 → flat 载荷的转换留手写,
     //    定义在 LightOperationHandlers.cpp;proxy 按值传以接临时对象。──
-    [[nodiscard]] LUX_FUNCTION_PUBLIC RenderRequest<LightCreatedReply> lightCreate(
+    LUX_FUNCTION_PUBLIC void lightUpsert(
         LightProxy proxy,
         RenderSceneId scene_id,
+        RenderEntityId entity,
         const LightDescriptor& desc,
         std::uint32_t transition_milliseconds = 0u
     );
-    LUX_FUNCTION_PUBLIC void
-    lightUpdate(LightProxy proxy, RenderSceneId scene_id, RLightHandle handle, const LightDescriptor& desc);
 } // namespace lux::render

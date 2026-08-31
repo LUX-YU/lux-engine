@@ -494,6 +494,30 @@ namespace lux::render
             return sc_out ? sc_out->resources().find<InstanceResources>() : nullptr;
         }
 
+        RenderObjectHandle resolveMeshObject(RenderScene* scene, RenderEntityId entity) noexcept
+        {
+            if (scene == nullptr || !scene->entities().valid(entity))
+            {
+                return {};
+            }
+            const auto* binding = scene->entities().try_get<MeshBinding>(entity);
+            return binding != nullptr ? binding->object : RenderObjectHandle{};
+        }
+
+        void eraseMeshBinding(RenderScene& scene, RenderEntityId entity) noexcept
+        {
+            auto& entities = scene.entities();
+            if (!entities.valid(entity))
+            {
+                return;
+            }
+            entities.remove<MeshBinding>(entity);
+            if (!entities.all_of<LightBinding>(entity))
+            {
+                entities.destroy(entity);
+            }
+        }
+
     } // anonymous namespace (helpers)
 
     RenderObjectHandle detail::createMeshInstance(
@@ -831,41 +855,103 @@ namespace lux::render
     }
 
     // ── Instance lifecycle ───────────────────────────────────────────────
-    void handleAddMeshInstance(GeneralRenderServer::Dispatcher::Ctx& ctx, const AddMeshInstancePayload& p)
+    void handleUpsertMeshInstance(GeneralRenderServer::Dispatcher::Ctx& ctx, const UpsertMeshInstancePayload& p)
     {
+        auto* scene = lookupScene(ctx.user_state, p.scene_id);
+        auto* context = lookupRenderContext(ctx.user_state);
+        auto* meshes = context ? context->globalRegistry().find<MeshResources>() : nullptr;
+        auto* materials = context ? context->globalRegistry().find<MaterialResources>() : nullptr;
+        const auto mesh = meshes ? meshes->findAsset(p.mesh_asset) : std::nullopt;
+        const auto material = materials ? materials->findAsset(p.material_asset) : std::nullopt;
+        const bool is_missing_asset = !mesh || !material || !meshes->isReady(mesh->index);
+        if (scene == nullptr || context == nullptr || is_missing_asset)
+        {
+            ctx.markDispatchError(renderError<err::resource::NotFound>());
+            return;
+        }
+
         MeshInstanceCreateStatus status = MeshInstanceCreateStatus::Unknown;
+        auto& entities = scene->entities();
+        if (auto* binding = entities.valid(p.entity) ? entities.try_get<MeshBinding>(p.entity) : nullptr)
+        {
+            const detail::MeshInstanceRevision revision{
+                binding->object,
+                RMeshHandle{mesh->index, mesh->gen},
+                RMaterialHandle{material->index, material->gen},
+                p.transform,
+                p.flags & ~kInstanceInternalFlagClusterOwned,
+                p.geometry_kind,
+                p.pass_mask,
+                p.user_meta_index,
+                0xffffffffu
+            };
+            if (!detail::reconfigureMeshInstances(ctx.user_state, p.scene_id, {&revision, 1U}, status))
+            {
+                ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
+                return;
+            }
+            detail::setMeshInstanceVisibility(
+                ctx.user_state,
+                p.scene_id,
+                binding->object,
+                (p.flags & kInstanceFlagVisible) != 0U
+            );
+            return;
+        }
+
         const RenderObjectHandle object = detail::createMeshInstance(
             ctx.user_state,
             p.scene_id,
-            p.mesh,
-            p.material,
+            RMeshHandle{mesh->index, mesh->gen},
+            RMaterialHandle{material->index, material->gen},
             p.transform,
             p.flags & ~kInstanceInternalFlagClusterOwned,
             p.geometry_kind,
             p.pass_mask,
             p.user_meta_index,
-            false,
+            true,
             status,
             p.transition_milliseconds,
             p.transition_seed
         );
-        replyToCurrent<AddMeshInstancePayload>(ctx, MeshInstanceSlotReply{object, status});
+        if (!object)
+        {
+            ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
+            return;
+        }
+        if (!entities.valid(p.entity))
+        {
+            (void)entities.create(p.entity);
+        }
+        entities.emplace<MeshBinding>(p.entity, object);
     }
 
     void handleRemoveMeshInstance(GeneralRenderServer::Dispatcher::Ctx& ctx, const RemoveMeshInstancePayload& p)
     {
-        detail::destroyMeshInstance(ctx.user_state, p.scene_id, p.object);
+        auto* scene = lookupScene(ctx.user_state, p.scene_id);
+        const auto object = resolveMeshObject(scene, p.entity);
+        if (!object)
+        {
+            return;
+        }
+        detail::destroyMeshInstance(ctx.user_state, p.scene_id, object);
+        eraseMeshBinding(*scene, p.entity);
     }
 
     void handleRetireMeshInstance(GeneralRenderServer::Dispatcher::Ctx& ctx, const RetireMeshInstancePayload& p)
     {
         auto* scene = lookupScene(ctx.user_state, p.scene_id);
         auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
+        const auto object = resolveMeshObject(scene, p.entity);
         const float duration = static_cast<float>(p.transition_milliseconds) / 1000.0f;
         if (!scene || !instances ||
-            !instances->beginFadeRetirement(p.object, scene->sceneTime(), duration, p.transition_seed))
+            !instances->beginFadeRetirement(object, scene->sceneTime(), duration, p.transition_seed))
         {
-            detail::destroyMeshInstance(ctx.user_state, p.scene_id, p.object);
+            detail::destroyMeshInstance(ctx.user_state, p.scene_id, object);
+        }
+        if (scene && object)
+        {
+            eraseMeshBinding(*scene, p.entity);
         }
     }
 
@@ -916,13 +1002,14 @@ namespace lux::render
         auto* view = sc->getView(p.view);
         if (!view)
             return;
-        const InstanceSlot slot = resolveInstanceSlot(inst, p.object);
+        const auto object = resolveMeshObject(sc, p.entity);
+        const InstanceSlot slot = resolveInstanceSlot(inst, object);
         if (!inst->isAlive(slot))
             return;
 
         // Derive bucket_id from the already-written cull meta.
         const auto& meta = inst->cullMetaAt(slot);
-        view->registerObject(p.object, meta.bucket_id);
+        view->registerObject(object, meta.bucket_id);
     }
 
     void handleHideInstanceFromView(GeneralRenderServer::Dispatcher::Ctx& ctx, const HideInstanceFromViewPayload& p)
@@ -931,11 +1018,12 @@ namespace lux::render
         auto* inst = resolveInstances(ctx, p.scene_id, sc);
         if (!inst)
             return;
-        const InstanceSlot slot = resolveInstanceSlot(inst, p.object);
+        const auto object = resolveMeshObject(sc, p.entity);
+        const InstanceSlot slot = resolveInstanceSlot(inst, object);
         if (!inst->isAlive(slot))
             return;
         if (auto* view = sc->getView(p.view))
-            view->unregisterObject(p.object);
+            view->unregisterObject(object);
     }
 
     void handleUpdateInstanceFlags(GeneralRenderServer::Dispatcher::Ctx& ctx, const UpdateInstanceFlagsPayload& p)
@@ -944,7 +1032,7 @@ namespace lux::render
         auto* inst = resolveInstances(ctx, p.scene_id, sc);
         if (!inst)
             return;
-        const InstanceSlot slot = resolveInstanceSlot(inst, p.object);
+        const InstanceSlot slot = resolveInstanceSlot(inst, resolveMeshObject(sc, p.entity));
         if (!inst->isAlive(slot))
             return;
         // flags 收口写点:走 setInstanceFlags 维护逐位存活计数
@@ -962,7 +1050,7 @@ namespace lux::render
         auto* inst = resolveInstances(ctx, p.scene_id, sc);
         if (!inst)
             return;
-        const InstanceSlot slot = resolveInstanceSlot(inst, p.object);
+        const InstanceSlot slot = resolveInstanceSlot(inst, resolveMeshObject(sc, p.entity));
         if (!inst->isAlive(slot))
             return;
         inst->setRenderState(slot, p.geometry_kind, p.pass_mask);
@@ -974,7 +1062,7 @@ namespace lux::render
         auto* inst = resolveInstances(ctx, p.scene_id, sc);
         if (!inst)
             return;
-        const InstanceSlot slot = resolveInstanceSlot(inst, p.object);
+        const InstanceSlot slot = resolveInstanceSlot(inst, resolveMeshObject(sc, p.entity));
         if (!inst->isAlive(slot))
             return;
         auto& prop = inst->propertyAt(slot);
@@ -995,7 +1083,7 @@ namespace lux::render
             auto* inst = resolveInstances(ctx, e.scene_id, sc);
             if (!inst)
                 continue;
-            const InstanceSlot slot = resolveInstanceSlot(inst, e.object);
+            const InstanceSlot slot = resolveInstanceSlot(inst, resolveMeshObject(sc, e.entity));
             if (!inst->isAlive(slot))
                 continue;
             inst->writeTransform(slot, e.transform);

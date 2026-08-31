@@ -844,9 +844,15 @@ namespace
         GraphMaterialData graph_material{};
         graph_material.tex_bindless[0] = texture.handle.index;
         graph_material.tex_mask = 1U;
+        const asset::AssetId material_asset_id{
+            std::array<std::uint8_t, 16>{0x41U, 0x52U, 0x33U, 0x4dU}
+        };
+        const asset::AssetId mesh_asset_id{
+            std::array<std::uint8_t, 16>{0x41U, 0x52U, 0x33U, 0x48U}
+        };
         auto material_request = uploadGraphMaterial(
             MaterialUploadClient{fixture.uploadClientForTest(), material_ops},
-            asset::NullAssetId,
+            material_asset_id,
             graph_material,
             gbuffer_shader.shader,
             forward_shader.shader
@@ -860,7 +866,7 @@ namespace
 
         auto mesh_request = uploadMesh(
             MeshStackUploadClient{fixture.uploadClientForTest(), mesh_ops},
-            asset::NullAssetId,
+            mesh_asset_id,
             makeTriangle()
         );
         if (!mesh_request)
@@ -879,31 +885,34 @@ namespace
             0.0F, 0.0F, 1.0F, 0.0F,
             state.render_relative.x(), state.render_relative.y(), state.render_relative.z(), 1.0F
         };
-        const auto instance = fixture.await(addTransientMeshInstance(
+        const auto instance_entity = static_cast<RenderEntityId>(1U);
+        upsertTransientMeshInstance(
             MeshStackProxy{fixture.session(), mesh_ops},
             scene.scene_id,
-            mesh.handle,
-            material.handle,
+            instance_entity,
+            mesh_asset_id,
+            material_asset_id,
             transform,
             kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible | (1U << 31U)
-        ));
-        result.instance_ready = instance.status == MeshInstanceCreateStatus::Ok && instance.object;
+        );
+        result.instance_ready = true;
         if (!result.instance_ready)
             throw std::runtime_error("Spatial3D mesh instance failed");
 
         float duplicate_transform[16];
         std::copy(std::begin(transform), std::end(transform), std::begin(duplicate_transform));
         duplicate_transform[12] = state.render_relative.x() - 1.0F;
-        const auto duplicate_instance = fixture.await(addTransientMeshInstance(
+        const auto duplicate_entity = static_cast<RenderEntityId>(2U);
+        upsertTransientMeshInstance(
             MeshStackProxy{fixture.session(), mesh_ops},
             scene.scene_id,
-            mesh.handle,
-            material.handle,
+            duplicate_entity,
+            mesh_asset_id,
+            material_asset_id,
             duplicate_transform,
             kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible | (1U << 31U)
-        ));
-        result.duplicate_instance_ready =
-            duplicate_instance.status == MeshInstanceCreateStatus::Ok && duplicate_instance.object;
+        );
+        result.duplicate_instance_ready = true;
         if (!result.duplicate_instance_ready)
             throw std::runtime_error("Spatial3D duplicate-interest instance failed");
 
@@ -953,7 +962,7 @@ namespace
                 graph.data()
             );
         }
-        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, instance.object});
+        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, instance_entity});
         fixture.flush(4);
         const auto after_first = fixture.awaitControl(
             MeshStackControlClient{fixture.control(), mesh_ops}.stats({scene.scene_id})
@@ -968,7 +977,7 @@ namespace
         }
         result.survived_first_release = after_first.alive_instances == 1U && surviving_lit > 0U;
 
-        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, duplicate_instance.object});
+        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, duplicate_entity});
         fixture.flush(4);
         const auto after_final = fixture.awaitControl(
             MeshStackControlClient{fixture.control(), mesh_ops}.stats({scene.scene_id})

@@ -270,15 +270,16 @@ int main(int argc, char** argv)
             }
         }
         model_transform(2, 3) = -2.0F;
-        const auto instance = fixture.await(addTransientMeshInstance(
+        const auto instance_entity = static_cast<RenderEntityId>(1U);
+        upsertTransientMeshInstance(
             MeshStackProxy{fixture.session(), mesh_ops},
             scene.scene_id,
-            mesh.handle,
-            material.handle,
+            instance_entity,
+            mesh_asset->id(),
+            material_asset->id(),
             model_transform.data(),
             kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible | (1U << 31U)
-        ));
-        if (instance.status != MeshInstanceCreateStatus::Ok || !instance.object) return 15;
+        );
 
         const float view[16] = {
             1.0F, 0.0F, 0.0F, 0.0F,
@@ -307,7 +308,7 @@ int main(int argc, char** argv)
         for (std::size_t offset = 0U; offset + 3U < pixels.size(); offset += 4U)
             if ((pixels[offset] | pixels[offset + 1U] | pixels[offset + 2U]) != 0U) ++lit_pixels;
 
-        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, instance.object});
+        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, instance_entity});
         MeshStackControlClient{fixture.control(), mesh_ops}.destroyMesh({mesh.handle});
         MaterialControlClient{fixture.control(), material_ops}.destroyMaterial({material.handle});
         for (const auto handle : texture_handles) fixture.control().destroyTexture(handle);

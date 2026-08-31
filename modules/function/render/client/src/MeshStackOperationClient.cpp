@@ -13,11 +13,12 @@
 
 namespace lux::render
 {
-    RenderRequest<MeshInstanceSlotReply> addMeshInstance(
+    void upsertMeshInstance(
         MeshStackProxy proxy,
         RenderSceneId scene_id,
-        RMeshHandle mesh,
-        RMaterialHandle material,
+        RenderEntityId entity,
+        asset::AssetId mesh_asset,
+        asset::AssetId material_asset,
         const RenderSpatialTransform3D& transform,
         std::uint32_t flags,
         EGeometryKind geometry_kind,
@@ -27,10 +28,11 @@ namespace lux::render
         std::uint32_t transition_seed
     )
     {
-        AddMeshInstancePayload payload{};
+        UpsertMeshInstancePayload payload{};
         payload.scene_id = scene_id;
-        payload.mesh = mesh;
-        payload.material = material;
+        payload.entity = entity;
+        payload.mesh_asset = mesh_asset;
+        payload.material_asset = material_asset;
         payload.transform = transform;
         payload.flags = flags;
         payload.geometry_kind = geometry_kind;
@@ -38,28 +40,29 @@ namespace lux::render
         payload.user_meta_index = user_meta_index;
         payload.transition_milliseconds = transition_milliseconds;
         payload.transition_seed = transition_seed;
-        return proxy.addMeshInstance(payload);
+        proxy.upsertMeshInstance(payload);
     }
 
     void updateTransform(
         MeshStackProxy proxy,
         RenderSceneId scene_id,
-        RenderObjectHandle object,
+        RenderEntityId entity,
         const RenderSpatialTransform3D& transform
     )
     {
         TransformWriteEntry entry{};
         entry.scene_id = scene_id;
-        entry.object = object;
+        entry.entity = entity;
         entry.transform = transform;
         proxy.updateTransforms(std::span<const TransformWriteEntry>{&entry, 1});
     }
 
-    RenderRequest<MeshInstanceSlotReply> addTransientMeshInstance(
+    void upsertTransientMeshInstance(
         MeshStackProxy proxy,
         RenderSceneId scene_id,
-        RMeshHandle mesh,
-        RMaterialHandle material,
+        RenderEntityId entity,
+        asset::AssetId mesh_asset,
+        asset::AssetId material_asset,
         const float transform[16],
         std::uint32_t flags,
         EGeometryKind geometry_kind,
@@ -67,11 +70,12 @@ namespace lux::render
         std::uint32_t user_meta_index
     )
     {
-        return addMeshInstance(
+        upsertMeshInstance(
             proxy,
             scene_id,
-            mesh,
-            material,
+            entity,
+            mesh_asset,
+            material_asset,
             makeTransientRenderSpatialTransform3D(transform),
             flags,
             geometry_kind,
@@ -85,11 +89,11 @@ namespace lux::render
     void updateTransientMeshTransform(
         MeshStackProxy proxy,
         RenderSceneId scene_id,
-        RenderObjectHandle object,
+        RenderEntityId entity,
         const float transform[16]
     )
     {
-        updateTransform(proxy, scene_id, object, makeTransientRenderSpatialTransform3D(transform));
+        updateTransform(proxy, scene_id, entity, makeTransientRenderSpatialTransform3D(transform));
     }
 
     void updateTransforms(MeshStackProxy proxy, RenderSceneId scene_id, std::span<TransformWriteEntry> entries)

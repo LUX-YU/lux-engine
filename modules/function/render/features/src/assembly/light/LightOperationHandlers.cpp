@@ -44,57 +44,87 @@ namespace lux::render
             auto* sc = lookupScene(ctx.user_state, scene_id);
             return sc ? sc->resources().find<LightResources>() : nullptr;
         }
+
+        void eraseLightBinding(RenderScene& scene, RenderEntityId entity) noexcept
+        {
+            auto& entities = scene.entities();
+            if (!entities.valid(entity))
+            {
+                return;
+            }
+            entities.remove<LightBinding>(entity);
+            if (!entities.all_of<MeshBinding>(entity))
+            {
+                entities.destroy(entity);
+            }
+        }
+
+        void applyLightUpsert(Ctx& ctx, const UpsertLightPayload& payload)
+        {
+            auto* scene = lookupScene(ctx.user_state, payload.scene_id);
+            auto* lights = resolveLights(ctx, payload.scene_id);
+            if (scene == nullptr || lights == nullptr)
+            {
+                ctx.markDispatchError(renderError<err::resource::NotFound>());
+                return;
+            }
+
+            auto& entities = scene->entities();
+            if (auto* binding = entities.valid(payload.entity) ? entities.try_get<LightBinding>(payload.entity)
+                                                                : nullptr)
+            {
+                lights->modify(handle_cast<LightHandle>(binding->light), fromLightPayload(payload));
+                return;
+            }
+
+            auto created = lights->submit(fromLightPayload(payload));
+            if (!created)
+            {
+                ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
+                return;
+            }
+            if (payload.transition_milliseconds > 0U)
+            {
+                (void)lights->beginFadeIn(
+                    *created,
+                    scene->sceneTime(),
+                    static_cast<float>(payload.transition_milliseconds) / 1000.0F
+                );
+            }
+            if (!entities.valid(payload.entity))
+            {
+                (void)entities.create(payload.entity);
+            }
+            entities.emplace<LightBinding>(
+                payload.entity,
+                RLightHandle{created->index, created->gen}
+            );
+        }
     } // anonymous namespace (helpers)
 
-    // Create one light + REPLY with its RLightHandle. Inlines the old
-    // GeneralRenderServer::createLight (find<LightResources> + submit), so the
-    // handler needs no server-impl access.
-    void handleCreateLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const CreateLightPayload& p)
+    void handleUpsertLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const UpsertLightPayload& payload)
     {
-        RLightHandle handle{};
-        uint32_t status = 1; // 1 = failed (no LightFeature / submit error)
-        if (auto* light_res = resolveLights(ctx, p.scene_id))
+        applyLightUpsert(ctx, payload);
+    }
+
+    void handleRemoveLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const RemoveLightPayload& payload)
+    {
+        auto* scene = lookupScene(ctx.user_state, payload.scene_id);
+        auto* binding = scene && scene->entities().valid(payload.entity)
+            ? scene->entities().try_get<LightBinding>(payload.entity)
+            : nullptr;
+        if (scene == nullptr || binding == nullptr)
         {
-            auto result = light_res->submit(fromLightPayload(p));
-            if (result)
-            {
-                const auto h = result.value();
-                handle = RLightHandle{h.index, h.gen};
-                if (p.transition_milliseconds > 0u)
-                {
-                    if (auto* scene = lookupScene(ctx.user_state, p.scene_id))
-                    {
-                        (void)light_res->beginFadeIn(
-                            h,
-                            scene->sceneTime(),
-                            static_cast<float>(p.transition_milliseconds) / 1000.0f
-                        );
-                    }
-                }
-                status = 0;
-            }
+            return;
         }
-        replyToCurrent<CreateLightPayload>(ctx, LightCreatedReply{handle, status});
-    }
-
-    void handleUpdateLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const UpdateLightPayload& p)
-    {
-        if (auto* light_res = resolveLights(ctx, p.scene_id))
-            light_res->modify(handle_cast<LightHandle>(p.handle), fromUpdateLightPayload(p));
-    }
-
-    void handleDestroyLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const DestroyLightPayload& p)
-    {
-        if (auto* light_res = resolveLights(ctx, p.scene_id))
+        if (auto* light_res = resolveLights(ctx, payload.scene_id))
         {
-            auto* scene = lookupScene(ctx.user_state, p.scene_id);
-            const auto handle = handle_cast<LightHandle>(p.handle);
-            const float duration = static_cast<float>(p.transition_milliseconds) / 1000.0f;
-            if (!scene || !light_res->beginFadeOut(handle, scene->sceneTime(), duration))
-            {
+            const auto handle = handle_cast<LightHandle>(binding->light);
+            const float duration = static_cast<float>(payload.transition_milliseconds) / 1000.0F;
+            if (!light_res->beginFadeOut(handle, scene->sceneTime(), duration))
                 light_res->remove(handle);
-            }
         }
+        eraseLightBinding(*scene, payload.entity);
     }
 
     void handleLightStats(GeneralRenderServer::Dispatcher::Ctx& ctx, const LightStatsPayload& payload)
@@ -115,24 +145,11 @@ namespace lux::render
         );
     }
 
-    // Batched update — N per-instance UpdateLightPayloads in one command. Each
-    // entry carries its own scene_id; cache the last resolution since batches
-    // are typically single-scene.
-    void handleLightBatch(GeneralRenderServer::Dispatcher::Ctx& ctx, std::span<const UpdateLightPayload> entries)
+    void handleLightBatch(GeneralRenderServer::Dispatcher::Ctx& ctx, std::span<const UpsertLightPayload> entries)
     {
-        LightResources* light_res = nullptr;
-        RenderSceneId cur{};
-        bool resolved = false;
-        for (const auto& p : entries)
+        for (const auto& entry : entries)
         {
-            if (!resolved || p.scene_id != cur)
-            {
-                cur = p.scene_id;
-                light_res = resolveLights(ctx, cur);
-                resolved = true;
-            }
-            if (light_res)
-                light_res->modify(handle_cast<LightHandle>(p.handle), fromUpdateLightPayload(p));
+            applyLightUpsert(ctx, entry);
         }
     }
 

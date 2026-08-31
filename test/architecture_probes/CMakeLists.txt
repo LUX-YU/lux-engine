@@ -258,6 +258,54 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
             SKIP_RETURN_CODE 77
             TIMEOUT 120
     )
+
+    set(large_3d_scene_screenshot
+        ${CMAKE_CURRENT_BINARY_DIR}/large_3d_scene_performance.ppm
+    )
+    add_executable(
+        large_3d_scene_performance_qualification
+        model_asset_vulkan_qualification.cpp
+    )
+    add_dependencies(
+        large_3d_scene_performance_qualification
+        model_asset_vulkan_qualification_content
+    )
+    target_include_directories(
+        large_3d_scene_performance_qualification
+        PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
+    )
+    target_compile_definitions(
+        large_3d_scene_performance_qualification
+        PRIVATE
+            LUX_MODEL_QUALIFICATION_PAK="${model_qualification_pak}"
+            LUX_LARGE_3D_SCENE_PERFORMANCE=1
+            LUX_LARGE_3D_SCENE_SCREENSHOT="${large_3d_scene_screenshot}"
+    )
+    target_link_libraries(
+        large_3d_scene_performance_qualification
+        PRIVATE
+            render_features
+            lux::engine::function::render_vulkan
+            lux::engine::resource::asset
+            lux::engine::scene::scene_runtime_render
+    )
+    lux_classify_target(
+        TARGET  large_3d_scene_performance_qualification
+        LAYER   HOST
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(
+        NAME large_3d_scene_performance_qualification
+        COMMAND large_3d_scene_performance_qualification --require-gpu
+    )
+    set_tests_properties(
+        large_3d_scene_performance_qualification
+        PROPERTIES
+            LABELS "architecture;qualification;host;render;gpu;performance;large-scene"
+            SKIP_RETURN_CODE 77
+            TIMEOUT 180
+    )
 endif()
 
 option(

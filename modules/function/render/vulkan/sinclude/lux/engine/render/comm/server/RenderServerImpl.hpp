@@ -9,7 +9,6 @@
 
 #include <lux/engine/render/comm/server/RenderServer.hpp>        // GeneralRenderServer, FrameReplyBuilder
 #include <lux/engine/function/render/client/RenderProtocol.hpp>  // FeatureFactory, TypeId
-#include <lux/engine/render/comm/RenderTickPipeline.hpp>         // SceneViewBatch (reused per-tick)
 #include <lux/engine/render/gpu/VulkanContext.hpp>               // InstanceContext, DeviceContext, ResourceContext
 #include <lux/engine/render/gpu/RenderContext.hpp>               // RenderContext
 #include <lux/engine/function/render/client/core/FrameStamp.hpp> // FrameClock, FrameStamp

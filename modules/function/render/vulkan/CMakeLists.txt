@@ -158,3 +158,24 @@ target_link_libraries(
 if(ANDROID)
     target_link_libraries(render_vulkan PRIVATE android)
 endif()
+
+add_executable(
+    render_program_server_semantics_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_program_server_semantics_test.cpp
+)
+target_link_libraries(
+    render_program_server_semantics_test
+    PRIVATE render_vulkan
+)
+if(MSVC)
+    target_compile_options(render_program_server_semantics_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(render_program_server_semantics_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  render_program_server_semantics_test
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(NAME render_program_server_semantics_test COMMAND render_program_server_semantics_test)

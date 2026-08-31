@@ -116,6 +116,7 @@ namespace lux::render
 
         void clear_keep_capacity() noexcept
         {
+            kind = ERenderProgramKind::StateUpdate;
             commands.clear();
             this->clearStorage();
         }

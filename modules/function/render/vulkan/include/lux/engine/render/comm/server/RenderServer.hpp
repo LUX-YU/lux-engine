@@ -777,6 +777,12 @@ namespace lux::render
         /// push additional replies (e.g. deferred upload completions).
         bool acquireAndExecute(bool blocking, void* user_state)
         {
+            return acquireAndExecute(blocking, user_state, [](const auto&) noexcept {});
+        }
+
+        template <class BeforeExecute>
+        bool acquireAndExecute(bool blocking, void* user_state, BeforeExecute&& before_execute)
+        {
             // Retry any previously unpublished reply before starting new work.
             if (pending_reply_publish_)
             {
@@ -798,6 +804,8 @@ namespace lux::render
 
             const auto& request = channel_->requests.currentRead();
             sync_->notifyRequestStateChanged();
+
+            before_execute(request);
 
             auto* reply_slot = beginReplyWrite(blocking);
             if (!reply_slot)
@@ -1341,6 +1349,8 @@ namespace lux::render
 
         /// 关服路径:GPU 已 idle 时立即执行并清空全部在途 Surface 拆除。
         void flushPendingSurfaceReleases();
+
+        [[nodiscard]] bool drainProgram(bool blocking, ERenderProgramKind& kind);
 
         std::unique_ptr<Impl> impl_;
         std::unique_ptr<RenderControlServer> control_server_;

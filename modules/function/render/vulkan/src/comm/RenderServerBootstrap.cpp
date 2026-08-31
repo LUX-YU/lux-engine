@@ -2,7 +2,6 @@
 // (InitialViewCamera.hpp retired — initial camera is a StandardViewCamera op now.)
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
 #include <lux/engine/function/render/Capacity.hpp>
-#include <lux/engine/render/comm/RenderTickPipeline.hpp>
 
 // VMA — readback staging buffer uses raw vmaCreateBuffer/vmaInvalidateAllocation
 // directly (previously pulled in transitively via SkinningResources.hpp, which

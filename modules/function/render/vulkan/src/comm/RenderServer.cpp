@@ -1,7 +1,6 @@
 #include <lux/engine/render/comm/server/RenderServerImpl.hpp>
 // (InitialViewCamera.hpp retired — initial camera is a StandardViewCamera op now.)
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
-#include <lux/engine/render/comm/RenderTickPipeline.hpp>
 
 // VMA — readback staging buffer uses raw vmaCreateBuffer/vmaInvalidateAllocation
 // directly (previously pulled in transitively via SkinningResources.hpp, which
@@ -146,22 +145,31 @@ namespace lux::render
 
     bool GeneralRenderServer::drainRequest()
     {
-        if (!acquireAndExecute(/*blocking=*/false, impl_.get()))
-        {
-            return false;
-        }
-        (void)impl_->processUploadCompletions();
-        return finalizeReplies(/*blocking=*/false);
+        ERenderProgramKind kind{};
+        return drainProgram(false, kind);
     }
 
     bool GeneralRenderServer::drainRequestBlocking()
     {
-        if (!acquireAndExecute(/*blocking=*/true, impl_.get()))
+        ERenderProgramKind kind{};
+        return drainProgram(true, kind);
+    }
+
+    bool GeneralRenderServer::drainProgram(bool blocking, ERenderProgramKind& kind)
+    {
+        auto before_execute = [this, &kind](const auto& program) noexcept {
+            kind = program.kind;
+            if (kind == ERenderProgramKind::Frame)
+            {
+                impl_->current_stamp_ = impl_->frame_orchestrator_.beginTick(0);
+            }
+        };
+        if (!acquireAndExecute(blocking, impl_.get(), before_execute))
         {
             return false;
         }
         (void)impl_->processUploadCompletions();
-        return finalizeReplies(/*blocking=*/true);
+        return finalizeReplies(blocking);
     }
 
     // ── Per-kind completion finalization ──────────────────────────────────
@@ -1609,89 +1617,76 @@ namespace lux::render
     bool GeneralRenderServer::drainTick()
     {
         auto& im = *impl_;
-
-        // 帧戳必须先于排水生成,处理器才能看到正确的 FIF 槽位。
-        // image_index 此刻还不知道(acquire 在后面),beginRenderFrame 里补。
-        if (!RenderTickPipeline::runTick(
-                im.frame_orchestrator_,
-                im.current_stamp_,
-                [&]() {
-                    for (;;)
-                    {
-                        bool handled_non_frame_work = false;
-                        while (control_server_->drainAndDispatch(impl_.get()))
-                        {
-                            handled_non_frame_work = true;
-                        }
-                        while (upload_server_->drainAndDispatch(impl_.get()))
-                        {
-                            handled_non_frame_work = true;
-                        }
-                        if (im.processUploadCompletions())
-                        {
-                            handled_non_frame_work = true;
-                        }
-                        // DestroyTarget is a control operation, while surface
-                        // teardown used to advance only after a frame request.
-                        // A closing host submits no further frame and waits for
-                        // TargetReleased, leaving both sides asleep forever.
-                        // Advance the fence-proven release state machine in the
-                        // same drain turn that accepted the control request.
-                        if (!stepPendingSurfaceReleases())
-                        {
-                            return false;
-                        }
-                        if (handled_non_frame_work)
-                        {
-                            flushDeferredRepliesOnly();
-                        }
-                        if (drainRequest())
-                        {
-                            return true;
-                        }
-                        if (channelSync().isStopping())
-                        {
-                            return false;
-                        }
-
-                        const auto observed = channelSync().work_epoch.load(std::memory_order_acquire);
-
-                        // Close the publication-before-wait race for every
-                        // source. A producer that wins after this check changes
-                        // the epoch, so atomic::wait returns immediately.
-                        if (control_server_->drainAndDispatch(impl_.get()))
-                        {
-                            continue;
-                        }
-                        if (upload_server_->drainAndDispatch(impl_.get()))
-                        {
-                            continue;
-                        }
-                        if (im.processUploadCompletions())
-                        {
-                            flushDeferredRepliesOnly();
-                            continue;
-                        }
-                        if (drainRequest())
-                        {
-                            return true;
-                        }
-                        if (channelSync().isStopping())
-                        {
-                            return false;
-                        }
-                        channelSync().work_epoch.wait(observed, std::memory_order_acquire);
-                    }
-                },
-                0))
+        for (;;)
         {
-            return false;
-        }
+            bool handled_non_frame_work = false;
+            while (control_server_->drainAndDispatch(impl_.get()))
+            {
+                handled_non_frame_work = true;
+            }
+            while (upload_server_->drainAndDispatch(impl_.get()))
+            {
+                handled_non_frame_work = true;
+            }
+            if (im.processUploadCompletions())
+            {
+                handled_non_frame_work = true;
+            }
+            if (!stepPendingSurfaceReleases())
+            {
+                return false;
+            }
+            if (handled_non_frame_work)
+            {
+                flushDeferredRepliesOnly();
+            }
 
-        // 与新请求无关地冲刷待发的延迟回复,以及本 tick 汇集到的自发上报。
-        flushDeferredRepliesOnly();
-        flushErrorEvents();
-        return true;
+            ERenderProgramKind program_kind{};
+            if (drainProgram(false, program_kind))
+            {
+                flushDeferredRepliesOnly();
+                flushErrorEvents();
+                if (program_kind == ERenderProgramKind::Frame)
+                {
+                    return true;
+                }
+                continue;
+            }
+            if (channelSync().isStopping())
+            {
+                return false;
+            }
+
+            const auto observed = channelSync().work_epoch.load(std::memory_order_acquire);
+            if (control_server_->drainAndDispatch(impl_.get()))
+            {
+                continue;
+            }
+            if (upload_server_->drainAndDispatch(impl_.get()))
+            {
+                continue;
+            }
+            if (im.processUploadCompletions())
+            {
+                flushDeferredRepliesOnly();
+                continue;
+            }
+            if (drainProgram(false, program_kind))
+            {
+                flushDeferredRepliesOnly();
+                flushErrorEvents();
+                if (program_kind == ERenderProgramKind::Frame)
+                {
+                    return true;
+                }
+                continue;
+            }
+            if (channelSync().isStopping())
+            {
+                return false;
+            }
+            channelSync().work_epoch.wait(observed, std::memory_order_acquire);
+        }
     }
 
     GeneralRenderServer::ETickStage GeneralRenderServer::beginRenderTick(FrameTickState& fs)

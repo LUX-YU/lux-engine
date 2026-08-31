@@ -49,7 +49,11 @@ endif()
 lux_classify_target(TARGET render_system_test LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
 add_test(NAME render_system_test COMMAND render_system_test)
 
-foreach(render_sync_test IN ITEMS render_sync_stage_test render_system_transaction_test)
+foreach(render_sync_test IN ITEMS
+    render_sync_stage_test
+    render_sync_stage_lifecycle_test
+    render_system_transaction_test
+)
     add_executable(${render_sync_test} test/${render_sync_test}.cpp)
     target_link_libraries(${render_sync_test} PRIVATE lux::engine::scene::scene_runtime_render)
     if(MSVC)
@@ -60,6 +64,7 @@ foreach(render_sync_test IN ITEMS render_sync_stage_test render_system_transacti
     lux_classify_target(TARGET ${render_sync_test} LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
     add_test(NAME ${render_sync_test} COMMAND ${render_sync_test})
 endforeach()
+set_tests_properties(render_sync_stage_lifecycle_test PROPERTIES TIMEOUT 30)
 
 install_components(
     PROJECT_NAME lux-engine-scene-render

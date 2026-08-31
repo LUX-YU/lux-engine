@@ -1242,6 +1242,43 @@ if(render_system_implementation MATCHES
     message(FATAL_ERROR "Architecture: generic RenderSystem restores concrete extraction or central dirty storage.")
 endif()
 
+set(render_builtin_stage_source
+    "${source_root}/engine/scene/runtime/render/src/Builtin3DRenderStages.cpp"
+)
+file(READ "${render_builtin_stage_source}" render_builtin_stage_contract)
+if(render_builtin_stage_contract MATCHES "changes_[.]markAll[ \t\r\n]*\\(")
+    message(FATAL_ERROR "Architecture: Render stage requestFullSync restores allocating reactive markAll.")
+endif()
+if(render_builtin_stage_contract MATCHES "none_of.*departures_")
+    message(FATAL_ERROR "Architecture: Render departure callback restores quadratic inline deduplication.")
+endif()
+foreach(render_builtin_commit_domain IN ITEMS MESH LIGHT)
+    set(render_builtin_commit_begin_marker "LUX_RENDER_COMMIT_${render_builtin_commit_domain}_BEGIN")
+    set(render_builtin_commit_end_marker "LUX_RENDER_COMMIT_${render_builtin_commit_domain}_END")
+    string(FIND "${render_builtin_stage_contract}" "${render_builtin_commit_begin_marker}" render_builtin_commit_begin)
+    string(FIND "${render_builtin_stage_contract}" "${render_builtin_commit_end_marker}" render_builtin_commit_end)
+    if(render_builtin_commit_begin LESS 0 OR render_builtin_commit_end LESS 0 OR
+       render_builtin_commit_end LESS render_builtin_commit_begin)
+        message(FATAL_ERROR "Architecture: builtin Render stage commit allocation markers are missing or invalid.")
+    endif()
+    string(LENGTH "${render_builtin_commit_begin_marker}" render_builtin_commit_marker_length)
+    math(EXPR render_builtin_commit_content_begin
+        "${render_builtin_commit_begin} + ${render_builtin_commit_marker_length}"
+    )
+    math(EXPR render_builtin_commit_content_length
+        "${render_builtin_commit_end} - ${render_builtin_commit_content_begin}"
+    )
+    string(SUBSTRING "${render_builtin_stage_contract}"
+        ${render_builtin_commit_content_begin}
+        ${render_builtin_commit_content_length}
+        render_builtin_commit_block
+    )
+    if(render_builtin_commit_block MATCHES
+       "emplace|reserve[ \t\r\n]*\\(|push_back[ \t\r\n]*\\(|insert[ \t\r\n]*\\(|make_(unique|shared)|new[ \t\r\n]+")
+        message(FATAL_ERROR "Architecture: builtin Render stage commit path can allocate.")
+    endif()
+endforeach()
+
 foreach(render_resource_file IN ITEMS
     "${source_root}/modules/function/render/vulkan/sinclude/lux/engine/render/resources/mesh/MeshResources.hpp"
     "${source_root}/modules/function/render/vulkan/sinclude/lux/engine/render/resources/material/MaterialResources.hpp"

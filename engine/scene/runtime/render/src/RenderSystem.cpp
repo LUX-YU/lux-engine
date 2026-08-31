@@ -13,11 +13,16 @@ namespace lux::scene
     {
         explicit Impl(StageList value) : stages(std::move(value)), updates(1U)
         {
+            for (auto& stage : stages)
+            {
+                stage->requestFullSync();
+            }
+            full_sync_requested = true;
         }
 
         StageList stages;
         lux::cxx::BoundedSpscFrameRing<render::RenderProgram<>, 3> updates;
-        bool full_sync_requested{true};
+        bool full_sync_requested{false};
         bool forward_pending{false};
     };
 

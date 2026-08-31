@@ -66,7 +66,7 @@ namespace
 
         int id{};
         std::vector<int>* log{};
-        bool pending{true};
+        bool pending{false};
         bool fail{false};
         bool emit_command{true};
         int prepare_count{};
@@ -101,6 +101,7 @@ int main()
     auto created = scene::RenderSystem::create(std::move(stages));
     assert(created);
     auto system = std::move(*created);
+    assert(first->request_count == 1 && second->request_count == 1);
     assert(system->tryPublish() == scene::ERenderPublishResult::FULL_SYNC_PUBLISHED);
     assert((log == std::vector<int>{1, 2, 101, 102}));
 
@@ -118,7 +119,7 @@ int main()
     assert(channel->requests.currentRead().commands.size() == 2U);
 
     system->requestFullSync();
-    assert(first->request_count == 1 && second->request_count == 1);
+    assert(first->request_count == 2 && second->request_count == 2);
 
     std::vector<int> no_command_log;
     FakeStage* no_command{};

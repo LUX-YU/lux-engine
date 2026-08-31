@@ -88,6 +88,20 @@ int main()
     assert(program.commands[0].type_id == mesh_ops.id<UpsertMeshInstanceOp>());
     const auto& first_upsert = payload<UpsertMeshInstancePayload>(program);
     assert(first_upsert.mesh == mesh_handle_a && first_upsert.material == material_handle_a);
+    mesh_stage->discardPrepared();
+
+    mesh_registry.remove<ResolvedMeshResources>(mesh_entity);
+    program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_NO_COMMANDS);
+    assert(program.commands.empty());
+    mesh_stage->commitPrepared();
+
+    mesh_registry.emplace<ResolvedMeshResources>(
+        mesh_entity,
+        ResolvedMeshResources{mesh_a, material_a, mesh_handle_a, material_handle_a}
+    );
+    program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);
+    assert(program.commands.size() == 1U);
+    assert(program.commands[0].type_id == mesh_ops.id<UpsertMeshInstanceOp>());
     mesh_stage->commitPrepared();
 
     for (std::size_t patch = 0U; patch < 1000U; ++patch)
@@ -137,9 +151,21 @@ int main()
     mesh_stage->commitPrepared();
 
     mesh_registry.remove<ResolvedMeshResources>(mesh_entity);
+    mesh_registry.emplace<ResolvedMeshResources>(
+        mesh_entity,
+        ResolvedMeshResources{mesh_a, material_a, mesh_handle_a, material_handle_a}
+    );
     program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);
     assert(program.commands.size() == 1U);
     assert(program.commands[0].type_id == mesh_ops.id<RemoveMeshInstanceOp>());
+    mesh_stage->commitPrepared();
+
+    mesh_registry.patch<ResolvedMeshResources>(mesh_entity, [&](auto& resolved) {
+        resolved = ResolvedMeshResources{mesh_b, material_b, mesh_handle_b, material_handle_b};
+    });
+    program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);
+    assert(program.commands.size() == 1U);
+    assert(program.commands[0].type_id == mesh_ops.id<UpsertMeshInstanceOp>());
     mesh_stage->commitPrepared();
 
     const Entity transient = mesh_registry.create();
@@ -149,17 +175,14 @@ int main()
         transient,
         ResolvedMeshResources{mesh_a, material_a, mesh_handle_a, material_handle_a}
     );
+    program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);
+    assert(program.commands.size() == 1U);
+    mesh_stage->discardPrepared();
     mesh_registry.destroy(transient);
     program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_NO_COMMANDS);
     assert(program.commands.empty());
     mesh_stage->commitPrepared();
 
-    mesh_registry.emplace<ResolvedMeshResources>(
-        mesh_entity,
-        ResolvedMeshResources{mesh_b, material_b, mesh_handle_b, material_handle_b}
-    );
-    program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);
-    mesh_stage->commitPrepared();
     const auto old_render_entity = toRenderEntity(mesh_entity);
     mesh_registry.destroy(mesh_entity);
     const Entity replacement = mesh_registry.create();
@@ -175,6 +198,11 @@ int main()
     assert(program.commands[1].type_id == mesh_ops.id<UpsertMeshInstanceOp>());
     assert(payload<RemoveMeshInstancePayload>(program, 0U).entity == old_render_entity);
     assert(payload<UpsertMeshInstancePayload>(program, 1U).entity == toRenderEntity(replacement));
+    mesh_stage->commitPrepared();
+    mesh_stage->requestFullSync();
+    program = prepare(*mesh_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);
+    assert(program.commands.size() == 1U);
+    assert(program.commands[0].type_id == mesh_ops.id<UpsertMeshInstanceOp>());
     mesh_stage->commitPrepared();
 
     Registry light_registry;
@@ -216,6 +244,11 @@ int main()
     }
     std::ranges::sort(light_types);
     assert((light_types == std::vector<std::uint8_t>{0U, 1U, 2U, 3U}));
+    light_stage->commitPrepared();
+    light_stage->requestFullSync();
+    program = prepare(*light_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);
+    assert(program.commands.size() == 1U);
+    assert(program.commands[0].type_id == light_ops.id<LightBatchOp>());
     light_stage->commitPrepared();
 
     for (std::size_t patch = 0U; patch < 1000U; ++patch)

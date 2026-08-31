@@ -14,8 +14,9 @@
 //  the UNIVERSAL kInstanceFlag* bits + EGeometryKind/PassMask from RenderProtocol,
 //  which the core cull shader reads for any instanced consumer.)
 //
-//  Scene instance operations use stable RenderEntityId identity. Internal
-//  resource handles never cross this protocol boundary.
+//  Scene instance operations use stable RenderEntityId identity and resolved
+//  RMeshHandle/RMaterialHandle resource identity. AssetId never crosses this
+//  pure Render protocol boundary.
 //
 //  Stage B (op downloading): the ops + payloads move here; the heavy instance
 //  ASSEMBLY (mesh sections / cull meta / vertex-pool resolution) stays in the

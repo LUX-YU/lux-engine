@@ -10,10 +10,11 @@
 //  core RenderProtocol no longer names material ops. A 2D / unlit / headless
 //  scene that omits StandardMaterial carries none of this vocabulary.
 //
-//  uploadGraphMaterial REPLIES with the new RMaterialHandle. Its payload BORROWS
-//  the GraphMaterialData (ExternalDataRef, valid until submitFrame); modify COPIES
-//  it (BlobRef, per-frame). The proxy therefore routes the two differently — upload
-//  fills the borrow then sendWithReply<Resource>, modify uses sendBlob.
+//  uploadGraphMaterial REPLIES with the new RMaterialHandle. Its ExternalDataRef
+//  points into packet-owned storage created by pushOwnedBytesCopy(), so the
+//  bytes remain alive through server consumption. Generic borrowed attachments
+//  instead must outlive server consumption; submit returning is insufficient,
+//  and a reply is the safe completion proxy. modify COPIES its BlobRef payload.
 // ============================================================================
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
@@ -53,7 +54,8 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<DestroyMaterialPayload>);
 
     /// Node-graph (Graph family) material upload. The descriptor is a flat
-    /// GraphMaterialData blob BORROWED via ExternalDataRef (valid until submitFrame).
+    /// GraphMaterialData blob addressed by ExternalDataRef and backed by the
+    /// upload packet's owned attachment storage.
     struct LUX_OP(
         lane = upload,
         kind = resource,

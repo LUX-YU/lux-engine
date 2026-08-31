@@ -14,6 +14,7 @@
 #include <cmath>
 #include <limits>
 #include <new>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -115,12 +116,15 @@ namespace lux::scene
             render::RMaterialHandle material{};
             render::RenderSpatialTransform3D transform{};
             std::uint32_t flags{};
+            bool published{false};
         };
+        static_assert(std::is_nothrow_copy_assignable_v<MeshRenderState>);
 
         struct MeshDeparture final
         {
             render::RenderEntityId entity{};
             Entity source{simulation::ecs::NullEntity};
+            bool was_published{false};
         };
 
         struct MeshStateUpdate final
@@ -128,6 +132,26 @@ namespace lux::scene
             Entity entity{simulation::ecs::NullEntity};
             MeshRenderState state{};
         };
+
+        template <class Departure>
+        void coalesceDepartures(std::vector<Departure>& departures) noexcept
+        {
+            std::ranges::sort(departures, [](const Departure& left, const Departure& right) {
+                return static_cast<std::uint64_t>(left.entity) < static_cast<std::uint64_t>(right.entity);
+            });
+            std::size_t output_count{};
+            for (const auto& departure : departures)
+            {
+                if (output_count != 0U && departures[output_count - 1U].entity == departure.entity)
+                {
+                    departures[output_count - 1U].was_published =
+                        departures[output_count - 1U].was_published || departure.was_published;
+                    continue;
+                }
+                departures[output_count++] = departure;
+            }
+            departures.resize(output_count);
+        }
 
         using MeshChanges = simulation::ecs::ExtractionChangeSet<
             simulation::ecs::Mesh3D,
@@ -188,7 +212,6 @@ namespace lux::scene
             void requestFullSync() noexcept override
             {
                 force_full_sync_ = true;
-                changes_.markAll();
             }
 
             [[nodiscard]] ERenderSyncPrepareResult prepare(render::RenderProgramBuilder<>& builder) noexcept override
@@ -209,6 +232,7 @@ namespace lux::scene
                 }
             }
 
+            // LUX_RENDER_COMMIT_MESH_BEGIN
             void commitPrepared() noexcept override
             {
                 if (!prepared_)
@@ -229,10 +253,7 @@ namespace lux::scene
                 }
                 for (auto& update : state_updates_)
                 {
-                    if (config_.registry->valid(update.entity))
-                    {
-                        config_.registry->emplace_or_replace<MeshRenderState>(update.entity, update.state);
-                    }
+                    config_.registry->get<MeshRenderState>(update.entity) = update.state;
                 }
                 suppress_state_departure_ = false;
                 changes_.clear();
@@ -240,6 +261,7 @@ namespace lux::scene
                 force_full_sync_ = false;
                 discardPrepared();
             }
+            // LUX_RENDER_COMMIT_MESH_END
 
             void discardPrepared() noexcept override
             {
@@ -265,7 +287,7 @@ namespace lux::scene
                 const auto* state = config_.registry->try_get<MeshRenderState>(entity);
                 if (state != nullptr && state->owner == this)
                 {
-                    recordDeparture(MeshDeparture{state->entity, entity});
+                    recordDeparture(MeshDeparture{state->entity, entity, state->published});
                 }
             }
 
@@ -278,131 +300,187 @@ namespace lux::scene
                 const auto* state = config_.registry->try_get<MeshRenderState>(entity);
                 if (state != nullptr && state->owner == this)
                 {
-                    recordDeparture(MeshDeparture{state->entity, entity});
+                    recordDeparture(MeshDeparture{state->entity, entity, state->published});
                 }
             }
 
             void recordDeparture(MeshDeparture departure) noexcept
             {
-                if (std::ranges::none_of(departures_, [departure](const auto& existing) {
-                        return existing.entity == departure.entity;
-                    }))
+                try
                 {
-                    try
-                    {
-                        departures_.push_back(departure);
-                    }
-                    catch (const std::bad_alloc&)
-                    {
-                        allocation_failed_ = true;
-                    }
+                    departures_.push_back(departure);
                 }
+                catch (const std::bad_alloc&)
+                {
+                    allocation_failed_ = true;
+                }
+            }
+
+            struct MeshInputs final
+            {
+                const rdesc::MeshVisualDescription* authored{};
+                const simulation::ecs::WorldTransform3D* world{};
+                const ResolvedMeshResources* resolved{};
+            };
+
+            [[nodiscard]] bool currentlyRenderable(Entity entity, MeshInputs& inputs) const noexcept
+            {
+                if (!config_.registry->valid(entity))
+                {
+                    return false;
+                }
+                const auto* mesh = config_.registry->try_get<simulation::ecs::Mesh3D>(entity);
+                inputs.world = config_.registry->try_get<simulation::ecs::WorldTransform3D>(entity);
+                inputs.resolved = config_.registry->try_get<ResolvedMeshResources>(entity);
+                if (mesh == nullptr || inputs.world == nullptr || inputs.resolved == nullptr)
+                {
+                    return false;
+                }
+                inputs.authored = &mesh->value;
+                return inputs.resolved->mesh_source == inputs.authored->mesh &&
+                    inputs.resolved->material_source == inputs.authored->material && !inputs.resolved->mesh.isNull() &&
+                    !inputs.resolved->material.isNull();
             }
 
             [[nodiscard]] bool membershipRestored(const MeshDeparture& departure) const noexcept
             {
-                if (!config_.registry->valid(departure.source) || toRenderEntity(departure.source) != departure.entity)
+                MeshInputs inputs{};
+                return config_.registry->valid(departure.source) &&
+                    toRenderEntity(departure.source) == departure.entity &&
+                    currentlyRenderable(departure.source, inputs);
+            }
+
+            [[nodiscard]] bool prepareEntity(render::RenderProgramBuilder<>& builder, Entity entity)
+            {
+                MeshInputs inputs{};
+                if (!currentlyRenderable(entity, inputs))
+                {
+                    return true;
+                }
+
+                MeshRenderState next{};
+                next.owner = this;
+                next.entity = toRenderEntity(entity);
+                next.mesh_source = inputs.resolved->mesh_source;
+                next.material_source = inputs.resolved->material_source;
+                next.mesh = inputs.resolved->mesh;
+                next.material = inputs.resolved->material;
+                next.flags = (inputs.authored->visible ? render::kInstanceFlagVisible : 0U) |
+                    (inputs.authored->cast_shadow ? render::kInstanceFlagCastShadow : 0U) |
+                    (inputs.authored->receive_shadow ? render::kInstanceFlagReceiveShadow : 0U);
+                next.published = true;
+                if (!encodeTransform(
+                        *inputs.world,
+                        config_.coordinate_page_size,
+                        config_.scene_origin_page,
+                        next.transform))
                 {
                     return false;
                 }
-                return config_.registry->all_of<
-                    simulation::ecs::Mesh3D,
-                    simulation::ecs::WorldTransform3D,
-                    ResolvedMeshResources>(departure.source);
+
+                auto* state_slot = config_.registry->try_get<MeshRenderState>(entity);
+                if (state_slot == nullptr)
+                {
+                    state_slot = &config_.registry->emplace<MeshRenderState>(
+                        entity,
+                        MeshRenderState{.owner = this, .entity = next.entity}
+                    );
+                }
+                if (state_slot->owner != this)
+                {
+                    return false;
+                }
+                const auto* published = state_slot->published ? state_slot : nullptr;
+                const bool requires_upsert = force_full_sync_ || published == nullptr ||
+                    published->entity != next.entity || published->mesh_source != next.mesh_source ||
+                    published->material_source != next.material_source || published->mesh != next.mesh ||
+                    published->material != next.material;
+                if (requires_upsert)
+                {
+                    render::UpsertMeshInstancePayload payload{};
+                    payload.scene_id = config_.scene;
+                    payload.entity = next.entity;
+                    payload.mesh = next.mesh;
+                    payload.material = next.material;
+                    payload.transform = next.transform;
+                    payload.flags = next.flags;
+                    builder.push(
+                        render::opcode_of_v<render::UpsertMeshInstanceOp>,
+                        config_.operations.id<render::UpsertMeshInstanceOp>(),
+                        payload
+                    );
+                }
+                else
+                {
+                    if (published->flags != next.flags)
+                    {
+                        builder.push(
+                            render::opcode_of_v<render::UpdateInstanceFlagsOp>,
+                            config_.operations.id<render::UpdateInstanceFlagsOp>(),
+                            render::UpdateInstanceFlagsPayload{config_.scene, next.entity, next.flags}
+                        );
+                    }
+                    if (!sameTransform(published->transform, next.transform))
+                    {
+                        transforms_.push_back(render::TransformWriteEntry{config_.scene, next.entity, next.transform});
+                    }
+                }
+
+                const bool state_changed = published == nullptr || published->entity != next.entity ||
+                    published->mesh_source != next.mesh_source || published->material_source != next.material_source ||
+                    published->mesh != next.mesh || published->material != next.material ||
+                    published->flags != next.flags || !sameTransform(published->transform, next.transform);
+                if (state_changed)
+                {
+                    state_updates_.push_back(MeshStateUpdate{entity, next});
+                }
+                return true;
             }
 
             [[nodiscard]] ERenderSyncPrepareResult prepareImpl(render::RenderProgramBuilder<>& builder)
             {
                 const std::size_t initial_commands = builder.commandCount();
+                coalesceDepartures(departures_);
                 for (const auto& departure : departures_)
                 {
                     if (membershipRestored(departure))
                     {
                         continue;
                     }
-                    builder.push(
-                        render::opcode_of_v<render::RemoveMeshInstanceOp>,
-                        config_.operations.id<render::RemoveMeshInstanceOp>(),
-                        render::RemoveMeshInstancePayload{config_.scene, departure.entity}
-                    );
+                    if (departure.was_published)
+                    {
+                        builder.push(
+                            render::opcode_of_v<render::RemoveMeshInstanceOp>,
+                            config_.operations.id<render::RemoveMeshInstanceOp>(),
+                            render::RemoveMeshInstancePayload{config_.scene, departure.entity}
+                        );
+                    }
                     state_removals_.push_back(departure.source);
                 }
 
-                for (const auto entity : changes_.view())
+                if (force_full_sync_)
                 {
-                    const auto& authored = config_.registry->get<simulation::ecs::Mesh3D>(entity).value;
-                    const auto& resolved = config_.registry->get<ResolvedMeshResources>(entity);
-                    const auto* published = config_.registry->try_get<MeshRenderState>(entity);
-                    const bool is_matching_resolution = resolved.mesh_source == authored.mesh &&
-                        resolved.material_source == authored.material && !resolved.mesh.isNull() &&
-                        !resolved.material.isNull();
-                    if (!is_matching_resolution)
+                    auto current = componentView<simulation::ecs::Mesh3D>(
+                        *config_.registry,
+                        ComponentList<simulation::ecs::WorldTransform3D, ResolvedMeshResources>{},
+                        ComponentList<>{}
+                    );
+                    for (const auto entity : current)
                     {
-                        continue;
-                    }
-
-                    MeshRenderState next{};
-                    next.owner = this;
-                    next.entity = toRenderEntity(entity);
-                    next.mesh_source = resolved.mesh_source;
-                    next.material_source = resolved.material_source;
-                    next.mesh = resolved.mesh;
-                    next.material = resolved.material;
-                    next.flags = (authored.visible ? render::kInstanceFlagVisible : 0U) |
-                        (authored.cast_shadow ? render::kInstanceFlagCastShadow : 0U) |
-                        (authored.receive_shadow ? render::kInstanceFlagReceiveShadow : 0U);
-                    if (!encodeTransform(
-                            config_.registry->get<simulation::ecs::WorldTransform3D>(entity),
-                            config_.coordinate_page_size,
-                            config_.scene_origin_page,
-                            next.transform))
-                    {
-                        return ERenderSyncPrepareResult::FAILED;
-                    }
-
-                    const bool requires_upsert = force_full_sync_ || published == nullptr || published->owner != this ||
-                        published->entity != next.entity || published->mesh_source != next.mesh_source ||
-                        published->material_source != next.material_source || published->mesh != next.mesh ||
-                        published->material != next.material;
-                    if (requires_upsert)
-                    {
-                        render::UpsertMeshInstancePayload payload{};
-                        payload.scene_id = config_.scene;
-                        payload.entity = next.entity;
-                        payload.mesh = next.mesh;
-                        payload.material = next.material;
-                        payload.transform = next.transform;
-                        payload.flags = next.flags;
-                        builder.push(
-                            render::opcode_of_v<render::UpsertMeshInstanceOp>,
-                            config_.operations.id<render::UpsertMeshInstanceOp>(),
-                            payload
-                        );
-                    }
-                    else
-                    {
-                        if (published->flags != next.flags)
+                        if (!prepareEntity(builder, entity))
                         {
-                            builder.push(
-                                render::opcode_of_v<render::UpdateInstanceFlagsOp>,
-                                config_.operations.id<render::UpdateInstanceFlagsOp>(),
-                                render::UpdateInstanceFlagsPayload{config_.scene, next.entity, next.flags}
-                            );
-                        }
-                        if (!sameTransform(published->transform, next.transform))
-                        {
-                            transforms_.push_back(render::TransformWriteEntry{config_.scene, next.entity, next.transform});
+                            return ERenderSyncPrepareResult::FAILED;
                         }
                     }
-
-                    const bool state_changed = published == nullptr || published->owner != this ||
-                        published->entity != next.entity || published->mesh_source != next.mesh_source ||
-                        published->material_source != next.material_source || published->mesh != next.mesh ||
-                        published->material != next.material || published->flags != next.flags ||
-                        !sameTransform(published->transform, next.transform);
-                    if (state_changed)
+                }
+                else
+                {
+                    for (const auto entity : changes_.view())
                     {
-                        state_updates_.push_back(MeshStateUpdate{entity, next});
+                        if (!prepareEntity(builder, entity))
+                        {
+                            return ERenderSyncPrepareResult::FAILED;
+                        }
                     }
                 }
 
@@ -430,7 +508,7 @@ namespace lux::scene
             std::vector<MeshStateUpdate> state_updates_;
             std::vector<Entity> state_removals_;
             std::vector<render::TransformWriteEntry> transforms_;
-            bool force_full_sync_{true};
+            bool force_full_sync_{false};
             bool prepared_{false};
             bool suppress_state_departure_{false};
             bool allocation_failed_{false};
@@ -441,12 +519,15 @@ namespace lux::scene
             const void* owner{};
             render::RenderEntityId entity{};
             render::UpsertLightPayload payload{};
+            bool published{false};
         };
+        static_assert(std::is_nothrow_copy_assignable_v<LightRenderState>);
 
         struct LightDeparture final
         {
             render::RenderEntityId entity{};
             Entity source{simulation::ecs::NullEntity};
+            bool was_published{false};
         };
 
         struct LightStateUpdate final
@@ -538,7 +619,6 @@ namespace lux::scene
             void requestFullSync() noexcept override
             {
                 force_full_sync_ = true;
-                changes_.markAll();
             }
 
             [[nodiscard]] ERenderSyncPrepareResult prepare(render::RenderProgramBuilder<>& builder) noexcept override
@@ -559,6 +639,7 @@ namespace lux::scene
                 }
             }
 
+            // LUX_RENDER_COMMIT_LIGHT_BEGIN
             void commitPrepared() noexcept override
             {
                 if (!prepared_)
@@ -579,10 +660,7 @@ namespace lux::scene
                 }
                 for (auto& update : state_updates_)
                 {
-                    if (config_.registry->valid(update.entity))
-                    {
-                        config_.registry->emplace_or_replace<LightRenderState>(update.entity, update.state);
-                    }
+                    config_.registry->get<LightRenderState>(update.entity) = update.state;
                 }
                 suppress_state_departure_ = false;
                 changes_.clear();
@@ -590,6 +668,7 @@ namespace lux::scene
                 force_full_sync_ = false;
                 discardPrepared();
             }
+            // LUX_RENDER_COMMIT_LIGHT_END
 
             void discardPrepared() noexcept override
             {
@@ -615,7 +694,7 @@ namespace lux::scene
                 const auto* state = config_.registry->try_get<LightRenderState>(entity);
                 if (state != nullptr && state->owner == this)
                 {
-                    recordDeparture(LightDeparture{state->entity, entity});
+                    recordDeparture(LightDeparture{state->entity, entity, state->published});
                 }
             }
 
@@ -628,24 +707,19 @@ namespace lux::scene
                 const auto* state = config_.registry->try_get<LightRenderState>(entity);
                 if (state != nullptr && state->owner == this)
                 {
-                    recordDeparture(LightDeparture{state->entity, entity});
+                    recordDeparture(LightDeparture{state->entity, entity, state->published});
                 }
             }
 
             void recordDeparture(LightDeparture departure) noexcept
             {
-                if (std::ranges::none_of(departures_, [departure](const auto& existing) {
-                        return existing.entity == departure.entity;
-                    }))
+                try
                 {
-                    try
-                    {
-                        departures_.push_back(departure);
-                    }
-                    catch (const std::bad_alloc&)
-                    {
-                        allocation_failed_ = true;
-                    }
+                    departures_.push_back(departure);
+                }
+                catch (const std::bad_alloc&)
+                {
+                    allocation_failed_ = true;
                 }
             }
 
@@ -718,36 +792,83 @@ namespace lux::scene
                 return true;
             }
 
+            [[nodiscard]] bool prepareEntity(Entity entity)
+            {
+                render::UpsertLightPayload payload{};
+                if (!makePayload(entity, payload))
+                {
+                    return false;
+                }
+                auto* state_slot = config_.registry->try_get<LightRenderState>(entity);
+                if (state_slot == nullptr)
+                {
+                    state_slot = &config_.registry->emplace<LightRenderState>(
+                        entity,
+                        LightRenderState{.owner = this, .entity = payload.entity}
+                    );
+                }
+                if (state_slot->owner != this)
+                {
+                    return false;
+                }
+                const auto* published = state_slot->published ? state_slot : nullptr;
+                if (force_full_sync_ || published == nullptr || !sameLight(published->payload, payload))
+                {
+                    payloads_.push_back(payload);
+                }
+                if (published == nullptr || !sameLight(published->payload, payload))
+                {
+                    state_updates_.push_back(
+                        LightStateUpdate{entity, LightRenderState{this, payload.entity, payload, true}}
+                    );
+                }
+                return true;
+            }
+
             [[nodiscard]] ERenderSyncPrepareResult prepareImpl(render::RenderProgramBuilder<>& builder)
             {
                 const std::size_t initial_commands = builder.commandCount();
+                coalesceDepartures(departures_);
                 for (const auto& departure : departures_)
                 {
                     if (membershipRestored(departure))
                     {
                         continue;
                     }
-                    builder.push(
-                        render::opcode_of_v<render::RemoveLightOp>,
-                        config_.operations.id<render::RemoveLightOp>(),
-                        render::RemoveLightPayload{config_.scene, departure.entity, 0U}
-                    );
+                    if (departure.was_published)
+                    {
+                        builder.push(
+                            render::opcode_of_v<render::RemoveLightOp>,
+                            config_.operations.id<render::RemoveLightOp>(),
+                            render::RemoveLightPayload{config_.scene, departure.entity, 0U}
+                        );
+                    }
                     state_removals_.push_back(departure.source);
                 }
 
-                for (const auto entity : changes_.view())
+                if (force_full_sync_)
                 {
-                    render::UpsertLightPayload payload{};
-                    if (!makePayload(entity, payload))
+                    auto current = componentView<simulation::ecs::Light3D>(
+                        *config_.registry,
+                        ComponentList<simulation::ecs::WorldTransform3D>{},
+                        ComponentList<>{}
+                    );
+                    for (const auto entity : current)
                     {
-                        return ERenderSyncPrepareResult::FAILED;
+                        if (!prepareEntity(entity))
+                        {
+                            return ERenderSyncPrepareResult::FAILED;
+                        }
                     }
-                    const auto* published = config_.registry->try_get<LightRenderState>(entity);
-                    if (force_full_sync_ || published == nullptr || published->owner != this ||
-                        !sameLight(published->payload, payload))
+                }
+                else
+                {
+                    for (const auto entity : changes_.view())
                     {
-                        payloads_.push_back(payload);
-                        state_updates_.push_back(LightStateUpdate{entity, LightRenderState{this, payload.entity, payload}});
+                        if (!prepareEntity(entity))
+                        {
+                            return ERenderSyncPrepareResult::FAILED;
+                        }
                     }
                 }
 
@@ -775,7 +896,7 @@ namespace lux::scene
             std::vector<LightStateUpdate> state_updates_;
             std::vector<Entity> state_removals_;
             std::vector<render::UpsertLightPayload> payloads_;
-            bool force_full_sync_{true};
+            bool force_full_sync_{false};
             bool prepared_{false};
             bool suppress_state_departure_{false};
             bool allocation_failed_{false};

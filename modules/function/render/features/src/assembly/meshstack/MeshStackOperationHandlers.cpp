@@ -4,9 +4,10 @@
 //  visibility / flags / render-state / user-meta / transform-batch handlers
 //  live HERE (a feature), not in the core RenderServer dispatcher, and are
 //  registered with DYNAMIC TypeIds via register_ops_fn (the grid / light
-//  pattern). AddMeshInstance REPLIES with the new RenderObjectHandle
-//  (replyToCurrent, request-id-correlated). The core protocol no longer names
-//  mesh instances.
+//  pattern). UpsertMeshInstance is a fire-and-forget retained-state update,
+//  keyed by RenderEntityId and validated RMeshHandle/RMaterialHandle values.
+//  RenderObjectHandle remains private server identity and never enters replies
+//  or the scene protocol. The core protocol no longer names mesh instances.
 //
 //  The heavy mesh ASSEMBLY (instance sections / cull meta / vertex-pool resolution,
 //  and async mesh-data upload) lives HERE — internal to this TU; the core RenderServer

@@ -5,8 +5,9 @@
  *
  * This type deliberately has no scene/view/target/resource lifecycle API.
  * Those operations belong to RenderControlSession and RenderUploadSession and
- * remain valid while no frame is open. A RenderProgramSession only brackets and
- * records frame-local work.
+ * remain valid while no frame is open. A RenderProgramSession brackets and
+ * records Frame work, and also forwards already-built StateUpdate/Frame
+ * programs through trySubmitPrepared().
  */
 
 #include <lux/engine/function/visibility.h>

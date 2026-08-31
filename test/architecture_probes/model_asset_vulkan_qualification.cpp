@@ -448,8 +448,8 @@ int main(int argc, char** argv)
         if (!fixture.session().beginFrame()) return 15;
 
 #if defined(LUX_LARGE_3D_SCENE_PERFORMANCE)
-        const Eigen::Vector3f camera_eye{0.0F, 42.0F, 18.0F};
-        const Eigen::Vector3f camera_target{0.0F, 0.0F, -80.0F};
+        const Eigen::Vector3f camera_eye{0.0F, 4.0F, 3.0F};
+        const Eigen::Vector3f camera_target{0.0F, 0.0F, -18.0F};
         const Eigen::Vector3f forward = (camera_target - camera_eye).normalized();
         const Eigen::Vector3f side = forward.cross(Eigen::Vector3f::UnitY()).normalized();
         const Eigen::Vector3f camera_up = side.cross(forward);

@@ -34,7 +34,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<Grid2DCommConfig>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = Grid2DSetParams, method = setParams) Grid2DSetParamsPayload
+    struct LUX_OP(lane = program, kind = stream, name = Grid2DSetParams, method = setParams) Grid2DSetParamsPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};

@@ -43,7 +43,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<WaterSurfaceCreatedReply>);
 
     struct LUX_OP(
-        lane = frame,
+        lane = program,
         kind = resource,
         name = WaterSurfaceCreate,
         method = createSurface,
@@ -55,7 +55,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<WaterSurfaceCreatePayload>);
 
     struct LUX_OP(
-        lane = frame,
+        lane = program,
         kind = stream,
         name = WaterSurfaceUpdate,
         method = updateSurface,
@@ -69,7 +69,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<WaterSurfaceUpdatePayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = WaterSurfaceDestroy, method = destroySurface, opcode = resource)
+    struct LUX_OP(lane = program, kind = stream, name = WaterSurfaceDestroy, method = destroySurface, opcode = resource)
         WaterSurfaceDestroyPayload final
     {
         RenderSceneId scene_id{};

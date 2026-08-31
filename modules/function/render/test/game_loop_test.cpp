@@ -2,11 +2,11 @@
 //  game_loop_test.cpp
 //
 //  Game-loop style end-to-end test for the render comm pipeline.
-//  Uses RenderFrameSession for high-level semantic API instead of raw
-//  FrameProgramBuilder payload construction.
+//  Uses RenderProgramSession for high-level semantic API instead of raw
+//  RenderProgramBuilder payload construction.
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
@@ -301,7 +301,7 @@ main()
 
     // ── Channel + sync + window ─────────────────────────────────────────
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -352,7 +352,7 @@ main()
         return 0;
     }
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
     lux::render::testing::DirectRenderUploadClient upload_client{upload};
@@ -377,24 +377,24 @@ main()
 
     // ViewCamera feature op ids — resolved from view_cam_reg_req once the
     // registration reply lands, then used by ViewCameraProxy for the per-view
-    // camera update. RenderFrameSession::updateView is gone — the per-view camera data
+    // camera update. RenderProgramSession::updateView is gone — the per-view camera data
     // is a StandardViewCameraFeature domain now.
     ViewCameraOperationIds view_cam_ops{};
 
     // Light feature op ids — resolved from light_reg_req once the registration
     // reply lands, then used by LightProxy to create the directional light.
-    // (Light is a feature now: RenderFrameSession::createLight is gone.)
+    // (Light is a feature now: RenderProgramSession::createLight is gone.)
     LightOperationIds light_ops{};
 
     // Mesh-stack feature op ids — resolved from mesh_stack_reg_req once the
     // registration reply lands, then used by MeshStackProxy for instance CRUD
-    // (add / per-view visibility / transform). RenderFrameSession's mesh-instance
+    // (add / per-view visibility / transform). RenderProgramSession's mesh-instance
     // methods are gone — these ops are a StandardMeshStackFeature domain now.
     MeshStackOperationIds mesh_stack_ops{};
 
     // Material feature op ids — resolved from material_reg_req once the
     // registration reply lands, then used by MaterialProxy to upload graph
-    // materials. RenderFrameSession::uploadGraphMaterial is gone — these ops are a
+    // materials. RenderProgramSession::uploadGraphMaterial is gone — these ops are a
     // StandardMaterialFeature domain now.
     MaterialOperationIds material_ops{};
 

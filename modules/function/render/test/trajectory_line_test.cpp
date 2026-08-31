@@ -47,7 +47,7 @@
 //    • clear-then-append cycles that recycle the same slot
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp" // relocated test-only coroutine support
@@ -323,7 +323,7 @@ phaseLabel(ETestPhase p)
 
 static RenderTask<void>
 trajectoryLineTask(
-    RenderFrameSession& session,
+    RenderProgramSession& session,
     RenderControlSession& control,
     RenderUploadClient upload,
     lux::window::LuxWindow& window
@@ -354,7 +354,7 @@ trajectoryLineTask(
 
     // StandardViewCamera feature — owns per-view camera matrices; MUST attach
     // before every camera consumer. Per-frame updates go through ViewCameraProxy
-    // (replaces the retired RenderFrameSession::updateView).
+    // (replaces the retired RenderProgramSession::updateView).
     co_await yield_frame();
     auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
     auto view_cam_ops = ViewCameraOperationIds::fromOps(view_cam_type_reply.ops, view_cam_type_reply.op_count);
@@ -808,7 +808,7 @@ main()
               << "  Tests: BulkCreate, IncrementalAppend, MultiTrajectory,\n"
               << "         ClearReupload, RemoveRecreate, SlotGrowth, VisualHold\n\n";
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -857,7 +857,7 @@ main()
         return 0;
     }
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
     lux::render::testing::DirectRenderUploadClient upload_client{upload};
@@ -866,7 +866,7 @@ main()
 
     RenderTaskScheduler scheduler(session, control, &upload);
     auto task = trajectoryLineTask(session, control, upload_client.client(), window);
-    scheduler.run(std::move(task), [&](RenderFrameSession&) -> bool {
+    scheduler.run(std::move(task), [&](RenderProgramSession&) -> bool {
         window.pollEvents();
         return !window.shouldClose();
     }

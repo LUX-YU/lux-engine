@@ -227,7 +227,7 @@ namespace lux::render
 
     /// Create one GPU-resident image instance. Replies with its owner handle +
     /// outcome (G-05: anything but Ok ⇒ handle null, nothing was created).
-    struct LUX_OP(lane = frame, kind = stream, name = AddImage2D, method = addImageRaw, reply = Image2DSlotReply)
+    struct LUX_OP(lane = program, kind = stream, name = AddImage2D, method = addImageRaw, reply = Image2DSlotReply)
         AddImage2DPayload
     {
         RenderSceneId scene{};
@@ -245,7 +245,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<Image2DSlotReply>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = RemoveImage2D, method = removeImageRaw) RemoveImage2DPayload
+    struct LUX_OP(lane = program, kind = stream, name = RemoveImage2D, method = removeImageRaw) RemoveImage2DPayload
     {
         RenderSceneId scene{};
         Image2DHandle handle{};
@@ -255,7 +255,7 @@ namespace lux::render
     /// Per-frame transform delta (BulkData). Each entry self-routes by its own
     /// `scene` (G-04); only DIRTY images produce entries, so wire traffic is
     /// proportional to change, never to scene size.
-    struct LUX_OP(lane = frame, kind = bulk, name = Image2DTransformBatch, method = updateTransformsRaw)
+    struct LUX_OP(lane = program, kind = bulk, name = Image2DTransformBatch, method = updateTransformsRaw)
         Image2DTransformEntry
     {
         RenderSceneId scene{};
@@ -266,7 +266,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<Image2DTransformEntry>);
 
     /// Visual fields (uv rect / tint / texture) — low-frequency, order-neutral.
-    struct LUX_OP(lane = frame, kind = stream, name = UpdateImage2DVisual, method = updateVisualRaw)
+    struct LUX_OP(lane = program, kind = stream, name = UpdateImage2DVisual, method = updateVisualRaw)
         UpdateImage2DVisualPayload
     {
         RenderSceneId scene{};
@@ -278,7 +278,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<UpdateImage2DVisualPayload>);
 
     /// Order-affecting fields — the ONLY op that can trigger an order rebuild.
-    struct LUX_OP(lane = frame, kind = stream, name = UpdateImage2DKey, method = updateKeyRaw) UpdateImage2DKeyPayload
+    struct LUX_OP(lane = program, kind = stream, name = UpdateImage2DKey, method = updateKeyRaw) UpdateImage2DKeyPayload
     {
         RenderSceneId scene{};
         Image2DHandle handle{};
@@ -291,7 +291,7 @@ namespace lux::render
     /// Scene-level draw gate (retained bit). The camera bridge flips it when the
     /// publishable-camera gate changes — the concern ("never draw against a
     /// stale camera") expressed as ONE retained bit instead of per-frame liveness.
-    struct LUX_OP(lane = frame, kind = stream, name = SetCanvas2DEnabled, method = setEnabledRaw)
+    struct LUX_OP(lane = program, kind = stream, name = SetCanvas2DEnabled, method = setEnabledRaw)
         SetCanvas2DEnabledPayload
     {
         RenderSceneId scene{};
@@ -302,7 +302,7 @@ namespace lux::render
     // ── PixelField kind payloads (F2-09; same command grammar as images) ─────
 
     struct LUX_OP(
-        lane = frame,
+        lane = program,
         kind = stream,
         name = AddPixelField2D,
         method = addPixelFieldRaw,
@@ -322,7 +322,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PixelFieldSlotReply>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = RemovePixelField2D, method = removePixelFieldRaw)
+    struct LUX_OP(lane = program, kind = stream, name = RemovePixelField2D, method = removePixelFieldRaw)
         RemovePixelField2DPayload
     {
         RenderSceneId scene{};
@@ -333,7 +333,7 @@ namespace lux::render
     /// Fields are FEW (a handful per scene) and mostly static — a plain Stream op
     /// per moved field beats a bulk lane here.
     struct LUX_OP(
-        lane = frame,
+        lane = program,
         kind = stream,
         name = UpdatePixelField2DTransform,
         method = updatePixelFieldTransformRaw) UpdatePixelField2DTransformPayload
@@ -345,7 +345,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<UpdatePixelField2DTransformPayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = UpdatePixelField2DKey, method = updatePixelFieldKeyRaw)
+    struct LUX_OP(lane = program, kind = stream, name = UpdatePixelField2DKey, method = updatePixelFieldKeyRaw)
         UpdatePixelField2DKeyPayload
     {
         RenderSceneId scene{};
@@ -357,7 +357,7 @@ namespace lux::render
 
     // ── Tile kind payloads (A2-02; same command grammar as images/fields) ────
 
-    struct LUX_OP(lane = frame, kind = stream, name = AddTile2D, method = addTilemapRaw, reply = Tile2DSlotReply)
+    struct LUX_OP(lane = program, kind = stream, name = AddTile2D, method = addTilemapRaw, reply = Tile2DSlotReply)
         AddTile2DPayload
     {
         RenderSceneId scene{};
@@ -374,7 +374,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<Tile2DSlotReply>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = RemoveTile2D, method = removeTilemapRaw) RemoveTile2DPayload
+    struct LUX_OP(lane = program, kind = stream, name = RemoveTile2D, method = removeTilemapRaw) RemoveTile2DPayload
     {
         RenderSceneId scene{};
         Tile2DInstanceHandle handle{};
@@ -383,7 +383,7 @@ namespace lux::render
 
     /// Tilemaps are FEW (a handful per scene) and mostly static — plain Stream
     /// ops per moved map, like fields.
-    struct LUX_OP(lane = frame, kind = stream, name = UpdateTile2DTransform, method = updateTilemapTransformRaw)
+    struct LUX_OP(lane = program, kind = stream, name = UpdateTile2DTransform, method = updateTilemapTransformRaw)
         UpdateTile2DTransformPayload
     {
         RenderSceneId scene{};
@@ -393,7 +393,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<UpdateTile2DTransformPayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = UpdateTile2DKey, method = updateTilemapKeyRaw)
+    struct LUX_OP(lane = program, kind = stream, name = UpdateTile2DKey, method = updateTilemapKeyRaw)
         UpdateTile2DKeyPayload
     {
         RenderSceneId scene{};

@@ -39,7 +39,7 @@ namespace lux::render
         custom_create = true,
         requires = lux.render.light.v1,
         param_op = ShadowMapParams,
-        param_lane = frame) ShadowMapCommConfig
+        param_lane = program) ShadowMapCommConfig
     {
         ShaderHandle shadow_vertex_shader{};
         ShaderHandle shadow_fragment_shader{};

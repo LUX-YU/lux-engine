@@ -149,7 +149,7 @@ target_link_libraries(scene_cycle_stress_test PRIVATE render_features lux::engin
 target_include_directories(scene_cycle_stress_test PRIVATE ${RENDER_PINCLUDE_DIR} ${SHADER_CONFIG_OUT_PATH})
 
 # PERMANENT (gpu): an owning UploadChannel packet must complete while the frame
-# producer is paused. The test deliberately never publishes a FrameProgram and
+# producer is paused. The test deliberately never publishes a RenderProgram and
 # drops the caller's source bytes immediately after admission.
 add_executable(upload_without_frame_test upload_without_frame_test.cpp)
 target_link_libraries(upload_without_frame_test PRIVATE render_features lux::engine::platform::window)

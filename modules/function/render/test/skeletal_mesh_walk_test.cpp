@@ -20,7 +20,7 @@
 //  needs an async-readiness fix before it can drive a windowed frame loop.
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
@@ -35,7 +35,7 @@
 #include <lux/engine/function/render/client/genops/SkinningOperation.ops.hpp>
 // LightFeature / LightProxy / LightOperationIds
 #include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
-// StandardViewCamera (per-view camera op; replaces RenderFrameSession::updateView)
+// StandardViewCamera (per-view camera op; replaces RenderProgramSession::updateView)
 #include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 #include <lux/engine/description/Mesh.hpp>
@@ -274,7 +274,7 @@ main()
     Eigen::Matrix4f V = buildViewMatrix(eye, target, up);
     Eigen::Matrix4f P = buildProjMatrix(60.f * 3.14159265f / 180.f, 1280.f / 720.f, 0.1f, 100.f);
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -317,7 +317,7 @@ main()
         return 0;
     }
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
     lux::render::testing::DirectRenderUploadClient upload_client{upload};

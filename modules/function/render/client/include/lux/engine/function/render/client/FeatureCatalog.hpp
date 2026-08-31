@@ -312,7 +312,7 @@ namespace lux::render
     /// attach 目录的一个条目 —— **纯数据,无行为**。config 是精确
     /// sizeof(CommConfig) 的字节(CommConfig 按契约可平凡拷贝,本来就是
     /// memcpy 过 comm 通道的;服务端 decodeCommConfig 精确长度匹配,错长
-    /// 响亮失败)。发出走 `RenderFrameSession::addFeatureRaw`。
+    /// 响亮失败)。发出走 `RenderProgramSession::addFeatureRaw`。
     ///
     /// 此前这里是一个捕获 typed config 的 `std::function` thunk —— 类型擦除
     /// 由字节承担之后,目录成为可遍历、可序列化的进程域数据(装配归属 ADR

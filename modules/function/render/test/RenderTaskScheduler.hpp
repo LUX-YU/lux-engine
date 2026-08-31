@@ -14,7 +14,7 @@
 //  next beginFrame() so the coroutine can safely push commands.
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp" // relocated beside this header (test-only)
@@ -39,12 +39,12 @@ namespace lux::render
     class RenderTaskScheduler
     {
     public:
-        explicit RenderTaskScheduler(RenderFrameSession& session) : session_(session)
+        explicit RenderTaskScheduler(RenderProgramSession& session) : session_(session)
         {
         }
 
         RenderTaskScheduler(
-            RenderFrameSession& frame,
+            RenderProgramSession& frame,
             RenderControlSession& control,
             RenderUploadSession* upload = nullptr
         ) noexcept
@@ -133,7 +133,7 @@ namespace lux::render
         }
 
     private:
-        RenderFrameSession& session_;
+        RenderProgramSession& session_;
         RenderControlSession* control_{nullptr};
         RenderUploadSession* upload_{nullptr};
     };

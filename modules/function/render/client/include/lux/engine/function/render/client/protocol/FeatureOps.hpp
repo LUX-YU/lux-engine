@@ -45,7 +45,7 @@ namespace lux::render
     /// lifetime and scheduling semantics.
     enum class EOperationLane : std::uint8_t
     {
-        Frame,   ///< lexical-frame extraction and retained scene deltas
+        Program, ///< retained-state updates and lexical frame programs
         Control, ///< scene/view/feature/query/destroy; legal with no frame open
         Upload,  ///< owning persistent payload; bounded and non-blocking
     };

@@ -1353,7 +1353,7 @@ namespace lux::render
                 channelSync().notifyReplyProduced();
             };
 
-        flush_lane(ERequestLane::FRAME, channel().responses, hasPendingReplyPublication());
+        flush_lane(ERequestLane::PROGRAM, channel().responses, hasPendingReplyPublication());
         flush_lane(
             ERequestLane::UPLOAD,
             upload_server_->endpoint().responses,

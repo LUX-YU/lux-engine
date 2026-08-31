@@ -41,7 +41,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<TriOverlayUploadedReply>);
 
     struct LUX_OP(
-        lane = frame,
+        lane = program,
         kind = blob,
         name = TriOverlayUpload,
         method = uploadTriangles,

@@ -35,7 +35,7 @@
 #include <lux/engine/events/DomainEvents.hpp>
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/runtime/render/backend_host/RenderBackendHost.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
@@ -322,7 +322,7 @@ namespace
         lux::events::DomainEvents events;
         lux::events::EventPump* frame_pump{nullptr};
         std::unique_ptr<lux::runtime::FrameCoordinator> frames;
-        lux::render::RenderFrameSession* session{nullptr};
+        lux::render::RenderProgramSession* session{nullptr};
         lux::render::RenderControlSession* control{nullptr};
 
         bool server_up{false};

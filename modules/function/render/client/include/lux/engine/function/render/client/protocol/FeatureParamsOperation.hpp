@@ -22,7 +22,7 @@
 
 namespace lux::render
 {
-    class RenderFrameSession;
+    class RenderProgramSession;
 
     /// Generic "apply a reflected param-struct snapshot to a feature" command.
     struct SetFeatureParamsPayload
@@ -42,7 +42,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC FeatureParamsProxy
     {
     public:
-        explicit FeatureParamsProxy(RenderFrameSession& session) noexcept : session_(&session)
+        explicit FeatureParamsProxy(RenderProgramSession& session) noexcept : session_(&session)
         {
         }
 
@@ -51,7 +51,7 @@ namespace lux::render
         void setParams(RenderSceneId scene, FeatureHandle feature, TypeId op, const void* blob, std::size_t size);
 
     private:
-        RenderFrameSession* session_;
+        RenderProgramSession* session_;
     };
 
 } // namespace lux::render

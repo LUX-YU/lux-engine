@@ -20,7 +20,7 @@
 //  Self-checking: 0 = PASS (or skip if no Vulkan), 1 = FAIL.
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
@@ -195,7 +195,7 @@ makeTranslate(float out[16], float x, float y, float z)
 // Drive frames (blocking submit) until the (possibly deferred) reply resolves.
 template <class T>
 static T
-await(RenderFrameSession& s, lux::window::LuxWindow& w, RenderRequest<T> req)
+await(RenderProgramSession& s, lux::window::LuxWindow& w, RenderRequest<T> req)
 {
     s.trySubmitFrame();
     s.waitAndPumpReplies();
@@ -251,7 +251,7 @@ struct SceneBundle
 // directional light pointing in `light_dir`.
 static SceneBundle
 buildScene(
-    RenderFrameSession& s,
+    RenderProgramSession& s,
     RenderControlSession& control,
     RenderUploadSession& upload,
     lux::window::LuxWindow& w,
@@ -435,7 +435,7 @@ main()
 
     constexpr uint32_t W = 256, H = 256;
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -481,7 +481,7 @@ main()
     }
     std::cout << "[2] server ready\n";
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
     auto& s = session;

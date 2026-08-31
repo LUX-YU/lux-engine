@@ -77,7 +77,7 @@ namespace lux::render
     };
     /// 轨迹的标识。此前定义在 TrajectoryOperation.hpp 里,导致存储层
     /// (TrajectoryResources)为了一个句柄就要包含整个操作头 —— 而那个头还带着
-    /// 线协议载荷与 RenderFrameSession/RenderRequest 的前置声明,是自下而上的依赖。
+    /// 线协议载荷与 RenderProgramSession/RenderRequest 的前置声明,是自下而上的依赖。
     /// 标识类型本就属于基础层,与 MaterialHandle 等同处。
     struct TrajectoryHandleTag
     {

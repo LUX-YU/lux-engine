@@ -28,7 +28,7 @@
 //    [ESC] Exit
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp" // relocated test-only coroutine support
@@ -356,7 +356,7 @@ appendTo(std::vector<GizmoVertex>& dst, const std::vector<GizmoVertex>& src)
 // ── Coroutine task ──────────────────────────────────────────────────────
 
 static RenderTask<void>
-gizmoTestTask(RenderFrameSession& session, RenderControlSession& control, lux::window::LuxWindow& window)
+gizmoTestTask(RenderProgramSession& session, RenderControlSession& control, lux::window::LuxWindow& window)
 {
     // ─────────────────────────────────────────────────────────────────
     //  Phase 1: Create scene
@@ -388,7 +388,7 @@ gizmoTestTask(RenderFrameSession& session, RenderControlSession& control, lux::w
     // ─────────────────────────────────────────────────────────────────
     //  StandardViewCamera feature — owns per-view camera matrices; MUST
     //  attach before every camera consumer. Per-frame updates go through
-    //  ViewCameraProxy (replaces the retired RenderFrameSession::updateView).
+    //  ViewCameraProxy (replaces the retired RenderProgramSession::updateView).
     // ─────────────────────────────────────────────────────────────────
     co_await yield_frame();
 
@@ -752,7 +752,7 @@ main()
               << "  Tests: registration, upload, transient semantics, enable/disable,\n"
               << "         combined scene, frustum/axes/AABB/overlay gizmos.\n\n";
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -801,14 +801,14 @@ main()
         return 0;
     }
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
 
     // ── Run coroutine via scheduler ─────────────────────────────────
     RenderTaskScheduler scheduler(session, control);
     auto task = gizmoTestTask(session, control, window);
-    scheduler.run(std::move(task), [&](RenderFrameSession&) -> bool {
+    scheduler.run(std::move(task), [&](RenderProgramSession&) -> bool {
         window.pollEvents();
         return !window.shouldClose();
     }

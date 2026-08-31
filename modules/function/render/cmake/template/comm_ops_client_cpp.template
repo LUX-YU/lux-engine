@@ -8,7 +8,7 @@
 // -----------------------------------------------------------------------------
 #include "{{ stem }}.ops.hpp"
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 #include <lux/engine/function/render/client/RenderRequest.hpp>
@@ -23,7 +23,7 @@ namespace lux::render
     // ── frame proxy bodies ──
 {% for rec_idx in marked_record_decls %}{%- set op = decl_from_index(rec_idx) -%}{%- if annotation_has(op, "luxop::op") -%}
 {%- set lane = annotation_get_for_or(op, "luxop::op", "lane", "") -%}
-{%- if lane == "frame" -%}
+{%- if lane == "program" -%}
 {%- set kind = annotation_get_for_or(op, "luxop::op", "kind", "") -%}
 {%- set opname = annotation_get_for_or(op, "luxop::op", "name", "") -%}
 {%- set reply = annotation_get_for_or(op, "luxop::op", "reply", "") -%}

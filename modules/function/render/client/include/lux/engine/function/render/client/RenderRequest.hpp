@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
-#include <lux/engine/function/render/client/FrameProgram.hpp>
+#include <lux/engine/function/render/client/RenderProgram.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 
 #include <memory>

@@ -26,7 +26,7 @@
 namespace lux::render
 {
     struct FeatureFactory;
-    class RenderFrameSession;
+    class RenderProgramSession;
     class RenderControlSession;
     enum class ERenderUploadSubmitError : std::uint8_t;
     template <typename T> class RenderRequest;
@@ -56,7 +56,7 @@ namespace lux::render
 #error "LUX_OP on {{ op.name }} needs name=<DispatcherName>"
 {% endif -%}
 {%- if lane == "" %}
-#error "LUX_OP on {{ op.name }} needs lane=frame|control|upload"
+#error "LUX_OP on {{ op.name }} needs lane=program|control|upload"
 {% endif -%}
 {%- if kind == "resource" and reply == "" %}
 #error "kind=resource op '{{ opname }}' needs reply=<Type> (pushResource requires a reply callback)"
@@ -79,14 +79,14 @@ namespace lux::render
     struct {{ opname }}Op
     {
         using Payload = ::{{ op.fq_name }};
-{%- if lane == "frame" %}
-        static constexpr EOperationLane lane = EOperationLane::Frame;
+{%- if lane == "program" %}
+        static constexpr EOperationLane lane = EOperationLane::Program;
 {%- else if lane == "control" %}
         static constexpr EOperationLane lane = EOperationLane::Control;
 {%- else if lane == "upload" %}
         static constexpr EOperationLane lane = EOperationLane::Upload;
 {%- else %}
-#error "LUX_OP on {{ op.name }}: lane must be frame|control|upload"
+#error "LUX_OP on {{ op.name }}: lane must be program|control|upload"
 {%- endif %}
 {%- if kind == "stream" %}
         static constexpr EOpKind kind = EOpKind::Stream;
@@ -124,7 +124,7 @@ namespace lux::render
     struct {{ bulk_alias }}Op
     {
         using Payload = ::{{ op.fq_name }};
-        static constexpr EOperationLane lane = EOperationLane::{% if lane == "frame" %}Frame{% else if lane == "control" %}Control{% else %}Upload{% endif %};
+        static constexpr EOperationLane lane = EOperationLane::{% if lane == "program" %}Program{% else if lane == "control" %}Control{% else %}Upload{% endif %};
         static constexpr EOpKind kind = EOpKind::Bulk;
         static constexpr const char* name = "{{ bulk_alias }}";
     };
@@ -134,7 +134,7 @@ namespace lux::render
 {%- if param_op != "" %}
 {%- set param_lane = annotation_get_for_or(cfg, "luxop::config", "param_lane", "") -%}
 {%- if param_lane == "" %}
-#error "LUX_COMM_CONFIG with param_op needs param_lane=frame|control"
+#error "LUX_COMM_CONFIG with param_op needs param_lane=program|control"
 {%- endif %}
     /// 通用反射 setParams(EOpKind::Param):载荷是共享的
     /// SetFeatureParamsPayload,经共享 FeatureParamsProxy 推送 —— 无专属
@@ -142,7 +142,7 @@ namespace lux::render
     struct {{ param_op }}Op
     {
         using Payload = SetFeatureParamsPayload;
-        static constexpr EOperationLane lane = EOperationLane::{% if param_lane == "control" %}Control{% else %}Frame{% endif %};
+        static constexpr EOperationLane lane = EOperationLane::{% if param_lane == "control" %}Control{% else %}Program{% endif %};
         static constexpr EOpKind kind = EOpKind::Param;
         static constexpr const char* name = "{{ param_op }}";
     };
@@ -172,21 +172,21 @@ namespace lux::render
     extern LUX_FUNCTION_PUBLIC const FeatureFactory k{{ prefix }}FeatureFactory;
 {%- endif %}
 
-    // ═════════ frame client — only lane=frame operations ═════════
+    // ═════════ frame client — only lane=program operations ═════════
     class LUX_FUNCTION_PUBLIC {{ prefix }}Proxy
     {
     public:
-        {{ prefix }}Proxy(RenderFrameSession& session, {{ prefix }}OperationIds ops) noexcept
+        {{ prefix }}Proxy(RenderProgramSession& session, {{ prefix }}OperationIds ops) noexcept
             : session_(&session), ops_(ops) {}
 
         /// 会话访问器:手写便捷层(自由函数)做 pushBlob/pushSharedBytes 等
         /// 前置动作时需要 builder —— 生成面开这一扇窗,私有域仍不外泄。
-        [[nodiscard]] RenderFrameSession& session() const noexcept { return *session_; }
+        [[nodiscard]] RenderProgramSession& session() const noexcept { return *session_; }
         [[nodiscard]] const {{ prefix }}OperationIds& ops() const noexcept { return ops_; }
         [[nodiscard]] bool valid() const noexcept { return ops_.valid(); }
 {% for rec_idx in marked_record_decls %}{%- set op = decl_from_index(rec_idx) -%}{%- if annotation_has(op, "luxop::op") -%}
 {%- set lane = annotation_get_for_or(op, "luxop::op", "lane", "") -%}
-{%- if lane == "frame" -%}
+{%- if lane == "program" -%}
 {%- set kind = annotation_get_for_or(op, "luxop::op", "kind", "") -%}
 {%- set opname = annotation_get_for_or(op, "luxop::op", "name", "") -%}
 {%- set reply = annotation_get_for_or(op, "luxop::op", "reply", "") -%}
@@ -219,7 +219,7 @@ namespace lux::render
 {%- endif %}{% endfor %}
 
     private:
-        RenderFrameSession* session_;
+        RenderProgramSession* session_;
         {{ prefix }}OperationIds ops_;
     };
 

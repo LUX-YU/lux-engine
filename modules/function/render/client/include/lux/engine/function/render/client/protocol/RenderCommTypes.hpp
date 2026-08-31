@@ -268,7 +268,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<ExternalDataRef>);
 
-    struct FrameMemoryHints
+    struct ProgramMemoryHints
     {
         std::size_t command_capacity{256};
         std::size_t payload_capacity{64 * 1024};

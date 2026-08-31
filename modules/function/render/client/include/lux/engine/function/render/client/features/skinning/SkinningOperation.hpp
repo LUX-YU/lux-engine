@@ -45,7 +45,7 @@ namespace lux::render
     // The handler resolves the instance's input vertex range from `mesh`, uploads
     // the palette + records a skinning dispatch, and patches the instance's
     // InstanceProperty.vertex_pool_id/base to the skinned output.
-    struct LUX_OP(lane = frame, kind = blob, name = UploadBonePalette, method = uploadBonePalette)
+    struct LUX_OP(lane = program, kind = blob, name = UploadBonePalette, method = uploadBonePalette)
         UploadBonePalettePayload
     {
         RenderSceneId scene_id{};
@@ -72,7 +72,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<BoneBatchEntry>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = UploadBoneBatch, method = uploadBoneBatch) UploadBoneBatchPayload
+    struct LUX_OP(lane = program, kind = stream, name = UploadBoneBatch, method = uploadBoneBatch) UploadBoneBatchPayload
     {
         RenderSceneId scene_id{};
         uint32_t entry_count{0};

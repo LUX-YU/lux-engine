@@ -40,7 +40,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<SkyboxCommConfig>);
 
     /// Set an equirectangular (2D) texture as the skybox.
-    struct LUX_OP(lane = frame, kind = stream, name = SkyboxSetEquirect, method = setEquirect) SkyboxSetEquirectPayload
+    struct LUX_OP(lane = program, kind = stream, name = SkyboxSetEquirect, method = setEquirect) SkyboxSetEquirectPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
@@ -51,7 +51,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<SkyboxSetEquirectPayload>);
 
     /// Set a cubemap texture as the skybox.
-    struct LUX_OP(lane = frame, kind = stream, name = SkyboxSetCubemap, method = setCubemap) SkyboxSetCubemapPayload
+    struct LUX_OP(lane = program, kind = stream, name = SkyboxSetCubemap, method = setCubemap) SkyboxSetCubemapPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};

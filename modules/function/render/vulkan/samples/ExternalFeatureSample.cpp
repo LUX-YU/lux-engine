@@ -27,7 +27,7 @@
  * It also shows the END-TO-END registration path (P4b): a FeatureFactory whose
  * create_fn installs the feature via the public addFeature(void* scene, ...)
  * — so a plugin never names the engine-internal RenderScene. A client registers
- * this factory through the public comm API (RenderFrameSession::registerFeatureType +
+ * this factory through the public comm API (RenderProgramSession::registerFeatureType +
  * addFeature).
  */
 
@@ -246,7 +246,7 @@ namespace sample_ext
         return lux::render::addFeature<SampleExternalFeature>(scene, std::move(cfg));
     }
 
-    /// The factory a client registers via RenderFrameSession::registerFeatureType().
+    /// The factory a client registers via RenderProgramSession::registerFeatureType().
     inline lux::render::FeatureFactory makeSampleFactory()
     {
         return lux::render::makeSimpleFactory(&sampleCreateFn, "SampleExternal");

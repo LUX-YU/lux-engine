@@ -1,11 +1,11 @@
 #pragma once
 /**
- * @file RenderFrameSession.hpp
- * @brief Main-thread endpoint for one lexical FrameProgram transaction.
+ * @file RenderProgramSession.hpp
+ * @brief Main-thread endpoint for one lexical RenderProgram transaction.
  *
  * This type deliberately has no scene/view/target/resource lifecycle API.
  * Those operations belong to RenderControlSession and RenderUploadSession and
- * remain valid while no frame is open. A RenderFrameSession only brackets and
+ * remain valid while no frame is open. A RenderProgramSession only brackets and
  * records frame-local work.
  */
 
@@ -21,20 +21,20 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC RenderFrameSession
+    class LUX_FUNCTION_PUBLIC RenderProgramSession
     {
     public:
         using Client = GeneralRenderClient;
         using Builder = Client::Builder;
-        using FrameProgressToken = Client::FrameProgressToken;
+        using ProgramProgressToken = Client::ProgramProgressToken;
 
-        explicit RenderFrameSession(
-            std::shared_ptr<RenderFrameChannel<>> channel,
+        explicit RenderProgramSession(
+            std::shared_ptr<RenderProgramChannel<>> channel,
             std::shared_ptr<RenderChannelSync> sync
         );
 
-        RenderFrameSession(const RenderFrameSession&) = delete;
-        RenderFrameSession& operator=(const RenderFrameSession&) = delete;
+        RenderProgramSession(const RenderProgramSession&) = delete;
+        RenderProgramSession& operator=(const RenderProgramSession&) = delete;
 
         std::size_t pumpReplies();
         [[nodiscard]] bool waitAndPumpReplies();
@@ -45,16 +45,19 @@ namespace lux::render
         );
         [[nodiscard]] std::uint64_t unroutedUnsolicitedReplies() const noexcept;
 
-        [[nodiscard]] bool beginFrame(const FrameMemoryHints& hints = {});
+        [[nodiscard]] bool beginFrame(const ProgramMemoryHints& hints = {});
         [[nodiscard]] bool isRecording() const noexcept
         {
             return client_.isRecording();
         }
         [[nodiscard]] bool trySubmitFrame() noexcept;
-        [[nodiscard]] FrameProgressToken observeProgress() const noexcept;
-        void waitForProgress(FrameProgressToken observed) const noexcept;
+        [[nodiscard]] bool trySubmitPrepared(RenderProgram<>& source) noexcept;
+        [[nodiscard]] bool retryPendingSubmit() noexcept;
+        [[nodiscard]] bool hasPendingSubmit() const noexcept;
+        [[nodiscard]] ProgramProgressToken observeProgress() const noexcept;
+        void waitForProgress(ProgramProgressToken observed) const noexcept;
         [[nodiscard]] bool waitForProgressUntil(
-            FrameProgressToken observed,
+            ProgramProgressToken observed,
             std::chrono::steady_clock::time_point deadline
         ) const noexcept;
         void notifyProgress() noexcept;

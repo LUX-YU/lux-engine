@@ -14,7 +14,7 @@
 #include <vector>
 
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/function/render/client/FrameProgram.hpp>
+#include <lux/engine/function/render/client/RenderProgram.hpp>
 #include <lux/engine/function/render/client/UploadLifecycle.hpp>
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
 #include <lux/engine/function/render/client/core/DeviceCaps.hpp>
@@ -76,7 +76,7 @@ namespace lux::render
         {
         }
 
-        void begin(const FrameMemoryHints& hints = {})
+        void begin(const ProgramMemoryHints& hints = {})
         {
             dst_->clear_keep_capacity();
             dst_->reserve(hints);
@@ -513,7 +513,7 @@ namespace lux::render
 
         // ── Dispatch ─────────────────────────────────────────────────────
 
-        [[nodiscard]] bool execute(const FrameProgram<RequestAlignment>& program, Ctx& ctx) const
+        [[nodiscard]] bool execute(const RenderProgram<RequestAlignment>& program, Ctx& ctx) const
         {
             return executeCommands(program.commands, program, ctx);
         }
@@ -704,7 +704,7 @@ namespace lux::render
     class RenderServer
     {
     public:
-        using Channel = RenderFrameChannel<RequestAlignment, ReplyAlignment>;
+        using Channel = RenderProgramChannel<RequestAlignment, ReplyAlignment>;
         using Dispatcher = FrameDispatcher<MaxOpcodes, RequestAlignment, ReplyAlignment>;
 
         explicit RenderServer(

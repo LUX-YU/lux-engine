@@ -10,7 +10,7 @@ set(RENDER_CLIENT_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderControlSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderErrorRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderFatal.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderFrameSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderProgramSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderLease.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderTypes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderUploadClient.cpp
@@ -130,3 +130,24 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
+
+add_executable(
+    render_program_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_program_test.cpp
+)
+target_link_libraries(
+    render_program_test
+    PRIVATE lux::engine::function::render_client
+)
+if(MSVC)
+    target_compile_options(render_program_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(render_program_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  render_program_test
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(NAME render_program_test COMMAND render_program_test)

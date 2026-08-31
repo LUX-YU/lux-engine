@@ -9,7 +9,7 @@
 //    - Uses RenderServer server-side pre-initialization
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
@@ -322,7 +322,7 @@ struct ServerInitResult
 
 static RenderTask<void>
 stressTask(
-    RenderFrameSession& session,
+    RenderProgramSession& session,
     RenderControlSession& control,
     RenderUploadClient upload,
     const fs::path& asset_dir,
@@ -627,7 +627,7 @@ stressTask(
     lux::render::GraphMaterialData floor_gd{};
     lux::render::GraphMaterialData light_gd{};
     // Material upload is a feature op now (MaterialProxy) — uploadGraphMaterial was
-    // removed from RenderFrameSession when materials became a feature.
+    // removed from RenderProgramSession when materials became a feature.
     MaterialUploadClient material_upload(upload, srv.material_ops);
     auto mat_req = requireUploadAccepted(
         uploadGraphMaterial(material_upload, cube_gd, cube_shader.shader, lux::render::ShaderHandle{})
@@ -654,7 +654,7 @@ stressTask(
 
     // Mesh-instance CRUD now goes through the feature-scoped MeshStackProxy
     // (addMeshInstance / makeInstanceVisibleForView / updateTransforms were
-    // removed from RenderFrameSession when the mesh stack became a feature).
+    // removed from RenderProgramSession when the mesh stack became a feature).
     MeshStackProxy mesh_proxy(session, srv.mesh_stack_ops);
 
     const float center = (g_grid_side - 1) * kCubeSpacing * 0.5f;
@@ -725,7 +725,7 @@ stressTask(
     dl.cascade_splits = {12.f, 30.f, 60.f, 120.f};
 
     // Light CRUD now goes through the feature-scoped LightProxy (createLight /
-    // updateLights were removed from RenderFrameSession when light became a feature).
+    // updateLights were removed from RenderProgramSession when light became a feature).
     LightProxy light_proxy(session, srv.light_ops);
 
     auto dir_light_req = lightCreate(light_proxy, srv.scene_id, LightDescriptor{dl});
@@ -1077,7 +1077,7 @@ main(int argc, char** argv)
 
     // ── Channel + sync + window ─────────────────────────────────────
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -1219,14 +1219,14 @@ main(int argc, char** argv)
 
     // ── Client session + coroutine ─────────────────────────────────
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
     lux::render::testing::DirectRenderUploadClient upload_client{upload};
     RenderTaskScheduler scheduler(session, control, &upload);
 
     auto task = stressTask(session, control, upload_client.client(), asset_dir, window, srv_init);
-    scheduler.run(std::move(task), [&](RenderFrameSession&) -> bool {
+    scheduler.run(std::move(task), [&](RenderProgramSession&) -> bool {
         window.pollEvents();
         return !window.shouldClose();
     }

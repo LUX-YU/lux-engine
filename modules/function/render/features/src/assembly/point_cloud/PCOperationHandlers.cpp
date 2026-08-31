@@ -8,7 +8,7 @@
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>
 #include <lux/engine/function/render/client/FeatureOpSend.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/genops/PointCloudOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/IPointCloudFeature.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PCFeatureSimple.hpp>

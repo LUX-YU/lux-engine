@@ -192,7 +192,7 @@ namespace lux::render
     ///                                      world radius and min clamp keep their
     ///                                      original Config values so depth scaling
     ///                                      is preserved.
-    struct LUX_OP(lane = frame, kind = stream, name = PointCloudSetPointSize, method = setPointSize)
+    struct LUX_OP(lane = program, kind = stream, name = PointCloudSetPointSize, method = setPointSize)
         SetPointCloudPointSizePayload
     {
         RenderSceneId scene_id{};

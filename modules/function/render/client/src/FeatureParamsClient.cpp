@@ -1,6 +1,6 @@
 #include <lux/engine/function/render/client/protocol/FeatureParamsOperation.hpp>
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 
 #include <cstddef>
 #include <span>

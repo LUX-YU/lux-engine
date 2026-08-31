@@ -38,7 +38,7 @@ namespace lux::render
 
     /// Per-view camera update(核心 RenderProtocol 退役件):column-major 4x4,
     /// Vulkan ZO 投影(NDC z ∈ [0,1])。
-    struct LUX_OP(lane = frame, kind = bulk, name = ViewCameraUpdate, method = update) ViewCameraUpdatePayload
+    struct LUX_OP(lane = program, kind = bulk, name = ViewCameraUpdate, method = update) ViewCameraUpdatePayload
     {
         RenderSceneId scene_id{};
         ViewHandle view{};

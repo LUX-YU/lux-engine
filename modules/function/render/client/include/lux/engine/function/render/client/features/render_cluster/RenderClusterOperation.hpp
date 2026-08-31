@@ -162,7 +162,7 @@ namespace lux::render
     /// Non-blocking pick intent. Coordinates are normalized to the current
     /// View content rect. request_generation is client-owned and monotonically
     /// increasing; view_generation rejects results from a recreated View.
-    struct LUX_OP(lane = frame, kind = stream, name = RenderClusterPickRequest, method = requestPick)
+    struct LUX_OP(lane = program, kind = stream, name = RenderClusterPickRequest, method = requestPick)
         RequestRenderClusterPickPayload final
     {
         RenderSceneId scene_id{};

@@ -13,7 +13,7 @@
 
 #include <lux/cxx/container/SparseSet.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/function/render/client/FrameProgram.hpp>
+#include <lux/engine/function/render/client/RenderProgram.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 
 namespace lux::render
@@ -25,7 +25,7 @@ namespace lux::render
         using Packet = ReplyPacket<ReplyAlignment>;
         using Callback = ReplyDispatchCallback;
 
-        explicit ResponseCallbackStore(ERequestLane lane = ERequestLane::FRAME) noexcept : lane_(lane)
+        explicit ResponseCallbackStore(ERequestLane lane = ERequestLane::PROGRAM) noexcept : lane_(lane)
         {
         }
 
@@ -184,7 +184,7 @@ namespace lux::render
         std::uint64_t unrouted_unsolicited_{0};
         std::uint64_t malformed_replies_{0};
         std::uint64_t unmatched_replies_{0};
-        ERequestLane lane_{ERequestLane::FRAME};
+        ERequestLane lane_{ERequestLane::PROGRAM};
     };
 
     template <class Packet, bool AllowBorrowed, std::size_t PayloadAlignment = 64, std::size_t ReplyAlignment = 64>
@@ -294,6 +294,38 @@ namespace lux::render
             appendRecord(opcodes::BulkData, type_id, offset, narrowU32(items.size_bytes()), flags, request_id);
         }
 
+        template <FrameBlobPayload T>
+        [[nodiscard]] std::span<T> appendBulk(
+            TypeId type_id,
+            std::size_t count,
+            std::uint16_t flags = 0
+        )
+        {
+            static_assert(
+                alignof(T) <= PayloadAlignment,
+                "Payload type alignment exceeds payload blob alignment. Raise PayloadAlignment.");
+            if (count == 0U)
+            {
+                return {};
+            }
+            if (count > std::numeric_limits<std::size_t>::max() / sizeof(T))
+            {
+                valid_ = false;
+                return {};
+            }
+            const std::size_t byte_count = count * sizeof(T);
+            const std::uint32_t offset = appendUninitialized(byte_count, alignof(T));
+            if (!valid_)
+            {
+                return {};
+            }
+            appendRecord(opcodes::BulkData, type_id, offset, narrowU32(byte_count), flags, kInvalidRequestId);
+            return {
+                reinterpret_cast<T*>(dst_.payload.data() + offset),
+                count
+            };
+        }
+
         [[nodiscard]] BlobRef
         pushBlob(std::span<const std::byte> bytes, std::size_t alignment = alignof(std::max_align_t))
         {
@@ -375,7 +407,7 @@ namespace lux::render
         ///
         /// LIFETIME:存活到服务端消费完这一帧(见 pushBorrowedBytesAttachment
         /// 的契约归真注释 —— 不是 submitFrame)。现存唯一消费者是 ImGui 快照
-        /// (UIRenderFrameSession 的 4 帧快照环按深度兜住借用期)。
+        /// (UIRenderProgramSession 的 4 帧快照环按深度兜住借用期)。
         template <typename T>
         [[nodiscard]] std::uint32_t pushBorrowedObject(TypeId attachment_type, const T* obj)
             requires AllowBorrowed
@@ -482,6 +514,30 @@ namespace lux::render
         }
 
     private:
+        std::uint32_t appendUninitialized(std::size_t byte_count, std::size_t alignment)
+        {
+            if (alignment == 0U || (alignment & (alignment - 1U)) != 0U)
+            {
+                valid_ = false;
+                return 0U;
+            }
+            const std::size_t old_size = dst_.payload.size();
+            const std::size_t offset = alignUp(old_size, alignment);
+            if (offset > std::numeric_limits<std::size_t>::max() - byte_count)
+            {
+                valid_ = false;
+                return 0U;
+            }
+            const std::size_t new_size = offset + byte_count;
+            if (new_size > std::numeric_limits<std::uint32_t>::max())
+            {
+                valid_ = false;
+                return 0U;
+            }
+            dst_.payload.resize(new_size);
+            return static_cast<std::uint32_t>(offset);
+        }
+
         template <FrameBlobPayload T>
         void pushUnary(OpCode opcode, TypeId type_id, const T& payload, std::uint16_t flags, RequestId request_id)
         {
@@ -557,8 +613,8 @@ namespace lux::render
     };
 
     template <std::size_t PayloadAlignment = 64, std::size_t ReplyAlignment = 64>
-    using FrameProgramBuilder =
-        CommandPacketBuilder<FrameProgram<PayloadAlignment>, true, PayloadAlignment, ReplyAlignment>;
+    using RenderProgramBuilder =
+        CommandPacketBuilder<RenderProgram<PayloadAlignment>, true, PayloadAlignment, ReplyAlignment>;
 
     template <std::size_t PayloadAlignment = 64, std::size_t ReplyAlignment = 64>
     using SingleOperationBuilder =
@@ -567,15 +623,15 @@ namespace lux::render
     template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> class RenderClient
     {
     public:
-        using Channel = RenderFrameChannel<RequestAlignment, ReplyAlignment>;
+        using Channel = RenderProgramChannel<RequestAlignment, ReplyAlignment>;
         using CallbackStore = ResponseCallbackStore<ReplyAlignment>;
-        using Builder = FrameProgramBuilder<RequestAlignment, ReplyAlignment>;
-        using StageProgram = FrameProgram<RequestAlignment>;
+        using Builder = RenderProgramBuilder<RequestAlignment, ReplyAlignment>;
+        using StageProgram = RenderProgram<RequestAlignment>;
 
         explicit RenderClient(
             std::shared_ptr<Channel> channel,
             std::shared_ptr<RenderChannelSync> sync,
-            ERequestLane lane = ERequestLane::FRAME
+            ERequestLane lane = ERequestLane::PROGRAM
         )
             : channel_(std::move(channel)), sync_(std::move(sync)), callbacks_(lane),
               staging_builder_(staging_program_, callbacks_)
@@ -586,7 +642,7 @@ namespace lux::render
         /// 回复没有等待它的请求可以认领,此前一律被丢弃 —— 通道早就在跑,缺的只是
         /// 客户端这一侧的路由。表里没登记的 type_id 仍然丢弃,不设处理器行为不变。
         ///
-        /// 语义化的封装见 RenderFrameSession::setErrorEventHandler。
+        /// 语义化的封装见 RenderProgramSession::setErrorEventHandler。
         void setUnsolicitedHandler(TypeId reply_type, typename CallbackStore::Callback handler)
         {
             callbacks_.setUnsolicitedHandler(reply_type, std::move(handler));
@@ -651,7 +707,7 @@ namespace lux::render
         //  Recording phase
         // -----------------------------------------------------------------
 
-        bool beginFrame(const FrameMemoryHints& hints = {})
+        bool beginFrame(const ProgramMemoryHints& hints = {})
         {
             // requestStop closes admission for every lane.  Already staged
             // packets may still be drained by retryPendingSubmit(), but a
@@ -668,6 +724,7 @@ namespace lux::render
             }
 
             staging_builder_.begin(hints);
+            staging_program_.kind = ERenderProgramKind::Frame;
             recording_ = true;
             return true;
         }
@@ -729,13 +786,13 @@ namespace lux::render
             }
 
             // Case 3: acquire a real request slot and move staged packet into it.
-            FrameProgram<RequestAlignment>* slot = beginRequestWrite();
+            RenderProgram<RequestAlignment>* slot = beginRequestWrite();
             if (!slot)
             {
                 return false;
             }
 
-            swapFramePrograms(*slot, staging_program_);
+            slot->swap(staging_program_);
             staged_ready_ = false;
             pending_publish_ = true;
 
@@ -749,14 +806,42 @@ namespace lux::render
             return true;
         }
 
-        using FrameProgressToken = std::uint64_t;
+        [[nodiscard]] bool trySubmitPrepared(StageProgram& source) noexcept
+        {
+            const bool is_unavailable = sync_->isStopping() || recording_ || staged_ready_ || pending_publish_;
+            if (is_unavailable)
+            {
+                return false;
+            }
+            auto* slot = beginRequestWrite();
+            if (slot == nullptr)
+            {
+                return false;
+            }
+            slot->swap(source);
+            source.clear_keep_capacity();
+            pending_publish_ = true;
+            if (publishRequest())
+            {
+                pending_publish_ = false;
+                sync_->notifyRequestStateChanged();
+            }
+            return true;
+        }
 
-        [[nodiscard]] FrameProgressToken observeProgress() const noexcept
+        [[nodiscard]] bool hasPendingSubmit() const noexcept
+        {
+            return staged_ready_ || pending_publish_;
+        }
+
+        using ProgramProgressToken = std::uint64_t;
+
+        [[nodiscard]] ProgramProgressToken observeProgress() const noexcept
         {
             return sync_->work_epoch.load(std::memory_order_acquire);
         }
 
-        void waitForProgress(FrameProgressToken observed) const noexcept
+        void waitForProgress(ProgramProgressToken observed) const noexcept
         {
             sync_->work_epoch.wait(observed, std::memory_order_acquire);
         }
@@ -786,7 +871,7 @@ namespace lux::render
         }
 
     private:
-        FrameProgram<RequestAlignment>* beginRequestWrite()
+        RenderProgram<RequestAlignment>* beginRequestWrite()
         {
             return channel_->requests.tryBeginWrite();
         }
@@ -794,14 +879,6 @@ namespace lux::render
         bool publishRequest()
         {
             return channel_->requests.publishWrite();
-        }
-
-        static void swapFramePrograms(FrameProgram<RequestAlignment>& a, FrameProgram<RequestAlignment>& b) noexcept
-        {
-            using std::swap;
-            swap(a.commands, b.commands);
-            swap(a.payload, b.payload);
-            swap(a.attachments, b.attachments);
         }
 
     private:

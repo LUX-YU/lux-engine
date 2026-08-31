@@ -24,7 +24,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<FogCommConfig>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = FogSetParams, method = setParams) FogSetParamsPayload
+    struct LUX_OP(lane = program, kind = stream, name = FogSetParams, method = setParams) FogSetParamsPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};

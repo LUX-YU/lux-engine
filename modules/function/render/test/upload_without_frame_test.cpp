@@ -40,7 +40,7 @@ main()
     std::vector<std::byte>{}.swap(pixels);
 
     // DeviceRenderFixture has an OPEN client-side frame for ordinary tests,
-    // but no FrameProgram is submitted anywhere in this test.
+    // but no RenderProgram is submitted anywhere in this test.
     const auto reply = fixture.awaitUpload(std::move(*submitted));
     if (reply.status != 0 || reply.handle.isNull())
     {

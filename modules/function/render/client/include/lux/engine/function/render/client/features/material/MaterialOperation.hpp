@@ -34,7 +34,7 @@
 namespace lux::render
 {
     struct FeatureFactory;
-    class RenderFrameSession;
+    class RenderProgramSession;
     class RenderUploadSession;
     enum class ERenderUploadSubmitError : std::uint8_t;
     template <typename T> class RenderRequest;

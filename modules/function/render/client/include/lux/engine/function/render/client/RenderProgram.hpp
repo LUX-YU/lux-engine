@@ -26,7 +26,7 @@ namespace lux::render
         CommandStorage(CommandStorage&&) noexcept = default;
         CommandStorage& operator=(CommandStorage&&) noexcept = default;
 
-        void reserveStorage(const FrameMemoryHints& hints)
+        void reserveStorage(const ProgramMemoryHints& hints)
         {
             payload.reserve(hints.payload_capacity);
             attachments.reserve(hints.attachment_capacity);
@@ -87,20 +87,28 @@ namespace lux::render
         }
     };
 
-    template <std::size_t PayloadAlignment = 64> struct FrameProgram : CommandStorage<PayloadAlignment>
+    enum class ERenderProgramKind : std::uint8_t
+    {
+        StateUpdate,
+        Frame,
+    };
+
+    template <std::size_t PayloadAlignment = 64> struct RenderProgram : CommandStorage<PayloadAlignment>
     {
         using Storage = CommandStorage<PayloadAlignment>;
-        using MemoryHints = FrameMemoryHints;
+        using MemoryHints = ProgramMemoryHints;
 
         std::vector<CmdRecord> commands;
 
-        FrameProgram() = default;
-        FrameProgram(const FrameProgram&) = delete;
-        FrameProgram& operator=(const FrameProgram&) = delete;
-        FrameProgram(FrameProgram&&) noexcept = default;
-        FrameProgram& operator=(FrameProgram&&) noexcept = default;
+        ERenderProgramKind kind{ERenderProgramKind::StateUpdate};
 
-        void reserve(const FrameMemoryHints& hints)
+        RenderProgram() = default;
+        RenderProgram(const RenderProgram&) = delete;
+        RenderProgram& operator=(const RenderProgram&) = delete;
+        RenderProgram(RenderProgram&&) noexcept = default;
+        RenderProgram& operator=(RenderProgram&&) noexcept = default;
+
+        void reserve(const ProgramMemoryHints& hints)
         {
             commands.reserve(hints.command_capacity);
             this->reserveStorage(hints);
@@ -112,9 +120,10 @@ namespace lux::render
             this->clearStorage();
         }
 
-        void swap(FrameProgram& other) noexcept
+        void swap(RenderProgram& other) noexcept
         {
             using std::swap;
+            swap(kind, other.kind);
             swap(commands, other.commands);
             swap(this->payload, other.payload);
             swap(this->attachments, other.attachments);
@@ -202,7 +211,7 @@ namespace lux::render
         ReplyPacket(ReplyPacket&&) = delete;
         ReplyPacket& operator=(ReplyPacket&&) = delete;
 
-        void reserve(const FrameMemoryHints& hints)
+        void reserve(const ProgramMemoryHints& hints)
         {
             replies.reserve(hints.reply_capacity);
             payload.reserve(hints.reply_payload_capacity);
@@ -434,7 +443,7 @@ namespace lux::render
 
     enum class ERequestLane : std::uint8_t
     {
-        FRAME = 0,
+        PROGRAM = 0,
         CONTROL = 1,
         UPLOAD = 2
     };
@@ -450,19 +459,19 @@ namespace lux::render
         return ReplyPacketView{packet};
     }
 
-    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct RenderFrameChannel
+    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct RenderProgramChannel
     {
-        explicit RenderFrameChannel(std::size_t max_pending_packets = 2) noexcept
+        explicit RenderProgramChannel(std::size_t max_pending_packets = 2) noexcept
             : requests(max_pending_packets), responses(max_pending_packets)
         {
         }
 
-        lux::cxx::BoundedSpscFrameRing<FrameProgram<RequestAlignment>, 4> requests;
+        lux::cxx::BoundedSpscFrameRing<RenderProgram<RequestAlignment>, 4> requests;
         lux::cxx::BoundedSpscFrameRing<ReplyPacket<ReplyAlignment>, 4> responses;
 
-        [[nodiscard]] static std::shared_ptr<RenderFrameChannel> create(std::size_t max_pending_packets = 2)
+        [[nodiscard]] static std::shared_ptr<RenderProgramChannel> create(std::size_t max_pending_packets = 2)
         {
-            return std::make_shared<RenderFrameChannel>(max_pending_packets);
+            return std::make_shared<RenderProgramChannel>(max_pending_packets);
         }
     };
 

@@ -2,7 +2,7 @@
 // ============================================================================
 //  DeviceRenderFixture.hpp — reusable device-level (gpu tier) render bring-up.
 //
-//  Stands up a REAL GeneralRenderServer on its own thread + a client RenderFrameSession,
+//  Stands up a REAL GeneralRenderServer on its own thread + a client RenderProgramSession,
 //  attached to a small window (needed only for the Vulkan surface — rendering targets
 //  an OFFSCREEN view, so nothing is shown and the test never waits for interaction).
 //  Replaces the ~120-line server-init boilerplate that every gpu test copy-pastes
@@ -23,7 +23,7 @@
 //      auto px = fx.readback(sv);                    // BGRA8, width*height*4
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
@@ -71,7 +71,7 @@ namespace lux::rendertest
             : glfw_inited_(initWindowBackend()), width_(width), height_(height),
               window_(static_cast<int>(width), static_cast<int>(height), name)
         {
-            channel_ = lux::render::RenderFrameChannel<>::create();
+            channel_ = lux::render::RenderProgramChannel<>::create();
             control_channel_ = lux::render::RenderControlChannel<>::create();
             upload_channel_ = lux::render::RenderUploadChannel<>::create();
             sync_ = std::make_shared<lux::render::RenderChannelSync>();
@@ -125,7 +125,7 @@ namespace lux::rendertest
 
             if (!failed_.load(std::memory_order_acquire))
             {
-                session_ = std::make_unique<lux::render::RenderFrameSession>(channel_, sync_);
+                session_ = std::make_unique<lux::render::RenderProgramSession>(channel_, sync_);
                 session_->setErrorEventHandler(
                     [](const lux::render::ErrorEventBatchReply&) {},
                     [](const lux::render::RenderErrorEvent& event) {
@@ -162,7 +162,7 @@ namespace lux::rendertest
             return !failed_.load(std::memory_order_acquire) && session_ != nullptr;
         }
 
-        [[nodiscard]] lux::render::RenderFrameSession& session() noexcept
+        [[nodiscard]] lux::render::RenderProgramSession& session() noexcept
         {
             return *session_;
         }
@@ -234,7 +234,7 @@ namespace lux::rendertest
         /// fresh frame begun. A non-pumping blocking wait deadlocks the swapchain, and a
         /// non-blocking submit silently drops later commands when the ring is full.
         /// Liveness: waitAndPumpReplies() returning false means the channel is stopping and
-        /// the reply can never arrive (RenderFrameSession::syncCall honours the same signal) —
+        /// the reply can never arrive (RenderProgramSession::syncCall honours the same signal) —
         /// fail fast with a diagnostic instead of hanging into the ctest timeout.
         template <class T> T await(lux::render::RenderRequest<T> req)
         {
@@ -256,7 +256,7 @@ namespace lux::rendertest
             return r;
         }
 
-        /// Wait for a control-plane request without publishing a FrameProgram.
+        /// Wait for a control-plane request without publishing a RenderProgram.
         /// This is the regression seam proving scene/resource control remains
         /// live while frame production is paused or minimized.
         template <class T> T awaitControl(lux::render::RenderRequest<T> req)
@@ -276,7 +276,7 @@ namespace lux::rendertest
             return req.tryResult()->get();
         }
 
-        /// Wait for an upload-plane request without publishing a FrameProgram.
+        /// Wait for an upload-plane request without publishing a RenderProgram.
         /// The transfer result, graphics-finalize control submit, and reply must
         /// all make progress from upload/transfer epochs alone.
         template <class T> T awaitUpload(lux::render::RenderRequest<T> req)
@@ -389,7 +389,7 @@ namespace lux::rendertest
             lux::render::RenderUploadSession* session{nullptr};
         };
 
-        /// Publish the staged FrameProgram without turning normal bounded-ring
+        /// Publish the staged RenderProgram without turning normal bounded-ring
         /// backpressure into a fatal error. Observe the epoch before pumping to
         /// close the publication-before-wait race; every released request slot
         /// advances the same progress domain.
@@ -447,7 +447,7 @@ namespace lux::rendertest
         std::uint32_t width_;
         std::uint32_t height_;
         lux::window::LuxWindow window_;
-        std::shared_ptr<lux::render::RenderFrameChannel<>> channel_;
+        std::shared_ptr<lux::render::RenderProgramChannel<>> channel_;
         std::shared_ptr<lux::render::RenderControlChannel<>> control_channel_;
         std::shared_ptr<lux::render::RenderUploadChannel<>> upload_channel_;
         std::shared_ptr<lux::render::RenderChannelSync> sync_;
@@ -456,7 +456,7 @@ namespace lux::rendertest
         std::atomic<bool> stop_requested_{false};
         std::atomic<bool> server_died_{false};
         std::thread server_thread_;
-        std::unique_ptr<lux::render::RenderFrameSession> session_;
+        std::unique_ptr<lux::render::RenderProgramSession> session_;
         std::unique_ptr<lux::render::RenderControlSession> control_;
         std::unique_ptr<lux::render::RenderUploadSession> upload_;
         std::shared_ptr<DirectUploadState> direct_upload_state_;

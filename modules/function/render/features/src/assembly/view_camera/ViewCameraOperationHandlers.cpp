@@ -22,7 +22,7 @@
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>        // getView / sceneRegistry
 #include <lux/engine/render/resources/SceneResources.hpp> // ViewGpuData / fillViewGpuData (neutral staging fill)
-#include <lux/engine/function/render/client/RenderFrameSession.hpp> // ViewCameraProxy: builder / sendBulk
+#include <lux/engine/function/render/client/RenderProgramSession.hpp> // ViewCameraProxy: builder / sendBulk
 
 #include <Eigen/Dense>
 

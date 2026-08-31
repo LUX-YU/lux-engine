@@ -45,7 +45,7 @@ namespace lux::render
 
     /// Stream op (fire-and-forget, no reply); the handler's semantics live in
     /// Grid3DOperationHandlers.cpp (handleGrid3DSetParams).
-    struct LUX_OP(lane = frame, kind = stream, name = Grid3DSetParams, method = setParams) Grid3DSetParamsPayload
+    struct LUX_OP(lane = program, kind = stream, name = Grid3DSetParams, method = setParams) Grid3DSetParamsPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};

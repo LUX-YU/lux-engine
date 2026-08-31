@@ -12,7 +12,7 @@
 // ============================================================================
 
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp>
-#include <lux/engine/function/render/client/RenderFrameSession.hpp> // builder() + push family
+#include <lux/engine/function/render/client/RenderProgramSession.hpp> // builder() + push family
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 #include <lux/engine/function/render/client/RenderRequest.hpp> // RenderRequest, RenderRequestFactory
@@ -28,9 +28,9 @@ namespace lux::render
     /// contract as sendWithReply / sendBulk, so an absent feature degrades to
     /// nothing rather than dispatching an unknown TypeId.
     template <class Op, FeatureOpDesc... Ops>
-    inline void send(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
+    inline void send(RenderProgramSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
     {
-        static_assert(Op::lane == EOperationLane::Frame);
+        static_assert(Op::lane == EOperationLane::Program);
         const TypeId id = ids.template id<Op>();
         if (id != kInvalidTypeId)
             session.builder().push(opcode_of_v<Op>, id, payload);
@@ -41,9 +41,9 @@ namespace lux::render
     /// structured dispatch failure; an unresolved request is never returned.
     template <class Op, FeatureOpDesc... Ops>
     [[nodiscard]] inline auto
-    sendWithReply(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
+    sendWithReply(RenderProgramSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
     {
-        static_assert(Op::lane == EOperationLane::Frame);
+        static_assert(Op::lane == EOperationLane::Program);
         using Reply = typename CommandTraits<typename Op::Payload>::Reply;
         const TypeId id = ids.template id<Op>();
         if (id == kInvalidTypeId)
@@ -61,9 +61,9 @@ namespace lux::render
     /// Bulk op: N payloads in one command. No-op when empty or unregistered.
     template <class Op, FeatureOpDesc... Ops>
     inline void
-    sendBulk(RenderFrameSession& session, const FeatureOpIds<Ops...>& ids, std::span<const typename Op::Payload> items)
+    sendBulk(RenderProgramSession& session, const FeatureOpIds<Ops...>& ids, std::span<const typename Op::Payload> items)
     {
-        static_assert(Op::lane == EOperationLane::Frame);
+        static_assert(Op::lane == EOperationLane::Program);
         const TypeId id = ids.template id<Op>();
         if (id != kInvalidTypeId && !items.empty())
             session.builder().pushBulk(id, items);
@@ -75,14 +75,14 @@ namespace lux::render
     /// of the payload; the blob plumbing is derived from the op descriptor.
     template <class Op, FeatureOpDesc... Ops>
     auto sendBlob(
-        RenderFrameSession& session,
+        RenderProgramSession& session,
         const FeatureOpIds<Ops...>& ids,
         typename Op::Payload payload,
         std::span<const std::byte> blob_bytes,
         std::size_t align
     )
     {
-        static_assert(Op::lane == EOperationLane::Frame);
+        static_assert(Op::lane == EOperationLane::Program);
         payload.*(Op::blob_field) = session.builder().pushBlob(blob_bytes, align);
         if constexpr (CommandTraits<typename Op::Payload>::has_reply)
             return sendWithReply<Op>(session, ids, payload);

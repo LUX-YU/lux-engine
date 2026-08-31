@@ -32,14 +32,14 @@
 namespace lux::render
 {
     struct FeatureFactory;
-    class RenderFrameSession;
+    class RenderProgramSession;
     template <typename T> class RenderRequest;
 
     // =========================================================================
     //  Feature-scoped operation name constants (allocated dynamically at
     //  register_ops_fn time; the client reads the ids from the registration reply)
     // =========================================================================
-    struct LUX_OP(lane = frame, kind = resource, name = CreateLight, method = createLight, reply = LightCreatedReply)
+    struct LUX_OP(lane = program, kind = resource, name = CreateLight, method = createLight, reply = LightCreatedReply)
         CreateLightPayload
     {
         RenderSceneId scene_id{}; // light is created in THIS scene
@@ -66,7 +66,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<CreateLightPayload>);
 
     struct LUX_OP(
-        lane = frame,
+        lane = program,
         kind = stream,
         name = UpdateLight,
         method = updateLight,
@@ -101,7 +101,7 @@ namespace lux::render
     // light handle is only meaningful paired with its owning scene — per-scene
     // LightResources free-lists are independent, so the same {index,gen} can be
     // valid in two scenes.
-    struct LUX_OP(lane = frame, kind = stream, name = DestroyLight, method = destroyLight, opcode = resource)
+    struct LUX_OP(lane = program, kind = stream, name = DestroyLight, method = destroyLight, opcode = resource)
         DestroyLightPayload
     {
         RenderSceneId scene_id{};

@@ -14,7 +14,7 @@
 #include <lux/engine/render/renderer/features/skinning/SkinningFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>                  // RenderContext::globalRegistry
-#include <lux/engine/function/render/client/RenderFrameSession.hpp> // SkinningProxy::builder()
+#include <lux/engine/function/render/client/RenderProgramSession.hpp> // SkinningProxy::builder()
 
 #include <lux/engine/render/resources/vertex/SkinningResources.hpp> // SkinningResources, BoneMatrixGpu
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>   // InstanceResources, InstanceSlot

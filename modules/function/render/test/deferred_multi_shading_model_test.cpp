@@ -24,7 +24,7 @@
 //  1 = FAIL, 0 (skip) if no Vulkan device.
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
@@ -155,7 +155,7 @@ template <class Session, class T>
 static T
 await(Session& endpoint, lux::window::LuxWindow& window, RenderRequest<T> request)
 {
-    if constexpr (std::is_same_v<Session, RenderFrameSession>)
+    if constexpr (std::is_same_v<Session, RenderProgramSession>)
         endpoint.trySubmitFrame();
 
     while (!request.isReady())
@@ -163,7 +163,7 @@ await(Session& endpoint, lux::window::LuxWindow& window, RenderRequest<T> reques
         window.pollEvents();
         if (!endpoint.waitAndPumpReplies())
             break;
-        if constexpr (std::is_same_v<Session, RenderFrameSession>)
+        if constexpr (std::is_same_v<Session, RenderProgramSession>)
         {
             if (!request.isReady())
             {
@@ -223,7 +223,7 @@ main()
 
     constexpr uint32_t W = 384, H = 256;
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -275,7 +275,7 @@ main()
     }
     std::cout << "[1] server ready\n";
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
     lux::render::testing::DirectRenderUploadClient upload_client{upload};

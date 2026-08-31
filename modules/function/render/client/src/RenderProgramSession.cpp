@@ -1,4 +1,4 @@
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/cxx/concurrent/AtomicWait.hpp>
 
 #include <cstring>
@@ -20,25 +20,25 @@ namespace lux::render
         }
     } // namespace
 
-    RenderFrameSession::RenderFrameSession(
-        std::shared_ptr<RenderFrameChannel<>> channel,
+    RenderProgramSession::RenderProgramSession(
+        std::shared_ptr<RenderProgramChannel<>> channel,
         std::shared_ptr<RenderChannelSync> sync
     )
         : client_(std::move(channel), std::move(sync))
     {
     }
 
-    std::size_t RenderFrameSession::pumpReplies()
+    std::size_t RenderProgramSession::pumpReplies()
     {
         return client_.pumpReplies();
     }
 
-    bool RenderFrameSession::waitAndPumpReplies()
+    bool RenderProgramSession::waitAndPumpReplies()
     {
         return client_.waitAndPumpReplies();
     }
 
-    void RenderFrameSession::setErrorEventHandler(
+    void RenderProgramSession::setErrorEventHandler(
         std::function<void(const ErrorEventBatchReply&)> on_batch,
         std::function<void(const RenderErrorEvent&)> on_event
     )
@@ -59,17 +59,17 @@ namespace lux::render
         );
     }
 
-    std::uint64_t RenderFrameSession::unroutedUnsolicitedReplies() const noexcept
+    std::uint64_t RenderProgramSession::unroutedUnsolicitedReplies() const noexcept
     {
         return client_.unroutedUnsolicited();
     }
 
-    bool RenderFrameSession::beginFrame(const FrameMemoryHints& hints)
+    bool RenderProgramSession::beginFrame(const ProgramMemoryHints& hints)
     {
         return client_.beginFrame(hints);
     }
 
-    bool RenderFrameSession::rebaseSceneOrigin(RenderSceneId scene, const std::int64_t scene_origin_page[3]) noexcept
+    bool RenderProgramSession::rebaseSceneOrigin(RenderSceneId scene, const std::int64_t scene_origin_page[3]) noexcept
     {
         if (!isRecording() || scene.isNull() || scene_origin_page == nullptr)
             return false;
@@ -81,23 +81,38 @@ namespace lux::render
         return true;
     }
 
-    bool RenderFrameSession::trySubmitFrame() noexcept
+    bool RenderProgramSession::trySubmitFrame() noexcept
     {
         return client_.trySubmitFrame();
     }
 
-    RenderFrameSession::FrameProgressToken RenderFrameSession::observeProgress() const noexcept
+    bool RenderProgramSession::trySubmitPrepared(RenderProgram<>& source) noexcept
+    {
+        return client_.trySubmitPrepared(source);
+    }
+
+    bool RenderProgramSession::retryPendingSubmit() noexcept
+    {
+        return client_.retryPendingSubmit();
+    }
+
+    bool RenderProgramSession::hasPendingSubmit() const noexcept
+    {
+        return client_.hasPendingSubmit();
+    }
+
+    RenderProgramSession::ProgramProgressToken RenderProgramSession::observeProgress() const noexcept
     {
         return client_.observeProgress();
     }
 
-    void RenderFrameSession::waitForProgress(FrameProgressToken observed) const noexcept
+    void RenderProgramSession::waitForProgress(ProgramProgressToken observed) const noexcept
     {
         client_.waitForProgress(observed);
     }
 
-    bool RenderFrameSession::waitForProgressUntil(
-        FrameProgressToken observed,
+    bool RenderProgramSession::waitForProgressUntil(
+        ProgramProgressToken observed,
         std::chrono::steady_clock::time_point deadline
     ) const noexcept
     {
@@ -105,33 +120,33 @@ namespace lux::render
         return lux::cxx::concurrent::waitAtomicU64Until(domain->work_epoch, observed, deadline);
     }
 
-    void RenderFrameSession::notifyProgress() noexcept
+    void RenderProgramSession::notifyProgress() noexcept
     {
         client_.notifyProgress();
     }
 
-    bool RenderFrameSession::isStopping() const noexcept
+    bool RenderProgramSession::isStopping() const noexcept
     {
         return client_.isStopping();
     }
 
-    RenderError RenderFrameSession::terminalError() const noexcept
+    RenderError RenderProgramSession::terminalError() const noexcept
     {
         const auto sync = client_.progressDomain();
         return sync ? sync->terminalError() : RenderError{};
     }
 
-    std::shared_ptr<RenderChannelSync> RenderFrameSession::progressDomain() const noexcept
+    std::shared_ptr<RenderChannelSync> RenderProgramSession::progressDomain() const noexcept
     {
         return client_.progressDomain();
     }
 
-    RenderFrameSession::Builder& RenderFrameSession::builder() noexcept
+    RenderProgramSession::Builder& RenderProgramSession::builder() noexcept
     {
         return client_.builder();
     }
 
-    void RenderFrameSession::requestStop() noexcept
+    void RenderProgramSession::requestStop() noexcept
     {
         client_.requestStop();
     }

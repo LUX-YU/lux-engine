@@ -51,7 +51,7 @@ namespace lux::rdesc
 namespace lux::render
 {
     struct FeatureFactory;
-    class RenderFrameSession;
+    class RenderProgramSession;
     class RenderUploadSession;
     enum class ERenderUploadSubmitError : std::uint8_t;
     template <typename T> class RenderRequest;
@@ -61,7 +61,7 @@ namespace lux::render
     //  core protocol no longer names mesh instances).
     // =========================================================================
     struct LUX_OP(
-        lane = frame,
+        lane = program,
         kind = stream,
         name = AddMeshInstance,
         method = addMeshInstance,
@@ -82,7 +82,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<AddMeshInstancePayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = RemoveMeshInstance, method = removeMeshInstance)
+    struct LUX_OP(lane = program, kind = stream, name = RemoveMeshInstance, method = removeMeshInstance)
         RemoveMeshInstancePayload
     {
         RenderSceneId scene_id{};
@@ -94,7 +94,7 @@ namespace lux::render
     /// owner for a bounded fade-out. Transparent instances are deliberately
     /// hard-cut by the server. The object handle is generation checked, and
     /// the render owner keeps its Mesh/Material resources alive until expiry.
-    struct LUX_OP(lane = frame, kind = stream, name = RetireMeshInstance, method = retireMeshInstance)
+    struct LUX_OP(lane = program, kind = stream, name = RetireMeshInstance, method = retireMeshInstance)
         RetireMeshInstancePayload
     {
         RenderSceneId scene_id{};
@@ -138,7 +138,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<MeshStackStatsPayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = MakeInstanceVisibleForView, method = makeInstanceVisibleForView)
+    struct LUX_OP(lane = program, kind = stream, name = MakeInstanceVisibleForView, method = makeInstanceVisibleForView)
         MakeInstanceVisibleForViewPayload
     {
         RenderSceneId scene_id{};
@@ -147,7 +147,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<MakeInstanceVisibleForViewPayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = HideInstanceFromView, method = hideInstanceFromView)
+    struct LUX_OP(lane = program, kind = stream, name = HideInstanceFromView, method = hideInstanceFromView)
         HideInstanceFromViewPayload
     {
         RenderSceneId scene_id{};
@@ -156,7 +156,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<HideInstanceFromViewPayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = UpdateInstanceFlags, method = updateInstanceFlags)
+    struct LUX_OP(lane = program, kind = stream, name = UpdateInstanceFlags, method = updateInstanceFlags)
         UpdateInstanceFlagsPayload
     {
         RenderSceneId scene_id{};
@@ -165,7 +165,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<UpdateInstanceFlagsPayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = UpdateInstanceRenderState, method = updateInstanceRenderState)
+    struct LUX_OP(lane = program, kind = stream, name = UpdateInstanceRenderState, method = updateInstanceRenderState)
         UpdateInstanceRenderStatePayload
     {
         RenderSceneId scene_id{};
@@ -175,7 +175,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<UpdateInstanceRenderStatePayload>);
 
-    struct LUX_OP(lane = frame, kind = stream, name = UpdateInstanceUserMeta, method = updateInstanceUserMeta)
+    struct LUX_OP(lane = program, kind = stream, name = UpdateInstanceUserMeta, method = updateInstanceUserMeta)
         UpdateInstanceUserMetaPayload
     {
         RenderSceneId scene_id{};
@@ -190,7 +190,7 @@ namespace lux::render
     /// main + preview worlds) interleaved on the ring never cross. The bulk mechanism
     /// carries no batch header (pushBulk = TypeId + span), so scene_id rides each
     /// entry; batches are typically single-scene (often one entry per instance).
-    struct LUX_OP(lane = frame, kind = bulk, name = TransformBatch, method = updateTransforms) TransformWriteEntry
+    struct LUX_OP(lane = program, kind = bulk, name = TransformBatch, method = updateTransforms) TransformWriteEntry
     {
         RenderSceneId scene_id{};
         RenderObjectHandle object{};

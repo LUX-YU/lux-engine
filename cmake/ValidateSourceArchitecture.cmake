@@ -146,6 +146,13 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
+    if(content MATCHES
+       "RenderFrame(Session|Channel)|FrameProgram(Builder)?|FrameMemoryHints|FrameProgressToken|EOperationLane::Frame|ERequestLane::FRAME|(^|[^A-Za-z0-9_])(param_)?lane[ \t]*=[ \t]*frame([^A-Za-z0-9_]|$)")
+        message(FATAL_ERROR
+            "Architecture: active source '${normalized}' restores retired Render Frame-program vocabulary."
+        )
+    endif()
+
     if(normalized MATCHES "/engine/scene/" AND content MATCHES
        "WorldStreamingBinding|StreamingManager|SceneServices|SceneContext|SystemFactoryRegistry|SimulationContext|WorldPartitionWorkspace|WorldMaterializationPlan|WorldMaterializationRegistry|TimeDomainRegistry|ClockManager|PresentationManager|LaneManager|ScenePhaseManager|AssetDemandKey|DemandTracker|ResidencyBridge|ResourceDemandRegistry")
         message(FATAL_ERROR

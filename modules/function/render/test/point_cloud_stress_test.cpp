@@ -9,7 +9,7 @@
 //    - Reports throughput (points/sec, MB/sec) and frame time stats
 // ============================================================================
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp" // relocated test-only coroutine support
@@ -227,7 +227,7 @@ struct ModeTestConfig
 
 static RenderTask<void>
 pointCloudTask(
-    RenderFrameSession& session,
+    RenderProgramSession& session,
     RenderControlSession& control,
     RenderUploadClient upload,
     lux::window::LuxWindow& window
@@ -260,7 +260,7 @@ pointCloudTask(
     // ── StandardViewCamera feature ──────────────────────────────────
     //  Owns per-view camera matrices; MUST attach before every camera
     //  consumer. Per-frame updates go through ViewCameraProxy (replaces
-    //  the retired RenderFrameSession::updateView).
+    //  the retired RenderProgramSession::updateView).
     co_await yield_frame();
 
     auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
@@ -593,7 +593,7 @@ main()
 
     // ── Channel + sync + window ─────────────────────────────────────
 
-    auto channel = RenderFrameChannel<>::create();
+    auto channel = RenderProgramChannel<>::create();
     auto control_channel = RenderControlChannel<>::create();
     auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
@@ -642,7 +642,7 @@ main()
         return 0;
     }
 
-    RenderFrameSession session(channel, sync);
+    RenderProgramSession session(channel, sync);
     RenderControlSession control(control_channel, sync);
     RenderUploadSession upload(upload_channel, sync);
     lux::render::testing::DirectRenderUploadClient upload_client{upload};
@@ -650,7 +650,7 @@ main()
     // ── Run coroutine via scheduler ─────────────────────────────────
     RenderTaskScheduler scheduler(session, control, &upload);
     auto task = pointCloudTask(session, control, upload_client.client(), window);
-    scheduler.run(std::move(task), [&](RenderFrameSession&) -> bool {
+    scheduler.run(std::move(task), [&](RenderProgramSession&) -> bool {
         window.pollEvents();
         return !window.shouldClose();
     }

@@ -14,8 +14,8 @@ engine/
   domain/
     partition/
     spatial/
-    world_identity/
     world/
+      identity/
     simulation/
   process/
   scene/
@@ -25,7 +25,7 @@ engine/
 ```
 
 - `modules/` 是可复用 L0 package。
-- `engine/domain/world_identity` 与 `engine/domain/partition` 是中立的 L1 engine-domain identity；
+- `engine/domain/world/identity` 与 `engine/domain/partition` 是中立的 L1 engine-domain identity；
   `engine/domain/spatial` 是具体空间查询机制。
   两者不拥有 World、Simulation 或 streaming policy。
 - `engine/domain/world` 与 `engine/domain/simulation` 是 sibling runtime domains，均可依赖窄义 `DOMAIN`

@@ -132,7 +132,8 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   synchronous rules + compiled schedule`；`Scene = one World + one authoritative Registry + one Simulation`。
   Streaming policy 只属于 concrete developer System；Presentation 是可独立采样的 runtime concern，
   不是 architecture layer。Canonical Transform2D/3D 与 WorldTransform2D/3D 一律使用 double。
-- source topology 固定用 `engine/domain/{world_identity,partition,spatial,world,simulation}` 表达 L1 ownership，
+- source topology 固定用 `engine/domain/{partition,spatial,world,simulation}` 表达 L1 ownership，
+  其中 `engine/domain/world/identity` 是 DOMAIN-classified 的窄义 identity leaf；
   用 `engine/editor` 与 `engine/toolchain` 区分交互工具和离线工具；不得恢复同义叠加的
   `engine/tools`。public include 与 namespace 仍使用概念名，不得把 `domain` 或层级编号写进用户 API。
 - `DOMAIN` 只分类引擎专属、被 World/Simulation 共同依赖的窄义 L1 foundation；不得建立

@@ -1,6 +1,6 @@
 # L1–L3 Retained Render Lane Qualification
 
-- Qualification revision: `55cca1c132ab03f2a4c4588e65dbe58afa3d46d1`
+- Qualification revision: `f7cc57c5dc8862eb883b357b208f7fce846fc859`
 - Qualification product: `l1_l3_render_sync_3d_qualification`
 - Classification: HOST / TEST / COMPOSITION
 - Build: RelWithDebInfo, `LUX_BUILD_PACKED_RENDER_CONTENT=ON`

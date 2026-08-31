@@ -1,6 +1,6 @@
 # Large 3D Scene Performance Qualification
 
-- Code revision: `55cca1c132ab03f2a4c4588e65dbe58afa3d46d1`
+- Code revision: `f7cc57c5dc8862eb883b357b208f7fce846fc859`
 - Product: `large_3d_scene_performance_qualification`
 - Classification: HOST / TEST / COMPOSITION
 - Configuration: RelWithDebInfo, full Render content, real physical Vulkan GPU

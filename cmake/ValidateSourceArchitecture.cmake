@@ -166,6 +166,13 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
+    if(normalized MATCHES "/engine/scene/runtime/render/" AND content MATCHES
+       "PresentationRegistry|PresentationScene|PresentationDelta|RenderBridge|RenderSynchronizer|RenderServices|AssetResolver|PendingMeshBinding|ResidencyManager|DemandTracker")
+        message(FATAL_ERROR
+            "Architecture: L3 Render integration '${normalized}' restores a held bridge/registry/residency framework."
+        )
+    endif()
+
     if(content MATCHES "WorldPartitionWorkspace|WorldPartitioner[.]hpp")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' restores the retired World partition workspace API."
@@ -1163,6 +1170,46 @@ if(NOT EXISTS "${source_root}/cmake/installed-consumers/spatial3d-index/CMakeLis
 endif()
 if(NOT EXISTS "${source_root}/cmake/installed-consumers/spatial2d-index/CMakeLists.txt")
     message(FATAL_ERROR "Architecture: missing installed Spatial2D index consumer.")
+endif()
+foreach(required_render_consumer IN ITEMS render-client scene-render)
+    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_render_consumer}/CMakeLists.txt")
+        message(FATAL_ERROR "Architecture: missing installed Render consumer '${required_render_consumer}'.")
+    endif()
+endforeach()
+
+set(render_entity_header
+    "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/core/RenderEntityId.hpp"
+)
+set(mesh_scene_protocol_header
+    "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp"
+)
+set(light_scene_protocol_header
+    "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/features/light/LightOperation.hpp"
+)
+foreach(required_render_contract IN ITEMS
+    "${render_entity_header}"
+    "${mesh_scene_protocol_header}"
+    "${light_scene_protocol_header}"
+    "${source_root}/engine/scene/runtime/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
+)
+    if(NOT EXISTS "${required_render_contract}")
+        message(FATAL_ERROR "Architecture: missing retained Render lane contract '${required_render_contract}'.")
+    endif()
+endforeach()
+file(READ "${render_entity_header}" render_entity_contract)
+file(READ "${mesh_scene_protocol_header}" mesh_scene_protocol_contract)
+file(READ "${light_scene_protocol_header}" light_scene_protocol_contract)
+if(render_entity_contract MATCHES "entt|registry")
+    message(FATAL_ERROR "Architecture: public RenderEntityId depends on an ECS implementation.")
+endif()
+if(mesh_scene_protocol_contract MATCHES
+   "AddMeshInstancePayload|MeshInstanceSlotReply|RenderObjectHandle[ \t]+object")
+    message(FATAL_ERROR "Architecture: Mesh scene protocol exposes retired RenderObjectHandle identity.")
+endif()
+if(light_scene_protocol_contract MATCHES
+   "CreateLightPayload|UpdateLightPayload|DestroyLightPayload|LightCreatedReply|RLightHandle")
+    message(FATAL_ERROR "Architecture: Light scene protocol exposes retired internal light identity.")
 endif()
 file(READ "${process_timer_header}" process_timer_contract)
 file(READ "${process_port_sender_header}" process_port_sender_contract)

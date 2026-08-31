@@ -27,7 +27,6 @@ target_link_libraries(
         lux::engine::simulation::ecs::visual
     PRIVATE EnTT::EnTT
 )
-component_add_internal_dependencies(scene_runtime_render render_client core transform visual)
 component_add_transitive_commands(
     scene_runtime_render
     "find_package(EnTT CONFIG REQUIRED)"
@@ -45,3 +44,10 @@ else()
 endif()
 lux_classify_target(TARGET render_system_test LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
 add_test(NAME render_system_test COMMAND render_system_test)
+
+install_components(
+    PROJECT_NAME lux-engine-scene-render
+    VERSION      ${PROJECT_VERSION}
+    NAMESPACE    lux::engine::scene
+    COMPONENTS   scene_runtime_render
+)

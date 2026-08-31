@@ -58,6 +58,11 @@ Canonical user-facing `Transform2D/3D` 与 `WorldTransform2D/3D` 使用 double�
 Scene 不拥有 mandatory streaming/index/residency/process/render/main-loop state；Simulation 不拥有
 World IO、partition lifecycle 或 wall clock；Process workflow不得认识 Scene 或 gameplay policy。
 
+3D Render integration 是可选的 L3 leaf：`engine/scene/runtime/render` 在 Simulation stable point把
+`Mesh3D/Light3D/WorldTransform3D` 合成为 bounded `RenderProgram(StateUpdate)`；Presentation只转发更新并
+author `RenderProgram(Frame)`。StateUpdate只修改 retained RenderScene，只有 Frame推进渲染生命周期。
+该 leaf不改变 headless Scene core，也不授权 Presentation Registry、Asset resolver或residency framework。
+
 ## Package 与 collection
 
 - package root 可以拥有 `include/`、`sinclude/`、`pinclude/`、`src/` 和 `test/`。

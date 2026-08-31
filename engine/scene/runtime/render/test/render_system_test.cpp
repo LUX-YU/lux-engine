@@ -61,8 +61,30 @@ int main()
     assert(first.commands.front().type_id == mesh_ids[0]);
 
     assert(system->tryPublish() == ERenderPublishResult::Published);
-    registry.remove<Mesh3D>(entity);
-    assert(system->tryPublish() == ERenderPublishResult::Backpressured);
+    assert(system->tryForwardUpdate(session) == ERenderForwardResult::Forwarded);
+    assert(channel->requests.tryAcquireRead());
+
+    registry.destroy(entity);
+    const Entity replacement = registry.create();
+    assert(entt::to_entity(replacement) == entt::to_entity(entity));
+    assert(replacement != entity);
+    registry.emplace<Mesh3D>(replacement, Mesh3D{mesh_id, material_id});
+    registry.emplace<WorldTransform3D>(replacement, world);
+    assert(system->tryPublish() == ERenderPublishResult::Published);
+    assert(system->tryForwardUpdate(session) == ERenderForwardResult::Forwarded);
+    assert(channel->requests.tryAcquireRead());
+    const auto& reused = channel->requests.currentRead();
+    assert(reused.commands.size() >= 2U);
+    assert(reused.commands[0].type_id == mesh_ids[1]);
+    assert(reused.commands[1].type_id == mesh_ids[0]);
+    const CommandPacketView reused_view{reused};
+    const auto remove_bytes = reused_view.bytes(reused.commands[0]);
+    const auto upsert_bytes = reused_view.bytes(reused.commands[1]);
+    assert(remove_bytes && upsert_bytes);
+    const auto* remove = reinterpret_cast<const RemoveMeshInstancePayload*>(remove_bytes->data());
+    const auto* upsert = reinterpret_cast<const UpsertMeshInstancePayload*>(upsert_bytes->data());
+    assert(remove->entity == toRenderEntity(entity));
+    assert(upsert->entity == toRenderEntity(replacement));
 
     const auto schemas = visualComponentSchemas();
     assert(schemas.size() == 2U);

@@ -1,6 +1,6 @@
 # Large 3D Scene Performance Qualification
 
-- Code revision: `be666c3138eba25f4b371f2374db613d0e5a8674`
+- Code revision: `e7b562b7e52bb02c11d7444040e7a781a93a6468`
 - Product: `large_3d_scene_performance_qualification`
 - Classification: HOST / TEST / COMPOSITION
 - Configuration: RelWithDebInfo, full Render content, real physical Vulkan GPU
@@ -26,16 +26,16 @@
 ```text
 server_instances=10000
 server_lights=33
-full_sync_ms=0.831
-initial_state_apply_ms=34.424
-state_update_mean_ms=0.939
-frame_mean_ms=0.290
-frame_p95_ms=0.691
-gpu_frame_mean_ms=0.326990
-gpu_frame_p95_ms=0.332288
+full_sync_ms=0.853
+initial_state_apply_ms=34.101
+state_update_mean_ms=0.856
+frame_mean_ms=0.436
+frame_p95_ms=0.787
+gpu_frame_mean_ms=0.515929
+gpu_frame_p95_ms=0.526624
 gpu_samples=79
-lit_pixels=72499
-luminance_variance=0.01233527
+lit_pixels=162342
+luminance_variance=0.03477081
 validation_errors=0
 ```
 
@@ -50,9 +50,10 @@ The first cold full-render run separately observed approximately 704.9 ms of gra
 ## Image qualification
 
 The test writes `test/architecture_probes/large_3d_scene_performance.ppm` in the full-render build tree. The image was
-converted to PNG for inspection. The high-angle view shows the full 100 x 100 field, stable perspective/depth ordering,
-textured PBR shading and the colored light distribution. The automatic image gate also requires more than 1/50 of the
-frame to be lit and luminance variance above `1e-4`.
+converted to PNG for inspection. The camera is placed near the front rows so individual 64-triangle Mesh clusters, their
+PBR textures and point-light response remain visible while the full 100 x 100 field recedes behind them. Perspective and
+depth ordering are stable. The automatic image gate also requires more than 1/50 of the frame to be lit and luminance
+variance above `1e-4`.
 
 ## Scope limit
 

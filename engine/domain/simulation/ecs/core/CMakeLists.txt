@@ -61,6 +61,27 @@ lux_classify_target(
 add_test(NAME vnext_ecs_core COMMAND ecs_core_test)
 set_tests_properties(vnext_ecs_core PROPERTIES LABELS "vnext;l1;core;cpu")
 
+foreach(reactive_test IN ITEMS reactive_storage_probe extraction_change_set_test)
+    add_executable(${reactive_test} test/${reactive_test}.cpp)
+    target_link_libraries(${reactive_test} PRIVATE lux::engine::simulation::ecs::core)
+    if(MSVC)
+        target_compile_options(${reactive_test} PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(${reactive_test} PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(
+        TARGET  ${reactive_test}
+        LAYER   SIMULATION
+        PRODUCT TEST
+        ROLE    FOUNDATION
+    )
+    add_test(NAME vnext_ecs_${reactive_test} COMMAND ${reactive_test})
+    set_tests_properties(
+        vnext_ecs_${reactive_test}
+        PROPERTIES LABELS "vnext;l1;core;reactive"
+    )
+endforeach()
+
 foreach(probe IN ITEMS
     retired_ecs_state_header_negative
     retired_ecs_commands_header_negative

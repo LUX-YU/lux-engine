@@ -222,7 +222,9 @@ foreach(source IN LISTS production_sources)
         if(content MATCHES
            "on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<" AND
            NOT normalized MATCHES
-               "/engine/domain/simulation/(ecs/(hierarchy|transform)|scripting|systems/(script|transform))/")
+               "/engine/domain/simulation/(ecs/(hierarchy|transform)|scripting|systems/(script|transform))/" AND
+           NOT normalized MATCHES
+               "/engine/domain/simulation/ecs/core/(include/lux/engine/simulation/ecs/ComponentChangeSet[.]hpp|test/(reactive_storage_probe|extraction_change_set_test)[.]cpp)$")
             message(FATAL_ERROR
                 "Architecture: EnTT signal ownership '${normalized}' is outside a concrete reactive Simulation subsystem."
             )

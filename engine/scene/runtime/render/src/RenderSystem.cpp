@@ -71,20 +71,18 @@ namespace lux::scene
         program->kind = render::ERenderProgramKind::StateUpdate;
 
         bool has_commands = false;
-        std::size_t prepared_count = 0U;
         for (auto& stage : state.stages)
         {
             const auto result = stage->prepare(builder);
             if (result == ERenderSyncPrepareResult::FAILED)
             {
-                for (std::size_t index = 0U; index <= prepared_count && index < state.stages.size(); ++index)
+                for (auto& discard_stage : state.stages)
                 {
-                    state.stages[index]->discardPrepared();
+                    discard_stage->discardPrepared();
                 }
                 return ERenderPublishResult::FAILED;
             }
             has_commands = has_commands || result == ERenderSyncPrepareResult::PREPARED_COMMANDS;
-            ++prepared_count;
         }
 
         if (!builder.valid())

@@ -80,3 +80,19 @@ add_test(
     NAME script_description_contract_test
     COMMAND script_description_contract_test
 )
+
+add_executable(
+    visual_description_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/visual_description_contract_test.cpp
+)
+target_link_libraries(
+    visual_description_contract_test
+    PRIVATE lux::engine::resource::description
+)
+lux_classify_target(
+    TARGET  visual_description_contract_test
+    LAYER   RESOURCE
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(NAME visual_description_contract_test COMMAND visual_description_contract_test)

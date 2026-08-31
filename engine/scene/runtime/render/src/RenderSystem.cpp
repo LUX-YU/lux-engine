@@ -194,15 +194,15 @@ namespace lux::scene
             render::UpsertMeshInstancePayload payload{};
             payload.scene_id = config.scene;
             payload.entity = toRenderEntity(entity);
-            payload.mesh_asset = mesh.mesh;
-            payload.material_asset = mesh.material;
+            payload.mesh_asset = mesh.value.mesh;
+            payload.material_asset = mesh.value.material;
             if (!encodeTransform(world, config.coordinate_page_size, config.scene_origin_page, payload.transform))
             {
                 return false;
             }
-            payload.flags = (mesh.visible ? render::kInstanceFlagVisible : 0U) |
-                (mesh.cast_shadow ? render::kInstanceFlagCastShadow : 0U) |
-                (mesh.receive_shadow ? render::kInstanceFlagReceiveShadow : 0U);
+            payload.flags = (mesh.value.visible ? render::kInstanceFlagVisible : 0U) |
+                (mesh.value.cast_shadow ? render::kInstanceFlagCastShadow : 0U) |
+                (mesh.value.receive_shadow ? render::kInstanceFlagReceiveShadow : 0U);
             builder.push(
                 render::opcode_of_v<render::UpsertMeshInstanceOp>,
                 config.mesh_stack.id<render::UpsertMeshInstanceOp>(),
@@ -220,7 +220,21 @@ namespace lux::scene
             render::UpsertLightPayload payload{};
             payload.scene_id = config.scene;
             payload.entity = toRenderEntity(entity);
-            payload.light_type = static_cast<std::uint8_t>(light.type);
+            switch (light.value.type)
+            {
+            case rdesc::ELightType::DIRECTIONAL:
+                payload.light_type = 0U;
+                break;
+            case rdesc::ELightType::POINT:
+                payload.light_type = 1U;
+                break;
+            case rdesc::ELightType::SPOT:
+                payload.light_type = 2U;
+                break;
+            case rdesc::ELightType::AREA:
+                payload.light_type = 3U;
+                break;
+            }
             if (!encodePosition(
                     world.value.translation(), config.coordinate_page_size, config.scene_origin_page,
                     payload.spatial_position))
@@ -236,23 +250,23 @@ namespace lux::scene
             for (std::size_t axis = 0U; axis < 3U; ++axis)
             {
                 payload.direction[axis] = static_cast<float>(direction[axis]);
-                payload.color[axis] = light.color[axis];
+                payload.color[axis] = light.value.color[axis];
             }
-            payload.intensity = light.intensity;
-            payload.range = light.range;
-            payload.attenuation_constant = light.attenuation_constant;
-            payload.attenuation_linear = light.attenuation_linear;
-            payload.attenuation_quadratic = light.attenuation_quadratic;
-            payload.inner_cone_angle = light.inner_cone_angle;
-            payload.outer_cone_angle = light.outer_cone_angle;
-            payload.area_size[0] = light.area_size.x();
-            payload.area_size[1] = light.area_size.y();
-            payload.flags = light.flags;
-            payload.shadow_map_size = light.shadow_map_size;
-            payload.shadow_bias = light.shadow_bias;
-            payload.shadow_normal_bias = light.shadow_normal_bias;
-            payload.cascade_count = light.cascade_count;
-            std::copy(light.cascade_splits.begin(), light.cascade_splits.end(), payload.cascade_splits);
+            payload.intensity = light.value.intensity;
+            payload.range = light.value.range;
+            payload.attenuation_constant = light.value.attenuation_constant;
+            payload.attenuation_linear = light.value.attenuation_linear;
+            payload.attenuation_quadratic = light.value.attenuation_quadratic;
+            payload.inner_cone_angle = light.value.inner_cone_angle;
+            payload.outer_cone_angle = light.value.outer_cone_angle;
+            payload.area_size[0] = light.value.area_size[0];
+            payload.area_size[1] = light.value.area_size[1];
+            payload.flags = light.value.cast_shadow ? render::LIGHT_FLAG_CAST_SHADOW : 0U;
+            payload.shadow_map_size = light.value.shadow_map_size;
+            payload.shadow_bias = light.value.shadow_bias;
+            payload.shadow_normal_bias = light.value.shadow_normal_bias;
+            payload.cascade_count = light.value.cascade_count;
+            std::copy(light.value.cascade_splits.begin(), light.value.cascade_splits.end(), payload.cascade_splits);
             light_payloads.push_back(payload);
             return true;
         }

@@ -347,7 +347,9 @@ int main(int argc, char** argv)
                 mesh_entities.push_back(grid_entity);
                 simulation_registry.emplace<simulation::ecs::Mesh3D>(
                     grid_entity,
-                    simulation::ecs::Mesh3D{mesh_asset->id(), material_asset->id()}
+                    simulation::ecs::Mesh3D{
+                        rdesc::MeshVisualDescription{mesh_asset->id(), material_asset->id()}
+                    }
                 );
                 simulation::ecs::WorldTransform3D grid_transform{};
                 grid_transform.value.linear() = model_transform.block<3, 3>(0, 0).cast<double>() * 0.55;
@@ -363,7 +365,7 @@ int main(int argc, char** argv)
         mesh_entities.push_back(simulation_registry.create());
         simulation_registry.emplace<simulation::ecs::Mesh3D>(
             mesh_entities.front(),
-            simulation::ecs::Mesh3D{mesh_asset->id(), material_asset->id()}
+            simulation::ecs::Mesh3D{rdesc::MeshVisualDescription{mesh_asset->id(), material_asset->id()}}
         );
         simulation::ecs::WorldTransform3D world_transform{};
         world_transform.value = model_transform.cast<double>();
@@ -379,8 +381,8 @@ int main(int argc, char** argv)
             directional_transform
         );
         simulation::ecs::Light3D light{};
-        light.type = simulation::ecs::ELight3DType::DIRECTIONAL;
-        light.intensity = 2.0F;
+        light.value.type = rdesc::ELightType::DIRECTIONAL;
+        light.value.intensity = 2.0F;
         simulation_registry.emplace<simulation::ecs::Light3D>(directional_light_entity, light);
 #if defined(LUX_LARGE_3D_SCENE_PERFORMANCE)
         for (std::uint32_t light_index = 0U; light_index < 32U; ++light_index)
@@ -394,14 +396,14 @@ int main(int argc, char** argv)
             };
             simulation_registry.emplace<simulation::ecs::WorldTransform3D>(point_entity, point_transform);
             simulation::ecs::Light3D point{};
-            point.type = simulation::ecs::ELight3DType::POINT;
-            point.color = Eigen::Vector3f{
+            point.value.type = rdesc::ELightType::POINT;
+            point.value.color = std::array{
                 0.35F + static_cast<float>(light_index % 3U) * 0.3F,
                 0.4F + static_cast<float>((light_index + 1U) % 3U) * 0.25F,
                 0.45F + static_cast<float>((light_index + 2U) % 3U) * 0.25F
             };
-            point.intensity = 18.0F;
-            point.range = 24.0F;
+            point.value.intensity = 18.0F;
+            point.value.range = 24.0F;
             simulation_registry.emplace<simulation::ecs::Light3D>(point_entity, point);
         }
 #endif

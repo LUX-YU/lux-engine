@@ -27,7 +27,7 @@ int main()
     const Entity entity = registry.create();
     const asset::AssetId mesh_id{std::array<std::uint8_t, 16>{1U}};
     const asset::AssetId material_id{std::array<std::uint8_t, 16>{2U}};
-    registry.emplace<Mesh3D>(entity, Mesh3D{mesh_id, material_id});
+    registry.emplace<Mesh3D>(entity, Mesh3D{rdesc::MeshVisualDescription{mesh_id, material_id}});
     WorldTransform3D world{};
     world.value.translation() = Eigen::Vector3d{1.0e12 + 0.125, 2.0, -3.0};
     registry.emplace<WorldTransform3D>(entity, world);
@@ -68,7 +68,7 @@ int main()
     const Entity replacement = registry.create();
     assert(entt::to_entity(replacement) == entt::to_entity(entity));
     assert(replacement != entity);
-    registry.emplace<Mesh3D>(replacement, Mesh3D{mesh_id, material_id});
+    registry.emplace<Mesh3D>(replacement, Mesh3D{rdesc::MeshVisualDescription{mesh_id, material_id}});
     registry.emplace<WorldTransform3D>(replacement, world);
     assert(system->tryPublish() == ERenderPublishResult::Published);
     assert(system->tryForwardUpdate(session) == ERenderForwardResult::Forwarded);

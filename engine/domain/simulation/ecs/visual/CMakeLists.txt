@@ -1,5 +1,3 @@
-find_package(Eigen3 CONFIG REQUIRED)
-
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_SIMULATION_ECS_VISUAL_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_SIMULATION_ECS_VISUAL_PUBLIC
@@ -25,16 +23,14 @@ target_link_libraries(
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::schema
         lux::engine::simulation::ecs::snapshot
-        lux::engine::resource::identity
+        lux::engine::resource::description
         lux::engine::core::serialization
-        Eigen3::Eigen
 )
 component_add_internal_dependencies(visual core schema snapshot)
 component_add_transitive_commands(
     visual
-    "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema snapshot)"
 )
 
@@ -49,3 +45,13 @@ engine_target_add_ecs_component_codegen(
     SYMBOL visual
 )
 lux_classify_target(TARGET visual LAYER SIMULATION PRODUCT RUNTIME ROLE DOMAIN)
+
+add_executable(visual_component_test test/visual_component_test.cpp)
+target_link_libraries(visual_component_test PRIVATE lux::engine::simulation::ecs::visual)
+if(MSVC)
+    target_compile_options(visual_component_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(visual_component_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET visual_component_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME visual_component_test COMMAND visual_component_test)

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-31
 - Scope: Mesh3D and Light3D only
+- Extraction foundation: Closed by `0d2d6e8fbdcb08f5bc5b82c0a928f45f8b06b806`
 
 ## Decision
 
@@ -23,6 +24,16 @@ EnTT reactive storage is the active change foundation. Each stage connects signa
 attach time. Backpressure and encode failures retain reactive/departure state; published state changes only after the
 StateUpdate packet is accepted, or after a prepared no-command transaction is explicitly committed.
 
+Prepare owns every fallible allocation. A first renderable entity receives a private unpublished state slot during
+prepare; discard retains that slot for retry, while departure removes it without a wire Remove. Commit only assigns an
+already-existing nothrow state, removes a state under departure suppression, and clears retained containers. Full sync is
+requested centrally by RenderSystem and traverses the current feature view during prepare; its noexcept request path only
+sets flags. Departure callbacks append in amortized O(1), and prepare performs sort/unique before encoding removals.
+
+Mesh departure cancellation uses the same currently-renderable predicate as ordinary extraction: component membership,
+authored/resolved AssetId agreement and non-null Render resource handles must all hold. Reintroducing stale or mismatched
+resolved data therefore cannot preserve an obsolete retained Render instance.
+
 `LatestSpscExchange<T>` remains the approved latest-wins sampling primitive for Pixel, Robot, Spatial2D and other compact
 presentation states. It is not used to copy Registry/Scene state and is not retired by this 3D lane.
 
@@ -31,3 +42,6 @@ presentation states. It is not used to copy Registry/Scene state and is not reti
 This decision does not authorize a Presentation Registry, full-scene snapshot, generic delta, Asset resolver, residency
 manager, timing domain, streaming marker or multi-task System API. Canvas and the other held Render protocols retain their
 existing reply/identity contracts.
+
+The later SceneSystem convergence may replace nullable Registry pointers in builtin stage factories and allow an empty
+RenderSystem StageList. Those public API decisions are deliberately outside this closure.

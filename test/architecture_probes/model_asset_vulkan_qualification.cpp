@@ -16,16 +16,22 @@
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/simulation/ecs/Visual.hpp>
 
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace
@@ -166,6 +172,7 @@ int main(int argc, char** argv)
             light_registration.feature_type_id,
             LightCommTag{}
         ));
+        const auto light_ops = LightOperationIds::fromOps(light_registration.ops, light_registration.op_count);
         const auto shadow_registration =
             fixture.awaitControl(fixture.control().registerFeatureType(kShadowMapFeatureFactory));
         ShadowMapCommConfig shadow_config{};
@@ -270,16 +277,35 @@ int main(int argc, char** argv)
             }
         }
         model_transform(2, 3) = -2.0F;
-        const auto instance_entity = static_cast<RenderEntityId>(1U);
-        upsertTransientMeshInstance(
-            MeshStackProxy{fixture.session(), mesh_ops},
-            scene.scene_id,
-            instance_entity,
-            mesh_asset->id(),
-            material_asset->id(),
-            model_transform.data(),
-            kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible | (1U << 31U)
+        simulation::ecs::Registry simulation_registry;
+        const auto entity = simulation_registry.create();
+        simulation_registry.emplace<simulation::ecs::Mesh3D>(
+            entity,
+            simulation::ecs::Mesh3D{mesh_asset->id(), material_asset->id()}
         );
+        simulation::ecs::WorldTransform3D world_transform{};
+        world_transform.value = model_transform.cast<double>();
+        simulation_registry.emplace<simulation::ecs::WorldTransform3D>(entity, world_transform);
+        simulation::ecs::Light3D light{};
+        light.type = simulation::ecs::ELight3DType::DIRECTIONAL;
+        light.intensity = 2.0F;
+        simulation_registry.emplace<simulation::ecs::Light3D>(entity, light);
+        auto render_system = scene::RenderSystem::create(
+            simulation_registry,
+            scene::RenderSystem::Config{
+                .scene = scene.scene_id,
+                .mesh_stack = mesh_ops,
+                .light = light_ops,
+                .expected_entity_capacity = 1024U
+            }
+        );
+        if (!render_system || (*render_system)->tryPublish() != scene::ERenderPublishResult::FullSyncPublished) return 15;
+
+        if (!fixture.session().trySubmitFrame()) return 15;
+        if (!fixture.session().waitAndPumpReplies()) return 15;
+        if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::Forwarded) return 15;
+        if (!fixture.session().waitAndPumpReplies()) return 15;
+        if (!fixture.session().beginFrame()) return 15;
 
         const float view[16] = {
             1.0F, 0.0F, 0.0F, 0.0F,
@@ -302,13 +328,34 @@ int main(int argc, char** argv)
             projection,
             eye
         );
+#if defined(LUX_L1_L3_RENDER_SYNC_QUALIFICATION)
+        if (!fixture.session().trySubmitFrame() || !fixture.session().waitAndPumpReplies()) return 16;
+        for (std::uint32_t step = 0U; step < 40U; ++step)
+        {
+            simulation_registry.patch<simulation::ecs::WorldTransform3D>(entity, [step](auto& transform) {
+                const double angle = static_cast<double>(step + 1U) * 0.05;
+                transform.value.linear() = Eigen::AngleAxisd{angle, Eigen::Vector3d::UnitY()}.toRotationMatrix();
+                transform.value.translation().z() = -2.0;
+            });
+            const auto published = (*render_system)->tryPublish();
+            if (published != scene::ERenderPublishResult::Published) return 16;
+            if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::Forwarded)
+                return 16;
+            if (!fixture.session().waitAndPumpReplies()) return 16;
+            if (!fixture.session().beginFrame() || !fixture.session().trySubmitFrame()) return 16;
+            if (!fixture.session().waitAndPumpReplies()) return 16;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        if (!fixture.session().beginFrame()) return 16;
+#endif
         fixture.flush(8);
         const auto pixels = fixture.readback(scene);
         if (fixture.lastReadback().status != 0U) return 16;
         for (std::size_t offset = 0U; offset + 3U < pixels.size(); offset += 4U)
             if ((pixels[offset] | pixels[offset + 1U] | pixels[offset + 2U]) != 0U) ++lit_pixels;
 
-        MeshStackProxy{fixture.session(), mesh_ops}.removeMeshInstance({scene.scene_id, instance_entity});
+        simulation_registry.remove<simulation::ecs::Mesh3D>(entity);
+        simulation_registry.remove<simulation::ecs::Light3D>(entity);
         MeshStackControlClient{fixture.control(), mesh_ops}.destroyMesh({mesh.handle});
         MaterialControlClient{fixture.control(), material_ops}.destroyMaterial({material.handle});
         for (const auto handle : texture_handles) fixture.control().destroyTexture(handle);

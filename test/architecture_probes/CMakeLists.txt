@@ -198,6 +198,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
             render_features
             lux::engine::function::render_vulkan
             lux::engine::resource::asset
+            lux::engine::scene::scene_runtime_render
     )
     lux_classify_target(
         TARGET  model_asset_vulkan_qualification
@@ -213,6 +214,47 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
         model_asset_vulkan_qualification
         PROPERTIES
             LABELS "architecture;qualification;host;render;gpu;model;asset"
+            SKIP_RETURN_CODE 77
+            TIMEOUT 120
+    )
+
+    add_executable(
+        l1_l3_render_sync_3d_qualification
+        model_asset_vulkan_qualification.cpp
+    )
+    add_dependencies(
+        l1_l3_render_sync_3d_qualification
+        model_asset_vulkan_qualification_content
+    )
+    target_include_directories(
+        l1_l3_render_sync_3d_qualification
+        PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
+    )
+    target_compile_definitions(
+        l1_l3_render_sync_3d_qualification
+        PRIVATE
+            LUX_MODEL_QUALIFICATION_PAK="${model_qualification_pak}"
+            LUX_L1_L3_RENDER_SYNC_QUALIFICATION=1
+    )
+    target_link_libraries(
+        l1_l3_render_sync_3d_qualification
+        PRIVATE
+            render_features
+            lux::engine::function::render_vulkan
+            lux::engine::resource::asset
+            lux::engine::scene::scene_runtime_render
+    )
+    lux_classify_target(
+        TARGET  l1_l3_render_sync_3d_qualification
+        LAYER   HOST
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(NAME l1_l3_render_sync_3d_qualification COMMAND l1_l3_render_sync_3d_qualification)
+    set_tests_properties(
+        l1_l3_render_sync_3d_qualification
+        PROPERTIES
+            LABELS "architecture;qualification;host;render;gpu;l1;l3"
             SKIP_RETURN_CODE 77
             TIMEOUT 120
     )

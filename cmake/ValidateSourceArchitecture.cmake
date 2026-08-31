@@ -24,6 +24,7 @@ foreach(retired_root IN ITEMS
     "${source_root}/engine/graph_kit"
     "${source_root}/engine/simulation"
     "${source_root}/engine/world"
+    "${source_root}/engine/domain/world_identity"
     "${source_root}/engine/domain/simulation/script_binding"
     "${source_root}/engine/domain/simulation/script"
     "${source_root}/engine/authoring/script_binding"
@@ -68,10 +69,10 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/domain/world/*/sinclude/*.hpp"
     "${source_root}/engine/domain/world/*/pinclude/*.hpp"
     "${source_root}/engine/domain/world/*/src/*.cpp"
-    "${source_root}/engine/domain/world_identity/include/*.hpp"
-    "${source_root}/engine/domain/world_identity/sinclude/*.hpp"
-    "${source_root}/engine/domain/world_identity/pinclude/*.hpp"
-    "${source_root}/engine/domain/world_identity/src/*.cpp"
+    "${source_root}/engine/domain/world/identity/include/*.hpp"
+    "${source_root}/engine/domain/world/identity/sinclude/*.hpp"
+    "${source_root}/engine/domain/world/identity/pinclude/*.hpp"
+    "${source_root}/engine/domain/world/identity/src/*.cpp"
     "${source_root}/engine/domain/partition/*/include/*.hpp"
     "${source_root}/engine/domain/partition/*/sinclude/*.hpp"
     "${source_root}/engine/domain/partition/*/pinclude/*.hpp"
@@ -294,7 +295,7 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
-    if(normalized MATCHES "/engine/domain/world_identity/")
+    if(normalized MATCHES "/engine/domain/world/identity/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
             message(FATAL_ERROR
@@ -1068,7 +1069,6 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/engine/CMakeLists.txt"
     "${source_root}/engine/domain/world/CMakeLists.txt"
     "${source_root}/engine/domain/world/*/CMakeLists.txt"
-    "${source_root}/engine/domain/world_identity/CMakeLists.txt"
     "${source_root}/engine/domain/partition/CMakeLists.txt"
     "${source_root}/engine/domain/partition/*/CMakeLists.txt"
     "${source_root}/engine/domain/spatial/CMakeLists.txt"

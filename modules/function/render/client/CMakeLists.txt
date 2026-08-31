@@ -49,7 +49,6 @@ target_link_libraries(
         lux::cxx::memory
         lux::engine::core::math
         lux::engine::core::meta
-        lux::engine::resource::identity
         lux::engine::resource::description
 )
 
@@ -57,7 +56,7 @@ component_add_transitive_commands(
     render_client
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time container concurrent memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 
 lux_classify_target(

@@ -15,7 +15,6 @@
 #include <lux/engine/render/resources/mesh/MeshCpuData.hpp>
 #include <lux/engine/render/resources/mesh/StableRecordPages.hpp>
 #include <lux/engine/function/render/Capacity.hpp>
-#include <lux/engine/resource/identity/AssetId.hpp>
 namespace lux::render
 {
     class TransferScheduler;
@@ -32,7 +31,6 @@ namespace lux::render
 #include <type_traits>
 #include <atomic>
 #include <utility>
-#include <unordered_map>
 
 namespace lux::render
 {
@@ -279,9 +277,6 @@ namespace lux::render
         {
             return mesh_index < gpu_records_.size() && gpu_records_[mesh_index].ready;
         }
-
-        [[nodiscard]] std::optional<MeshHandle> findAsset(asset::AssetId id) const noexcept;
-        [[nodiscard]] bool bindAsset(asset::AssetId id, MeshHandle handle);
 
         // ---------- Destroy / Query ----------
         /// Render-instance ownership. A destroy request becomes pending while
@@ -585,8 +580,6 @@ namespace lux::render
         std::vector<uint32_t> free_;
         std::vector<uint32_t> instance_refcounts_;
         std::vector<uint8_t> destroy_requested_;
-        std::unordered_map<asset::AssetId, MeshHandle> asset_handles_;
-        std::vector<asset::AssetId> handle_assets_;
         // (这里曾有一个 std::atomic<uint32_t> slot_count_,注释说"游戏线程 release
         //  写、渲染线程 acquire 读",用来避开 push_back 改 vector 大小与 .size()
         //  并发读的竞争。那个游戏线程不存在:这些记录只在 server/render 线程上被

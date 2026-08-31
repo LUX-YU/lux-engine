@@ -1213,6 +1213,46 @@ if(light_scene_protocol_contract MATCHES
    "CreateLightPayload|UpdateLightPayload|DestroyLightPayload|LightCreatedReply|RLightHandle")
     message(FATAL_ERROR "Architecture: Light scene protocol exposes retired internal light identity.")
 endif()
+file(GLOB_RECURSE render_client_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/render/client/include/*.hpp"
+    "${source_root}/modules/function/render/client/src/*.cpp"
+)
+foreach(render_client_source IN LISTS render_client_sources)
+    file(READ "${render_client_source}" render_client_content)
+    if(render_client_content MATCHES "resource/identity/AssetId[.]hpp|asset::AssetId")
+        message(FATAL_ERROR
+            "Architecture: pure Render client source '${render_client_source}' depends on AssetId."
+        )
+    endif()
+endforeach()
+
+set(render_system_header
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
+)
+set(render_system_source
+    "${source_root}/engine/scene/runtime/render/src/RenderSystem.cpp"
+)
+file(READ "${render_system_header}" render_system_contract)
+file(READ "${render_system_source}" render_system_implementation)
+if(render_system_contract MATCHES "Mesh3D|Light3D|MeshStackOperationIds|LightOperationIds|Registry|Config")
+    message(FATAL_ERROR "Architecture: RenderSystem public API owns a concrete Mesh/Light extraction domain.")
+endif()
+if(render_system_implementation MATCHES
+   "Mesh3D|Light3D|DirtySlot|dirty_bits|summary|expected_entity_capacity|EntityCapacity")
+    message(FATAL_ERROR "Architecture: generic RenderSystem restores concrete extraction or central dirty storage.")
+endif()
+
+foreach(render_resource_file IN ITEMS
+    "${source_root}/modules/function/render/vulkan/sinclude/lux/engine/render/resources/mesh/MeshResources.hpp"
+    "${source_root}/modules/function/render/vulkan/sinclude/lux/engine/render/resources/material/MaterialResources.hpp"
+)
+    file(READ "${render_resource_file}" render_resource_contract)
+    if(render_resource_contract MATCHES "asset_handles_|handle_assets_|findAsset|bindAsset|asset::AssetId")
+        message(FATAL_ERROR
+            "Architecture: Render resource owner '${render_resource_file}' restores an AssetId map."
+        )
+    endif()
+endforeach()
 file(READ "${process_timer_header}" process_timer_contract)
 file(READ "${process_port_sender_header}" process_port_sender_contract)
 if(process_timer_contract MATCHES "sender_tag|operation_state_tag|capacity[ \\t]*\\{[1-9]|create[^;]*=")

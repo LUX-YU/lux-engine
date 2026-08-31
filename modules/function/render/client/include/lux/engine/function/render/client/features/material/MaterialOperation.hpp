@@ -24,7 +24,6 @@
 #include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp> // DestroyResourcePayload
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp>
 #include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
-#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -63,7 +62,6 @@ namespace lux::render
         reply = MaterialUploadedReply,
         manual_client = true) UploadGraphMaterialPayload
     {
-        asset::AssetId asset_id{};
         ExternalDataRef graph_desc{};        // points to const GraphMaterialData
         ShaderHandle graph_gbuffer_shader{}; // R1: per-material baked frags → own bucket/PSO
         ShaderHandle graph_forward_shader{};
@@ -115,11 +113,10 @@ namespace lux::render
     //    upload:ExternalDataRef 借用登记(有效期至 submitFrame)+ 五参重载
     //    连带 shader_key 稳定哈希;modify:GraphMaterialData 逐帧拷贝进 blob。
     [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
-    uploadGraphMaterial(MaterialUploadClient client, asset::AssetId asset_id, const GraphMaterialData& data);
+    uploadGraphMaterial(MaterialUploadClient client, const GraphMaterialData& data);
     [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
     uploadGraphMaterial(
         MaterialUploadClient client,
-        asset::AssetId asset_id,
         const GraphMaterialData& data,
         ShaderHandle gbuffer_shader,
         ShaderHandle forward_shader,

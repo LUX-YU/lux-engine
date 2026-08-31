@@ -2,16 +2,14 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
-#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/client/core/RenderEntityId.hpp>
+#include <lux/engine/scene/RenderSyncStage.hpp>
 #include <lux/engine/scene/runtime/render/visibility.h>
 #include <lux/engine/simulation/ecs/Entity.hpp>
-#include <lux/engine/simulation/ecs/Registry.hpp>
 
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace lux::scene
 {
@@ -22,51 +20,41 @@ namespace lux::scene
 
     enum class ERenderPublishResult : std::uint8_t
     {
-        NoChanges,
-        Published,
-        Backpressured,
-        FullSyncPublished,
-        Failed,
+        NO_CHANGES,
+        PUBLISHED,
+        BACKPRESSURED,
+        FULL_SYNC_PUBLISHED,
+        FAILED
     };
 
     enum class ERenderForwardResult : std::uint8_t
     {
-        NoUpdate,
-        Forwarded,
-        Backpressured,
-        Stopping,
+        NO_UPDATE,
+        FORWARDED,
+        BACKPRESSURED,
+        STOPPING
     };
 
     enum class ERenderSystemError : std::uint8_t
     {
-        InvalidConfiguration,
-        AllocationFailure,
-        EntityCapacityExceeded,
-        SpatialEncodingFailure,
-        ProgramEncodingFailure,
+        INVALID_STAGE_LIST,
+        ALLOCATION_FAILURE,
+        STAGE_PREPARE_FAILURE,
+        PROGRAM_ENCODING_FAILURE
     };
 
     struct RenderSystemFailure final
     {
         ERenderSystemError code{};
-        simulation::ecs::Entity entity{simulation::ecs::NullEntity};
     };
 
     class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderSystem final
     {
     public:
-        struct Config final
-        {
-            render::RenderSceneId scene{};
-            render::MeshStackOperationIds mesh_stack{};
-            render::LightOperationIds light{};
-            double coordinate_page_size{1024.0};
-            std::array<std::int64_t, 3> scene_origin_page{};
-            std::size_t expected_entity_capacity{65536U};
-        };
+        using StageList = std::vector<std::unique_ptr<RenderSyncStage>>;
 
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<RenderSystem>, RenderSystemFailure>
-        create(simulation::ecs::Registry& registry, Config config) noexcept;
+        create(StageList stages) noexcept;
 
         ~RenderSystem() noexcept;
         RenderSystem(const RenderSystem&) = delete;
@@ -83,4 +71,4 @@ namespace lux::scene
         explicit RenderSystem(std::unique_ptr<Impl> impl) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::scene

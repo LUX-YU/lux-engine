@@ -10,7 +10,9 @@ add_component(
     COMPONENT_NAME scene_runtime_render
     NAMESPACE      lux::engine::scene
     OUTPUT_NAME    lux_engine_scene_runtime_render
-    SOURCE_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Builtin3DRenderStages.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
 )
 component_include_directories(
     scene_runtime_render
@@ -25,6 +27,7 @@ target_link_libraries(
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::transform
         lux::engine::simulation::ecs::visual
+        lux::engine::resource::identity
     PRIVATE EnTT::EnTT
 )
 component_add_transitive_commands(
@@ -32,6 +35,7 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core transform visual)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
 lux_classify_target(TARGET scene_runtime_render LAYER SCENE PRODUCT RUNTIME ROLE INTEGRATION)
 

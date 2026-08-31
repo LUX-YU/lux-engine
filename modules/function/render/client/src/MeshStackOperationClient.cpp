@@ -17,8 +17,8 @@ namespace lux::render
         MeshStackProxy proxy,
         RenderSceneId scene_id,
         RenderEntityId entity,
-        asset::AssetId mesh_asset,
-        asset::AssetId material_asset,
+        RMeshHandle mesh,
+        RMaterialHandle material,
         const RenderSpatialTransform3D& transform,
         std::uint32_t flags,
         EGeometryKind geometry_kind,
@@ -31,8 +31,8 @@ namespace lux::render
         UpsertMeshInstancePayload payload{};
         payload.scene_id = scene_id;
         payload.entity = entity;
-        payload.mesh_asset = mesh_asset;
-        payload.material_asset = material_asset;
+        payload.mesh = mesh;
+        payload.material = material;
         payload.transform = transform;
         payload.flags = flags;
         payload.geometry_kind = geometry_kind;
@@ -61,8 +61,8 @@ namespace lux::render
         MeshStackProxy proxy,
         RenderSceneId scene_id,
         RenderEntityId entity,
-        asset::AssetId mesh_asset,
-        asset::AssetId material_asset,
+        RMeshHandle mesh,
+        RMaterialHandle material,
         const float transform[16],
         std::uint32_t flags,
         EGeometryKind geometry_kind,
@@ -74,8 +74,8 @@ namespace lux::render
             proxy,
             scene_id,
             entity,
-            mesh_asset,
-            material_asset,
+            mesh,
+            material,
             makeTransientRenderSpatialTransform3D(transform),
             flags,
             geometry_kind,
@@ -111,7 +111,6 @@ namespace lux::render
     lux::cxx::expected<RenderRequest<MeshUploadedReply>, ERenderUploadSubmitError>
     uploadMesh(
         MeshStackUploadClient client,
-        asset::AssetId asset_id,
         const lux::rdesc::Mesh& mesh,
         VertexLayoutId layout_id
     )
@@ -130,10 +129,9 @@ namespace lux::render
         }
 
         return client.session().trySubmit<MeshUploadedReply>(
-            [owned = std::move(owned), asset_id, layout_id, operation_id, retained_bytes = *retained_bytes](
+            [owned = std::move(owned), layout_id, operation_id, retained_bytes = *retained_bytes](
                 RenderUploadClient::Builder& builder) {
                 UploadMeshPayload payload{};
-                payload.asset_id = asset_id;
                 payload.layout_id = layout_id;
                 payload.mesh_desc = builder.pushSharedBytes(
                     std::static_pointer_cast<const void>(owned),

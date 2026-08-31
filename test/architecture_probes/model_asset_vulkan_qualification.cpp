@@ -17,6 +17,8 @@
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/Builtin3DRenderStages.hpp>
+#include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 
@@ -270,7 +272,6 @@ int main(int argc, char** argv)
 
         auto material_request = uploadGraphMaterial(
             MaterialUploadClient{fixture.uploadClientForTest(), material_ops},
-            material_asset->id(),
             graph_material,
             gbuffer_shader.shader,
             forward_shader.shader,
@@ -315,7 +316,6 @@ int main(int argc, char** argv)
 #endif
         auto mesh_request = uploadMesh(
             MeshStackUploadClient{fixture.uploadClientForTest(), mesh_ops},
-            mesh_asset->id(),
             *mesh_to_upload
         );
         if (!mesh_request) return 13;
@@ -351,6 +351,12 @@ int main(int argc, char** argv)
                         rdesc::MeshVisualDescription{mesh_asset->id(), material_asset->id()}
                     }
                 );
+                simulation_registry.emplace<scene::ResolvedMeshResources>(
+                    grid_entity,
+                    scene::ResolvedMeshResources{
+                        mesh_asset->id(), material_asset->id(), mesh.handle, material.handle
+                    }
+                );
                 simulation::ecs::WorldTransform3D grid_transform{};
                 grid_transform.value.linear() = model_transform.block<3, 3>(0, 0).cast<double>() * 0.55;
                 grid_transform.value.translation() = Eigen::Vector3d{
@@ -366,6 +372,10 @@ int main(int argc, char** argv)
         simulation_registry.emplace<simulation::ecs::Mesh3D>(
             mesh_entities.front(),
             simulation::ecs::Mesh3D{rdesc::MeshVisualDescription{mesh_asset->id(), material_asset->id()}}
+        );
+        simulation_registry.emplace<scene::ResolvedMeshResources>(
+            mesh_entities.front(),
+            scene::ResolvedMeshResources{mesh_asset->id(), material_asset->id(), mesh.handle, material.handle}
         );
         simulation::ecs::WorldTransform3D world_transform{};
         world_transform.value = model_transform.cast<double>();
@@ -407,22 +417,23 @@ int main(int argc, char** argv)
             simulation_registry.emplace<simulation::ecs::Light3D>(point_entity, point);
         }
 #endif
-        auto render_system = scene::RenderSystem::create(
-            simulation_registry,
-            scene::RenderSystem::Config{
-                .scene = scene.scene_id,
-                .mesh_stack = mesh_ops,
-                .light = light_ops,
-                .expected_entity_capacity =
-#if defined(LUX_LARGE_3D_SCENE_PERFORMANCE)
-                    16384U
-#else
-                    1024U
-#endif
-            }
-        );
+        auto mesh_stage = scene::createMesh3DRenderStage(scene::Mesh3DRenderStageConfig{
+            .registry = &simulation_registry,
+            .scene = scene.scene_id,
+            .operations = mesh_ops
+        });
+        auto light_stage = scene::createLight3DRenderStage(scene::Light3DRenderStageConfig{
+            .registry = &simulation_registry,
+            .scene = scene.scene_id,
+            .operations = light_ops
+        });
+        if (!mesh_stage || !light_stage) return 15;
+        scene::RenderSystem::StageList render_stages;
+        render_stages.push_back(std::move(*mesh_stage));
+        render_stages.push_back(std::move(*light_stage));
+        auto render_system = scene::RenderSystem::create(std::move(render_stages));
         const auto full_sync_start = std::chrono::steady_clock::now();
-        if (!render_system || (*render_system)->tryPublish() != scene::ERenderPublishResult::FullSyncPublished) return 15;
+        if (!render_system || (*render_system)->tryPublish() != scene::ERenderPublishResult::FULL_SYNC_PUBLISHED) return 15;
         full_sync_ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - full_sync_start
         ).count();
@@ -430,7 +441,7 @@ int main(int argc, char** argv)
         if (!fixture.session().trySubmitFrame()) return 15;
         if (!fixture.session().waitAndPumpReplies()) return 15;
         const auto initial_apply_start = std::chrono::steady_clock::now();
-        if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::Forwarded) return 15;
+        if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::FORWARDED) return 15;
         if (!fixture.session().waitAndPumpReplies()) return 15;
         initial_state_apply_ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - initial_apply_start
@@ -519,8 +530,8 @@ int main(int argc, char** argv)
                     }
                 );
             }
-            if ((*render_system)->tryPublish() != scene::ERenderPublishResult::Published) return 16;
-            if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::Forwarded)
+            if ((*render_system)->tryPublish() != scene::ERenderPublishResult::PUBLISHED) return 16;
+            if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::FORWARDED)
                 return 16;
             if (!fixture.session().waitAndPumpReplies()) return 16;
             state_update_times.push_back(std::chrono::duration<double, std::milli>(
@@ -593,8 +604,8 @@ int main(int argc, char** argv)
                 transform.value.translation().z() = -2.0;
             });
             const auto published = (*render_system)->tryPublish();
-            if (published != scene::ERenderPublishResult::Published) return 16;
-            if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::Forwarded)
+            if (published != scene::ERenderPublishResult::PUBLISHED) return 16;
+            if ((*render_system)->tryForwardUpdate(fixture.session()) != scene::ERenderForwardResult::FORWARDED)
                 return 16;
             if (!fixture.session().waitAndPumpReplies()) return 16;
             if (!fixture.session().beginFrame() || !fixture.session().trySubmitFrame()) return 16;

@@ -48,7 +48,6 @@ namespace lux::render
 
         RMaterialHandle serverUploadGraphMaterial(
             void* user_state,
-            asset::AssetId asset_id,
             const GraphMaterialData& data,
             ShaderHandle gbuffer_shader,
             ShaderHandle forward_shader,
@@ -70,13 +69,7 @@ namespace lux::render
             if (!mat_res || !mat_res->isInitialized())
                 return RMaterialHandle{};
 
-            if (const auto existing = mat_res->findAsset(asset_id))
-            {
-                return RMaterialHandle{existing->index, existing->gen};
-            }
-
             auto result = mat_res->submitGraph(
-                asset_id,
                 data,
                 gbuffer_shader,
                 forward_shader,
@@ -131,7 +124,6 @@ namespace lux::render
         const auto* data = reinterpret_cast<const GraphMaterialData*>(desc_bytes.data());
         const RMaterialHandle h = serverUploadGraphMaterial(
             ctx.user_state,
-            p.asset_id,
             *data,
             p.graph_gbuffer_shader,
             p.graph_forward_shader,

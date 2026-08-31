@@ -28,13 +28,11 @@ int main()
     auto sync = std::make_shared<RenderChannelSync>();
     RenderProgramSession session(channel, sync);
 
-    const lux::asset::AssetId asset_id{std::array<std::uint8_t, 16>{1U, 2U, 3U, 4U}};
-    UploadMeshPayload mesh_upload{};
-    mesh_upload.asset_id = asset_id;
-    UploadGraphMaterialPayload material_upload{};
-    material_upload.asset_id = asset_id;
-    assert(mesh_upload.asset_id == asset_id);
-    assert(material_upload.asset_id == asset_id);
+    UpsertMeshInstancePayload mesh_instance{};
+    mesh_instance.mesh = RMeshHandle{3U, 4U};
+    mesh_instance.material = RMaterialHandle{5U, 6U};
+    assert((mesh_instance.mesh == RMeshHandle{3U, 4U}));
+    assert((mesh_instance.material == RMaterialHandle{5U, 6U}));
 
     RenderProgram<> source;
     RenderProgramBuilder<> builder(source);

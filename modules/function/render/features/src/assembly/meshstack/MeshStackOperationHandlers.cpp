@@ -336,21 +336,18 @@ namespace lux::render
         // emits MeshUploadedReply on completion (request-id correlated).
         enum class EMeshUploadStart : std::uint8_t
         {
-            Submitted,
-            Reused,
-            Failed,
-            DuplicateInFlight,
+            SUBMITTED,
+            FAILED,
         };
 
         struct MeshUploadStartResult final
         {
-            EMeshUploadStart code{EMeshUploadStart::Failed};
+            EMeshUploadStart code{EMeshUploadStart::FAILED};
             MeshHandle handle{};
         };
 
         MeshUploadStartResult serverUploadMesh(
             void* user_state,
-            asset::AssetId asset_id,
             const lux::rdesc::Mesh& mesh,
             VertexLayoutId layout,
             std::uint64_t request_id,
@@ -370,15 +367,6 @@ namespace lux::render
             // emplace → init,失败时把未初始化的对象留在(无 erase 的)注册表里,
             // 于是这里必须复查 isInitialized(),否则 allocateOnly() 会崩。
             auto& mesh_res = rctx->globalRegistry().must<MeshResources>();
-            if (const auto existing = mesh_res.findAsset(asset_id))
-            {
-                return {
-                    mesh_res.isReady(existing->index) ? EMeshUploadStart::Reused
-                                                      : EMeshUploadStart::DuplicateInFlight,
-                    *existing
-                };
-            }
-
             auto vdata = std::span<const std::byte>(
                 reinterpret_cast<const std::byte*>(mesh.vertices.data()),
                 mesh.vertices.size() * sizeof(lux::rdesc::Vertex)
@@ -435,12 +423,6 @@ namespace lux::render
                 return {}; // synchronous failure — handler replies
             }
             auto& alloc = result.value();
-            if (!mesh_res.bindAsset(asset_id, alloc.handle))
-            {
-                mesh_res.destroy(alloc.handle);
-                return {};
-            }
-
             MeshTransferTask task{};
             task.mesh_index = alloc.handle.index;
             task.vbo_buf = mesh_res.vertexBuffer(alloc.vbo_segment);
@@ -465,7 +447,7 @@ namespace lux::render
                 mesh_res.destroy(alloc.handle);
                 return {};
             }
-            return {EMeshUploadStart::Submitted, alloc.handle};
+            return {EMeshUploadStart::SUBMITTED, alloc.handle};
         }
 
         void serverDestroyMesh(void* user_state, RMeshHandle handle)
@@ -861,10 +843,11 @@ namespace lux::render
         auto* context = lookupRenderContext(ctx.user_state);
         auto* meshes = context ? context->globalRegistry().find<MeshResources>() : nullptr;
         auto* materials = context ? context->globalRegistry().find<MaterialResources>() : nullptr;
-        const auto mesh = meshes ? meshes->findAsset(p.mesh_asset) : std::nullopt;
-        const auto material = materials ? materials->findAsset(p.material_asset) : std::nullopt;
-        const bool is_missing_asset = !mesh || !material || !meshes->isReady(mesh->index);
-        if (scene == nullptr || context == nullptr || is_missing_asset)
+        const MeshHandle mesh{p.mesh.index, p.mesh.gen};
+        const MaterialHandle material{p.material.index, p.material.gen};
+        const bool is_missing_resource = meshes == nullptr || materials == nullptr || !meshes->alive(mesh) ||
+            !meshes->isReady(mesh.index) || materials->slotRecord(material) == nullptr;
+        if (scene == nullptr || context == nullptr || is_missing_resource)
         {
             ctx.markDispatchError(renderError<err::resource::NotFound>());
             return;
@@ -876,8 +859,8 @@ namespace lux::render
         {
             const detail::MeshInstanceRevision revision{
                 binding->object,
-                RMeshHandle{mesh->index, mesh->gen},
-                RMaterialHandle{material->index, material->gen},
+                p.mesh,
+                p.material,
                 p.transform,
                 p.flags & ~kInstanceInternalFlagClusterOwned,
                 p.geometry_kind,
@@ -902,8 +885,8 @@ namespace lux::render
         const RenderObjectHandle object = detail::createMeshInstance(
             ctx.user_state,
             p.scene_id,
-            RMeshHandle{mesh->index, mesh->gen},
-            RMaterialHandle{material->index, material->gen},
+            p.mesh,
+            p.material,
             p.transform,
             p.flags & ~kInstanceInternalFlagClusterOwned,
             p.geometry_kind,
@@ -1102,24 +1085,15 @@ namespace lux::render
         lux::render::CapacityShortfallWire shortfall{};
         const auto started = serverUploadMesh(
             ctx.user_state,
-            p.asset_id,
             *mesh,
             p.layout_id,
             ctx.currentRequestId(),
             std::move(view.owner),
             &shortfall
         );
-        if (started.code == EMeshUploadStart::Reused)
+        if (started.code != EMeshUploadStart::SUBMITTED)
         {
-            replyToCurrent<UploadMeshPayload>(
-                ctx,
-                MeshUploadedReply{RMeshHandle{started.handle.index, started.handle.gen}, 0u, {}}
-            );
-        }
-        else if (started.code != EMeshUploadStart::Submitted)
-        {
-            const std::uint32_t status = started.code == EMeshUploadStart::DuplicateInFlight ? 2u : 1u;
-            replyToCurrent<UploadMeshPayload>(ctx, MeshUploadedReply{RMeshHandle{}, status, shortfall});
+            replyToCurrent<UploadMeshPayload>(ctx, MeshUploadedReply{RMeshHandle{}, 1u, shortfall});
         }
     }
 

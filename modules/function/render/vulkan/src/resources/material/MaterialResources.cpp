@@ -24,7 +24,6 @@ namespace lux::render
         handle_alive_.push_back(1u);
         instance_refcounts_.push_back(0u);
         destroy_requested_.push_back(0u);
-        handle_assets_.emplace_back();
         return MaterialHandle{index, 1u};
     }
 
@@ -239,7 +238,6 @@ namespace lux::render
     }
 
     Expected<MaterialHandle> MaterialResources::submitGraph(
-        asset::AssetId asset_id,
         const GraphMaterialData& data,
         ShaderHandle gbuffer_shader,
         ShaderHandle forward_shader,
@@ -248,12 +246,6 @@ namespace lux::render
         bool double_sided
     )
     {
-        if (const auto existing = findAsset(asset_id))
-        {
-            destroy_requested_[existing->index] = 0u;
-            return *existing;
-        }
-
         ds_revision_.bump();
 
         GraphFamilyGPU gpu{};
@@ -284,26 +276,7 @@ namespace lux::render
                 .packed_material_type = packMaterialType(EShadingModel::GRAPH),
             }
         );
-        if (!asset_id.isNull())
-        {
-            asset_handles_.emplace(asset_id, ret);
-            handle_assets_[ret.index] = asset_id;
-        }
         return ret;
-    }
-
-    std::optional<MaterialHandle> MaterialResources::findAsset(asset::AssetId id) const noexcept
-    {
-        if (id.isNull())
-        {
-            return std::nullopt;
-        }
-        const auto found = asset_handles_.find(id);
-        if (found == asset_handles_.end() || slot_records_.find(found->second) == nullptr)
-        {
-            return std::nullopt;
-        }
-        return found->second;
     }
 
     RenderError MaterialResources::modifyGraph(MaterialHandle slot, const GraphMaterialData& data)
@@ -392,12 +365,6 @@ namespace lux::render
         // invalidates all scene graphs right after this, so a freed+reused bucket
         // id is rebound to its new PSO before any instance references it.
         bucket_mgr_.release(rec->variant_bucket);
-
-        if (slot.index < handle_assets_.size() && !handle_assets_[slot.index].isNull())
-        {
-            asset_handles_.erase(handle_assets_[slot.index]);
-            handle_assets_[slot.index] = asset::NullAssetId;
-        }
 
         slot_records_.erase(slot);
         instance_refcounts_[slot.index] = 0u;

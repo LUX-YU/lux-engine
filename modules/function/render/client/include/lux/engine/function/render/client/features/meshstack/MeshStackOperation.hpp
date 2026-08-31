@@ -35,6 +35,7 @@
 #include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // VertexLayoutId / kInvalidVertexLayoutId
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
 #include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp> // DestroyResourcePayload
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp> // EOpKind / FeatureOpIds / reply_type_id_of_v
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/compile_time/expected.hpp>
@@ -239,6 +240,7 @@ namespace lux::render
         reply_id = type_ids::ReplyMeshUploaded,
         manual_client = true) UploadMeshPayload
     {
+        asset::AssetId asset_id{};
         VertexLayoutId layout_id{kInvalidVertexLayoutId};
         ExternalDataRef mesh_desc{}; // shared-owned const rdesc::Mesh (the async worker pins it)
     };
@@ -329,6 +331,7 @@ namespace lux::render
     [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<RenderRequest<MeshUploadedReply>, ERenderUploadSubmitError>
     uploadMesh(
         MeshStackUploadClient client,
+        asset::AssetId asset_id,
         const lux::rdesc::Mesh& mesh,
         VertexLayoutId layout_id = kDefaultVertexLayoutId
     );

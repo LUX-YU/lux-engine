@@ -17,10 +17,12 @@
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 #include <span>
@@ -86,6 +88,7 @@ namespace lux::render
         /// SlotRecord routes to the Graph family (ELightingTechnique::Graph) so
         /// the instance draws with the graph-override fragment pipeline.
         Expected<MaterialHandle> submitGraph(
+            asset::AssetId asset_id,
             const GraphMaterialData& data,
             ShaderHandle gbuffer_shader = {},
             ShaderHandle forward_shader = {},
@@ -102,6 +105,8 @@ namespace lux::render
         [[nodiscard]] bool retainForInstance(MaterialHandle slot) noexcept;
         void releaseFromInstance(MaterialHandle slot) noexcept;
         void remove(MaterialHandle slot);
+
+        [[nodiscard]] std::optional<MaterialHandle> findAsset(asset::AssetId id) const noexcept;
 
         // (modify(rdesc::Material) — the builtin closure-material modify — retired in
         //  W5a. modifyGraph() is the sole material-modify path.)
@@ -171,6 +176,8 @@ namespace lux::render
             free_handle_indices_.clear();
             instance_refcounts_.clear();
             destroy_requested_.clear();
+            asset_handles_.clear();
+            handle_assets_.clear();
         }
 
         bool isInitialized() const
@@ -289,6 +296,8 @@ namespace lux::render
         std::vector<uint32_t> free_handle_indices_;
         std::vector<uint32_t> instance_refcounts_;
         std::vector<uint8_t> destroy_requested_;
+        std::unordered_map<asset::AssetId, MaterialHandle> asset_handles_;
+        std::vector<asset::AssetId> handle_assets_;
         std::uint32_t texture_representation_index_{0u};
     };
 

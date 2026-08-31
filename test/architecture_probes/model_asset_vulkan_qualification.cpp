@@ -239,6 +239,7 @@ int main(int argc, char** argv)
 
         auto material_request = uploadGraphMaterial(
             MaterialUploadClient{fixture.uploadClientForTest(), material_ops},
+            material_asset->id(),
             graph_material,
             gbuffer_shader.shader,
             forward_shader.shader,
@@ -251,6 +252,7 @@ int main(int argc, char** argv)
 
         auto mesh_request = uploadMesh(
             MeshStackUploadClient{fixture.uploadClientForTest(), mesh_ops},
+            mesh_asset->id(),
             mesh_asset->data()
         );
         if (!mesh_request) return 13;

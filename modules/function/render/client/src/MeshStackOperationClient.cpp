@@ -105,7 +105,12 @@ namespace lux::render
     }
 
     lux::cxx::expected<RenderRequest<MeshUploadedReply>, ERenderUploadSubmitError>
-    uploadMesh(MeshStackUploadClient client, const lux::rdesc::Mesh& mesh, VertexLayoutId layout_id)
+    uploadMesh(
+        MeshStackUploadClient client,
+        asset::AssetId asset_id,
+        const lux::rdesc::Mesh& mesh,
+        VertexLayoutId layout_id
+    )
     {
         auto owned = std::make_shared<lux::rdesc::Mesh>(mesh);
         const TypeId operation_id = client.ops().id<UploadMeshOp>();
@@ -121,9 +126,10 @@ namespace lux::render
         }
 
         return client.session().trySubmit<MeshUploadedReply>(
-            [owned = std::move(owned), layout_id, operation_id, retained_bytes = *retained_bytes](
+            [owned = std::move(owned), asset_id, layout_id, operation_id, retained_bytes = *retained_bytes](
                 RenderUploadClient::Builder& builder) {
                 UploadMeshPayload payload{};
+                payload.asset_id = asset_id;
                 payload.layout_id = layout_id;
                 payload.mesh_desc = builder.pushSharedBytes(
                     std::static_pointer_cast<const void>(owned),

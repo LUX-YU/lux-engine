@@ -334,8 +334,23 @@ namespace lux::render
         // Returns false on a SYNCHRONOUS allocate failure (the handler then sends the
         // failure reply); on success the reply is DEFERRED — the shared upload worker
         // emits MeshUploadedReply on completion (request-id correlated).
-        bool serverUploadMesh(
+        enum class EMeshUploadStart : std::uint8_t
+        {
+            Submitted,
+            Reused,
+            Failed,
+            DuplicateInFlight,
+        };
+
+        struct MeshUploadStartResult final
+        {
+            EMeshUploadStart code{EMeshUploadStart::Failed};
+            MeshHandle handle{};
+        };
+
+        MeshUploadStartResult serverUploadMesh(
             void* user_state,
+            asset::AssetId asset_id,
             const lux::rdesc::Mesh& mesh,
             VertexLayoutId layout,
             std::uint64_t request_id,
@@ -345,16 +360,24 @@ namespace lux::render
         {
             auto* rctx = lookupRenderContext(user_state);
             if (!rctx)
-                return false;
+                return {};
             // The 96MB mesh arena is built lazily — uploading a mesh is one of the two
             // triggers (the other is StandardMeshStack attach). Idempotent.
             if (!ensureGlobalMeshResources(*rctx))
-                return false;
+                return {};
             // ensureGlobalMeshResources 成功 ⇒ 注册表里有一个**已初始化**的实例:
             // 它走 ensure<T>(init_args),只在 init 成功后才发布。此前它是
             // emplace → init,失败时把未初始化的对象留在(无 erase 的)注册表里,
             // 于是这里必须复查 isInitialized(),否则 allocateOnly() 会崩。
             auto& mesh_res = rctx->globalRegistry().must<MeshResources>();
+            if (const auto existing = mesh_res.findAsset(asset_id))
+            {
+                return {
+                    mesh_res.isReady(existing->index) ? EMeshUploadStart::Reused
+                                                      : EMeshUploadStart::DuplicateInFlight,
+                    *existing
+                };
+            }
 
             auto vdata = std::span<const std::byte>(
                 reinterpret_cast<const std::byte*>(mesh.vertices.data()),
@@ -409,9 +432,14 @@ namespace lux::render
                 {
                     *shortfall_output = lux::render::capacityShortfallWire(*mesh_res.lastCapacityShortfall());
                 }
-                return false; // synchronous failure — handler replies
+                return {}; // synchronous failure — handler replies
             }
             auto& alloc = result.value();
+            if (!mesh_res.bindAsset(asset_id, alloc.handle))
+            {
+                mesh_res.destroy(alloc.handle);
+                return {};
+            }
 
             MeshTransferTask task{};
             task.mesh_index = alloc.handle.index;
@@ -435,9 +463,9 @@ namespace lux::render
             if (!lookupTransferPipeline(user_state)->submitMeshTransfer(std::move(task)))
             {
                 mesh_res.destroy(alloc.handle);
-                return false;
+                return {};
             }
-            return true;
+            return {EMeshUploadStart::Submitted, alloc.handle};
         }
 
         void serverDestroyMesh(void* user_state, RMeshHandle handle)
@@ -984,15 +1012,26 @@ namespace lux::render
         // Success replies are DEFERRED by the shared upload worker (MeshUploadedReply,
         // request-id correlated). Only a synchronous allocate failure replies here.
         lux::render::CapacityShortfallWire shortfall{};
-        if (!serverUploadMesh(
-                ctx.user_state,
-                *mesh,
-                p.layout_id,
-                ctx.currentRequestId(),
-                std::move(view.owner),
-                &shortfall))
+        const auto started = serverUploadMesh(
+            ctx.user_state,
+            p.asset_id,
+            *mesh,
+            p.layout_id,
+            ctx.currentRequestId(),
+            std::move(view.owner),
+            &shortfall
+        );
+        if (started.code == EMeshUploadStart::Reused)
         {
-            replyToCurrent<UploadMeshPayload>(ctx, MeshUploadedReply{RMeshHandle{}, 1u, shortfall});
+            replyToCurrent<UploadMeshPayload>(
+                ctx,
+                MeshUploadedReply{RMeshHandle{started.handle.index, started.handle.gen}, 0u, {}}
+            );
+        }
+        else if (started.code != EMeshUploadStart::Submitted)
+        {
+            const std::uint32_t status = started.code == EMeshUploadStart::DuplicateInFlight ? 2u : 1u;
+            replyToCurrent<UploadMeshPayload>(ctx, MeshUploadedReply{RMeshHandle{}, status, shortfall});
         }
     }
 

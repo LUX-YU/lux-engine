@@ -846,6 +846,7 @@ namespace
         graph_material.tex_mask = 1U;
         auto material_request = uploadGraphMaterial(
             MaterialUploadClient{fixture.uploadClientForTest(), material_ops},
+            asset::NullAssetId,
             graph_material,
             gbuffer_shader.shader,
             forward_shader.shader
@@ -859,6 +860,7 @@ namespace
 
         auto mesh_request = uploadMesh(
             MeshStackUploadClient{fixture.uploadClientForTest(), mesh_ops},
+            asset::NullAssetId,
             makeTriangle()
         );
         if (!mesh_request)

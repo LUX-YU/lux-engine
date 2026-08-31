@@ -1,4 +1,6 @@
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
+#include <lux/engine/function/render/client/features/material/MaterialOperation.hpp>
+#include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
 
 #include <array>
 #include <cassert>
@@ -25,6 +27,14 @@ int main()
     auto channel = RenderProgramChannel<>::create(1U);
     auto sync = std::make_shared<RenderChannelSync>();
     RenderProgramSession session(channel, sync);
+
+    const lux::asset::AssetId asset_id{std::array<std::uint8_t, 16>{1U, 2U, 3U, 4U}};
+    UploadMeshPayload mesh_upload{};
+    mesh_upload.asset_id = asset_id;
+    UploadGraphMaterialPayload material_upload{};
+    material_upload.asset_id = asset_id;
+    assert(mesh_upload.asset_id == asset_id);
+    assert(material_upload.asset_id == asset_id);
 
     RenderProgram<> source;
     RenderProgramBuilder<> builder(source);

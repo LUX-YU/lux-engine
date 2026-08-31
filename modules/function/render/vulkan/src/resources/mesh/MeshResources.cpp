@@ -106,6 +106,7 @@ namespace lux::render
         gens_.reserve(ci.mesh_max_count);
         instance_refcounts_.reserve(ci.mesh_max_count);
         destroy_requested_.reserve(ci.mesh_max_count);
+        handle_assets_.reserve(ci.mesh_max_count);
         mesh_max_count_ = ci.mesh_max_count; // enforced in create()/allocateOnly() (C-4)
 
         // Segment table (read-only, MeshResources handles the geometry part)
@@ -141,6 +142,8 @@ namespace lux::render
         free_.clear();
         instance_refcounts_.clear();
         destroy_requested_.clear();
+        asset_handles_.clear();
+        handle_assets_.clear();
         segments_ssbo_.destroy();
 
         // Destroy all VBO/IBO segments
@@ -473,6 +476,11 @@ namespace lux::render
         // 此前这里完全没有归还,是单向泄漏。
         retired_segment_slots_[current_fi_].push_back(gpu.segment_slot);
         cpu_records_[h.index].valid = false;
+        if (h.index < handle_assets_.size() && !handle_assets_[h.index].isNull())
+        {
+            asset_handles_.erase(handle_assets_[h.index]);
+            handle_assets_[h.index] = asset::NullAssetId;
+        }
         instance_refcounts_[h.index] = 0u;
         destroy_requested_[h.index] = 0u;
         gens_[h.index]++;
@@ -483,6 +491,39 @@ namespace lux::render
     bool MeshResources::alive(MeshHandle h) const
     {
         return h.isValid() && h.index < cpu_records_.size() && cpu_records_[h.index].valid && gens_[h.index] == h.gen;
+    }
+
+    std::optional<MeshHandle> MeshResources::findAsset(asset::AssetId id) const noexcept
+    {
+        if (id.isNull())
+        {
+            return std::nullopt;
+        }
+        const auto found = asset_handles_.find(id);
+        if (found == asset_handles_.end() || !alive(found->second))
+        {
+            return std::nullopt;
+        }
+        return found->second;
+    }
+
+    bool MeshResources::bindAsset(asset::AssetId id, MeshHandle handle)
+    {
+        if (id.isNull())
+        {
+            return true;
+        }
+        if (!alive(handle) || asset_handles_.contains(id))
+        {
+            return false;
+        }
+        if (handle_assets_.size() <= handle.index)
+        {
+            handle_assets_.resize(static_cast<std::size_t>(handle.index) + 1U);
+        }
+        asset_handles_.emplace(id, handle);
+        handle_assets_[handle.index] = id;
+        return true;
     }
 
     Expected<VertexLayoutId> MeshResources::layoutId(MeshHandle h) const

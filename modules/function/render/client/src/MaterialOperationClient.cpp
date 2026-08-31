@@ -37,13 +37,16 @@ namespace lux::render
     } // namespace
 
     lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
-    uploadGraphMaterial(MaterialUploadClient client, const GraphMaterialData& data)
+    uploadGraphMaterial(MaterialUploadClient client, asset::AssetId asset_id, const GraphMaterialData& data)
     {
-        return submitGraphMaterial(client, data, {});
+        UploadGraphMaterialPayload payload{};
+        payload.asset_id = asset_id;
+        return submitGraphMaterial(client, data, payload);
     }
 
     lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> uploadGraphMaterial(
         MaterialUploadClient client,
+        asset::AssetId asset_id,
         const GraphMaterialData& data,
         ShaderHandle gbuffer_shader,
         ShaderHandle forward_shader,
@@ -52,6 +55,7 @@ namespace lux::render
     )
     {
         UploadGraphMaterialPayload payload{};
+        payload.asset_id = asset_id;
         payload.graph_gbuffer_shader = gbuffer_shader;
         payload.graph_forward_shader = forward_shader;
         payload.shader_key = (static_cast<std::uint64_t>(gbuffer_shader.index) << 40) ^

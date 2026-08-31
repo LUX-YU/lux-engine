@@ -242,7 +242,7 @@ namespace lux::render
                 for (std::size_t index = reused_count; status != 3u && index < instances.size(); ++index)
                 {
                     const auto& instance = instances[index];
-                    MeshInstanceCreateStatus create_status{MeshInstanceCreateStatus::Unknown};
+                    EMeshInstanceCreateStatus create_status{EMeshInstanceCreateStatus::UNKNOWN};
                     const auto object = detail::createMeshInstance(
                         context.user_state,
                         payload.scene_id,
@@ -256,11 +256,11 @@ namespace lux::render
                         false,
                         create_status
                     );
-                    if (!object || create_status != MeshInstanceCreateStatus::Ok)
+                    if (!object || create_status != EMeshInstanceCreateStatus::OK)
                     {
                         rollback_new_objects();
                         rollback_tokens();
-                        status = create_status == MeshInstanceCreateStatus::CapacityExhausted ? 3u : 2u;
+                        status = create_status == EMeshInstanceCreateStatus::CAPACITY_EXHAUSTED ? 3u : 2u;
                         break;
                     }
                     auto* instance_resources = scene->resources().find<InstanceResources>();
@@ -298,7 +298,7 @@ namespace lux::render
                             instance.rgba8}
                         );
                     }
-                    MeshInstanceCreateStatus reconfigure_status{MeshInstanceCreateStatus::Ok};
+                    EMeshInstanceCreateStatus reconfigure_status{EMeshInstanceCreateStatus::OK};
                     if (!detail::reconfigureMeshInstances(
                             context.user_state,
                             payload.scene_id,
@@ -307,7 +307,7 @@ namespace lux::render
                     {
                         rollback_new_objects();
                         rollback_tokens();
-                        status = reconfigure_status == MeshInstanceCreateStatus::CapacityExhausted ? 3u : 2u;
+                        status = reconfigure_status == EMeshInstanceCreateStatus::CAPACITY_EXHAUSTED ? 3u : 2u;
                     }
                     else if (resources->upsert(payload, instances, created, created_tokens))
                     {

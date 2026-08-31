@@ -167,14 +167,14 @@ namespace lux::render
             std::uint32_t user_meta_index,
             std::uint32_t transition_milliseconds,
             std::uint32_t transition_seed,
-            MeshInstanceCreateStatus& out_status
+            EMeshInstanceCreateStatus& out_status
         ) // distinguishes config vs capacity failure
         {
             auto* rctx = lookupRenderContext(user_state);
             auto* scene = lookupScene(user_state, scene_id);
             if (!scene || !rctx)
             {
-                out_status = MeshInstanceCreateStatus::InvalidConfiguration;
+                out_status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return RenderObjectHandle{};
             } // dead/wrong scene_id
 
@@ -183,7 +183,7 @@ namespace lux::render
             auto* mat_res = rctx->globalRegistry().find<MaterialResources>();
             if (!inst || !mesh_res || !mat_res)
             {
-                out_status = MeshInstanceCreateStatus::InvalidConfiguration;
+                out_status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return RenderObjectHandle{};
             } // mesh-stack feature absent
 
@@ -193,7 +193,7 @@ namespace lux::render
             const auto* gpu_rec = mesh_res->getGpuRecord(mesh_h);
             if (gpu_rec == nullptr)
             {
-                out_status = MeshInstanceCreateStatus::InvalidConfiguration;
+                out_status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return {};
             }
 
@@ -203,13 +203,13 @@ namespace lux::render
             // instance slot itself is retired.
             if (!mesh_res->retainForInstance(mesh_h))
             {
-                out_status = MeshInstanceCreateStatus::InvalidConfiguration;
+                out_status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return {};
             }
             if (!mat_res->retainForInstance(mat_h))
             {
                 mesh_res->releaseFromInstance(mesh_h);
-                out_status = MeshInstanceCreateStatus::InvalidConfiguration;
+                out_status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return {};
             }
             const auto release_resources = [&]() noexcept {
@@ -222,7 +222,7 @@ namespace lux::render
             if (!object || !slot)
             {
                 release_resources();
-                out_status = MeshInstanceCreateStatus::CapacityExhausted;
+                out_status = EMeshInstanceCreateStatus::CAPACITY_EXHAUSTED;
                 return RenderObjectHandle{};
             } // instance pool exhausted
 
@@ -245,7 +245,7 @@ namespace lux::render
                         inst->unregisterMeshSection(section_ids[j]);
                     inst->freeObject(object);
                     release_resources();
-                    out_status = MeshInstanceCreateStatus::CapacityExhausted;
+                    out_status = EMeshInstanceCreateStatus::CAPACITY_EXHAUSTED;
                     return RenderObjectHandle{}; // section table exhausted
                 }
             }
@@ -322,11 +322,11 @@ namespace lux::render
             {
                 inst->freeObject(object);
                 release_resources();
-                out_status = MeshInstanceCreateStatus::InvalidConfiguration;
+                out_status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return {};
             }
 
-            out_status = MeshInstanceCreateStatus::Ok;
+            out_status = EMeshInstanceCreateStatus::OK;
             return object;
         }
 
@@ -513,7 +513,7 @@ namespace lux::render
         PassMask pass_mask,
         std::uint32_t user_meta_index,
         bool visible_in_all_views,
-        MeshInstanceCreateStatus& status,
+        EMeshInstanceCreateStatus& status,
         std::uint32_t transition_milliseconds,
         std::uint32_t transition_seed
     )
@@ -540,7 +540,7 @@ namespace lux::render
         const auto slot = resolveInstanceSlot(instances, object);
         if (!scene || !instances || !instances->isAlive(slot))
         {
-            status = MeshInstanceCreateStatus::InvalidConfiguration;
+            status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
             if (scene && instances && instances->isAlive(slot))
                 detail::destroyMeshInstance(*scene, *lookupRenderContext(server_state), object);
             return {};
@@ -554,7 +554,7 @@ namespace lux::render
         void* server_state,
         RenderSceneId scene_id,
         std::span<const MeshInstanceRevision> revisions,
-        MeshInstanceCreateStatus& status
+        EMeshInstanceCreateStatus& status
     )
     {
         struct PreparedRevision final
@@ -582,7 +582,7 @@ namespace lux::render
             is_missing_meshes || is_missing_materials;
         if (is_invalid_configuration)
         {
-            status = MeshInstanceCreateStatus::InvalidConfiguration;
+            status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
             return false;
         }
 
@@ -621,7 +621,7 @@ namespace lux::render
             if (is_invalid_input)
             {
                 rollback();
-                status = MeshInstanceCreateStatus::InvalidConfiguration;
+                status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return false;
             }
 
@@ -646,14 +646,14 @@ namespace lux::render
             if (!meshes->retainForInstance(mesh))
             {
                 rollback();
-                status = MeshInstanceCreateStatus::InvalidConfiguration;
+                status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return false;
             }
             if (!materials->retainForInstance(material))
             {
                 meshes->releaseFromInstance(mesh);
                 rollback();
-                status = MeshInstanceCreateStatus::InvalidConfiguration;
+                status = EMeshInstanceCreateStatus::INVALID_CONFIGURATION;
                 return false;
             }
 
@@ -688,7 +688,7 @@ namespace lux::render
                 materials->releaseFromInstance(material);
                 meshes->releaseFromInstance(mesh);
                 rollback();
-                status = MeshInstanceCreateStatus::CapacityExhausted;
+                status = EMeshInstanceCreateStatus::CAPACITY_EXHAUSTED;
                 return false;
             }
 
@@ -755,7 +755,7 @@ namespace lux::render
             materials->releaseFromInstance(previous->material);
             meshes->releaseFromInstance(previous->mesh);
         }
-        status = MeshInstanceCreateStatus::Ok;
+        status = EMeshInstanceCreateStatus::OK;
         return true;
     }
 
@@ -853,7 +853,7 @@ namespace lux::render
             return;
         }
 
-        MeshInstanceCreateStatus status = MeshInstanceCreateStatus::Unknown;
+        EMeshInstanceCreateStatus status = EMeshInstanceCreateStatus::UNKNOWN;
         auto& entities = scene->entities();
         if (auto* binding = entities.valid(p.entity) ? entities.try_get<MeshBinding>(p.entity) : nullptr)
         {

@@ -205,12 +205,12 @@ namespace lux::render
     /// RenderRequest's CommandFailedReply path), so the outcome must NOT default to Ok
     /// (silent zombie) nor to a retriable capacity error (endless retry). Only
     /// CapacityExhausted is transient; Unknown / InvalidConfiguration are permanent.
-    enum class MeshInstanceCreateStatus : std::uint32_t
+    enum class EMeshInstanceCreateStatus : std::uint32_t
     {
-        Unknown = 0,              // default — generic dispatch/protocol failure (server never set it)
-        Ok = 1,                   // created; object valid
-        InvalidConfiguration = 2, // scene / mesh-stack feature absent — permanent (retry futile until fixed)
-        CapacityExhausted = 3,    // instance / section slot exhausted — transient (may succeed later)
+        UNKNOWN = 0,               // default — generic dispatch/protocol failure (server never set it)
+        OK = 1,                    // created; object valid
+        INVALID_CONFIGURATION = 2, // scene / mesh-stack feature absent — permanent (retry futile until fixed)
+        CAPACITY_EXHAUSTED = 3,    // instance / section slot exhausted — transient (may succeed later)
     };
 
     // =========================================================================

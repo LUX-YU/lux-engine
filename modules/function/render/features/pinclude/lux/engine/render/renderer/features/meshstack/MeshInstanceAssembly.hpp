@@ -40,7 +40,7 @@ namespace lux::render::detail
         PassMask pass_mask,
         std::uint32_t user_meta_index,
         bool visible_in_all_views,
-        MeshInstanceCreateStatus& status,
+        EMeshInstanceCreateStatus& status,
         std::uint32_t transition_milliseconds = 0u,
         std::uint32_t transition_seed = 0u
     );
@@ -53,7 +53,7 @@ namespace lux::render::detail
         void* server_state,
         RenderSceneId scene,
         std::span<const MeshInstanceRevision> revisions,
-        MeshInstanceCreateStatus& status
+        EMeshInstanceCreateStatus& status
     );
 
     /// Symmetric render-thread destruction. It first unregisters the object

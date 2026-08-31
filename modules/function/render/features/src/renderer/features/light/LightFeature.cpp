@@ -25,7 +25,7 @@ namespace lux::render
         // ensure<T>: whoever attaches first builds this scene's LightResources; a
         // second LightFeature receives the same instance. Only the first-time creator
         // runs init() + registers the transfer contributor below.
-        auto& reg = sc.sceneRegistry();
+        auto& reg = sc.resources();
         const bool fresh = (reg.find<LightResources>() == nullptr);
         auto& ctx = renderContext();
 
@@ -87,7 +87,7 @@ namespace lux::render
     void LightFeature::onFrameBegin(const FeatureFrameContext& /*context*/)
     {
         auto& scene = renderScene();
-        if (auto* lights = scene.sceneRegistry().find<LightResources>())
+        if (auto* lights = scene.resources().find<LightResources>())
             lights->advanceIntensityTransitions(scene.sceneTime());
     }
 
@@ -100,13 +100,13 @@ namespace lux::render
 
     bool LightFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
-        const auto* lights = renderScene().sceneRegistry().find<LightResources>();
+        const auto* lights = renderScene().resources().find<LightResources>();
         return lights == nullptr || lights->canRebaseSceneOrigin(origin_delta);
     }
 
     void LightFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
     {
-        if (auto* lights = renderScene().sceneRegistry().find<LightResources>())
+        if (auto* lights = renderScene().resources().find<LightResources>())
         {
             lights->rebaseSceneOrigin(origin_delta);
         }

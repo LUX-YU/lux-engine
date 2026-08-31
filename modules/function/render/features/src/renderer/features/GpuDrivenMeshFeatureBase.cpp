@@ -294,7 +294,7 @@ namespace lux::render
         // §2.6: Use member instead of thread_local, eliminating TLS lookup overhead.
         frame_instance_ext_ = {};
         frame_instance_ext_.slot_count = instance_res_ ? instance_res_->aliveCount() : 0;
-        const auto* candidate_source = renderScene().sceneRegistry().find<MeshCullCandidateSource>();
+        const auto* candidate_source = renderScene().resources().find<MeshCullCandidateSource>();
         if (candidate_source != nullptr && candidate_source->active())
         {
             frame_instance_ext_.view_slot_capacity = candidate_source->capacity();
@@ -349,7 +349,7 @@ namespace lux::render
             // GPU-driven mesh feature only find<>s it. If it is absent (feature
             // installed without StandardMeshStack), fail the install instead of
             // dereferencing null.
-            instance_res_ = renderScene().sceneRegistry().find<InstanceResources>();
+            instance_res_ = renderScene().resources().find<InstanceResources>();
             if (!instance_res_)
                 return renderFailure<err::resource::NotFound>();
         }
@@ -680,7 +680,7 @@ namespace lux::render
 
         RGResourceHandle alive_slots_rg{};
         RGResourceHandle candidate_dispatch_rg{};
-        const auto* candidate_source = renderScene().sceneRegistry().find<MeshCullCandidateSource>();
+        const auto* candidate_source = renderScene().resources().find<MeshCullCandidateSource>();
         const bool use_coarse_candidates = candidate_source && candidate_source->active();
         if (use_coarse_candidates)
         {
@@ -733,7 +733,7 @@ namespace lux::render
         // (last frame's pyramid). Absent HzbResources → keep everything (no cull).
         if (hzb_mode_spec_ != 0u)
         {
-            auto* hzb = renderScene().sceneRegistry().find<HzbResources>();
+            auto* hzb = renderScene().resources().find<HzbResources>();
             if (hzb != nullptr)
                 cull_pass.bindResourceDS(
                     1,

@@ -178,7 +178,7 @@ namespace lux::render
                 return RenderObjectHandle{};
             } // dead/wrong scene_id
 
-            auto* inst = scene->sceneRegistry().find<InstanceResources>();
+            auto* inst = scene->resources().find<InstanceResources>();
             auto* mesh_res = rctx->globalRegistry().find<MeshResources>();
             auto* mat_res = rctx->globalRegistry().find<MaterialResources>();
             if (!inst || !mesh_res || !mat_res)
@@ -285,7 +285,7 @@ namespace lux::render
             // write the pool slot into the property. For static meshes vertex_base ==
             // input_vertex_offset == mesh.base_vertex (skinned meshes override these via
             // applyBoneSkinningOne, pointing at the skinned-output transient pool).
-            if (auto* pools = scene->sceneRegistry().find<StaticVertexPoolSet>())
+            if (auto* pools = scene->resources().find<StaticVertexPoolSet>())
             {
                 const auto vertex = pools->handleForMesh(mesh_h);
                 if (vertex.valid())
@@ -463,7 +463,7 @@ namespace lux::render
         InstanceResources* resolveInstances(Ctx& ctx, RenderSceneId scene_id, RenderScene*& sc_out)
         {
             sc_out = lookupScene(ctx.user_state, scene_id);
-            return sc_out ? sc_out->sceneRegistry().find<InstanceResources>() : nullptr;
+            return sc_out ? sc_out->resources().find<InstanceResources>() : nullptr;
         }
 
     } // anonymous namespace (helpers)
@@ -502,7 +502,7 @@ namespace lux::render
             return object;
 
         auto* scene = lookupScene(server_state, scene_id);
-        auto* instances = scene ? scene->sceneRegistry().find<InstanceResources>() : nullptr;
+        auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
         const auto slot = resolveInstanceSlot(instances, object);
         if (!scene || !instances || !instances->isAlive(slot))
         {
@@ -536,7 +536,7 @@ namespace lux::render
 
         auto* context = lookupRenderContext(server_state);
         auto* scene = lookupScene(server_state, scene_id);
-        auto* instances = scene ? scene->sceneRegistry().find<InstanceResources>() : nullptr;
+        auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
         auto* meshes = context ? context->globalRegistry().find<MeshResources>() : nullptr;
         auto* materials = context ? context->globalRegistry().find<MaterialResources>() : nullptr;
         const bool is_missing_context = context == nullptr;
@@ -680,7 +680,7 @@ namespace lux::render
             next.property.pass_and_geometry = pass_and_geometry;
             next.property.user_meta_index = input.user_meta_index;
             next.property.rgba8 = input.rgba8;
-            if (auto* pools = scene->sceneRegistry().find<StaticVertexPoolSet>())
+            if (auto* pools = scene->resources().find<StaticVertexPoolSet>())
             {
                 const auto vertex = pools->handleForMesh(mesh);
                 if (vertex.valid())
@@ -736,7 +736,7 @@ namespace lux::render
 
     void detail::destroyMeshInstance(RenderScene& scene, RenderContext& context, RenderObjectHandle object) noexcept
     {
-        auto* instances = scene.sceneRegistry().find<InstanceResources>();
+        auto* instances = scene.resources().find<InstanceResources>();
         const auto slot = resolveInstanceSlot(instances, object);
         if (!instances || !instances->isAlive(slot))
             return;
@@ -762,7 +762,7 @@ namespace lux::render
     ) noexcept
     {
         auto* scene = lookupScene(server_state, scene_id);
-        auto* instances = scene ? scene->sceneRegistry().find<InstanceResources>() : nullptr;
+        auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
         const auto slot = resolveInstanceSlot(instances, object);
         if (!scene || !instances || !instances->isAlive(slot))
             return;
@@ -782,7 +782,7 @@ namespace lux::render
     ) noexcept
     {
         auto* scene = lookupScene(server_state, scene_id);
-        auto* instances = scene ? scene->sceneRegistry().find<InstanceResources>() : nullptr;
+        auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
         const auto slot = resolveInstanceSlot(instances, object);
         if (!scene || !instances || !instances->isAlive(slot))
             return;
@@ -832,7 +832,7 @@ namespace lux::render
     void handleRetireMeshInstance(GeneralRenderServer::Dispatcher::Ctx& ctx, const RetireMeshInstancePayload& p)
     {
         auto* scene = lookupScene(ctx.user_state, p.scene_id);
-        auto* instances = scene ? scene->sceneRegistry().find<InstanceResources>() : nullptr;
+        auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
         const float duration = static_cast<float>(p.transition_milliseconds) / 1000.0f;
         if (!scene || !instances ||
             !instances->beginFadeRetirement(p.object, scene->sceneTime(), duration, p.transition_seed))
@@ -844,7 +844,7 @@ namespace lux::render
     void handleMeshStackStats(GeneralRenderServer::Dispatcher::Ctx& ctx, const MeshStackStatsPayload& payload)
     {
         auto* scene = lookupScene(ctx.user_state, payload.scene_id);
-        const auto* instances = scene ? scene->sceneRegistry().find<InstanceResources>() : nullptr;
+        const auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
         auto* render_context = lookupRenderContext(ctx.user_state);
         const auto* meshes = render_context ? render_context->globalRegistry().find<MeshResources>() : nullptr;
         MeshStackStatsReply reply{};

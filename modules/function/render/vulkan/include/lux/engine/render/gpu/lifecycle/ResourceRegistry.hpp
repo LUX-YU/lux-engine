@@ -501,7 +501,7 @@ namespace lux::render
     //
     // 作用域现由访问器名表达,一眼可辨且不可能说谎:
     //     RenderContext::globalRegistry()  → 全局
-    //     RenderScene::sceneRegistry()     → 场景
+    //     RenderScene::resources()     → 场景
     // 两者返回的都是同一个 ResourceRegistry。
 
 } // namespace lux::render

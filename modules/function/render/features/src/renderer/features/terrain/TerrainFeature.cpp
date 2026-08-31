@@ -35,7 +35,7 @@ namespace lux::render
     {
         if (config_.page_capacity == 0u || config_.maximum_selected_patches == 0u)
             return renderFailure<err::feature::ResourceInitFailed>();
-        resources_ = &scene.sceneRegistry().ensure<TerrainResources>(config_.page_capacity);
+        resources_ = &scene.resources().ensure<TerrainResources>(config_.page_capacity);
         auto& context = renderContext();
         resources_->setRetireScheduler(
             &contextView().retireScheduler(),
@@ -161,7 +161,7 @@ namespace lux::render
         resources_->beginFrame();
         resources_->onSelectionFrameBegin(context.frame_index);
         if (!cameras_)
-            cameras_ = renderScene().sceneRegistry().find<ViewCameraResource>();
+            cameras_ = renderScene().resources().find<ViewCameraResource>();
         wanted_views_.clear();
         if (cameras_)
         {
@@ -348,7 +348,7 @@ namespace lux::render
                 push.maximum_patches = maximum_patches;
                 push.view_index = context.frame.view_index;
                 push.full_page_capacity = resources_->capacityPages();
-                auto* cameras = renderScene().sceneRegistry().find<ViewCameraResource>();
+                auto* cameras = renderScene().resources().find<ViewCameraResource>();
                 const auto* camera = context.view && cameras ? cameras->find(context.view->handle.index) : nullptr;
                 if (camera)
                 {

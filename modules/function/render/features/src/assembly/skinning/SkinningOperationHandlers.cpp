@@ -125,10 +125,10 @@ namespace lux::render
             d.sc = lookupScene(ctx.user_state, scene_id);
             if (!d.sc)
                 return d;
-            d.skin = d.sc->sceneRegistry().find<SkinningResources>();
-            d.inst = d.sc->sceneRegistry().find<InstanceResources>();
+            d.skin = d.sc->resources().find<SkinningResources>();
+            d.inst = d.sc->resources().find<InstanceResources>();
             d.mesh_res = d.sc->renderContext().globalRegistry().find<MeshResources>();
-            d.pools = d.sc->sceneRegistry().find<StaticVertexPoolSet>();
+            d.pools = d.sc->resources().find<StaticVertexPoolSet>();
             return d;
         }
     } // anonymous namespace (helpers)

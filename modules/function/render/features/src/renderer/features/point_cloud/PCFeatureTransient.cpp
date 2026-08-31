@@ -76,9 +76,9 @@ namespace lux::render
             return r;
 
         // ---- Scene-registry bridge for the upload handler ----
-        if (!renderScene().sceneRegistry().find<TransientPointCloudBuffer>())
-            renderScene().sceneRegistry().emplace<TransientPointCloudBuffer>();
-        incoming_ = renderScene().sceneRegistry().find<TransientPointCloudBuffer>();
+        if (!renderScene().resources().find<TransientPointCloudBuffer>())
+            renderScene().resources().emplace<TransientPointCloudBuffer>();
+        incoming_ = renderScene().resources().find<TransientPointCloudBuffer>();
         return {};
     }
 

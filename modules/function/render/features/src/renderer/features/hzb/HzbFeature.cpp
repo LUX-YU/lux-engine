@@ -70,7 +70,7 @@ namespace lux::render
         //         view and per extent, created in onFrameBegin → rebuildViewAt. ---
         // ensure<T>(init_args):构造 + init + 只在成功时发布。原先同一个对象查了
         // 三次(find 判空 → emplace → 再 find),且 init 失败时对象已经进了注册表。
-        auto& sreg = renderScene().sceneRegistry();
+        auto& sreg = renderScene().resources();
         const bool fresh_hzb = (sreg.find<HzbResources>() == nullptr);
 
         HzbResources::InitInfo ri{};
@@ -218,7 +218,7 @@ namespace lux::render
         // pyramids stay on the same ping-pong phase.
         ++frame_counter_;
 
-        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().sceneRegistry());
+        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
 
         // EVERY active view gets its own pyramid, sized to its own extent.
         // (This used to take only the FIRST active view's extent and build one

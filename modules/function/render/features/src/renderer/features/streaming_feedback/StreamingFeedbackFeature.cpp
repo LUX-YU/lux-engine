@@ -169,7 +169,7 @@ namespace lux::render
 
         auto* material_resources = context.globalRegistry().find<MaterialResources>();
         auto buckets = collectVariantBuckets(material_resources);
-        auto* vertex_pools = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vertex_pools = renderScene().resources().find<VertexPoolRegistry>();
 
         auto draw = builder.addPass("StreamingFeedbackMaskDraw", ERGPassType::GRAPHICS)
                         .write(mask, lux::render::ETextureRole::COLOR_ATTACHMENT)
@@ -188,7 +188,7 @@ namespace lux::render
             draw.addPipeline(bucket_pipelines_.pick(bucket, buckets[bucket]));
         if (vertex_pools != nullptr && vertex_pools->isInitialized())
             draw.useEngineSet(EDescriptorSetSlot::VertexPool);
-        if (auto* producers = renderScene().sceneRegistry().find<VertexProductionRegistry>())
+        if (auto* producers = renderScene().resources().find<VertexProductionRegistry>())
         {
             for (const auto& producer : producers->producers())
                 draw.read(builder.referenceBuffer(producer.rg_buffer_name), ERGBufferRole::STORAGE);

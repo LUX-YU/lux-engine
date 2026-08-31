@@ -21,6 +21,9 @@
 
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
+#include <lux/engine/function/render/client/core/RenderEntityId.hpp>
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
+#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
 
 #include <iosfwd> // std::ostream (dumpCompiledGraph)
 #include <lux/engine/render/RenderFeature.hpp>
@@ -39,6 +42,8 @@
 #include <lux/engine/math/AABB.hpp>
 #include <lux/cxx/container/SparseSet.hpp>
 #include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet (generational views)
+
+#include <entt/entity/registry.hpp>
 
 #include <Eigen/Core>
 
@@ -86,9 +91,21 @@ namespace lux::render
     //  RenderScene
     // ─────────────────────────────────────────────────────────────────────
 
+    struct MeshBinding final
+    {
+        RenderObjectHandle object{};
+    };
+
+    struct LightBinding final
+    {
+        RLightHandle light{};
+    };
+
     class LUX_FUNCTION_PUBLIC RenderScene
     {
     public:
+        using EntityRegistry = entt::basic_registry<RenderEntityId>;
+
         struct Config
         {
             std::string scene_name{"RenderScene"};
@@ -481,17 +498,26 @@ namespace lux::render
         //  Primitive Registry
         // ================================================================
 
+        [[nodiscard]] EntityRegistry& entities() noexcept
+        {
+            return entities_;
+        }
+        [[nodiscard]] const EntityRegistry& entities() const noexcept
+        {
+            return entities_;
+        }
+
         // ================================================================
         //  Scene Resource Registry
         // ================================================================
 
-        [[nodiscard]] ResourceRegistry& sceneRegistry() noexcept
+        [[nodiscard]] ResourceRegistry& resources() noexcept
         {
-            return scene_registry_;
+            return resources_;
         }
-        [[nodiscard]] const ResourceRegistry& sceneRegistry() const noexcept
+        [[nodiscard]] const ResourceRegistry& resources() const noexcept
         {
-            return scene_registry_;
+            return resources_;
         }
 
         /// Per-scene growable descriptor-pool chain backing this scene's
@@ -570,7 +596,7 @@ namespace lux::render
         PipelineConfig pipeline_config_;
 
         // ── Per-scene descriptor-pool chain (growable; backs all per-scene
-        //    persistent descriptor sets). Declared BEFORE scene_registry_ so it
+        //    persistent descriptor sets). Declared BEFORE resources_ so it
         //    is destroyed AFTER it during member destruction (reverse order). ──
         SceneDescriptorArena scene_descriptor_arena_;
         /// The descriptor set merged by bind-frequency domain.
@@ -582,7 +608,11 @@ namespace lux::render
         std::unique_ptr<SceneDomainDescriptorSets> scene_domain_sets_;
 
         // ── Per-scene resource registry ──────────────────────────────────────
-        ResourceRegistry scene_registry_;
+        ResourceRegistry resources_;
+
+        // Stable cross-lane entities own only bindings to specialized Render
+        // resources; resource payloads remain in their dedicated stores.
+        EntityRegistry entities_;
 
         /// 特性容器、查询与每(特性,视图)状态账本(纯数据;事务编排留在本类)。
         RenderFeatureSet feature_set_;
@@ -598,10 +628,10 @@ namespace lux::render
         /// 漏了不崩,是静默泄漏。
         std::unique_ptr<SceneGraphCache> graph_cache_;
 
-        /// 视图集合与生命周期。声明在 scene_registry_ 与 graph_cache_ 之后:
+        /// 视图集合与生命周期。声明在 resources_ 与 graph_cache_ 之后:
         /// 构造需要前者(每视图 GPU 槽从其中的 SceneResources 取);后者由构造体内的
         /// setGraphCache() 接上,并由上面那条注释保证它活得比本成员久。
-        SceneViewSet view_set_{scene_registry_};
+        SceneViewSet view_set_{resources_};
         SlotHandle scene_global_slot_{}; ///< SceneResources scene SoA slot
         FrameRetireScheduler::OwnerToken retire_owner_token_{0};
 

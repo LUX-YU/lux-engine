@@ -20,7 +20,7 @@
 #include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/view_camera/StandardViewCameraFeature.hpp>
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
-#include <lux/engine/render/scene/RenderScene.hpp>        // getView / sceneRegistry
+#include <lux/engine/render/scene/RenderScene.hpp>        // getView / resources
 #include <lux/engine/render/resources/SceneResources.hpp> // ViewGpuData / fillViewGpuData (neutral staging fill)
 #include <lux/engine/function/render/client/RenderProgramSession.hpp> // ViewCameraProxy: builder / sendBulk
 
@@ -89,7 +89,7 @@ namespace lux::render
 
             // Feature-owned per-view camera mirror — read by the camera consumers
             // (cull / shadow / hzb / deferred lighting) via ViewCameraResource.
-            if (auto* cam = sc->sceneRegistry().find<ViewCameraResource>())
+            if (auto* cam = sc->resources().find<ViewCameraResource>())
                 cam->setView(u.view.index, data);
 
             // Publish the neutral per-view GPU bytes into the core View. The core

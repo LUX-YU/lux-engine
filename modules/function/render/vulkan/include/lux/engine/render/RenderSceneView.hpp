@@ -42,8 +42,8 @@ namespace lux::render
         }
 
         // ── Per-scene resource registry (find<T> instantiates on caller's T) ──
-        [[nodiscard]] ResourceRegistry& sceneRegistry() noexcept;
-        [[nodiscard]] const ResourceRegistry& sceneRegistry() const noexcept;
+        [[nodiscard]] ResourceRegistry& resources() noexcept;
+        [[nodiscard]] const ResourceRegistry& resources() const noexcept;
 
         // ── Per-scene descriptor-pool chain + transfer scheduler ────────
         [[nodiscard]] SceneDescriptorArena& descriptorArena() noexcept;

@@ -4,7 +4,7 @@
  * @brief GPU resource container for trajectory rendering.
  *
  * Owns the shared vertex buffer used by all trajectory feature modes.
- * Registered in the scene via sceneRegistry().emplace<TrajectoryResources>().
+ * Registered in the scene via resources().emplace<TrajectoryResources>().
  */
 
 #include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>

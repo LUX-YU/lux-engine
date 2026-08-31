@@ -98,7 +98,7 @@ namespace lux::render
         // feature detach so a late command always lands somewhere stable). First
         // attach wires the deferred-destroy queue + the transfer contributor.
         {
-            const bool fresh = (scene.sceneRegistry().find<Canvas2DInstanceArena>() == nullptr);
+            const bool fresh = (scene.resources().find<Canvas2DInstanceArena>() == nullptr);
 
             Canvas2DInstanceArena::InitInfo ii{};
             ii.device_context = &ctx.deviceContext();
@@ -108,7 +108,7 @@ namespace lux::render
             ii.max_capacity = cfg_.max_capacity;
             ii.offscreen_groups = cfg_.offscreen_groups;
 
-            auto arena_r = scene.sceneRegistry().ensure<Canvas2DInstanceArena>(ii);
+            auto arena_r = scene.resources().ensure<Canvas2DInstanceArena>(ii);
             if (!arena_r)
                 return lux::cxx::unexpected<RenderError>(arena_r.error());
             arena_ = *arena_r;

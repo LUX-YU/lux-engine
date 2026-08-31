@@ -83,7 +83,7 @@ namespace lux::render
     //  每视图 GPU 槽
     // ─────────────────────────────────────────────────────────────────────
 
-    // SceneResources 由 RenderScene 构造函数无条件 emplace 进同一个 scene_registry_,
+    // SceneResources 由 RenderScene 构造函数无条件 emplace 进同一个 resources_,
     // 而视图生命周期全在构造之后 —— 故用 must<>:原先的判空是死守卫,且它把
     // "槽位分配失败"静默成了"view_slot 保持无效",后者要到渲染期才炸。
     void SceneViewSet::initViewUBO(View& view)

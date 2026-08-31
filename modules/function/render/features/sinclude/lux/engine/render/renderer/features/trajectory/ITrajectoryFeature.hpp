@@ -7,7 +7,7 @@
  * any future trajectory rendering mode (e.g. ribbon / tube).
  *
  * Shared GPU resources (TrajectoryGlobalBuffer) are accessed through
- * sceneView().sceneRegistry().find<TrajectoryResources>().
+ * sceneView().resources().find<TrajectoryResources>().
  */
 
 #include <lux/engine/render/RenderFeature.hpp>

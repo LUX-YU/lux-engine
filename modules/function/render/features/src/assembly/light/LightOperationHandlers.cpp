@@ -42,7 +42,7 @@ namespace lux::render
         LightResources* resolveLights(Ctx& ctx, RenderSceneId scene_id)
         {
             auto* sc = lookupScene(ctx.user_state, scene_id);
-            return sc ? sc->sceneRegistry().find<LightResources>() : nullptr;
+            return sc ? sc->resources().find<LightResources>() : nullptr;
         }
     } // anonymous namespace (helpers)
 

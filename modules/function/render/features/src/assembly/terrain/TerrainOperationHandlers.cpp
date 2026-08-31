@@ -12,7 +12,7 @@ namespace lux::render
     void handleTerrainPageUpload(GeneralRenderServer::Dispatcher::Ctx& context, const UploadTerrainPagePayload& payload)
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<TerrainResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<TerrainResources>() : nullptr;
         const auto bytes = resolveExternalData(context.program, payload.page_data);
         std::uint32_t status = 1u;
         std::uint32_t slot = 0xffffffffu;
@@ -39,7 +39,7 @@ namespace lux::render
     void handleTerrainPageRemove(GeneralRenderServer::Dispatcher::Ctx& context, const RemoveTerrainPagePayload& payload)
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<TerrainResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<TerrainResources>() : nullptr;
         const auto status = resources && resources->remove(payload.id, payload.revision) ? 0u : 1u;
         replyToCurrent<RemoveTerrainPagePayload>(
             context,
@@ -53,7 +53,7 @@ namespace lux::render
     )
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<TerrainResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<TerrainResources>() : nullptr;
         replyToCurrent<QueryTerrainPageCacheStatsPayload>(
             context,
             resources ? resources->stats() : TerrainPageCacheStatsReply{}

@@ -209,7 +209,7 @@ namespace lux::render
 
         // Per-scene bindless vertex-pool DS (set 7). Bound unconditionally so
         // skinned draws can read their output pool; static draws ignore set 7.
-        auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vpr = renderScene().resources().find<VertexPoolRegistry>();
 
         // ---- Forward draw (graphics) ----
         auto& draw_pass =
@@ -263,7 +263,7 @@ namespace lux::render
         // (replaces the hardcoded "SkinnedVertexPool" magic string). An
         // empty registry yields no reads, so non-producer scenes don't
         // dead-prune this draw pass against a missing resource.
-        if (auto* vpr = renderScene().sceneRegistry().find<VertexProductionRegistry>())
+        if (auto* vpr = renderScene().resources().find<VertexProductionRegistry>())
         {
             for (const auto& prod : vpr->producers())
             {

@@ -20,7 +20,7 @@ namespace lux::render
     void handleTriOverlayUpload(GeneralRenderServer::Dispatcher::Ctx& ctx, const UploadTriOverlayPayload& p)
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        auto* buf = sc ? sc->sceneRegistry().find<TransientTriOverlayBuffer>() : nullptr;
+        auto* buf = sc ? sc->resources().find<TransientTriOverlayBuffer>() : nullptr;
         if (!buf)
         {
             replyToCurrent<UploadTriOverlayPayload>(ctx, TriOverlayUploadedReply{p.chunk_id, 1u});

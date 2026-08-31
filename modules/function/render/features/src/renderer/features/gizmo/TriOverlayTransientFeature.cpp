@@ -86,7 +86,7 @@ namespace lux::render
         createSlotBuffers();
 
         // ---- Scene-registry bridge for the upload handler ----
-        incoming_ = &sceneView().sceneRegistry().ensure<TransientTriOverlayBuffer>();
+        incoming_ = &sceneView().resources().ensure<TransientTriOverlayBuffer>();
         return {};
     }
 

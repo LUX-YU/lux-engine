@@ -153,6 +153,12 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
+    if(content MATCHES "sceneRegistry")
+        message(FATAL_ERROR
+            "Architecture: active source '${normalized}' restores the retired RenderScene registry accessor."
+        )
+    endif()
+
     if(normalized MATCHES "/engine/scene/" AND content MATCHES
        "WorldStreamingBinding|StreamingManager|SceneServices|SceneContext|SystemFactoryRegistry|SimulationContext|WorldPartitionWorkspace|WorldMaterializationPlan|WorldMaterializationRegistry|TimeDomainRegistry|ClockManager|PresentationManager|LaneManager|ScenePhaseManager|AssetDemandKey|DemandTracker|ResidencyBridge|ResourceDemandRegistry")
         message(FATAL_ERROR

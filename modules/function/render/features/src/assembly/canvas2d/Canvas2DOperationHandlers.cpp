@@ -14,7 +14,7 @@
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>          // typed-op register/unregister
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
 #include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>  // FeatureDescriptor / featureId
-#include <lux/engine/render/scene/RenderScene.hpp>                       // sceneRegistry().find
+#include <lux/engine/render/scene/RenderScene.hpp>                       // resources().find
 
 #include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeature.hpp>
@@ -38,7 +38,7 @@ namespace lux::render
             auto* sc = lookupScene(ctx.user_state, scene);
             if (!sc)
                 return nullptr;
-            auto* arena = sc->sceneRegistry().find<Canvas2DInstanceArena>();
+            auto* arena = sc->resources().find<Canvas2DInstanceArena>();
             return (arena && arena->initialized()) ? arena : nullptr;
         }
     } // namespace

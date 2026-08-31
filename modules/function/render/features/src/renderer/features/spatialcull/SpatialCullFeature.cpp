@@ -24,7 +24,7 @@ namespace lux::render
         // Feature owns its scene resource (PointCloud/Trajectory pattern): emplace
         // the SpatialCullGrid here, NOT in the general RenderScene constructor.
         // ensure<>:本 feature 自建自有,句柄存成员,onFrameBegin 不再每帧重查。
-        auto& reg = sc.sceneRegistry();
+        auto& reg = sc.resources();
         auto& ctx = renderContext();
 
         SpatialCullGrid::InitInfo gi{};
@@ -59,7 +59,7 @@ namespace lux::render
         // grid_ 是自建的,attach 后恒非空。inst / cam 记忆化:两者都归别的 feature
         // 所有且本 feature 未声明 requires=,缺失是合法运行态,所以判空保留、
         // 只把每帧的哈希查找收敛成一次。
-        auto& reg = renderScene().sceneRegistry();
+        auto& reg = renderScene().resources();
         // RenderCluster's candidate source is the authoritative coarse filter.
         // Do not rebuild the legacy per-slot distance mask in that mode: besides
         // intersecting two unrelated distance policies, doing so scans every alive

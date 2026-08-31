@@ -29,7 +29,7 @@ namespace lux::render
         TrajectoryResources* findTrajRes(Ctx& ctx, RenderSceneId scene_id)
         {
             auto* sc = lookupScene(ctx.user_state, scene_id);
-            return sc ? sc->sceneRegistry().find<TrajectoryResources>() : nullptr;
+            return sc ? sc->resources().find<TrajectoryResources>() : nullptr;
         }
 
         std::span<const GpuTrajectoryVertex> decodePoints(Ctx& ctx, BlobRef blob_ref, uint32_t count)

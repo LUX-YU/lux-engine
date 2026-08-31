@@ -370,7 +370,7 @@ namespace lux::render
         if (!view.view_slot.isValid())
             return;
 
-        auto& scene_res = scene.sceneRegistry().must<SceneResources>();
+        auto& scene_res = scene.resources().must<SceneResources>();
 
         const uint32_t slot = rt.stamp.slotIndex();
 

@@ -1,6 +1,7 @@
 find_package(Vulkan REQUIRED)
 find_package(lux-cxx REQUIRED COMPONENTS core container concurrent memory)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+find_package(EnTT CONFIG REQUIRED)
 
 set(RENDER_VULKAN_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/comm/FeatureRegistration.cpp
@@ -152,6 +153,7 @@ target_link_libraries(
         lux::engine::resource::description
     PRIVATE
         GPUOpen::VulkanMemoryAllocator
+        EnTT::EnTT
 )
 
 # libandroid provides ANativeWindow_getWidth/Height for RenderSurface.
@@ -179,3 +181,24 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 add_test(NAME render_program_server_semantics_test COMMAND render_program_server_semantics_test)
+
+add_executable(
+    render_entity_identity_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_entity_identity_test.cpp
+)
+target_link_libraries(
+    render_entity_identity_test
+    PRIVATE render_vulkan
+)
+if(MSVC)
+    target_compile_options(render_entity_identity_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(render_entity_identity_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  render_entity_identity_test
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(NAME render_entity_identity_test COMMAND render_entity_identity_test)

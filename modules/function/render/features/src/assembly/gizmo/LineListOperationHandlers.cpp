@@ -20,7 +20,7 @@ namespace lux::render
     void handleLineListUpload(GeneralRenderServer::Dispatcher::Ctx& ctx, const UploadLineListPayload& p)
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        auto* buf = sc ? sc->sceneRegistry().find<TransientLineListBuffer>() : nullptr;
+        auto* buf = sc ? sc->resources().find<TransientLineListBuffer>() : nullptr;
         if (!buf)
         {
             replyToCurrent<UploadLineListPayload>(ctx, LineListUploadedReply{p.chunk_id, 1u});

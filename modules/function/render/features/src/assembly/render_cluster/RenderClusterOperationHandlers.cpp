@@ -37,8 +37,8 @@ namespace lux::render
         validateViewCullInputs(RenderScene& scene, const RenderClusterResources& clusters) noexcept
         {
             CullValidationCounts result{};
-            const auto* instances = scene.sceneRegistry().find<InstanceResources>();
-            const auto* cameras = scene.sceneRegistry().find<ViewCameraResource>();
+            const auto* instances = scene.resources().find<InstanceResources>();
+            const auto* cameras = scene.resources().find<ViewCameraResource>();
             if (instances == nullptr || cameras == nullptr)
                 return result;
 
@@ -130,7 +130,7 @@ namespace lux::render
             RenderClusterWireId family
         )
         {
-            auto* instances = scene.sceneRegistry().find<InstanceResources>();
+            auto* instances = scene.resources().find<InstanceResources>();
             if (!instances)
                 return;
             for (const auto change :
@@ -170,7 +170,7 @@ namespace lux::render
     handleRenderClusterUpload(GeneralRenderServer::Dispatcher::Ctx& context, const UploadRenderClusterPayload& payload)
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<RenderClusterResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<RenderClusterResources>() : nullptr;
         const auto blob = resolveExternalData(context.program, payload.instances);
         const auto required_bytes =
             static_cast<std::uint64_t>(payload.instance_count) * sizeof(RenderClusterWireInstance);
@@ -263,7 +263,7 @@ namespace lux::render
                         status = create_status == MeshInstanceCreateStatus::CapacityExhausted ? 3u : 2u;
                         break;
                     }
-                    auto* instance_resources = scene->sceneRegistry().find<InstanceResources>();
+                    auto* instance_resources = scene->resources().find<InstanceResources>();
                     const auto instance_slot =
                         instance_resources ? instance_resources->resolveSlot(object) : InstanceSlot::invalid();
                     if (!instance_resources || !instance_resources->isAlive(instance_slot))
@@ -342,7 +342,7 @@ namespace lux::render
     handleRenderClusterRemove(GeneralRenderServer::Dispatcher::Ctx& context, const RemoveRenderClusterPayload& payload)
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<RenderClusterResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<RenderClusterResources>() : nullptr;
         if (!resources)
         {
             replyToCurrent<RemoveRenderClusterPayload>(
@@ -398,7 +398,7 @@ namespace lux::render
     )
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<RenderClusterResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<RenderClusterResources>() : nullptr;
         const auto clusters =
             resources ? std::min<std::size_t>(resources->clusterCount(), std::numeric_limits<std::uint32_t>::max())
                       : 0u;
@@ -460,7 +460,7 @@ namespace lux::render
     )
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<RenderClusterResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<RenderClusterResources>() : nullptr;
         if (resources)
         {
             const ViewHandle view{payload.view_index, payload.view_generation};
@@ -477,7 +477,7 @@ namespace lux::render
     )
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);
-        auto* resources = scene ? scene->sceneRegistry().find<RenderClusterResources>() : nullptr;
+        auto* resources = scene ? scene->resources().find<RenderClusterResources>() : nullptr;
         RenderClusterPickReply reply{};
         if (resources)
         {

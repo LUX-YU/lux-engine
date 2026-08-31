@@ -9,14 +9,14 @@
 
 namespace lux::render
 {
-    ResourceRegistry& RenderSceneView::sceneRegistry() noexcept
+    ResourceRegistry& RenderSceneView::resources() noexcept
     {
-        return scene_->sceneRegistry();
+        return scene_->resources();
     }
 
-    const ResourceRegistry& RenderSceneView::sceneRegistry() const noexcept
+    const ResourceRegistry& RenderSceneView::resources() const noexcept
     {
-        return scene_->sceneRegistry();
+        return scene_->resources();
     }
 
     SceneDescriptorArena& RenderSceneView::descriptorArena() noexcept

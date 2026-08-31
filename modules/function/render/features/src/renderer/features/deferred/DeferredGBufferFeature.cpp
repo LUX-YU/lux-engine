@@ -263,7 +263,7 @@ namespace lux::render
 
         // Per-scene bindless vertex-pool DS (set 7). Mandatory for ALL mesh
         // draws (static + skinned) — both read vertices via set 7.
-        auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vpr = renderScene().resources().find<VertexPoolRegistry>();
 
         // ---- Pass 3: GBuffer draw (graphics, MRT) ----
         auto draw_pass =
@@ -302,7 +302,7 @@ namespace lux::render
         // Order the GBuffer draw after every compute-vertex producer (skinning,
         // future morph/cloth) so the graph inserts the compute→vertex barrier.
         // Iterating the registry keeps deferred in lockstep with forward.
-        if (auto* vproducers = renderScene().sceneRegistry().find<VertexProductionRegistry>())
+        if (auto* vproducers = renderScene().resources().find<VertexProductionRegistry>())
             for (const auto& prod : vproducers->producers())
                 draw_pass.read(builder.referenceBuffer(prod.rg_buffer_name), ERGBufferRole::STORAGE);
 

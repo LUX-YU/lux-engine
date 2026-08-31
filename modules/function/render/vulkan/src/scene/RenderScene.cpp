@@ -112,14 +112,14 @@ namespace lux::render
             renderFatal("RenderScene: 域描述符 set 分配失败(池尺寸不足或域布局缺失)");
         }
 
-        // Register per-scene SceneResources in scene_registry_.
+        // Register per-scene SceneResources in resources_.
         {
             // 一次 emplace 拿到句柄,下面全程复用 —— 原先 emplace 之后又 find 两遍
             // (还判了一次空),同一个刚建出来的对象查三次。
-            auto* sr = scene_registry_.emplace<SceneResources>().get();
+            auto* sr = resources_.emplace<SceneResources>().get();
             // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。PostUpload:
             // 它要在其余资源之后推进(与改动前 kUploadPhase 声明的阶段一致)。
-            scene_registry_.addBeginFrameHook(SceneResources::kUploadPhase, [sr](const FrameStamp& s) {
+            resources_.addBeginFrameHook(SceneResources::kUploadPhase, [sr](const FrameStamp& s) {
                 sr->onFrameBeginMaintenance(s);
             }
             );
@@ -163,7 +163,7 @@ namespace lux::render
         // a scene that doesn't add SpatialCullFeature pays nothing.)
 
         // Acquire a scene-global slot from the per-scene SceneResources.
-        scene_global_slot_ = scene_registry_.must<SceneResources>().allocateScene();
+        scene_global_slot_ = resources_.must<SceneResources>().allocateScene();
 
         // ── Unified transfer scheduler ──────────────────────────────────
         {
@@ -180,7 +180,7 @@ namespace lux::render
 
             // Register SceneResources (HOST_WRITE barriers merged into post-batch).
             transfer_scheduler_.contributors().add(
-                makeTransferContributor(&scene_registry_.must<SceneResources>(), /*priority=*/10)
+                makeTransferContributor(&resources_.must<SceneResources>(), /*priority=*/10)
             );
 
             // (LightResources transfer contributor is registered by LightFeature in
@@ -587,7 +587,7 @@ namespace lux::render
         // 只有 ShadowResources 订阅视图销毁(每视图缓存驱逐),而它现在是每场景的
         // (Plan A),所以场景注册表的通知能到达它。旧的全局注册表通知是死的 no-op
         // (没有任何全局帧服务重写 onViewDestroyed),已删。
-        scene_registry_.notifySceneViewDestroyed(scene_global_slot_.index, handle.index);
+        resources_.notifySceneViewDestroyed(scene_global_slot_.index, handle.index);
 
         // 此处**不**释放 GPU 槽:其它 frames-in-flight 槽位的在飞命令可能仍在引用,
         // 必须等 endFrame 的 GC 水位越过。
@@ -830,7 +830,7 @@ namespace lux::render
         // 顺序 = 登记顺序 = 原先的注册顺序。
         for (uint32_t phase = 0; phase < static_cast<uint32_t>(EUploadPhase::Count); ++phase)
         {
-            for (const auto& hook : scene_registry_.beginFrameHooks(static_cast<EUploadPhase>(phase)))
+            for (const auto& hook : resources_.beginFrameHooks(static_cast<EUploadPhase>(phase)))
                 hook(stamp);
         }
 
@@ -840,7 +840,7 @@ namespace lux::render
         // (it runs pre-fence-wait during the drain); the actual mapped-SSBO write
         // for the current slot happens HERE so it never races the in-flight frame.
         {
-            auto& scene_res = scene_registry_.must<SceneResources>();
+            auto& scene_res = resources_.must<SceneResources>();
             SceneGlobalGpuData sg{};
             sg.time_sec = scene_time_;
             sg.delta_time = scene_delta_time_;
@@ -942,12 +942,12 @@ namespace lux::render
         render_ctx_->retireScheduler().purge(retire_owner_token_);
 
         // Free the scene-global slot, then shutdown per-scene resources.
-        scene_registry_.must<SceneResources>().freeScene(scene_global_slot_);
+        resources_.must<SceneResources>().freeScene(scene_global_slot_);
 
         // Shutdown transfer scheduler before registry (scheduler references
         // resources owned by registry).
         transfer_scheduler_.shutdown();
-        scene_registry_.shutdown();
+        resources_.shutdown();
 
         // Destroy the per-scene descriptor-pool chain LAST — this frees every
         // descriptor set the scene allocated in one shot (the per-scene

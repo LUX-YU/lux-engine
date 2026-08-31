@@ -17,7 +17,7 @@
  *       · buildStandardGraphicsLayout / registerGraphics
  *       · device / vmaAllocator
  *       · retireBuffer / retireImage / retireImageView / retireSampler
- *       · sceneRegistry().ensure<T>()
+ *       · resources().ensure<T>()
  *   - the creation tier promoted to public in P4: RGBuilder, PassRecordContext,
  *     GraphicsPipelineTemplate
  *   - raw Vulkan + VMA, which a feature that authors its own pipelines/resources
@@ -36,7 +36,7 @@
 #include <lux/engine/function/render/graph/RGEnums.hpp>                // ERGPassType / ERenderStage
 #include <lux/engine/render/graph/PassRecordContext.hpp>               // PassRecordContext (kernel ctx)
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp> // GraphicsPipelineTemplate
-#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>        // sceneRegistry().ensure<T>()
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>        // resources().ensure<T>()
 #include <lux/engine/render/comm/server/FeatureRegistration.hpp>       // addFeature(void* scene, ...)
 #include <lux/engine/render/graph/FrameExternalSync.hpp>               // addExternalGraphicsWait/Signal
 #include <lux/engine/function/render/client/RenderProtocol.hpp>        // FeatureFactory / makeSimpleFactory
@@ -112,7 +112,7 @@ namespace sample_ext
             pipeline_ = cv.registerGraphics(tmpl, infos);
 
             // A per-scene resource, owned via the public registry facade.
-            sceneView().sceneRegistry().ensure<SampleResource>();
+            sceneView().resources().ensure<SampleResource>();
 
             // Author-owned GPU resources, created with the feature's own VMA usage.
             allocator_ = cv.vmaAllocator();

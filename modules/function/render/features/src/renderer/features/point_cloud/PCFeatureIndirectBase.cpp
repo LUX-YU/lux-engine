@@ -93,7 +93,7 @@ namespace lux::render
         // 4M 点位的 VMA 缓冲是真会分配不出来的量级 —— 失败时注册表里什么都没有,
         // 而不是留下一个已发布的空资源让 attach 照常成功、到绘制期才暴露。
         auto pc_r =
-            renderScene().sceneRegistry().ensure<PointCloudResources>(ctx.vmaAllocator(), kMaxGlobalPoints, max_nodes_);
+            renderScene().resources().ensure<PointCloudResources>(ctx.vmaAllocator(), kMaxGlobalPoints, max_nodes_);
         if (!pc_r)
             return lux::cxx::unexpected<RenderError>(pc_r.error());
         auto* pc_res = *pc_r;
@@ -235,7 +235,7 @@ namespace lux::render
                     return;
 
                 const uint32_t view_handle = ctx.view ? ctx.view->handle.index : 0;
-                auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().sceneRegistry());
+                auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
 
                 // Upload CullingParams UBO
                 {

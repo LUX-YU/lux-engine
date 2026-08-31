@@ -208,7 +208,7 @@ namespace lux::render
         vma_ = ctx.vmaAllocator();
         device_ = ctx.deviceContext().logicalDevice();
 
-        auto* shadow_res = scene.sceneRegistry().find<ShadowResources>();
+        auto* shadow_res = scene.resources().find<ShadowResources>();
         max_shadow_slices_ = (shadow_res && shadow_res->isInitialized()) ? shadow_res->maxSlices() : kMaxShadowSlices;
 
         // Shared instance storage: OWNED (ensure<>d AND init()ed) by
@@ -217,7 +217,7 @@ namespace lux::render
         // instead of dereferencing null. (— this dependency should also be declared
         // in the MeshShadow FeatureDescriptor once StandardMeshStack has a
         // FeatureTypeId.)
-        instance_res_ = scene.sceneRegistry().find<InstanceResources>();
+        instance_res_ = scene.resources().find<InstanceResources>();
         if (!instance_res_)
             return renderFailure<err::resource::NotFound>();
 
@@ -375,7 +375,7 @@ namespace lux::render
         mdc_info_slot_ = frame_counter_++ % kMaxFramesInFlight;
 
         if (shadow_res_cache_ == nullptr)
-            shadow_res_cache_ = renderScene().sceneRegistry().find<ShadowResources>();
+            shadow_res_cache_ = renderScene().resources().find<ShadowResources>();
         auto* shadow_res = shadow_res_cache_;
         if (!shadow_res || !shadow_res->isInitialized())
         {
@@ -730,7 +730,7 @@ namespace lux::render
     void MeshShadowFeature::addPasses(RGBuilder& builder)
     {
         // Resolve shadow resources from registry
-        auto* shadow_res = renderScene().sceneRegistry().find<ShadowResources>();
+        auto* shadow_res = renderScene().resources().find<ShadowResources>();
         if (!shadow_res || !shadow_res->isInitialized())
             return;
 
@@ -995,7 +995,7 @@ namespace lux::render
 
         // Single caster pipeline = the current technique's (ensured above).
         // Set 3 = bindless vertex pool is mandatory.
-        auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vpr = renderScene().resources().find<VertexPoolRegistry>();
 
         // The technique declares whether the caster writes a color target in
         // addition to depth: PCF = depth-only (null), EVSM = the RGBA16F moment
@@ -1050,7 +1050,7 @@ namespace lux::render
             // 个槽 —— 一次域绑定覆盖两者)。
             shadow_draw.useEngineSet(EDescriptorSetSlot::VertexPool);
             // Order shadow draw after every compute-vertex producer (skinning, ...).
-            if (auto* vproducers = renderScene().sceneRegistry().find<VertexProductionRegistry>())
+            if (auto* vproducers = renderScene().resources().find<VertexProductionRegistry>())
                 for (const auto& prod : vproducers->producers())
                     shadow_draw.read(builder.referenceBuffer(prod.rg_buffer_name), ERGBufferRole::STORAGE);
         }
@@ -1107,7 +1107,7 @@ namespace lux::render
             return;
 
         auto& ctx = renderContext();
-        auto* shadow_res = renderScene().sceneRegistry().find<ShadowResources>();
+        auto* shadow_res = renderScene().resources().find<ShadowResources>();
         VkDescriptorSetLayout shadow_set0 =
             (shadow_res && shadow_res->isInitialized()) ? shadow_res->descriptorSetLayout() : VK_NULL_HANDLE;
         if (shadow_set0 == VK_NULL_HANDLE)

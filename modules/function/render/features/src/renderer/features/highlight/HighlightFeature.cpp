@@ -269,7 +269,7 @@ namespace lux::render
         auto* mat_res = ctx.globalRegistry().find<MaterialResources>();
         auto variant_buckets = collectVariantBuckets(mat_res);
 
-        auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vpr = renderScene().resources().find<VertexPoolRegistry>();
 
         // ---- Mask draw (depth-less, R8) ----
         auto draw_pass =
@@ -298,7 +298,7 @@ namespace lux::render
             draw_pass.useEngineSet(EDescriptorSetSlot::VertexPool);
 
         // Order after skinning (live skeletal silhouette).
-        if (auto* vproducers = renderScene().sceneRegistry().find<VertexProductionRegistry>())
+        if (auto* vproducers = renderScene().resources().find<VertexProductionRegistry>())
             for (const auto& prod : vproducers->producers())
                 draw_pass.read(builder.referenceBuffer(prod.rg_buffer_name), ERGBufferRole::STORAGE);
 

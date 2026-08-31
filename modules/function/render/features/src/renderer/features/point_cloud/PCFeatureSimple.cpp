@@ -58,7 +58,7 @@ namespace lux::render
         // 到绘制期才以「按未初始化缓冲画」的形式暴露。
         // ⚠️ 这个类型被两个点云 feature 用**不同容量** ensure —— 命中路径丢弃实参是
         //    既有行为(谁先到谁定容量),这里保持不变。
-        auto pc_r = sv.sceneRegistry().ensure<PointCloudResources>(
+        auto pc_r = sv.resources().ensure<PointCloudResources>(
             cv.vmaAllocator(),
             cfg.max_global_points,
             cfg.max_octree_nodes

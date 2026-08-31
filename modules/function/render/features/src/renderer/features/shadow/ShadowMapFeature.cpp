@@ -358,7 +358,7 @@ namespace lux::render
         //  ensure<T>() 就是干这个的,LightFeature / StandardMeshStackFeature 已在用;
         //  而那两层判空是死的 —— emplace<T>().get() 结构上不可能返回空:new 失败会抛,
         //  之后的 getAs 查的正是刚 emplace 出来的下标。)
-        auto& sreg = scene.sceneRegistry();
+        auto& sreg = scene.resources();
         const bool fresh = (sreg.find<ShadowResources>() == nullptr);
         // LightResources 一次解析、全程复用:本 feature 的描述符声明了
         // requires=lux.render.light.v1(ShadowMapOperation.hpp 的 LUX_COMM_CONFIG),
@@ -621,7 +621,7 @@ namespace lux::render
         // the HIT deep-copy (now a move from prev) and the unconditional re-snapshot
         // (now skipped). (P-4 / [M13])
         const uint32_t scene_key = renderScene().sceneGlobalSlot().index;
-        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().sceneRegistry());
+        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
         renderScene().forEachActiveView([&](View& view) {
             const ViewFrameData* cam_fd = cam ? cam->find(view.handle.index) : nullptr;
             ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
@@ -1189,7 +1189,7 @@ namespace lux::render
 
         // Per-view 3D camera state now lives in ViewCameraResource (found-or-default
         // preserves the old behavior of reading a zero cached_frame_data when absent).
-        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().sceneRegistry());
+        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
         const ViewFrameData* cam_fd = cam ? cam->find(view.handle.index) : nullptr;
         const ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
 

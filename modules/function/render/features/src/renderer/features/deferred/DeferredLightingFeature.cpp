@@ -172,7 +172,7 @@ namespace lux::render
         // cluster passes are added/dropped to match. Rendering stays correct either
         // way (the shader's grid.w==0 fallback), so this is purely a perf fix. (perf)
         if (light_cache_ == nullptr)
-            light_cache_ = renderScene().sceneRegistry().find<LightResources>();
+            light_cache_ = renderScene().resources().find<LightResources>();
         auto* light_res = light_cache_;
         const uint32_t light_count =
             light_res ? (light_res->lightCount<PointLightGPU>() + light_res->lightCount<SpotLightGPU>()) : 0u;
@@ -509,7 +509,7 @@ namespace lux::render
         auto shadow_atlas = builder.referenceTexture(cfg_.shadow_atlas);
 
         if (light_cache_ == nullptr)
-            light_cache_ = renderScene().sceneRegistry().find<LightResources>();
+            light_cache_ = renderScene().resources().find<LightResources>();
         auto* light_res = light_cache_;
 
         const uint32_t cluster_x = std::max(cfg_.cluster_x, 1u);
@@ -674,7 +674,7 @@ namespace lux::render
                     ClusterParamsGPU params{};
                     if (rec.view)
                     {
-                        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().sceneRegistry());
+                        auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
                         const ViewFrameData* cam_fd = cam ? cam->find(rec.view->handle.index) : nullptr;
                         ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
                         const auto& cv = vfd.camera_view;

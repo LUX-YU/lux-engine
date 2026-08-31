@@ -37,7 +37,7 @@ namespace lux::render
         void handleUploadPointCloudChunk(Ctx& ctx, const UploadPointCloudChunkPayload& p)
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
-            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
             if (!pc_res || !pc_res->isInitialized())
             {
                 replyToCurrent<UploadPointCloudChunkPayload>(ctx, PointCloudChunkUploadedReply{p.chunk_id, 1u});
@@ -58,7 +58,7 @@ namespace lux::render
         void handleRemovePointCloudChunk(Ctx& ctx, const RemovePointCloudChunkPayload& p)
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
-            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
             if (!pc_res || !pc_res->isInitialized())
                 return;
             pc_res->globalBuffer().freeSlot(p.chunk_id);
@@ -68,7 +68,7 @@ namespace lux::render
         void handleClearAllPointCloud(Ctx& ctx, const ClearAllPointCloudPayload& p)
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
-            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
             if (!pc_res || !pc_res->isInitialized())
             {
                 replyToCurrent<ClearAllPointCloudPayload>(ctx, GenericOkReply{1u});
@@ -81,7 +81,7 @@ namespace lux::render
         void handleClearPointCloudChunk(Ctx& ctx, const ClearPointCloudChunkPayload& p)
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
-            auto* pc_res = sc ? sc->sceneRegistry().find<PointCloudResources>() : nullptr;
+            auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
             if (!pc_res || !pc_res->isInitialized())
             {
                 replyToCurrent<ClearPointCloudChunkPayload>(ctx, GenericOkReply{1u});
@@ -267,7 +267,7 @@ namespace lux::render
         void handleReplaceTransientPoints(Ctx& ctx, const UploadPointCloudChunkPayload& p)
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
-            auto* buf = sc ? sc->sceneRegistry().find<TransientPointCloudBuffer>() : nullptr;
+            auto* buf = sc ? sc->resources().find<TransientPointCloudBuffer>() : nullptr;
             if (!buf)
             {
                 replyToCurrent<UploadPointCloudChunkPayload>(ctx, PointCloudChunkUploadedReply{p.chunk_id, 1u});

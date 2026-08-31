@@ -18,7 +18,7 @@ namespace lux::render
         // (whoever attaches first builds it). No GPU state — it is a plain CPU
         // mirror filled by the camera op handler each frame and read by the camera
         // consumers (cull / shadow / hzb / deferred lighting).
-        sc.sceneRegistry().ensure<ViewCameraResource>();
+        sc.resources().ensure<ViewCameraResource>();
         return {};
     }
 
@@ -34,19 +34,19 @@ namespace lux::render
         // A view was destroyed (RenderScene::removeView → deallocateViewState per
         // feature). Evict its camera entry so a later REUSED view id can't inherit
         // stale matrices / frustum — the camera used to die with View::cached_frame_data.
-        if (auto* cam = sceneView().sceneRegistry().find<ViewCameraResource>())
+        if (auto* cam = sceneView().resources().find<ViewCameraResource>())
             cam->removeView(view);
     }
 
     bool StandardViewCameraFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
-        const auto* cameras = renderScene().sceneRegistry().find<ViewCameraResource>();
+        const auto* cameras = renderScene().resources().find<ViewCameraResource>();
         return cameras == nullptr || cameras->canRebaseSceneOrigin(origin_delta);
     }
 
     void StandardViewCameraFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
     {
-        if (auto* cameras = renderScene().sceneRegistry().find<ViewCameraResource>())
+        if (auto* cameras = renderScene().resources().find<ViewCameraResource>())
         {
             cameras->rebaseSceneOrigin(origin_delta);
         }

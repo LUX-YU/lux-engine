@@ -86,7 +86,7 @@ namespace lux::render
             return r;
 
         // ---- Scene-registry bridge for the upload handler ----
-        incoming_ = &sceneView().sceneRegistry().ensure<TransientLineListBuffer>();
+        incoming_ = &sceneView().resources().ensure<TransientLineListBuffer>();
         return {};
     }
 

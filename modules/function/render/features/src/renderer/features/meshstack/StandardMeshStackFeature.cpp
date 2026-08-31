@@ -38,7 +38,7 @@ namespace lux::render
         // a second mesh feature gets the same instances. Order matters —
         // VertexPoolRegistry MUST precede StaticVertexPoolSet (the latter holds a
         // pointer to it, and reverse-order teardown must drop the set first).
-        auto& reg = sc.sceneRegistry();
+        auto& reg = sc.resources();
         auto& ctx = renderContext();
 
         // (0) GLOBAL mesh-resource arena (vertex 64MB + index 32MB). Built lazily
@@ -154,7 +154,7 @@ namespace lux::render
     void StandardMeshStackFeature::onFrameBegin(const FeatureFrameContext& /*context*/)
     {
         auto& scene = renderScene();
-        auto* instances = scene.sceneRegistry().find<InstanceResources>();
+        auto* instances = scene.resources().find<InstanceResources>();
         if (!instances)
             return;
         for (const auto object : instances->collectExpiredFadeRetirements(scene.sceneTime()))
@@ -169,7 +169,7 @@ namespace lux::render
         // transaction synchronously on the render owner: detach every instance
         // pin before the scene registry destroys InstanceResources. GPU memory
         // retirement itself remains FIF-deferred by the global resource owners.
-        auto* instances = sc.sceneRegistry().find<InstanceResources>();
+        auto* instances = sc.resources().find<InstanceResources>();
         if (!instances)
             return;
         auto* materials = renderContext().globalRegistry().find<MaterialResources>();
@@ -185,13 +185,13 @@ namespace lux::render
 
     bool StandardMeshStackFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
-        const auto* instances = renderScene().sceneRegistry().find<InstanceResources>();
+        const auto* instances = renderScene().resources().find<InstanceResources>();
         return instances == nullptr || instances->canRebaseSceneOrigin(origin_delta);
     }
 
     void StandardMeshStackFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
     {
-        if (auto* instances = renderScene().sceneRegistry().find<InstanceResources>())
+        if (auto* instances = renderScene().resources().find<InstanceResources>())
         {
             instances->rebaseSceneOrigin(origin_delta);
         }

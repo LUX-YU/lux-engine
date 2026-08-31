@@ -52,7 +52,7 @@ namespace lux::render
         // b11 的接收端。LightResources 由 LightFeature ensure —— 装配顺序上
         // 灯光特性先行(压测/编排器均如此);缺席时本特性静默不发布(AO 仍
         // 会被渲染,只是没人消费)。
-        light_res_ = scene.sceneRegistry().find<LightResources>();
+        light_res_ = scene.resources().find<LightResources>();
         return {};
     }
 

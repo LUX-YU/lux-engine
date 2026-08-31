@@ -7,7 +7,7 @@
 //  matrices + derived inverses, world camera position, frustum, viewport) that
 //  the core View used to carry inline. Consumers — Forward/Deferred cull
 //  (GpuDrivenMeshFeatureBase), MeshShadow, Hzb, PointCloud, SpatialCull,
-//  DeferredLighting — read it via sceneRegistry().find<ViewCameraResource>().
+//  DeferredLighting — read it via resources().find<ViewCameraResource>().
 //
 //  A 2D / headless / compute-only scene that omits StandardViewCamera carries
 //  none of this — the core View stays domain-neutral (extent + GPU slot only).
@@ -96,7 +96,7 @@ namespace lux::render
     /// 场景的常态,而那条路径本就什么都不做。
     ///
     /// 缓存一旦命中即永久有效:注册表没有 erase,type_map_ 永远保留首个实例;
-    /// 消费方(feature)在 sceneRegistry 关停之前就已 detach 销毁。
+    /// 消费方(feature)在 resources 关停之前就已 detach 销毁。
     [[nodiscard]] inline ViewCameraResource*
     resolveViewCameraOnce(ViewCameraResource*& cache, ResourceRegistry& reg) noexcept
     {

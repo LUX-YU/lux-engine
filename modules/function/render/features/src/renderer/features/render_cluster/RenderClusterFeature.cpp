@@ -40,11 +40,11 @@ namespace lux::render
 
     Expected<void> RenderClusterFeature::initAndAttachTo(RenderScene& scene)
     {
-        auto& resources = scene.sceneRegistry().ensure<RenderClusterResources>();
-        auto* instances = scene.sceneRegistry().find<InstanceResources>();
+        auto& resources = scene.resources().ensure<RenderClusterResources>();
+        auto* instances = scene.resources().find<InstanceResources>();
         if (!instances)
             return renderFailure<err::resource::NotFound>();
-        auto& candidate_source = scene.sceneRegistry().ensure<MeshCullCandidateSource>();
+        auto& candidate_source = scene.resources().ensure<MeshCullCandidateSource>();
         auto& context = renderContext();
         if (!resources.initializeGpuCulling(
                 context.deviceContext(),
@@ -213,12 +213,12 @@ namespace lux::render
 
     void RenderClusterFeature::onDetachFromScene(RenderScene& scene)
     {
-        if (auto* resources = scene.sceneRegistry().find<RenderClusterResources>())
+        if (auto* resources = scene.resources().find<RenderClusterResources>())
         {
             resources->shutdownGpuCulling();
             resources->shutdownPicking();
         }
-        if (auto* candidate_source = scene.sceneRegistry().find<MeshCullCandidateSource>())
+        if (auto* candidate_source = scene.resources().find<MeshCullCandidateSource>())
         {
             candidate_source->clear();
         }
@@ -232,13 +232,13 @@ namespace lux::render
 
     bool RenderClusterFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
-        const auto* resources = renderScene().sceneRegistry().find<RenderClusterResources>();
+        const auto* resources = renderScene().resources().find<RenderClusterResources>();
         return resources == nullptr || resources->canRebaseSceneOrigin(origin_delta);
     }
 
     void RenderClusterFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
     {
-        if (auto* resources = renderScene().sceneRegistry().find<RenderClusterResources>())
+        if (auto* resources = renderScene().resources().find<RenderClusterResources>())
         {
             resources->rebaseSceneOrigin(origin_delta);
         }
@@ -246,8 +246,8 @@ namespace lux::render
 
     bool RenderClusterFeature::allocateViewState(std::uint32_t view_index, RenderScene& scene)
     {
-        auto* resources = scene.sceneRegistry().find<RenderClusterResources>();
-        auto* instances = scene.sceneRegistry().find<InstanceResources>();
+        auto* resources = scene.resources().find<RenderClusterResources>();
+        auto* instances = scene.resources().find<InstanceResources>();
         if (!resources || !instances)
             return false;
         scene.forEachActiveView([view_index, resources, instances](auto& view) {
@@ -268,12 +268,12 @@ namespace lux::render
     void RenderClusterFeature::onFrameBegin(const FeatureFrameContext& context)
     {
         auto& scene = renderScene();
-        auto* resources = scene.sceneRegistry().find<RenderClusterResources>();
-        auto* instances = scene.sceneRegistry().find<InstanceResources>();
+        auto* resources = scene.resources().find<RenderClusterResources>();
+        auto* instances = scene.resources().find<InstanceResources>();
         if (!resources || !instances)
             return;
         resources->onPickingFrameBegin(context.frame_index);
-        auto* cameras = scene.sceneRegistry().find<ViewCameraResource>();
+        auto* cameras = scene.resources().find<ViewCameraResource>();
         for (const auto family : resources->hierarchyParents())
         {
             const auto* parent = resources->find(family);
@@ -353,7 +353,7 @@ namespace lux::render
         }
 
         bool capacity_changed = false;
-        auto* candidate_source = scene.sceneRegistry().find<MeshCullCandidateSource>();
+        auto* candidate_source = scene.resources().find<MeshCullCandidateSource>();
         if (!resources->prepareGpuCulling(context.frame_index, *instances, capacity_changed))
         {
             if (candidate_source && candidate_source->active())
@@ -376,8 +376,8 @@ namespace lux::render
 
     void RenderClusterFeature::addPasses(RGBuilder& builder)
     {
-        auto* resources = renderScene().sceneRegistry().find<RenderClusterResources>();
-        auto* instances = renderScene().sceneRegistry().find<InstanceResources>();
+        auto* resources = renderScene().resources().find<RenderClusterResources>();
+        auto* instances = renderScene().resources().find<InstanceResources>();
         if (!resources || !instances)
         {
             return;
@@ -395,7 +395,7 @@ namespace lux::render
             return builder.importBuffer(std::move(name), description, std::move(imported));
         };
 
-        auto* candidate_source = renderScene().sceneRegistry().find<MeshCullCandidateSource>();
+        auto* candidate_source = renderScene().resources().find<MeshCullCandidateSource>();
         const bool has_candidate_source = candidate_source != nullptr && candidate_source->active();
         const bool has_cull_pipelines = cluster_cull_pipeline_.valid() && candidate_expand_pipeline_.valid();
         const bool has_cull_layouts = cluster_cull_set_layout_ != VK_NULL_HANDLE &&
@@ -535,7 +535,7 @@ namespace lux::render
                     push.scene_index = context.frame.scene_index;
                     push.view_index = context.frame.view_index;
                     push.cluster_count = cluster_count;
-                    auto* cameras = renderScene().sceneRegistry().find<ViewCameraResource>();
+                    auto* cameras = renderScene().resources().find<ViewCameraResource>();
                     const auto* camera = cameras ? cameras->find(context.view->handle.index) : nullptr;
                     if (camera)
                     {
@@ -710,7 +710,7 @@ namespace lux::render
         );
 
         auto* meshes = renderContext().globalRegistry().find<MeshResources>();
-        auto* vertex_pools = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vertex_pools = renderScene().resources().find<VertexPoolRegistry>();
         if (!meshes || !vertex_pools || !vertex_pools->isInitialized())
             return;
         const auto import_segmented_buffers = [&builder, meshes](

@@ -21,7 +21,7 @@
  *
  *   - EVertexProductKind + vertexProductRgName(): an enum drives the stable
  *     RG buffer name, so a wrong name is a COMPILE error, not a silent prune.
- *   - VertexProductionRegistry: lives in RenderScene::sceneRegistry(). A
+ *   - VertexProductionRegistry: lives in RenderScene::resources(). A
  *     producer publish()es itself once (in its init); mesh-draw consumers
  *     iterate producers() and declare an RG read on each output by name. The
  *     record carries only the STABLE name (not a per-compile RGResourceHandle),

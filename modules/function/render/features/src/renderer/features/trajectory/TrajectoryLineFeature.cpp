@@ -80,7 +80,7 @@ namespace lux::render
         // ensure<T>(init_args): the registry inits and publishes only on success, so
         // a failed VMA allocation leaves NOTHING discoverable instead of a
         // published-but-empty resource this feature would then attach on top of.
-        auto traj_r = sv.sceneRegistry().ensure<TrajectoryResources>(cv.vmaAllocator(), cfg_.max_global_vertices);
+        auto traj_r = sv.resources().ensure<TrajectoryResources>(cv.vmaAllocator(), cfg_.max_global_vertices);
         if (!traj_r)
             return lux::cxx::unexpected<RenderError>(traj_r.error());
         auto* traj_res = *traj_r;

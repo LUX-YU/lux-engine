@@ -21,7 +21,7 @@
  * an input source — the dispatch caller passes the input pool id (fetched
  * from StaticVertexPoolSet) as part of queueDispatch().
  *
- * Lives in the scene registry (RenderScene::sceneRegistry), mirroring
+ * Lives in the scene registry (RenderScene::resources), mirroring
  * ParticleResources. SkinningFeature finds/creates it, owns the
  * compute pipeline + descriptor set, and drives the per-frame dispatch
  * list built here.

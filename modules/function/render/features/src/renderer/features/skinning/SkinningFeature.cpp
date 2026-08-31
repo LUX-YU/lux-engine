@@ -50,7 +50,7 @@ namespace lux::render
 
     SkinningResources* SkinningFeature::skinningResources() noexcept
     {
-        return renderScene().sceneRegistry().find<SkinningResources>();
+        return renderScene().resources().find<SkinningResources>();
     }
 
     lux::render::Expected<void> SkinningFeature::initAndAttachTo(RenderScene& /*scene*/)
@@ -69,15 +69,15 @@ namespace lux::render
         // --- 1. SkinningResources (per-scene): bone palette + output pool ---
         // 蒙皮的输出要挂进无绑定顶点池才画得出来。池不在 = 装配顺序错了
         // (StandardMeshStack 必须先装),不是「蒙皮可选」。
-        auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vpr = renderScene().resources().find<VertexPoolRegistry>();
         if (vpr == nullptr)
             return renderFailure<err::feature::DependencyMissing>(
                 encodeFeatureType(::lux::render::featureId("lux.render.skinning.v1")),
                 encodeFeatureType(::lux::render::featureId("lux.render.mesh_stack.v1"))
             );
 
-        if (!renderScene().sceneRegistry().find<SkinningResources>())
-            renderScene().sceneRegistry().emplace<SkinningResources>();
+        if (!renderScene().resources().find<SkinningResources>())
+            renderScene().resources().emplace<SkinningResources>();
 
         auto* skin = skinningResources();
         {
@@ -216,7 +216,7 @@ namespace lux::render
         //         (replaces the magic-string cross-feature link). The
         //         producer's lifetime parity with SkinningResources (both owned
         //         by the scene) means no unpublish is needed here. ---
-        if (auto* production = renderScene().sceneRegistry().find<VertexProductionRegistry>())
+        if (auto* production = renderScene().resources().find<VertexProductionRegistry>())
             production->publish(EVertexProductKind::Skinning);
 
         return {};
@@ -230,7 +230,7 @@ namespace lux::render
 
         // set 1 = bindless vertex pool: the compute reads its INPUT vertices from
         // it. Required by the compute pipeline layout, so bail if absent.
-        auto* vpr = renderScene().sceneRegistry().find<VertexPoolRegistry>();
+        auto* vpr = renderScene().resources().find<VertexPoolRegistry>();
         if (!vpr || !vpr->isInitialized())
             return;
 

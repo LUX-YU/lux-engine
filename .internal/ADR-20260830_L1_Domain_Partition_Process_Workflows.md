@@ -22,7 +22,8 @@ it owns no World description, storage, resolver or runtime object mapping.
 Simulation may depend on DOMAIN foundations and must not depend on World. World may depend on DOMAIN foundations and
 must not depend on Simulation.
 
-Process is package-scoped. `process/execution` remains domain-blind. `process/world` and `process/asset` may own typed,
+Process is package-scoped. `process/execution` remains domain-blind. `process/world_loading` and
+`process/asset_loading` may own typed,
 time-spanning workflows over lower-layer contracts, but may not depend on Scene, Render, Editor, Toolchain or gameplay
 policy. This does not authorize ProcessRuntime, AsyncRuntime, a service bag, a workflow registry or a manager.
 

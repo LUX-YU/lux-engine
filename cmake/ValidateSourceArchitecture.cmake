@@ -25,12 +25,20 @@ foreach(retired_root IN ITEMS
     "${source_root}/engine/simulation"
     "${source_root}/engine/world"
     "${source_root}/engine/domain/world_identity"
+    "${source_root}/engine/domain/partition/core"
+    "${source_root}/engine/domain/world/core"
+    "${source_root}/engine/domain/simulation/core"
+    "${source_root}/engine/domain/simulation/systems"
     "${source_root}/engine/domain/simulation/script_binding"
     "${source_root}/engine/domain/simulation/script"
     "${source_root}/engine/authoring/script_binding"
     "${source_root}/engine/authoring/flowforge"
     "${source_root}/engine/tools"
     "${source_root}/engine/toolchain/script"
+    "${source_root}/engine/process/asset"
+    "${source_root}/engine/process/world"
+    "${source_root}/engine/scene/core"
+    "${source_root}/engine/scene/runtime"
     "${source_root}/modules/resource/asset/script"
 )
     if(EXISTS "${retired_root}")
@@ -122,6 +130,13 @@ string(CONCAT retired_script_compression_vocabulary
 foreach(source IN LISTS production_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
     file(READ "${source}" content)
+
+    if(content MATCHES
+       "lux/engine/domain/WorldObjectId[.]hpp|lux::domain::WorldObjectId|lux/engine/process/(asset|world)/|lux::process::(asset|world)::|lux/engine/simulation/systems/|lux/engine/scene/runtime/(render|world)/")
+        message(FATAL_ERROR
+            "Architecture: active source '${normalized}' references a retired post-cleanup API path."
+        )
+    endif()
 
     if(content MATCHES "(^|[\r\n])[ \t]*throw([ \t;(]|$)")
         message(FATAL_ERROR
@@ -778,18 +793,18 @@ if(EXISTS "${scene_composition_cmake}")
     if(scene_composition_target_contract MATCHES
        "lux::engine::(process|render)|stdexec|scene_world_materialization")
         message(FATAL_ERROR
-            "Architecture: scene/core depends on Process, Render or runtime/world."
+            "Architecture: scene/composition depends on Process, Render or world materialization."
         )
     endif()
 endif()
 
-set(scene_world_runtime_cmake "${source_root}/engine/scene/integration/world_materialization/CMakeLists.txt")
-if(EXISTS "${scene_world_runtime_cmake}")
-    file(READ "${scene_world_runtime_cmake}" scene_world_runtime_contract)
-    if(scene_world_runtime_contract MATCHES
+set(scene_world_materialization_cmake "${source_root}/engine/scene/integration/world_materialization/CMakeLists.txt")
+if(EXISTS "${scene_world_materialization_cmake}")
+    file(READ "${scene_world_materialization_cmake}" scene_world_materialization_contract)
+    if(scene_world_materialization_contract MATCHES
        "spatial3d|spatial2d|lux::engine::(render|editor|authoring|toolchain)")
         message(FATAL_ERROR
-            "Architecture: scene/runtime/world acquired concrete policy or an upper-layer dependency."
+            "Architecture: scene/world_materialization acquired concrete policy or an upper-layer dependency."
         )
     endif()
 endif()
@@ -1062,25 +1077,25 @@ foreach(source IN LISTS runtime_asset_boundary_sources)
     endif()
 endforeach()
 
-set(world_runtime_header
-    "${source_root}/engine/scene/integration/world_materialization/include/lux/engine/scene/WorldRuntime.hpp"
+set(world_loading_header
+    "${source_root}/engine/process/world_loading/include/lux/engine/process/world_loading/WorldPartitionLoadSender.hpp"
 )
-set(world_runtime_source
-    "${source_root}/engine/scene/integration/world_materialization/src/WorldRuntime.cpp"
+set(world_loading_source
+    "${source_root}/engine/process/world_loading/src/WorldPartitionLoad.cpp"
 )
 set(world_partition_data_header
     "${source_root}/engine/domain/world/storage/include/lux/engine/world/WorldPartitionData.hpp"
 )
-if(EXISTS "${world_runtime_header}" AND EXISTS "${world_runtime_source}")
-    file(READ "${world_runtime_header}" world_runtime_header_contract)
-    file(READ "${world_runtime_source}" world_runtime_source_contract)
-    if(NOT world_runtime_header_contract MATCHES "std::size_t[ \\t]+max_bytes" OR
-       world_runtime_source_contract MATCHES "512U[ \\t]*[*][ \\t]*1024U")
+if(EXISTS "${world_loading_header}" AND EXISTS "${world_loading_source}")
+    file(READ "${world_loading_header}" world_loading_header_contract)
+    file(READ "${world_loading_source}" world_loading_source_contract)
+    if(NOT world_loading_header_contract MATCHES "std::size_t[ \\t]+max_bytes" OR
+       world_loading_source_contract MATCHES "512U[ \\t]*[*][ \\t]*1024U")
         message(FATAL_ERROR
             "Architecture: World partition load lost its Product-supplied byte budget."
         )
     endif()
-    if(NOT world_runtime_source_contract MATCHES "accounted_bytes[ \\t]*=")
+    if(NOT world_loading_source_contract MATCHES "accounted_bytes[ \\t]*=")
         message(FATAL_ERROR
             "Architecture: World range IO does not account submitted bytes."
         )
@@ -1168,6 +1183,14 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
 )
 foreach(source IN LISTS active_cmake)
     file(READ "${source}" content)
+    if(content MATCHES
+       "(^|[^A-Za-z0-9_])(partition_core|world_core|simulation_core|simulation_runtime|scene_core|scene_runtime_(presentation|world|render|render_meta)|process_asset|process_world)([^A-Za-z0-9_]|$)" OR
+       content MATCHES
+       "lux-engine-(scene-world-runtime|simulation-core|process-(asset|world)([^A-Za-z0-9_-]|$)|world([^A-Za-z0-9_-]|$))")
+        message(FATAL_ERROR
+            "Architecture: active CMake '${source}' references a retired post-cleanup target or package."
+        )
+    endif()
     if(content MATCHES
        "add_subdirectory[ \t\r\n]*\\([^\\)]*legacy|target_link_libraries[ \t\r\n]*\\([^\\)]*legacy")
         message(FATAL_ERROR
@@ -1262,8 +1285,27 @@ foreach(required_render_consumer IN ITEMS render-client scene-render)
         message(FATAL_ERROR "Architecture: missing installed Render consumer '${required_render_consumer}'.")
     endif()
 endforeach()
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/dedicated-scene/CMakeLists.txt")
+foreach(required_scene_consumer IN ITEMS
+    scene-composition
+    scene-presentation
+    scene-world-materialization
+)
+    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_scene_consumer}/CMakeLists.txt")
+        message(FATAL_ERROR "Architecture: missing installed Scene consumer '${required_scene_consumer}'.")
+    endif()
+endforeach()
+set(dedicated_scene_consumer
+    "${source_root}/cmake/installed-consumers/dedicated-scene/CMakeLists.txt"
+)
+if(NOT EXISTS "${dedicated_scene_consumer}")
     message(FATAL_ERROR "Architecture: missing dedicated headless Scene installed consumer.")
+endif()
+file(READ "${dedicated_scene_consumer}" dedicated_scene_consumer_contract)
+if(dedicated_scene_consumer_contract MATCHES
+   "render|vulkan|window|scene_render")
+    message(FATAL_ERROR
+        "Architecture: dedicated Scene installed consumer is not headless."
+    )
 endif()
 
 set(render_entity_header

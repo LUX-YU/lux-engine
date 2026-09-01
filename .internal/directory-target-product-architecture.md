@@ -13,34 +13,58 @@ modules/
 engine/
   domain/
     partition/
+      identity/
     spatial/
     system/
       identity/
       description/
     world/
       identity/
+      partition/
+      description/
+      storage/
+      asset/
     simulation/
+      description/
+      asset/
+      composition/
+      ecs/
+      system/
+      builtin/
+      scripting/
   process/
+    execution/
+    asset_loading/
+    world_loading/
   scene/
+    description/
+    asset/
+    system/
+    meta/
+    composition/
+    presentation/
+    integration/
+      world_materialization/
+      render/
   authoring/
   editor/
   toolchain/
 ```
 
 - `modules/` 是可复用 L0 package。
-- `engine/domain/world/identity`、`engine/domain/partition` 与 `engine/domain/system` 是中立的 L1 engine-domain
+- `engine/domain/world/identity`、`engine/domain/partition/identity` 与 `engine/domain/system` 是中立的 L1 engine-domain
   foundation；System leaf只拥有 stable type/instance identity、common type description和deterministic order helper。
   `engine/domain/spatial` 是具体空间查询机制。
   这些foundation不拥有 World、Simulation runtime object、scheduler、registry、codec或streaming policy。
 - `engine/domain/world` 与 `engine/domain/simulation` 是 sibling runtime domains，均可依赖窄义 `DOMAIN`
   foundation，但不得互相依赖。
-- `engine/process` 是 L2 collection；`execution` 叶包保持领域盲，具体 `world`/`asset` 叶包可拥有明确的
+- `engine/process` 是 L2 collection；`execution` 叶包保持领域盲，具体 `world_loading`/`asset_loading` 叶包可拥有明确的
   time-spanning workflow，但不得把领域语义反向塞入 execution。
 - `engine/scene` 是 L3 runtime composition：`description` 持有 durable SceneSystem composition，`system` 定义
-  installer/requirement contract，`meta` 在进程启动时一次构建后 immutable；`core` 组合一个 World、一个
-  authoritative Registry、一个 Simulation、已安装 SceneSystems 与 Scene cancellation source；
-  `runtime/world` 提供机械 World IO/materialization；
-  `runtime/presentation` 首先承载 latest-state handoff。Streaming policy 只属于 concrete developer System。
+  installer/requirement contract，`meta` 在进程启动时一次构建后 immutable；`composition` 组合一个 World、一个
+  authoritative Registry、一个 Simulation、已安装 SceneSystems 与 Scene cancellation source；`presentation`
+  承载 latest-state handoff；`integration/world_materialization` 与 `integration/render` 分别提供机械 ECS
+  materialization 与可选 Render SceneSystem integration。Streaming policy 只属于 concrete developer System。
 - `engine/authoring` 持有 authored state、composition 与诊断。
 - `engine/editor` 持有交互式 Editor UI/tooling。
 - `engine/toolchain` 持有离线 compiler、cook、package 与 build tool。
@@ -82,7 +106,8 @@ Frame推进渲染生命周期。无 RenderSystem 就没有 Scene render state；
 `modules/function/script` 与 `engine/domain/simulation/scripting` 都是 collection；Script backend、
 Script artifact 与 Simulation scripting core 各自是独立 package。
 
-`engine/process` 也是 collection；`execution` 只提供通用 Sender/Timer mechanism。`world` 与 `asset` 仅在
+`engine/process` 也是 collection；`execution` 只提供通用 Sender/Timer mechanism。`world_loading` 与
+`asset_loading` 仅在
 存在真实workflow时创建；Render sender、Streaming owner和dynamic fan-out不得以空package或shim占位。
 
 ## Product closure
@@ -98,7 +123,7 @@ Script artifact 与 Simulation scripting core 各自是独立 package。
 - Script semantic/runtime primitives 位于 `modules/function/script/core`。
 - Script cooked content/codec 位于 `modules/function/script/artifact`。
 - reusable FlowForge graph/model 位于 `modules/function/flowforge`。
-- Script runtime composition 位于 `engine/domain/simulation/scripting` 与 `systems/script`。
+- Script runtime composition 位于 `engine/domain/simulation/scripting` 与 `builtin/script`。
 - Node Graph Editor 位于 `engine/editor/node_graph`。
 - FlowForge compiler 位于 `engine/toolchain/flowforge`。
 - Lua source packager 位于 `engine/toolchain/lua`。

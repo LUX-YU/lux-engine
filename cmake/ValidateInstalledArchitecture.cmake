@@ -9,12 +9,12 @@ if(NOT IS_DIRECTORY "${prefix}")
     message(FATAL_ERROR "Install prefix does not exist: ${prefix}")
 endif()
 
-if(EXISTS "${prefix}/share/lux-engine-simulation-composition")
-    message(FATAL_ERROR
-        "Install surface exposes retired simulation-core package"
-    )
-endif()
 foreach(retired_package IN ITEMS
+    "${prefix}/share/lux-engine-world"
+    "${prefix}/share/lux-engine-simulation-core"
+    "${prefix}/share/lux-engine-process-asset"
+    "${prefix}/share/lux-engine-process-world"
+    "${prefix}/share/lux-engine-scene-world-runtime"
     "${prefix}/share/lux-engine-graph-kit"
     "${prefix}/share/lux-engine-flowforge"
     "${prefix}/share/lux-engine-flowforge-script-compiler"
@@ -22,6 +22,38 @@ foreach(retired_package IN ITEMS
 )
     if(EXISTS "${retired_package}")
         message(FATAL_ERROR "Install surface exposes retired package: ${retired_package}")
+    endif()
+endforeach()
+
+foreach(retired_surface IN ITEMS
+    "${prefix}/include/lux/engine/domain/WorldObjectId.hpp"
+    "${prefix}/include/lux/engine/process/asset"
+    "${prefix}/include/lux/engine/process/world"
+    "${prefix}/include/lux/engine/simulation/core"
+    "${prefix}/include/lux/engine/simulation/systems"
+    "${prefix}/include/lux/engine/scene/runtime"
+    "${prefix}/share/lux-engine-scene/scene_core"
+    "${prefix}/share/lux-engine-scene-presentation/scene_runtime_presentation"
+    "${prefix}/share/lux-engine-scene-render/scene_runtime_render"
+    "${prefix}/share/lux-engine-scene-render/scene_runtime_render_meta"
+    "${prefix}/bin/lux_engine_world.dll"
+    "${prefix}/lib/lux_engine_world.lib"
+    "${prefix}/lib/liblux_engine_world.so"
+    "${prefix}/bin/lux_engine_simulation_core.dll"
+    "${prefix}/lib/lux_engine_simulation_core.lib"
+    "${prefix}/bin/lux_engine_process_world.dll"
+    "${prefix}/lib/lux_engine_process_world.lib"
+    "${prefix}/bin/lux_engine_scene_core.dll"
+    "${prefix}/lib/lux_engine_scene_core.lib"
+    "${prefix}/bin/lux_engine_scene_runtime_world.dll"
+    "${prefix}/lib/lux_engine_scene_runtime_world.lib"
+    "${prefix}/bin/lux_engine_scene_runtime_render.dll"
+    "${prefix}/lib/lux_engine_scene_runtime_render.lib"
+    "${prefix}/bin/lux_engine_scene_runtime_render_meta.dll"
+    "${prefix}/lib/lux_engine_scene_runtime_render_meta.lib"
+)
+    if(EXISTS "${retired_surface}")
+        message(FATAL_ERROR "Install surface exposes retired topology: ${retired_surface}")
     endif()
 endforeach()
 
@@ -157,13 +189,23 @@ endif()
 foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-core/serialization/lux-engine-core-serialization-config-targets.cmake"
     "${prefix}/share/lux-engine-core/type_info/lux-engine-core-type_info-config-targets.cmake"
-    "${prefix}/share/lux-engine-world/world/lux-engine-world-world-config-targets.cmake"
+    "${prefix}/share/lux-engine-world-identity/world_identity/lux-engine-world-identity-world_identity-config-targets.cmake"
+    "${prefix}/share/lux-engine-partition-identity/partition_identity/lux-engine-partition-identity-partition_identity-config-targets.cmake"
+    "${prefix}/share/lux-engine-world-partition/world_partition/lux-engine-world-partition-world_partition-config-targets.cmake"
+    "${prefix}/share/lux-engine-world-description/world_description/lux-engine-world-description-world_description-config-targets.cmake"
     "${prefix}/share/lux-engine-world-asset/world_asset/lux-engine-world-asset-world_asset-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation/simulation_description/lux-engine-simulation-simulation_description-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-asset/simulation_asset/lux-engine-simulation-asset-simulation_asset-config-targets.cmake"
+    "${prefix}/share/lux-engine-simulation-composition/simulation_composition/lux-engine-simulation-composition-simulation_composition-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation-ecs/core/lux-engine-simulation-ecs-core-config-targets.cmake"
     "${prefix}/share/lux-engine-function/script_artifact/lux-engine-function-script_artifact-config-targets.cmake"
     "${prefix}/share/lux-engine-simulation/simulation_script/lux-engine-simulation-simulation_script-config-targets.cmake"
+    "${prefix}/share/lux-engine-process-asset-loading/process_asset_loading/lux-engine-process-asset-loading-process_asset_loading-config-targets.cmake"
+    "${prefix}/share/lux-engine-process-world-loading/process_world_loading/lux-engine-process-world-loading-process_world_loading-config-targets.cmake"
+    "${prefix}/share/lux-engine-scene/scene_composition/lux-engine-scene-scene_composition-config-targets.cmake"
+    "${prefix}/share/lux-engine-scene-presentation/scene_presentation/lux-engine-scene-presentation-scene_presentation-config-targets.cmake"
+    "${prefix}/share/lux-engine-scene-world-materialization/scene_world_materialization/lux-engine-scene-world-materialization-scene_world_materialization-config-targets.cmake"
+    "${prefix}/share/lux-engine-scene-render/scene_render/lux-engine-scene-render-scene_render-config-targets.cmake"
 )
     if(NOT EXISTS "${contract_file}")
         message(FATAL_ERROR "Installed foundation target is missing: ${contract_file}")

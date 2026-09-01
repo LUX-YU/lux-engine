@@ -1811,7 +1811,7 @@ lux/engine/meta/RuntimeObject.hpp
 
 ```text
 engine/domain/simulation/system
-engine/domain/simulation/systems/script
+engine/domain/simulation/builtin/script
 ```
 
 若 cpp_static cold bridge 因 reflection 需要 RuntimeObject，必须明确例外到具体 source，而不能允许整个 simulation layer。

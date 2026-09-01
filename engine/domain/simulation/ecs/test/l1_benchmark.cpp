@@ -10,7 +10,7 @@
 #if LUX_BENCHMARK_HAS_LUA
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #endif
-#include <lux/engine/simulation/systems/ScriptSystem.hpp>
+#include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>

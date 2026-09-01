@@ -4,7 +4,7 @@
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/systems/TransformSystem.hpp>
+#include <lux/engine/simulation/TransformSystem.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 
 #include <atomic>

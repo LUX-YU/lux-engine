@@ -879,7 +879,7 @@ simulation/systems/transform/
 public include 建议统一：
 
 ```cpp
-#include <lux/engine/simulation/systems/TransformSystem.hpp>
+#include <lux/engine/simulation/TransformSystem.hpp>
 ```
 
 ECS data：
@@ -947,8 +947,8 @@ simulation/systems/script/
 public include 建议：
 
 ```cpp
-#include <lux/engine/simulation/systems/ScriptSystem.hpp>
-#include <lux/engine/simulation/systems/ScriptSystemDescription.hpp>
+#include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/ScriptSystemDescription.hpp>
 ```
 
 ## 21.2 Script execution/backend mechanism
@@ -989,8 +989,8 @@ public include：
 最终用户应能自然发现：
 
 ```cpp
-#include <lux/engine/simulation/systems/TransformSystem.hpp>
-#include <lux/engine/simulation/systems/ScriptSystem.hpp>
+#include <lux/engine/simulation/TransformSystem.hpp>
+#include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/systems/PhysicsSystem.hpp>       // future
 #include <lux/engine/simulation/systems/AnimationSystem.hpp>     // future
 ```

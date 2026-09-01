@@ -26,7 +26,7 @@ target_link_libraries(
     architecture_probe_jolt_l1
     PRIVATE
         Jolt::Jolt
-        lux::engine::simulation::simulation_core
+        lux::engine::simulation::composition
         lux::engine::simulation::ecs::transform
 )
 lux_classify_target(
@@ -88,7 +88,7 @@ if(LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION AND TARGET render_vulkan)
         PRIVATE
             lux::engine::function::render_vulkan
             lux::engine::scene::scene_runtime_presentation
-            lux::engine::simulation::simulation_core
+            lux::engine::simulation::composition
             lux::engine::simulation::transform_system
     )
     lux_classify_target(

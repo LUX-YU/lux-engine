@@ -9,7 +9,7 @@ if(NOT IS_DIRECTORY "${prefix}")
     message(FATAL_ERROR "Install prefix does not exist: ${prefix}")
 endif()
 
-if(EXISTS "${prefix}/share/lux-engine-simulation-core")
+if(EXISTS "${prefix}/share/lux-engine-simulation-composition")
     message(FATAL_ERROR
         "Install surface exposes retired simulation-core package"
     )

@@ -233,7 +233,7 @@ foreach(source IN LISTS production_sources)
         if(content MATCHES
            "on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<" AND
            NOT normalized MATCHES
-               "/engine/domain/simulation/(ecs/(hierarchy|transform)|scripting|systems/(script|transform))/" AND
+               "/engine/domain/simulation/(ecs/(hierarchy|transform)|scripting|builtin/(script|transform))/" AND
            NOT normalized MATCHES
                "/engine/domain/simulation/ecs/core/(include/lux/engine/simulation/ecs/ComponentChangeSet[.]hpp|test/(reactive_storage_probe|extraction_change_set_test)[.]cpp)$")
             message(FATAL_ERROR
@@ -433,7 +433,7 @@ endforeach()
 
 foreach(hot_runtime_root IN ITEMS
     "${source_root}/engine/domain/simulation/system"
-    "${source_root}/engine/domain/simulation/systems/script"
+    "${source_root}/engine/domain/simulation/builtin/script"
 )
     file(GLOB_RECURSE hot_runtime_sources LIST_DIRECTORIES false
         "${hot_runtime_root}/*.hpp"
@@ -522,8 +522,8 @@ endforeach()
 file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
     "${source_root}/engine/domain/simulation/scripting/*.hpp"
     "${source_root}/engine/domain/simulation/scripting/*.cpp"
-    "${source_root}/engine/domain/simulation/systems/script/*.hpp"
-    "${source_root}/engine/domain/simulation/systems/script/*.cpp"
+    "${source_root}/engine/domain/simulation/builtin/script/*.hpp"
+    "${source_root}/engine/domain/simulation/builtin/script/*.cpp"
 )
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
@@ -716,7 +716,7 @@ foreach(source IN LISTS ecs_public_headers)
 endforeach()
 
 set(transform_system_source
-    "${source_root}/engine/domain/simulation/systems/transform/src/TransformSystem.cpp"
+    "${source_root}/engine/domain/simulation/builtin/transform/src/TransformSystem.cpp"
 )
 if(EXISTS "${transform_system_source}")
     file(READ "${transform_system_source}" transform_system_contract)
@@ -1123,7 +1123,7 @@ foreach(installed_consumer IN ITEMS
     scene_foundation
     scene_meta
     system_foundation
-    simulation_runtime
+    simulation_composition
     world-description
     world_storage
     typed_resource_assets
@@ -1529,7 +1529,7 @@ foreach(source IN LISTS script_foundation_sources)
 endforeach()
 
 set(script_system_source
-    "${source_root}/engine/domain/simulation/systems/script/src/ScriptSystem.cpp"
+    "${source_root}/engine/domain/simulation/builtin/script/src/ScriptSystem.cpp"
 )
 file(READ "${script_system_source}" script_system_contract)
 string(FIND

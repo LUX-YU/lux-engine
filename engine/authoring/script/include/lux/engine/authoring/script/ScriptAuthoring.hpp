@@ -3,7 +3,7 @@
 #include <lux/engine/authoring/script/visibility.h>
 #include <lux/engine/description/Script.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
-#include <lux/engine/simulation/systems/ScriptSystemDescription.hpp>
+#include <lux/engine/simulation/ScriptSystemDescription.hpp>
 
 #include <cstddef>
 #include <cstdint>

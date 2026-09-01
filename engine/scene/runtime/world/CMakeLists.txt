@@ -79,7 +79,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::scene::scene_runtime_world
         lux::engine::process::world_loading
-        lux::engine::simulation::simulation_core
+        lux::engine::simulation::composition
 )
 if(MSVC)
     target_compile_options(scene_world_runtime_deferred_test PRIVATE /UNDEBUG)

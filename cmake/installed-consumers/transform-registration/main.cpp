@@ -1,4 +1,4 @@
-#include <lux/engine/simulation/systems/TransformSystem.hpp>
+#include <lux/engine/simulation/TransformSystem.hpp>
 
 int main()
 {

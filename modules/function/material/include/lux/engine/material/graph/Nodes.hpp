@@ -10,9 +10,9 @@
 
 #include <memory>
 
-#include <lux/engine/authoring/material/Node.hpp>
+#include <lux/engine/material/graph/Node.hpp>
 
-namespace lux::authoring::material
+namespace lux::material
 {
     enum class EMathOp : uint8_t
     {
@@ -45,7 +45,7 @@ namespace lux::authoring::material
     };
 
     /// Constant node: outputs a single constant value.
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC ConstantNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstantNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::Constant;
@@ -61,7 +61,7 @@ namespace lux::authoring::material
     };
 
     /// Input node: exposes a single shading input (uv0 / world_normal / ...).
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC InputNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC InputNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::Input;
@@ -73,7 +73,7 @@ namespace lux::authoring::material
 
     /// Samples a bindless texture (set 2); `texture_slot` indexes the texture
     /// slots declared by the graph.
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC SampleTextureNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SampleTextureNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::SampleTexture;
@@ -87,7 +87,7 @@ namespace lux::authoring::material
     /// supplied at runtime by the Graph-family SSBO). `param_slot` indexes
     /// MaterialGraph::param_slots; `type` is that parameter's type (used for the
     /// output pin).
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC ParamNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ParamNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::Param;
@@ -105,7 +105,7 @@ namespace lux::authoring::material
     /// Arithmetic node. `operand_type` determines the type of both operand pins
     /// (Float by default); use setOperandType to express vector operations
     /// (Vec3*Vec3, Vec3·Vec3, etc.).
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC MathNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MathNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::Math;
@@ -122,7 +122,7 @@ namespace lux::authoring::material
     };
 
     /// Normal-map decode (rgb -> tangent-space normal).
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC DecodeNormalNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC DecodeNormalNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::DecodeNormal;
@@ -133,7 +133,7 @@ namespace lux::authoring::material
     /// Transforms a tangent-space normal into world space: mat3(T,B,N) * n
     /// (using the interpolated world-space tangent/bitangent/normal). Pairs with
     /// DecodeNormal so normal maps participate correctly in lighting.
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC TbnTransformNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC TbnTransformNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::TbnTransform;
@@ -145,7 +145,7 @@ namespace lux::authoring::material
     /// a texture can feed a vec3 attribute). `components[k]` = which component of
     /// the source vector (0=x,1=y,2=z,3=w) feeds output channel k; only the first
     /// arity(out_type) entries are used. Defaults to vec4 -> vec3 via .xyz.
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC SwizzleNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SwizzleNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::Swizzle;
@@ -165,7 +165,7 @@ namespace lux::authoring::material
     /// Construct: packs arity(out_type) scalar components into a vector
     /// (vec3(x,y,z), etc.). All input pins are Float, and their count equals the
     /// output vector's component count. The dual of Swizzle.
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC ConstructNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstructNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::Construct;
@@ -176,7 +176,7 @@ namespace lux::authoring::material
     };
 
     /// Terminal node: one input pin per EMaterialAttribute (in contract order).
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC OutputSurfaceNode : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC OutputSurfaceNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::OutputSurface;
@@ -184,4 +184,4 @@ namespace lux::authoring::material
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<OutputSurfaceNode>(*this); }
     };
 
-} // namespace lux::authoring::material
+} // namespace lux::material

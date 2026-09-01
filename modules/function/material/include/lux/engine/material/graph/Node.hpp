@@ -11,10 +11,10 @@
 #include <vector>
 #include <utility>
 
-#include <lux/engine/authoring/material/DataPin.hpp>
-#include <lux/engine/authoring/material/visibility.h>
+#include <lux/engine/material/graph/DataPin.hpp>
+#include <lux/engine/material/graph/visibility.h>
 
-namespace lux::authoring::material
+namespace lux::material
 {
     /**
      * @brief Kinds of material graph nodes. Append new node kinds before COUNT.
@@ -35,10 +35,10 @@ namespace lux::authoring::material
         COUNT
     };
 
-    LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC const char* toString(
+    LUX_ENGINE_MATERIAL_GRAPH_PUBLIC const char* toString(
         EMatNodeKind kind) noexcept;
 
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC Node
     {
     public:
         explicit Node(EMatNodeKind kind) : kind_(kind) {}
@@ -95,4 +95,4 @@ namespace lux::authoring::material
         std::vector<DataPin> out_pins_;
     };
 
-} // namespace lux::authoring::material
+} // namespace lux::material

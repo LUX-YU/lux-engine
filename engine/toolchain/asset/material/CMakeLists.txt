@@ -145,7 +145,7 @@ target_compile_definitions(
 target_link_libraries(
     toolchain_material_cooker
     PUBLIC
-        lux::engine::authoring::authoring_material
+        lux::engine::function::material_graph
         lux::engine::resource::asset
     PRIVATE
         lux::engine::toolchain::toolchain_shader_asset_cooker
@@ -153,7 +153,7 @@ target_link_libraries(
 )
 component_add_transitive_commands(
     toolchain_material_cooker
-    "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_material)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS material_graph)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 lux_classify_target(

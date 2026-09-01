@@ -13,7 +13,7 @@
 // =============================================================================
 
 #include <lux/engine/toolchain/asset/material/MaterialLowering.hpp>
-#include <lux/engine/authoring/material/Nodes.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <cstring>
 #include <string>
@@ -24,7 +24,7 @@ namespace lux::shadergen::material
 {
     namespace
     {
-        namespace rdesc = ::lux::authoring::material;
+        namespace rdesc = ::lux::material;
 
         bool isVector(EValueType t) noexcept
         {

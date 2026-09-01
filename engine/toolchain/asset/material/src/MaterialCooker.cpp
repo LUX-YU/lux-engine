@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/asset/material/MaterialCooker.hpp>
 
-#include <lux/engine/authoring/material/MaterialGraph.hpp>
+#include <lux/engine/material/graph/MaterialGraph.hpp>
 #include <lux/engine/toolchain/asset/material/MaterialLowering.hpp>
 #include <lux/engine/toolchain/asset/material/MaterialToGraph.hpp>
 #include <lux/engine/toolchain/shader/Backend.hpp>
@@ -27,7 +27,7 @@ namespace lux::toolchain
     lux::cxx::expected<std::shared_ptr<const lux::asset::MaterialAsset>, MaterialCookFailure>
     cookMaterial(
         lux::asset::AssetInfo info,
-        const lux::authoring::material::MaterialGraph& graph
+        const lux::material::MaterialGraph& graph
     ) noexcept
     {
         if (info.id.isNull() || graph.param_slots.size() > lux::rdesc::MaterialDescription::kMaxParams ||

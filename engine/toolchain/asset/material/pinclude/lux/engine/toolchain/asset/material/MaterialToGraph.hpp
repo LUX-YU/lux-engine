@@ -18,7 +18,7 @@
 #include <string>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/authoring/material/MaterialGraph.hpp>
+#include <lux/engine/material/graph/MaterialGraph.hpp>
 #include <lux/engine/toolchain/asset/material/ImportedMaterialDescription.hpp>
 
 namespace lux::shadergen::material
@@ -31,6 +31,6 @@ namespace lux::shadergen::material
     /// current implementation always succeeds; expected<> is used to keep a
     /// uniform error-handling shape for this non-hot-path call and to leave
     /// room for a future conversion that can actually fail).
-    lux::cxx::expected<::lux::authoring::material::MaterialGraph, std::string>
+    lux::cxx::expected<::lux::material::MaterialGraph, std::string>
     materialToGraph(const ::lux::toolchain::ImportedMaterialDescription& desc);
 } // namespace lux::shadergen::material

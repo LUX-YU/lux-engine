@@ -8,12 +8,12 @@
 //  from the node's payload (see Lowering.cpp).
 // =============================================================================
 
-#include <lux/engine/authoring/material/MaterialGraph.hpp>
-#include <lux/engine/authoring/material/Nodes.hpp>
+#include <lux/engine/material/graph/MaterialGraph.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <utility>
 
-namespace lux::authoring::material
+namespace lux::material
 {
     // ---- Container ------------------------------------------------------------
 
@@ -120,4 +120,4 @@ namespace lux::authoring::material
         d->inputs()[dst_pin].source = PinLink{};
     }
 
-} // namespace lux::authoring::material
+} // namespace lux::material

@@ -3,10 +3,10 @@
 //  pins per the contract)
 // =============================================================================
 
-#include <lux/engine/authoring/material/Node.hpp>
-#include <lux/engine/authoring/material/Nodes.hpp>
+#include <lux/engine/material/graph/Node.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
 
-namespace lux::authoring::material
+namespace lux::material
 {
     Node::~Node() = default;
 
@@ -169,4 +169,4 @@ namespace lux::authoring::material
         }
     }
 
-} // namespace lux::authoring::material
+} // namespace lux::material

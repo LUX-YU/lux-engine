@@ -15,7 +15,7 @@
 
 #include <lux/engine/description/MaterialGraphContract.hpp>  // EMatValueType
 
-namespace lux::authoring::material
+namespace lux::material
 {
     using EMatValueType = lux::rdesc::EMatValueType;
     using EMaterialAttribute = lux::rdesc::EMaterialAttribute;
@@ -70,4 +70,4 @@ namespace lux::authoring::material
         float         constant[4] = { 0, 0, 0, 0 }; ///< Default constant used when an input is unconnected
     };
 
-} // namespace lux::authoring::material
+} // namespace lux::material

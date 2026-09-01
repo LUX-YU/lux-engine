@@ -1,5 +1,5 @@
-#include <lux/engine/authoring/material/MaterialGraph.hpp>
-#include <lux/engine/authoring/material/Nodes.hpp>
+#include <lux/engine/material/graph/MaterialGraph.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <array>
 #include <cassert>
@@ -18,7 +18,7 @@ namespace
 
 int main()
 {
-    namespace material = lux::authoring::material;
+    namespace material = lux::material;
 
     material::MaterialGraph graph;
     graph.texture_slots.push_back({"base-color", id(1U)});

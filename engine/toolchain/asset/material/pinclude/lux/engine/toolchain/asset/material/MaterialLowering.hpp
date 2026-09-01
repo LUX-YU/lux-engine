@@ -16,7 +16,7 @@
 #include <string>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/authoring/material/MaterialGraph.hpp>  // rdesc::MaterialGraph
+#include <lux/engine/material/graph/MaterialGraph.hpp>  // rdesc::MaterialGraph
 #include <lux/engine/toolchain/shader/ShaderIR.hpp>
 
 namespace lux::shadergen::material
@@ -53,6 +53,6 @@ namespace lux::shadergen::material
     /// Returns a LowerResult on success; on failure returns an error string
     /// (a cycle, a required output left unbound, or a type mismatch).
     lux::cxx::expected<LowerResult, std::string>
-    lowerMaterial(const ::lux::authoring::material::MaterialGraph& graph);
+    lowerMaterial(const ::lux::material::MaterialGraph& graph);
 
 } // namespace lux::shadergen::material

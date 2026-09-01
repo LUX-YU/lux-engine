@@ -5,8 +5,8 @@
 // =============================================================================
 
 #include <lux/engine/toolchain/asset/material/MaterialToGraph.hpp>
-#include <lux/engine/authoring/material/MaterialGraph.hpp>
-#include <lux/engine/authoring/material/Nodes.hpp>
+#include <lux/engine/material/graph/MaterialGraph.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <lux/engine/toolchain/asset/material/ImportedMaterialDescription.hpp>
 
@@ -20,11 +20,11 @@
 
 namespace lux::shadergen::material
 {
-    using namespace ::lux::authoring::material;
+    using namespace ::lux::material;
 
     namespace
     {
-        namespace rdesc = ::lux::authoring::material;
+        namespace rdesc = ::lux::material;
         using EVT  = rdesc::EMatValueType;
         using EAttr = rdesc::EMaterialAttribute;
 

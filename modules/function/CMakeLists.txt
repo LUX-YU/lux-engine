@@ -11,6 +11,10 @@ if(NOT TARGET script_core)
     add_subdirectory(script/core)
 endif()
 add_subdirectory(flowforge)
+if((LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT) AND
+   NOT TARGET material_graph)
+    add_subdirectory(material)
+endif()
 
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # EntityScene cooks materialize built-in 3D component schemas. Their
@@ -72,6 +76,10 @@ else()
         list(APPEND LUX_FUNCTION_COMPONENTS render_features)
     endif()
     list(APPEND LUX_FUNCTION_COMPONENTS ui)
+endif()
+
+if(TARGET material_graph)
+    list(APPEND LUX_FUNCTION_COMPONENTS material_graph)
 endif()
 
 if(LUX_FUNCTION_COMPONENTS)

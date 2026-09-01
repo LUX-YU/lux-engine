@@ -10,12 +10,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include <lux/engine/authoring/material/Node.hpp>
+#include <lux/engine/material/graph/Node.hpp>
 #include <lux/engine/description/MaterialGraphContract.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
-#include <lux/engine/authoring/material/visibility.h>
+#include <lux/engine/material/graph/visibility.h>
 
-namespace lux::authoring::material
+namespace lux::material
 {
     /// A texture slot declared by the graph (-> ShadingModelDescriptor + descriptor
     /// layout set 2).
@@ -45,7 +45,7 @@ namespace lux::authoring::material
         bool       double_sided = false;
     };
 
-    class LUX_ENGINE_AUTHORING_MATERIAL_PUBLIC MaterialGraph
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialGraph
     {
     public:
         MaterialGraph();
@@ -99,4 +99,4 @@ namespace lux::authoring::material
         node_id                                            next_id_ = 1;
     };
 
-} // namespace lux::authoring::material
+} // namespace lux::material

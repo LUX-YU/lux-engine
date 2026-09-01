@@ -10,7 +10,7 @@
 #include <memory>
 #include <string>
 
-namespace lux::authoring::material
+namespace lux::material
 {
     class MaterialGraph;
 }
@@ -37,7 +37,7 @@ namespace lux::toolchain
         MaterialCookFailure
     > cookMaterial(
         lux::asset::AssetInfo info,
-        const lux::authoring::material::MaterialGraph& graph
+        const lux::material::MaterialGraph& graph
     ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_TOOLCHAIN_MATERIAL_PUBLIC lux::cxx::expected<

@@ -9,18 +9,19 @@ add_subdirectory(core)
 
 add_subdirectory(resource)
 
+# The editable Material source model is shared by the L4 Toolchain and future
+# L5 Editor adapters. Runtime/Player configurations do not configure it.
+if((LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT) AND
+   NOT TARGET material_graph)
+    add_subdirectory(function/material)
+endif()
+
 # Host asset tools must exist before Function/Render declares cooked-content
 # custom commands. This is a build-order seam only: no Runtime target links a
 # Toolchain target. Cross builds resolve the installed host executable through
 # LUX_HOST_TOOLS_PREFIX instead of configuring a target binary.
 if(NOT CMAKE_CROSSCOMPILING AND
    (LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT))
-    if(NOT TARGET authoring_material)
-        add_subdirectory(
-            "${CMAKE_SOURCE_DIR}/engine/authoring/material"
-            "${CMAKE_BINARY_DIR}/engine/authoring/material"
-        )
-    endif()
     add_subdirectory(
         "${CMAKE_SOURCE_DIR}/engine/toolchain/asset"
         "${CMAKE_BINARY_DIR}/engine/toolchain/asset"

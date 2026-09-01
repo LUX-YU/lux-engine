@@ -1045,11 +1045,11 @@ if(EXISTS "${imported_material_header}")
     endif()
 endif()
 
-file(GLOB_RECURSE authoring_material_sources LIST_DIRECTORIES false
-    "${source_root}/engine/authoring/material/*.hpp"
-    "${source_root}/engine/authoring/material/*.cpp"
+file(GLOB_RECURSE material_graph_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/material/*.hpp"
+    "${source_root}/modules/function/material/*.cpp"
 )
-foreach(source IN LISTS authoring_material_sources)
+foreach(source IN LISTS material_graph_sources)
     file(READ "${source}" content)
     if(content MATCHES "namespace[ \t]+lux::rdesc")
         message(FATAL_ERROR

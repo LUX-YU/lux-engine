@@ -51,6 +51,7 @@ engine/
   editor/
     node_graph/
   toolchain/
+    shader/
     material/
     flowforge/
     asset/
@@ -72,6 +73,8 @@ engine/
   materialization 与可选 Render SceneSystem integration。Streaming policy 只属于 concrete developer System。
 - `engine/editor` 持有交互式 Editor UI/tooling。
 - `engine/toolchain` 是 L4，持有 deterministic compile、lower、cook、import、package 与 build tool。
+- `engine/toolchain/shader` owns shared SPIR-V reflection object code and the LGLSL emitter; Material-specific IR,
+  lowering and GLSL shells remain private to `engine/toolchain/material`.
 - 可编辑 source model不归Editor私有：MaterialGraph位于`modules/function/material`，FlowGraph位于
   `modules/function/flowforge`；Editor与Toolchain消费同一个source SSOT。
 - `engine/tools` 是同义叠加的退休目录，不得恢复。

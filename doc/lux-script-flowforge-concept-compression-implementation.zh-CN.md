@@ -1,6 +1,11 @@
 # Lux Engine Script / FlowForge 概念压缩、拓扑收敛与性能闭环实施规范
 
-**状态：Normative / Implementation Freeze**  
+> **Status: SUPERSEDED / HISTORICAL**
+> **Do not use this document as a current implementation target.**
+> Superseded by `.internal/directory-target-product-architecture.md` and
+> `.internal/l4-toolchain-convergence.md`. The historical body below is preserved as review evidence.
+
+**历史状态：Normative / Implementation Freeze**
 **基线：`main @ 25809082edf0e21a94409b22de2c75bf31d31697`**  
 **适用范围：Script Core、Script Artifact、Simulation Scripting、ScriptSystem、HookPoint/EventPoint、Script Authoring、Lua Toolchain、FlowForge、Node Graph Editor、相关 CMake/安装拓扑与架构门禁。**
 

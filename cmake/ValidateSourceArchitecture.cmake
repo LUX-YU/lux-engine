@@ -619,6 +619,12 @@ if(EXISTS "${source_root}/engine/toolchain/flowforge")
 endif()
 
 if(EXISTS "${source_root}/engine/editor/node_graph")
+    set(node_graph_editor_cmake "${source_root}/engine/editor/node_graph/CMakeLists.txt")
+    file(READ "${node_graph_editor_cmake}" node_graph_editor_cmake_contract)
+    if(NOT node_graph_editor_cmake_contract MATCHES "LAYER[ \t\r\n]+EDITOR" OR
+       node_graph_editor_cmake_contract MATCHES "LAYER[ \t\r\n]+TOOLCHAIN")
+        message(FATAL_ERROR "Architecture: Node Graph Editor is not classified as the EDITOR layer.")
+    endif()
     file(GLOB_RECURSE node_graph_editor_sources LIST_DIRECTORIES false
         "${source_root}/engine/editor/node_graph/*.hpp"
         "${source_root}/engine/editor/node_graph/*.cpp"
@@ -1079,6 +1085,42 @@ if(EXISTS "${material_shader_ir}")
     file(READ "${material_shader_ir}" material_shader_ir_contract)
     if(material_shader_ir_contract MATCHES "MaterialGraphContract|rdesc::EMatValueType")
         message(FATAL_ERROR "Architecture: private ShaderIR depends on the retired Material graph contract.")
+    endif()
+endif()
+
+set(material_toolchain_cmake "${source_root}/engine/toolchain/material/CMakeLists.txt")
+set(material_shader_compiler "${source_root}/engine/toolchain/material/src/ShaderCompiler.cpp")
+set(asset_toolchain_cmake "${source_root}/engine/toolchain/asset/CMakeLists.txt")
+if(EXISTS "${material_toolchain_cmake}" AND EXISTS "${material_shader_compiler}")
+    file(READ "${material_toolchain_cmake}" material_toolchain_cmake_contract)
+    file(READ "${material_shader_compiler}" material_shader_compiler_contract)
+    if(material_toolchain_cmake_contract MATCHES "asset/shader/pinclude" OR
+       material_toolchain_cmake_contract MATCHES "LUX_MATERIAL_SHADER_(SOURCE|EMITTED)_DIR" OR
+       material_shader_compiler_contract MATCHES "FileIncluder|#[ \t]*include[ \t]*<fstream>")
+        message(FATAL_ERROR
+            "Architecture: Material compiler restored a sibling pinclude or runtime filesystem Shader dependency."
+        )
+    endif()
+endif()
+if(EXISTS "${asset_toolchain_cmake}")
+    file(READ "${asset_toolchain_cmake}" asset_toolchain_cmake_contract)
+    if(asset_toolchain_cmake_contract MATCHES "add_subdirectory[^\n]*[.][.]/material")
+        message(FATAL_ERROR "Architecture: Asset collection reverse-aggregates the Material sibling.")
+    endif()
+endif()
+
+set(unfinished_work_index "${source_root}/.internal/UNFINISHED-WORK.md")
+if(NOT EXISTS "${unfinished_work_index}")
+    message(FATAL_ERROR "Architecture: AGENTS.md promises a missing .internal/UNFINISHED-WORK.md index.")
+endif()
+set(retired_script_freeze
+    "${source_root}/doc/lux-script-flowforge-concept-compression-implementation.zh-CN.md"
+)
+if(EXISTS "${retired_script_freeze}")
+    file(READ "${retired_script_freeze}" retired_script_freeze_contract LIMIT 2048)
+    if(NOT retired_script_freeze_contract MATCHES "SUPERSEDED / HISTORICAL" OR
+       NOT retired_script_freeze_contract MATCHES "directory-target-product-architecture[.]md")
+        message(FATAL_ERROR "Architecture: stale Script/FlowForge freeze still presents itself as normative.")
     endif()
 endif()
 

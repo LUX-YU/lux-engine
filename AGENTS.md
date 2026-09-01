@@ -172,7 +172,11 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   GraphKit和Editor UI不得进入Player闭包。
 - Material 固定为 `MaterialGraph -> compileMaterial() -> MaterialDescription -> MaterialAsset`；Graph source位于
   `modules/function/material`，compiler/cooker位于`engine/toolchain/material`，private MaterialIR/ShaderIR不得安装。
+  Compiler只使用build-time embedded的canonical Shader include map，installed compiler不得读取原source/build tree；
+  shared SPIR-V reflection与LGLSL emitter属于`engine/toolchain/shader`，package不得跨 sibling `pinclude`。
   `engine/editor/node_graph`只提供domain-independent编辑机制，不得成为source model或compiler owner。
+  GraphKit compound edit/undo/redo使用原子inverse journal：失败必须恢复document/history/revision，且
+  `node_graph_editor`固定分类为EDITOR layer。
 - Extension 是叶节点。引擎 target 不链接 `extensions/*`；manifest 决定部署和运行期加载。
 - 旧 include、target 或类型搬迁不得留 shim/alias。历史扁平目录名不得重新创建。
 

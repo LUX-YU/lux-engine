@@ -30,6 +30,7 @@ foreach(retired_surface IN ITEMS
     "${prefix}/include/lux/engine/authoring"
     "${prefix}/include/lux/engine/toolchain/asset/material"
     "${prefix}/share/lux-engine-toolchain-asset/toolchain_material_cooker"
+    "${prefix}/share/lux-engine-toolchain-asset/toolchain_shader_emitter"
     "${prefix}/include/lux/engine/domain/WorldObjectId.hpp"
     "${prefix}/include/lux/engine/process/asset"
     "${prefix}/include/lux/engine/process/world"
@@ -107,6 +108,12 @@ if(EXISTS "${material_toolchain_package}")
             message(FATAL_ERROR "Installed Material target is missing: ${material_contract}")
         endif()
     endforeach()
+endif()
+
+set(shader_toolchain_package "${prefix}/share/lux-engine-toolchain-shader")
+if(EXISTS "${material_toolchain_package}" AND
+   NOT EXISTS "${shader_toolchain_package}/toolchain_shader_emitter/lux-engine-toolchain-shader-toolchain_shader_emitter-config-targets.cmake")
+    message(FATAL_ERROR "Installed Toolchain Shader emitter package is missing.")
 endif()
 
 foreach(endpoint_header IN ITEMS

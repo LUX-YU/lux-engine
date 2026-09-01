@@ -310,6 +310,20 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
+    if(normalized MATCHES "/engine/scene/meta/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/scene/(Scene|SceneBuilder|RenderRuntime|RenderSystem|RenderSyncPipeline)[.]hpp")
+            message(FATAL_ERROR
+                "Architecture: SceneMeta source '${normalized}' depends on Scene runtime composition."
+            )
+        endif()
+        if(content MATCHES "(add|remove|replace|update)(System|Component|RenderFeature)|snapshot[ \t\r\n]*[(]")
+            message(FATAL_ERROR
+                "Architecture: immutable SceneMetaManager source '${normalized}' exposes hot mutation."
+            )
+        endif()
+    endif()
+
     if(normalized MATCHES "/engine/domain/partition/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
@@ -1086,6 +1100,7 @@ foreach(installed_consumer IN ITEMS
     resource_descriptions
     resource_identity
     scene_foundation
+    scene_meta
     system_foundation
     simulation_runtime
     world

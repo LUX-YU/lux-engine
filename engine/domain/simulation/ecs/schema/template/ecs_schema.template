@@ -18,7 +18,9 @@ namespace lux::simulation::ecs::generated
                 {{ annotation_get(decl, "version") }}u,
                 {% if annotation_get(decl, "snapshot") == "REBUILD" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %},
                 {},
-                {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentDecodeEmplace<::{{ decl.fq_name }}, {{ annotation_get(decl, "version") }}u>(){% endif %}
+                {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentDecodeEmplace<::{{ decl.fq_name }}, {{ annotation_get(decl, "version") }}u>(){% endif %},
+                EComponentSemanticKind::{{ annotation_get(decl, "semantic") }},
+                {% if annotation_get(decl, "editor") %}true{% else %}false{% endif %}
             ){% set emitted = true %}{% endif %}{% endfor %}
         };
         return schemas;

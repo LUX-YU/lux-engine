@@ -88,6 +88,13 @@ namespace
         return Type{uuids::uuid(bytes)};
     }
 
+    [[nodiscard]] lux::asset::AssetId assetId(std::uint8_t tail)
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes.back() = tail;
+        return lux::asset::AssetId(bytes);
+    }
+
     struct PreloadedRenderable final
     {
         std::uint32_t mesh{};
@@ -630,7 +637,9 @@ namespace
             1U,
             EComponentSnapshotPolicy::COPY,
             {},
-            &decodePreloadedRenderable
+            &decodePreloadedRenderable,
+            EComponentSemanticKind::DOMAIN_CONTRACT,
+            true
         ));
         auto set = ComponentSchemaSet::build(std::move(schemas));
         if (!set)
@@ -1037,13 +1046,29 @@ int main()
         };
         if (!system_types.add(registration))
             return 2;
-        auto scene = lux::scene::Scene::create(cooked.description, makeSimulationDescription(), system_types);
+        ComponentSchemaSet schemas = makeComponentSchemas();
+        lux::meta::ReflectionRegistry::initRegistry();
+        auto manager = lux::scene::SceneMetaManager::build({schemas, std::move(system_types), {}});
+        if (!manager)
+            return 3;
+        lux::scene::SceneDescriptionBuilder scene_builder;
+        scene_builder.setWorld(assetId(1U));
+        scene_builder.setSimulation(assetId(2U));
+        auto scene_description = std::move(scene_builder).build();
+        if (!scene_description)
+            return 3;
+        auto scene = lux::scene::Scene::create({
+            std::make_shared<lux::scene::SceneDescription>(std::move(*scene_description)),
+            cooked.description,
+            makeSimulationDescription(),
+            *manager,
+            {}
+        });
         if (!scene)
             return 3;
 
         auto endpoint = std::make_shared<MemoryEndpoint>(cooked.volume);
         WorldPartitionData partition = loadPartition(cooked, endpoint, (*scene)->stopToken());
-        ComponentSchemaSet schemas = makeComponentSchemas();
         auto materializer = lux::scene::WorldMaterializer::create(cooked.description, schemas);
         if (!materializer)
             return 4;

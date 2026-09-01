@@ -38,11 +38,14 @@ int main()
     assert(world3d != nullptr);
     assert(transform3d->decode_emplace != nullptr);
     assert(world3d->decode_emplace == nullptr);
+    assert(transform3d->semantic_kind == EComponentSemanticKind::FOUNDATION && transform3d->editor_visible);
+    assert(world3d->semantic_kind == EComponentSemanticKind::RUNTIME_DERIVED && !world3d->editor_visible);
 
     const auto hierarchy = hierarchyComponentSchemas();
     const auto* parent = findSchema(hierarchy, componentSchemaId("lux.ecs.Parent"));
     assert(parent != nullptr);
     assert(parent->decode_emplace == nullptr);
+    assert(parent->semantic_kind == EComponentSemanticKind::FOUNDATION && parent->editor_visible);
 
     Transform3D source{
         Eigen::Vector3d{1'000'000'000'000.125, -2.5, 3.75},

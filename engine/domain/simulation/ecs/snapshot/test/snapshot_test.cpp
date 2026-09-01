@@ -27,12 +27,23 @@ namespace
 int
 main()
 {
-    const auto position_schema =
-        lux::simulation::ecs::makeComponentSchema<Position>(lux::simulation::ecs::componentSchemaId("test.position"));
+    const auto position_schema = lux::simulation::ecs::makeComponentSchema<Position>(
+        lux::simulation::ecs::componentSchemaId("test.position"),
+        1U,
+        lux::simulation::ecs::EComponentSnapshotPolicy::COPY,
+        {},
+        {},
+        lux::simulation::ecs::EComponentSemanticKind::DOMAIN_CONTRACT,
+        true
+    );
     const auto cache_schema = lux::simulation::ecs::makeComponentSchema<DerivedCache>(
         lux::simulation::ecs::componentSchemaId("test.cache"),
         1,
-        lux::simulation::ecs::EComponentSnapshotPolicy::REBUILD
+        lux::simulation::ecs::EComponentSnapshotPolicy::REBUILD,
+        {},
+        {},
+        lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED,
+        false
     );
     auto schemas = lux::simulation::ecs::ComponentSchemaSet::build({position_schema, cache_schema});
     assert(schemas);

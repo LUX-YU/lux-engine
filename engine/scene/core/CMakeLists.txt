@@ -30,6 +30,7 @@ target_link_libraries(
         lux::engine::simulation::simulation_core
         lux::engine::scene::scene_description
         lux::engine::scene::scene_system
+        lux::engine::scene::scene_meta
         lux::engine::resource::identity
 )
 component_add_transitive_commands(
@@ -38,6 +39,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-core REQUIRED COMPONENTS simulation_core)"
     "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
     "find_package(lux-engine-scene-system REQUIRED COMPONENTS scene_system)"
+    "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
 lux_classify_target(

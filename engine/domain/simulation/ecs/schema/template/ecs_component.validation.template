@@ -4,6 +4,9 @@
     {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"stable Component requires exactly one schema"}{% set emitted = true %}{% endif %}{% if annotation_count(decl, "version") != 1 %}{% if emitted %},{% endif %}
     {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"stable Component requires exactly one version"}{% set emitted = true %}{% endif %}{% if annotation_count(decl, "snapshot") != 1 %}{% if emitted %},{% endif %}
     {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"stable Component requires exactly one snapshot policy"}{% set emitted = true %}{% endif %}{% if annotation_count(decl, "snapshot") == 1 and annotation_get(decl, "snapshot") != "COPY" and annotation_get(decl, "snapshot") != "REBUILD" %}{% if emitted %},{% endif %}
-    {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"snapshot policy must be COPY or REBUILD"}{% set emitted = true %}{% endif %}{% endif %}{% endfor %}
+    {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"snapshot policy must be COPY or REBUILD"}{% set emitted = true %}{% endif %}{% if annotation_count(decl, "semantic") != 1 %}{% if emitted %},{% endif %}
+    {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"stable Component requires exactly one semantic kind"}{% set emitted = true %}{% endif %}{% if annotation_count(decl, "semantic") == 1 and annotation_get(decl, "semantic") != "FOUNDATION" and annotation_get(decl, "semantic") != "DOMAIN_CONTRACT" and annotation_get(decl, "semantic") != "IMPLEMENTATION_EXTENSION" and annotation_get(decl, "semantic") != "RUNTIME_DERIVED" %}{% if emitted %},{% endif %}
+    {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"invalid Component semantic kind"}{% set emitted = true %}{% endif %}{% if annotation_count(decl, "editor") != 1 %}{% if emitted %},{% endif %}
+    {"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"stable Component requires exactly one editor visibility"}{% set emitted = true %}{% endif %}{% endif %}{% endfor %}
   ]
 }

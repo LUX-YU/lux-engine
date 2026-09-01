@@ -32,12 +32,19 @@ main()
         lux::simulation::ecs::componentSchemaId("test.position"),
         1,
         lux::simulation::ecs::EComponentSnapshotPolicy::COPY,
-        lifetime
+        lifetime,
+        {},
+        lux::simulation::ecs::EComponentSemanticKind::DOMAIN_CONTRACT,
+        true
     );
     auto cache = lux::simulation::ecs::makeComponentSchema<DerivedCache>(
         lux::simulation::ecs::componentSchemaId("test.derived-cache"),
         1,
-        lux::simulation::ecs::EComponentSnapshotPolicy::REBUILD
+        lux::simulation::ecs::EComponentSnapshotPolicy::REBUILD,
+        {},
+        {},
+        lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED,
+        false
     );
 
     auto built = lux::simulation::ecs::ComponentSchemaSet::build({position});
@@ -59,7 +66,11 @@ main()
     auto invalid_copy_schema = lux::simulation::ecs::makeComponentSchema<NonCopy>(
         lux::simulation::ecs::componentSchemaId("test.non-copy"),
         1,
-        lux::simulation::ecs::EComponentSnapshotPolicy::COPY
+        lux::simulation::ecs::EComponentSnapshotPolicy::COPY,
+        {},
+        {},
+        lux::simulation::ecs::EComponentSemanticKind::DOMAIN_CONTRACT,
+        true
     );
     auto invalid_copy = lux::simulation::ecs::ComponentSchemaSet::build({invalid_copy_schema});
     assert(invalid_copy);

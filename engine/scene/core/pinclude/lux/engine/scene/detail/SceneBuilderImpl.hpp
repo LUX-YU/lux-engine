@@ -45,7 +45,6 @@ struct lux::scene::SceneBuilder::Impl final
     std::vector<detail::SceneHookRecord>* stable_hooks{};
     std::vector<detail::SceneHookRecord>* presentation_hooks{};
     const SceneDescription* description{};
-    std::span<const SceneSystemRegistration> registrations;
     std::vector<std::vector<std::size_t>> predecessors;
     std::vector<detail::ResolvedSceneRequirement> requirements;
     const SceneSystemRegistration* current_registration{};

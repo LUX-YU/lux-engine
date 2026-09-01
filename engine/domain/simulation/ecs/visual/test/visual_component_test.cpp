@@ -35,6 +35,8 @@ int main()
     assert(mesh_schema != nullptr && light_schema != nullptr);
     assert(mesh_schema->version == 2U && light_schema->version == 2U);
     assert(mesh_schema->decode_emplace != nullptr && light_schema->decode_emplace != nullptr);
+    assert(mesh_schema->semantic_kind == EComponentSemanticKind::DOMAIN_CONTRACT && mesh_schema->editor_visible);
+    assert(light_schema->semantic_kind == EComponentSemanticKind::DOMAIN_CONTRACT && light_schema->editor_visible);
 
     const std::array<std::uint8_t, 16> mesh_bytes{1U};
     const std::array<std::uint8_t, 16> material_bytes{2U};

@@ -21,6 +21,14 @@ namespace lux::simulation::ecs
         REBUILD,
     };
 
+    enum class EComponentSemanticKind : std::uint8_t
+    {
+        FOUNDATION,
+        DOMAIN_CONTRACT,
+        IMPLEMENTATION_EXTENSION,
+        RUNTIME_DERIVED,
+    };
+
     enum class EComponentDecodeError : std::uint8_t
     {
         INVALID_ENTITY,
@@ -52,16 +60,20 @@ namespace lux::simulation::ecs
         ComponentOperations operations;
         DecodeEmplaceComponentFn decode_emplace{};
         EComponentSnapshotPolicy snapshot{EComponentSnapshotPolicy::COPY};
+        EComponentSemanticKind semantic_kind{EComponentSemanticKind::DOMAIN_CONTRACT};
+        bool editor_visible{true};
         std::shared_ptr<const void> code_lifetime;
     };
 
     template <class Component>
     [[nodiscard]] ComponentSchema makeComponentSchema(
         ComponentSchemaId id,
-        std::uint32_t version = 1,
-        EComponentSnapshotPolicy snapshot = EComponentSnapshotPolicy::COPY,
-        std::shared_ptr<const void> code_lifetime = {},
-        DecodeEmplaceComponentFn decode_emplace = {}
+        std::uint32_t version,
+        EComponentSnapshotPolicy snapshot,
+        std::shared_ptr<const void> code_lifetime,
+        DecodeEmplaceComponentFn decode_emplace,
+        EComponentSemanticKind semantic_kind,
+        bool editor_visible
     )
     {
         return ComponentSchema{
@@ -71,6 +83,8 @@ namespace lux::simulation::ecs
             componentOperations<Component>(),
             decode_emplace,
             snapshot,
+            semantic_kind,
+            editor_visible,
             std::move(code_lifetime)};
     }
 } // namespace lux::simulation::ecs

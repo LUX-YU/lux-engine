@@ -7,26 +7,26 @@
 
 namespace lux::simulation::ecs
 {
-    struct LUX_COMPONENT(schema = "lux.ecs.Transform2D", version = 1, snapshot = COPY) Transform2D final
+    struct LUX_COMPONENT(schema = "lux.ecs.Transform2D", version = 1, snapshot = COPY, semantic = FOUNDATION, editor = true) Transform2D final
     {
         Eigen::Vector2d translation{Eigen::Vector2d::Zero()};
         double rotation{};
         Eigen::Vector2d scale{Eigen::Vector2d::Ones()};
     };
 
-    struct LUX_COMPONENT(schema = "lux.ecs.WorldTransform2D", version = 1, snapshot = REBUILD) WorldTransform2D final
+    struct LUX_COMPONENT(schema = "lux.ecs.WorldTransform2D", version = 1, snapshot = REBUILD, semantic = RUNTIME_DERIVED, editor = false) WorldTransform2D final
     {
         Eigen::Affine2d value{Eigen::Affine2d::Identity()};
     };
 
-    struct LUX_COMPONENT(schema = "lux.ecs.Transform3D", version = 1, snapshot = COPY) Transform3D final
+    struct LUX_COMPONENT(schema = "lux.ecs.Transform3D", version = 1, snapshot = COPY, semantic = FOUNDATION, editor = true) Transform3D final
     {
         Eigen::Vector3d translation{Eigen::Vector3d::Zero()};
         Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
         Eigen::Vector3d scale{Eigen::Vector3d::Ones()};
     };
 
-    struct LUX_COMPONENT(schema = "lux.ecs.WorldTransform3D", version = 1, snapshot = REBUILD) WorldTransform3D final
+    struct LUX_COMPONENT(schema = "lux.ecs.WorldTransform3D", version = 1, snapshot = REBUILD, semantic = RUNTIME_DERIVED, editor = false) WorldTransform3D final
     {
         Eigen::Affine3d value{Eigen::Affine3d::Identity()};
     };

@@ -1,5 +1,6 @@
 add_subdirectory(description)
 add_subdirectory(system)
+add_subdirectory(meta)
 add_subdirectory(core)
 add_subdirectory(asset)
 add_subdirectory(runtime/world)

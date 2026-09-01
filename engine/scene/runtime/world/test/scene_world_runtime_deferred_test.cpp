@@ -1,4 +1,5 @@
 #include <lux/engine/scene/Scene.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -32,6 +33,13 @@ namespace
         std::array<std::uint8_t, 16U> bytes{};
         bytes[15] = tail;
         return Type{uuids::uuid(bytes)};
+    }
+
+    [[nodiscard]] asset::AssetId sceneAssetId(std::uint8_t tail)
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes[15] = tail;
+        return asset::AssetId(bytes);
     }
 
     class DeferredMemoryEndpoint final
@@ -441,12 +449,28 @@ int main()
         simulation::SimulationDescriptionBuilder simulation_builder;
         auto simulation = std::move(simulation_builder).build();
         assert(simulation);
-        simulation::SimulationSystemRegistry systems;
-        auto scene_result = scene::Scene::create(
+        auto simulation_owner = std::make_shared<simulation::SimulationDescription>(std::move(*simulation));
+        scene::SceneDescriptionBuilder scene_builder;
+        scene_builder.setWorld(sceneAssetId(1U));
+        scene_builder.setSimulation(sceneAssetId(2U));
+        auto scene_description = std::move(scene_builder).build();
+        assert(scene_description);
+        auto components = simulation::ecs::ComponentSchemaSet::build({});
+        assert(components);
+        meta::ReflectionRegistry::initRegistry();
+        auto manager = scene::SceneMetaManager::build({
+            std::move(*components),
+            simulation::SimulationSystemRegistry{},
+            {}
+        });
+        assert(manager);
+        auto scene_result = scene::Scene::create({
+            std::make_shared<scene::SceneDescription>(std::move(*scene_description)),
             fixture.world,
-            std::make_shared<simulation::SimulationDescription>(std::move(*simulation)),
-            systems
-        );
+            simulation_owner,
+            *manager,
+            {}
+        });
         assert(scene_result);
         auto scene_owner = std::move(*scene_result);
 
@@ -466,6 +490,7 @@ int main()
         scene_owner.reset();
         endpoint->completeNext();
         assert(result.stopped);
+        meta::ReflectionRegistry::destroyRegistry();
     }
 
     {

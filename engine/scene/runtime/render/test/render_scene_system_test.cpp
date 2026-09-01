@@ -2,6 +2,7 @@
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
+#include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -259,6 +260,8 @@ int main()
     const auto visual_schemas = simulation::ecs::visualComponentSchemas();
     schemas.insert(schemas.end(), transform_schemas.begin(), transform_schemas.end());
     schemas.insert(schemas.end(), visual_schemas.begin(), visual_schemas.end());
+    const auto render_schemas = scene::sceneRenderComponentSchemas();
+    schemas.insert(schemas.end(), render_schemas.begin(), render_schemas.end());
     auto components = simulation::ecs::ComponentSchemaSet::build(std::move(schemas));
     assert(components);
     const auto builtin_features = render::builtinRenderFeatureRegistrations();

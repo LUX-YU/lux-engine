@@ -23,6 +23,7 @@
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
@@ -214,6 +215,8 @@ int main()
     const auto visual_schemas = simulation::ecs::visualComponentSchemas();
     schemas.insert(schemas.end(), transform_schemas.begin(), transform_schemas.end());
     schemas.insert(schemas.end(), visual_schemas.begin(), visual_schemas.end());
+    const auto render_schemas = scene::sceneRenderComponentSchemas();
+    schemas.insert(schemas.end(), render_schemas.begin(), render_schemas.end());
     auto component_set = simulation::ecs::ComponentSchemaSet::build(std::move(schemas));
     if (!component_set)
     {

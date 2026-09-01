@@ -14,6 +14,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Builtin3DRenderStages.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderRuntime.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSyncPipeline.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
 )

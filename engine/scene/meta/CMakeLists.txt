@@ -38,7 +38,12 @@ component_add_transitive_commands(
 lux_classify_target(TARGET scene_meta LAYER SCENE PRODUCT RUNTIME ROLE COMPOSITION)
 
 add_executable(scene_meta_test test/scene_meta_test.cpp)
-target_link_libraries(scene_meta_test PRIVATE lux::engine::scene::scene_meta)
+target_link_libraries(
+    scene_meta_test
+    PRIVATE
+        lux::engine::scene::scene_meta
+        lux::engine::simulation::ecs::visual
+)
 target_link_libraries(scene_meta_test PRIVATE render_client_meta)
 if(MSVC)
     target_compile_options(scene_meta_test PRIVATE /UNDEBUG)

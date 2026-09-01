@@ -363,6 +363,7 @@ namespace lux::scene
                 });
             }
 
+            std::vector<std::uint8_t> binding_present(impl->render_features.size(), 0U);
             for (const auto& binding : info.render_scene_bindings)
             {
                 const auto feature = impl->render_feature_by_hash.find(binding.feature);
@@ -382,14 +383,16 @@ namespace lux::scene
                         binding.scene_system.hash
                     ));
                 }
-                auto& meta = impl->render_features[feature->second];
-                if (meta.create_sync_stage != nullptr || !meta.observations.empty())
+                const std::size_t feature_ordinal = feature->second;
+                if (binding_present[feature_ordinal] != 0U)
                 {
                     return lux::cxx::unexpected(failure(
                         ESceneMetaError::DUPLICATE_RENDER_FEATURE_BINDING,
                         binding.feature
                     ));
                 }
+                binding_present[feature_ordinal] = 1U;
+                auto& meta = impl->render_features[feature_ordinal];
                 for (const auto& observation : binding.observations)
                 {
                     if (!observation.component.isValid())
@@ -397,6 +400,13 @@ namespace lux::scene
                         return lux::cxx::unexpected(failure(
                             ESceneMetaError::INVALID_RENDER_FEATURE_BINDING,
                             binding.feature
+                        ));
+                    }
+                    if (impl->components.find(observation.component) == nullptr)
+                    {
+                        return lux::cxx::unexpected(failure(
+                            ESceneMetaError::UNKNOWN_COMPONENT_SCHEMA,
+                            observation.component.hash()
                         ));
                     }
                 }
@@ -427,24 +437,33 @@ namespace lux::scene
             std::vector<std::vector<ComponentSystemUsage>> usages(impl->components.all().size());
             const auto componentOrdinal = [&](lux::cxx::TypeToken type) noexcept {
                 const auto* schema = impl->components.find(type);
-                return schema == nullptr
-                    ? impl->components.all().size()
-                    : static_cast<std::size_t>(schema - impl->components.all().data());
+                return static_cast<std::size_t>(schema - impl->components.all().data());
             };
             for (const auto& registration : impl->simulation_systems.all())
             {
                 for (const auto& access : registration.access.components)
                 {
-                    const auto ordinal = componentOrdinal(access.type);
-                    if (ordinal != usages.size())
+                    if (!access.type.isValid())
                     {
-                        usages[ordinal].push_back({
-                            registration.type,
-                            ESystemDomain::SIMULATION,
-                            access.mode,
-                            0U
-                        });
+                        return lux::cxx::unexpected(failure(
+                            ESceneMetaError::INVALID_SIMULATION_SYSTEM,
+                            registration.type.hash
+                        ));
                     }
+                    if (impl->components.find(access.type) == nullptr)
+                    {
+                        return lux::cxx::unexpected(failure(
+                            ESceneMetaError::UNKNOWN_COMPONENT_SCHEMA,
+                            access.type.hash()
+                        ));
+                    }
+                    const auto ordinal = componentOrdinal(access.type);
+                    usages[ordinal].push_back({
+                        registration.type,
+                        ESystemDomain::SIMULATION,
+                        access.mode,
+                        0U
+                    });
                 }
             }
             for (const auto& registration : impl->scene_systems)
@@ -455,16 +474,20 @@ namespace lux::scene
                     {
                         return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_SCENE_SYSTEM, registration.type.hash));
                     }
-                    const auto ordinal = componentOrdinal(observation.component);
-                    if (ordinal != usages.size())
+                    if (impl->components.find(observation.component) == nullptr)
                     {
-                        usages[ordinal].push_back({
-                            registration.type,
-                            ESystemDomain::SCENE,
-                            {},
-                            observation.events
-                        });
+                        return lux::cxx::unexpected(failure(
+                            ESceneMetaError::UNKNOWN_COMPONENT_SCHEMA,
+                            observation.component.hash()
+                        ));
                     }
+                    const auto ordinal = componentOrdinal(observation.component);
+                    usages[ordinal].push_back({
+                        registration.type,
+                        ESystemDomain::SCENE,
+                        {},
+                        observation.events
+                    });
                 }
             }
             for (const auto& feature : impl->render_features)
@@ -478,16 +501,13 @@ namespace lux::scene
                 for (const auto& observation : feature.observations)
                 {
                     const auto ordinal = componentOrdinal(observation.component);
-                    if (ordinal != usages.size())
-                    {
-                        usages[ordinal].push_back({
-                            binding->scene_system,
-                            ESystemDomain::SCENE,
-                            {},
-                            observation.events,
-                            feature.type
-                        });
-                    }
+                    usages[ordinal].push_back({
+                        binding->scene_system,
+                        ESystemDomain::SCENE,
+                        {},
+                        observation.events,
+                        feature.type
+                    });
                 }
             }
             impl->component_usage_ranges.resize(usages.size());

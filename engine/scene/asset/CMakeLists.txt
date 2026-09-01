@@ -21,13 +21,13 @@ target_compile_definitions(scene_asset PRIVATE LUX_ENGINE_SCENE_ASSET_LIBRARY)
 target_link_libraries(
     scene_asset
     PUBLIC
-        lux::engine::scene::scene_core
+        lux::engine::scene::scene_description
         lux::engine::resource::asset
     PRIVATE lux::engine::core::serialization
 )
 component_add_transitive_commands(
     scene_asset
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_core)"
+    "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
 )

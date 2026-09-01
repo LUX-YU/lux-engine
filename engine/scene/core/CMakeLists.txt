@@ -9,7 +9,9 @@ add_component(
     COMPONENT_NAME scene_core
     NAMESPACE      lux::engine::scene
     OUTPUT_NAME    lux_engine_scene_core
-    SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene.cpp
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneBuilder.cpp
 )
 
 component_include_directories(
@@ -19,18 +21,23 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+target_include_directories(scene_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 target_compile_definitions(scene_core PRIVATE LUX_ENGINE_SCENE_LIBRARY)
 target_link_libraries(
     scene_core
     PUBLIC
         lux::engine::world
         lux::engine::simulation::simulation_core
+        lux::engine::scene::scene_description
+        lux::engine::scene::scene_system
         lux::engine::resource::identity
 )
 component_add_transitive_commands(
     scene_core
     "find_package(lux-engine-world REQUIRED COMPONENTS world)"
     "find_package(lux-engine-simulation-core REQUIRED COMPONENTS simulation_core)"
+    "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
+    "find_package(lux-engine-scene-system REQUIRED COMPONENTS scene_system)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
 lux_classify_target(

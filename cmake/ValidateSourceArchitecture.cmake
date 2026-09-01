@@ -292,6 +292,24 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
+    if(normalized MATCHES "/engine/scene/description/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/scene/(SceneSystem|SceneBuilder|SceneMetaManager|Scene)[.]hpp")
+            message(FATAL_ERROR
+                "Architecture: Scene description source '${normalized}' depends on Scene runtime composition."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/scene/system/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/scene/(SceneBuilder|SceneMetaManager|Scene)[.]hpp")
+            message(FATAL_ERROR
+                "Architecture: SceneSystem contract '${normalized}' depends on Scene core/meta."
+            )
+        endif()
+    endif()
+
     if(normalized MATCHES "/engine/domain/partition/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
@@ -1067,6 +1085,7 @@ foreach(installed_consumer IN ITEMS
     object_affinity
     resource_descriptions
     resource_identity
+    scene_foundation
     system_foundation
     simulation_runtime
     world
@@ -1101,6 +1120,9 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/engine/domain/simulation/*/*/CMakeLists.txt"
     "${source_root}/engine/process/CMakeLists.txt"
     "${source_root}/engine/process/*/CMakeLists.txt"
+    "${source_root}/engine/scene/CMakeLists.txt"
+    "${source_root}/engine/scene/*/CMakeLists.txt"
+    "${source_root}/engine/scene/*/*/CMakeLists.txt"
     "${source_root}/engine/authoring/CMakeLists.txt"
     "${source_root}/engine/authoring/*/CMakeLists.txt"
     "${source_root}/engine/editor/CMakeLists.txt"

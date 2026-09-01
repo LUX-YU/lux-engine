@@ -11,7 +11,7 @@
 
 namespace lux::render
 {
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Fog,
         id = lux.render.fog.v1,
         display = Fog,
@@ -19,8 +19,8 @@ namespace lux::render
         feature = FogFeature,
         feature_header = lux / engine / render / renderer / features / postprocess / FogFeature.hpp) FogCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
     };
     static_assert(std::is_trivially_copyable_v<FogCommConfig>);
 

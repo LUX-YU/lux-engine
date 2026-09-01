@@ -34,10 +34,14 @@ namespace lux::scene
         simulation::ecs::ComponentSchemaSet components;
         simulation::SimulationSystemRegistry simulation_systems;
         std::vector<SceneSystemRegistration> scene_systems;
+        std::vector<render::RenderFeatureRegistration> render_feature_registrations;
+        std::vector<RenderFeatureMeta> render_features;
+        std::vector<std::vector<std::byte>> render_feature_default_configuration_storage;
         std::vector<std::vector<std::byte>> system_default_configuration_storage;
         std::vector<SystemMetaView> all_systems;
         std::unordered_map<std::uint64_t, std::size_t> system_by_hash;
         std::unordered_map<std::uint64_t, std::size_t> scene_system_by_hash;
+        std::unordered_map<std::uint64_t, std::size_t> render_feature_by_hash;
         std::vector<ComponentSystemUsage> component_usage;
         std::vector<UsageRange> component_usage_ranges;
         std::unordered_map<
@@ -107,6 +111,7 @@ namespace lux::scene
             impl->components = std::move(info.components);
             impl->simulation_systems = std::move(info.simulation_systems);
             impl->scene_systems = std::move(info.scene_systems);
+            impl->render_feature_registrations = std::move(info.render_features);
 
             for (const auto& component : impl->components.all())
             {
@@ -276,6 +281,129 @@ namespace lux::scene
                 });
             }
 
+            impl->render_feature_default_configuration_storage.reserve(
+                impl->render_feature_registrations.size()
+            );
+            impl->render_features.reserve(impl->render_feature_registrations.size());
+            impl->render_feature_by_hash.reserve(impl->render_feature_registrations.size());
+            std::vector<std::string_view> render_display_names;
+            render_display_names.reserve(impl->render_feature_registrations.size());
+            for (std::size_t index{}; index < impl->render_feature_registrations.size(); ++index)
+            {
+                const auto& registration = impl->render_feature_registrations[index];
+                const bool invalid_identity = registration.stable_name.empty() || registration.descriptor == nullptr ||
+                    !registration.descriptor->valid() || registration.descriptor->name.empty() ||
+                    render::featureId(registration.stable_name) != registration.descriptor->type ||
+                    !registration.configuration.valid();
+                if (invalid_identity)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::INVALID_RENDER_FEATURE,
+                        registration.descriptor != nullptr ? registration.descriptor->type : 0U
+                    ));
+                }
+                const auto existing = impl->render_feature_by_hash.find(registration.descriptor->type);
+                if (existing != impl->render_feature_by_hash.end())
+                {
+                    const auto& previous = impl->render_feature_registrations[existing->second];
+                    const auto code = previous.stable_name == registration.stable_name
+                        ? ESceneMetaError::DUPLICATE_RENDER_FEATURE
+                        : ESceneMetaError::RENDER_FEATURE_TYPE_COLLISION;
+                    return lux::cxx::unexpected(failure(code, registration.descriptor->type));
+                }
+                if (std::ranges::find(render_display_names, registration.descriptor->name) != render_display_names.end())
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::DUPLICATE_RENDER_FEATURE,
+                        registration.descriptor->type
+                    ));
+                }
+                const auto* reflection = configurationReflection(registration.configuration.portable);
+                if (reflection == nullptr)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::CONFIGURATION_REFLECTION_NOT_FOUND,
+                        registration.descriptor->type
+                    ));
+                }
+                impl->render_feature_default_configuration_storage.emplace_back();
+                auto& defaults = impl->render_feature_default_configuration_storage.back();
+                auto encoded = registration.configuration.portable.encode_default(defaults);
+                if (!encoded)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::CONFIGURATION_DEFAULT_ENCODING_FAILURE,
+                        registration.descriptor->type,
+                        encoded.error()
+                    ));
+                }
+                std::vector<std::byte> attach;
+                auto materialized = registration.configuration.materialize_attach(defaults, attach);
+                if (!materialized || attach.size() != registration.configuration.attach_wire_size)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::INVALID_RENDER_FEATURE,
+                        registration.descriptor->type,
+                        materialized ? lux::serialization::SerializationFailure{}
+                                     : materialized.error()
+                    ));
+                }
+                impl->render_feature_by_hash.emplace(registration.descriptor->type, index);
+                render_display_names.push_back(registration.descriptor->name);
+                impl->render_features.push_back({
+                    registration.descriptor->type,
+                    registration.stable_name,
+                    registration.descriptor->name,
+                    &registration,
+                    reflection,
+                    defaults,
+                    registration.scene_configurable,
+                    {},
+                    {}
+                });
+            }
+
+            for (const auto& binding : info.render_scene_bindings)
+            {
+                const auto feature = impl->render_feature_by_hash.find(binding.feature);
+                if (feature == impl->render_feature_by_hash.end())
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::UNKNOWN_RENDER_FEATURE_BINDING,
+                        binding.feature
+                    ));
+                }
+                const auto scene_system = impl->scene_system_by_hash.find(binding.scene_system.hash);
+                if (scene_system == impl->scene_system_by_hash.end() ||
+                    impl->scene_systems[scene_system->second].type != binding.scene_system)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::UNKNOWN_SCENE_SYSTEM_BINDING,
+                        binding.scene_system.hash
+                    ));
+                }
+                auto& meta = impl->render_features[feature->second];
+                if (meta.create_sync_stage != nullptr || !meta.observations.empty())
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneMetaError::DUPLICATE_RENDER_FEATURE_BINDING,
+                        binding.feature
+                    ));
+                }
+                for (const auto& observation : binding.observations)
+                {
+                    if (!observation.component.isValid())
+                    {
+                        return lux::cxx::unexpected(failure(
+                            ESceneMetaError::INVALID_RENDER_FEATURE_BINDING,
+                            binding.feature
+                        ));
+                    }
+                }
+                meta.create_sync_stage = binding.create_sync_stage;
+                meta.observations = binding.observations;
+            }
+
             std::ranges::sort(impl->all_systems, [](const auto& left, const auto& right) noexcept {
                 return system::SystemTypeIdLess{}(left.type, right.type);
             });
@@ -335,6 +463,29 @@ namespace lux::scene
                             ESystemDomain::SCENE,
                             {},
                             observation.events
+                        });
+                    }
+                }
+            }
+            for (const auto& feature : impl->render_features)
+            {
+                if (feature.observations.empty()) continue;
+                const auto binding = std::find_if(
+                    info.render_scene_bindings.begin(),
+                    info.render_scene_bindings.end(),
+                    [&](const auto& value) noexcept { return value.feature == feature.type; }
+                );
+                for (const auto& observation : feature.observations)
+                {
+                    const auto ordinal = componentOrdinal(observation.component);
+                    if (ordinal != usages.size())
+                    {
+                        usages[ordinal].push_back({
+                            binding->scene_system,
+                            ESystemDomain::SCENE,
+                            {},
+                            observation.events,
+                            feature.type
                         });
                     }
                 }
@@ -412,6 +563,19 @@ namespace lux::scene
             : nullptr;
     }
 
+    const RenderFeatureMeta* SceneMetaManager::getRenderFeatureMeta(render::FeatureTypeId type) const noexcept
+    {
+        const auto found = impl_->render_feature_by_hash.find(type);
+        return found != impl_->render_feature_by_hash.end() ? &impl_->render_features[found->second] : nullptr;
+    }
+
+    const RenderFeatureMeta* SceneMetaManager::getRenderFeatureMeta(std::string_view stable_name) const noexcept
+    {
+        const auto type = render::featureId(stable_name);
+        const auto* meta = getRenderFeatureMeta(type);
+        return meta != nullptr && meta->stable_name == stable_name ? meta : nullptr;
+    }
+
     std::span<const ComponentSystemUsage> SceneMetaManager::systemsUsingComponent(
         const simulation::ecs::ComponentSchemaId& component
     ) const noexcept
@@ -441,5 +605,10 @@ namespace lux::scene
     std::span<const SceneSystemRegistration> SceneMetaManager::sceneSystems() const noexcept
     {
         return impl_->scene_systems;
+    }
+
+    std::span<const RenderFeatureMeta> SceneMetaManager::allRenderFeatures() const noexcept
+    {
+        return impl_->render_features;
     }
 } // namespace lux::scene

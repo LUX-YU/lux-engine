@@ -150,7 +150,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<QueryTerrainPageCacheStatsPayload>);
 
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Terrain,
         id = lux.render.terrain.v1,
         display = Terrain,

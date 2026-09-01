@@ -18,6 +18,7 @@
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
+#include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
 
 #include <cstddef>
 #include <span>
@@ -169,6 +170,8 @@ namespace lux::render
     };
 
 {%- if not annotation_has(cfg, "no_factory") %}
+    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor k{{ prefix }}Descriptor;
+    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration;
     extern LUX_FUNCTION_PUBLIC const FeatureFactory k{{ prefix }}FeatureFactory;
 {%- endif %}
 

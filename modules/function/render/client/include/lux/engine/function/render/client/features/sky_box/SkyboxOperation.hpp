@@ -30,12 +30,12 @@ namespace lux::render
     inline constexpr std::string_view kSkyboxEquirectFragShaderName = "skybox_equirect.frag";
 
     /// Comm-layer config for SkyboxFeature.
-    struct LUX_COMM_CONFIG(prefix = Skybox, id = lux.render.skybox.v1, display = Skybox, custom_create = true)
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(prefix = Skybox, id = lux.render.skybox.v1, display = Skybox, custom_create = true)
         SkyboxCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle cubemap_fragment{};
-        ShaderHandle equirect_fragment{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle cubemap_fragment LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle equirect_fragment LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
     };
     static_assert(std::is_trivially_copyable_v<SkyboxCommConfig>);
 

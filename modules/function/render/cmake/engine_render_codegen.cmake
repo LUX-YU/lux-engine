@@ -146,6 +146,7 @@ function(engine_add_comm_ops)
 
     set(_hpp_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_hpp.template")
     set(_client_cpp_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_client_cpp.template")
+    set(_metadata_cpp_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_metadata_cpp.template")
     set(_cpp_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_cpp.template")
     set(_root    "${CMAKE_CURRENT_BINARY_DIR}/comm_gen")
     set(_out_dir "${_root}/${ARGS_INCLUDE_PREFIX}")
@@ -192,6 +193,21 @@ function(engine_add_comm_ops)
             )
             lux_codegen_add_projection(
                 JOB ${_job}
+                NAME type_static_info
+                TEMPLATE ${PROJECT_SOURCE_DIR}/modules/core/meta/template/type_static_info.template
+                OUTPUT_ROOT ${_job_root}
+                OUTPUT_SUFFIX .type_static_info.hpp
+            )
+            lux_codegen_add_projection(
+                JOB ${_job}
+                NAME metadata_cpp
+                TEMPLATE ${_metadata_cpp_template}
+                OUTPUT_ROOT ${_job_root}
+                OUTPUT_SUFFIX .metadata.cpp
+                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}"
+            )
+            lux_codegen_add_projection(
+                JOB ${_job}
                 NAME ops_cpp
                 TEMPLATE ${_cpp_template}
                 OUTPUT_ROOT ${_job_root}
@@ -231,10 +247,12 @@ function(engine_add_comm_ops)
                 PRIVATE
                     "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.ops.hpp"
                     "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.client.ops.cpp"
+                    "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.metadata.cpp"
             )
             set_source_files_properties(
                 "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.ops.hpp"
                 "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.client.ops.cpp"
+                "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.metadata.cpp"
                 PROPERTIES GENERATED TRUE
             )
         endif()

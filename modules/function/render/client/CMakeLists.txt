@@ -6,9 +6,11 @@ set(RENDER_CLIENT_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FeatureParamsClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LightOperationClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialOperationClient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/PointCloudRenderFeatureRegistrations.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MeshStackOperationClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderControlSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderErrorRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderFeatureRegistrations.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderFatal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderProgramSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderLease.cpp
@@ -49,13 +51,14 @@ target_link_libraries(
         lux::cxx::memory
         lux::engine::core::math
         lux::engine::core::meta
+        lux::engine::core::serialization
         lux::engine::resource::description
 )
 
 component_add_transitive_commands(
     render_client
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time container concurrent memory)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math meta serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 
@@ -131,6 +134,29 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+add_component(
+    COMPONENT_NAME render_client_meta
+    NAMESPACE      lux::engine::function
+    OUTPUT_NAME    lux_engine_function_render_client_meta
+    SOURCE_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderFeatureMetaModule.cpp
+)
+component_include_directories(
+    render_client_meta
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME include
+)
+target_compile_definitions(render_client_meta PRIVATE LUX_FUNCTION_LIBRARY)
+target_link_libraries(
+    render_client_meta
+    PRIVATE render_client lux::engine::core::meta
+)
+lux_classify_target(TARGET render_client_meta LAYER FUNCTION PRODUCT RUNTIME ROLE INTEGRATION)
+engine_enable_module_meta(
+    TARGET render_client
+    SIDECAR_TARGET render_client_meta
+    TARGET_FILES ${LUX_RENDER_COMM_OPERATION_HEADERS}
+)
+
 add_executable(
     render_program_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/render_program_test.cpp
@@ -151,3 +177,24 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 add_test(NAME render_program_test COMMAND render_program_test)
+
+add_executable(
+    render_feature_registration_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_feature_registration_test.cpp
+)
+target_link_libraries(
+    render_feature_registration_test
+    PRIVATE lux::engine::function::render_client
+)
+if(MSVC)
+    target_compile_options(render_feature_registration_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(render_feature_registration_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET render_feature_registration_test
+    LAYER FUNCTION
+    PRODUCT TEST
+    ROLE DOMAIN
+)
+add_test(NAME render_feature_registration_test COMMAND render_feature_registration_test)

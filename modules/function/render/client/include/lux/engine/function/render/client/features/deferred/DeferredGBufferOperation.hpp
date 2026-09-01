@@ -51,23 +51,23 @@ namespace lux::render
 
     /// Comm-layer config for DeferredGBufferFeature.
     /// Client fills shader indices from CompileShader replies.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = DeferredGBuffer,
         id = lux.render.deferred_gbuffer.v1,
         display = DeferredGBuffer,
         requires = lux.render.mesh_stack.v1,
         custom_create = true) DeferredGBufferCommConfig
     {
-        ShaderHandle gbuffer_vertex_shader{};
-        ShaderHandle gbuffer_unlit_fragment_shader{};
-        ShaderHandle gbuffer_pbr_fragment_shader{};
-        ShaderHandle gbuffer_stylized_fragment_shader{};
+        ShaderHandle gbuffer_vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle gbuffer_unlit_fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle gbuffer_pbr_fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle gbuffer_stylized_fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         // Optional: node-graph (Graph family) gbuffer frag. No builtin fallback —
         // when null, the Graph family simply gets no pipeline (graph materials,
         // if any, won't draw). Supplied via the override conduit (compileShader).
-        ShaderHandle gbuffer_graph_fragment_shader{};
-        ShaderHandle cull_compute_shader{};
-        ShaderHandle compact_compute_shader{};
+        ShaderHandle gbuffer_graph_fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle cull_compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle compact_compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t comm_config_version{kDeferredGBufferCommConfigVersion};
         uint32_t descriptor_layout_version{kDeferredGBufferDescriptorLayoutVersion};
         GpuDrivenMeshExtFlags extension_flags{};

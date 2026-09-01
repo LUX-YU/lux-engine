@@ -43,6 +43,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         navigation
         navigation_detour3d
         render_client
+        render_client_meta
         render_standard_content
         script_artifact
         script_core
@@ -52,6 +53,7 @@ else()
     set(LUX_FUNCTION_COMPONENTS
         flowforge
         render_client
+        render_client_meta
         render_standard_content
         render_graph
         render_vulkan

@@ -24,15 +24,15 @@ namespace lux::render
     // (DepthPrepassFeature::Config also carries `depth_target`, which the wire
     //  config deliberately does not expose; fields with no CommConfig counterpart
     //  keep their defaults, same as the hand-written version did.)
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = DepthPrepass,
         id = lux.render.depth_prepass.v1,
         display = DepthPrepass,
         feature = DepthPrepassFeature,
         feature_header = lux / engine / render / renderer / features / DepthPrepassFeature.hpp) DepthPrepassCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
     };
     static_assert(std::is_trivially_copyable_v<DepthPrepassCommConfig>);
 

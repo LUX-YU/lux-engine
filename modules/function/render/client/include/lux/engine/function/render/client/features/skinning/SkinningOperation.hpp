@@ -29,7 +29,7 @@ namespace lux::render
 {
     /// 蒙皮无客户端可调创建参数(计算着色器自装内置)—— 空配置结构只承载
     /// 特性身份注解;生成 createFn 以默认 Config 装配,与旧手写等价。
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Skinning,
         id = lux.render.skinning.v1,
         display = Skinning,

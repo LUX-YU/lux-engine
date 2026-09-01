@@ -18,7 +18,7 @@
 
 namespace lux::render
 {
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = TriOverlay,
         id = lux.render.tri_overlay.v1,
         display = TriOverlayTransient,
@@ -26,8 +26,8 @@ namespace lux::render
         feature_header = lux / engine / render / renderer / features / gizmo /
                          TriOverlayTransientFeature.hpp) TriOverlayTransientCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t max_vertices{200'000};
     };
     static_assert(std::is_trivially_copyable_v<TriOverlayTransientCommConfig>);

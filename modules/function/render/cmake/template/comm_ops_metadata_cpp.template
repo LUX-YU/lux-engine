@@ -1,0 +1,36 @@
+// Generated backend-neutral RenderFeature descriptor and portable config registration.
+#include <{{ include_prefix }}/{{ stem }}.ops.hpp>
+#include <{{ include_prefix }}/{{ stem }}.type_static_info.hpp>
+
+{% set cfg_index = 0 -%}
+{%- for rec_idx in marked_record_decls -%}{%- set r = decl_from_index(rec_idx) -%}{%- if annotation_has(r, "luxop::config") -%}{%- set cfg_index = rec_idx -%}{%- endif -%}{%- endfor -%}
+{%- set cfg = decl_from_index(cfg_index) -%}
+{%- set prefix = annotation_get_for_or(cfg, "luxop::config", "prefix", "") -%}
+{%- set no_factory = "false" -%}{%- if annotation_has(cfg, "no_factory") -%}{%- set no_factory = "true" -%}{%- endif -%}
+{%- set feature_id = annotation_get_for_or(cfg, "luxop::config", "id", "") -%}
+{%- set display = annotation_get_for_or(cfg, "luxop::config", "display", "") -%}
+{%- set requires = annotation_get_for_or(cfg, "luxop::config", "requires", "") -%}
+namespace lux::render
+{
+{%- if no_factory == "false" %}
+{%- if requires != "" %}
+    static constexpr FeatureDependencyList k{{ prefix }}Deps = parseFeatureDependencies("{{ requires }}");
+{%- endif %}
+    const FeatureDescriptor k{{ prefix }}Descriptor{
+        .type = featureId("{{ feature_id }}"),
+        .name = "{{ display }}",
+{%- if requires != "" %}
+        .dependencies = {k{{ prefix }}Deps.items.data(), k{{ prefix }}Deps.count},
+{%- endif %}
+{%- if annotation_get_for_or(cfg, "luxop::config", "multiplicity", "") == "single" %}
+        .multiplicity = FeatureMultiplicity::SinglePerScene,
+{%- endif %}
+    };
+    const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration{
+        .stable_name = "{{ feature_id }}",
+        .descriptor = &k{{ prefix }}Descriptor,
+        .configuration = makeRenderFeatureConfigCodec<::{{ cfg.fq_name }}>(),
+        .scene_configurable = {% if annotation_get_for_or(cfg, "luxop::config", "scene_configurable", true) %}true{% else %}false{% endif %}
+    };
+{%- endif %}
+} // namespace lux::render

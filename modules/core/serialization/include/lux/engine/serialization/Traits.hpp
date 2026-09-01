@@ -140,6 +140,8 @@ namespace lux::serialization
                 return {EWireExtent::FIXED, sizeof(U)};
             else if constexpr (std::is_enum_v<U>)
                 return wireShape<std::underlying_type_t<U>>();
+            else if constexpr (std::is_bounded_array_v<U>)
+                return repeat(wireShape<std::remove_extent_t<U>>(), std::extent_v<U>);
             else if constexpr (WireIsArray<U>::value)
                 return repeat(wireShape<typename U::value_type>(), std::tuple_size_v<U>);
             else if constexpr (WireIsPair<U>::value)

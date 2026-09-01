@@ -22,7 +22,7 @@ namespace lux::render
     // field copy the generator emits. It used to be hand-written, which meant a
     // new config field silently kept its default until someone remembered to add
     // the assignment by hand — the exact failure the generator exists to remove.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = LinearDepth,
         id = lux.render.linear_depth.v1,
         display = LinearDepth,
@@ -30,8 +30,8 @@ namespace lux::render
         feature_header = lux / engine / render / renderer / features / postprocess /
                          LinearDepthFeature.hpp) LinearDepthCommConfig
     {
-        ShaderHandle vertex_shader{};   ///< 空 = 内置全屏三角(TONEMAP_VERT)
-        ShaderHandle fragment_shader{}; ///< 空 = 内置 LINEAR_DEPTH_FRAG
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};   ///< 空 = 内置全屏三角(TONEMAP_VERT)
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; ///< 空 = 内置 LINEAR_DEPTH_FRAG
     };
     static_assert(std::is_trivially_copyable_v<LinearDepthCommConfig>);
 

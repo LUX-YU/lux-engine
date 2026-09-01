@@ -253,7 +253,7 @@ namespace lux::render
 
     /// 无客户端创建参数 —— 空 tag 承载特性身份(数据型基础特性,
     /// SinglePerScene:第二实例只是同一注册表资源上的空壳,拒绝之)。
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Light,
         id = lux.render.light.v1,
         display = Light,

@@ -92,24 +92,6 @@ namespace lux::render
 {%- if param_op != "" -%}{%- if not first %},
         {% endif -%}ServerOp<{{ param_op }}Op>{%- endif -%}>;
 
-{%- set requires = annotation_get_for_or(cfg, "luxop::config", "requires", "") -%}
-{%- if requires != "" %}
-    // requires=:声明期依赖(缺必需项即明确拒绝,不留静默空转)。逗号分隔多条,
-    // `?` 尾缀 = 可选依赖;解析在 constexpr 里做(parseFeatureDependencies),
-    // 超过上限是编译期错误。为什么要有它,见作者头 LUX_COMM_CONFIG 旁的注释。
-    static constexpr FeatureDependencyList k{{ prefix }}Deps =
-        parseFeatureDependencies("{{ requires }}");
-{%- endif %}
-    static constexpr FeatureDescriptor k{{ prefix }}Descriptor{
-        .type = featureId("{{ feature_id }}"),
-        .name = "{{ display }}",
-{%- if requires != "" %}
-        .dependencies = { k{{ prefix }}Deps.items.data(), k{{ prefix }}Deps.count },
-{%- endif %}
-{%- if annotation_get_for_or(cfg, "luxop::config", "multiplicity", "") == "single" %}
-        .multiplicity = FeatureMultiplicity::SinglePerScene,
-{%- endif %}
-    };
     const FeatureFactory k{{ prefix }}FeatureFactory{
         &{{ prefix }}CreateFn,
         &{{ prefix }}Ops::registerAll,

@@ -11,7 +11,7 @@ namespace lux::render
 
     /// Comm-layer config for SpatialCullFeature (spatial-cell-grid coarse cull).
     /// All fields have sane defaults so a `{}` config works.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = SpatialCull,
         id = lux.render.spatial_cull.v1,
         display = SpatialCull,

@@ -35,18 +35,18 @@ namespace lux::render
     /// Client fills shader indices from CompileShader replies.
     /// requires 第二条(shadow_map):attach 期 find<ShadowResources> 决定阴影
     /// 缓冲尺寸;没有 ShadowMap 的 MeshShadow 不产任何阴影 —— 语义必需。
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = MeshShadow,
         id = lux.render.mesh_shadow.v1,
         display = MeshShadow,
         requires = "lux.render.mesh_stack.v1,lux.render.shadow_map.v1",
         custom_create = true) MeshShadowCommConfig
     {
-        ShaderHandle shadow_cull_shader{};
-        ShaderHandle shadow_compact_shader{};
-        ShaderHandle shadow_clear_shader{};
-        ShaderHandle shadow_vert_shader{};
-        ShaderHandle shadow_frag_shader{};
+        ShaderHandle shadow_cull_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle shadow_compact_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle shadow_clear_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle shadow_vert_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle shadow_frag_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t comm_config_version{kMeshShadowCommConfigVersion};
         uint32_t descriptor_layout_version{kMeshShadowDescriptorLayoutVersion};
         GpuDrivenMeshExtFlags extension_flags{};

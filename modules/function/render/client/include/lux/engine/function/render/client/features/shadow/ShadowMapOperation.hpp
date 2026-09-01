@@ -32,7 +32,7 @@ namespace lux::render
 
     /// Comm-layer config for ShadowMapFeature.
     /// Client fills shader indices from CompileShader replies.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = ShadowMap,
         id = lux.render.shadow_map.v1,
         display = ShadowMap,
@@ -41,8 +41,8 @@ namespace lux::render
         param_op = ShadowMapParams,
         param_lane = program) ShadowMapCommConfig
     {
-        ShaderHandle shadow_vertex_shader{};
-        ShaderHandle shadow_fragment_shader{};
+        ShaderHandle shadow_vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle shadow_fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t atlas_page_resolution{kDefaultShadowAtlasPageResolution};
         uint32_t atlas_page_count{kDefaultShadowAtlasPageCount};
         uint32_t max_shadow_slices{kDefaultMaxShadowSlices};
@@ -54,7 +54,7 @@ namespace lux::render
         /// shadow_bias tuning; EVSM is pre-filtered and bias-free. See
         /// .internal/plan/evsm-shadow-implementation-guide.md.
         EShadowTechnique default_technique{EShadowTechnique::PCF};
-        uint8_t _pad[3]{};
+        uint8_t LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER() _pad[3]{};
         /// EVSM-specific knobs. Ignored under PCF. Capped to RGBA16F's
         /// representable range (exp(c·1) ≤ sqrt(65504) ≈ 255 → c ≤ 5.54).
         /// RGBA32F atlas can push these higher (Frostbite uses 40/5).

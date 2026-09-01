@@ -43,25 +43,25 @@ namespace lux::render
 
     /// Comm-layer config for ForwardMeshFeature.
     /// Client fills shader indices from CompileShader replies.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = ForwardMesh,
         id = lux.render.forward_mesh.v1,
         display = ForwardMesh,
         requires = lux.render.mesh_stack.v1,
         custom_create = true) ForwardMeshCommConfig
     {
-        ShaderHandle forward_cull_shader{};
-        ShaderHandle forward_compact_shader{};
-        ShaderHandle forward_vert_shader{};
-        ShaderHandle unlit_fragment{};
-        ShaderHandle pbr_fragment{};
-        ShaderHandle stylized_fragment{};
+        ShaderHandle forward_cull_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle forward_compact_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle forward_vert_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle unlit_fragment LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle pbr_fragment LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle stylized_fragment LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         // Optional: node-graph (Graph family) forward frag. No builtin fallback —
         // null => Graph family gets no forward pipeline. Supplied via compileShader.
         // 编辑器的活材质预览已改走逐材质 forward PSO(GpuResourceCache::
         // ensureGraphMaterial 上传时自带双份 frag,R1),本 override 现仅
         // shadergen 测试路径(graph_forward_render_test)使用。
-        ShaderHandle graph_fragment{};
+        ShaderHandle graph_fragment LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t comm_config_version{kForwardMeshCommConfigVersion};
         uint32_t descriptor_layout_version{kForwardMeshDescriptorLayoutVersion};
         GpuDrivenMeshExtFlags extension_flags{};

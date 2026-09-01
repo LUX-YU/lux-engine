@@ -4,6 +4,7 @@
 #include <lux/engine/serialization/BinaryReader.hpp>
 #include <lux/engine/serialization/Traits.hpp>
 #include <lux/engine/serialization/visibility.h>
+#include <lux/cxx/core/EnumFlags.hpp>
 
 #include <array>
 #include <concepts>
@@ -49,6 +50,33 @@ namespace lux::serialization
     private:
         const SerializationBudget* budget_{};
         std::uint32_t depth_{};
+    };
+
+    template <class Enum>
+        requires std::is_enum_v<Enum>
+    struct Serializer<lux::cxx::EnumFlags<Enum>> final
+    {
+        using Flags = lux::cxx::EnumFlags<Enum>;
+        using Underlying = typename Flags::underlying_type;
+
+        template <class Writer>
+        static SerializationResult write(Writer& writer, Flags value, const SerializationContext&) noexcept
+        {
+            if constexpr (std::is_unsigned_v<Underlying>) return writer.writeUnsigned(value.bits());
+            else return writer.writeSigned(value.bits());
+        }
+
+        template <class Reader>
+        static SerializationResult read(Reader& reader, Flags& value, const SerializationContext&) noexcept
+        {
+            auto bits = [&]() {
+                if constexpr (std::is_unsigned_v<Underlying>) return reader.template readUnsigned<Underlying>();
+                else return reader.template readSigned<Underlying>();
+            }();
+            if (!bits) return lux::cxx::unexpected<SerializationFailure>(bits.error());
+            value = Flags::fromBits(*bits);
+            return {};
+        }
     };
 
     namespace detail
@@ -256,6 +284,15 @@ namespace lux::serialization
                     return result;
                 }
                 return writeValue(writer, *value, context.nested());
+            }
+            else if constexpr (std::is_bounded_array_v<U>)
+            {
+                SerializationResult result{};
+                for (const auto& item : value)
+                {
+                    if (result) result = writeValue(writer, item, context.nested());
+                }
+                return result;
             }
             else if constexpr (lux::meta::HasTypeStaticInfo<U>)
             {
@@ -472,6 +509,15 @@ namespace lux::serialization
                 }
                 value.emplace();
                 return readValue(reader, *value, context.nested());
+            }
+            else if constexpr (std::is_bounded_array_v<U>)
+            {
+                SerializationResult result{};
+                for (auto& item : value)
+                {
+                    if (result) result = readValue(reader, item, context.nested());
+                }
+                return result;
             }
             else if constexpr (lux::meta::HasTypeStaticInfo<U>)
             {

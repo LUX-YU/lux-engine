@@ -11,7 +11,7 @@
 namespace lux::render
 {
     /// Factory identity for HzbFeature (P2 HZB Stage A).
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Hzb,
         id = lux.render.hzb.v1,
         display = Hzb,

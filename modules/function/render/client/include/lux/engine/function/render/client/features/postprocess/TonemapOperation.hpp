@@ -34,7 +34,7 @@ namespace lux::render
     };
 
     /// Comm-layer config for TonemapFeature.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Tonemap,
         id = lux.render.tonemap.v1,
         display = Tonemap,
@@ -43,8 +43,8 @@ namespace lux::render
         param_op = TonemapParams,
         param_lane = program) TonemapCommConfig
     {
-        ShaderHandle vertex_shader{};   ///< fullscreen triangle
-        ShaderHandle fragment_shader{}; ///< tonemap.frag
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};   ///< fullscreen triangle
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; ///< tonemap.frag
         ETonemapOperator tone_map_op{ETonemapOperator::ACES_FILMIC};
         float exposure{1.0f};
         float gamma{2.2f};

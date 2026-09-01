@@ -12,7 +12,7 @@
 namespace lux::render
 {
     /// Factory identity for SsaoFeature (shading-input reference impl).
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Ssao,
         id = lux.render.ssao.v1,
         display = Ssao,

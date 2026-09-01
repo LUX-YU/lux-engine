@@ -2,6 +2,7 @@
 
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
+#include <lux/engine/scene/RenderFeatureMeta.hpp>
 #include <lux/engine/scene/meta/visibility.h>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
@@ -69,6 +70,7 @@ namespace lux::scene
         ESystemDomain domain{};
         std::optional<simulation::ESystemAccessMode> simulation_access{};
         std::uint8_t scene_observations{};
+        render::FeatureTypeId via_render_feature{render::kInvalidFeatureTypeId};
     };
 
     class LUX_ENGINE_SCENE_META_PUBLIC SceneMetaManager final
@@ -79,6 +81,8 @@ namespace lux::scene
             simulation::ecs::ComponentSchemaSet components;
             simulation::SimulationSystemRegistry simulation_systems;
             std::vector<SceneSystemRegistration> scene_systems;
+            std::vector<render::RenderFeatureRegistration> render_features;
+            std::vector<RenderFeatureSceneBinding> render_scene_bindings;
         };
 
         [[nodiscard]] static lux::cxx::expected<SceneMetaManager, SceneMetaFailure>
@@ -102,6 +106,8 @@ namespace lux::scene
             const system::SystemTypeId& type
         ) const noexcept;
         [[nodiscard]] const SceneSystemRegistration* getSceneSystemMeta(const system::SystemTypeId& type) const noexcept;
+        [[nodiscard]] const RenderFeatureMeta* getRenderFeatureMeta(render::FeatureTypeId type) const noexcept;
+        [[nodiscard]] const RenderFeatureMeta* getRenderFeatureMeta(std::string_view stable_name) const noexcept;
         [[nodiscard]] std::span<const ComponentSystemUsage> systemsUsingComponent(
             const simulation::ecs::ComponentSchemaId& component
         ) const noexcept;
@@ -110,6 +116,7 @@ namespace lux::scene
         ) const noexcept;
         [[nodiscard]] std::span<const SystemMetaView> allSystems() const noexcept;
         [[nodiscard]] std::span<const SceneSystemRegistration> sceneSystems() const noexcept;
+        [[nodiscard]] std::span<const RenderFeatureMeta> allRenderFeatures() const noexcept;
 
     private:
         struct Impl;

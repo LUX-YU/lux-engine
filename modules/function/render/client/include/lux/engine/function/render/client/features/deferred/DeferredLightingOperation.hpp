@@ -61,7 +61,7 @@ namespace lux::render
     /// 顺序敏感**的依赖(`?` 尾缀)——本特性 attach 时扫 scene.features() 做
     /// 阴影技术匹配校验,排在 ShadowMap 前面就扫不到、校验静默空转
     /// (DeferredLightingFeature.cpp 的注释自证)。
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = DeferredLighting,
         id = lux.render.deferred_lighting.v1,
         display = DeferredLighting,
@@ -69,15 +69,15 @@ namespace lux::render
         custom_create = true) DeferredLightingCommConfig
     {
         uint32_t comm_config_version{kDeferredLightingCommConfigVersion};
-        ShaderHandle vertex_shader{};   ///< fullscreen triangle
-        ShaderHandle fragment_shader{}; ///< deferred_lighting.frag (variant chosen by `technique` if empty)
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};   ///< fullscreen triangle
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; ///< deferred_lighting.frag (variant chosen by `technique` if empty)
         ELightingReadMode read_mode{ELightingReadMode::SAMPLED};
 
-        ShaderHandle cluster_build_shader{};
-        ShaderHandle cluster_count_shader{};
-        ShaderHandle cluster_scan_shader{};
-        ShaderHandle cluster_fill_shader{};
-        ShaderHandle cluster_clear_shader{};
+        ShaderHandle cluster_build_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle cluster_count_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle cluster_scan_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle cluster_fill_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle cluster_clear_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t enable_clustered{0};
         uint32_t cluster_x{16};
         uint32_t cluster_y{9};
@@ -87,7 +87,7 @@ namespace lux::render
         /// `ShadowMapCommConfig::default_technique` or lighting will sample
         /// the wrong atlas (PCF D32 vs EVSM RGBA16F).
         EShadowTechnique technique{EShadowTechnique::PCF};
-        uint8_t _pad[7]{};
+        uint8_t LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER() _pad[7]{};
     };
     static_assert(std::is_trivially_copyable_v<DeferredLightingCommConfig>);
 

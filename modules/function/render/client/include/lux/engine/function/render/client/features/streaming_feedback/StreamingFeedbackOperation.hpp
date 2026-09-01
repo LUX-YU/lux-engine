@@ -30,24 +30,24 @@ namespace lux::render
     /// Scene-level default style.  Entity state carries a stable style id; v1
     /// renders the built-in ids through this default implementation.  A plugin
     /// can replace the feature factory without changing ECS data.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = StreamingFeedback,
         id = lux.render.streaming_feedback.v1,
         display = StreamingFeedback,
         requires = lux.render.mesh_stack.v1,
         custom_create = true) StreamingFeedbackCommConfig
     {
-        ShaderHandle cull_shader{};
-        ShaderHandle compact_shader{};
-        ShaderHandle mask_vert{};
-        ShaderHandle mask_frag{};
-        ShaderHandle composite_frag{};
+        ShaderHandle cull_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle compact_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle mask_vert LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle mask_frag LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle composite_frag LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         std::uint32_t descriptor_layout_version{0};
         GpuDrivenMeshExtFlags extension_flags{};
         float tile_size{18.0f};
         float speed{1.6f};
         float intensity{0.72f};
-        float color[3]{0.18f, 0.72f, 1.0f};
+        float LUX_NO_MEMBER() color[3]{0.18f, 0.72f, 1.0f};
         EStreamingFeedbackPattern pattern{EStreamingFeedbackPattern::MOSAIC_DITHER};
     };
     static_assert(std::is_trivially_copyable_v<StreamingFeedbackCommConfig>);

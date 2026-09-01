@@ -7,7 +7,7 @@
 ## runtime, render or editor knowledge. Domain formats build on this foundation.
 
 find_package(stduuid CONFIG REQUIRED)
-find_package(lux-cxx REQUIRED COMPONENTS binary compile_time)
+find_package(lux-cxx REQUIRED COMPONENTS binary compile_time core)
 find_package(Eigen3 CONFIG REQUIRED)
 
 generate_visibility_header(
@@ -46,6 +46,7 @@ target_link_libraries(
     PUBLIC
     lux::cxx::binary
     lux::cxx::compile_time
+    lux::cxx::core
     Eigen3::Eigen
     stduuid
 )
@@ -54,7 +55,7 @@ component_add_internal_dependencies(serialization type_info)
 
 component_add_transitive_commands(
     serialization
-    "find_package(lux-cxx REQUIRED COMPONENTS binary compile_time)"
+    "find_package(lux-cxx REQUIRED COMPONENTS binary compile_time core)"
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(Eigen3 CONFIG REQUIRED)"
 )

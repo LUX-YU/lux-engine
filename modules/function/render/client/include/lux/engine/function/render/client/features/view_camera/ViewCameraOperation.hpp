@@ -25,7 +25,7 @@
 namespace lux::render
 {
     /// 无客户端创建参数 —— 空配置结构只承载特性身份注解。
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = ViewCamera,
         id = lux.render.view_camera.v1,
         display = StandardViewCamera,

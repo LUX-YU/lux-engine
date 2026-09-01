@@ -35,7 +35,7 @@ namespace lux::render
     inline constexpr std::string_view kTrajectoryLineVertShaderName = "trajectory_line.vert";
     inline constexpr std::string_view kTrajectoryLineFragShaderName = "trajectory_line.frag";
 
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Trajectory,
         id = lux.render.trajectory_line.v1,
         display = TrajectoryLine,
@@ -43,8 +43,8 @@ namespace lux::render
         feature_header = lux / engine / render / renderer / features / trajectory /
                          TrajectoryLineFeature.hpp) TrajectoryLineCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t max_global_vertices{1'000'000};
     };
     static_assert(std::is_trivially_copyable_v<TrajectoryLineCommConfig>);

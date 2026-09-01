@@ -152,7 +152,7 @@ namespace lux::render
     inline constexpr std::uint32_t kMaxCanvas2DGroups = 3;
 
     /// Wire config for AddFeature("Canvas2D"). Trivially copyable by contract.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Canvas2D,
         id = lux.render.canvas2d.v2,
         display = Canvas2D,

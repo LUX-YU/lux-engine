@@ -23,7 +23,7 @@
 namespace lux::render
 {
     /// CommConfig (trivially copyable, transferred as attachment).
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = LineList,
         id = lux.render.line_list.v1,
         display = LineListTransient,
@@ -31,8 +31,8 @@ namespace lux::render
         feature_header = lux / engine / render / renderer / features / gizmo /
                          LineListTransientFeature.hpp) LineListTransientCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         float line_width{1.5f};
         uint32_t max_vertices{200'000};
     };

@@ -65,8 +65,8 @@ namespace lux::render
         manual_client = true) UploadGraphMaterialPayload
     {
         ExternalDataRef graph_desc{};        // points to const GraphMaterialData
-        ShaderHandle graph_gbuffer_shader{}; // R1: per-material baked frags → own bucket/PSO
-        ShaderHandle graph_forward_shader{};
+        ShaderHandle graph_gbuffer_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; // R1: per-material baked frags → own bucket/PSO
+        ShaderHandle graph_forward_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint64_t shader_key{0};
         uint32_t alpha_mode{0}; // rdesc::EAlphaMode: 0=Opaque,1=Mask,2=Blend
         uint8_t double_sided{0};
@@ -96,7 +96,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<MaterialUploadedReply>);
 
     /// 无客户端创建参数 —— 空 tag 承载特性身份。
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Material,
         id = lux.render.material.v1,
         display = StandardMaterial,

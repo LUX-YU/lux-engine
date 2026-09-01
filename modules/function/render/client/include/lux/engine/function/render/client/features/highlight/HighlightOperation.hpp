@@ -31,23 +31,23 @@ namespace lux::render
     /// null — HighlightFeature::init() defaults them to the builtins. The halo
     /// appearance defaults (UE-ish orange) are baked here so a `{}` config works.
     /// The halo color is the per-feature client knob (selection = orange, etc.).
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Highlight,
         id = lux.render.highlight.v1,
         display = Highlight,
         requires = lux.render.mesh_stack.v1,
         custom_create = true) HighlightCommConfig
     {
-        ShaderHandle cull_shader{};
-        ShaderHandle compact_shader{};
-        ShaderHandle mask_vert{};
-        ShaderHandle mask_frag{};
-        ShaderHandle blur_frag{};
-        ShaderHandle composite_frag{};
+        ShaderHandle cull_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle compact_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle mask_vert LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle mask_frag LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle blur_frag LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle composite_frag LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint32_t descriptor_layout_version{0};
         GpuDrivenMeshExtFlags extension_flags{};
         // Halo appearance
-        float glow_color[3]{1.0f, 0.55f, 0.06f}; ///< UE-ish orange
+        float LUX_NO_MEMBER() glow_color[3]{1.0f, 0.55f, 0.06f}; ///< UE-ish orange
         float glow_intensity{3.0f};              ///< scales the halo alpha
         float glow_radius{2.5f};                 ///< Gaussian per-tap step, in texels
     };

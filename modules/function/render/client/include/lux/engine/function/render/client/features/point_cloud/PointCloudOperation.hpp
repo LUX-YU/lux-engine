@@ -13,6 +13,7 @@
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
+#include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <algorithm>
@@ -35,38 +36,38 @@ namespace lux::render
 
     /// 通信身份 tag:只为承载 prefix 与 no_factory(五模式共享一套 op,
     /// 工厂/描述符全手写)。不是 wire 类型。
-    struct LUX_COMM_CONFIG(prefix = PointCloud, no_factory = true) PointCloudCommTag
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(prefix = PointCloud, no_factory = true) PointCloudCommTag
     {
     };
 
     // =========================================================================
     //  Per-mode CommConfig structs (trivially copyable, transferred as attachments)
     // =========================================================================
-    struct PCSimpleCommConfig
+    struct LUX_TYPE_INFO(both) PCSimpleCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         float initial_point_size{3.0f};
         uint32_t max_global_points{4'000'000};
         uint32_t max_octree_nodes{65'536};
     };
     static_assert(std::is_trivially_copyable_v<PCSimpleCommConfig>);
 
-    struct PCGPUDrivenCommConfig
+    struct LUX_TYPE_INFO(both) PCGPUDrivenCommConfig
     {
-        ShaderHandle compute_shader{};
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         float initial_point_size{3.0f};
         uint32_t max_nodes{65'536};
     };
     static_assert(std::is_trivially_copyable_v<PCGPUDrivenCommConfig>);
 
-    struct PCLODCommConfig
+    struct LUX_TYPE_INFO(both) PCLODCommConfig
     {
-        ShaderHandle compute_shader{};
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         float point_size_world{0.05f};
         float min_size{1.0f};
         float max_size{20.0f};
@@ -74,11 +75,11 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCLODCommConfig>);
 
-    struct PCSplattingCommConfig
+    struct LUX_TYPE_INFO(both) PCSplattingCommConfig
     {
-        ShaderHandle compute_shader{};
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         float point_size_world{0.05f};
         float min_size{2.0f};
         float max_size{30.0f};
@@ -86,10 +87,10 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCSplattingCommConfig>);
 
-    struct PCTransientCommConfig
+    struct LUX_TYPE_INFO(both) PCTransientCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         float point_size{3.0f};
         uint32_t max_points{2'000'000};
     };
@@ -209,5 +210,15 @@ namespace lux::render
     extern LUX_FUNCTION_PUBLIC const FeatureFactory kPCFeatureLODFactory;
     extern LUX_FUNCTION_PUBLIC const FeatureFactory kPCFeatureSplattingFactory;
     extern LUX_FUNCTION_PUBLIC const FeatureFactory kPCFeatureTransientFactory;
+    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCSimpleDescriptor;
+    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCGPUDrivenDescriptor;
+    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCLODDescriptor;
+    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCSplattingDescriptor;
+    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCTransientDescriptor;
+    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCSimpleRegistration;
+    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCGPUDrivenRegistration;
+    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCLODRegistration;
+    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCSplattingRegistration;
+    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCTransientRegistration;
 
 } // namespace lux::render

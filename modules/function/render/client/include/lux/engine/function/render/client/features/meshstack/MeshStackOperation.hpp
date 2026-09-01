@@ -235,7 +235,7 @@ namespace lux::render
     /// requires=material:MaterialResources::init 需要内建 shading-model 表先在
     /// (StandardMaterialFeature attach 时 ensure)——语义必需,但代码里没有
     /// fail-fast 兜底,此前只靠 attach 目录的位置注释撑着。
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = MeshStack,
         id = lux.render.mesh_stack.v1,
         display = StandardMeshStack,

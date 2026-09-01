@@ -1284,6 +1284,26 @@ foreach(render_client_source IN LISTS render_client_sources)
     endif()
 endforeach()
 
+file(GLOB_RECURSE render_feature_operation_headers LIST_DIRECTORIES false
+    "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/features/*Operation.hpp"
+)
+foreach(render_feature_operation_header IN LISTS render_feature_operation_headers)
+    file(READ "${render_feature_operation_header}" render_feature_operation_content)
+    if(render_feature_operation_content MATCHES
+       "ShaderHandle[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*[{]")
+        message(FATAL_ERROR
+            "Architecture: durable RenderFeature config in '${render_feature_operation_header}' exposes a runtime ShaderHandle."
+        )
+    endif()
+endforeach()
+file(READ
+    "${source_root}/modules/function/render/cmake/template/comm_ops_cpp.template"
+    render_server_codegen_template
+)
+if(render_server_codegen_template MATCHES "static constexpr FeatureDescriptor")
+    message(FATAL_ERROR "Architecture: server Render codegen owns a duplicate FeatureDescriptor.")
+endif()
+
 set(render_sync_pipeline_header
     "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
 )

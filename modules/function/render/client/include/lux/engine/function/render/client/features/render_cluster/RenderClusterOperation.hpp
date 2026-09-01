@@ -200,7 +200,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<QueryRenderClusterPickPayload>);
 
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = RenderCluster,
         id = lux.render.cluster.v1,
         display = RenderCluster,

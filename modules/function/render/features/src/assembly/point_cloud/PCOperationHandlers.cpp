@@ -134,10 +134,6 @@ namespace lux::render
         return sc->addFeature<PCFeatureSimple>(cfg);
     }
 
-    static constexpr FeatureDescriptor kPCSimpleDescriptor{
-        .type = featureId("lux.render.point_cloud_simple.v1"),
-        .name = "PCSimple",
-    };
     const FeatureFactory kPCFeatureSimpleFactory{
         &pcSimpleCreateFn,
         &PCOps::registerAll,
@@ -169,10 +165,6 @@ namespace lux::render
         return sc->addFeature<PCFeatureGPUDriven>(cfg);
     }
 
-    static constexpr FeatureDescriptor kPCGPUDrivenDescriptor{
-        .type = featureId("lux.render.point_cloud_gpudriven.v1"),
-        .name = "PCGPUDriven",
-    };
     const FeatureFactory kPCFeatureGPUDrivenFactory{
         &pcGPUDrivenCreateFn,
         &PCOps::registerAll,
@@ -206,10 +198,6 @@ namespace lux::render
         return sc->addFeature<PCFeatureLOD>(cfg);
     }
 
-    static constexpr FeatureDescriptor kPCLODDescriptor{
-        .type = featureId("lux.render.point_cloud_lod.v1"),
-        .name = "PCLOD",
-    };
     const FeatureFactory kPCFeatureLODFactory{
         &pcLODCreateFn,
         &PCOps::registerAll,
@@ -243,10 +231,6 @@ namespace lux::render
         return sc->addFeature<PCFeatureSplatting>(cfg);
     }
 
-    static constexpr FeatureDescriptor kPCSplattingDescriptor{
-        .type = featureId("lux.render.point_cloud_splatting.v1"),
-        .name = "PCSplatting",
-    };
     const FeatureFactory kPCFeatureSplattingFactory{
         &pcSplattingCreateFn,
         &PCOps::registerAll,
@@ -312,10 +296,6 @@ namespace lux::render
         return sc->addFeature<PCFeatureTransient>(cfg);
     }
 
-    static constexpr FeatureDescriptor kPCTransientDescriptor{
-        .type = featureId("lux.render.point_cloud_transient.v1"),
-        .name = "PCTransient",
-    };
     const FeatureFactory kPCFeatureTransientFactory{
         &pcTransientCreateFn,
         &PCTransientOps::registerAll,

@@ -100,7 +100,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<WaterStatsPayload>);
 
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Water,
         id = lux.render.water.v1,
         display = Water,
@@ -109,8 +109,8 @@ namespace lux::render
         feature_header = lux / engine / render / renderer / features / water / WaterFeature.hpp,
         multiplicity = single) WaterCommConfig final
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         std::uint32_t maximum_surfaces{256u};
     };
     static_assert(std::is_trivially_copyable_v<WaterCommConfig>);

@@ -31,15 +31,15 @@ namespace lux::render
     /// Comm-layer config for Grid3DPassFeature.
     /// The client fills this with shader indices returned by CompileShader.
     /// The generated create_fn copies same-named fields into Feature::Config.
-    struct LUX_COMM_CONFIG(
+    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(
         prefix = Grid3D,
         id = lux.render.grid3d.v1,
         display = Grid3DPass,
         feature = Grid3DPassFeature,
         feature_header = lux / engine / render / renderer / features / grid / Grid3DPassFeature.hpp) Grid3DCommConfig
     {
-        ShaderHandle vertex_shader{};
-        ShaderHandle fragment_shader{};
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
     };
     static_assert(std::is_trivially_copyable_v<Grid3DCommConfig>);
 

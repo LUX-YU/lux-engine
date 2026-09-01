@@ -61,8 +61,8 @@ lux_detect_build_platform()
 lux_configure_host_tools()
 lux_validate_module_layout("${CMAKE_CURRENT_SOURCE_DIR}/modules")
 
-# Product composition is explicit.  FlowForge is the only canonical
-# Authoring/Toolchain slice in this repository revision.
+# Product composition is explicit. Toolchain and Editor are separate upper
+# layers; no canonical Authoring layer remains.
 set(LUX_PROFILE_HAS_RUNTIME OFF)
 set(LUX_PROFILE_HAS_REFERENCE_PLAYER OFF)
 if(LUX_BUILD_PROFILE STREQUAL "EDITOR")

@@ -2,7 +2,7 @@ include_guard(GLOBAL)
 
 set(_LUX_ARCH_LAYERS
     PLATFORM CORE RESOURCE FUNCTION DOMAIN WORLD SIMULATION
-    PROCESS SCENE RUNTIME AUTHORING TOOLCHAIN EDITOR HOST
+    PROCESS SCENE RUNTIME TOOLCHAIN EDITOR HOST
 )
 set(_LUX_ARCH_PRODUCTS
     RUNTIME PLAYER EDITOR TOOLCHAIN BUILD_TOOL TEST
@@ -182,12 +182,8 @@ function(_lux_arch_dependency_allowed consumer_layer dependency_layer output)
         if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|DOMAIN|WORLD|SIMULATION|PROCESS|SCENE)$")
             set(allowed TRUE)
         endif()
-    elseif(consumer_layer STREQUAL "AUTHORING")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|PROCESS|SCENE|AUTHORING)$")
-            set(allowed TRUE)
-        endif()
     elseif(consumer_layer STREQUAL "TOOLCHAIN")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|PROCESS|SCENE|RUNTIME|AUTHORING|TOOLCHAIN)$")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|PROCESS|SCENE|RUNTIME|TOOLCHAIN)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "EDITOR")

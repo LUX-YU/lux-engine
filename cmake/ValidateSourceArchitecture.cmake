@@ -31,6 +31,7 @@ foreach(retired_root IN ITEMS
     "${source_root}/engine/domain/simulation/systems"
     "${source_root}/engine/domain/simulation/script_binding"
     "${source_root}/engine/domain/simulation/script"
+    "${source_root}/engine/authoring"
     "${source_root}/engine/authoring/script_binding"
     "${source_root}/engine/authoring/flowforge"
     "${source_root}/engine/tools"

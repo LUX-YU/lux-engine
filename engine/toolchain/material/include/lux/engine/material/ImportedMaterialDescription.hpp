@@ -8,7 +8,7 @@
 
 #include <optional>
 
-namespace lux::toolchain
+namespace lux::material
 {
     struct ImportedTextureReference final
     {
@@ -38,4 +38,4 @@ namespace lux::toolchain
         bool double_sided{};
         bool legacy_lit{};
     };
-} // namespace lux::toolchain
+} // namespace lux::material

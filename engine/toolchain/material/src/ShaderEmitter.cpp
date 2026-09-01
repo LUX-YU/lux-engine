@@ -16,7 +16,7 @@
 //  added later; emitGlsl fails explicitly for them.
 // =============================================================================
 
-#include <lux/engine/toolchain/shader/Backend.hpp>
+#include <lux/engine/material/compiler/Backend.hpp>
 
 #include <array>
 #include <charconv>

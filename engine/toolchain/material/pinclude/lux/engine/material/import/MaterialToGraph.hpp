@@ -19,9 +19,9 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
-#include <lux/engine/toolchain/asset/material/ImportedMaterialDescription.hpp>
+#include <lux/engine/material/ImportedMaterialDescription.hpp>
 
-namespace lux::shadergen::material
+namespace lux::material::compiler
 {
     /// Converts the flat ImportedMaterialDesc POD produced by an importer into
     /// a MaterialGraph (a PBR graph).
@@ -32,5 +32,5 @@ namespace lux::shadergen::material
     /// uniform error-handling shape for this non-hot-path call and to leave
     /// room for a future conversion that can actually fail).
     lux::cxx::expected<::lux::material::MaterialGraph, std::string>
-    materialToGraph(const ::lux::toolchain::ImportedMaterialDescription& desc);
-} // namespace lux::shadergen::material
+    materialToGraph(const ::lux::material::ImportedMaterialDescription& desc);
+} // namespace lux::material::compiler

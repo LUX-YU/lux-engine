@@ -3,7 +3,7 @@
 //  (shared by every client, so the rules can't drift)
 // =============================================================================
 
-#include <lux/engine/toolchain/shader/ShaderIR.hpp>
+#include <lux/engine/material/compiler/ShaderIR.hpp>
 
 #include <cstring>
 #include <string>

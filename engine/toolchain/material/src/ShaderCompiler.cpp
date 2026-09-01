@@ -11,7 +11,7 @@
 //  no dependency on render and does not hard-code its asset paths.
 // =============================================================================
 
-#include <lux/engine/toolchain/shader/Backend.hpp>
+#include <lux/engine/material/compiler/Backend.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/toolchain/shader/SpirvReflection.hpp>
 

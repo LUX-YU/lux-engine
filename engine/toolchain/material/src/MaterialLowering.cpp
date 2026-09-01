@@ -8,11 +8,11 @@
 //  The algorithm shares its lineage with lux::matgraph::lowerToIR (an
 //  explicit-stack DFS, so deep dependency chains don't blow the native
 //  stack), but the output side is now generic outputs + inputs slots, and
-//  shading_model/render_state are carried out via LowerResult instead of
+//  shading_model/render_state are carried out via MaterialIR instead of
 //  going into ShaderIR — they aren't "expressions".
 // =============================================================================
 
-#include <lux/engine/toolchain/asset/material/MaterialLowering.hpp>
+#include <lux/engine/material/compiler/Lowering.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 
 #include <cstring>
@@ -20,37 +20,40 @@
 #include <unordered_map>
 #include <vector>
 
-namespace lux::shadergen::material
+namespace lux::material::compiler
 {
+    using namespace ::lux::shadergen;
+    using ShaderValueType = ::lux::shadergen::EValueType;
+
     namespace
     {
         namespace graph = ::lux::material;
 
-        EValueType mapValueType(graph::EValueType type) noexcept
+        ShaderValueType mapValueType(graph::EValueType type) noexcept
         {
             switch (type)
             {
-            case graph::EValueType::FLOAT: return EValueType::FLOAT;
-            case graph::EValueType::VEC2: return EValueType::VEC2;
-            case graph::EValueType::VEC3: return EValueType::VEC3;
-            case graph::EValueType::VEC4: return EValueType::VEC4;
+            case graph::EValueType::FLOAT: return ShaderValueType::FLOAT;
+            case graph::EValueType::VEC2: return ShaderValueType::VEC2;
+            case graph::EValueType::VEC3: return ShaderValueType::VEC3;
+            case graph::EValueType::VEC4: return ShaderValueType::VEC4;
             }
-            return EValueType::FLOAT;
+            return ShaderValueType::FLOAT;
         }
 
-        bool isVector(EValueType t) noexcept
+        bool isVector(ShaderValueType t) noexcept
         {
-            return t == EValueType::VEC2 || t == EValueType::VEC3 || t == EValueType::VEC4;
+            return t == ShaderValueType::VEC2 || t == ShaderValueType::VEC3 || t == ShaderValueType::VEC4;
         }
 
-        const char* typeName(EValueType t) noexcept
+        const char* typeName(ShaderValueType t) noexcept
         {
             switch (t)
             {
-            case EValueType::FLOAT: return "float";
-            case EValueType::VEC2:  return "vec2";
-            case EValueType::VEC3:  return "vec3";
-            case EValueType::VEC4:  return "vec4";
+            case ShaderValueType::FLOAT: return "float";
+            case ShaderValueType::VEC2:  return "vec2";
+            case ShaderValueType::VEC3:  return "vec3";
+            case ShaderValueType::VEC4:  return "vec4";
             }
             return "?";
         }
@@ -106,10 +109,10 @@ namespace lux::shadergen::material
             }
         }
 
-        EValueType mathResultType(graph::EMathOp op, EValueType operand) noexcept
+        ShaderValueType mathResultType(graph::EMathOp op, ShaderValueType operand) noexcept
         {
             if (op == graph::EMathOp::DOT || op == graph::EMathOp::LENGTH)
-                return EValueType::FLOAT;
+                return ShaderValueType::FLOAT;
             return operand;
         }
 
@@ -159,23 +162,28 @@ namespace lux::shadergen::material
         struct Lowerer
         {
             const graph::MaterialGraph& g;
-            LowerResult&                result;
+            MaterialIR&                result;
             ShaderIR&                   ir;
-            std::string*                error;
+            MaterialCompileFailure*     error;
             std::unordered_map<graph::node_id, int>            color;
             std::unordered_map<graph::node_id, uint32_t>       value_of;
             std::unordered_map<graph::EMaterialInput, uint32_t> input_slot_of;
             bool                                               ok = true;
 
-            Lowerer(const graph::MaterialGraph& g_, LowerResult& r_, std::string* e_)
-                : g(g_), result(r_), ir(r_.ir), error(e_)
+            Lowerer(const graph::MaterialGraph& g_, MaterialIR& r_, MaterialCompileFailure* e_)
+                : g(g_), result(r_), ir(r_.shader), error(e_)
             {
             }
 
-            bool fail(std::string m)
+            bool fail(
+                std::string message,
+                EMaterialCompileError code = EMaterialCompileError::LOWERING_FAILURE,
+                std::uint64_t node_id = graph::invalid_node,
+                std::uint32_t pin_index = graph::invalid_pin
+            )
             {
                 if (error && ok)  // keep the first error only
-                    *error = std::move(m);
+                    *error = MaterialCompileFailure{code, std::move(message), node_id, pin_index};
                 ok = false;
                 return false;
             }
@@ -187,7 +195,7 @@ namespace lux::shadergen::material
                 return i;
             }
 
-            uint32_t emitConstant(const float c[4], EValueType t)
+            uint32_t emitConstant(const float c[4], ShaderValueType t)
             {
                 ShaderIRValue v{};
                 v.op   = EOp::CONSTANT;
@@ -210,8 +218,9 @@ namespace lux::shadergen::material
                 InputSlot s;
                 s.name          = graph::kMaterialInputs[static_cast<size_t>(in)].name;
                 s.type          = mapValueType(graph::inputType(in));
-                s.location      = materialInputLocation(in);  // aligned with the engine material vert interpolant layout
-                s.interpolation = EInterpolation::SMOOTH;     // material shading inputs are always interpolated
+                // Aligned with the engine material vertex interpolant layout.
+                s.location = materialInputLocation(in);
+                s.interpolation = EInterpolation::SMOOTH;
                 ir.inputs.push_back(std::move(s));
                 input_slot_of[in] = slot;
                 return slot;
@@ -221,9 +230,11 @@ namespace lux::shadergen::material
             {
                 const graph::Node* src = g.node(pin.source.node);
                 if (!src)
-                    return fail("dangling connection: source node missing");
+                    return fail("dangling connection: source node missing", EMaterialCompileError::INVALID_GRAPH,
+                                pin.source.node, pin.source.pin);
                 if (pin.source.pin >= src->outputs().size())
-                    return fail("connection references an invalid source output pin");
+                    return fail("connection references an invalid source output pin",
+                                EMaterialCompileError::INVALID_GRAPH, pin.source.node, pin.source.pin);
                 if (pin.source.pin != 0)
                     return fail("multi-output nodes are not supported yet");
                 return true;
@@ -247,7 +258,7 @@ namespace lux::shadergen::material
                         return kNoValue;
                     }
                     const uint32_t vidx = it->second;
-                    const EValueType produced = ir.values[vidx].type;
+                    const ShaderValueType produced = ir.values[vidx].type;
                     if (produced == mapValueType(pin.type))
                         return vidx;
 
@@ -263,7 +274,7 @@ namespace lux::shadergen::material
                         v.swizzle[0]  = 0; v.swizzle[1] = 1; v.swizzle[2] = 2; v.swizzle[3] = 3;
                         return push(v);
                     }
-                    if (produced == EValueType::FLOAT && an > 1)
+                    if (produced == ShaderValueType::FLOAT && an > 1)
                     {
                         // scalar -> vector: splat (vecN(x)).
                         ShaderIRValue v{};
@@ -272,9 +283,10 @@ namespace lux::shadergen::material
                         for (int i = 0; i < an; ++i) v.operands[static_cast<size_t>(i)] = vidx;
                         return push(v);
                     }
-                    fail(std::string("type mismatch: source produces ") + typeName(produced)
-                         + " but pin '" + pin.name + "' expects " + typeName(mapValueType(pin.type))
-                         + " — insert a Construct node to widen");
+                    fail(std::string("type mismatch: source produces ") + typeName(produced) + " but pin '" +
+                             pin.name + "' expects " + typeName(mapValueType(pin.type)) +
+                             " — insert a Construct node to widen",
+                         EMaterialCompileError::TYPE_MISMATCH, pin.source.node, pin.source.pin);
                     return kNoValue;
                 }
 
@@ -302,7 +314,7 @@ namespace lux::shadergen::material
                     const graph::Node* n = g.node(id);
                     if (!n)
                     {
-                        fail("internal: referenced node id not found");
+                        fail("referenced node id not found", EMaterialCompileError::INVALID_GRAPH, id);
                         return kNoValue;
                     }
 
@@ -323,7 +335,8 @@ namespace lux::shadergen::material
                             const int sc = color[pin.source.node];
                             if (sc == 1)
                             {
-                                fail("cycle detected in material graph");
+                                fail("cycle detected in material graph", EMaterialCompileError::CYCLE,
+                                     pin.source.node);
                                 return kNoValue;
                             }
                             if (sc != 2)
@@ -381,12 +394,13 @@ namespace lux::shadergen::material
                         return kNoValue;
                     if (s->texture_slot >= ir.textures.size())
                     {
-                        fail("SampleTexture references an undeclared texture slot");
+                        fail("SampleTexture references an undeclared texture slot",
+                             EMaterialCompileError::INVALID_GRAPH, n->id());
                         return kNoValue;
                     }
                     ShaderIRValue v{};
                     v.op          = EOp::SAMPLE_TEXTURE;
-                    v.type        = EValueType::VEC4;
+                    v.type        = ShaderValueType::VEC4;
                     v.slot        = s->texture_slot;
                     v.operands[0] = uv;
                     return push(v);
@@ -396,7 +410,8 @@ namespace lux::shadergen::material
                     auto* p = static_cast<const graph::ParamNode*>(n);
                     if (p->param_slot >= ir.params.size())
                     {
-                        fail("Param references an undeclared parameter slot");
+                        fail("Param references an undeclared parameter slot",
+                             EMaterialCompileError::INVALID_GRAPH, n->id());
                         return kNoValue;
                     }
                     ShaderIRValue v{};
@@ -419,7 +434,7 @@ namespace lux::shadergen::material
                         return kNoValue;
                     ShaderIRValue v{};
                     v.op          = EOp::DECODE_NORMAL;
-                    v.type        = EValueType::VEC3;
+                    v.type        = ShaderValueType::VEC3;
                     v.operands[0] = rgb;
                     return push(v);
                 }
@@ -454,7 +469,7 @@ namespace lux::shadergen::material
                         return kNoValue;
                     ShaderIRValue v{};
                     v.op          = EOp::TBN_NORMAL;
-                    v.type        = EValueType::VEC3;
+                    v.type        = ShaderValueType::VEC3;
                     v.operands[0] = src;
                     return push(v);
                 }
@@ -511,18 +526,20 @@ namespace lux::shadergen::material
                 if (!ok)
                     return kNoValue;
 
-                const EValueType ta = ir.values[a].type;
-                const EValueType tb = ir.values[b].type;
+                const ShaderValueType ta = ir.values[a].type;
+                const ShaderValueType tb = ir.values[b].type;
 
                 if ((m->op == graph::EMathOp::DOT || m->op == graph::EMathOp::CROSS) && (ta != tb || !isVector(ta)))
                 {
-                    fail("Dot/Cross require two vectors of equal type");
+                    fail("Dot/Cross require two vectors of equal type", EMaterialCompileError::TYPE_MISMATCH,
+                         m->id());
                     return kNoValue;
                 }
                 if (ta != tb)
                 {
-                    fail(std::string("binary math requires equal operand types (")
-                         + typeName(ta) + " vs " + typeName(tb) + "; broadcast not supported yet)");
+                    fail(std::string("binary math requires equal operand types (") + typeName(ta) + " vs " +
+                             typeName(tb) + "; broadcast not supported yet)",
+                         EMaterialCompileError::TYPE_MISMATCH, m->id());
                     return kNoValue;
                 }
                 ShaderIRValue v{};
@@ -542,14 +559,16 @@ namespace lux::shadergen::material
                     if (np->kind() == graph::EMatNodeKind::OUTPUT_SURFACE)
                     {
                         if (output)
-                            return fail("material graph has more than one OutputSurface node");
+                            return fail("material graph has more than one OutputSurface node",
+                                        EMaterialCompileError::INVALID_GRAPH, id);
                         output = np.get();
                     }
                 }
                 if (!output)
-                    return fail("material graph has no OutputSurface node");
+                    return fail("material graph has no OutputSurface node",
+                                EMaterialCompileError::MISSING_REQUIRED_OUTPUT);
 
-                // 2. Carry shading_model + render_state out via LowerResult
+                // 2. Carry shading_model + render_state out via MaterialIR
                 //    (they do not go into ShaderIR).
                 result.shading_model = g.shading_model;
                 result.alpha_mode    = g.render_state.alpha_mode;
@@ -583,7 +602,7 @@ namespace lux::shadergen::material
                     o.type     = mapValueType(adesc.type);
                     o.value_id = kNoValue;
                     for (int k = 0; k < 4; ++k)
-                        o.dflt[k] = adesc.dflt[k];  // default value is self-contained in the IR (consumers never look back at the contract)
+                        o.dflt[k] = adesc.dflt[k];
 
                     if (i < output->inputs().size())
                     {
@@ -595,7 +614,7 @@ namespace lux::shadergen::material
                             lower(pin.source.node);
                             if (!ok)
                                 return false;
-                            o.value_id = operandValue(pin);  // reads the already-lowered value + type-checks against the attribute
+                            o.value_id = operandValue(pin);
                             if (!ok)
                                 return false;
                         }
@@ -640,15 +659,20 @@ namespace lux::shadergen::material
         };
     } // namespace
 
-    lux::cxx::expected<LowerResult, std::string>
+    lux::cxx::expected<MaterialIR, MaterialCompileFailure>
     lowerMaterial(const graph::MaterialGraph& graph)
     {
-        LowerResult out{};
-        std::string error;
+        MaterialIR out{};
+        MaterialCompileFailure error{
+            EMaterialCompileError::LOWERING_FAILURE,
+            "lowerMaterial failed",
+            graph::invalid_node,
+            graph::invalid_pin
+        };
         Lowerer lowerer(graph, out, &error);
         if (!lowerer.run())
-            return lux::cxx::unexpected(error.empty() ? std::string("lowerMaterial failed") : std::move(error));
+            return lux::cxx::unexpected(std::move(error));
         return out;
     }
 
-} // namespace lux::shadergen::material
+} // namespace lux::material::compiler

@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/asset/model/ModelCooker.hpp>
 
-#include <lux/engine/toolchain/asset/material/MaterialCooker.hpp>
+#include <lux/engine/material/Cooker.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureCooker.hpp>
 
 #include <lux/cxx/algorithm/sha256.hpp>
@@ -298,7 +298,7 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] lux::cxx::expected<
-            std::optional<ImportedTextureReference>,
+            std::optional<lux::material::ImportedTextureReference>,
             ModelCookFailure
         > cookTextureReference(
             CookContext& context,
@@ -309,7 +309,7 @@ namespace lux::toolchain
         {
             aiString path;
             if (material.GetTexture(type, 0U, &path) != AI_SUCCESS)
-                return std::optional<ImportedTextureReference>{};
+                return std::optional<lux::material::ImportedTextureReference>{};
 
             std::string stable_key;
             auto source = textureSource(context, path, stable_key);
@@ -319,7 +319,7 @@ namespace lux::toolchain
                 found != context.texture_by_key.end())
             {
                 const auto& asset = context.product.textures[found->second];
-                return std::optional<ImportedTextureReference>{ImportedTextureReference{
+                return std::optional<lux::material::ImportedTextureReference>{lux::material::ImportedTextureReference{
                     asset->id(),
                     textureConfiguration(profile).color_space
                 }};
@@ -356,7 +356,7 @@ namespace lux::toolchain
             const std::size_t index = context.product.textures.size();
             context.texture_by_key.emplace(cache_key, index);
             context.product.textures.push_back(*cooked);
-            return std::optional<ImportedTextureReference>{ImportedTextureReference{
+            return std::optional<lux::material::ImportedTextureReference>{lux::material::ImportedTextureReference{
                 texture_id,
                 textureConfiguration(profile).color_space
             }};
@@ -368,7 +368,7 @@ namespace lux::toolchain
             for (std::uint32_t ordinal = 0U; ordinal < context.scene.mNumMaterials; ++ordinal)
             {
                 const aiMaterial& source = *context.scene.mMaterials[ordinal];
-                ImportedMaterialDescription imported;
+                lux::material::ImportedMaterialDescription imported;
                 if (looksLikePbr(source))
                 {
                     aiColor4D base{};
@@ -465,7 +465,7 @@ namespace lux::toolchain
                 aiGetMaterialString(&source, AI_MATKEY_NAME, &source_name);
                 const std::string key = std::to_string(ordinal);
                 const auto material_id = deriveId(context.model_info.id, "material", key);
-                auto material = cookImportedMaterial(
+                auto material = lux::material::cookImportedMaterial(
                     subAssetInfo(
                         context.model_info,
                         material_id,
@@ -479,7 +479,7 @@ namespace lux::toolchain
                     return lux::cxx::unexpected(failure(
                         EModelCookError::MATERIAL_COOK_FAILED,
                         ordinal,
-                        material.error().detail
+                        material.error().message
                     ));
                 }
                 context.product.materials.push_back(*material);

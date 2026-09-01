@@ -13,8 +13,7 @@
 //  escape hatches. It does NOT contain shading_model (which BRDF) or
 //  render_state (PSO state such as alpha/double_sided) -- those aren't
 //  "expressions"; they belong to each client's own declaration and are
-//  carried separately by the baking bridge (see LowerResult in
-//  material/MaterialLowering.hpp).
+//  carried separately by the Material compiler's private MaterialIR.
 //
 //  [Generalization pivot] Output is a generic named binding ("base_color" /
 //  "g_normal" / "radiance") that makes no assumption about whether it's a
@@ -134,7 +133,8 @@ namespace lux::shadergen
         std::string name;
         uint32_t    value_id = kNoValue;
         EValueType  type     = EValueType::FLOAT;
-        float       dflt[4]  = { 0, 0, 0, 0 };  ///< the default used when value_id==kNoValue (goes straight into a SPIR-V literal)
+        /// Default used when value_id==kNoValue; emitted as a SPIR-V literal.
+        float dflt[4] = {0, 0, 0, 0};
     };
 
     /// Backend-neutral IR for one synthesized piece of shading logic. Pure
@@ -154,7 +154,7 @@ namespace lux::shadergen
         /// fingerprints the expressions themselves, not shading_model /
         /// render_state (they aren't part of the IR); the final shader cache
         /// key is assembled by the client combining in those shell parameters
-        /// (for materials, see material::LowerResult::combined_fingerprint).
+        /// (for materials, see the private MaterialIR::combined_fingerprint).
         uint64_t fingerprint = 0;
     };
 

@@ -1,14 +1,14 @@
 // =============================================================================
 //  MaterialToGraph.cpp — ImportedMaterialDesc -> MaterialGraph conversion
 //  (migrated into ShaderGen from the retired material_graph neutral core;
-//  namespace lux::shadergen::material)
+//  namespace lux::material::compiler)
 // =============================================================================
 
-#include <lux/engine/toolchain/asset/material/MaterialToGraph.hpp>
+#include <lux/engine/material/import/MaterialToGraph.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 
-#include <lux/engine/toolchain/asset/material/ImportedMaterialDescription.hpp>
+#include <lux/engine/material/ImportedMaterialDescription.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -18,7 +18,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace lux::shadergen::material
+namespace lux::material::compiler
 {
     using namespace ::lux::material;
 
@@ -120,7 +120,7 @@ namespace lux::shadergen::material
     // names + slot order + texture-slot indices), so an imported material dedups
     // byte-for-byte against an equivalent hand-authored one.
     lux::cxx::expected<MaterialGraph, std::string>
-    materialToGraph(const ::lux::toolchain::ImportedMaterialDescription& d)
+    materialToGraph(const ::lux::material::ImportedMaterialDescription& d)
     {
         const auto invalid_reference = [](const auto& reference) noexcept {
             return reference && reference->texture.isNull();
@@ -140,7 +140,7 @@ namespace lux::shadergen::material
         g.shading_model = ::lux::rdesc::ELightingTechnique::PbrMetallicRoughness;
 
         const auto slot = [&g](
-            const std::optional<::lux::toolchain::ImportedTextureReference>& texture,
+            const std::optional<::lux::material::ImportedTextureReference>& texture,
             std::string_view name
         ) -> std::optional<std::uint32_t>
         {
@@ -244,4 +244,4 @@ namespace lux::shadergen::material
         return g;
     }
 
-} // namespace lux::shadergen::material
+} // namespace lux::material::compiler

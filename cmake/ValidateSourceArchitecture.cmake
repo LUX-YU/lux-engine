@@ -1019,6 +1019,8 @@ endif()
 file(GLOB_RECURSE active_asset_toolchain_sources LIST_DIRECTORIES false
     "${source_root}/engine/toolchain/asset/*.hpp"
     "${source_root}/engine/toolchain/asset/*.cpp"
+    "${source_root}/engine/toolchain/material/*.hpp"
+    "${source_root}/engine/toolchain/material/*.cpp"
 )
 string(CONCAT asset_toolchain_forbidden_types
     "AssetManager|AssetManager2|AssetCookContext|AssetCookRegistry|AssetProductRegistry|"
@@ -1034,7 +1036,7 @@ foreach(source IN LISTS active_asset_toolchain_sources)
 endforeach()
 
 set(imported_material_header
-    "${source_root}/engine/toolchain/asset/material/include/lux/engine/toolchain/asset/material/ImportedMaterialDescription.hpp"
+    "${source_root}/engine/toolchain/material/include/lux/engine/material/ImportedMaterialDescription.hpp"
 )
 if(EXISTS "${imported_material_header}")
     file(READ "${imported_material_header}" imported_material_contract)

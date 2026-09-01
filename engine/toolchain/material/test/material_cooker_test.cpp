@@ -1,5 +1,5 @@
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/toolchain/asset/material/MaterialCooker.hpp>
+#include <lux/engine/material/Cooker.hpp>
 
 #include <array>
 #include <cassert>
@@ -29,11 +29,11 @@ namespace
 
 int main()
 {
-    lux::toolchain::ImportedMaterialDescription imported;
+    lux::material::ImportedMaterialDescription imported;
     imported.base_color = {0.25F, 0.5F, 0.75F};
     imported.metallic = 0.2F;
     imported.roughness = 0.7F;
-    imported.base_color_texture = lux::toolchain::ImportedTextureReference{
+    imported.base_color_texture = lux::material::ImportedTextureReference{
         id(1U),
         lux::rdesc::ETextureColorSpace::SRGB
     };
@@ -41,9 +41,9 @@ int main()
     imported.alpha_cutoff = 0.4F;
     imported.double_sided = true;
 
-    const auto cooked = lux::toolchain::cookImportedMaterial(info(2U), imported);
+    const auto cooked = lux::material::cookImportedMaterial(info(2U), imported);
     if (!cooked)
-        std::cerr << "material cook failed: " << cooked.error().detail << '\n';
+        std::cerr << "material cook failed: " << cooked.error().message << '\n';
     assert(cooked);
     assert((*cooked)->data().texture_slot_ids[0] == id(1U));
     assert((*cooked)->data().alpha_mode == lux::rdesc::EAlphaMode::Mask);
@@ -60,6 +60,6 @@ int main()
 
     auto invalid = imported;
     invalid.base_color_texture->texture = {};
-    assert(!lux::toolchain::cookImportedMaterial(info(3U), invalid));
+    assert(!lux::material::cookImportedMaterial(info(3U), invalid));
     return 0;
 }

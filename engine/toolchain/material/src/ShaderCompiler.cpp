@@ -1,59 +1,72 @@
 // =============================================================================
-//  ShaderCompiler.cpp  --  emitGlsl() + libshaderc -> SPIR-V, wired up with an IncluderInterface
+//  ShaderCompiler.cpp  --  emitGlsl() + libshaderc -> SPIR-V, with embedded includes
 // -----------------------------------------------------------------------------
 //  shaderc only appears here (PRIVATE, never leaks into Backend.hpp). Target env
 //  is vulkan1.2, matching the engine's builtin shaders (glslc --target-env=vulkan1.2).
 //
-//  Key difference from the old material_graph_glsl: this wires up a filesystem
-//  IncluderInterface, so the shell can #include the real single-source-of-truth
-//  files (gbuffer_encode.glsl, etc.) instead of hand-copying them inline. The
-//  search path is supplied by the caller via include_dirs -- this component has
-//  no dependency on render and does not hard-code its asset paths.
+//  The shell includes the canonical build-time resources (gbuffer_encode.glsl,
+//  lighting_common.glsl, etc.) from an immutable in-memory map. Installed
+//  compilers never read the original source checkout or build directory.
 // =============================================================================
 
 #include <lux/engine/material/compiler/Backend.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/toolchain/shader/SpirvReflection.hpp>
+#include <lux/engine/material/compiler/MaterialShaderIncludes.generated.hpp>
 
 #include <shaderc/shaderc.hpp>
 
-#include <fstream>
-#include <iterator>
+#include <algorithm>
 #include <memory>
 #include <string>
-#include <vector>
+#include <string_view>
 
 namespace lux::shadergen::glsl
 {
     namespace
     {
-        // Filesystem #include resolution: looks up the requested name across
-        // include_dirs and reads it in. shaderc keeps the content string alive
-        // via user_data; ReleaseInclude frees it.
-        class FileIncluder final : public shaderc::CompileOptions::IncluderInterface
+        namespace resources = ::lux::material::compiler::generated;
+
+        [[nodiscard]] bool validIncludeName(std::string_view name) noexcept
+        {
+            return !name.empty() && name.front() != '/' && name.front() != '\\' &&
+                name.find(':') == std::string_view::npos && name.find("..") == std::string_view::npos &&
+                name.find('\\') == std::string_view::npos;
+        }
+
+        class MemoryIncluder final : public shaderc::CompileOptions::IncluderInterface
         {
         public:
-            explicit FileIncluder(std::vector<std::string> dirs) : dirs_(std::move(dirs)) {}
-
             shaderc_include_result* GetInclude(const char*          requested,
                                                shaderc_include_type /*type*/,
                                                const char*          /*requesting*/,
                                                size_t               /*depth*/) override
             {
                 auto* data = new Payload{};
-                for (const std::string& dir : dirs_)
+                const std::string_view requested_name = requested != nullptr ? requested : "";
+                if (validIncludeName(requested_name))
                 {
-                    std::ifstream f(dir + "/" + requested, std::ios::binary);
-                    if (!f) continue;
-                    data->name    = requested;
-                    data->content.assign(std::istreambuf_iterator<char>(f),
-                                         std::istreambuf_iterator<char>());
-                    return make(data);
+                    const auto resource = std::find_if(
+                        resources::kMaterialShaderIncludes.begin(),
+                        resources::kMaterialShaderIncludes.end(),
+                        [requested_name](const resources::EmbeddedShaderInclude& candidate)
+                        {
+                            return candidate.name == requested_name;
+                        }
+                    );
+                    if (resource != resources::kMaterialShaderIncludes.end())
+                    {
+                        data->name = resource->name;
+                        data->content.assign(
+                            reinterpret_cast<const char*>(resource->data),
+                            resource->size
+                        );
+                        return make(data);
+                    }
                 }
-                // Not found: return an empty source_name (shaderc reports this
-                // as an include error), with content carrying a diagnostic message.
                 data->name.clear();
-                data->content = std::string("shadergen: include not found: ") + requested;
+                data->content = "shadergen: embedded include not found or invalid: ";
+                data->content += requested_name;
                 return make(data);
             }
 
@@ -77,14 +90,11 @@ namespace lux::shadergen::glsl
                 return r;
             }
 
-            std::vector<std::string> dirs_;
         };
     } // namespace
 
     lux::cxx::expected<CompiledShader, std::string>
-    compileToSpirv(const ShaderIR&                 ir,
-                   const EmitParams&               params,
-                   const std::vector<std::string>& include_dirs)
+    compileToSpirv(const ShaderIR& ir, const EmitParams& params)
     {
         auto source_exp = emitGlsl(ir, params);
         if (!source_exp)
@@ -96,7 +106,7 @@ namespace lux::shadergen::glsl
         options.SetSourceLanguage(shaderc_source_language_glsl);
         options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
         options.SetOptimizationLevel(shaderc_optimization_level_zero);
-        options.SetIncluder(std::make_unique<FileIncluder>(include_dirs));
+        options.SetIncluder(std::make_unique<MemoryIncluder>());
 
         const shaderc::SpvCompilationResult result =
             compiler.CompileGlslToSpv(source, shaderc_fragment_shader, "shadergen.frag", options);

@@ -23,6 +23,14 @@ endif()
 if(NOT CMAKE_CROSSCOMPILING AND
    (LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT))
     add_subdirectory(
+        "${CMAKE_SOURCE_DIR}/engine/toolchain/shader"
+        "${CMAKE_BINARY_DIR}/engine/toolchain/shader"
+    )
+    add_subdirectory(
+        "${CMAKE_SOURCE_DIR}/engine/toolchain/material"
+        "${CMAKE_BINARY_DIR}/engine/toolchain/material"
+    )
+    add_subdirectory(
         "${CMAKE_SOURCE_DIR}/engine/toolchain/asset"
         "${CMAKE_BINARY_DIR}/engine/toolchain/asset"
     )

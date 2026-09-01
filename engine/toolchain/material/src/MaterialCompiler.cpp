@@ -350,10 +350,6 @@ namespace lux::material
             if (!lowered)
                 return lux::cxx::unexpected(std::move(lowered.error()));
 
-            const std::vector<std::string> include_directories{
-                LUX_MATERIAL_SHADER_EMITTED_DIR,
-                LUX_MATERIAL_SHADER_SOURCE_DIR
-            };
             const auto compile_pass = [&](shadergen::glsl::EMaterialPass pass)
                 -> lux::cxx::expected<shadergen::glsl::CompiledShader, MaterialCompileFailure>
             {
@@ -362,7 +358,7 @@ namespace lux::material
                 parameters.shading_model = lowered->shading_model;
                 parameters.alpha_mode = lowered->alpha_mode;
                 parameters.alpha_cutoff = lowered->alpha_cutoff;
-                auto compiled = shadergen::glsl::compileToSpirv(lowered->shader, parameters, include_directories);
+                auto compiled = shadergen::glsl::compileToSpirv(lowered->shader, parameters);
                 if (!compiled)
                 {
                     auto message = std::move(compiled.error());

@@ -60,15 +60,12 @@ namespace lux::shadergen::glsl
     emitGlsl(const ShaderIR& ir, const EmitParams& params);
 
     /// Runs emitGlsl and then compiles the result to SPIR-V via libshaderc (target
-    /// env vulkan1.2). Wires up an IncluderInterface: `#include "gbuffer_encode.glsl"`
-    /// and similar directives in the shell are resolved via `include_dirs` (supplied
-    /// by the caller, typically render's assets/shaders directory) -- so this
-    /// component has no dependency on render. Returns CompiledShader on success
+    /// env vulkan1.2). Wires up an IncluderInterface backed only by the canonical
+    /// Shader include resources embedded into the Material compiler at build time.
+    /// Returns CompiledShader on success
     /// (SPIR-V plus ShaderInfo: textures map to set2, tex|param map to set4);
     /// returns an error string on failure.
     lux::cxx::expected<CompiledShader, std::string>
-    compileToSpirv(const ShaderIR&                 ir,
-                   const EmitParams&               params,
-                   const std::vector<std::string>& include_dirs);
+    compileToSpirv(const ShaderIR& ir, const EmitParams& params);
 
 } // namespace lux::shadergen::glsl

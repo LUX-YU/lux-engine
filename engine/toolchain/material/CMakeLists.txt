@@ -164,7 +164,16 @@ add_executable(material_cooker_test test/material_cooker_test.cpp)
 target_include_directories(material_cooker_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 target_link_libraries(material_cooker_test PRIVATE lux::engine::toolchain::toolchain_material_cooker)
 
-foreach(material_test IN ITEMS material_compiler_test material_cooker_test)
+add_executable(
+    material_compiler_backend_test
+    test/material_compiler_backend_test.cpp
+    src/ShaderEmitter.cpp
+    src/ShaderIR.cpp
+)
+target_include_directories(material_compiler_backend_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+target_link_libraries(material_compiler_backend_test PRIVATE lux::engine::resource::description)
+
+foreach(material_test IN ITEMS material_compiler_test material_compiler_backend_test material_cooker_test)
     if(MSVC)
         target_compile_options(${material_test} PRIVATE /UNDEBUG)
     else()

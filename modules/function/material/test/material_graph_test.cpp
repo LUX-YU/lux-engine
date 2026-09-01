@@ -40,10 +40,27 @@ int main()
         output,
         static_cast<std::uint32_t>(material::EMaterialAttribute::BASE_COLOR)
     ));
+    graph.node(sample)->ui_pos[0] = 24.0F;
+    graph.node(sample)->ui_pos[1] = -12.0F;
+    graph.node(sample)->ui_placed = true;
 
     auto clone = graph.clone();
     assert(clone.texture_slots.size() == 1U);
     assert(clone.texture_slots.front().texture == id(1U));
     assert(clone.node(sample) != nullptr && clone.node(output) != nullptr);
+    assert(clone.node(sample)->ui_pos[0] == 24.0F && clone.node(sample)->ui_pos[1] == -12.0F);
+    assert(clone.node(sample)->ui_placed);
+
+    graph.removeNode(sample);
+    assert(graph.node(sample) == nullptr);
+    const auto* output_node = graph.node(output)->as<material::OutputSurfaceNode>();
+    assert(output_node != nullptr);
+    assert(!output_node->inputs()[static_cast<std::uint32_t>(material::EMaterialAttribute::BASE_COLOR)].source.valid());
+
+    assert(graph.addNodeWithId(sample, std::make_unique<material::SampleTextureNode>()) == sample);
+    auto extracted = graph.extractNode(sample);
+    assert(extracted && extracted->id() == sample && graph.node(sample) == nullptr);
+    assert(graph.addNodeWithId(sample, std::move(extracted)) == sample);
+    assert(graph.addNodeWithId(sample, std::make_unique<material::SampleTextureNode>()) == material::invalid_node);
     return 0;
 }

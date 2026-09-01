@@ -3,12 +3,13 @@
 - Status: Accepted
 - Date: 2026-08-31
 - Scope: Mesh3D and Light3D only
-- Extraction foundation: Closed by `0d2d6e8fbdcb08f5bc5b82c0a928f45f8b06b806`
+- Extraction foundation: Closed by `339f5442e2843006c021ff91cbac6d487fced557`
 
 ## Decision
 
 Simulation owns authoritative `Mesh3D`, `Light3D` and double-precision `WorldTransform3D` facts. Mesh and Light each own a
-private L3 `RenderSyncStage`, reactive membership, published state and feature-specific diff. The generic `RenderSystem`
+private L3 `RenderSyncStage`, reactive membership, published state and feature-specific diff. The generic
+`RenderSyncPipeline`
 only prepares those stages in stable order, publishes one bounded `RenderProgram(StateUpdate)` transaction and then
 commits or discards every stage together. Presentation forwards optional updates and authors `RenderProgram(Frame)`
 packets. The Render thread applies state updates to retained `RenderScene` entities without advancing the frame lifecycle;
@@ -25,9 +26,10 @@ attach time. Backpressure and encode failures retain reactive/departure state; p
 StateUpdate packet is accepted, or after a prepared no-command transaction is explicitly committed.
 
 Prepare owns every fallible allocation. A first renderable entity receives a private unpublished state slot during
-prepare; discard retains that slot for retry, while departure removes it without a wire Remove. Commit only assigns an
+prepare; discard removes that unpublished slot without a wire Remove. A retry recreates the slot during its own fallible
+prepare transaction. Commit only assigns an
 already-existing nothrow state, removes a state under departure suppression, and clears retained containers. Full sync is
-requested centrally by RenderSystem and traverses the current feature view during prepare; its noexcept request path only
+requested centrally by RenderSyncPipeline and traverses the current feature view during prepare; its noexcept request path only
 sets flags. Departure callbacks append in amortized O(1), and prepare performs sort/unique before encoding removals.
 
 Mesh departure cancellation uses the same currently-renderable predicate as ordinary extraction: component membership,
@@ -43,5 +45,5 @@ This decision does not authorize a Presentation Registry, full-scene snapshot, g
 manager, timing domain, streaming marker or multi-task System API. Canvas and the other held Render protocols retain their
 existing reply/identity contracts.
 
-The later SceneSystem convergence may replace nullable Registry pointers in builtin stage factories and allow an empty
-RenderSystem StageList. Those public API decisions are deliberately outside this closure.
+Builtin stage factories express their required Registry dependency as a reference. An empty RenderSyncPipeline stage list
+is valid because a Render Scene may contain only render-thread behavior; null stage entries remain invalid.

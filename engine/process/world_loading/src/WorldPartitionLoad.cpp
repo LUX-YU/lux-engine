@@ -1,4 +1,4 @@
-#include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
+#include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/world/storage/detail/WorldStorageCodec.hpp>
 
 #include <atomic>
@@ -6,7 +6,7 @@
 #include <new>
 #include <utility>
 
-namespace lux::process::world
+namespace lux::process::world_loading
 {
     namespace
     {

@@ -1,5 +1,5 @@
 #include <lux/engine/world/WorldObjectId.hpp>
-#include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
+#include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 #include <lux/engine/world/storage/detail/WorldStorageCodec.hpp>
 
@@ -25,7 +25,7 @@ namespace
     }
 
     class MemoryEndpoint final
-        : public lux::async::OperationPort<lux::process::world::ReadWorldStorageRange>::Endpoint
+        : public lux::async::OperationPort<lux::process::world_loading::ReadWorldStorageRange>::Endpoint
     {
     public:
         explicit MemoryEndpoint(std::vector<std::byte> bytes) : bytes_(std::move(bytes))
@@ -33,7 +33,7 @@ namespace
         }
 
         [[nodiscard]] lux::async::SubmitResult submit(
-            lux::process::world::ReadWorldStorageRange operation,
+            lux::process::world_loading::ReadWorldStorageRange operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             lux::async::SubmitOptions options
@@ -46,8 +46,8 @@ namespace
                 complete(
                     state,
                     lux::cxx::unexpected(
-                        lux::async::OperationFailure<lux::process::world::WorldStorageRuntimeFailure>::domain(
-                            {lux::process::world::EWorldStorageRuntimeError::RANGE_OVERFLOW}
+                        lux::async::OperationFailure<lux::process::world_loading::WorldStorageRuntimeFailure>::domain(
+                            {lux::process::world_loading::EWorldStorageRuntimeError::RANGE_OVERFLOW}
                         )
                     )
                 );
@@ -80,7 +80,7 @@ namespace
             result->emplace(std::move(value));
         }
 
-        void set_error(lux::process::world::WorldStorageRuntimeFailure value) && noexcept
+        void set_error(lux::process::world_loading::WorldStorageRuntimeFailure value) && noexcept
         {
             error->emplace(value);
         }
@@ -96,7 +96,7 @@ namespace
         }
 
         std::optional<lux::world::WorldPartitionData>* result{};
-        std::optional<lux::process::world::WorldStorageRuntimeFailure>* error{};
+        std::optional<lux::process::world_loading::WorldStorageRuntimeFailure>* error{};
         bool* stopped{};
     };
 }
@@ -106,7 +106,7 @@ int main()
     using namespace lux::world;
     using namespace lux::world::detail;
 
-    assert(!lux::process::world::WorldStorageSource::create({}, {}));
+    assert(!lux::process::world_loading::WorldStorageSource::create({}, {}));
 
     const std::array objects{
         WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(1U), {}}
@@ -137,17 +137,17 @@ int main()
     assert(description);
 
     auto endpoint = std::make_shared<MemoryEndpoint>(*volume);
-    auto source = lux::process::world::WorldStorageSource::create(
+    auto source = lux::process::world_loading::WorldStorageSource::create(
         std::make_shared<WorldDescription>(std::move(*description)),
-        lux::async::OperationPort<lux::process::world::ReadWorldStorageRange>{endpoint}
+        lux::async::OperationPort<lux::process::world_loading::ReadWorldStorageRange>{endpoint}
     );
     assert(source);
 
     std::optional<WorldPartitionData> result;
-    std::optional<lux::process::world::WorldStorageRuntimeFailure> error;
+    std::optional<lux::process::world_loading::WorldStorageRuntimeFailure> error;
     bool stopped{};
     auto state = stdexec::connect(
-        lux::process::world::loadWorldPartition(
+        lux::process::world_loading::loadWorldPartition(
             *source,
             lux::partition::PartitionOrdinal{0U},
             volume->size(),

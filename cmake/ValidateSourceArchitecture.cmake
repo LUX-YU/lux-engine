@@ -397,7 +397,7 @@ foreach(source IN LISTS production_sources)
                 "Architecture: Process execution source '${normalized}' depends on an upper/domain/legacy runtime."
             )
         endif()
-    elseif(normalized MATCHES "/engine/process/world/")
+    elseif(normalized MATCHES "/engine/process/world_loading/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(simulation|scene|render|authoring|editor|toolchain|host|runtime|extensions)/")
             message(FATAL_ERROR
@@ -409,7 +409,7 @@ foreach(source IN LISTS production_sources)
                 "Architecture: Process World workflow '${normalized}' owns Scene/ECS adoption."
             )
         endif()
-    elseif(normalized MATCHES "/engine/process/asset/")
+    elseif(normalized MATCHES "/engine/process/asset_loading/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|scene|render|authoring|editor|toolchain|host|runtime|extensions)/")
             message(FATAL_ERROR
@@ -1194,14 +1194,14 @@ foreach(source IN LISTS active_cmake)
                 "Architecture: Process target '${source}' links an upper/domain/legacy execution dependency."
             )
         endif()
-    elseif(source MATCHES "/engine/process/world/")
+    elseif(source MATCHES "/engine/process/world_loading/")
         if(content MATCHES
            "legacy|lux::engine::(simulation|scene|render|authoring|editor|toolchain|host)|asio|TBB|static_thread_pool")
             message(FATAL_ERROR
                 "Architecture: Process World target '${source}' links an upper/domain/legacy dependency."
             )
         endif()
-    elseif(source MATCHES "/engine/process/asset/")
+    elseif(source MATCHES "/engine/process/asset_loading/")
         if(content MATCHES
            "legacy|lux::engine::(world|simulation|scene|render|authoring|editor|toolchain|host)|asio|TBB|static_thread_pool")
             message(FATAL_ERROR
@@ -1245,11 +1245,11 @@ foreach(required_world_consumer IN ITEMS world-partition world-description)
     endif()
 endforeach()
 
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/process-world/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Process World consumer.")
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/process-world-loading/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed Process World loading consumer.")
 endif()
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/process-asset/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Process Asset consumer.")
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/process-asset-loading/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed Process Asset loading consumer.")
 endif()
 if(NOT EXISTS "${source_root}/cmake/installed-consumers/spatial3d-index/CMakeLists.txt")
     message(FATAL_ERROR "Architecture: missing installed Spatial3D index consumer.")

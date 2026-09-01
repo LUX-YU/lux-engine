@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/core/async/OperationPort.hpp>
-#include <lux/engine/process/world/visibility.h>
+#include <lux/engine/process/world_loading/visibility.h>
 #include <lux/engine/world/WorldDescription.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace lux::process::world
+namespace lux::process::world_loading
 {
     enum class EWorldStorageRuntimeError : std::uint8_t
     {
@@ -45,7 +45,7 @@ namespace lux::process::world
         std::uint64_t size{};
     };
 
-    class LUX_ENGINE_PROCESS_WORLD_PUBLIC WorldStorageSource final
+    class LUX_ENGINE_PROCESS_WORLD_LOADING_PUBLIC WorldStorageSource final
     {
     public:
         WorldStorageSource() noexcept = default;

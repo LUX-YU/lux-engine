@@ -1,6 +1,6 @@
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
-#include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
+#include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
@@ -43,12 +43,12 @@ namespace
     }
 
     class DeferredMemoryEndpoint final
-        : public async::OperationPort<process::world::ReadWorldStorageRange>::Endpoint
+        : public async::OperationPort<process::world_loading::ReadWorldStorageRange>::Endpoint
     {
     public:
         struct Request final
         {
-            process::world::ReadWorldStorageRange operation;
+            process::world_loading::ReadWorldStorageRange operation;
             std::size_t accounted_bytes{};
         };
 
@@ -58,7 +58,7 @@ namespace
         }
 
         [[nodiscard]] async::SubmitResult submit(
-            process::world::ReadWorldStorageRange operation,
+            process::world_loading::ReadWorldStorageRange operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             async::SubmitOptions options
@@ -89,8 +89,8 @@ namespace
                 pending.complete(
                     pending.state,
                     lux::cxx::unexpected(
-                        async::OperationFailure<process::world::WorldStorageRuntimeFailure>::domain(
-                            {process::world::EWorldStorageRuntimeError::RANGE_OVERFLOW, operation.volume, operation.offset}
+                        async::OperationFailure<process::world_loading::WorldStorageRuntimeFailure>::domain(
+                            {process::world_loading::EWorldStorageRuntimeError::RANGE_OVERFLOW, operation.volume, operation.offset}
                         )
                     )
                 );
@@ -113,7 +113,7 @@ namespace
     private:
         struct Pending final
         {
-            process::world::ReadWorldStorageRange operation;
+            process::world_loading::ReadWorldStorageRange operation;
             void* state{};
             void (*complete)(void*, Outcome&&) noexcept{};
         };
@@ -125,7 +125,7 @@ namespace
     struct ReceiverState final
     {
         std::optional<WorldPartitionData> value;
-        std::optional<process::world::WorldStorageRuntimeFailure> error;
+        std::optional<process::world_loading::WorldStorageRuntimeFailure> error;
         bool stopped{};
         bool delivered{};
         bool completed{};
@@ -145,7 +145,7 @@ namespace
             state->completed = true;
         }
 
-        void set_error(process::world::WorldStorageRuntimeFailure error) && noexcept
+        void set_error(process::world_loading::WorldStorageRuntimeFailure error) && noexcept
         {
             state->error = error;
             state->completed = true;
@@ -259,14 +259,14 @@ namespace
             return std::make_shared<WorldDescription>(std::move(*result));
         }
 
-        [[nodiscard]] process::world::WorldStorageSource source(
+        [[nodiscard]] process::world_loading::WorldStorageSource source(
             const std::shared_ptr<DeferredMemoryEndpoint>& endpoint,
             std::shared_ptr<const WorldDescription> selected_world = {}
         ) const
         {
-            auto result = process::world::WorldStorageSource::create(
+            auto result = process::world_loading::WorldStorageSource::create(
                 selected_world ? std::move(selected_world) : world,
-                async::OperationPort<process::world::ReadWorldStorageRange>{endpoint}
+                async::OperationPort<process::world_loading::ReadWorldStorageRange>{endpoint}
             );
             assert(result);
             return *result;
@@ -292,7 +292,7 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(fixture.volumes);
         ReceiverState result;
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(
+            process::world_loading::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -350,21 +350,21 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(
             std::vector<std::vector<std::byte>>{*volume}
         );
-        auto source = process::world::WorldStorageSource::create(
+        auto source = process::world_loading::WorldStorageSource::create(
             world,
-            async::OperationPort<process::world::ReadWorldStorageRange>{endpoint}
+            async::OperationPort<process::world_loading::ReadWorldStorageRange>{endpoint}
         );
         assert(source);
 
         ReceiverState result;
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(*source, lux::partition::PartitionOrdinal{0U}, volume->size(), {}),
+            process::world_loading::loadWorldPartition(*source, lux::partition::PartitionOrdinal{0U}, volume->size(), {}),
             Receiver{&result}
         );
         stdexec::start(operation);
         drive(*endpoint, result);
         assert(result.error);
-        assert(result.error->code == process::world::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
+        assert(result.error->code == process::world_loading::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
         assert(endpoint->requests.size() == 3U);
     }
 
@@ -373,7 +373,7 @@ int main()
         std::stop_source stop;
         ReceiverState result;
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(
+            process::world_loading::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -393,7 +393,7 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(fixture.volumes);
         ReceiverState result;
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(
+            process::world_loading::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.single_chunk_limit,
@@ -404,7 +404,7 @@ int main()
         stdexec::start(operation);
         drive(*endpoint, result);
         assert(result.error);
-        assert(result.error->code == process::world::EWorldStorageRuntimeError::LIMIT_EXCEEDED);
+        assert(result.error->code == process::world_loading::EWorldStorageRuntimeError::LIMIT_EXCEEDED);
     }
 
     {
@@ -412,7 +412,7 @@ int main()
         ReceiverState result;
         auto stale_world = fixture.buildWorld(id<WorldBundleGeneration>(3U), 2U);
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(
+            process::world_loading::loadWorldPartition(
                 fixture.source(endpoint, stale_world),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -423,7 +423,7 @@ int main()
         stdexec::start(operation);
         endpoint->completeNext();
         assert(result.error);
-        assert(result.error->code == process::world::EWorldStorageRuntimeError::BUNDLE_MISMATCH);
+        assert(result.error->code == process::world_loading::EWorldStorageRuntimeError::BUNDLE_MISMATCH);
     }
 
     {
@@ -431,7 +431,7 @@ int main()
         ReceiverState result;
         auto wrong_chunks = fixture.buildWorld(fixture.generation, 3U);
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(
+            process::world_loading::loadWorldPartition(
                 fixture.source(endpoint, wrong_chunks),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -442,7 +442,7 @@ int main()
         stdexec::start(operation);
         endpoint->completeNext();
         assert(result.error);
-        assert(result.error->code == process::world::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
+        assert(result.error->code == process::world_loading::EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR);
     }
 
     {
@@ -477,7 +477,7 @@ int main()
         auto endpoint = std::make_shared<DeferredMemoryEndpoint>(fixture.volumes);
         ReceiverState result;
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(
+            process::world_loading::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),
@@ -498,7 +498,7 @@ int main()
         auto requester = std::make_shared<int>(42);
         ReceiverState result;
         auto operation = stdexec::connect(
-            process::world::loadWorldPartition(
+            process::world_loading::loadWorldPartition(
                 fixture.source(endpoint),
                 lux::partition::PartitionOrdinal{0U},
                 fixture.volumes[0].size() + fixture.volumes[1].size(),

@@ -153,7 +153,7 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   `LUX_BUILD_EDITOR`。同一 Developer 构建树里的 `lux_player` 也必须保持 runtime-clean。
 - BUILD_TOOL 关系只用 `lux_add_build_tool_dependency()`、custom command 与 generated file；
   shader compiler、asset packer、meta generator 不得作为 Runtime link dependency。
-- `engine/process/execution` 是领域盲基础设施；`engine/process/world` 与 `engine/process/asset` 可拥有明确的
+- `engine/process/execution` 是领域盲基础设施；`engine/process/world_loading` 与 `engine/process/asset_loading` 可拥有明确的
   time-spanning workflow。领域workflow不得反向进入 execution，也不得依赖 Scene、Render 或 gameplay policy。
 - Render 固定为 `render_client/render_graph/render_vulkan/render_features` 四 target。
   `RenderSystem` 是可选的 concrete SceneSystem，要求 Host 提供 `RenderRuntime` capability；它不创建 thread/device，

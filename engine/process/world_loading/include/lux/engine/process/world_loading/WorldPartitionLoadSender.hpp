@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/partition/PartitionOrdinal.hpp>
-#include <lux/engine/process/world/WorldStorageSource.hpp>
+#include <lux/engine/process/world_loading/WorldStorageSource.hpp>
 #include <lux/engine/world/WorldPartitionData.hpp>
 
 #include <cstddef>
@@ -11,11 +11,11 @@
 #include <type_traits>
 #include <utility>
 
-namespace lux::process::world
+namespace lux::process::world_loading
 {
     namespace detail
     {
-        class LUX_ENGINE_PROCESS_WORLD_PUBLIC WorldPartitionLoadMachine final
+        class LUX_ENGINE_PROCESS_WORLD_LOADING_PUBLIC WorldPartitionLoadMachine final
         {
         public:
             WorldPartitionLoadMachine(

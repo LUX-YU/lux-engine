@@ -13,7 +13,7 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/scene/LatestSpscExchange.hpp>
 #include <lux/engine/scene/Scene.hpp>
-#include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
+#include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/serialization/BinaryReader.hpp>
 #include <lux/engine/serialization/BinaryWriter.hpp>
@@ -244,7 +244,7 @@ namespace
     }
 
     class MemoryEndpoint final
-        : public lux::async::OperationPort<lux::process::world::ReadWorldStorageRange>::Endpoint
+        : public lux::async::OperationPort<lux::process::world_loading::ReadWorldStorageRange>::Endpoint
     {
     public:
         explicit MemoryEndpoint(std::vector<std::byte> volume) : volume_(std::move(volume))
@@ -252,7 +252,7 @@ namespace
         }
 
         [[nodiscard]] lux::async::SubmitResult submit(
-            lux::process::world::ReadWorldStorageRange operation,
+            lux::process::world_loading::ReadWorldStorageRange operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             lux::async::SubmitOptions options
@@ -268,8 +268,8 @@ namespace
                 complete(
                     state,
                     lux::cxx::unexpected(
-                        lux::async::OperationFailure<lux::process::world::WorldStorageRuntimeFailure>::domain(
-                            {lux::process::world::EWorldStorageRuntimeError::RANGE_OVERFLOW}
+                        lux::async::OperationFailure<lux::process::world_loading::WorldStorageRuntimeFailure>::domain(
+                            {lux::process::world_loading::EWorldStorageRuntimeError::RANGE_OVERFLOW}
                         )
                     )
                 );
@@ -293,8 +293,8 @@ namespace
                 complete(
                     state,
                     lux::cxx::unexpected(
-                        lux::async::OperationFailure<lux::process::world::WorldStorageRuntimeFailure>::domain(
-                            {lux::process::world::EWorldStorageRuntimeError::ALLOCATION_FAILURE}
+                        lux::async::OperationFailure<lux::process::world_loading::WorldStorageRuntimeFailure>::domain(
+                            {lux::process::world_loading::EWorldStorageRuntimeError::ALLOCATION_FAILURE}
                         )
                     )
                 );
@@ -318,7 +318,7 @@ namespace
             result->emplace(std::move(value));
         }
 
-        void set_error(lux::process::world::WorldStorageRuntimeFailure value) && noexcept
+        void set_error(lux::process::world_loading::WorldStorageRuntimeFailure value) && noexcept
         {
             error->emplace(value);
         }
@@ -334,7 +334,7 @@ namespace
         }
 
         std::optional<WorldPartitionData>* result{};
-        std::optional<lux::process::world::WorldStorageRuntimeFailure>* error{};
+        std::optional<lux::process::world_loading::WorldStorageRuntimeFailure>* error{};
         bool* stopped{};
     };
 
@@ -344,18 +344,18 @@ namespace
         std::stop_token stop
     )
     {
-        auto source = lux::process::world::WorldStorageSource::create(
+        auto source = lux::process::world_loading::WorldStorageSource::create(
             cooked.description,
-            lux::async::OperationPort<lux::process::world::ReadWorldStorageRange>{endpoint}
+            lux::async::OperationPort<lux::process::world_loading::ReadWorldStorageRange>{endpoint}
         );
         if (!source)
             throw std::runtime_error("WorldStorageSource creation failed");
 
         std::optional<WorldPartitionData> loaded;
-        std::optional<lux::process::world::WorldStorageRuntimeFailure> error;
+        std::optional<lux::process::world_loading::WorldStorageRuntimeFailure> error;
         bool stopped{};
         auto state = stdexec::connect(
-            lux::process::world::loadWorldPartition(
+            lux::process::world_loading::loadWorldPartition(
                 *source,
                 PartitionOrdinal{0U},
                 cooked.volume.size(),

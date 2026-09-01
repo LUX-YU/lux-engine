@@ -1,4 +1,4 @@
-#include <lux/engine/process/asset/AssetLoadSender.hpp>
+#include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
@@ -104,7 +104,7 @@ namespace
     };
 
     class Endpoint final
-        : public lux::async::OperationPort<lux::process::asset::ReadAssetImage>::Endpoint
+        : public lux::async::OperationPort<lux::process::asset_loading::ReadAssetImage>::Endpoint
     {
     public:
         Endpoint(EMode mode, lux::asset::AssetBlob blob) noexcept : mode_(mode), blob_(std::move(blob))
@@ -112,7 +112,7 @@ namespace
         }
 
         [[nodiscard]] lux::async::SubmitResult submit(
-            lux::process::asset::ReadAssetImage operation,
+            lux::process::asset_loading::ReadAssetImage operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             lux::async::SubmitOptions options
@@ -170,7 +170,7 @@ namespace
     struct Result final
     {
         std::shared_ptr<const Asset> value;
-        std::optional<lux::process::asset::AssetLoadFailure> error;
+        std::optional<lux::process::asset_loading::AssetLoadFailure> error;
         std::atomic_size_t completions{};
         bool stopped{};
     };
@@ -186,7 +186,7 @@ namespace
             result->completions.fetch_add(1U, std::memory_order_release);
         }
 
-        void set_error(lux::process::asset::AssetLoadFailure error) && noexcept
+        void set_error(lux::process::asset_loading::AssetLoadFailure error) && noexcept
         {
             result->error = std::move(error);
             result->completions.fetch_add(1U, std::memory_order_release);
@@ -214,8 +214,8 @@ namespace
         Result<Asset> result;
         stdexec::inplace_stop_source stop;
         auto state = stdexec::connect(
-            lux::process::asset::loadAsset<Asset>(
-                lux::process::asset::AssetReadPort{endpoint},
+            lux::process::asset_loading::loadAsset<Asset>(
+                lux::process::asset_loading::AssetReadPort{endpoint},
                 expected->id(),
                 lux::asset::AssetDecodeLimits{1024U * 1024U, 1024U * 1024U, 4U}
             ),
@@ -243,8 +243,8 @@ int main()
     Result<lux::asset::TextureAsset> deferred;
     stdexec::inplace_stop_source deferred_stop;
     auto deferred_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{deferred_endpoint},
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{deferred_endpoint},
             texture->id(),
             lux::asset::AssetDecodeLimits{1024U * 1024U, 1024U * 1024U, 4U}
         ),
@@ -259,8 +259,8 @@ int main()
     Result<lux::asset::TextureAsset> wrong_type;
     stdexec::inplace_stop_source wrong_type_stop;
     auto wrong_type_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{
                 std::make_shared<Endpoint>(EMode::IMMEDIATE, encode(material))
             },
             material->id(),
@@ -269,13 +269,13 @@ int main()
         Receiver<lux::asset::TextureAsset>{&wrong_type, wrong_type_stop.get_token()}
     );
     stdexec::start(wrong_type_state);
-    assert(wrong_type.error && wrong_type.error->code == lux::process::asset::EAssetLoadError::DECODE_FAILURE);
+    assert(wrong_type.error && wrong_type.error->code == lux::process::asset_loading::EAssetLoadError::DECODE_FAILURE);
 
     Result<lux::asset::TextureAsset> mismatched;
     stdexec::inplace_stop_source mismatched_stop;
     auto mismatched_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{
                 std::make_shared<Endpoint>(EMode::IMMEDIATE, encode(texture))
             },
             id(77U),
@@ -294,8 +294,8 @@ int main()
     Result<lux::asset::TextureAsset> truncated;
     stdexec::inplace_stop_source truncated_stop;
     auto truncated_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{
                 std::make_shared<Endpoint>(EMode::IMMEDIATE, std::move(truncated_blob))
             },
             texture->id(),
@@ -309,8 +309,8 @@ int main()
     Result<lux::asset::TextureAsset> limited;
     stdexec::inplace_stop_source limited_stop;
     auto limited_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{
                 std::make_shared<Endpoint>(EMode::IMMEDIATE, encode(texture))
             },
             texture->id(),
@@ -324,8 +324,8 @@ int main()
     Result<lux::asset::TextureAsset> rejected;
     stdexec::inplace_stop_source rejected_stop;
     auto rejected_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{
                 std::make_shared<Endpoint>(EMode::REJECT, lux::asset::AssetBlob{})
             },
             texture->id(),
@@ -334,14 +334,14 @@ int main()
         Receiver<lux::asset::TextureAsset>{&rejected, rejected_stop.get_token()}
     );
     stdexec::start(rejected_state);
-    assert(rejected.error && rejected.error->code == lux::process::asset::EAssetLoadError::SUBMIT_FAILURE);
+    assert(rejected.error && rejected.error->code == lux::process::asset_loading::EAssetLoadError::SUBMIT_FAILURE);
     assert(rejected.error->submit_error == lux::async::ESubmitError::QUEUE_FULL);
 
     Result<lux::asset::TextureAsset> storage_failure;
     stdexec::inplace_stop_source storage_stop;
     auto storage_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{
                 std::make_shared<Endpoint>(EMode::STORAGE_FAILURE, lux::asset::AssetBlob{})
             },
             texture->id(),
@@ -351,13 +351,13 @@ int main()
     );
     stdexec::start(storage_state);
     assert(storage_failure.error);
-    assert(storage_failure.error->code == lux::process::asset::EAssetLoadError::STORAGE_FAILURE);
+    assert(storage_failure.error->code == lux::process::asset_loading::EAssetLoadError::STORAGE_FAILURE);
     assert(storage_failure.error->storage_error == lux::asset::EAssetStorageError::IO_FAILURE);
 
     Result<lux::asset::TextureAsset> invalid;
     stdexec::inplace_stop_source invalid_stop;
     auto invalid_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
             {},
             {},
             lux::asset::AssetDecodeLimits{1024U, 1024U, 0U}
@@ -365,14 +365,14 @@ int main()
         Receiver<lux::asset::TextureAsset>{&invalid, invalid_stop.get_token()}
     );
     stdexec::start(invalid_state);
-    assert(invalid.error && invalid.error->code == lux::process::asset::EAssetLoadError::INVALID_ASSET_ID);
+    assert(invalid.error && invalid.error->code == lux::process::asset_loading::EAssetLoadError::INVALID_ASSET_ID);
 
     Result<lux::asset::TextureAsset> stopped;
     stdexec::inplace_stop_source stop;
     static_cast<void>(stop.request_stop());
     auto stopped_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{
                 std::make_shared<Endpoint>(EMode::IMMEDIATE, encode(texture))
             },
             texture->id(),
@@ -387,8 +387,8 @@ int main()
     Result<lux::asset::TextureAsset> late_stopped;
     stdexec::inplace_stop_source late_stop;
     auto late_state = stdexec::connect(
-        lux::process::asset::loadAsset<lux::asset::TextureAsset>(
-            lux::process::asset::AssetReadPort{late_endpoint},
+        lux::process::asset_loading::loadAsset<lux::asset::TextureAsset>(
+            lux::process::asset_loading::AssetReadPort{late_endpoint},
             texture->id(),
             lux::asset::AssetDecodeLimits{1024U * 1024U, 1024U * 1024U, 4U}
         ),

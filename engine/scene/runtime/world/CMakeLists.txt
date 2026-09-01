@@ -54,7 +54,7 @@ target_link_libraries(
     scene_world_runtime_test
     PRIVATE
         lux::engine::scene::scene_runtime_world
-        lux::engine::process::process_world
+        lux::engine::process::world_loading
         lux::engine::simulation::ecs::transform
 )
 if(MSVC)
@@ -78,7 +78,7 @@ target_link_libraries(
     scene_world_runtime_deferred_test
     PRIVATE
         lux::engine::scene::scene_runtime_world
-        lux::engine::process::process_world
+        lux::engine::process::world_loading
         lux::engine::simulation::simulation_core
 )
 if(MSVC)

@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace lux::process::asset
+namespace lux::process::asset_loading
 {
     struct ReadAssetImage final
     {

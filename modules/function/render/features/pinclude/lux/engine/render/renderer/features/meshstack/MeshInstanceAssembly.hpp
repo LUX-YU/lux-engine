@@ -2,12 +2,21 @@
 
 #include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
 
+#include <cstdint>
 #include <span>
 
 namespace lux::render
 {
     class RenderContext;
     class RenderScene;
+
+    enum class EMeshInstanceCreateStatus : std::uint32_t
+    {
+        UNKNOWN = 0,
+        OK = 1,
+        INVALID_CONFIGURATION = 2,
+        CAPACITY_EXHAUSTED = 3,
+    };
 }
 
 namespace lux::render::detail

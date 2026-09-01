@@ -2,7 +2,8 @@
 
 #include <lux/engine/function/render/client/features/light/LightOperation.hpp>
 #include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/ComponentChangeSet.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -172,7 +173,7 @@ namespace lux::scene
             explicit Mesh3DRenderStage(Mesh3DRenderStageConfig value) : config_(std::move(value))
             {
                 using namespace entt::literals;
-                changes_.attach(*config_.registry, "scene.mesh3d.render.changes"_hs, [](auto& storage) {
+                changes_.attach(config_.registry, "scene.mesh3d.render.changes"_hs, [](auto& storage) {
                     storage.template on_construct<simulation::ecs::Mesh3D>()
                         .template on_update<simulation::ecs::Mesh3D>()
                         .template on_construct<simulation::ecs::WorldTransform3D>()
@@ -180,8 +181,8 @@ namespace lux::scene
                         .template on_construct<ResolvedMeshResources>()
                         .template on_update<ResolvedMeshResources>();
                 });
-                membership_leaves_.attach(*config_.registry, this, &Mesh3DRenderStage::onMembershipLeft);
-                state_leaves_.attach(*config_.registry, this, &Mesh3DRenderStage::onStateDestroyed);
+                membership_leaves_.attach(config_.registry, this, &Mesh3DRenderStage::onMembershipLeft);
+                state_leaves_.attach(config_.registry, this, &Mesh3DRenderStage::onStateDestroyed);
             }
 
             ~Mesh3DRenderStage() noexcept override
@@ -192,15 +193,15 @@ namespace lux::scene
                 suppress_state_departure_ = true;
                 while (true)
                 {
-                    auto states = config_.registry->view<MeshRenderState>();
+                    auto states = config_.registry.view<MeshRenderState>();
                     const auto found = std::find_if(states.begin(), states.end(), [this](Entity entity) {
-                        return config_.registry->get<MeshRenderState>(entity).owner == this;
+                        return config_.registry.get<MeshRenderState>(entity).owner == this;
                     });
                     if (found == states.end())
                     {
                         break;
                     }
-                    config_.registry->remove<MeshRenderState>(*found);
+                    config_.registry.remove<MeshRenderState>(*found);
                 }
             }
 
@@ -242,36 +243,60 @@ namespace lux::scene
                 suppress_state_departure_ = true;
                 for (const auto entity : state_removals_)
                 {
-                    if (config_.registry->valid(entity))
+                    if (config_.registry.valid(entity))
                     {
-                        const auto* state = config_.registry->try_get<MeshRenderState>(entity);
+                        const auto* state = config_.registry.try_get<MeshRenderState>(entity);
                         if (state != nullptr && state->owner == this)
                         {
-                            config_.registry->remove<MeshRenderState>(entity);
+                            config_.registry.remove<MeshRenderState>(entity);
                         }
                     }
                 }
                 for (auto& update : state_updates_)
                 {
-                    config_.registry->get<MeshRenderState>(update.entity) = update.state;
+                    auto* state = config_.registry.try_get<MeshRenderState>(update.entity);
+                    if (state == nullptr || state->owner != this)
+                    {
+                        render::renderFatal("Mesh render stage lost prepared private state before commit");
+                    }
+                    *state = update.state;
                 }
                 suppress_state_departure_ = false;
                 changes_.clear();
                 departures_.clear();
                 force_full_sync_ = false;
-                discardPrepared();
+                clearPreparedScratch();
             }
             // LUX_RENDER_COMMIT_MESH_END
 
             void discardPrepared() noexcept override
             {
-                state_updates_.clear();
-                state_removals_.clear();
-                transforms_.clear();
-                prepared_ = false;
+                suppress_state_departure_ = true;
+                for (const auto entity : prepared_new_states_)
+                {
+                    if (!config_.registry.valid(entity))
+                    {
+                        continue;
+                    }
+                    const auto* state = config_.registry.try_get<MeshRenderState>(entity);
+                    if (state != nullptr && state->owner == this && !state->published)
+                    {
+                        config_.registry.remove<MeshRenderState>(entity);
+                    }
+                }
+                suppress_state_departure_ = false;
+                clearPreparedScratch();
             }
 
         private:
+            void clearPreparedScratch() noexcept
+            {
+                state_updates_.clear();
+                state_removals_.clear();
+                transforms_.clear();
+                prepared_new_states_.clear();
+                prepared_ = false;
+            }
             static void onMembershipLeft(void* user, Entity entity) noexcept
             {
                 static_cast<Mesh3DRenderStage*>(user)->recordMembershipDeparture(entity);
@@ -284,7 +309,7 @@ namespace lux::scene
 
             void recordMembershipDeparture(Entity entity) noexcept
             {
-                const auto* state = config_.registry->try_get<MeshRenderState>(entity);
+                const auto* state = config_.registry.try_get<MeshRenderState>(entity);
                 if (state != nullptr && state->owner == this)
                 {
                     recordDeparture(MeshDeparture{state->entity, entity, state->published});
@@ -297,8 +322,8 @@ namespace lux::scene
                 {
                     return;
                 }
-                const auto* state = config_.registry->try_get<MeshRenderState>(entity);
-                if (state != nullptr && state->owner == this)
+                const auto* state = config_.registry.try_get<MeshRenderState>(entity);
+                if (state != nullptr && state->owner == this && state->published)
                 {
                     recordDeparture(MeshDeparture{state->entity, entity, state->published});
                 }
@@ -325,13 +350,13 @@ namespace lux::scene
 
             [[nodiscard]] bool currentlyRenderable(Entity entity, MeshInputs& inputs) const noexcept
             {
-                if (!config_.registry->valid(entity))
+                if (!config_.registry.valid(entity))
                 {
                     return false;
                 }
-                const auto* mesh = config_.registry->try_get<simulation::ecs::Mesh3D>(entity);
-                inputs.world = config_.registry->try_get<simulation::ecs::WorldTransform3D>(entity);
-                inputs.resolved = config_.registry->try_get<ResolvedMeshResources>(entity);
+                const auto* mesh = config_.registry.try_get<simulation::ecs::Mesh3D>(entity);
+                inputs.world = config_.registry.try_get<simulation::ecs::WorldTransform3D>(entity);
+                inputs.resolved = config_.registry.try_get<ResolvedMeshResources>(entity);
                 if (mesh == nullptr || inputs.world == nullptr || inputs.resolved == nullptr)
                 {
                     return false;
@@ -345,7 +370,7 @@ namespace lux::scene
             [[nodiscard]] bool membershipRestored(const MeshDeparture& departure) const noexcept
             {
                 MeshInputs inputs{};
-                return config_.registry->valid(departure.source) &&
+                return config_.registry.valid(departure.source) &&
                     toRenderEntity(departure.source) == departure.entity &&
                     currentlyRenderable(departure.source, inputs);
             }
@@ -378,10 +403,11 @@ namespace lux::scene
                     return false;
                 }
 
-                auto* state_slot = config_.registry->try_get<MeshRenderState>(entity);
+                auto* state_slot = config_.registry.try_get<MeshRenderState>(entity);
                 if (state_slot == nullptr)
                 {
-                    state_slot = &config_.registry->emplace<MeshRenderState>(
+                    prepared_new_states_.push_back(entity);
+                    state_slot = &config_.registry.emplace<MeshRenderState>(
                         entity,
                         MeshRenderState{.owner = this, .entity = next.entity}
                     );
@@ -461,7 +487,7 @@ namespace lux::scene
                 if (force_full_sync_)
                 {
                     auto current = componentView<simulation::ecs::Mesh3D>(
-                        *config_.registry,
+                        config_.registry,
                         ComponentList<simulation::ecs::WorldTransform3D, ResolvedMeshResources>{},
                         ComponentList<>{}
                     );
@@ -507,6 +533,7 @@ namespace lux::scene
             std::vector<MeshDeparture> departures_;
             std::vector<MeshStateUpdate> state_updates_;
             std::vector<Entity> state_removals_;
+            std::vector<Entity> prepared_new_states_;
             std::vector<render::TransformWriteEntry> transforms_;
             bool force_full_sync_{false};
             bool prepared_{false};
@@ -581,14 +608,14 @@ namespace lux::scene
             explicit Light3DRenderStage(Light3DRenderStageConfig value) : config_(std::move(value))
             {
                 using namespace entt::literals;
-                changes_.attach(*config_.registry, "scene.light3d.render.changes"_hs, [](auto& storage) {
+                changes_.attach(config_.registry, "scene.light3d.render.changes"_hs, [](auto& storage) {
                     storage.template on_construct<simulation::ecs::Light3D>()
                         .template on_update<simulation::ecs::Light3D>()
                         .template on_construct<simulation::ecs::WorldTransform3D>()
                         .template on_update<simulation::ecs::WorldTransform3D>();
                 });
-                membership_leaves_.attach(*config_.registry, this, &Light3DRenderStage::onMembershipLeft);
-                state_leaves_.attach(*config_.registry, this, &Light3DRenderStage::onStateDestroyed);
+                membership_leaves_.attach(config_.registry, this, &Light3DRenderStage::onMembershipLeft);
+                state_leaves_.attach(config_.registry, this, &Light3DRenderStage::onStateDestroyed);
             }
 
             ~Light3DRenderStage() noexcept override
@@ -599,15 +626,15 @@ namespace lux::scene
                 suppress_state_departure_ = true;
                 while (true)
                 {
-                    auto states = config_.registry->view<LightRenderState>();
+                    auto states = config_.registry.view<LightRenderState>();
                     const auto found = std::find_if(states.begin(), states.end(), [this](Entity entity) {
-                        return config_.registry->get<LightRenderState>(entity).owner == this;
+                        return config_.registry.get<LightRenderState>(entity).owner == this;
                     });
                     if (found == states.end())
                     {
                         break;
                     }
-                    config_.registry->remove<LightRenderState>(*found);
+                    config_.registry.remove<LightRenderState>(*found);
                 }
             }
 
@@ -649,36 +676,60 @@ namespace lux::scene
                 suppress_state_departure_ = true;
                 for (const auto entity : state_removals_)
                 {
-                    if (config_.registry->valid(entity))
+                    if (config_.registry.valid(entity))
                     {
-                        const auto* state = config_.registry->try_get<LightRenderState>(entity);
+                        const auto* state = config_.registry.try_get<LightRenderState>(entity);
                         if (state != nullptr && state->owner == this)
                         {
-                            config_.registry->remove<LightRenderState>(entity);
+                            config_.registry.remove<LightRenderState>(entity);
                         }
                     }
                 }
                 for (auto& update : state_updates_)
                 {
-                    config_.registry->get<LightRenderState>(update.entity) = update.state;
+                    auto* state = config_.registry.try_get<LightRenderState>(update.entity);
+                    if (state == nullptr || state->owner != this)
+                    {
+                        render::renderFatal("Light render stage lost prepared private state before commit");
+                    }
+                    *state = update.state;
                 }
                 suppress_state_departure_ = false;
                 changes_.clear();
                 departures_.clear();
                 force_full_sync_ = false;
-                discardPrepared();
+                clearPreparedScratch();
             }
             // LUX_RENDER_COMMIT_LIGHT_END
 
             void discardPrepared() noexcept override
             {
-                state_updates_.clear();
-                state_removals_.clear();
-                payloads_.clear();
-                prepared_ = false;
+                suppress_state_departure_ = true;
+                for (const auto entity : prepared_new_states_)
+                {
+                    if (!config_.registry.valid(entity))
+                    {
+                        continue;
+                    }
+                    const auto* state = config_.registry.try_get<LightRenderState>(entity);
+                    if (state != nullptr && state->owner == this && !state->published)
+                    {
+                        config_.registry.remove<LightRenderState>(entity);
+                    }
+                }
+                suppress_state_departure_ = false;
+                clearPreparedScratch();
             }
 
         private:
+            void clearPreparedScratch() noexcept
+            {
+                state_updates_.clear();
+                state_removals_.clear();
+                payloads_.clear();
+                prepared_new_states_.clear();
+                prepared_ = false;
+            }
             static void onMembershipLeft(void* user, Entity entity) noexcept
             {
                 static_cast<Light3DRenderStage*>(user)->recordMembershipDeparture(entity);
@@ -691,7 +742,7 @@ namespace lux::scene
 
             void recordMembershipDeparture(Entity entity) noexcept
             {
-                const auto* state = config_.registry->try_get<LightRenderState>(entity);
+                const auto* state = config_.registry.try_get<LightRenderState>(entity);
                 if (state != nullptr && state->owner == this)
                 {
                     recordDeparture(LightDeparture{state->entity, entity, state->published});
@@ -704,8 +755,8 @@ namespace lux::scene
                 {
                     return;
                 }
-                const auto* state = config_.registry->try_get<LightRenderState>(entity);
-                if (state != nullptr && state->owner == this)
+                const auto* state = config_.registry.try_get<LightRenderState>(entity);
+                if (state != nullptr && state->owner == this && state->published)
                 {
                     recordDeparture(LightDeparture{state->entity, entity, state->published});
                 }
@@ -725,19 +776,19 @@ namespace lux::scene
 
             [[nodiscard]] bool membershipRestored(const LightDeparture& departure) const noexcept
             {
-                if (!config_.registry->valid(departure.source) || toRenderEntity(departure.source) != departure.entity)
+                if (!config_.registry.valid(departure.source) || toRenderEntity(departure.source) != departure.entity)
                 {
                     return false;
                 }
-                return config_.registry->all_of<simulation::ecs::Light3D, simulation::ecs::WorldTransform3D>(
+                return config_.registry.all_of<simulation::ecs::Light3D, simulation::ecs::WorldTransform3D>(
                     departure.source
                 );
             }
 
             [[nodiscard]] bool makePayload(Entity entity, render::UpsertLightPayload& payload) const noexcept
             {
-                const auto& light = config_.registry->get<simulation::ecs::Light3D>(entity).value;
-                const auto& world = config_.registry->get<simulation::ecs::WorldTransform3D>(entity);
+                const auto& light = config_.registry.get<simulation::ecs::Light3D>(entity).value;
+                const auto& world = config_.registry.get<simulation::ecs::WorldTransform3D>(entity);
                 payload.scene_id = config_.scene;
                 payload.entity = toRenderEntity(entity);
                 switch (light.type)
@@ -799,10 +850,11 @@ namespace lux::scene
                 {
                     return false;
                 }
-                auto* state_slot = config_.registry->try_get<LightRenderState>(entity);
+                auto* state_slot = config_.registry.try_get<LightRenderState>(entity);
                 if (state_slot == nullptr)
                 {
-                    state_slot = &config_.registry->emplace<LightRenderState>(
+                    prepared_new_states_.push_back(entity);
+                    state_slot = &config_.registry.emplace<LightRenderState>(
                         entity,
                         LightRenderState{.owner = this, .entity = payload.entity}
                     );
@@ -849,7 +901,7 @@ namespace lux::scene
                 if (force_full_sync_)
                 {
                     auto current = componentView<simulation::ecs::Light3D>(
-                        *config_.registry,
+                        config_.registry,
                         ComponentList<simulation::ecs::WorldTransform3D>{},
                         ComponentList<>{}
                     );
@@ -895,6 +947,7 @@ namespace lux::scene
             std::vector<LightDeparture> departures_;
             std::vector<LightStateUpdate> state_updates_;
             std::vector<Entity> state_removals_;
+            std::vector<Entity> prepared_new_states_;
             std::vector<render::UpsertLightPayload> payloads_;
             bool force_full_sync_{false};
             bool prepared_{false};
@@ -904,13 +957,13 @@ namespace lux::scene
 
         [[nodiscard]] bool valid(const Mesh3DRenderStageConfig& config) noexcept
         {
-            return config.registry != nullptr && !config.scene.isNull() && config.operations.valid() &&
+            return !config.scene.isNull() && config.operations.valid() &&
                 std::isfinite(config.coordinate_page_size) && config.coordinate_page_size > 0.0;
         }
 
         [[nodiscard]] bool valid(const Light3DRenderStageConfig& config) noexcept
         {
-            return config.registry != nullptr && !config.scene.isNull() && config.operations.valid() &&
+            return !config.scene.isNull() && config.operations.valid() &&
                 std::isfinite(config.coordinate_page_size) && config.coordinate_page_size > 0.0;
         }
     } // namespace

@@ -1,4 +1,4 @@
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 
 #include <cstdint>
 

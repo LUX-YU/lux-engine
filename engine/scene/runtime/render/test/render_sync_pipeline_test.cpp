@@ -1,4 +1,4 @@
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/Builtin3DRenderStages.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 
@@ -39,24 +39,24 @@ int main()
     registry.emplace<WorldTransform3D>(entity, world);
 
     auto mesh_stage = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-        .registry = &registry,
+        .registry = registry,
         .scene = {3U, 1U},
         .operations = mesh_ops,
         .coordinate_page_size = 1024.0,
         .scene_origin_page = {976562500, 0, 0}
     });
     auto light_stage = createLight3DRenderStage(Light3DRenderStageConfig{
-        .registry = &registry,
+        .registry = registry,
         .scene = {3U, 1U},
         .operations = light_ops,
         .coordinate_page_size = 1024.0,
         .scene_origin_page = {976562500, 0, 0}
     });
     assert(mesh_stage && light_stage);
-    RenderSystem::StageList stages;
+    RenderSyncPipeline::StageList stages;
     stages.push_back(std::move(*mesh_stage));
     stages.push_back(std::move(*light_stage));
-    auto created = RenderSystem::create(
+    auto created = RenderSyncPipeline::create(
         std::move(stages)
     );
     assert(created);

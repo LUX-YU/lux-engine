@@ -1,5 +1,5 @@
 #include <lux/engine/function/render/client/features/light/LightOperation.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 
 #include <cassert>
 #include <cstdint>
@@ -87,18 +87,18 @@ int main()
 {
     using namespace lux;
 
-    assert(!scene::RenderSystem::create({}));
-    scene::RenderSystem::StageList null_stages;
+    assert(scene::RenderSyncPipeline::create({}));
+    scene::RenderSyncPipeline::StageList null_stages;
     null_stages.push_back(nullptr);
-    assert(!scene::RenderSystem::create(std::move(null_stages)));
+    assert(!scene::RenderSyncPipeline::create(std::move(null_stages)));
 
     std::vector<int> log;
     FakeStage* first{};
     FakeStage* second{};
-    scene::RenderSystem::StageList stages;
+    scene::RenderSyncPipeline::StageList stages;
     stages.push_back(makeStage(1, log, first));
     stages.push_back(makeStage(2, log, second));
-    auto created = scene::RenderSystem::create(std::move(stages));
+    auto created = scene::RenderSyncPipeline::create(std::move(stages));
     assert(created);
     auto system = std::move(*created);
     assert(first->request_count == 1 && second->request_count == 1);
@@ -123,11 +123,11 @@ int main()
 
     std::vector<int> no_command_log;
     FakeStage* no_command{};
-    scene::RenderSystem::StageList no_command_stages;
+    scene::RenderSyncPipeline::StageList no_command_stages;
     auto no_command_owner = makeStage(3, no_command_log, no_command);
     no_command_owner->emit_command = false;
     no_command_stages.push_back(std::move(no_command_owner));
-    auto no_command_system = scene::RenderSystem::create(std::move(no_command_stages));
+    auto no_command_system = scene::RenderSyncPipeline::create(std::move(no_command_stages));
     assert(no_command_system);
     assert((*no_command_system)->tryPublish() == scene::ERenderPublishResult::NO_CHANGES);
     assert(no_command->commit_count == 1);
@@ -137,13 +137,13 @@ int main()
     FakeStage* before_failure{};
     FakeStage* failing{};
     FakeStage* after_failure{};
-    scene::RenderSystem::StageList failure_stages;
+    scene::RenderSyncPipeline::StageList failure_stages;
     failure_stages.push_back(makeStage(4, failure_log, before_failure));
     auto failure_owner = makeStage(5, failure_log, failing);
     failure_owner->fail = true;
     failure_stages.push_back(std::move(failure_owner));
     failure_stages.push_back(makeStage(6, failure_log, after_failure));
-    auto failure_system = scene::RenderSystem::create(std::move(failure_stages));
+    auto failure_system = scene::RenderSyncPipeline::create(std::move(failure_stages));
     assert(failure_system);
     assert((*failure_system)->tryPublish() == scene::ERenderPublishResult::FAILED);
     assert(before_failure->discard_count == 1);

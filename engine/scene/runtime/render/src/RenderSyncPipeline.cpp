@@ -1,4 +1,4 @@
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 
 #include <lux/engine/function/render/client/BoundedSpscFrameRing.hpp>
 #include <lux/engine/function/render/client/RenderProgram.hpp>
@@ -9,7 +9,7 @@
 
 namespace lux::scene
 {
-    struct RenderSystem::Impl final
+    struct RenderSyncPipeline::Impl final
     {
         explicit Impl(StageList value) : stages(std::move(value)), updates(1U)
         {
@@ -26,31 +26,37 @@ namespace lux::scene
         bool forward_pending{false};
     };
 
-    RenderSystem::RenderSystem(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
+    RenderSyncPipeline::RenderSyncPipeline(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
     }
 
-    RenderSystem::~RenderSystem() noexcept = default;
+    RenderSyncPipeline::~RenderSyncPipeline() noexcept = default;
 
-    lux::cxx::expected<std::unique_ptr<RenderSystem>, RenderSystemFailure>
-    RenderSystem::create(StageList stages) noexcept
+    lux::cxx::expected<std::unique_ptr<RenderSyncPipeline>, RenderSyncPipelineFailure>
+    RenderSyncPipeline::create(StageList stages) noexcept
     {
         const bool has_null_stage = std::ranges::any_of(stages, [](const auto& stage) { return stage == nullptr; });
-        if (stages.empty() || has_null_stage)
+        if (has_null_stage)
         {
-            return lux::cxx::unexpected(RenderSystemFailure{ERenderSystemError::INVALID_STAGE_LIST});
+            return lux::cxx::unexpected(
+                RenderSyncPipelineFailure{ERenderSyncPipelineError::INVALID_STAGE_LIST}
+            );
         }
         try
         {
-            return std::unique_ptr<RenderSystem>{new RenderSystem{std::make_unique<Impl>(std::move(stages))}};
+            return std::unique_ptr<RenderSyncPipeline>{
+                new RenderSyncPipeline{std::make_unique<Impl>(std::move(stages))}
+            };
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(RenderSystemFailure{ERenderSystemError::ALLOCATION_FAILURE});
+            return lux::cxx::unexpected(
+                RenderSyncPipelineFailure{ERenderSyncPipelineError::ALLOCATION_FAILURE}
+            );
         }
     }
 
-    ERenderPublishResult RenderSystem::tryPublish() noexcept
+    ERenderPublishResult RenderSyncPipeline::tryPublish() noexcept
     {
         auto& state = *impl_;
         const bool has_changes = state.full_sync_requested || std::ranges::any_of(
@@ -123,7 +129,7 @@ namespace lux::scene
         return was_full_sync ? ERenderPublishResult::FULL_SYNC_PUBLISHED : ERenderPublishResult::PUBLISHED;
     }
 
-    void RenderSystem::requestFullSync() noexcept
+    void RenderSyncPipeline::requestFullSync() noexcept
     {
         auto& state = *impl_;
         state.full_sync_requested = true;
@@ -133,7 +139,7 @@ namespace lux::scene
         }
     }
 
-    ERenderForwardResult RenderSystem::tryForwardUpdate(render::RenderProgramSession& session) noexcept
+    ERenderForwardResult RenderSyncPipeline::tryForwardUpdate(render::RenderProgramSession& session) noexcept
     {
         auto& state = *impl_;
         if (session.isStopping())

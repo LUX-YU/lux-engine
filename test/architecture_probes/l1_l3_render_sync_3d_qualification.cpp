@@ -16,7 +16,7 @@
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/scene/Builtin3DRenderStages.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
@@ -276,12 +276,12 @@ int main()
     registry.emplace<simulation::ecs::WorldTransform3D>(light_entity, light_transform);
 
     auto mesh_stage = scene::createMesh3DRenderStage(scene::Mesh3DRenderStageConfig{
-        .registry = &registry,
+        .registry = registry,
         .scene = render_scene.scene_id,
         .operations = mesh_ops
     });
     auto light_stage = scene::createLight3DRenderStage(scene::Light3DRenderStageConfig{
-        .registry = &registry,
+        .registry = registry,
         .scene = render_scene.scene_id,
         .operations = light_ops
     });
@@ -289,10 +289,10 @@ int main()
     {
         return 10;
     }
-    scene::RenderSystem::StageList stages;
+    scene::RenderSyncPipeline::StageList stages;
     stages.push_back(std::move(*mesh_stage));
     stages.push_back(std::move(*light_stage));
-    auto render_system = scene::RenderSystem::create(std::move(stages));
+    auto render_system = scene::RenderSyncPipeline::create(std::move(stages));
     if (!render_system || (*render_system)->tryPublish() != scene::ERenderPublishResult::FULL_SYNC_PUBLISHED)
     {
         return 11;

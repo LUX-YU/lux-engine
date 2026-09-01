@@ -35,7 +35,7 @@ namespace lux::scene
         STOPPING
     };
 
-    enum class ERenderSystemError : std::uint8_t
+    enum class ERenderSyncPipelineError : std::uint8_t
     {
         INVALID_STAGE_LIST,
         ALLOCATION_FAILURE,
@@ -43,24 +43,24 @@ namespace lux::scene
         PROGRAM_ENCODING_FAILURE
     };
 
-    struct RenderSystemFailure final
+    struct RenderSyncPipelineFailure final
     {
-        ERenderSystemError code{};
+        ERenderSyncPipelineError code{};
     };
 
-    class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderSystem final
+    class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderSyncPipeline final
     {
     public:
         using StageList = std::vector<std::unique_ptr<RenderSyncStage>>;
 
-        [[nodiscard]] static lux::cxx::expected<std::unique_ptr<RenderSystem>, RenderSystemFailure>
+        [[nodiscard]] static lux::cxx::expected<std::unique_ptr<RenderSyncPipeline>, RenderSyncPipelineFailure>
         create(StageList stages) noexcept;
 
-        ~RenderSystem() noexcept;
-        RenderSystem(const RenderSystem&) = delete;
-        RenderSystem& operator=(const RenderSystem&) = delete;
-        RenderSystem(RenderSystem&&) = delete;
-        RenderSystem& operator=(RenderSystem&&) = delete;
+        ~RenderSyncPipeline() noexcept;
+        RenderSyncPipeline(const RenderSyncPipeline&) = delete;
+        RenderSyncPipeline& operator=(const RenderSyncPipeline&) = delete;
+        RenderSyncPipeline(RenderSyncPipeline&&) = delete;
+        RenderSyncPipeline& operator=(RenderSyncPipeline&&) = delete;
 
         [[nodiscard]] ERenderPublishResult tryPublish() noexcept;
         void requestFullSync() noexcept;
@@ -68,7 +68,7 @@ namespace lux::scene
 
     private:
         struct Impl;
-        explicit RenderSystem(std::unique_ptr<Impl> impl) noexcept;
+        explicit RenderSyncPipeline(std::unique_ptr<Impl> impl) noexcept;
         std::unique_ptr<Impl> impl_;
     };
 } // namespace lux::scene

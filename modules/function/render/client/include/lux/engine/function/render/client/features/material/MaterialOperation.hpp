@@ -112,7 +112,9 @@ namespace lux::render
     class MaterialUploadClient;
 
     // ── 便捷面(§7.5,同名自由函数,定义在 Handlers.cpp)──────────────────
-    //    upload:ExternalDataRef 借用登记(有效期至 submitFrame)+ 五参重载
+    //    upload:pushOwnedBytesCopy() supplies packet-owned ExternalDataRef storage.
+    //    A generic borrowed attachment must outlive server consumption; a reply
+    //    is the safe completion proxy, not submitFrame() returning.
     //    连带 shader_key 稳定哈希;modify:GraphMaterialData 逐帧拷贝进 blob。
     [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
     uploadGraphMaterial(MaterialUploadClient client, const GraphMaterialData& data);

@@ -1,7 +1,7 @@
 #include <lux/engine/function/render/client/features/light/LightOperation.hpp>
 #include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
 #include <lux/engine/scene/Builtin3DRenderStages.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
@@ -68,7 +68,7 @@ int main()
     mesh_registry.emplace<Mesh3D>(mesh_entity, Mesh3D{rdesc::MeshVisualDescription{mesh_a, material_a}});
     mesh_registry.emplace<WorldTransform3D>(mesh_entity);
     auto mesh_stage_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-        .registry = &mesh_registry,
+        .registry = mesh_registry,
         .scene = scene_id,
         .operations = mesh_ops
     });
@@ -217,7 +217,7 @@ int main()
         light_registry.emplace<WorldTransform3D>(lights[index]);
     }
     auto light_stage_result = createLight3DRenderStage(Light3DRenderStageConfig{
-        .registry = &light_registry,
+        .registry = light_registry,
         .scene = scene_id,
         .operations = light_ops
     });

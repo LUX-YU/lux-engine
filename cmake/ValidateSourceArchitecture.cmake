@@ -1193,7 +1193,7 @@ foreach(required_render_contract IN ITEMS
     "${mesh_scene_protocol_header}"
     "${light_scene_protocol_header}"
     "${source_root}/engine/scene/runtime/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
 )
     if(NOT EXISTS "${required_render_contract}")
         message(FATAL_ERROR "Architecture: missing retained Render lane contract '${required_render_contract}'.")
@@ -1226,20 +1226,20 @@ foreach(render_client_source IN LISTS render_client_sources)
     endif()
 endforeach()
 
-set(render_system_header
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
+set(render_sync_pipeline_header
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
 )
-set(render_system_source
-    "${source_root}/engine/scene/runtime/render/src/RenderSystem.cpp"
+set(render_sync_pipeline_source
+    "${source_root}/engine/scene/runtime/render/src/RenderSyncPipeline.cpp"
 )
-file(READ "${render_system_header}" render_system_contract)
-file(READ "${render_system_source}" render_system_implementation)
-if(render_system_contract MATCHES "Mesh3D|Light3D|MeshStackOperationIds|LightOperationIds|Registry|Config")
-    message(FATAL_ERROR "Architecture: RenderSystem public API owns a concrete Mesh/Light extraction domain.")
+file(READ "${render_sync_pipeline_header}" render_sync_pipeline_contract)
+file(READ "${render_sync_pipeline_source}" render_sync_pipeline_implementation)
+if(render_sync_pipeline_contract MATCHES "Mesh3D|Light3D|MeshStackOperationIds|LightOperationIds|Registry|Config")
+    message(FATAL_ERROR "Architecture: RenderSyncPipeline public API owns a concrete Mesh/Light extraction domain.")
 endif()
-if(render_system_implementation MATCHES
+if(render_sync_pipeline_implementation MATCHES
    "Mesh3D|Light3D|DirtySlot|dirty_bits|summary|expected_entity_capacity|EntityCapacity")
-    message(FATAL_ERROR "Architecture: generic RenderSystem restores concrete extraction or central dirty storage.")
+    message(FATAL_ERROR "Architecture: RenderSyncPipeline restores concrete extraction or central dirty storage.")
 endif()
 
 set(render_builtin_stage_source

@@ -25,7 +25,7 @@ namespace lux::scene
 
     struct Mesh3DRenderStageConfig final
     {
-        simulation::ecs::Registry* registry{};
+        simulation::ecs::Registry& registry;
         render::RenderSceneId scene{};
         render::MeshStackOperationIds operations{};
         double coordinate_page_size{1024.0};
@@ -34,7 +34,7 @@ namespace lux::scene
 
     struct Light3DRenderStageConfig final
     {
-        simulation::ecs::Registry* registry{};
+        simulation::ecs::Registry& registry;
         render::RenderSceneId scene{};
         render::LightOperationIds operations{};
         double coordinate_page_size{1024.0};

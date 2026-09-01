@@ -12,7 +12,7 @@ add_component(
     OUTPUT_NAME    lux_engine_scene_runtime_render
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Builtin3DRenderStages.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSyncPipeline.cpp
 )
 component_include_directories(
     scene_runtime_render
@@ -39,20 +39,20 @@ component_add_transitive_commands(
 )
 lux_classify_target(TARGET scene_runtime_render LAYER SCENE PRODUCT RUNTIME ROLE INTEGRATION)
 
-add_executable(render_system_test test/render_system_test.cpp)
-target_link_libraries(render_system_test PRIVATE lux::engine::scene::scene_runtime_render)
+add_executable(render_sync_pipeline_test test/render_sync_pipeline_test.cpp)
+target_link_libraries(render_sync_pipeline_test PRIVATE lux::engine::scene::scene_runtime_render)
 if(MSVC)
-    target_compile_options(render_system_test PRIVATE /UNDEBUG)
+    target_compile_options(render_sync_pipeline_test PRIVATE /UNDEBUG)
 else()
-    target_compile_options(render_system_test PRIVATE -UNDEBUG)
+    target_compile_options(render_sync_pipeline_test PRIVATE -UNDEBUG)
 endif()
-lux_classify_target(TARGET render_system_test LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
-add_test(NAME render_system_test COMMAND render_system_test)
+lux_classify_target(TARGET render_sync_pipeline_test LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
+add_test(NAME render_sync_pipeline_test COMMAND render_sync_pipeline_test)
 
 foreach(render_sync_test IN ITEMS
     render_sync_stage_test
     render_sync_stage_lifecycle_test
-    render_system_transaction_test
+    render_sync_pipeline_transaction_test
 )
     add_executable(${render_sync_test} test/${render_sync_test}.cpp)
     target_link_libraries(${render_sync_test} PRIVATE lux::engine::scene::scene_runtime_render)

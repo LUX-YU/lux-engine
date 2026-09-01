@@ -16,7 +16,7 @@
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/Builtin3DRenderStages.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -394,20 +394,20 @@ int main(int argc, char** argv)
             simulation_registry.emplace<simulation::ecs::Light3D>(point_entity, point);
         }
         auto mesh_stage = scene::createMesh3DRenderStage(scene::Mesh3DRenderStageConfig{
-            .registry = &simulation_registry,
+            .registry = simulation_registry,
             .scene = scene.scene_id,
             .operations = mesh_ops
         });
         auto light_stage = scene::createLight3DRenderStage(scene::Light3DRenderStageConfig{
-            .registry = &simulation_registry,
+            .registry = simulation_registry,
             .scene = scene.scene_id,
             .operations = light_ops
         });
         if (!mesh_stage || !light_stage) return 15;
-        scene::RenderSystem::StageList render_stages;
+        scene::RenderSyncPipeline::StageList render_stages;
         render_stages.push_back(std::move(*mesh_stage));
         render_stages.push_back(std::move(*light_stage));
-        auto render_system = scene::RenderSystem::create(std::move(render_stages));
+        auto render_system = scene::RenderSyncPipeline::create(std::move(render_stages));
         const auto full_sync_start = std::chrono::steady_clock::now();
         if (!render_system || (*render_system)->tryPublish() != scene::ERenderPublishResult::FULL_SYNC_PUBLISHED) return 15;
         full_sync_ms = std::chrono::duration<double, std::milli>(

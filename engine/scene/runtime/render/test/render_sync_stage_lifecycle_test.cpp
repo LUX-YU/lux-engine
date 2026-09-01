@@ -1,6 +1,6 @@
 #include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
 #include <lux/engine/scene/Builtin3DRenderStages.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
@@ -34,6 +34,49 @@ int main()
     const RMaterialHandle material_handle{8U, 1U};
 
     Registry registry;
+
+    // A discarded first-publish prepare must remove its private unpublished
+    // state. A second stage can then own the same entity without an owner
+    // collision; retaining a placeholder would make this prepare fail.
+    {
+        Registry discard_registry;
+        const Entity discard_entity = discard_registry.create();
+        discard_registry.emplace<Mesh3D>(
+            discard_entity,
+            Mesh3D{rdesc::MeshVisualDescription{mesh_id, material_id}}
+        );
+        discard_registry.emplace<WorldTransform3D>(discard_entity);
+        discard_registry.emplace<ResolvedMeshResources>(
+            discard_entity,
+            ResolvedMeshResources{mesh_id, material_id, mesh_handle, material_handle}
+        );
+        auto first_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
+            .registry = discard_registry,
+            .scene = RenderSceneId{4U, 1U},
+            .operations = mesh_ops
+        });
+        assert(first_result);
+        auto first_stage = std::move(*first_result);
+        RenderProgram<> discarded;
+        RenderProgramBuilder<> discarded_builder{discarded};
+        discarded_builder.begin();
+        assert(first_stage->prepare(discarded_builder) == ERenderSyncPrepareResult::PREPARED_COMMANDS);
+        first_stage->discardPrepared();
+        first_stage.reset();
+
+        auto second_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
+            .registry = discard_registry,
+            .scene = RenderSceneId{4U, 1U},
+            .operations = mesh_ops
+        });
+        assert(second_result);
+        RenderProgram<> retried;
+        RenderProgramBuilder<> retried_builder{retried};
+        retried_builder.begin();
+        assert((*second_result)->prepare(retried_builder) == ERenderSyncPrepareResult::PREPARED_COMMANDS);
+        (*second_result)->commitPrepared();
+    }
+
     std::vector<Entity> entities;
     std::vector<RenderEntityId> render_entities;
     entities.reserve(EntityCount);
@@ -52,7 +95,7 @@ int main()
     }
 
     auto stage_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-        .registry = &registry,
+        .registry = registry,
         .scene = RenderSceneId{3U, 1U},
         .operations = mesh_ops
     });

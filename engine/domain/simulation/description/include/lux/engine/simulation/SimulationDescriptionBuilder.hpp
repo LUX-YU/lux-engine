@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationDescription.hpp>
-#include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/SimulationSystemDescription.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -25,6 +25,7 @@ namespace lux::simulation
         SYSTEM_TYPE_HASH_COLLISION,
         INVALID_SYSTEM_VERSION,
         DUPLICATE_SYSTEM_INSTANCE,
+        SYSTEM_MULTIPLICITY_VIOLATION,
         INVALID_CONFIGURATION_SCHEMA,
         INVALID_CAPABILITY,
         DUPLICATE_CAPABILITY,
@@ -85,31 +86,31 @@ namespace lux::simulation
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         addSystem(
-            SystemInstanceId instance_id,
+            lux::system::SystemInstanceId instance_id,
             std::string_view instance_name,
-            const SystemDescription& system,
+            const SimulationSystemDescription& system,
             std::span<const std::byte> configuration = {}
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseSystem(SystemInstanceId instance_id) noexcept;
+        eraseSystem(lux::system::SystemInstanceId instance_id) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         setSystemConfiguration(
-            SystemInstanceId instance_id,
+            lux::system::SystemInstanceId instance_id,
             std::span<const std::byte> configuration
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         addDependency(
-            SystemInstanceId before_system,
-            SystemInstanceId after_system
+            lux::system::SystemInstanceId before_system,
+            lux::system::SystemInstanceId after_system
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         eraseDependency(
-            SystemInstanceId before_system,
-            SystemInstanceId after_system
+            lux::system::SystemInstanceId before_system,
+            lux::system::SystemInstanceId after_system
         ) noexcept;
 
         void clear() noexcept;

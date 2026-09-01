@@ -10,7 +10,7 @@ namespace
     inline constexpr lux::simulation::HookPointId UpdateHook{11U};
     inline constexpr lux::simulation::HookPointId CollisionHook{12U};
     inline constexpr lux::simulation::EventPointId CollisionEvent{21U};
-    inline constexpr lux::simulation::SystemInstanceId SystemInstance{31U};
+    inline constexpr lux::system::SystemInstanceId SystemInstance{31U};
     inline constexpr std::array Hooks{
         lux::simulation::makeHookPointSpec<void(
             const lux::simulation::SimulationStepInfo&)>(
@@ -27,9 +27,8 @@ namespace
             lux::simulation::EEventRoute::ENTITY_TARGETED,
             "lux.i32",
             1U)};
-    inline constexpr lux::simulation::SystemDescription System{
-        .canonical_name = "lux.test.authoring",
-        .version = 1U,
+    inline constexpr lux::simulation::SimulationSystemDescription System{
+        .type = {.canonical_name = "lux.test.authoring", .version = 1U},
         .hooks = Hooks,
         .events = Events};
 }

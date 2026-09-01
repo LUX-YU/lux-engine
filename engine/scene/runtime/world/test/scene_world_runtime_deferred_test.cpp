@@ -441,7 +441,7 @@ int main()
         simulation::SimulationDescriptionBuilder simulation_builder;
         auto simulation = std::move(simulation_builder).build();
         assert(simulation);
-        simulation::SystemRegistry systems;
+        simulation::SimulationSystemRegistry systems;
         auto scene_result = scene::Scene::create(
             fixture.world,
             std::make_shared<simulation::SimulationDescription>(std::move(*simulation)),

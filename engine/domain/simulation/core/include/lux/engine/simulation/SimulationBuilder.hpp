@@ -1,11 +1,12 @@
 #pragma once
 
-#include <lux/engine/simulation/SystemConcept.hpp>
-#include <lux/engine/simulation/SystemRegistry.hpp>
+#include <lux/engine/simulation/SimulationSystem.hpp>
+#include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/core/visibility.h>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/SystemTaskResources.hpp>
 #include <lux/engine/task/TaskCallable.hpp>
+#include <lux/engine/serialization/PortableValueCodec.hpp>
 
 #include <concepts>
 #include <cstddef>
@@ -23,9 +24,55 @@ namespace lux::simulation
     public:
         [[nodiscard]] ecs::Registry& registry() noexcept;
 
-        template <System Type, class... Args>
-        [[nodiscard]] lux::cxx::expected<Type*, SystemBuildFailure>
-        emplaceSystem(SystemInstanceId instance, Args&&... args) noexcept
+        template <class Configuration>
+        [[nodiscard]] lux::cxx::expected<Configuration, SimulationSystemBuildFailure>
+        decodeConfiguration(SimulationSystemView description) noexcept
+        {
+            static_assert(std::is_nothrow_default_constructible_v<Configuration>);
+            static_assert(std::is_nothrow_destructible_v<Configuration>);
+
+            const auto* registration = currentRegistration();
+            const auto expected_type = lux::cxx::typeToken<Configuration>();
+            const bool invalid_registration = registration == nullptr || !registration->configuration.valid() ||
+                registration->configuration.type != expected_type || registration->description == nullptr;
+            if (invalid_registration)
+            {
+                return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                    ESimulationSystemBuildError::INVALID_DESCRIPTION,
+                    description.instanceId()
+                });
+            }
+
+            const auto& type = registration->description->type;
+            const bool invalid_description = !description || type.configuration_schema_name.empty() ||
+                description.configurationSchemaName() != type.configuration_schema_name ||
+                description.configurationSchemaHash() != lux::cxx::Fnv1a64::hash(type.configuration_schema_name) ||
+                description.configurationSchemaVersion() != type.configuration_schema_version;
+            if (invalid_description)
+            {
+                return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                    ESimulationSystemBuildError::INVALID_DESCRIPTION,
+                    description.instanceId()
+                });
+            }
+
+            Configuration result{};
+            auto decoded = registration->configuration.decode(description.configurationPayload(), &result);
+            if (!decoded)
+            {
+                return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                    ESimulationSystemBuildError::CONFIGURATION_DECODE_FAILURE,
+                    description.instanceId(),
+                    {},
+                    decoded.error()
+                });
+            }
+            return result;
+        }
+
+        template <SimulationSystem Type, class... Args>
+        [[nodiscard]] lux::cxx::expected<Type*, SimulationSystemBuildFailure>
+        emplaceSystem(lux::system::SystemInstanceId instance, Args&&... args) noexcept
         {
             try
             {
@@ -44,26 +91,26 @@ namespace lux::simulation
             catch (const std::bad_alloc&)
             {
                 return lux::cxx::unexpected(
-                    SystemBuildFailure{ESystemBuildError::ALLOCATION_FAILURE, instance}
+                    SimulationSystemBuildFailure{ESimulationSystemBuildError::ALLOCATION_FAILURE, instance}
                 );
             }
             catch (...)
             {
                 return lux::cxx::unexpected(
-                    SystemBuildFailure{ESystemBuildError::CONSTRUCTION_FAILURE, instance}
+                    SimulationSystemBuildFailure{ESimulationSystemBuildError::CONSTRUCTION_FAILURE, instance}
                 );
             }
         }
 
-        template <System Type>
-        [[nodiscard]] Type* findSystem(SystemInstanceId instance) noexcept
+        template <SimulationSystem Type>
+        [[nodiscard]] Type* findSystem(lux::system::SystemInstanceId instance) noexcept
         {
             return static_cast<Type*>(findErased(instance, lux::cxx::typeToken<Type>()));
         }
 
-        template <System Type, class Callable>
-        [[nodiscard]] lux::cxx::expected<void, SystemBuildFailure>
-        addSystemTask(SystemInstanceId instance, Callable&& callable) noexcept
+        template <SimulationSystem Type, class Callable>
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure>
+        addSystemTask(lux::system::SystemInstanceId instance, Callable&& callable) noexcept
         {
             using Function = std::decay_t<Callable>;
             static_assert(std::is_move_constructible_v<Function>);
@@ -75,7 +122,7 @@ namespace lux::simulation
             if (object == nullptr)
             {
                 return lux::cxx::unexpected(
-                    SystemBuildFailure{ESystemBuildError::INVALID_DESCRIPTION, instance}
+                    SimulationSystemBuildFailure{ESimulationSystemBuildError::INVALID_DESCRIPTION, instance}
                 );
             }
 
@@ -102,14 +149,14 @@ namespace lux::simulation
             catch (const std::bad_alloc&)
             {
                 return lux::cxx::unexpected(
-                    SystemBuildFailure{ESystemBuildError::ALLOCATION_FAILURE, instance}
+                    SimulationSystemBuildFailure{ESimulationSystemBuildError::ALLOCATION_FAILURE, instance}
                 );
             }
         }
 
-        template <System Type, class Callable>
-        [[nodiscard]] lux::cxx::expected<void, SystemBuildFailure> addSystemCommandTask(
-            SystemInstanceId instance,
+        template <SimulationSystem Type, class Callable>
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> addSystemCommandTask(
+            lux::system::SystemInstanceId instance,
             ecs::EcsCommandProducerCapacity capacity,
             Callable&& callable
         ) noexcept
@@ -124,7 +171,7 @@ namespace lux::simulation
             if (object == nullptr)
             {
                 return lux::cxx::unexpected(
-                    SystemBuildFailure{ESystemBuildError::INVALID_DESCRIPTION, instance}
+                    SimulationSystemBuildFailure{ESimulationSystemBuildError::INVALID_DESCRIPTION, instance}
                 );
             }
 
@@ -162,7 +209,7 @@ namespace lux::simulation
             catch (const std::bad_alloc&)
             {
                 return lux::cxx::unexpected(
-                    SystemBuildFailure{ESystemBuildError::ALLOCATION_FAILURE, instance}
+                    SimulationSystemBuildFailure{ESimulationSystemBuildError::ALLOCATION_FAILURE, instance}
                 );
             }
         }
@@ -173,9 +220,9 @@ namespace lux::simulation
         struct FailureReporter final
         {
             void* state{};
-            void (*report_failure)(void*, SystemInstanceId) noexcept{};
+            void (*report_failure)(void*, lux::system::SystemInstanceId) noexcept{};
 
-            void report(SystemInstanceId system) const noexcept
+            void report(lux::system::SystemInstanceId system) const noexcept
             {
                 report_failure(state, system);
             }
@@ -192,32 +239,33 @@ namespace lux::simulation
         {
         }
 
-        [[nodiscard]] lux::cxx::expected<void*, SystemBuildFailure> emplaceErased(
-            SystemInstanceId instance,
+        [[nodiscard]] lux::cxx::expected<void*, SimulationSystemBuildFailure> emplaceErased(
+            lux::system::SystemInstanceId instance,
             lux::cxx::TypeToken type,
             void* object,
             void (*destroy)(void*) noexcept
         ) noexcept;
 
-        [[nodiscard]] void* findErased(SystemInstanceId instance, lux::cxx::TypeToken type) noexcept;
-        [[nodiscard]] void* findInstalledErased(SystemInstanceId instance, lux::cxx::TypeToken type) noexcept;
+        [[nodiscard]] void* findErased(lux::system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept;
+        [[nodiscard]] void* findInstalledErased(lux::system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept;
 
-        template <System Type>
-        [[nodiscard]] Type* findInstalledExact(SystemInstanceId instance) noexcept
+        template <SimulationSystem Type>
+        [[nodiscard]] Type* findInstalledExact(lux::system::SystemInstanceId instance) noexcept
         {
             return static_cast<Type*>(findInstalledErased(instance, lux::cxx::typeToken<Type>()));
         }
 
         [[nodiscard]] FailureReporter failureReporter() noexcept;
+        [[nodiscard]] const SimulationSystemRegistration* currentRegistration() const noexcept;
 
-        [[nodiscard]] lux::cxx::expected<CommandBinding, SystemBuildFailure>
+        [[nodiscard]] lux::cxx::expected<CommandBinding, SimulationSystemBuildFailure>
         allocateCommandProducer(
-            SystemInstanceId instance,
+            lux::system::SystemInstanceId instance,
             ecs::EcsCommandProducerCapacity capacity
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SystemBuildFailure> addPrimaryTask(
-            SystemInstanceId instance,
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> addPrimaryTask(
+            lux::system::SystemInstanceId instance,
             task::TaskResources resources,
             task::TaskCallable callable
         ) noexcept;

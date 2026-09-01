@@ -32,8 +32,8 @@ namespace
 {
     using namespace lux::simulation;
 
-    inline constexpr SystemInstanceId kPhysicsInstance{11U};
-    inline constexpr SystemInstanceId kAnimationInstance{12U};
+    inline constexpr lux::system::SystemInstanceId kPhysicsInstance{11U};
+    inline constexpr lux::system::SystemInstanceId kAnimationInstance{12U};
     inline constexpr HookPointId kPhysicsBefore{101U};
     inline constexpr HookPointId kPhysicsAfter{102U};
     inline constexpr EventPointId kCollisionEvent{201U};
@@ -61,12 +61,14 @@ namespace
             "lux.event.Collision",
             1U
         )};
-    inline constexpr SystemDescription kPhysicsDescription{
-        .canonical_name = "lux.physics",
-        .version = 2U,
-        .configuration_schema_name = "lux.physics.Config",
-        .configuration_schema_version = 1U,
-        .capabilities = kPhysicsCapabilities,
+    inline constexpr SimulationSystemDescription kPhysicsDescription{
+        .type = {
+            .canonical_name = "lux.physics",
+            .version = 2U,
+            .configuration_schema_name = "lux.physics.Config",
+            .configuration_schema_version = 1U,
+            .capabilities = kPhysicsCapabilities
+        },
         .hooks = kPhysicsHooks,
         .events = kPhysicsEvents};
 
@@ -82,15 +84,17 @@ namespace
             "after"
         )};
     inline constexpr std::array<EventPointSpec, 0U> kAnimationEvents{};
-    inline constexpr SystemDescription kAnimationDescription{
-        .canonical_name = "lux.animation",
-        .version = 4U,
-        .capabilities = kAnimationCapabilities,
+    inline constexpr SimulationSystemDescription kAnimationDescription{
+        .type = {
+            .canonical_name = "lux.animation",
+            .version = 4U,
+            .capabilities = kAnimationCapabilities
+        },
         .hooks = kAnimationHooks,
         .events = kAnimationEvents};
 
-    static_assert(validSystemDescription(kPhysicsDescription));
-    static_assert(validSystemDescription(kAnimationDescription));
+    static_assert(validSimulationSystemDescription(kPhysicsDescription));
+    static_assert(validSimulationSystemDescription(kAnimationDescription));
 
     void testSystemsAndDependencies()
     {
@@ -160,7 +164,7 @@ namespace
             kAnimationDescription
         ));
         const auto missing = invalid.addDependency(
-            SystemInstanceId{99U},
+            lux::system::SystemInstanceId{99U},
             kAnimationInstance
         );
         assert(!missing);

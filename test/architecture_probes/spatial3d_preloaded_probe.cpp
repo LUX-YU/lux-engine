@@ -78,7 +78,7 @@ namespace
     using namespace lux::world::detail;
 
     inline constexpr std::string_view RenderableSchemaName = "lux.test.spatial3d.PreloadedRenderable";
-    inline constexpr SystemInstanceId SpatialSystemInstance{1U};
+    inline constexpr lux::system::SystemInstanceId SpatialSystemInstance{1U};
 
     template <class Type>
     [[nodiscard]] Type id(std::uint8_t tail)
@@ -538,9 +538,11 @@ namespace
             ComponentRead<Transform3D>,
             ComponentRead<PreloadedRenderable>
         >();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.spatial3d.preloaded-system",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {
+                .canonical_name = "lux.test.spatial3d.preloaded-system",
+                .version = 1U
+            }
         };
 
         explicit PreloadedSpatial3DSystem(Registry& registry) : registry_(&registry)
@@ -587,7 +589,7 @@ namespace
         Spatial3DIndex index_;
     };
 
-    lux::cxx::expected<void, SystemBuildFailure> installSpatial3D(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installSpatial3D(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
@@ -606,7 +608,7 @@ namespace
         SimulationDescriptionBuilder builder;
         if (!builder.addSystem(
                 SpatialSystemInstance,
-                PreloadedSpatial3DSystem::Description.canonical_name,
+                PreloadedSpatial3DSystem::Description.type.canonical_name,
                 PreloadedSpatial3DSystem::Description))
         {
             throw std::runtime_error("Spatial3D Simulation description rejected System");
@@ -1024,11 +1026,14 @@ int main()
         const PreloadedRenderable renderable{1U, 2U, 3U};
         const CookedWorld cooked = makeCookedWorld(transform, renderable);
 
-        SystemRegistry system_types;
-        const SystemRegistration registration{
-            systemTypeId(PreloadedSpatial3DSystem::Description.canonical_name),
-            PreloadedSpatial3DSystem::Description.version,
-            &installSpatial3D
+        SimulationSystemRegistry system_types;
+        const SimulationSystemRegistration registration{
+            .type = lux::system::systemTypeId(PreloadedSpatial3DSystem::Description.type.canonical_name),
+            .cpp_type = lux::cxx::typeToken<PreloadedSpatial3DSystem>(),
+            .description = &PreloadedSpatial3DSystem::Description,
+            .access = PreloadedSpatial3DSystem::Access.spec(),
+            .configuration = lux::serialization::noPortableValueCodec(),
+            .install = &installSpatial3D
         };
         if (!system_types.add(registration))
             return 2;

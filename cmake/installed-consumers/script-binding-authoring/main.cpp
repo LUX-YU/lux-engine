@@ -14,15 +14,14 @@ namespace
 {
     using namespace lux::simulation;
 
-    inline constexpr SystemInstanceId SystemId{301U};
+    inline constexpr lux::system::SystemInstanceId SystemId{301U};
     inline constexpr HookPointId FirstHook{302U};
     inline constexpr HookPointId SecondHook{303U};
     inline constexpr std::array Hooks{
         makeHookPointSpec<void(float)>(FirstHook, "first"),
         makeHookPointSpec<void(float)>(SecondHook, "second")};
-    inline constexpr SystemDescription System{
-        .canonical_name = "installed.authoring.system",
-        .version = 1U,
+    inline constexpr SimulationSystemDescription System{
+        .type = {.canonical_name = "installed.authoring.system", .version = 1U},
         .hooks = Hooks};
 
 }

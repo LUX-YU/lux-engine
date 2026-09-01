@@ -20,7 +20,7 @@ namespace lux::simulation
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion{5U};
+        constexpr std::uint32_t kWireVersion{6U};
         constexpr std::uint32_t kSectionCount{10U};
         constexpr std::uint32_t kDirectoryEntryBytes{24U};
         constexpr std::uint64_t kHeaderBytes{32U};
@@ -45,7 +45,7 @@ namespace lux::simulation
         };
 
         constexpr std::array<std::uint32_t, kSectionCount> kRecordBytes{
-            0U, 32U, 56U, 32U, 4U, 24U, 16U, 40U, 8U, 0U};
+            0U, 32U, 60U, 32U, 4U, 24U, 16U, 40U, 8U, 0U};
 
         class Bytes final
         {
@@ -197,7 +197,7 @@ namespace lux::simulation
 
         struct TypeSource final
         {
-            SystemTypeId type;
+            lux::system::SystemTypeId type;
             SimulationSystemView system;
         };
 
@@ -229,7 +229,7 @@ namespace lux::simulation
                 types.end(),
                 [](const auto& left, const auto& right) noexcept
                 {
-                    return SystemTypeIdLess{}(left.type, right.type);
+                    return lux::system::SystemTypeIdLess{}(left.type, right.type);
                 }
             );
             for (const auto& source : types)
@@ -360,6 +360,7 @@ namespace lux::simulation
                     system_types.u32(event_first);
                     system_types.u32(static_cast<std::uint32_t>(
                         system.eventCount()));
+                    system_types.u32(static_cast<std::uint32_t>(system.multiplicity()));
                 }
 
                 for (std::size_t index{}; index < description.systemCount(); ++index)
@@ -369,9 +370,9 @@ namespace lux::simulation
                         types.begin(),
                         types.end(),
                         system.type(),
-                        [](const auto& value, const SystemTypeId& id) noexcept
+                        [](const auto& value, const lux::system::SystemTypeId& id) noexcept
                         {
-                            return SystemTypeIdLess{}(value.type, id);
+                            return lux::system::SystemTypeIdLess{}(value.type, id);
                         }
                     );
                     instances.u64(system.instanceId().value);
@@ -475,11 +476,12 @@ namespace lux::simulation
             std::uint32_t hook_count{};
             std::uint32_t event_first{};
             std::uint32_t event_count{};
+            std::uint32_t multiplicity{};
         };
 
         struct InstanceWire final
         {
-            SystemInstanceId id;
+            lux::system::SystemInstanceId id;
             std::uint32_t name{};
             std::uint32_t type{};
             std::uint64_t payload_offset{};
@@ -652,7 +654,10 @@ namespace lux::simulation
                         !readU32(sections[2].bytes, cursor, type.hook_count) ||
                         !readU32(sections[2].bytes, cursor, type.event_first) ||
                         !readU32(sections[2].bytes, cursor, type.event_count) ||
+                        !readU32(sections[2].bytes, cursor, type.multiplicity) ||
                         type.version == 0U ||
+                        type.multiplicity > static_cast<std::uint32_t>(
+                            lux::system::ESystemMultiplicity::SINGLE_PER_OWNER) ||
                         !rangeValid(
                             type.capability_first,
                             type.capability_count,
@@ -670,15 +675,15 @@ namespace lux::simulation
                     }
                     const auto name = stringAt(type.name);
                     const auto configuration = stringAt(type.configuration_name);
-                    const SystemTypeId identity{type.hash, std::string(name)};
+                    const lux::system::SystemTypeId identity{type.hash, std::string(name)};
                     if (!identity.valid() ||
                         configuration.empty() !=
                             (type.configuration_version == 0U) ||
                         (configuration.empty() ? 0U :
                             lux::cxx::Fnv1a64::hash(configuration)) !=
                             type.configuration_hash ||
-                        (!types.empty() && !SystemTypeIdLess{}(
-                            SystemTypeId{
+                        (!types.empty() && !lux::system::SystemTypeIdLess{}(
+                            lux::system::SystemTypeId{
                                 types.back().hash,
                                 std::string(stringAt(types.back().name))},
                             identity)))
@@ -926,14 +931,18 @@ namespace lux::simulation
                         return lux::cxx::unexpected(
                             EAssetCodecError::CODEC_FAILURE);
                     }
-                    const SystemDescription system{
-                        stringAt(type.name),
-                        type.version,
-                        stringAt(type.configuration_name),
-                        type.configuration_version,
-                        capabilities[instance.type],
-                        hooks[instance.type],
-                        events[instance.type]};
+                    const SimulationSystemDescription system{
+                        .type = {
+                            .canonical_name = stringAt(type.name),
+                            .version = type.version,
+                            .configuration_schema_name = stringAt(type.configuration_name),
+                            .configuration_schema_version = type.configuration_version,
+                            .capabilities = capabilities[instance.type],
+                            .multiplicity = static_cast<lux::system::ESystemMultiplicity>(type.multiplicity)
+                        },
+                        .hooks = hooks[instance.type],
+                        .events = events[instance.type]
+                    };
                     if (!builder.addSystem(
                             instance.id,
                             stringAt(instance.name),

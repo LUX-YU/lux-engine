@@ -203,7 +203,7 @@ namespace
     )
     {
         using namespace lux::simulation;
-        constexpr SystemInstanceId Instance{77U};
+        constexpr lux::system::SystemInstanceId Instance{77U};
         const auto configuration = makeTransformSystemConfiguration(entity_capacity, command_capacity);
         assert(configuration);
         SimulationDescriptionBuilder builder;
@@ -222,7 +222,7 @@ namespace
     {
         using namespace lux::simulation;
         using namespace lux::simulation::ecs;
-        SystemRegistry systems;
+        SimulationSystemRegistry systems;
         assert(transformSystemRegistrations().size() == 1U);
         assert(systems.add(transformSystemRegistrations()));
 
@@ -273,7 +273,7 @@ namespace
     {
         using namespace lux::simulation;
         using namespace lux::simulation::ecs;
-        SystemRegistry systems;
+        SimulationSystemRegistry systems;
         assert(systems.add(transformSystemRegistrations()));
         Registry registry;
         const Entity first = registry.create();

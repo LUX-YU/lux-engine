@@ -41,7 +41,7 @@ int main()
     auto simulation = std::move(simulation_builder).build();
     assert(simulation);
 
-    simulation::SystemRegistry systems;
+    simulation::SimulationSystemRegistry systems;
     auto scene = scene::Scene::create(
         std::make_shared<world::WorldDescription>(std::move(*world)),
         std::make_shared<simulation::SimulationDescription>(std::move(*simulation)),

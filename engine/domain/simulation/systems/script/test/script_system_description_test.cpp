@@ -14,7 +14,7 @@ namespace
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    inline constexpr SystemInstanceId kSystem{81U};
+    inline constexpr lux::system::SystemInstanceId kSystem{81U};
     inline constexpr HookPointId kHook{82U};
     inline constexpr EventPointId kBroadcastEvent{83U};
     inline constexpr EventPointId kTargetedEvent{84U};
@@ -43,9 +43,8 @@ namespace
                 "lux.simulation.SimulationStepInfo",
                 1U
             )};
-        const SystemDescription description{
-            .canonical_name = "lux.test.system",
-            .version = 1U,
+        const SimulationSystemDescription description{
+            .type = {.canonical_name = "lux.test.system", .version = 1U},
             .hooks = hooks,
             .events = events};
         SimulationDescriptionBuilder builder;

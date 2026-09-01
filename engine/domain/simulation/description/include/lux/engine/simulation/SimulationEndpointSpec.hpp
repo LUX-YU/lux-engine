@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/core/semantic/SemanticType.hpp>
-#include <lux/engine/simulation/SystemEndpointId.hpp>
+#include <lux/engine/simulation/SimulationEndpointId.hpp>
 
 #include <array>
 #include <cstdint>

@@ -1,12 +1,13 @@
 #pragma once
 
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
-#include <lux/engine/simulation/SystemDescription.hpp>
-#include <lux/engine/simulation/SystemRegistry.hpp>
+#include <lux/engine/simulation/SimulationSystemDescription.hpp>
+#include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/systems/transform/visibility.h>
+#include <lux/engine/meta/MetaAnnotations.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -42,10 +43,13 @@ namespace lux::simulation
             ComponentWrite<ecs::WorldTransform2D>,
             ExternalRead<ecs::HierarchyIndex>,
             ExternalRead<ecs::HierarchyDeltaBatch>>();
-        inline static constexpr lux::simulation::SystemDescription Description{
-            .canonical_name = "lux.transform2d",
-            .version = 1,
-            .capabilities = Capabilities};
+        inline static constexpr lux::simulation::SimulationSystemDescription Description{
+            .type = {
+                .canonical_name = "lux.transform2d",
+                .version = 1,
+                .capabilities = Capabilities
+            }
+        };
 
         Transform2DSystem(
             ecs::Registry& registry,
@@ -76,10 +80,13 @@ namespace lux::simulation
             ComponentWrite<ecs::WorldTransform3D>,
             ExternalRead<ecs::HierarchyIndex>,
             ExternalRead<ecs::HierarchyDeltaBatch>>();
-        inline static constexpr lux::simulation::SystemDescription Description{
-            .canonical_name = "lux.transform3d",
-            .version = 1,
-            .capabilities = Capabilities};
+        inline static constexpr lux::simulation::SimulationSystemDescription Description{
+            .type = {
+                .canonical_name = "lux.transform3d",
+                .version = 1,
+                .capabilities = Capabilities
+            }
+        };
 
         Transform3DSystem(
             ecs::Registry& registry,
@@ -101,10 +108,22 @@ namespace lux::simulation
         friend struct detail::TransformSystemTestAccess;
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC const SystemDescription&
+    struct LUX_TYPE_INFO(both) TransformSystemConfiguration final
+    {
+        LUX_MEMBER(min = 1)
+        std::uint64_t entity_capacity{};
+
+        LUX_MEMBER(min = 1)
+        std::uint64_t max_commands{};
+
+        LUX_MEMBER(min = 1)
+        std::uint64_t max_payload_bytes{};
+    };
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC const SimulationSystemDescription&
     transformSystemDescription() noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC std::span<const SystemRegistration>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC std::span<const SimulationSystemRegistration>
     transformSystemRegistrations() noexcept;
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC lux::cxx::expected<

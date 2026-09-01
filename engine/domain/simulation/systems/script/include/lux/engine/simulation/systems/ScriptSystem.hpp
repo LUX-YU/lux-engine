@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
-#include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/SimulationSystemDescription.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/ScriptEndpointBridge.hpp>
@@ -81,9 +81,11 @@ namespace lux::simulation::script
         inline static constexpr auto Access = makeSystemAccessSpec<ComponentWrite<detail::ScriptAttachment>>();
         inline static constexpr std::array<HookPointSpec, 0U> Hooks{};
         inline static constexpr std::array<EventPointSpec, 0U> Events{};
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.simulation.ScriptSystem",
-            .version        = 1U,
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {
+                .canonical_name = "lux.simulation.ScriptSystem",
+                .version = 1U
+            },
             .hooks          = Hooks,
             .events         = Events
         };

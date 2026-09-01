@@ -367,13 +367,13 @@ namespace lux::simulation::script
                     if (kind == 0U)
                     {
                         binding.target = HookScriptTarget{
-                            SystemInstanceId{system},
+                            lux::system::SystemInstanceId{system},
                             HookPointId{endpoint}};
                     }
                     else
                     {
                         binding.target = EventScriptTarget{
-                            SystemInstanceId{system},
+                            lux::system::SystemInstanceId{system},
                             EventPointId{endpoint}};
                     }
                     mount.bindings.push_back(std::move(binding));

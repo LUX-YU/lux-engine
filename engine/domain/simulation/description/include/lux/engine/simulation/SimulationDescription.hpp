@@ -1,8 +1,10 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationDataSchemaId.hpp>
-#include <lux/engine/simulation/SystemEndpointSpec.hpp>
-#include <lux/engine/simulation/SystemTypeId.hpp>
+#include <lux/engine/simulation/SimulationEndpointSpec.hpp>
+#include <lux/engine/system/SystemInstanceId.hpp>
+#include <lux/engine/system/SystemTypeDescription.hpp>
+#include <lux/engine/system/SystemTypeId.hpp>
 #include <lux/engine/simulation/description/visibility.h>
 
 #include <cstddef>
@@ -47,10 +49,11 @@ namespace lux::simulation
       public:
         SimulationSystemView() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
-        [[nodiscard]] SystemInstanceId instanceId() const noexcept;
+        [[nodiscard]] lux::system::SystemInstanceId instanceId() const noexcept;
         [[nodiscard]] std::string_view instanceName() const noexcept;
-        [[nodiscard]] const SystemTypeId& type() const noexcept;
+        [[nodiscard]] const lux::system::SystemTypeId& type() const noexcept;
         [[nodiscard]] std::uint32_t version() const noexcept;
+        [[nodiscard]] lux::system::ESystemMultiplicity multiplicity() const noexcept;
         [[nodiscard]] std::string_view configurationSchemaName() const noexcept;
         [[nodiscard]] std::uint64_t configurationSchemaHash() const noexcept;
         [[nodiscard]] std::uint32_t configurationSchemaVersion() const noexcept;
@@ -187,14 +190,14 @@ namespace lux::simulation
         [[nodiscard]] std::size_t systemCount() const noexcept;
         [[nodiscard]] SimulationSystemView systemAt(std::size_t index) const noexcept;
         [[nodiscard]] SimulationSystemView findSystem(
-            SystemInstanceId id
+            lux::system::SystemInstanceId id
         ) const noexcept;
         [[nodiscard]] SimulationSystemView findSystem(
             std::string_view instance_name
         ) const noexcept;
         [[nodiscard]] bool hasCapability(std::string_view name) const noexcept;
         [[nodiscard]] SimulationHookPointView findHookPoint(
-            SystemInstanceId system,
+            lux::system::SystemInstanceId system,
             HookPointId hook
         ) const noexcept;
         [[nodiscard]] SimulationHookPointView findHookPoint(
@@ -202,7 +205,7 @@ namespace lux::simulation
             std::string_view hook_name
         ) const noexcept;
         [[nodiscard]] SimulationEventView findEvent(
-            SystemInstanceId system,
+            lux::system::SystemInstanceId system,
             EventPointId event
         ) const noexcept;
         [[nodiscard]] SimulationEventView findEvent(
@@ -252,8 +255,9 @@ namespace lux::simulation
 
         struct SystemTypeRecord final
         {
-            SystemTypeId type;
+            lux::system::SystemTypeId type;
             std::uint32_t version{};
+            lux::system::ESystemMultiplicity multiplicity{lux::system::ESystemMultiplicity::MULTIPLE};
             std::string configuration_schema_name;
             std::uint64_t configuration_schema_hash{};
             std::uint32_t configuration_schema_version{};
@@ -266,7 +270,7 @@ namespace lux::simulation
 
         struct SystemRecord final
         {
-            SystemInstanceId id;
+            lux::system::SystemInstanceId id;
             std::string instance_name;
             std::size_t type_ordinal{};
             std::size_t configuration_offset{};

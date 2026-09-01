@@ -5,11 +5,21 @@ generate_visibility_header(
     GENERATE_FILE_PATH      lux/engine/simulation/systems/transform/visibility.h
 )
 
+include_component_cmake_scripts(meta)
+
 add_component(
     COMPONENT_NAME transform_system
     NAMESPACE      lux::engine::simulation
     OUTPUT_NAME    lux_engine_simulation_transform_system
     SOURCE_FILES src/TransformSystem.cpp
+)
+
+engine_target_add_static_type_info(
+    NAME          transform_system_configuration_codegen
+    TARGET        transform_system
+    SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/src/TransformSystem.cpp
+    HEADERS       ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/simulation/systems/TransformSystem.hpp
+    LOGICAL_PATHS lux/engine/simulation/systems/TransformSystem.hpp
 )
 
 component_include_directories(

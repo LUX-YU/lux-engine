@@ -14,7 +14,7 @@ int main()
     auto shared_description =
         std::make_shared<lux::simulation::SimulationDescription>(std::move(*description));
     lux::simulation::ecs::Registry registry;
-    lux::simulation::SystemRegistry system_types;
+    lux::simulation::SimulationSystemRegistry system_types;
     auto simulation = lux::simulation::Simulation::create(
         registry,
         std::move(shared_description),

@@ -556,7 +556,7 @@ namespace
         std::unique_ptr<lux::task::TaskExecutor> executor;
     };
 
-    inline constexpr SystemInstanceId kPrepareSystem{0x7101U};
+    inline constexpr lux::system::SystemInstanceId kPrepareSystem{0x7101U};
     inline constexpr HookPointId kPrepareHook{0x7102U};
     inline constexpr lux::script::ScriptSymbolId kPrepareSymbol{0x7103U};
 
@@ -572,9 +572,8 @@ namespace
         constexpr std::array hooks{
             makeHookPointSpec<void(const SimulationStepInfo&)>(kPrepareHook, "prepare")
         };
-        const SystemDescription system{
-            .canonical_name = "lux.benchmark.ScriptPrepare",
-            .version = 1U,
+        const SimulationSystemDescription system{
+            .type = {.canonical_name = "lux.benchmark.ScriptPrepare", .version = 1U},
             .hooks = hooks,
             .events = {}
         };

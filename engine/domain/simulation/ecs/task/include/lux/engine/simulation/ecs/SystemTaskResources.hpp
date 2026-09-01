@@ -2,7 +2,7 @@
 
 #include <lux/engine/simulation/ecs/EcsTaskResource.hpp>
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
-#include <lux/engine/simulation/SystemConcept.hpp>
+#include <lux/engine/simulation/SimulationSystem.hpp>
 #include <lux/engine/task/Task.hpp>
 
 #include <array>
@@ -34,7 +34,7 @@ namespace lux::simulation::ecs
         return result;
     }
 
-    template <System Type> [[nodiscard]] task::TaskResources systemTaskResources()
+    template <SimulationSystem Type> [[nodiscard]] task::TaskResources systemTaskResources()
     {
         task::TaskResources result = systemTaskResources(Type::Access.spec());
         return result;

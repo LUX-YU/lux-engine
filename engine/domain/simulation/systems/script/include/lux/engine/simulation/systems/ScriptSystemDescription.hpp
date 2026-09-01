@@ -49,7 +49,7 @@ namespace lux::simulation::script
 
     struct HookScriptTarget final
     {
-        SystemInstanceId system;
+        lux::system::SystemInstanceId system;
         HookPointId      hook;
 
         friend constexpr bool operator==(HookScriptTarget, HookScriptTarget) noexcept = default;
@@ -57,7 +57,7 @@ namespace lux::simulation::script
 
     struct EventScriptTarget final
     {
-        SystemInstanceId system;
+        lux::system::SystemInstanceId system;
         EventPointId     event;
 
         friend constexpr bool operator==(EventScriptTarget, EventScriptTarget) noexcept = default;

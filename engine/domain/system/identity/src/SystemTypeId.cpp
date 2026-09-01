@@ -1,9 +1,9 @@
-#include <lux/engine/simulation/SystemTypeId.hpp>
+#include <lux/engine/system/SystemTypeId.hpp>
 
-namespace lux::simulation
+namespace lux::system
 {
     SystemTypeId systemTypeId(std::string_view canonical_name)
     {
         return SystemTypeId{lux::cxx::Fnv1a64::hash(canonical_name), std::string(canonical_name)};
     }
-}
+} // namespace lux::system

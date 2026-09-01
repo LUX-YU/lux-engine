@@ -15,13 +15,13 @@ namespace
     using namespace lux::simulation;
     using namespace lux::simulation::ecs;
 
-    inline constexpr SystemInstanceId FirstId{10U};
-    inline constexpr SystemInstanceId SecondId{20U};
-    inline constexpr SystemInstanceId CommandId{30U};
-    inline constexpr SystemInstanceId ZeroId{40U};
-    inline constexpr SystemInstanceId DuplicateId{50U};
-    inline constexpr SystemInstanceId UndeclaredId{60U};
-    inline constexpr SystemInstanceId ThrowingId{70U};
+    inline constexpr lux::system::SystemInstanceId FirstId{10U};
+    inline constexpr lux::system::SystemInstanceId SecondId{20U};
+    inline constexpr lux::system::SystemInstanceId CommandId{30U};
+    inline constexpr lux::system::SystemInstanceId ZeroId{40U};
+    inline constexpr lux::system::SystemInstanceId DuplicateId{50U};
+    inline constexpr lux::system::SystemInstanceId UndeclaredId{60U};
+    inline constexpr lux::system::SystemInstanceId ThrowingId{70U};
 
     struct Marker final
     {
@@ -39,9 +39,8 @@ namespace
     struct FirstSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.simulation.first",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.simulation.first", .version = 1U}
         };
 
         explicit FirstSystem(TestContext& context) noexcept : context_(&context)
@@ -67,9 +66,8 @@ namespace
     struct SecondSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.simulation.second",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.simulation.second", .version = 1U}
         };
 
         SecondSystem(TestContext& context, FirstSystem& first) noexcept
@@ -91,9 +89,8 @@ namespace
     struct CommandSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<ComponentWrite<Marker>>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.simulation.command",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.simulation.command", .version = 1U}
         };
 
         explicit CommandSystem(TestContext& context) noexcept : context_(&context)
@@ -114,18 +111,16 @@ namespace
     struct ZeroTaskSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.simulation.zero",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.simulation.zero", .version = 1U}
         };
     };
 
     struct DuplicateTaskSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.simulation.duplicate",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.simulation.duplicate", .version = 1U}
         };
 
         void run() noexcept
@@ -136,18 +131,16 @@ namespace
     struct UndeclaredSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.simulation.undeclared",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.simulation.undeclared", .version = 1U}
         };
     };
 
     struct ThrowingSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.simulation.throwing",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.simulation.throwing", .version = 1U}
         };
 
         ThrowingSystem()
@@ -158,7 +151,7 @@ namespace
         ~ThrowingSystem() noexcept = default;
     };
 
-    lux::cxx::expected<void, SystemBuildFailure> installFirst(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installFirst(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
@@ -173,7 +166,7 @@ namespace
         );
     }
 
-    lux::cxx::expected<void, SystemBuildFailure> installSecond(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installSecond(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
@@ -182,7 +175,7 @@ namespace
         if (first == nullptr)
         {
             return lux::cxx::unexpected(
-                SystemBuildFailure{ESystemBuildError::INVALID_DESCRIPTION, description.instanceId()}
+                SimulationSystemBuildFailure{ESimulationSystemBuildError::INVALID_DESCRIPTION, description.instanceId()}
             );
         }
         auto& context = builder.registry().ctx().get<TestContext>();
@@ -195,7 +188,7 @@ namespace
         );
     }
 
-    lux::cxx::expected<void, SystemBuildFailure> installCommand(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installCommand(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
@@ -213,17 +206,17 @@ namespace
         );
     }
 
-    lux::cxx::expected<void, SystemBuildFailure> installZero(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installZero(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
     {
         auto system = builder.emplaceSystem<ZeroTaskSystem>(description.instanceId());
-        return system ? lux::cxx::expected<void, SystemBuildFailure>{}
+        return system ? lux::cxx::expected<void, SimulationSystemBuildFailure>{}
                       : lux::cxx::unexpected(system.error());
     }
 
-    lux::cxx::expected<void, SystemBuildFailure> installDuplicate(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installDuplicate(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
@@ -243,44 +236,51 @@ namespace
         );
     }
 
-    lux::cxx::expected<void, SystemBuildFailure> installUndeclared(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installUndeclared(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
     {
         (void)builder.findSystem<FirstSystem>(FirstId);
         auto system = builder.emplaceSystem<UndeclaredSystem>(description.instanceId());
-        return system ? lux::cxx::expected<void, SystemBuildFailure>{}
+        return system ? lux::cxx::expected<void, SimulationSystemBuildFailure>{}
                       : lux::cxx::unexpected(system.error());
     }
 
-    lux::cxx::expected<void, SystemBuildFailure> installThrowing(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installThrowing(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
     {
         auto system = builder.emplaceSystem<ThrowingSystem>(description.instanceId());
-        return system ? lux::cxx::expected<void, SystemBuildFailure>{}
+        return system ? lux::cxx::expected<void, SimulationSystemBuildFailure>{}
                       : lux::cxx::unexpected(system.error());
     }
 
-    [[nodiscard]] SystemRegistration registration(
-        const SystemDescription& description,
-        InstallSystemFn install,
-        std::uint32_t version = 1U
+    template <SimulationSystem Type>
+    [[nodiscard]] SimulationSystemRegistration registration(
+        const SimulationSystemDescription& description,
+        InstallSimulationSystemFn install
     )
     {
-        return SystemRegistration{systemTypeId(description.canonical_name), version, install};
+        return SimulationSystemRegistration{
+            .type = lux::system::systemTypeId(description.type.canonical_name),
+            .cpp_type = lux::cxx::typeToken<Type>(),
+            .description = &description,
+            .access = Type::Access.spec(),
+            .configuration = lux::serialization::noPortableValueCodec(),
+            .install = install
+        };
     }
 
     [[nodiscard]] std::shared_ptr<const SimulationDescription> description(
-        std::span<const std::pair<SystemInstanceId, const SystemDescription*>> systems,
-        std::span<const std::pair<SystemInstanceId, SystemInstanceId>> dependencies = {}
+        std::span<const std::pair<lux::system::SystemInstanceId, const SimulationSystemDescription*>> systems,
+        std::span<const std::pair<lux::system::SystemInstanceId, lux::system::SystemInstanceId>> dependencies = {}
     )
     {
         SimulationDescriptionBuilder builder;
         for (const auto& [instance, system] : systems)
-            assert(builder.addSystem(instance, system->canonical_name, *system));
+            assert(builder.addSystem(instance, system->type.canonical_name, *system));
         for (const auto& [before, after] : dependencies)
             assert(builder.addDependency(before, after));
         auto built = std::move(builder).build();
@@ -295,15 +295,15 @@ int main()
     using namespace lux::simulation::ecs;
 
     const std::array registrations{
-        registration(FirstSystem::Description, &installFirst),
-        registration(SecondSystem::Description, &installSecond),
-        registration(CommandSystem::Description, &installCommand),
-        registration(ZeroTaskSystem::Description, &installZero),
-        registration(DuplicateTaskSystem::Description, &installDuplicate),
-        registration(UndeclaredSystem::Description, &installUndeclared),
-        registration(ThrowingSystem::Description, &installThrowing)
+        registration<FirstSystem>(FirstSystem::Description, &installFirst),
+        registration<SecondSystem>(SecondSystem::Description, &installSecond),
+        registration<CommandSystem>(CommandSystem::Description, &installCommand),
+        registration<ZeroTaskSystem>(ZeroTaskSystem::Description, &installZero),
+        registration<DuplicateTaskSystem>(DuplicateTaskSystem::Description, &installDuplicate),
+        registration<UndeclaredSystem>(UndeclaredSystem::Description, &installUndeclared),
+        registration<ThrowingSystem>(ThrowingSystem::Description, &installThrowing)
     };
-    SystemRegistry registry_types;
+    SimulationSystemRegistry registry_types;
     assert(registry_types.add(registrations));
 
     auto executor = lux::task::TaskExecutor::create({2U, 16U});
@@ -368,7 +368,7 @@ int main()
             registry_types
         );
         assert(!simulation);
-        assert(simulation.error().code == ESystemBuildError::MISSING_PRIMARY_TASK);
+        assert(simulation.error().code == ESimulationSystemBuildError::MISSING_PRIMARY_TASK);
     }
 
     {
@@ -377,7 +377,7 @@ int main()
         const std::array systems{std::pair{DuplicateId, &DuplicateTaskSystem::Description}};
         auto simulation = Simulation::create(registry, description(systems), registry_types);
         assert(!simulation);
-        assert(simulation.error().code == ESystemBuildError::DUPLICATE_PRIMARY_TASK);
+        assert(simulation.error().code == ESimulationSystemBuildError::DUPLICATE_PRIMARY_TASK);
     }
 
     {
@@ -389,7 +389,7 @@ int main()
         };
         auto simulation = Simulation::create(registry, description(systems), registry_types);
         assert(!simulation);
-        assert(simulation.error().code == ESystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY);
+        assert(simulation.error().code == ESimulationSystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY);
     }
 
     {
@@ -406,7 +406,7 @@ int main()
             registry_types
         );
         assert(!simulation);
-        assert(simulation.error().code == ESystemBuildError::CONSTRUCTION_FAILURE);
+        assert(simulation.error().code == ESimulationSystemBuildError::CONSTRUCTION_FAILURE);
         assert(context.destroyed == 1U);
     }
 
@@ -414,16 +414,19 @@ int main()
         Registry registry;
         registry.ctx().emplace<TestContext>();
         const std::array systems{std::pair{FirstId, &FirstSystem::Description}};
-        SystemRegistry empty;
+        SimulationSystemRegistry empty;
         auto unknown = Simulation::create(registry, description(systems), empty);
         assert(!unknown);
-        assert(unknown.error().code == ESystemBuildError::UNKNOWN_SYSTEM_TYPE);
+        assert(unknown.error().code == ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE);
 
-        SystemRegistry wrong_version;
-        assert(wrong_version.add(registration(FirstSystem::Description, &installFirst, 2U)));
+        SimulationSystemRegistry wrong_version;
+        static constexpr SimulationSystemDescription WrongFirstDescription{
+            .type = {.canonical_name = "lux.test.simulation.first", .version = 2U}
+        };
+        assert(wrong_version.add(registration<FirstSystem>(WrongFirstDescription, &installFirst)));
         auto mismatch = Simulation::create(registry, description(systems), wrong_version);
         assert(!mismatch);
-        assert(mismatch.error().code == ESystemBuildError::VERSION_MISMATCH);
+        assert(mismatch.error().code == ESimulationSystemBuildError::VERSION_MISMATCH);
     }
 
     return 0;

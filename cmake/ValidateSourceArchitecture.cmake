@@ -77,6 +77,10 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/domain/partition/*/sinclude/*.hpp"
     "${source_root}/engine/domain/partition/*/pinclude/*.hpp"
     "${source_root}/engine/domain/partition/*/src/*.cpp"
+    "${source_root}/engine/domain/system/*/include/*.hpp"
+    "${source_root}/engine/domain/system/*/sinclude/*.hpp"
+    "${source_root}/engine/domain/system/*/pinclude/*.hpp"
+    "${source_root}/engine/domain/system/*/src/*.cpp"
     "${source_root}/engine/domain/spatial/*/include/*.hpp"
     "${source_root}/engine/domain/spatial/*/sinclude/*.hpp"
     "${source_root}/engine/domain/spatial/*/pinclude/*.hpp"
@@ -297,6 +301,15 @@ foreach(source IN LISTS production_sources)
         endif()
     endif()
 
+    if(normalized MATCHES "/engine/domain/system/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|render|runtime|authoring|toolchain|editor|host|extensions)/")
+            message(FATAL_ERROR
+                "Architecture: shared System foundation '${normalized}' depends on a concrete or upper domain."
+            )
+        endif()
+    endif()
+
     if(normalized MATCHES "/engine/domain/world/identity/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
@@ -350,6 +363,11 @@ foreach(source IN LISTS production_sources)
                 "Architecture: Process Asset workflow '${normalized}' depends on a domain or upper layer."
             )
         endif()
+    endif()
+
+    if(content MATCHES
+       "lux/engine/simulation/(SystemTypeId|SystemDescription|SystemEndpointId|SystemEndpointSpec|SystemConcept|SystemRegistry)[.]hpp")
+        message(FATAL_ERROR "Architecture: active source '${normalized}' includes retired generic System vocabulary.")
     endif()
 
     if(normalized MATCHES "/engine/process/" AND content MATCHES
@@ -1049,6 +1067,7 @@ foreach(installed_consumer IN ITEMS
     object_affinity
     resource_descriptions
     resource_identity
+    system_foundation
     simulation_runtime
     world
     world_storage
@@ -1073,6 +1092,8 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/engine/domain/world/*/CMakeLists.txt"
     "${source_root}/engine/domain/partition/CMakeLists.txt"
     "${source_root}/engine/domain/partition/*/CMakeLists.txt"
+    "${source_root}/engine/domain/system/CMakeLists.txt"
+    "${source_root}/engine/domain/system/*/CMakeLists.txt"
     "${source_root}/engine/domain/spatial/CMakeLists.txt"
     "${source_root}/engine/domain/spatial/*/CMakeLists.txt"
     "${source_root}/engine/domain/simulation/CMakeLists.txt"

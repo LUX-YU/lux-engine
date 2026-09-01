@@ -271,9 +271,11 @@ namespace
     {
     public:
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.physics3d.jolt-l1-probe",
-            .version = 1U
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {
+                .canonical_name = "lux.test.physics3d.jolt-l1-probe",
+                .version = 1U
+            }
         };
 
         explicit JoltProbeSystem(ProbeContext& context)
@@ -464,7 +466,7 @@ namespace
         JPH::BodyID dynamic_body_;
     };
 
-    lux::cxx::expected<void, SystemBuildFailure> installJoltProbe(
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installJoltProbe(
         SimulationBuilder& builder,
         SimulationSystemView description
     ) noexcept
@@ -481,9 +483,12 @@ namespace
 
     [[nodiscard]] std::shared_ptr<const SimulationDescription> makeDescription()
     {
-        constexpr SystemInstanceId Instance{1U};
+        constexpr lux::system::SystemInstanceId Instance{1U};
         SimulationDescriptionBuilder builder;
-        if (!builder.addSystem(Instance, JoltProbeSystem::Description.canonical_name, JoltProbeSystem::Description))
+        if (!builder.addSystem(
+                Instance,
+                JoltProbeSystem::Description.type.canonical_name,
+                JoltProbeSystem::Description))
             throw std::runtime_error("Jolt probe description rejected the concrete System");
         auto description = std::move(builder).build();
         if (!description)
@@ -491,7 +496,7 @@ namespace
         return std::make_shared<SimulationDescription>(std::move(*description));
     }
 
-    [[nodiscard]] ProbeResult runScenario(const ProbeConfig& config, const SystemRegistry& system_types)
+    [[nodiscard]] ProbeResult runScenario(const ProbeConfig& config, const SimulationSystemRegistry& system_types)
     {
         lux::simulation::ecs::Registry registry;
         registry.ctx().emplace<ProbeContext>(ProbeContext{config, {}});
@@ -539,11 +544,14 @@ int main(int argc, char** argv)
         const std::uint32_t worker_threads = std::min(3U, available_workers);
 
         JoltRuntime jolt;
-        SystemRegistry system_types;
-        const SystemRegistration registration{
-            systemTypeId(JoltProbeSystem::Description.canonical_name),
-            JoltProbeSystem::Description.version,
-            &installJoltProbe
+        SimulationSystemRegistry system_types;
+        const SimulationSystemRegistration registration{
+            .type = lux::system::systemTypeId(JoltProbeSystem::Description.type.canonical_name),
+            .cpp_type = lux::cxx::typeToken<JoltProbeSystem>(),
+            .description = &JoltProbeSystem::Description,
+            .access = JoltProbeSystem::Access.spec(),
+            .configuration = lux::serialization::noPortableValueCodec(),
+            .install = &installJoltProbe
         };
         if (!system_types.add(registration))
             return 2;

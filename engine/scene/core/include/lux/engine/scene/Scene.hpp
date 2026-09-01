@@ -22,7 +22,7 @@ namespace lux::scene
     struct SceneBuildFailure final
     {
         ESceneBuildError code{ESceneBuildError::INVALID_WORLD};
-        simulation::SystemBuildFailure simulation;
+        simulation::SimulationSystemBuildFailure simulation;
     };
 
     class LUX_ENGINE_SCENE_PUBLIC Scene final
@@ -36,7 +36,7 @@ namespace lux::scene
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<Scene>, SceneBuildFailure> create(
             std::shared_ptr<const world::WorldDescription> world,
             std::shared_ptr<const simulation::SimulationDescription> simulation,
-            const simulation::SystemRegistry& systems
+            const simulation::SimulationSystemRegistry& systems
         ) noexcept;
 
         [[nodiscard]] const world::WorldDescription& world() const noexcept;

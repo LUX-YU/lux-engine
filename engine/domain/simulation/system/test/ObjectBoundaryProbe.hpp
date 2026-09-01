@@ -4,7 +4,7 @@
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
-#include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/SimulationSystemDescription.hpp>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 
 #include <array>
@@ -46,10 +46,12 @@ namespace lux::simulation::test
         inline static constexpr std::array<EventPointSpec, 0U> Events{};
         inline static constexpr auto Access = makeSystemAccessSpec<
             ComponentWrite<MaterialTextureResident>>();
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.test.material-texture",
-            .version = 1U,
-            .capabilities = Capabilities,
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {
+                .canonical_name = "lux.test.material-texture",
+                .version = 1U,
+                .capabilities = Capabilities
+            },
             .hooks = Hooks,
             .events = Events};
 

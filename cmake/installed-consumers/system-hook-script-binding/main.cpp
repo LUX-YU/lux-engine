@@ -20,7 +20,7 @@ namespace
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    inline constexpr SystemInstanceId SystemId{101U};
+    inline constexpr lux::system::SystemInstanceId SystemId{101U};
     inline constexpr HookPointId ValueHook{102U};
     inline constexpr HookPointId EventHook{103U};
     inline constexpr EventPointId PulseEvent{104U};
@@ -38,9 +38,8 @@ namespace
             EEventRoute::ENTITY_TARGETED,
             "consumer.CollisionEvent",
             1U)};
-    inline constexpr SystemDescription System{
-        .canonical_name = "consumer.system",
-        .version = 1U,
+    inline constexpr SimulationSystemDescription System{
+        .type = {.canonical_name = "consumer.system", .version = 1U},
         .hooks = Hooks,
         .events = Events};
 

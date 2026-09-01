@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
-#include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/SimulationSystemDescription.hpp>
 
 #include <type_traits>
 
@@ -14,9 +14,9 @@ namespace lux::simulation
      * The application binds the concrete object into a TaskGraph lambda.
      */
     template <class Type>
-    concept System = requires {
+    concept SimulationSystem = requires {
         requires detail::TrustedSystemAccessDescriptor<decltype(Type::Access)>;
-        requires validSystemDescription(Type::Description);
+        requires validSimulationSystemDescription(Type::Description);
         requires std::is_nothrow_destructible_v<Type>;
     };
 }

@@ -2,7 +2,7 @@
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
-#include <lux/engine/simulation/asset/SystemDescriptionCompatibility.hpp>
+#include <lux/engine/simulation/asset/SimulationSystemDescriptionValidation.hpp>
 #include <lux/cxx/algorithm/sha256.hpp>
 
 #include <array>
@@ -37,8 +37,8 @@ namespace
 {
     using namespace lux::simulation;
 
-    inline constexpr SystemInstanceId kPhysicsInstance{31U};
-    inline constexpr SystemInstanceId kAnimationInstance{32U};
+    inline constexpr lux::system::SystemInstanceId kPhysicsInstance{31U};
+    inline constexpr lux::system::SystemInstanceId kAnimationInstance{32U};
     inline constexpr HookPointId kPhysicsBefore{301U};
     inline constexpr HookPointId kPhysicsAfter{302U};
     inline constexpr EventPointId kCollision{401U};
@@ -73,12 +73,14 @@ namespace
 
     struct PhysicsSystem final
     {
-        inline static constexpr SystemDescription Description{
-            .canonical_name = "lux.physics",
-            .version = 3U,
-            .configuration_schema_name = "lux.physics.Config",
-            .configuration_schema_version = 2U,
-            .capabilities = kPhysicsCapabilities,
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {
+                .canonical_name = "lux.physics",
+                .version = 3U,
+                .configuration_schema_name = "lux.physics.Config",
+                .configuration_schema_version = 2U,
+                .capabilities = kPhysicsCapabilities
+            },
             .hooks = kPhysicsHooks,
             .events = kPhysicsEvents};
     };
@@ -107,9 +109,11 @@ int main()
     ));
     constexpr std::array<HookPointSpec, 0U> no_hooks{};
     constexpr std::array<EventPointSpec, 0U> no_events{};
-    const SystemDescription animation{
-        .canonical_name = "lux.animation",
-        .version = 5U,
+    const SimulationSystemDescription animation{
+        .type = {
+            .canonical_name = "lux.animation",
+            .version = 5U
+        },
         .hooks = no_hooks,
         .events = no_events};
     assert(builder.addSystem(kAnimationInstance, "animation", animation));
@@ -131,13 +135,13 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(*encoded),
         decode_limits
     );
-    assert(outer && outer->information().empty() && outer->data().size() == 865U);
+    assert(outer && outer->information().empty() && outer->data().size() == 873U);
     const auto digest = lux::cxx::algorithm::Sha256::hash(outer->data().view());
     const auto expected_digest = lux::cxx::algorithm::Sha256Digest::fromHex(
-        "8151e12e91b262bea50ac877fa893591dfa1a24162db55d295405dda8a65a492"
+        "480ed360a99aac9ac125915739e38469896c53bd9d14f76efaac8b6b8f4ac8f3"
     );
     assert(expected_digest && digest == *expected_digest);
-    assert(outer->data().view()[4] == std::byte{5U});
+    assert(outer->data().view()[4] == std::byte{6U});
     assert(!TAssetSerDeser<SimulationAsset>::encode(
         **asset,
         AssetEncodeLimits{encoded->size() - 1U}
@@ -165,7 +169,7 @@ int main()
     auto reencoded = TAssetSerDeser<SimulationAsset>::encode(**decoded, encode_limits);
     assert(reencoded && *reencoded == *encoded);
 
-    for (const auto old_version : {1U, 2U, 3U, 4U})
+    for (const auto old_version : {1U, 2U, 3U, 4U, 5U})
     {
         auto old_wire = *encoded;
         old_wire[404U] = static_cast<std::byte>(old_version);

@@ -1,4 +1,4 @@
-#include <lux/engine/simulation/SystemRegistry.hpp>
+#include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 
 #include <thread>
 

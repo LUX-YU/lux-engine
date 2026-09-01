@@ -13,7 +13,6 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_description
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDataSchemaId.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemTypeId.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescription.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescriptionBuilder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescriptionFailureInjection.cpp
@@ -44,12 +43,16 @@ target_link_libraries(
     PUBLIC
         lux::engine::core::semantic
         lux::engine::function::script_core
+        lux::engine::system::domain_system_identity
+        lux::engine::system::domain_system_description
         lux::cxx::compile_time
 )
 component_add_transitive_commands(
     simulation_description
     "find_package(lux-engine-core REQUIRED COMPONENTS semantic)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
+    "find_package(lux-engine-domain-system-identity REQUIRED COMPONENTS domain_system_identity)"
+    "find_package(lux-engine-domain-system-description REQUIRED COMPONENTS domain_system_description)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "if(NOT TARGET lux::engine::simulation::description)"
     "add_library(lux::engine::simulation::description INTERFACE IMPORTED GLOBAL)"

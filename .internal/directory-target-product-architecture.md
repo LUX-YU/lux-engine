@@ -14,6 +14,9 @@ engine/
   domain/
     partition/
     spatial/
+    system/
+      identity/
+      description/
     world/
       identity/
     simulation/
@@ -25,9 +28,10 @@ engine/
 ```
 
 - `modules/` 是可复用 L0 package。
-- `engine/domain/world/identity` 与 `engine/domain/partition` 是中立的 L1 engine-domain identity；
+- `engine/domain/world/identity`、`engine/domain/partition` 与 `engine/domain/system` 是中立的 L1 engine-domain
+  foundation；System leaf只拥有 stable type/instance identity、common type description和deterministic order helper。
   `engine/domain/spatial` 是具体空间查询机制。
-  两者不拥有 World、Simulation 或 streaming policy。
+  这些foundation不拥有 World、Simulation runtime object、scheduler、registry、codec或streaming policy。
 - `engine/domain/world` 与 `engine/domain/simulation` 是 sibling runtime domains，均可依赖窄义 `DOMAIN`
   foundation，但不得互相依赖。
 - `engine/process` 是 L2 collection；`execution` 叶包保持领域盲，具体 `world`/`asset` 叶包可拥有明确的

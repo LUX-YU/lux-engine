@@ -23,5 +23,5 @@ int main()
     Transform3DSystem transform(registry, hierarchy, deltas);
     if (!transform.prepare(16U))
         return 3;
-    return validSystemDescription(Transform3DSystem::Description) ? 0 : 4;
+    return validSimulationSystemDescription(Transform3DSystem::Description) ? 0 : 4;
 }

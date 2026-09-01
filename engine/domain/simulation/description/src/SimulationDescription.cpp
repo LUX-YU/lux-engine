@@ -78,7 +78,7 @@ namespace lux::simulation
         return description_ != nullptr && system_index_ < description_->systems_.size();
     }
 
-    SystemInstanceId SimulationSystemView::instanceId() const noexcept
+    lux::system::SystemInstanceId SimulationSystemView::instanceId() const noexcept
     {
         return description_->systems_[system_index_].id;
     }
@@ -88,7 +88,7 @@ namespace lux::simulation
         return description_->systems_[system_index_].instance_name;
     }
 
-    const SystemTypeId& SimulationSystemView::type() const noexcept
+    const lux::system::SystemTypeId& SimulationSystemView::type() const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
         return description_->system_types_[type].type;
@@ -98,6 +98,13 @@ namespace lux::simulation
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
         return description_->system_types_[type].version;
+    }
+
+    lux::system::ESystemMultiplicity SimulationSystemView::multiplicity() const noexcept
+    {
+        return description_ != nullptr
+            ? description_->system_types_[description_->systems_[system_index_].type_ordinal].multiplicity
+            : lux::system::ESystemMultiplicity::MULTIPLE;
     }
 
     std::string_view SimulationSystemView::configurationSchemaName() const noexcept
@@ -509,7 +516,7 @@ namespace lux::simulation
     }
 
     SimulationSystemView SimulationDescription::findSystem(
-        SystemInstanceId id
+        lux::system::SystemInstanceId id
     ) const noexcept
     {
         const auto found = system_ordinals_.find(id.value);
@@ -547,7 +554,7 @@ namespace lux::simulation
     }
 
     SimulationHookPointView SimulationDescription::findHookPoint(
-        SystemInstanceId system_id,
+        lux::system::SystemInstanceId system_id,
         HookPointId hook_id
     ) const noexcept
     {
@@ -567,7 +574,7 @@ namespace lux::simulation
     }
 
     SimulationEventView SimulationDescription::findEvent(
-        SystemInstanceId system_id,
+        lux::system::SystemInstanceId system_id,
         EventPointId event_id
     ) const noexcept
     {

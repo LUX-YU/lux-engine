@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
+#include <lux/engine/system/detail/SystemDependencyOrder.hpp>
 
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -19,7 +20,7 @@ namespace lux::simulation
 
         struct SystemObjectRecord final
         {
-            SystemInstanceId instance;
+            lux::system::SystemInstanceId instance;
             lux::cxx::TypeToken type;
             void* object{};
             void (*destroy)(void*) noexcept{};
@@ -68,7 +69,7 @@ namespace lux::simulation
         {
         }
 
-        [[nodiscard]] std::size_t ordinalOf(SystemInstanceId instance) const noexcept
+        [[nodiscard]] std::size_t ordinalOf(lux::system::SystemInstanceId instance) const noexcept
         {
             for (std::size_t ordinal{}; ordinal < owner->description->systemCount(); ++ordinal)
             {
@@ -84,7 +85,7 @@ namespace lux::simulation
             return std::find(values.begin(), values.end(), candidate) != values.end();
         }
 
-        [[nodiscard]] SystemObjectRecord* findRecord(SystemInstanceId instance) noexcept
+        [[nodiscard]] SystemObjectRecord* findRecord(lux::system::SystemInstanceId instance) noexcept
         {
             const auto iterator = std::find_if(
                 owner->systems.begin(),
@@ -102,22 +103,23 @@ namespace lux::simulation
         std::vector<std::optional<task::TaskHandle>> primary_tasks;
         std::vector<task::TaskHandle> all_primary_tasks;
         std::vector<ecs::EcsCommandProducerCapacity> command_capacities;
-        std::optional<SystemBuildFailure> pending_failure;
+        std::optional<SimulationSystemBuildFailure> pending_failure;
+        const SimulationSystemRegistration* current_registration{};
         std::size_t current_ordinal{kInvalidOrdinal};
     };
 
     namespace
     {
-        [[nodiscard]] SystemBuildFailure buildFailure(
-            ESystemBuildError code,
-            SystemInstanceId system = {},
-            SystemInstanceId related = {}
+        [[nodiscard]] SimulationSystemBuildFailure buildFailure(
+            ESimulationSystemBuildError code,
+            lux::system::SystemInstanceId system = {},
+            lux::system::SystemInstanceId related = {}
         ) noexcept
         {
-            return SystemBuildFailure{code, system, related};
+            return SimulationSystemBuildFailure{code, system, related};
         }
 
-        void reportSystemFailure(void* state, SystemInstanceId system) noexcept
+        void reportSystemFailure(void* state, lux::system::SystemInstanceId system) noexcept
         {
             auto& failure = *static_cast<std::atomic<std::uint64_t>*>(state);
             std::uint64_t expected{};
@@ -131,7 +133,7 @@ namespace lux::simulation
 
         [[nodiscard]] std::size_t descriptionOrdinal(
             const SimulationDescription& description,
-            SystemInstanceId instance
+            lux::system::SystemInstanceId instance
         ) noexcept
         {
             for (std::size_t ordinal{}; ordinal < description.systemCount(); ++ordinal)
@@ -142,8 +144,8 @@ namespace lux::simulation
             return kInvalidOrdinal;
         }
 
-        [[nodiscard]] lux::cxx::expected<std::vector<std::size_t>, SystemBuildFailure>
-        deterministicTopologicalOrder(
+        [[nodiscard]] lux::cxx::expected<std::vector<std::size_t>, SimulationSystemBuildFailure>
+        dependencyOrder(
             const SimulationDescription& description,
             std::vector<std::vector<std::size_t>>& predecessors
         ) noexcept
@@ -152,8 +154,14 @@ namespace lux::simulation
             {
                 const std::size_t count = description.systemCount();
                 predecessors.assign(count, {});
-                std::vector<std::vector<std::size_t>> successors(count);
-                std::vector<std::size_t> indegree(count);
+                std::vector<lux::system::SystemInstanceId> instances;
+                std::vector<lux::system::detail::SystemDependencyOrdinalEdge> edges;
+                instances.reserve(count);
+                edges.reserve(description.dependencyCount());
+                for (std::size_t ordinal{}; ordinal < count; ++ordinal)
+                {
+                    instances.push_back(description.systemAt(ordinal).instanceId());
+                }
                 for (std::size_t dependency{}; dependency < description.dependencyCount(); ++dependency)
                 {
                     const auto edge = description.dependencyAt(dependency);
@@ -162,49 +170,31 @@ namespace lux::simulation
                     if (before == kInvalidOrdinal || after == kInvalidOrdinal || before == after)
                     {
                         return lux::cxx::unexpected(
-                            buildFailure(ESystemBuildError::INVALID_DESCRIPTION)
+                            buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION)
                         );
                     }
-                    successors[before].push_back(after);
                     predecessors[after].push_back(before);
-                    ++indegree[after];
+                    edges.push_back({before, after});
                 }
-
-                std::vector<std::size_t> order;
-                std::vector<bool> emitted(count);
-                order.reserve(count);
-                for (std::size_t emitted_count{}; emitted_count < count; ++emitted_count)
+                auto order = lux::system::detail::deterministicSystemOrder(instances, edges);
+                if (!order)
                 {
-                    std::size_t selected = kInvalidOrdinal;
-                    for (std::size_t ordinal{}; ordinal < count; ++ordinal)
+                    switch (order.error())
                     {
-                        if (emitted[ordinal] || indegree[ordinal] != 0U)
-                            continue;
-                        if (selected == kInvalidOrdinal ||
-                            description.systemAt(ordinal).instanceId() <
-                                description.systemAt(selected).instanceId())
-                        {
-                            selected = ordinal;
-                        }
+                    case lux::system::detail::ESystemDependencyOrderError::INVALID_EDGE:
+                        return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION));
+                    case lux::system::detail::ESystemDependencyOrderError::CYCLE:
+                        return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DEPENDENCY_CYCLE));
+                    case lux::system::detail::ESystemDependencyOrderError::ALLOCATION_FAILURE:
+                        return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE));
                     }
-                    if (selected == kInvalidOrdinal)
-                    {
-                        return lux::cxx::unexpected(
-                            buildFailure(ESystemBuildError::DEPENDENCY_CYCLE)
-                        );
-                    }
-
-                    emitted[selected] = true;
-                    order.push_back(selected);
-                    for (const std::size_t successor : successors[selected])
-                        --indegree[successor];
                 }
-                return order;
+                return std::move(*order);
             }
             catch (const std::bad_alloc&)
             {
                 return lux::cxx::unexpected(
-                    buildFailure(ESystemBuildError::ALLOCATION_FAILURE)
+                    buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE)
                 );
             }
         }
@@ -215,8 +205,8 @@ namespace lux::simulation
         return *impl_->owner->registry;
     }
 
-    lux::cxx::expected<void*, SystemBuildFailure> SimulationBuilder::emplaceErased(
-        SystemInstanceId instance,
+    lux::cxx::expected<void*, SimulationSystemBuildFailure> SimulationBuilder::emplaceErased(
+        lux::system::SystemInstanceId instance,
         lux::cxx::TypeToken type,
         void* object,
         void (*destroy)(void*) noexcept
@@ -227,13 +217,13 @@ namespace lux::simulation
             object == nullptr || destroy == nullptr)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::INVALID_DESCRIPTION, instance)
+                buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, instance)
             );
         }
         if (impl_->findRecord(instance) != nullptr)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::DUPLICATE_SYSTEM, instance)
+                buildFailure(ESimulationSystemBuildError::DUPLICATE_SYSTEM, instance)
             );
         }
 
@@ -245,13 +235,13 @@ namespace lux::simulation
         catch (const std::bad_alloc&)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::ALLOCATION_FAILURE, instance)
+                buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, instance)
             );
         }
     }
 
     void* SimulationBuilder::findInstalledErased(
-        SystemInstanceId instance,
+        lux::system::SystemInstanceId instance,
         lux::cxx::TypeToken type
     ) noexcept
     {
@@ -261,7 +251,7 @@ namespace lux::simulation
         return record->object;
     }
 
-    void* SimulationBuilder::findErased(SystemInstanceId instance, lux::cxx::TypeToken type) noexcept
+    void* SimulationBuilder::findErased(lux::system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept
     {
         const std::size_t requested = impl_->ordinalOf(instance);
         if (requested == kInvalidOrdinal)
@@ -270,7 +260,7 @@ namespace lux::simulation
             !impl_->isDeclaredPredecessor(impl_->current_ordinal, requested))
         {
             impl_->pending_failure = buildFailure(
-                ESystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY,
+                ESimulationSystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY,
                 impl_->owner->description->systemAt(impl_->current_ordinal).instanceId(),
                 instance
             );
@@ -284,9 +274,14 @@ namespace lux::simulation
         return FailureReporter{&impl_->owner->execution.system_failure, &reportSystemFailure};
     }
 
-    lux::cxx::expected<SimulationBuilder::CommandBinding, SystemBuildFailure>
+    const SimulationSystemRegistration* SimulationBuilder::currentRegistration() const noexcept
+    {
+        return impl_->current_registration;
+    }
+
+    lux::cxx::expected<SimulationBuilder::CommandBinding, SimulationSystemBuildFailure>
     SimulationBuilder::allocateCommandProducer(
-        SystemInstanceId instance,
+        lux::system::SystemInstanceId instance,
         ecs::EcsCommandProducerCapacity capacity
     ) noexcept
     {
@@ -295,7 +290,7 @@ namespace lux::simulation
             (capacity.max_commands == 0U && capacity.max_payload_bytes == 0U))
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::INVALID_DESCRIPTION, instance)
+                buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, instance)
             );
         }
 
@@ -314,13 +309,13 @@ namespace lux::simulation
         catch (const std::bad_alloc&)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::ALLOCATION_FAILURE, instance)
+                buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, instance)
             );
         }
     }
 
-    lux::cxx::expected<void, SystemBuildFailure> SimulationBuilder::addPrimaryTask(
-        SystemInstanceId instance,
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::addPrimaryTask(
+        lux::system::SystemInstanceId instance,
         task::TaskResources resources,
         task::TaskCallable callable
     ) noexcept
@@ -329,13 +324,13 @@ namespace lux::simulation
         if (!current || current.instanceId() != instance)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::INVALID_DESCRIPTION, instance)
+                buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, instance)
             );
         }
         if (impl_->primary_tasks[impl_->current_ordinal])
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::DUPLICATE_PRIMARY_TASK, instance)
+                buildFailure(ESimulationSystemBuildError::DUPLICATE_PRIMARY_TASK, instance)
             );
         }
 
@@ -349,7 +344,7 @@ namespace lux::simulation
                 {
                     return lux::cxx::unexpected(
                         buildFailure(
-                            ESystemBuildError::MISSING_PRIMARY_TASK,
+                            ESimulationSystemBuildError::MISSING_PRIMARY_TASK,
                             instance,
                             impl_->owner->description->systemAt(predecessor).instanceId()
                         )
@@ -366,7 +361,7 @@ namespace lux::simulation
             if (!task)
             {
                 return lux::cxx::unexpected(
-                    buildFailure(ESystemBuildError::TASK_GRAPH_FAILURE, instance)
+                    buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE, instance)
                 );
             }
             impl_->primary_tasks[impl_->current_ordinal] = *task;
@@ -376,7 +371,7 @@ namespace lux::simulation
         catch (const std::bad_alloc&)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::ALLOCATION_FAILURE, instance)
+                buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, instance)
             );
         }
     }
@@ -389,16 +384,16 @@ namespace lux::simulation
     Simulation& Simulation::operator=(Simulation&&) noexcept = default;
     Simulation::~Simulation() noexcept = default;
 
-    lux::cxx::expected<Simulation, SystemBuildFailure> Simulation::create(
+    lux::cxx::expected<Simulation, SimulationSystemBuildFailure> Simulation::create(
         ecs::Registry& registry,
         std::shared_ptr<const SimulationDescription> description,
-        const SystemRegistry& system_types
+        const SimulationSystemRegistry& system_types
     ) noexcept
     {
         if (!description)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::INVALID_DESCRIPTION)
+                buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION)
             );
         }
 
@@ -408,12 +403,12 @@ namespace lux::simulation
             impl->systems.reserve(impl->description->systemCount());
 
             SimulationBuilder::Impl build(*impl);
-            auto order = deterministicTopologicalOrder(*impl->description, build.predecessors);
+            auto order = dependencyOrder(*impl->description, build.predecessors);
             if (!order)
                 return lux::cxx::unexpected(order.error());
             build.primary_tasks.resize(impl->description->systemCount());
 
-            std::vector<const SystemRegistration*> registrations(
+            std::vector<const SimulationSystemRegistration*> registrations(
                 impl->description->systemCount(),
                 nullptr
             );
@@ -424,14 +419,35 @@ namespace lux::simulation
                 if (registration == nullptr)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId())
+                        buildFailure(ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId())
                     );
                 }
-                if (registration->version != system.version())
+                if (registration->description == nullptr || registration->description->type.version != system.version())
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESystemBuildError::VERSION_MISMATCH, system.instanceId())
+                        buildFailure(ESimulationSystemBuildError::VERSION_MISMATCH, system.instanceId())
                     );
+                }
+                if (registration->description->type.multiplicity != system.multiplicity())
+                {
+                    return lux::cxx::unexpected(
+                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId())
+                    );
+                }
+                if (system.multiplicity() == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER)
+                {
+                    for (std::size_t previous{}; previous < ordinal; ++previous)
+                    {
+                        const auto candidate = impl->description->systemAt(previous);
+                        if (candidate.type() == system.type())
+                        {
+                            return lux::cxx::unexpected(buildFailure(
+                                ESimulationSystemBuildError::DUPLICATE_SYSTEM,
+                                system.instanceId(),
+                                candidate.instanceId()
+                            ));
+                        }
+                    }
                 }
                 registrations[ordinal] = registration;
             }
@@ -440,6 +456,7 @@ namespace lux::simulation
             for (const std::size_t ordinal : *order)
             {
                 build.current_ordinal = ordinal;
+                build.current_registration = registrations[ordinal];
                 const auto system = impl->description->systemAt(ordinal);
                 auto installed = registrations[ordinal]->install(builder, system);
                 if (!installed)
@@ -449,7 +466,7 @@ namespace lux::simulation
                 if (build.findRecord(system.instanceId()) == nullptr)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESystemBuildError::INVALID_DESCRIPTION, system.instanceId())
+                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId())
                     );
                 }
             }
@@ -463,7 +480,7 @@ namespace lux::simulation
                 {
                     return lux::cxx::unexpected(
                         buildFailure(
-                            ESystemBuildError::MISSING_PRIMARY_TASK,
+                            ESimulationSystemBuildError::MISSING_PRIMARY_TASK,
                             edge.after().instanceId(),
                             edge.before().instanceId()
                         )
@@ -477,7 +494,7 @@ namespace lux::simulation
                 if (!prepared)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESystemBuildError::COMMAND_PREPARE_FAILURE)
+                        buildFailure(ESimulationSystemBuildError::COMMAND_PREPARE_FAILURE)
                     );
                 }
 
@@ -500,7 +517,7 @@ namespace lux::simulation
                 if (!flush_task)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESystemBuildError::TASK_GRAPH_FAILURE)
+                        buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE)
                     );
                 }
             }
@@ -509,7 +526,7 @@ namespace lux::simulation
             if (!graph)
             {
                 return lux::cxx::unexpected(
-                    buildFailure(ESystemBuildError::TASK_GRAPH_FAILURE)
+                    buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE)
                 );
             }
             impl->graph = std::move(*graph);
@@ -518,13 +535,13 @@ namespace lux::simulation
         catch (const std::bad_alloc&)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::ALLOCATION_FAILURE)
+                buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE)
             );
         }
         catch (...)
         {
             return lux::cxx::unexpected(
-                buildFailure(ESystemBuildError::CONSTRUCTION_FAILURE)
+                buildFailure(ESimulationSystemBuildError::CONSTRUCTION_FAILURE)
             );
         }
     }
@@ -562,7 +579,7 @@ namespace lux::simulation
             return lux::cxx::unexpected(
                 SimulationExecutionFailure{
                     ESimulationExecutionError::SYSTEM_TASK_FAILURE,
-                    SystemInstanceId{system_failure},
+                    lux::system::SystemInstanceId{system_failure},
                     {},
                     {}
                 }

@@ -37,7 +37,7 @@ namespace
             return {};
         }
         SimulationDescriptionBuilder builder;
-        if (!builder.addSystem(SystemInstanceId{1U}, "transform", transformSystemDescription(), *configuration))
+        if (!builder.addSystem(lux::system::SystemInstanceId{1U}, "transform", transformSystemDescription(), *configuration))
         {
             return {};
         }
@@ -65,7 +65,7 @@ int main()
     }
     (void)fixture.makeSceneWithView("WindowLaneScene", "WindowLaneView");
 
-    simulation::SystemRegistry system_types;
+    simulation::SimulationSystemRegistry system_types;
     if (!system_types.add(simulation::transformSystemRegistrations()))
     {
         return 2;

@@ -1,4 +1,4 @@
-#include <lux/engine/simulation/SystemConcept.hpp>
+#include <lux/engine/simulation/SimulationSystem.hpp>
 
 class untrusted_system_access_negative final
 {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationDescription.hpp>
-#include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/SimulationSystemDescription.hpp>
 
 namespace lux::simulation::asset
 {
@@ -12,22 +12,23 @@ namespace lux::simulation::asset
         requires requires { CurrentSystem::Description; }
     {
         constexpr const auto& current = CurrentSystem::Description;
-        if (!asset_system || !validSystemDescription(current) ||
-            asset_system.type() != systemTypeId(current.canonical_name) ||
-            asset_system.version() != current.version ||
+        if (!asset_system || !validSimulationSystemDescription(current) ||
+            asset_system.type() != lux::system::systemTypeId(current.type.canonical_name) ||
+            asset_system.version() != current.type.version ||
+            asset_system.multiplicity() != current.type.multiplicity ||
             asset_system.configurationSchemaName() !=
-                current.configuration_schema_name ||
+                current.type.configuration_schema_name ||
             asset_system.configurationSchemaVersion() !=
-                current.configuration_schema_version ||
-            asset_system.capabilityCount() != current.capabilities.size() ||
+                current.type.configuration_schema_version ||
+            asset_system.capabilityCount() != current.type.capabilities.size() ||
             asset_system.hookPointCount() != current.hooks.size() ||
             asset_system.eventCount() != current.events.size())
         {
             return false;
         }
-        for (std::size_t index{}; index < current.capabilities.size(); ++index)
+        for (std::size_t index{}; index < current.type.capabilities.size(); ++index)
         {
-            if (asset_system.capabilityAt(index) != current.capabilities[index])
+            if (asset_system.capabilityAt(index) != current.type.capabilities[index])
                 return false;
         }
         for (std::size_t index{}; index < current.hooks.size(); ++index)

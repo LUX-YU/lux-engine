@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/simulation/SystemEndpointSpec.hpp>
+#include <lux/engine/simulation/SimulationEndpointSpec.hpp>
+#include <lux/engine/system/SystemTypeDescription.hpp>
 
 #include <cstdint>
 #include <span>
@@ -8,40 +9,20 @@
 
 namespace lux::simulation
 {
-    struct SystemDescription final
+    struct SimulationSystemDescription final
     {
-        std::string_view canonical_name;
-        std::uint32_t version{};
-        std::string_view configuration_schema_name;
-        std::uint32_t configuration_schema_version{};
-        std::span<const std::string_view> capabilities;
+        lux::system::SystemTypeDescription type;
         std::span<const HookPointSpec> hooks;
         std::span<const EventPointSpec> events;
     };
 
-    [[nodiscard]] constexpr bool validSystemDescription(
-        const SystemDescription& description
+    [[nodiscard]] constexpr bool validSimulationSystemDescription(
+        const SimulationSystemDescription& description
     ) noexcept
     {
-        if (description.canonical_name.empty() || description.version == 0U)
-            return false;
-        if (description.configuration_schema_name.empty() !=
-            (description.configuration_schema_version == 0U))
+        if (!lux::system::validSystemTypeDescription(description.type))
         {
             return false;
-        }
-        for (std::size_t index{}; index < description.capabilities.size(); ++index)
-        {
-            if (description.capabilities[index].empty())
-                return false;
-            for (std::size_t previous{}; previous < index; ++previous)
-            {
-                if (description.capabilities[index] ==
-                    description.capabilities[previous])
-                {
-                    return false;
-                }
-            }
         }
         for (std::size_t index{}; index < description.hooks.size(); ++index)
         {

@@ -28,7 +28,7 @@ namespace lux::scene
     lux::cxx::expected<std::unique_ptr<Scene>, SceneBuildFailure> Scene::create(
         std::shared_ptr<const world::WorldDescription> world,
         std::shared_ptr<const simulation::SimulationDescription> simulation,
-        const simulation::SystemRegistry& systems
+        const simulation::SimulationSystemRegistry& systems
     ) noexcept
     {
         if (!world)

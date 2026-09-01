@@ -25,11 +25,9 @@ namespace lux::simulation
         ) noexcept = default;
     };
 
-    struct SystemInstanceIdTag;
     struct HookPointIdTag;
     struct EventPointIdTag;
 
-    using SystemInstanceId = StableEndpointId<SystemInstanceIdTag>;
     using HookPointId = StableEndpointId<HookPointIdTag>;
     using EventPointId = StableEndpointId<EventPointIdTag>;
 }

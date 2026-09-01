@@ -1,8 +1,10 @@
 #pragma once
 
+#include <lux/engine/system/SystemInstanceId.hpp>
+
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/simulation/EventPoint.hpp>
-#include <lux/engine/simulation/SystemEndpointSpec.hpp>
+#include <lux/engine/simulation/SimulationEndpointSpec.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
 
 #include <array>
@@ -18,7 +20,7 @@ namespace lux::simulation::script
 
     struct ScriptHookEndpointDescriptor final
     {
-        SystemInstanceId system;
+        lux::system::SystemInstanceId system;
         HookPointId hook;
         lux::semantic::SignatureView signature;
         void *context{};
@@ -28,7 +30,7 @@ namespace lux::simulation::script
 
     struct ScriptEventEndpointDescriptor final
     {
-        SystemInstanceId system;
+        lux::system::SystemInstanceId system;
         EventPointId event;
         EEventRoute route{EEventRoute::SIMULATION_BROADCAST};
         lux::semantic::Type payload_type;
@@ -68,7 +70,7 @@ namespace lux::simulation::script
     {
     public:
         ScriptHookEndpoint(
-            SystemInstanceId system,
+            lux::system::SystemInstanceId system,
             HookPointId id,
             HookPoint<void(Parameters...)> &endpoint) noexcept
             : system_(system), id_(id), endpoint_(&endpoint)
@@ -130,7 +132,7 @@ namespace lux::simulation::script
             self.lane_(self.lane_context_, frame);
         }
 
-        SystemInstanceId system_;
+        lux::system::SystemInstanceId system_;
         HookPointId id_;
         HookPoint<void(Parameters...)> *endpoint_{};
         void *lane_context_{};
@@ -155,7 +157,7 @@ namespace lux::simulation::script
     {
     public:
         ScriptEventEndpoint(
-            SystemInstanceId system,
+            lux::system::SystemInstanceId system,
             EventPointId id,
             EventPoint<SimulationBroadcastRoute, Payload> &endpoint) noexcept
             : system_(system), id_(id), endpoint_(&endpoint)
@@ -216,7 +218,7 @@ namespace lux::simulation::script
             self.lane_(self.lane_context_, ecs::NullEntity, frame);
         }
 
-        SystemInstanceId system_;
+        lux::system::SystemInstanceId system_;
         EventPointId id_;
         EventPoint<SimulationBroadcastRoute, Payload> *endpoint_{};
         void *lane_context_{};
@@ -228,7 +230,7 @@ namespace lux::simulation::script
     {
     public:
         ScriptEventEndpoint(
-            SystemInstanceId system,
+            lux::system::SystemInstanceId system,
             EventPointId id,
             EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> &endpoint) noexcept
             : system_(system), id_(id), endpoint_(&endpoint)
@@ -292,7 +294,7 @@ namespace lux::simulation::script
             self.lane_(self.lane_context_, target, frame);
         }
 
-        SystemInstanceId system_;
+        lux::system::SystemInstanceId system_;
         EventPointId id_;
         EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> *endpoint_{};
         void *lane_context_{};

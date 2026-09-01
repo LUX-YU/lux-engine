@@ -1,4 +1,4 @@
-#include <lux/engine/simulation/SystemConcept.hpp>
+#include <lux/engine/simulation/SimulationSystem.hpp>
 
 class system_missing_access_negative final
 {

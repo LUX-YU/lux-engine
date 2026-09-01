@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/simulation/description/visibility.h>
+#include <lux/engine/system/identity/visibility.h>
 
 #include <lux/cxx/core/StableNameId.hpp>
 
@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace lux::simulation
+namespace lux::system
 {
     struct SystemTypeId final
     {
@@ -31,5 +31,5 @@ namespace lux::simulation
         }
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SystemTypeId systemTypeId(std::string_view canonical_name);
-}
+    [[nodiscard]] LUX_ENGINE_SYSTEM_IDENTITY_PUBLIC SystemTypeId systemTypeId(std::string_view canonical_name);
+} // namespace lux::system

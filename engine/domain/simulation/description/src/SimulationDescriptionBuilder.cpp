@@ -58,10 +58,11 @@ namespace lux::simulation
 
         struct PendingSystem final
         {
-            SystemInstanceId instance_id;
+            lux::system::SystemInstanceId instance_id;
             std::string instance_name;
-            SystemTypeId type;
+            lux::system::SystemTypeId type;
             std::uint32_t version{};
+            lux::system::ESystemMultiplicity multiplicity{lux::system::ESystemMultiplicity::MULTIPLE};
             std::string configuration_schema_name;
             std::uint64_t configuration_schema_hash{};
             std::uint32_t configuration_schema_version{};
@@ -73,8 +74,8 @@ namespace lux::simulation
 
         struct PendingDependency final
         {
-            SystemInstanceId before_system;
-            SystemInstanceId after_system;
+            lux::system::SystemInstanceId before_system;
+            lux::system::SystemInstanceId after_system;
 
             friend bool operator==(const PendingDependency&, const PendingDependency&)
                 noexcept = default;
@@ -115,7 +116,7 @@ namespace lux::simulation
         template <class Range>
         [[nodiscard]] auto findSystem(
             Range& range,
-            SystemInstanceId id
+            lux::system::SystemInstanceId id
         ) noexcept
         {
             return std::find_if(
@@ -156,7 +157,7 @@ namespace lux::simulation
             const PendingSystem& right
         ) noexcept
         {
-            if (left.type != right.type || left.version != right.version ||
+            if (left.type != right.type || left.version != right.version || left.multiplicity != right.multiplicity ||
                 left.configuration_schema_name != right.configuration_schema_name ||
                 left.configuration_schema_hash != right.configuration_schema_hash ||
                 left.configuration_schema_version !=
@@ -364,9 +365,9 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::addSystem(
-        SystemInstanceId instance_id,
+        lux::system::SystemInstanceId instance_id,
         std::string_view instance_name,
-        const SystemDescription& system,
+        const SimulationSystemDescription& system,
         std::span<const std::byte> configuration
     ) noexcept
     {
@@ -374,34 +375,41 @@ namespace lux::simulation
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::INVALID_SYSTEM_INSTANCE_NAME
             ));
-        if (system.canonical_name.empty())
+        if (system.type.canonical_name.empty())
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::INVALID_SYSTEM_TYPE
             ));
-        if (system.version == 0U)
+        if (system.type.version == 0U)
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::INVALID_SYSTEM_VERSION
             ));
+        if (system.type.multiplicity != lux::system::ESystemMultiplicity::MULTIPLE &&
+            system.type.multiplicity != lux::system::ESystemMultiplicity::SINGLE_PER_OWNER)
+        {
+            return lux::cxx::unexpected(failure(
+                ESimulationDescriptionError::INVALID_SYSTEM_TYPE
+            ));
+        }
         if (findSystem(impl_->systems, instance_id) != impl_->systems.end())
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::DUPLICATE_SYSTEM_INSTANCE
             ));
-        if (system.configuration_schema_name.empty() !=
-            (system.configuration_schema_version == 0U) ||
-            (system.configuration_schema_name.empty() && !configuration.empty()))
+        if (system.type.configuration_schema_name.empty() !=
+            (system.type.configuration_schema_version == 0U) ||
+            (system.type.configuration_schema_name.empty() && !configuration.empty()))
         {
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::INVALID_CONFIGURATION_SCHEMA
             ));
         }
-        for (const auto capability : system.capabilities)
+        for (const auto capability : system.type.capabilities)
         {
             if (capability.empty())
                 return lux::cxx::unexpected(failure(
                     ESimulationDescriptionError::INVALID_CAPABILITY
                 ));
         }
-        if (!uniqueNames(system.capabilities))
+        if (!uniqueNames(system.type.capabilities))
             return lux::cxx::unexpected(failure(
                 ESimulationDescriptionError::DUPLICATE_CAPABILITY
             ));
@@ -460,19 +468,20 @@ namespace lux::simulation
             Impl::PendingSystem candidate;
             candidate.instance_id = instance_id;
             candidate.instance_name = instance_name;
-            candidate.type = systemTypeId(system.canonical_name);
-            candidate.version = system.version;
+            candidate.type = lux::system::systemTypeId(system.type.canonical_name);
+            candidate.version = system.type.version;
+            candidate.multiplicity = system.type.multiplicity;
             candidate.configuration_schema_name =
-                system.configuration_schema_name;
+                system.type.configuration_schema_name;
             candidate.configuration_schema_hash =
-                system.configuration_schema_name.empty()
+                system.type.configuration_schema_name.empty()
                 ? 0U
-                : lux::cxx::Fnv1a64::hash(system.configuration_schema_name);
+                : lux::cxx::Fnv1a64::hash(system.type.configuration_schema_name);
             candidate.configuration_schema_version =
-                system.configuration_schema_version;
+                system.type.configuration_schema_version;
             candidate.configuration.assign(configuration.begin(), configuration.end());
-            candidate.capabilities.reserve(system.capabilities.size());
-            for (const auto value : system.capabilities)
+            candidate.capabilities.reserve(system.type.capabilities.size());
+            for (const auto value : system.type.capabilities)
                 candidate.capabilities.emplace_back(value);
             candidate.hooks.reserve(system.hooks.size());
             for (const auto& value : system.hooks)
@@ -517,6 +526,16 @@ namespace lux::simulation
 
             for (const auto& existing : impl_->systems)
             {
+                if (existing.type == candidate.type &&
+                    (existing.multiplicity == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER ||
+                     candidate.multiplicity == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER))
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESimulationDescriptionError::SYSTEM_MULTIPLICITY_VIOLATION,
+                        {},
+                        candidate.type.hash
+                    ));
+                }
                 if (existing.type.hash == candidate.type.hash &&
                     existing.type.name != candidate.type.name)
                 {
@@ -555,7 +574,7 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::eraseSystem(
-        SystemInstanceId instance_id
+        lux::system::SystemInstanceId instance_id
     ) noexcept
     {
         const auto system = findSystem(impl_->systems, instance_id);
@@ -581,7 +600,7 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::setSystemConfiguration(
-        SystemInstanceId instance_id,
+        lux::system::SystemInstanceId instance_id,
         std::span<const std::byte> configuration
     ) noexcept
     {
@@ -619,8 +638,8 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::addDependency(
-        SystemInstanceId before_system,
-        SystemInstanceId after_system
+        lux::system::SystemInstanceId before_system,
+        lux::system::SystemInstanceId after_system
     ) noexcept
     {
         const auto before = findSystem(impl_->systems, before_system);
@@ -672,8 +691,8 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
     SimulationDescriptionBuilder::eraseDependency(
-        SystemInstanceId before_system,
-        SystemInstanceId after_system
+        lux::system::SystemInstanceId before_system,
+        lux::system::SystemInstanceId after_system
     ) noexcept
     {
         const auto dependency = std::find_if(
@@ -813,7 +832,7 @@ namespace lux::simulation
                 type_sources.end(),
                 [&](std::size_t left, std::size_t right) noexcept
                 {
-                    return SystemTypeIdLess{}(
+                    return lux::system::SystemTypeIdLess{}(
                         impl_->systems[left].type,
                         impl_->systems[right].type
                     );
@@ -826,6 +845,7 @@ namespace lux::simulation
                 SimulationDescription::SystemTypeRecord record;
                 record.type = source.type;
                 record.version = source.version;
+                record.multiplicity = source.multiplicity;
                 record.configuration_schema_name = source.configuration_schema_name;
                 record.configuration_schema_hash = source.configuration_schema_hash;
                 record.configuration_schema_version =
@@ -890,9 +910,9 @@ namespace lux::simulation
                     result.system_types_.begin(),
                     result.system_types_.end(),
                     source.type,
-                    [](const auto& candidate, const SystemTypeId& id) noexcept
+                    [](const auto& candidate, const lux::system::SystemTypeId& id) noexcept
                     {
-                        return SystemTypeIdLess{}(candidate.type, id);
+                        return lux::system::SystemTypeIdLess{}(candidate.type, id);
                     }
                 );
                 result.system_ordinals_.emplace(source.instance_id.value, result.systems_.size());
@@ -918,7 +938,7 @@ namespace lux::simulation
                     result.systems_.begin(),
                     result.systems_.end(),
                     dependency.before_system,
-                    [](const auto& system, SystemInstanceId id) noexcept
+                    [](const auto& system, lux::system::SystemInstanceId id) noexcept
                     {
                         return system.id < id;
                     }
@@ -927,7 +947,7 @@ namespace lux::simulation
                     result.systems_.begin(),
                     result.systems_.end(),
                     dependency.after_system,
-                    [](const auto& system, SystemInstanceId id) noexcept
+                    [](const auto& system, lux::system::SystemInstanceId id) noexcept
                     {
                         return system.id < id;
                     }

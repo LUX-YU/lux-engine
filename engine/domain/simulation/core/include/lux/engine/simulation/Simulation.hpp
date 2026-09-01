@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationDescription.hpp>
-#include <lux/engine/simulation/SystemRegistry.hpp>
+#include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/core/visibility.h>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
@@ -24,7 +24,7 @@ namespace lux::simulation
     struct SimulationExecutionFailure final
     {
         ESimulationExecutionError code{ESimulationExecutionError::TASK_EXECUTOR_FAILURE};
-        SystemInstanceId system{};
+        lux::system::SystemInstanceId system{};
         task::TaskExecutorFailure task_executor;
         ecs::EcsCommandFailure ecs_command;
     };
@@ -39,10 +39,10 @@ namespace lux::simulation
         Simulation(const Simulation&) = delete;
         Simulation& operator=(const Simulation&) = delete;
 
-        [[nodiscard]] static lux::cxx::expected<Simulation, SystemBuildFailure> create(
+        [[nodiscard]] static lux::cxx::expected<Simulation, SimulationSystemBuildFailure> create(
             ecs::Registry& registry,
             std::shared_ptr<const SimulationDescription> description,
-            const SystemRegistry& system_types
+            const SimulationSystemRegistry& system_types
         ) noexcept;
 
         [[nodiscard]] const SimulationDescription& description() const noexcept;

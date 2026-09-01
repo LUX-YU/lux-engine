@@ -1,9 +1,12 @@
-#include <lux/engine/scene/Builtin3DRenderStages.hpp>
+#include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 
 #include <lux/engine/function/render/client/features/light/LightOperation.hpp>
 #include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/ComponentChangeSet.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -26,6 +29,24 @@ namespace lux::scene
         using simulation::ecs::ComponentList;
         using simulation::ecs::Entity;
         using simulation::ecs::Registry;
+
+        struct MeshStageConfig final
+        {
+            Registry& registry;
+            render::RenderSceneId scene{};
+            render::MeshStackOperationIds operations{};
+            double coordinate_page_size{1024.0};
+            std::array<std::int64_t, 3> scene_origin_page{};
+        };
+
+        struct LightStageConfig final
+        {
+            Registry& registry;
+            render::RenderSceneId scene{};
+            render::LightOperationIds operations{};
+            double coordinate_page_size{1024.0};
+            std::array<std::int64_t, 3> scene_origin_page{};
+        };
 
         [[nodiscard]] bool encodePosition(
             const Eigen::Vector3d& absolute_position,
@@ -170,7 +191,7 @@ namespace lux::scene
         class Mesh3DRenderStage final : public RenderSyncStage
         {
         public:
-            explicit Mesh3DRenderStage(Mesh3DRenderStageConfig value) : config_(std::move(value))
+            explicit Mesh3DRenderStage(MeshStageConfig value) : config_(std::move(value))
             {
                 using namespace entt::literals;
                 changes_.attach(config_.registry, "scene.mesh3d.render.changes"_hs, [](auto& storage) {
@@ -526,7 +547,7 @@ namespace lux::scene
                                                                   : ERenderSyncPrepareResult::PREPARED_COMMANDS;
             }
 
-            Mesh3DRenderStageConfig config_;
+            MeshStageConfig config_;
             MeshChanges changes_;
             MeshMembershipLeaves membership_leaves_;
             MeshStateLeaves state_leaves_;
@@ -605,7 +626,7 @@ namespace lux::scene
         class Light3DRenderStage final : public RenderSyncStage
         {
         public:
-            explicit Light3DRenderStage(Light3DRenderStageConfig value) : config_(std::move(value))
+            explicit Light3DRenderStage(LightStageConfig value) : config_(std::move(value))
             {
                 using namespace entt::literals;
                 changes_.attach(config_.registry, "scene.light3d.render.changes"_hs, [](auto& storage) {
@@ -940,7 +961,7 @@ namespace lux::scene
                                                                   : ERenderSyncPrepareResult::PREPARED_COMMANDS;
             }
 
-            Light3DRenderStageConfig config_;
+            LightStageConfig config_;
             LightChanges changes_;
             LightMembershipLeaves membership_leaves_;
             LightStateLeaves state_leaves_;
@@ -955,50 +976,109 @@ namespace lux::scene
             bool allocation_failed_{false};
         };
 
-        [[nodiscard]] bool valid(const Mesh3DRenderStageConfig& config) noexcept
+        [[nodiscard]] bool valid(const MeshStageConfig& config) noexcept
         {
             return !config.scene.isNull() && config.operations.valid() &&
                 std::isfinite(config.coordinate_page_size) && config.coordinate_page_size > 0.0;
         }
 
-        [[nodiscard]] bool valid(const Light3DRenderStageConfig& config) noexcept
+        [[nodiscard]] bool valid(const LightStageConfig& config) noexcept
         {
             return !config.scene.isNull() && config.operations.valid() &&
                 std::isfinite(config.coordinate_page_size) && config.coordinate_page_size > 0.0;
         }
+        lux::cxx::expected<std::unique_ptr<RenderSyncStage>, RenderSyncStageCreateFailure>
+        createMesh3DRenderStage(const RenderSyncStageCreateInfo& info) noexcept
+        {
+            const auto live_name = info.catalog.nameOfType(info.feature);
+            MeshStageConfig config{
+                info.registry,
+                info.scene,
+                info.catalog.ops<render::MeshStackOperationIds>(live_name),
+                info.coordinate_page_size,
+                info.scene_origin_page
+            };
+            if (!info.feature_handle.isValid() || !valid(config))
+            {
+                return lux::cxx::unexpected(RenderSyncStageCreateFailure{
+                    ERenderSyncStageCreateError::INVALID_CONFIGURATION
+                });
+            }
+            try
+            {
+                return std::unique_ptr<RenderSyncStage>{new Mesh3DRenderStage{std::move(config)}};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(RenderSyncStageCreateFailure{
+                    ERenderSyncStageCreateError::ALLOCATION_FAILURE
+                });
+            }
+        }
+
+        lux::cxx::expected<std::unique_ptr<RenderSyncStage>, RenderSyncStageCreateFailure>
+        createLight3DRenderStage(const RenderSyncStageCreateInfo& info) noexcept
+        {
+            const auto live_name = info.catalog.nameOfType(info.feature);
+            LightStageConfig config{
+                info.registry,
+                info.scene,
+                info.catalog.ops<render::LightOperationIds>(live_name),
+                info.coordinate_page_size,
+                info.scene_origin_page
+            };
+            if (!info.feature_handle.isValid() || !valid(config))
+            {
+                return lux::cxx::unexpected(RenderSyncStageCreateFailure{
+                    ERenderSyncStageCreateError::INVALID_CONFIGURATION
+                });
+            }
+            try
+            {
+                return std::unique_ptr<RenderSyncStage>{new Light3DRenderStage{std::move(config)}};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(RenderSyncStageCreateFailure{
+                    ERenderSyncStageCreateError::ALLOCATION_FAILURE
+                });
+            }
+        }
+
+        constexpr std::uint8_t AllObservationEvents =
+            static_cast<std::uint8_t>(EComponentObservation::CONSTRUCT) |
+            static_cast<std::uint8_t>(EComponentObservation::UPDATE) |
+            static_cast<std::uint8_t>(EComponentObservation::DESTROY);
+
+        constexpr std::array MeshObservations{
+            ComponentObservationSpec{lux::cxx::typeToken<simulation::ecs::Mesh3D>(), AllObservationEvents},
+            ComponentObservationSpec{lux::cxx::typeToken<simulation::ecs::WorldTransform3D>(), AllObservationEvents},
+            ComponentObservationSpec{lux::cxx::typeToken<ResolvedMeshResources>(), AllObservationEvents}
+        };
+
+        constexpr std::array LightObservations{
+            ComponentObservationSpec{lux::cxx::typeToken<simulation::ecs::Light3D>(), AllObservationEvents},
+            ComponentObservationSpec{lux::cxx::typeToken<simulation::ecs::WorldTransform3D>(), AllObservationEvents}
+        };
+
+        const std::array Bindings{
+            RenderFeatureSceneBinding{
+                system::systemTypeId(RenderSystem::Description.canonical_name),
+                render::featureId("lux.render.mesh_stack.v1"),
+                MeshObservations,
+                &createMesh3DRenderStage
+            },
+            RenderFeatureSceneBinding{
+                system::systemTypeId(RenderSystem::Description.canonical_name),
+                render::featureId("lux.render.light.v1"),
+                LightObservations,
+                &createLight3DRenderStage
+            }
+        };
     } // namespace
 
-    lux::cxx::expected<std::unique_ptr<RenderSyncStage>, RenderSyncStageFailure>
-    createMesh3DRenderStage(Mesh3DRenderStageConfig config) noexcept
+    std::span<const RenderFeatureSceneBinding> builtinRenderFeatureSceneBindings() noexcept
     {
-        if (!valid(config))
-        {
-            return lux::cxx::unexpected(RenderSyncStageFailure{ERenderSyncStageError::INVALID_CONFIGURATION});
-        }
-        try
-        {
-            return std::unique_ptr<RenderSyncStage>{new Mesh3DRenderStage{std::move(config)}};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(RenderSyncStageFailure{ERenderSyncStageError::ALLOCATION_FAILURE});
-        }
-    }
-
-    lux::cxx::expected<std::unique_ptr<RenderSyncStage>, RenderSyncStageFailure>
-    createLight3DRenderStage(Light3DRenderStageConfig config) noexcept
-    {
-        if (!valid(config))
-        {
-            return lux::cxx::unexpected(RenderSyncStageFailure{ERenderSyncStageError::INVALID_CONFIGURATION});
-        }
-        try
-        {
-            return std::unique_ptr<RenderSyncStage>{new Light3DRenderStage{std::move(config)}};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(RenderSyncStageFailure{ERenderSyncStageError::ALLOCATION_FAILURE});
-        }
+        return Bindings;
     }
 } // namespace lux::scene

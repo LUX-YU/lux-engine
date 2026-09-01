@@ -1,5 +1,5 @@
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
-#include <lux/engine/scene/Builtin3DRenderStages.hpp>
+#include "RenderStageTestSupport.hpp"
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -22,8 +22,7 @@ int main()
         101U, 102U, 103U, 104U, 105U, 106U, 107U, 108U, 109U, 110U, 111U, 112U
     };
     const std::array<TypeId, LightOperationIds::kCount> light_ids{201U, 202U, 203U, 204U};
-    auto mesh_ops = MeshStackOperationIds::fromOps(mesh_ids.data(), static_cast<std::uint32_t>(mesh_ids.size()));
-    auto light_ops = LightOperationIds::fromOps(light_ids.data(), static_cast<std::uint32_t>(light_ids.size()));
+    auto catalog = scene::test::makeFeatureCatalog(mesh_ids, light_ids);
 
     Registry registry;
     const Entity entity = registry.create();
@@ -38,20 +37,12 @@ int main()
     world.value.translation() = Eigen::Vector3d{1.0e12 + 0.125, 2.0, -3.0};
     registry.emplace<WorldTransform3D>(entity, world);
 
-    auto mesh_stage = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-        .registry = registry,
-        .scene = {3U, 1U},
-        .operations = mesh_ops,
-        .coordinate_page_size = 1024.0,
-        .scene_origin_page = {976562500, 0, 0}
-    });
-    auto light_stage = createLight3DRenderStage(Light3DRenderStageConfig{
-        .registry = registry,
-        .scene = {3U, 1U},
-        .operations = light_ops,
-        .coordinate_page_size = 1024.0,
-        .scene_origin_page = {976562500, 0, 0}
-    });
+    auto mesh_stage = scene::test::createStage(
+        scene::test::MeshFeature, registry, {3U, 1U}, catalog, 1024.0, {976562500, 0, 0}
+    );
+    auto light_stage = scene::test::createStage(
+        scene::test::LightFeature, registry, {3U, 1U}, catalog, 1024.0, {976562500, 0, 0}
+    );
     assert(mesh_stage && light_stage);
     RenderSyncPipeline::StageList stages;
     stages.push_back(std::move(*mesh_stage));

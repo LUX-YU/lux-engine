@@ -328,9 +328,9 @@ namespace lux::render
         std::vector<std::byte> config; ///< 精确 sizeof(CommConfig) 字节
     };
 
-    /// Cold-assembly name → FeatureHandle draft. SceneRenderBinding receives
-    /// it once in seal(); published Systems see only the resulting const
-    /// RenderCapabilities view, so topology has no live mutation surface.
+    /// Cold-assembly name -> FeatureHandle draft. Scene installers may use it
+    /// while materializing feature-owned integration state, then discard it;
+    /// process-lifetime topology remains in FeatureCatalog.
     class FeatureBindings
     {
     public:

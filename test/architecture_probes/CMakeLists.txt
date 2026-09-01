@@ -262,6 +262,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     add_executable(
         l1_l3_render_sync_3d_qualification
         l1_l3_render_sync_3d_qualification.cpp
+        support/QualificationRenderRuntime.cpp
     )
     add_dependencies(
         l1_l3_render_sync_3d_qualification
@@ -269,7 +270,9 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     )
     target_include_directories(
         l1_l3_render_sync_3d_qualification
-        PRIVATE ${PROJECT_SOURCE_DIR}/modules/function/render/test
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/modules/function/render/test
+            ${CMAKE_CURRENT_SOURCE_DIR}/support
     )
     target_compile_definitions(
         l1_l3_render_sync_3d_qualification
@@ -283,6 +286,8 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
             lux::engine::function::render_vulkan
             lux::engine::resource::asset
             lux::engine::scene::scene_runtime_render
+            scene_runtime_render_meta
+            render_client_meta
     )
     lux_classify_target(
         TARGET  l1_l3_render_sync_3d_qualification

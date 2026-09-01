@@ -17,7 +17,7 @@
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
-#include <lux/engine/scene/Builtin3DRenderStages.hpp>
+#include "support/RenderStageBindingSupport.hpp"
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
@@ -194,6 +194,17 @@ int main(int argc, char** argv)
             LightCommTag{}
         ));
         const auto light_ops = LightOperationIds::fromOps(light_registration.ops, light_registration.op_count);
+        FeatureCatalog stage_catalog;
+        stage_catalog.add(
+            kMeshStackFeatureFactory,
+            mesh_registration.feature_type_id,
+            std::span(mesh_registration.ops, mesh_registration.op_count)
+        );
+        stage_catalog.add(
+            kLightFeatureFactory,
+            light_registration.feature_type_id,
+            std::span(light_registration.ops, light_registration.op_count)
+        );
         const auto shadow_registration =
             fixture.awaitControl(fixture.control().registerFeatureType(kShadowMapFeatureFactory));
         ShadowMapCommConfig shadow_config{};
@@ -393,16 +404,12 @@ int main(int argc, char** argv)
             point.value.range = 24.0F;
             simulation_registry.emplace<simulation::ecs::Light3D>(point_entity, point);
         }
-        auto mesh_stage = scene::createMesh3DRenderStage(scene::Mesh3DRenderStageConfig{
-            .registry = simulation_registry,
-            .scene = scene.scene_id,
-            .operations = mesh_ops
-        });
-        auto light_stage = scene::createLight3DRenderStage(scene::Light3DRenderStageConfig{
-            .registry = simulation_registry,
-            .scene = scene.scene_id,
-            .operations = light_ops
-        });
+        auto mesh_stage = scene::qualification::createBuiltinRenderStage(
+            featureId("lux.render.mesh_stack.v1"), simulation_registry, scene.scene_id, stage_catalog
+        );
+        auto light_stage = scene::qualification::createBuiltinRenderStage(
+            featureId("lux.render.light.v1"), simulation_registry, scene.scene_id, stage_catalog
+        );
         if (!mesh_stage || !light_stage) return 15;
         scene::RenderSyncPipeline::StageList render_stages;
         render_stages.push_back(std::move(*mesh_stage));

@@ -1,5 +1,5 @@
 #include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
-#include <lux/engine/scene/Builtin3DRenderStages.hpp>
+#include "RenderStageTestSupport.hpp"
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -28,6 +28,7 @@ int main()
         mesh_ids.data(),
         static_cast<std::uint32_t>(mesh_ids.size())
     );
+    auto catalog = scene::test::makeFeatureCatalog(mesh_ids, {});
     const asset::AssetId mesh_id{std::array<std::uint8_t, 16>{1U}};
     const asset::AssetId material_id{std::array<std::uint8_t, 16>{2U}};
     const RMeshHandle mesh_handle{7U, 1U};
@@ -50,11 +51,9 @@ int main()
             discard_entity,
             ResolvedMeshResources{mesh_id, material_id, mesh_handle, material_handle}
         );
-        auto first_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-            .registry = discard_registry,
-            .scene = RenderSceneId{4U, 1U},
-            .operations = mesh_ops
-        });
+        auto first_result = scene::test::createStage(
+            scene::test::MeshFeature, discard_registry, RenderSceneId{4U, 1U}, catalog
+        );
         assert(first_result);
         auto first_stage = std::move(*first_result);
         RenderProgram<> discarded;
@@ -64,11 +63,9 @@ int main()
         first_stage->discardPrepared();
         first_stage.reset();
 
-        auto second_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-            .registry = discard_registry,
-            .scene = RenderSceneId{4U, 1U},
-            .operations = mesh_ops
-        });
+        auto second_result = scene::test::createStage(
+            scene::test::MeshFeature, discard_registry, RenderSceneId{4U, 1U}, catalog
+        );
         assert(second_result);
         RenderProgram<> retried;
         RenderProgramBuilder<> retried_builder{retried};
@@ -94,11 +91,9 @@ int main()
         );
     }
 
-    auto stage_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-        .registry = registry,
-        .scene = RenderSceneId{3U, 1U},
-        .operations = mesh_ops
-    });
+    auto stage_result = scene::test::createStage(
+        scene::test::MeshFeature, registry, RenderSceneId{3U, 1U}, catalog
+    );
     assert(stage_result);
     auto stage = std::move(*stage_result);
 

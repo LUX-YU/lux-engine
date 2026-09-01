@@ -1,6 +1,6 @@
 #include <lux/engine/function/render/client/features/light/LightOperation.hpp>
 #include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
-#include <lux/engine/scene/Builtin3DRenderStages.hpp>
+#include "RenderStageTestSupport.hpp"
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -52,6 +52,7 @@ int main()
     const std::array<TypeId, LightOperationIds::kCount> light_ids{201U, 202U, 203U, 204U};
     const auto mesh_ops = MeshStackOperationIds::fromOps(mesh_ids.data(), static_cast<std::uint32_t>(mesh_ids.size()));
     const auto light_ops = LightOperationIds::fromOps(light_ids.data(), static_cast<std::uint32_t>(light_ids.size()));
+    auto catalog = scene::test::makeFeatureCatalog(mesh_ids, light_ids);
     const RenderSceneId scene_id{3U, 1U};
 
     Registry mesh_registry;
@@ -67,11 +68,9 @@ int main()
     const Entity mesh_entity = mesh_registry.create();
     mesh_registry.emplace<Mesh3D>(mesh_entity, Mesh3D{rdesc::MeshVisualDescription{mesh_a, material_a}});
     mesh_registry.emplace<WorldTransform3D>(mesh_entity);
-    auto mesh_stage_result = createMesh3DRenderStage(Mesh3DRenderStageConfig{
-        .registry = mesh_registry,
-        .scene = scene_id,
-        .operations = mesh_ops
-    });
+    auto mesh_stage_result = scene::test::createStage(
+        scene::test::MeshFeature, mesh_registry, scene_id, catalog
+    );
     assert(mesh_stage_result);
     auto mesh_stage = std::move(*mesh_stage_result);
 
@@ -216,11 +215,9 @@ int main()
         light_registry.emplace<Light3D>(lights[index], light);
         light_registry.emplace<WorldTransform3D>(lights[index]);
     }
-    auto light_stage_result = createLight3DRenderStage(Light3DRenderStageConfig{
-        .registry = light_registry,
-        .scene = scene_id,
-        .operations = light_ops
-    });
+    auto light_stage_result = scene::test::createStage(
+        scene::test::LightFeature, light_registry, scene_id, catalog
+    );
     assert(light_stage_result);
     auto light_stage = std::move(*light_stage_result);
     program = prepare(*light_stage, ERenderSyncPrepareResult::PREPARED_COMMANDS);

@@ -86,7 +86,7 @@ namespace lux::scene
             }
             try
             {
-                auto object = std::make_unique<Type>(std::forward<Args>(args)...);
+                std::unique_ptr<Type> object{new Type(std::forward<Args>(args)...)};
                 object::LuxObject* endpoint = registration->project_object != nullptr
                     ? registration->project_object(object.get())
                     : nullptr;

@@ -1236,6 +1236,9 @@ foreach(required_render_consumer IN ITEMS render-client scene-render)
         message(FATAL_ERROR "Architecture: missing installed Render consumer '${required_render_consumer}'.")
     endif()
 endforeach()
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/dedicated-scene/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing dedicated headless Scene installed consumer.")
+endif()
 
 set(render_entity_header
     "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/core/RenderEntityId.hpp"
@@ -1252,11 +1255,18 @@ foreach(required_render_contract IN ITEMS
     "${light_scene_protocol_header}"
     "${source_root}/engine/scene/runtime/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
     "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderRuntime.hpp"
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystemConfiguration.hpp"
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/Builtin3DRenderIntegration.hpp"
 )
     if(NOT EXISTS "${required_render_contract}")
         message(FATAL_ERROR "Architecture: missing retained Render lane contract '${required_render_contract}'.")
     endif()
 endforeach()
+if(EXISTS "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/Builtin3DRenderStages.hpp")
+    message(FATAL_ERROR "Architecture: retired public builtin Render stage factories remain installed in source.")
+endif()
 file(READ "${render_entity_header}" render_entity_contract)
 file(READ "${mesh_scene_protocol_header}" mesh_scene_protocol_contract)
 file(READ "${light_scene_protocol_header}" light_scene_protocol_contract)
@@ -1357,6 +1367,28 @@ foreach(render_builtin_commit_domain IN ITEMS MESH LIGHT)
     endif()
 endforeach()
 
+set(render_runtime_header
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderRuntime.hpp"
+)
+set(render_scene_system_header
+    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
+)
+set(render_scene_system_source
+    "${source_root}/engine/scene/runtime/render/src/RenderSystem.cpp"
+)
+file(READ "${render_runtime_header}" render_runtime_contract)
+file(READ "${render_scene_system_header}" render_scene_system_contract)
+file(READ "${render_scene_system_source}" render_scene_system_implementation)
+if(render_runtime_contract MATCHES "vulkan|GeneralRenderServer|LuxWindow|std::thread")
+    message(FATAL_ERROR "Architecture: L3 RenderRuntime exposes a concrete backend/thread/window.")
+endif()
+if(render_scene_system_contract MATCHES "FeatureBindings|Mesh3D|Light3D|GeneralRenderServer|std::thread")
+    message(FATAL_ERROR "Architecture: RenderSystem public API retains feature mirrors or concrete extraction/backend state.")
+endif()
+if(render_scene_system_implementation MATCHES "Mesh3D|Light3D|GeneralRenderServer|std::thread")
+    message(FATAL_ERROR "Architecture: RenderSystem installer hard-codes feature extraction or backend ownership.")
+endif()
+
 foreach(render_resource_file IN ITEMS
     "${source_root}/modules/function/render/vulkan/sinclude/lux/engine/render/resources/mesh/MeshResources.hpp"
     "${source_root}/modules/function/render/vulkan/sinclude/lux/engine/render/resources/material/MaterialResources.hpp"
@@ -1385,6 +1417,19 @@ file(READ "${source_root}/test/architecture_probes/CMakeLists.txt" render_qualif
 if(render_qualification_cmake MATCHES
    "l1_l3_render_sync_3d_qualification[ \t\r\n]+model_asset_vulkan_qualification[.]cpp|large_3d_scene_performance_qualification[ \t\r\n]+model_asset_vulkan_qualification[.]cpp")
     message(FATAL_ERROR "Architecture: Render qualifications restore macro-reused source ownership.")
+endif()
+file(READ
+    "${source_root}/test/architecture_probes/l1_l3_render_sync_3d_qualification.cpp"
+    render_scene_qualification_contract
+)
+if(NOT render_scene_qualification_contract MATCHES "Scene::create" OR
+   NOT render_scene_qualification_contract MATCHES "executeStablePoint" OR
+   NOT render_scene_qualification_contract MATCHES "executePresentation")
+    message(FATAL_ERROR "Architecture: L1-L3 Render qualification bypasses the final SceneSystem path.")
+endif()
+if(render_scene_qualification_contract MATCHES
+   "createMesh3DRenderStage|createLight3DRenderStage|RenderSyncPipeline::create")
+    message(FATAL_ERROR "Architecture: main L1-L3 Render qualification manually assembles extraction stages.")
 endif()
 if(NOT render_qualification_cmake MATCHES
    "LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION[ \t\r\n]+[^\r\n]*[ \t\r\n]+OFF")

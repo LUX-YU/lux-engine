@@ -39,6 +39,7 @@ target_compile_definitions(
     render_client
     PRIVATE
         LUX_FUNCTION_LIBRARY
+        LUX_RENDER_CLIENT_METADATA_LIBRARY
 )
 
 target_link_libraries(

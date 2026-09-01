@@ -210,15 +210,15 @@ namespace lux::render
     extern LUX_FUNCTION_PUBLIC const FeatureFactory kPCFeatureLODFactory;
     extern LUX_FUNCTION_PUBLIC const FeatureFactory kPCFeatureSplattingFactory;
     extern LUX_FUNCTION_PUBLIC const FeatureFactory kPCFeatureTransientFactory;
-    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCSimpleDescriptor;
-    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCGPUDrivenDescriptor;
-    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCLODDescriptor;
-    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCSplattingDescriptor;
-    extern LUX_FUNCTION_PUBLIC const FeatureDescriptor kPCTransientDescriptor;
-    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCSimpleRegistration;
-    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCGPUDrivenRegistration;
-    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCLODRegistration;
-    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCSplattingRegistration;
-    extern LUX_FUNCTION_PUBLIC const RenderFeatureRegistration kPCTransientRegistration;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const FeatureDescriptor kPCSimpleDescriptor;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const FeatureDescriptor kPCGPUDrivenDescriptor;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const FeatureDescriptor kPCLODDescriptor;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const FeatureDescriptor kPCSplattingDescriptor;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const FeatureDescriptor kPCTransientDescriptor;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const RenderFeatureRegistration kPCSimpleRegistration;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const RenderFeatureRegistration kPCGPUDrivenRegistration;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const RenderFeatureRegistration kPCLODRegistration;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const RenderFeatureRegistration kPCSplattingRegistration;
+    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const RenderFeatureRegistration kPCTransientRegistration;
 
 } // namespace lux::render

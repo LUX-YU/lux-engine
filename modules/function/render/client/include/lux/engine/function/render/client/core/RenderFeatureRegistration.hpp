@@ -13,6 +13,16 @@
 
 namespace lux::render
 {
+#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(LUX_RENDER_CLIENT_METADATA_LIBRARY)
+#define LUX_RENDER_FEATURE_METADATA_PUBLIC LUX_EXPORT
+#else
+#define LUX_RENDER_FEATURE_METADATA_PUBLIC LUX_IMPORT
+#endif
+#else
+#define LUX_RENDER_FEATURE_METADATA_PUBLIC LUX_FUNCTION_PUBLIC
+#endif
+
     using MaterializeRenderFeatureAttachFn = lux::serialization::SerializationResult (*)(
         std::span<const std::byte> portable,
         std::vector<std::byte>& attach_wire

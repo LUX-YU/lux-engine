@@ -1,6 +1,8 @@
 # Pre-L5 Foundation Hardening Plan
 
-Status: **Approved for implementation**
+Status: **Complete**
+
+Qualified implementation: `fe46e7ecf47c38d4d57131101fdcfc37e3327115`
 
 Baseline: `e26faaac12409e4cdd9b5dd33d6caf912413df89`
 

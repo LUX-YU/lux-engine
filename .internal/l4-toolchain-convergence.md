@@ -1,15 +1,15 @@
 # L4 Toolchain Convergence
 
-Status: **Pre-L5 hardening required**
+Status: **Closed**
 
 Baseline: `bb2b12b3f425db16eca6a96828a101fd3ae9bad5`
 
-Previously qualified implementation: `75d82e7a2bae5ae804fc1697e551df4b83643e56`
+Qualified implementation: `fe46e7ecf47c38d4d57131101fdcfc37e3327115`
 
-The previous qualification remains valid evidence for the tested build and GPU behavior, but a subsequent
-source-level review found four P1 closure items: malformed MaterialGraph validation, installed Material compiler
-relocation, Toolchain Shader support ownership, and GraphKit transaction atomicity. L4 is reopened until those items
-are qualified on a new exact revision. L1-L3 remain closed.
+The previous qualification remains valid historical evidence. A subsequent source-level review found four P1
+closure items; revision `fe46e7ec` closes and qualifies all four: malformed MaterialGraph input fails before lowering,
+the installed Material compiler is relocatable, shared Shader support has a canonical Toolchain owner, and GraphKit
+compound transactions are atomic. L1-L3 remained closed throughout the hardening.
 
 Date: 2026-09-01
 
@@ -70,6 +70,17 @@ dependencies appear in the installed compiler interface.
   identity and source-path metadata.
 - Runtime and PLAYER closures contain no L4 Material implementation, shaderc, Editor or FlowForge compiler.
 - L1-L3 ownership, SceneMeta, Render extraction, Asset residency and Product streaming were not changed.
+
+## Pre-L5 closure
+
+- Built-in Material nodes are final and external code cannot forge a node kind/payload pair.
+- Every mutable Material source enum, payload, pin, reference and finite-value contract is validated before lowering.
+- The Material compiler resolves Shader includes from immutable build-time embedded bytes and contains no original
+  source/build path dependency.
+- Shared SPIR-V reflection object code and the LGLSL emitter belong to `engine/toolchain/shader`; no package consumes
+  a sibling `pinclude`.
+- GraphKit failed compound edits, undo and redo restore document, history and revision through an inverse journal.
+- `node_graph_editor` is classified as EDITOR / EDITOR / FOUNDATION.
 
 ## Held work
 

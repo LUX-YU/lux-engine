@@ -130,6 +130,8 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
 - `World = durable/cooked facts + whole-world storage metadata`；`Simulation = concrete Systems +
   synchronous rules + compiled schedule`；`Scene = one World + one authoritative Registry + one Simulation`。
+  SceneSystem 只承担跨 Simulation/Process/Host capability 的 L3 composition；由 owning `SceneDescription`、
+  immutable `SceneMetaManager` 与串行 stable/presentation hooks 安装，不得创建第二个 Scene TaskGraph。
   Streaming policy 只属于 concrete developer System；Presentation 是可独立采样的 runtime concern，
   不是 architecture layer。Canonical Transform2D/3D 与 WorldTransform2D/3D 一律使用 double。
 - source topology 固定用 `engine/domain/{partition,spatial,system,world,simulation}` 表达 L1 ownership，

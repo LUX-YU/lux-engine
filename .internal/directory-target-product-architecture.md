@@ -36,8 +36,10 @@ engine/
   foundation，但不得互相依赖。
 - `engine/process` 是 L2 collection；`execution` 叶包保持领域盲，具体 `world`/`asset` 叶包可拥有明确的
   time-spanning workflow，但不得把领域语义反向塞入 execution。
-- `engine/scene` 是 L3 runtime composition：`core` 只组合一个 World、一个 authoritative Registry、
-  一个 Simulation 与 Scene cancellation source；`runtime/world` 提供机械 World IO/materialization；
+- `engine/scene` 是 L3 runtime composition：`description` 持有 durable SceneSystem composition，`system` 定义
+  installer/requirement contract，`meta` 在进程启动时一次构建后 immutable；`core` 组合一个 World、一个
+  authoritative Registry、一个 Simulation、已安装 SceneSystems 与 Scene cancellation source；
+  `runtime/world` 提供机械 World IO/materialization；
   `runtime/presentation` 首先承载 latest-state handoff。Streaming policy 只属于 concrete developer System。
 - `engine/authoring` 持有 authored state、composition 与诊断。
 - `engine/editor` 持有交互式 Editor UI/tooling。
@@ -59,7 +61,7 @@ Presentation= independently sampled runtime concern, not an architecture layer
 Canonical user-facing `Transform2D/3D` 与 `WorldTransform2D/3D` 使用 double。Render、physics、nav
 等 consumer 只能在自己的 local-origin boundary 先用 double 相减，再显式 narrow 到 float/native。
 
-Scene 不拥有 mandatory streaming/index/residency/process/render/main-loop state；Simulation 不拥有
+Scene 不拥有 mandatory streaming/index/residency/render/main-loop state，也不创建 Scene TaskGraph；Simulation 不拥有
 World IO、partition lifecycle 或 wall clock；Process workflow不得认识 Scene 或 gameplay policy。
 
 3D Render integration 是可选的 L3 leaf：`engine/scene/runtime/render` 在 Simulation stable point把

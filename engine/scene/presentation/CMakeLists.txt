@@ -1,14 +1,14 @@
 add_interface_component(
-    COMPONENT_NAME scene_runtime_presentation
+    COMPONENT_NAME scene_presentation
     NAMESPACE      lux::engine::scene
 )
 component_include_directories(
-    scene_runtime_presentation
+    scene_presentation
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME include
 )
 lux_classify_target(
-    TARGET  scene_runtime_presentation
+    TARGET  scene_presentation
     LAYER   SCENE
     PRODUCT RUNTIME
     ROLE    FOUNDATION
@@ -17,7 +17,7 @@ lux_classify_target(
 add_executable(latest_spsc_exchange_test test/latest_spsc_exchange_test.cpp)
 target_link_libraries(
     latest_spsc_exchange_test
-    PRIVATE lux::engine::scene::scene_runtime_presentation
+    PRIVATE lux::engine::scene::scene_presentation
 )
 if(MSVC)
     target_compile_options(latest_spsc_exchange_test PRIVATE /UNDEBUG)
@@ -36,5 +36,5 @@ install_components(
     PROJECT_NAME lux-engine-scene-presentation
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene
-    COMPONENTS   scene_runtime_presentation
+    COMPONENTS   scene_presentation
 )

@@ -4,7 +4,7 @@
 #include <lux/engine/scene/RenderRuntime.hpp>
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
-#include <lux/engine/scene/runtime/render/visibility.h>
+#include <lux/engine/scene/render/visibility.h>
 
 #include <array>
 #include <memory>
@@ -15,7 +15,7 @@ namespace lux::scene
 {
     class SceneBuilder;
 
-    class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderSystem final : public object::LuxObject
+    class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem final : public object::LuxObject
     {
     public:
         inline static constexpr std::array Capabilities{std::string_view{"lux.scene.render"}};
@@ -48,11 +48,11 @@ namespace lux::scene
         std::unique_ptr<RenderSyncPipeline> sync_;
     };
 
-    [[nodiscard]] LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC SceneSystemRegistration
+    [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC SceneSystemRegistration
     builtinRenderSystemRegistration() noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC std::span<const SceneSystemRegistration>
+    [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC std::span<const SceneSystemRegistration>
     builtinRenderSystemRegistrations() noexcept;
 
-    LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC void initializeBuiltinRenderSystemMeta() noexcept;
+    LUX_ENGINE_SCENE_RENDER_PUBLIC void initializeBuiltinRenderSystemMeta() noexcept;
 } // namespace lux::scene

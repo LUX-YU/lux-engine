@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(lux_scene_render_consumer LANGUAGES CXX)
-find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_runtime_render)
+find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)
 add_executable(lux_scene_render_consumer main.cpp)
 target_compile_features(lux_scene_render_consumer PRIVATE cxx_std_20)
-target_link_libraries(lux_scene_render_consumer PRIVATE lux::engine::scene::scene_runtime_render)
+target_link_libraries(lux_scene_render_consumer PRIVATE lux::engine::scene::scene_render)

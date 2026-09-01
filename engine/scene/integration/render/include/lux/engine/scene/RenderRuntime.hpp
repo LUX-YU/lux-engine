@@ -5,7 +5,7 @@
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
-#include <lux/engine/scene/runtime/render/visibility.h>
+#include <lux/engine/scene/render/visibility.h>
 
 #include <cstdint>
 
@@ -26,7 +26,7 @@ namespace lux::scene
 
     class RenderRuntime;
 
-    class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderRuntimeLease final
+    class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderRuntimeLease final
     {
     public:
         RenderRuntimeLease() noexcept = default;
@@ -50,7 +50,7 @@ namespace lux::scene
         RenderRuntime* owner_{};
     };
 
-    class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderRuntime
+    class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderRuntime
     {
     public:
         virtual ~RenderRuntime() noexcept = default;

@@ -4,7 +4,7 @@
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
 #include <lux/engine/function/render/client/core/RenderEntityId.hpp>
 #include <lux/engine/scene/RenderSyncStage.hpp>
-#include <lux/engine/scene/runtime/render/visibility.h>
+#include <lux/engine/scene/render/visibility.h>
 #include <lux/engine/simulation/ecs/Entity.hpp>
 
 #include <cstdint>
@@ -48,7 +48,7 @@ namespace lux::scene
         ERenderSyncPipelineError code{};
     };
 
-    class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderSyncPipeline final
+    class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSyncPipeline final
     {
     public:
         using StageList = std::vector<std::unique_ptr<RenderSyncStage>>;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/scene/runtime/world/visibility.h>
+#include <lux/engine/scene/world_materialization/visibility.h>
 #include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <lux/engine/world/WorldDescription.hpp>
 #include <lux/engine/world/WorldPartitionData.hpp>
@@ -30,7 +30,7 @@ namespace lux::scene
         std::size_t data{};
     };
 
-    class LUX_ENGINE_SCENE_WORLD_RUNTIME_PUBLIC WorldMaterializer final
+    class LUX_ENGINE_SCENE_WORLD_MATERIALIZATION_PUBLIC WorldMaterializer final
     {
     public:
         [[nodiscard]] static lux::cxx::expected<WorldMaterializer, WorldMaterializeFailure> create(

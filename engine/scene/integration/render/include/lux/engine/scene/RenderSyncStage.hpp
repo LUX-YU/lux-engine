@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/function/render/client/RenderClient.hpp>
-#include <lux/engine/scene/runtime/render/visibility.h>
+#include <lux/engine/scene/render/visibility.h>
 
 #include <cstdint>
 
@@ -15,7 +15,7 @@ namespace lux::scene
         FAILED
     };
 
-    class LUX_ENGINE_SCENE_RUNTIME_RENDER_PUBLIC RenderSyncStage
+    class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSyncStage
     {
     public:
         virtual ~RenderSyncStage() noexcept = default;

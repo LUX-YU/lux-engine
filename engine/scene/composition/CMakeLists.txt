@@ -6,25 +6,25 @@ generate_visibility_header(
 )
 
 add_component(
-    COMPONENT_NAME scene_core
+    COMPONENT_NAME scene_composition
     NAMESPACE      lux::engine::scene
-    OUTPUT_NAME    lux_engine_scene_core
+    OUTPUT_NAME    lux_engine_scene_composition
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneBuilder.cpp
 )
 
 component_include_directories(
-    scene_core
+    scene_composition
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
-target_include_directories(scene_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_compile_definitions(scene_core PRIVATE LUX_ENGINE_SCENE_LIBRARY)
+target_include_directories(scene_composition PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+target_compile_definitions(scene_composition PRIVATE LUX_ENGINE_SCENE_LIBRARY)
 target_link_libraries(
-    scene_core
+    scene_composition
     PUBLIC
         lux::engine::world::description
         lux::engine::simulation::composition
@@ -34,7 +34,7 @@ target_link_libraries(
         lux::engine::resource::identity
 )
 component_add_transitive_commands(
-    scene_core
+    scene_composition
     "find_package(lux-engine-world-description REQUIRED COMPONENTS world_description)"
     "find_package(lux-engine-simulation-composition REQUIRED COMPONENTS simulation_composition)"
     "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
@@ -43,30 +43,30 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
 lux_classify_target(
-    TARGET  scene_core
+    TARGET  scene_composition
     LAYER   SCENE
     PRODUCT RUNTIME
     ROLE    COMPOSITION
 )
 
-add_executable(scene_core_test test/scene_core_test.cpp)
-target_link_libraries(scene_core_test PRIVATE lux::engine::scene::scene_core)
+add_executable(scene_composition_test test/scene_composition_test.cpp)
+target_link_libraries(scene_composition_test PRIVATE lux::engine::scene::scene_composition)
 if(MSVC)
-    target_compile_options(scene_core_test PRIVATE /UNDEBUG)
+    target_compile_options(scene_composition_test PRIVATE /UNDEBUG)
 else()
-    target_compile_options(scene_core_test PRIVATE -UNDEBUG)
+    target_compile_options(scene_composition_test PRIVATE -UNDEBUG)
 endif()
 lux_classify_target(
-    TARGET  scene_core_test
+    TARGET  scene_composition_test
     LAYER   SCENE
     PRODUCT TEST
     ROLE    COMPOSITION
 )
-add_test(NAME scene_core_test COMMAND scene_core_test)
+add_test(NAME scene_composition_test COMMAND scene_composition_test)
 
 install_components(
     PROJECT_NAME lux-engine-scene
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene
-    COMPONENTS   scene_core
+    COMPONENTS   scene_composition
 )

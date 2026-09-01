@@ -171,7 +171,7 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
-    if(normalized MATCHES "/engine/scene/runtime/render/" AND content MATCHES
+    if(normalized MATCHES "/engine/scene/integration/render/" AND content MATCHES
        "PresentationRegistry|PresentationScene|PresentationDelta|RenderBridge|RenderSynchronizer|RenderServices|AssetResolver|PendingMeshBinding|ResidencyManager|DemandTracker")
         message(FATAL_ERROR
             "Architecture: L3 Render integration '${normalized}' restores a held bridge/registry/residency framework."
@@ -772,18 +772,18 @@ if(EXISTS "${system_registry_header}")
     endif()
 endif()
 
-set(scene_core_cmake "${source_root}/engine/scene/core/CMakeLists.txt")
-if(EXISTS "${scene_core_cmake}")
-    file(READ "${scene_core_cmake}" scene_core_target_contract)
-    if(scene_core_target_contract MATCHES
-       "lux::engine::(process|render)|stdexec|scene_runtime_world")
+set(scene_composition_cmake "${source_root}/engine/scene/composition/CMakeLists.txt")
+if(EXISTS "${scene_composition_cmake}")
+    file(READ "${scene_composition_cmake}" scene_composition_target_contract)
+    if(scene_composition_target_contract MATCHES
+       "lux::engine::(process|render)|stdexec|scene_world_materialization")
         message(FATAL_ERROR
             "Architecture: scene/core depends on Process, Render or runtime/world."
         )
     endif()
 endif()
 
-set(scene_world_runtime_cmake "${source_root}/engine/scene/runtime/world/CMakeLists.txt")
+set(scene_world_runtime_cmake "${source_root}/engine/scene/integration/world_materialization/CMakeLists.txt")
 if(EXISTS "${scene_world_runtime_cmake}")
     file(READ "${scene_world_runtime_cmake}" scene_world_runtime_contract)
     if(scene_world_runtime_contract MATCHES
@@ -795,7 +795,7 @@ if(EXISTS "${scene_world_runtime_cmake}")
 endif()
 
 set(latest_exchange_header
-    "${source_root}/engine/scene/runtime/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
+    "${source_root}/engine/scene/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
 )
 if(EXISTS "${latest_exchange_header}")
     file(READ "${latest_exchange_header}" latest_exchange_contract)
@@ -906,7 +906,7 @@ endforeach()
 if(EXISTS "${source_root}/engine/domain/world/identity/include/lux/engine/domain/WorldObjectId.hpp")
     message(FATAL_ERROR "Architecture: retired domain-leaking WorldObjectId header remains installed in source.")
 endif()
-if(EXISTS "${source_root}/engine/scene/runtime/world/include/lux/engine/scene/WorldRuntime.hpp")
+if(EXISTS "${source_root}/engine/scene/integration/world_materialization/include/lux/engine/scene/WorldRuntime.hpp")
     message(FATAL_ERROR "Architecture: retired Scene WorldRuntime aggregate header remains in source.")
 endif()
 
@@ -1063,10 +1063,10 @@ foreach(source IN LISTS runtime_asset_boundary_sources)
 endforeach()
 
 set(world_runtime_header
-    "${source_root}/engine/scene/runtime/world/include/lux/engine/scene/WorldRuntime.hpp"
+    "${source_root}/engine/scene/integration/world_materialization/include/lux/engine/scene/WorldRuntime.hpp"
 )
 set(world_runtime_source
-    "${source_root}/engine/scene/runtime/world/src/WorldRuntime.cpp"
+    "${source_root}/engine/scene/integration/world_materialization/src/WorldRuntime.cpp"
 )
 set(world_partition_data_header
     "${source_root}/engine/domain/world/storage/include/lux/engine/world/WorldPartitionData.hpp"
@@ -1279,18 +1279,18 @@ foreach(required_render_contract IN ITEMS
     "${render_entity_header}"
     "${mesh_scene_protocol_header}"
     "${light_scene_protocol_header}"
-    "${source_root}/engine/scene/runtime/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderRuntime.hpp"
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystemConfiguration.hpp"
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/Builtin3DRenderIntegration.hpp"
+    "${source_root}/engine/scene/presentation/include/lux/engine/scene/LatestSpscExchange.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/RenderRuntime.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/RenderSystem.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/RenderSystemConfiguration.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/Builtin3DRenderIntegration.hpp"
 )
     if(NOT EXISTS "${required_render_contract}")
         message(FATAL_ERROR "Architecture: missing retained Render lane contract '${required_render_contract}'.")
     endif()
 endforeach()
-if(EXISTS "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/Builtin3DRenderStages.hpp")
+if(EXISTS "${source_root}/engine/scene/integration/render/include/lux/engine/scene/Builtin3DRenderStages.hpp")
     message(FATAL_ERROR "Architecture: retired public builtin Render stage factories remain installed in source.")
 endif()
 file(READ "${render_entity_header}" render_entity_contract)
@@ -1341,10 +1341,10 @@ if(render_server_codegen_template MATCHES "static constexpr FeatureDescriptor")
 endif()
 
 set(render_sync_pipeline_header
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/RenderSyncPipeline.hpp"
 )
 set(render_sync_pipeline_source
-    "${source_root}/engine/scene/runtime/render/src/RenderSyncPipeline.cpp"
+    "${source_root}/engine/scene/integration/render/src/RenderSyncPipeline.cpp"
 )
 file(READ "${render_sync_pipeline_header}" render_sync_pipeline_contract)
 file(READ "${render_sync_pipeline_source}" render_sync_pipeline_implementation)
@@ -1357,7 +1357,7 @@ if(render_sync_pipeline_implementation MATCHES
 endif()
 
 set(render_builtin_stage_source
-    "${source_root}/engine/scene/runtime/render/src/Builtin3DRenderStages.cpp"
+    "${source_root}/engine/scene/integration/render/src/Builtin3DRenderStages.cpp"
 )
 file(READ "${render_builtin_stage_source}" render_builtin_stage_contract)
 if(render_builtin_stage_contract MATCHES "changes_[.]markAll[ \t\r\n]*\\(")
@@ -1394,13 +1394,13 @@ foreach(render_builtin_commit_domain IN ITEMS MESH LIGHT)
 endforeach()
 
 set(render_runtime_header
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderRuntime.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/RenderRuntime.hpp"
 )
 set(render_scene_system_header
-    "${source_root}/engine/scene/runtime/render/include/lux/engine/scene/RenderSystem.hpp"
+    "${source_root}/engine/scene/integration/render/include/lux/engine/scene/RenderSystem.hpp"
 )
 set(render_scene_system_source
-    "${source_root}/engine/scene/runtime/render/src/RenderSystem.cpp"
+    "${source_root}/engine/scene/integration/render/src/RenderSystem.cpp"
 )
 file(READ "${render_runtime_header}" render_runtime_contract)
 file(READ "${render_scene_system_header}" render_scene_system_contract)

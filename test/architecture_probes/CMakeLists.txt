@@ -3,7 +3,7 @@ foreach(probe IN ITEMS spatial3d spatial2d pixel robot)
     target_link_libraries(
         architecture_probe_${probe}
         PRIVATE
-            lux::engine::scene::scene_runtime_presentation
+            lux::engine::scene::scene_presentation
             lux::engine::simulation::ecs::transform
     )
     lux_classify_target(
@@ -51,7 +51,7 @@ if(TARGET render_vulkan)
         architecture_probe_render_lanes
         PRIVATE
             lux::engine::function::render_vulkan
-            lux::engine::scene::scene_runtime_presentation
+            lux::engine::scene::scene_presentation
     )
     lux_classify_target(
         TARGET  architecture_probe_render_lanes
@@ -87,7 +87,7 @@ if(LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION AND TARGET render_vulkan)
         l1_l3_render_lane_window_qualification
         PRIVATE
             lux::engine::function::render_vulkan
-            lux::engine::scene::scene_runtime_presentation
+            lux::engine::scene::scene_presentation
             lux::engine::simulation::composition
             lux::engine::simulation::transform_system
     )
@@ -239,7 +239,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
             render_features
             lux::engine::function::render_vulkan
             lux::engine::resource::asset
-            lux::engine::scene::scene_runtime_render
+            lux::engine::scene::scene_render
     )
     lux_classify_target(
         TARGET  model_asset_vulkan_qualification
@@ -285,8 +285,8 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
             render_features
             lux::engine::function::render_vulkan
             lux::engine::resource::asset
-            lux::engine::scene::scene_runtime_render
-            scene_runtime_render_meta
+            lux::engine::scene::scene_render
+            scene_render_meta
             render_client_meta
     )
     lux_classify_target(
@@ -331,7 +331,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
             render_features
             lux::engine::function::render_vulkan
             lux::engine::resource::asset
-            lux::engine::scene::scene_runtime_render
+            lux::engine::scene::scene_render
     )
     lux_classify_target(
         TARGET  large_3d_scene_performance_qualification
@@ -410,9 +410,9 @@ if(LUX_BUILD_PRELOADED_SPATIAL3D_PROBE)
             Jolt::Jolt
             render_features
             lux::engine::function::render_vulkan
-            lux::engine::scene::scene_core
-            lux::engine::scene::scene_runtime_presentation
-            lux::engine::scene::scene_runtime_world
+            lux::engine::scene::scene_composition
+            lux::engine::scene::scene_presentation
+            lux::engine::scene::scene_world_materialization
             lux::engine::simulation::ecs::transform
     )
     lux_classify_target(

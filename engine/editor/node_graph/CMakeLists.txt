@@ -26,7 +26,7 @@ add_component(
 
 lux_classify_target(
     TARGET node_graph_editor
-    LAYER TOOLCHAIN
+    LAYER EDITOR
     PRODUCT EDITOR
     ROLE FOUNDATION
 )

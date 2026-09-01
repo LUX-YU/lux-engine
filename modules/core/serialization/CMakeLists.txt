@@ -88,6 +88,27 @@ lux_classify_target(
 )
 
 add_executable(
+    portable_value_codec_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/portable_value_codec_test.cpp
+)
+target_link_libraries(
+    portable_value_codec_test
+    PRIVATE lux::engine::core::serialization
+)
+add_test(NAME portable_value_codec_test COMMAND portable_value_codec_test)
+if(MSVC)
+    target_compile_options(portable_value_codec_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(portable_value_codec_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET portable_value_codec_test
+    LAYER CORE
+    PRODUCT TEST
+    ROLE FOUNDATION
+)
+
+add_executable(
     serialization_missing_budget_negative
     EXCLUDE_FROM_ALL
     ${CMAKE_CURRENT_SOURCE_DIR}/test/missing_budget_negative.cpp

@@ -2,9 +2,11 @@
 
 #include <lux/engine/material/compiler/Backend.hpp>
 #include <lux/engine/material/compiler/Lowering.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <new>
 #include <string>
 #include <utility>
@@ -37,8 +39,253 @@ namespace lux::material
                                       : EMaterialCompileError::SHADER_EMISSION_FAILURE;
         }
 
+        [[nodiscard]] bool validValueType(EValueType type) noexcept
+        {
+            switch (type)
+            {
+            case EValueType::FLOAT:
+            case EValueType::VEC2:
+            case EValueType::VEC3:
+            case EValueType::VEC4:
+                return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] std::size_t valueArity(EValueType type) noexcept
+        {
+            switch (type)
+            {
+            case EValueType::FLOAT: return 1U;
+            case EValueType::VEC2: return 2U;
+            case EValueType::VEC3: return 3U;
+            case EValueType::VEC4: return 4U;
+            }
+            return 0U;
+        }
+
+        [[nodiscard]] bool validMathOp(EMathOp op) noexcept
+        {
+            switch (op)
+            {
+            case EMathOp::MUL:
+            case EMathOp::ADD:
+            case EMathOp::SUB:
+            case EMathOp::DIV:
+            case EMathOp::DOT:
+            case EMathOp::MIN:
+            case EMathOp::MAX:
+            case EMathOp::POW:
+            case EMathOp::STEP:
+            case EMathOp::MOD:
+            case EMathOp::CROSS:
+            case EMathOp::REFLECT:
+            case EMathOp::LERP:
+            case EMathOp::SATURATE:
+            case EMathOp::ONE_MINUS:
+            case EMathOp::ABS:
+            case EMathOp::SQRT:
+            case EMathOp::FLOOR:
+            case EMathOp::FRACT:
+            case EMathOp::SIN:
+            case EMathOp::COS:
+            case EMathOp::NORMALIZE:
+            case EMathOp::LENGTH:
+                return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool finiteValues(const float (&values)[4]) noexcept
+        {
+            return std::all_of(
+                std::begin(values),
+                std::end(values),
+                [](float value) { return std::isfinite(value); }
+            );
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure> invalidGraph(
+            std::string message,
+            node_id node = invalid_node,
+            std::uint32_t pin = invalid_pin
+        )
+        {
+            return lux::cxx::unexpected(failure(EMaterialCompileError::INVALID_GRAPH, std::move(message), node, pin));
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure> validatePins(const Node& node)
+        {
+            const auto validate = [&](const std::vector<DataPin>& pins, EPinDirection expected)
+                -> lux::cxx::expected<void, MaterialCompileFailure>
+            {
+                for (std::uint32_t index = 0U; index < pins.size(); ++index)
+                {
+                    const auto& pin = pins[index];
+                    const bool has_source_node = pin.source.node != invalid_node;
+                    const bool has_source_pin = pin.source.pin != invalid_pin;
+                    const bool has_partial_source = has_source_node != has_source_pin;
+                    const bool output_has_source = expected == EPinDirection::OUTPUT && has_source_node;
+                    if (!validValueType(pin.type) || pin.direction != expected || has_partial_source ||
+                        output_has_source || !finiteValues(pin.constant))
+                        return invalidGraph("invalid material pin contract", node.id(), index);
+                }
+                return {};
+            };
+
+            if (auto result = validate(node.inputs(), EPinDirection::INPUT); !result)
+                return result;
+            return validate(node.outputs(), EPinDirection::OUTPUT);
+        }
+
+        [[nodiscard]] bool hasShape(
+            const Node& node,
+            std::size_t input_count,
+            std::size_t output_count
+        ) noexcept
+        {
+            return node.inputs().size() == input_count && node.outputs().size() == output_count;
+        }
+
         [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure>
-        validateGraph(const MaterialGraph& graph) noexcept
+        validateNode(const MaterialGraph& graph, const Node& node)
+        {
+            if (auto pins = validatePins(node); !pins)
+                return pins;
+
+            const auto requireShape = [&](std::size_t inputs, std::size_t outputs)
+                -> lux::cxx::expected<void, MaterialCompileFailure>
+            {
+                return hasShape(node, inputs, outputs)
+                    ? lux::cxx::expected<void, MaterialCompileFailure>{}
+                    : invalidGraph("invalid material node pin arity", node.id());
+            };
+            const auto requirePinType = [&](bool input, std::size_t index, EValueType type)
+                -> lux::cxx::expected<void, MaterialCompileFailure>
+            {
+                const auto& pins = input ? node.inputs() : node.outputs();
+                return index < pins.size() && pins[index].type == type
+                    ? lux::cxx::expected<void, MaterialCompileFailure>{}
+                    : invalidGraph("material node pin type does not match its payload",
+                                   node.id(), static_cast<std::uint32_t>(index));
+            };
+
+            switch (node.kind())
+            {
+            case EMatNodeKind::CONSTANT:
+            {
+                if (auto shape = requireShape(0U, 1U); !shape)
+                    return shape;
+                const auto& value = static_cast<const ConstantNode&>(node);
+                if (!validValueType(value.value_type) || !finiteValues(value.value))
+                    return invalidGraph("invalid Constant node payload", node.id());
+                return requirePinType(false, 0U, value.value_type);
+            }
+            case EMatNodeKind::INPUT:
+            {
+                if (auto shape = requireShape(0U, 1U); !shape)
+                    return shape;
+                const auto& input = static_cast<const InputNode&>(node);
+                const auto* description = materialInputDescription(input.input);
+                if (description == nullptr)
+                    return invalidGraph("invalid Material input enum", node.id());
+                return requirePinType(false, 0U, description->type);
+            }
+            case EMatNodeKind::SAMPLE_TEXTURE:
+            {
+                if (auto shape = requireShape(1U, 1U); !shape)
+                    return shape;
+                const auto& sample = static_cast<const SampleTextureNode&>(node);
+                if (sample.texture_slot >= graph.texture_slots.size())
+                    return invalidGraph("SampleTexture references an undeclared texture slot", node.id());
+                if (auto input = requirePinType(true, 0U, EValueType::VEC2); !input)
+                    return input;
+                return requirePinType(false, 0U, EValueType::VEC4);
+            }
+            case EMatNodeKind::PARAM:
+            {
+                if (auto shape = requireShape(0U, 1U); !shape)
+                    return shape;
+                const auto& parameter = static_cast<const ParamNode&>(node);
+                if (!validValueType(parameter.type) || parameter.param_slot >= graph.param_slots.size() ||
+                    graph.param_slots[parameter.param_slot].type != parameter.type)
+                    return invalidGraph("invalid Param node payload", node.id());
+                return requirePinType(false, 0U, parameter.type);
+            }
+            case EMatNodeKind::MATH:
+            {
+                if (auto shape = requireShape(2U, 1U); !shape)
+                    return shape;
+                const auto& math = static_cast<const MathNode&>(node);
+                if (!validMathOp(math.op) || math.op == EMathOp::LERP || !validValueType(math.operand_type))
+                    return invalidGraph("invalid or unsupported Math node payload", node.id());
+                if ((math.op == EMathOp::DOT || math.op == EMathOp::CROSS) &&
+                    math.operand_type == EValueType::FLOAT)
+                    return invalidGraph("Dot/Cross require vector operands", node.id());
+                if (math.op == EMathOp::CROSS && math.operand_type != EValueType::VEC3)
+                    return invalidGraph("Cross requires Vec3 operands", node.id());
+                if (auto first = requirePinType(true, 0U, math.operand_type); !first)
+                    return first;
+                if (auto second = requirePinType(true, 1U, math.operand_type); !second)
+                    return second;
+                return requirePinType(false, 0U, math.operand_type);
+            }
+            case EMatNodeKind::SWIZZLE:
+            {
+                if (auto shape = requireShape(1U, 1U); !shape)
+                    return shape;
+                const auto& swizzle = static_cast<const SwizzleNode&>(node);
+                const auto source_arity = valueArity(swizzle.source_type);
+                const auto output_arity = valueArity(swizzle.out_type);
+                if (source_arity == 0U || output_arity == 0U)
+                    return invalidGraph("invalid Swizzle node value type", node.id());
+                for (std::size_t component = 0U; component < std::size(swizzle.components); ++component)
+                {
+                    const bool is_used = component < output_arity;
+                    const bool is_invalid_component = swizzle.components[component] > 3U ||
+                        (is_used && swizzle.components[component] >= source_arity);
+                    if (is_invalid_component)
+                        return invalidGraph("invalid Swizzle component", node.id(),
+                                            static_cast<std::uint32_t>(component));
+                }
+                if (auto input = requirePinType(true, 0U, swizzle.source_type); !input)
+                    return input;
+                return requirePinType(false, 0U, swizzle.out_type);
+            }
+            case EMatNodeKind::CONSTRUCT:
+            {
+                const auto& construct = static_cast<const ConstructNode&>(node);
+                const auto arity = valueArity(construct.out_type);
+                if (arity == 0U || !hasShape(node, arity, 1U))
+                    return invalidGraph("invalid Construct node payload or arity", node.id());
+                for (std::size_t input = 0U; input < arity; ++input)
+                    if (auto type = requirePinType(true, input, EValueType::FLOAT); !type)
+                        return type;
+                return requirePinType(false, 0U, construct.out_type);
+            }
+            case EMatNodeKind::DECODE_NORMAL:
+            case EMatNodeKind::TBN_TRANSFORM:
+                if (auto shape = requireShape(1U, 1U); !shape)
+                    return shape;
+                if (auto input = requirePinType(true, 0U, EValueType::VEC3); !input)
+                    return input;
+                return requirePinType(false, 0U, EValueType::VEC3);
+            case EMatNodeKind::OUTPUT_SURFACE:
+                if (!hasShape(node, std::size(kMaterialAttributes), 0U))
+                    return invalidGraph("invalid OutputSurface pin arity", node.id());
+                for (std::size_t input = 0U; input < std::size(kMaterialAttributes); ++input)
+                    if (auto type = requirePinType(true, input, kMaterialAttributes[input].type); !type)
+                        return type;
+                return {};
+            case EMatNodeKind::INVALID:
+            case EMatNodeKind::COUNT:
+                return invalidGraph("invalid material node kind", node.id());
+            }
+            return invalidGraph("unknown material node kind", node.id());
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure>
+        validateGraph(const MaterialGraph& graph)
         {
             if (graph.nodes().empty() || graph.param_slots.size() > rdesc::MaterialDescription::kMaxParams ||
                 graph.texture_slots.size() > rdesc::MaterialDescription::kMaxTextures)
@@ -58,10 +305,35 @@ namespace lux::material
                     return lux::cxx::unexpected(failure(EMaterialCompileError::INVALID_GRAPH,
                                                          "material texture slot has a null AssetId"));
             for (const auto& parameter : graph.param_slots)
+            {
+                if (!validValueType(parameter.type))
+                    return invalidGraph("material parameter has an invalid value type");
                 for (const float value : parameter.dflt)
                     if (!std::isfinite(value))
-                        return lux::cxx::unexpected(failure(EMaterialCompileError::INVALID_GRAPH,
-                                                             "material parameter default is not finite"));
+                        return invalidGraph("material parameter default is not finite");
+            }
+
+            for (const auto& [id, node] : graph.nodes())
+            {
+                if (!node || id == invalid_node || node->id() != id)
+                    return invalidGraph("material graph contains an invalid node identity", id);
+                if (auto validation = validateNode(graph, *node); !validation)
+                    return validation;
+            }
+
+            for (const auto& [id, node] : graph.nodes())
+            {
+                for (std::uint32_t pin_index = 0U; pin_index < node->inputs().size(); ++pin_index)
+                {
+                    const auto& pin = node->inputs()[pin_index];
+                    if (!pin.source.valid())
+                        continue;
+                    const auto* source = graph.node(pin.source.node);
+                    if (source == nullptr || pin.source.pin >= source->outputs().size())
+                        return invalidGraph("material connection references an invalid output",
+                                            pin.source.node, pin.source.pin);
+                }
+            }
             return {};
         }
     } // namespace
@@ -69,11 +341,11 @@ namespace lux::material
     lux::cxx::expected<rdesc::MaterialDescription, MaterialCompileFailure>
     compileMaterial(const MaterialGraph& graph) noexcept
     {
-        if (auto validation = validateGraph(graph); !validation)
-            return lux::cxx::unexpected(std::move(validation.error()));
-
         try
         {
+            if (auto validation = validateGraph(graph); !validation)
+                return lux::cxx::unexpected(std::move(validation.error()));
+
             auto lowered = compiler::lowerMaterial(graph);
             if (!lowered)
                 return lux::cxx::unexpected(std::move(lowered.error()));

@@ -41,7 +41,7 @@ namespace lux::material
     } // namespace
 
     // ---- ConstantNode -------------------------------------------------------
-    ConstantNode::ConstantNode() : Node(EMatNodeKind::CONSTANT)
+    ConstantNode::ConstantNode() : Node(ConstructionKey{}, EMatNodeKind::CONSTANT)
     {
         setName("Constant");
         out_pins_.push_back(makePin("out", value_type, EPinDirection::OUTPUT));
@@ -55,14 +55,14 @@ namespace lux::material
     }
 
     // ---- InputNode ----------------------------------------------------------
-    InputNode::InputNode() : Node(EMatNodeKind::INPUT)
+    InputNode::InputNode() : Node(ConstructionKey{}, EMatNodeKind::INPUT)
     {
         setName("Input");
-        out_pins_.push_back(makePin("out", inputType(input), EPinDirection::OUTPUT));
+        out_pins_.push_back(makePin("out", EValueType::VEC2, EPinDirection::OUTPUT));
     }
 
     // ---- SampleTextureNode --------------------------------------------------
-    SampleTextureNode::SampleTextureNode() : Node(EMatNodeKind::SAMPLE_TEXTURE)
+    SampleTextureNode::SampleTextureNode() : Node(ConstructionKey{}, EMatNodeKind::SAMPLE_TEXTURE)
     {
         setName("Sample Texture");
         in_pins_.push_back(makePin("uv", EValueType::VEC2, EPinDirection::INPUT));
@@ -70,7 +70,7 @@ namespace lux::material
     }
 
     // ---- MathNode -----------------------------------------------------------
-    MathNode::MathNode(EMathOp o) : Node(EMatNodeKind::MATH), op(o)
+    MathNode::MathNode(EMathOp o) : Node(ConstructionKey{}, EMatNodeKind::MATH), op(o)
     {
         setName("Math");
         in_pins_.push_back(makePin("a", EValueType::FLOAT, EPinDirection::INPUT));
@@ -91,7 +91,7 @@ namespace lux::material
     }
 
     // ---- DecodeNormalNode ---------------------------------------------------
-    DecodeNormalNode::DecodeNormalNode() : Node(EMatNodeKind::DECODE_NORMAL)
+    DecodeNormalNode::DecodeNormalNode() : Node(ConstructionKey{}, EMatNodeKind::DECODE_NORMAL)
     {
         setName("Decode Normal");
         in_pins_.push_back(makePin("rgb", EValueType::VEC3, EPinDirection::INPUT));
@@ -100,7 +100,7 @@ namespace lux::material
 
     // ---- SwizzleNode --------------------------------------------------------
     SwizzleNode::SwizzleNode(EValueType source, EValueType out)
-        : Node(EMatNodeKind::SWIZZLE), source_type(source), out_type(out)
+        : Node(ConstructionKey{}, EMatNodeKind::SWIZZLE), source_type(source), out_type(out)
     {
         setName("Swizzle");
         in_pins_.push_back(makePin("in", source, EPinDirection::INPUT));
@@ -116,7 +116,7 @@ namespace lux::material
     }
 
     // ---- ParamNode ----------------------------------------------------------
-    ParamNode::ParamNode(EValueType t) : Node(EMatNodeKind::PARAM), type(t)
+    ParamNode::ParamNode(EValueType t) : Node(ConstructionKey{}, EMatNodeKind::PARAM), type(t)
     {
         setName("Param");
         out_pins_.push_back(makePin("value", t, EPinDirection::OUTPUT));
@@ -130,7 +130,7 @@ namespace lux::material
     }
 
     // ---- TbnTransformNode ---------------------------------------------------
-    TbnTransformNode::TbnTransformNode() : Node(EMatNodeKind::TBN_TRANSFORM)
+    TbnTransformNode::TbnTransformNode() : Node(ConstructionKey{}, EMatNodeKind::TBN_TRANSFORM)
     {
         setName("TBN Transform");
         in_pins_.push_back(makePin("normal_ts", EValueType::VEC3, EPinDirection::INPUT));
@@ -138,7 +138,7 @@ namespace lux::material
     }
 
     // ---- ConstructNode ------------------------------------------------------
-    ConstructNode::ConstructNode(EValueType out) : Node(EMatNodeKind::CONSTRUCT), out_type(out)
+    ConstructNode::ConstructNode(EValueType out) : Node(ConstructionKey{}, EMatNodeKind::CONSTRUCT), out_type(out)
     {
         setName("Construct");
         const int n = (out == EValueType::FLOAT) ? 1
@@ -155,7 +155,7 @@ namespace lux::material
     // One input pin per EMaterialAttribute; name/type/default come from the
     // contract table, and pin index i corresponds directly to attribute i
     // (so lowering can map between them with no extra lookup).
-    OutputSurfaceNode::OutputSurfaceNode() : Node(EMatNodeKind::OUTPUT_SURFACE)
+    OutputSurfaceNode::OutputSurfaceNode() : Node(ConstructionKey{}, EMatNodeKind::OUTPUT_SURFACE)
     {
         setName("Output Surface");
         for (const auto& a : kMaterialAttributes)

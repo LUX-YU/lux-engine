@@ -26,8 +26,16 @@ int main()
     static_assert(static_cast<std::uint8_t>(material::EMaterialAttribute::AMBIENT_OCCLUSION) == 6U);
     static_assert(static_cast<std::uint8_t>(material::EMaterialInput::UV0) == 0U);
     static_assert(static_cast<std::uint8_t>(material::EMaterialInput::VERTEX_COLOR) == 4U);
-    static_assert(material::attributeType(material::EMaterialAttribute::NORMAL_TS) == material::EValueType::VEC3);
-    static_assert(material::inputType(material::EMaterialInput::WORLD_TANGENT) == material::EValueType::VEC4);
+    static_assert(
+        material::materialAttributeDescription(material::EMaterialAttribute::NORMAL_TS)->type ==
+        material::EValueType::VEC3
+    );
+    static_assert(
+        material::materialInputDescription(material::EMaterialInput::WORLD_TANGENT)->type ==
+        material::EValueType::VEC4
+    );
+    static_assert(material::materialAttributeDescription(static_cast<material::EMaterialAttribute>(255U)) == nullptr);
+    static_assert(material::materialInputDescription(static_cast<material::EMaterialInput>(255U)) == nullptr);
 
     material::MaterialGraph graph;
     graph.texture_slots.push_back({"base-color", id(1U)});

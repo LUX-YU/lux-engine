@@ -66,3 +66,27 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 add_test(NAME material_graph_test COMMAND material_graph_test)
+
+add_executable(
+    material_external_node_negative EXCLUDE_FROM_ALL
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/material_external_node_negative.cpp
+)
+target_link_libraries(
+    material_external_node_negative
+    PRIVATE lux::engine::function::material_graph
+)
+lux_classify_target(
+    TARGET  material_external_node_negative
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME material_external_node_negative
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=material_external_node_negative
+        "-DEXPECTED_PATTERN=ConstructionKey"
+        -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)

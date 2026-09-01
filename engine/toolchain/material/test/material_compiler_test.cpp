@@ -156,5 +156,93 @@ int main()
     const auto non_finite = compileMaterial(invalid_default);
     assert(!non_finite);
     assert(non_finite.error().code == EMaterialCompileError::INVALID_GRAPH);
+
+    const auto expect_invalid_graph = [](MaterialGraph& candidate)
+    {
+        const auto result = compileMaterial(candidate);
+        assert(!result);
+        assert(result.error().code == EMaterialCompileError::INVALID_GRAPH);
+    };
+
+    auto invalid_pin_type = validGraph();
+    outputNode(invalid_pin_type).inputs()[0].type = static_cast<EValueType>(255U);
+    expect_invalid_graph(invalid_pin_type);
+
+    auto invalid_pin_direction = validGraph();
+    outputNode(invalid_pin_direction).inputs()[0].direction = EPinDirection::OUTPUT;
+    expect_invalid_graph(invalid_pin_direction);
+
+    auto partial_link = validGraph();
+    outputNode(partial_link).inputs()[0].source = PinLink{invalid_node, 0U};
+    expect_invalid_graph(partial_link);
+
+    auto non_finite_pin = validGraph();
+    outputNode(non_finite_pin).inputs()[0].constant[2] = std::numeric_limits<float>::infinity();
+    expect_invalid_graph(non_finite_pin);
+
+    auto invalid_constant_payload = validGraph();
+    for (const auto& [unused, node] : invalid_constant_payload.nodes())
+    {
+        if (auto* constant = node->as<ConstantNode>())
+        {
+            constant->value_type = static_cast<EValueType>(255U);
+            break;
+        }
+    }
+    expect_invalid_graph(invalid_constant_payload);
+
+    auto invalid_constant_value = validGraph();
+    for (const auto& [unused, node] : invalid_constant_value.nodes())
+    {
+        if (auto* constant = node->as<ConstantNode>())
+        {
+            constant->value[0] = std::numeric_limits<float>::quiet_NaN();
+            break;
+        }
+    }
+    expect_invalid_graph(invalid_constant_value);
+
+    auto invalid_input_enum = validGraph();
+    auto malformed_input = std::make_unique<InputNode>();
+    malformed_input->input = static_cast<EMaterialInput>(255U);
+    invalid_input_enum.addNode(std::move(malformed_input));
+    expect_invalid_graph(invalid_input_enum);
+
+    auto invalid_math_enum = validGraph();
+    auto malformed_math = std::make_unique<MathNode>();
+    malformed_math->op = static_cast<EMathOp>(255U);
+    invalid_math_enum.addNode(std::move(malformed_math));
+    expect_invalid_graph(invalid_math_enum);
+
+    auto unsupported_lerp = validGraph();
+    unsupported_lerp.addNode(std::make_unique<MathNode>(EMathOp::LERP));
+    expect_invalid_graph(unsupported_lerp);
+
+    auto invalid_swizzle = validGraph();
+    auto malformed_swizzle = std::make_unique<SwizzleNode>(EValueType::VEC2, EValueType::VEC3);
+    malformed_swizzle->components[2] = 2U;
+    invalid_swizzle.addNode(std::move(malformed_swizzle));
+    expect_invalid_graph(invalid_swizzle);
+
+    auto invalid_construct = validGraph();
+    auto malformed_construct = std::make_unique<ConstructNode>();
+    malformed_construct->out_type = static_cast<EValueType>(255U);
+    invalid_construct.addNode(std::move(malformed_construct));
+    expect_invalid_graph(invalid_construct);
+
+    auto invalid_parameter_type = validGraph();
+    invalid_parameter_type.param_slots.push_back(ParamSlotDecl{
+        "invalid-type",
+        static_cast<EValueType>(255U),
+        {0.0F, 0.0F, 0.0F, 0.0F}
+    });
+    expect_invalid_graph(invalid_parameter_type);
+
+    auto invalid_arity = validGraph();
+    outputNode(invalid_arity).inputs().pop_back();
+    expect_invalid_graph(invalid_arity);
+
+    assert(materialInputDescription(static_cast<EMaterialInput>(255U)) == nullptr);
+    assert(materialAttributeDescription(static_cast<EMaterialAttribute>(255U)) == nullptr);
     return 0;
 }

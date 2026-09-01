@@ -16,6 +16,17 @@
 
 namespace lux::material
 {
+    class ConstantNode;
+    class InputNode;
+    class SampleTextureNode;
+    class ParamNode;
+    class MathNode;
+    class DecodeNormalNode;
+    class TbnTransformNode;
+    class SwizzleNode;
+    class ConstructNode;
+    class OutputSurfaceNode;
+
     /**
      * @brief Kinds of material graph nodes. Append new node kinds before COUNT.
      */
@@ -41,7 +52,6 @@ namespace lux::material
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC Node
     {
     public:
-        explicit Node(EMatNodeKind kind) : kind_(kind) {}
         virtual ~Node();  // Defined in Node.cpp (MSVC export anchor)
 
         Node& operator=(const Node&) = delete;
@@ -83,13 +93,31 @@ namespace lux::material
         bool  ui_placed = false;
 
     protected:
+        class ConstructionKey final
+        {
+            ConstructionKey() = default;
+
+            friend class ConstantNode;
+            friend class InputNode;
+            friend class SampleTextureNode;
+            friend class ParamNode;
+            friend class MathNode;
+            friend class DecodeNormalNode;
+            friend class TbnTransformNode;
+            friend class SwizzleNode;
+            friend class ConstructNode;
+            friend class OutputSurfaceNode;
+        };
+
+        explicit Node(ConstructionKey, EMatNodeKind kind) : kind_(kind) {}
+
         // Protected copy constructor: only for subclass clone() to use
         // (`make_unique<Derived>(*this)`); still non-copyable from the outside
         // (prevents slicing).
         Node(const Node&) = default;
 
         node_id              id_ = invalid_node;
-        EMatNodeKind         kind_;
+        const EMatNodeKind   kind_;
         std::string          name_;
         std::vector<DataPin> in_pins_;
         std::vector<DataPin> out_pins_;

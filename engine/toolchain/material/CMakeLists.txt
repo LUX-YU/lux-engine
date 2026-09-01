@@ -146,6 +146,7 @@ target_link_libraries(
 )
 component_add_transitive_commands(
     toolchain_material_cooker
+    "find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_compiler)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 lux_classify_target(
@@ -160,6 +161,7 @@ target_include_directories(material_compiler_test PRIVATE ${CMAKE_CURRENT_SOURCE
 target_link_libraries(material_compiler_test PRIVATE lux::engine::toolchain::toolchain_material_compiler)
 
 add_executable(material_cooker_test test/material_cooker_test.cpp)
+target_include_directories(material_cooker_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 target_link_libraries(material_cooker_test PRIVATE lux::engine::toolchain::toolchain_material_cooker)
 
 foreach(material_test IN ITEMS material_compiler_test material_cooker_test)

@@ -48,6 +48,8 @@ component_add_transitive_commands(
     "find_package(meshoptimizer CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_cooker)"
+    "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_texture_cooker)"
 )
 lux_classify_target(
     TARGET  toolchain_model_cooker

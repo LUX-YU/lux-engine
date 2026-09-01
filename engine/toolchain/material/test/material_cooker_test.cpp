@@ -1,5 +1,6 @@
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/material/Cooker.hpp>
+#include <lux/engine/material/import/MaterialToGraph.hpp>
 
 #include <array>
 #include <cassert>
@@ -51,6 +52,14 @@ int main()
     assert((*cooked)->data().gbuffer_spirv.size() >= 5U);
     assert((*cooked)->data().forward_spirv.size() >= 5U);
 
+    auto graph = lux::material::compiler::materialToGraph(imported);
+    assert(graph);
+    const auto direct = lux::material::cookMaterial(info(4U), *graph);
+    assert(direct);
+    assert((*direct)->data().gbuffer_spirv == (*cooked)->data().gbuffer_spirv);
+    assert((*direct)->data().forward_spirv == (*cooked)->data().forward_spirv);
+    assert((*direct)->data().texture_slot_ids == (*cooked)->data().texture_slot_ids);
+
     constexpr lux::asset::AssetEncodeLimits encode_limits{16U * 1024U * 1024U};
     const auto encoded = lux::asset::TAssetSerDeser<lux::asset::MaterialAsset>::encode(
         **cooked,
@@ -60,6 +69,8 @@ int main()
 
     auto invalid = imported;
     invalid.base_color_texture->texture = {};
-    assert(!lux::material::cookImportedMaterial(info(3U), invalid));
+    const auto invalid_result = lux::material::cookImportedMaterial(info(3U), invalid);
+    assert(!invalid_result);
+    assert(invalid_result.error().code == lux::material::EMaterialCookError::IMPORT_FAILURE);
     return 0;
 }

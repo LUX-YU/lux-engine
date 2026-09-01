@@ -11,7 +11,7 @@
 #include <vector>
 
 #include <lux/engine/material/graph/Node.hpp>
-#include <lux/engine/description/MaterialGraphContract.hpp>
+#include <lux/engine/description/MaterialEnums.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/material/graph/visibility.h>
 
@@ -29,7 +29,7 @@ namespace lux::material
     struct ParamSlotDecl
     {
         std::string   name;
-        EMatValueType type    = EMatValueType::Float;
+        EValueType type    = EValueType::FLOAT;
         float         dflt[4] = { 0, 0, 0, 0 };
     };
 
@@ -40,7 +40,7 @@ namespace lux::material
     /// the bucket key).
     struct RenderState
     {
-        EAlphaMode alpha_mode   = EAlphaMode::Opaque;
+        lux::rdesc::EAlphaMode alpha_mode = lux::rdesc::EAlphaMode::Opaque;
         float      alpha_cutoff = 0.5f;
         bool       double_sided = false;
     };
@@ -89,7 +89,7 @@ namespace lux::material
             return nodes_;
         }
 
-        EMaterialShadingModel        shading_model = EMaterialShadingModel::PbrMetallicRoughness;
+        lux::rdesc::ELightingTechnique shading_model = lux::rdesc::ELightingTechnique::PbrMetallicRoughness;
         std::vector<TextureSlotDecl> texture_slots;
         std::vector<ParamSlotDecl>   param_slots;
         RenderState                  render_state;

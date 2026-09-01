@@ -20,6 +20,15 @@ int main()
 {
     namespace material = lux::material;
 
+    static_assert(static_cast<std::uint8_t>(material::EValueType::FLOAT) == 0U);
+    static_assert(static_cast<std::uint8_t>(material::EValueType::VEC4) == 3U);
+    static_assert(static_cast<std::uint8_t>(material::EMaterialAttribute::BASE_COLOR) == 0U);
+    static_assert(static_cast<std::uint8_t>(material::EMaterialAttribute::AMBIENT_OCCLUSION) == 6U);
+    static_assert(static_cast<std::uint8_t>(material::EMaterialInput::UV0) == 0U);
+    static_assert(static_cast<std::uint8_t>(material::EMaterialInput::VERTEX_COLOR) == 4U);
+    static_assert(material::attributeType(material::EMaterialAttribute::NORMAL_TS) == material::EValueType::VEC3);
+    static_assert(material::inputType(material::EMaterialInput::WORLD_TANGENT) == material::EValueType::VEC4);
+
     material::MaterialGraph graph;
     graph.texture_slots.push_back({"base-color", id(1U)});
     const auto sample = graph.addNode(std::make_unique<material::SampleTextureNode>());
@@ -29,7 +38,7 @@ int main()
         sample,
         0U,
         output,
-        static_cast<std::uint32_t>(material::EMaterialAttribute::BaseColor)
+        static_cast<std::uint32_t>(material::EMaterialAttribute::BASE_COLOR)
     ));
 
     auto clone = graph.clone();

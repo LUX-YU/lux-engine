@@ -14,23 +14,23 @@ namespace lux::material
     {
         switch (kind)
         {
-        case EMatNodeKind::Constant:      return "Constant";
-        case EMatNodeKind::Input:         return "Input";
-        case EMatNodeKind::SampleTexture: return "Sample Texture";
-        case EMatNodeKind::Math:          return "Math";
-        case EMatNodeKind::Swizzle:       return "Swizzle";
-        case EMatNodeKind::Construct:     return "Construct";
-        case EMatNodeKind::DecodeNormal:  return "Decode Normal";
-        case EMatNodeKind::TbnTransform:  return "TBN Transform";
-        case EMatNodeKind::Param:         return "Param";
-        case EMatNodeKind::OutputSurface: return "Output Surface";
+        case EMatNodeKind::CONSTANT:      return "Constant";
+        case EMatNodeKind::INPUT:         return "Input";
+        case EMatNodeKind::SAMPLE_TEXTURE: return "Sample Texture";
+        case EMatNodeKind::MATH:          return "Math";
+        case EMatNodeKind::SWIZZLE:       return "Swizzle";
+        case EMatNodeKind::CONSTRUCT:     return "Construct";
+        case EMatNodeKind::DECODE_NORMAL:  return "Decode Normal";
+        case EMatNodeKind::TBN_TRANSFORM:  return "TBN Transform";
+        case EMatNodeKind::PARAM:         return "Param";
+        case EMatNodeKind::OUTPUT_SURFACE: return "Output Surface";
         default:                          return "Invalid";
         }
     }
 
     namespace
     {
-        DataPin makePin(const char* name, EMatValueType type, EPinDirection dir)
+        DataPin makePin(const char* name, EValueType type, EPinDirection dir)
         {
             DataPin p{};
             p.name      = name;
@@ -41,13 +41,13 @@ namespace lux::material
     } // namespace
 
     // ---- ConstantNode -------------------------------------------------------
-    ConstantNode::ConstantNode() : Node(EMatNodeKind::Constant)
+    ConstantNode::ConstantNode() : Node(EMatNodeKind::CONSTANT)
     {
         setName("Constant");
-        out_pins_.push_back(makePin("out", value_type, EPinDirection::Output));
+        out_pins_.push_back(makePin("out", value_type, EPinDirection::OUTPUT));
     }
 
-    void ConstantNode::setType(EMatValueType t)
+    void ConstantNode::setType(EValueType t)
     {
         value_type = t;
         if (!out_pins_.empty())
@@ -55,30 +55,30 @@ namespace lux::material
     }
 
     // ---- InputNode ----------------------------------------------------------
-    InputNode::InputNode() : Node(EMatNodeKind::Input)
+    InputNode::InputNode() : Node(EMatNodeKind::INPUT)
     {
         setName("Input");
-        out_pins_.push_back(makePin("out", inputType(input), EPinDirection::Output));
+        out_pins_.push_back(makePin("out", inputType(input), EPinDirection::OUTPUT));
     }
 
     // ---- SampleTextureNode --------------------------------------------------
-    SampleTextureNode::SampleTextureNode() : Node(EMatNodeKind::SampleTexture)
+    SampleTextureNode::SampleTextureNode() : Node(EMatNodeKind::SAMPLE_TEXTURE)
     {
         setName("Sample Texture");
-        in_pins_.push_back(makePin("uv", EMatValueType::Vec2, EPinDirection::Input));
-        out_pins_.push_back(makePin("rgba", EMatValueType::Vec4, EPinDirection::Output));
+        in_pins_.push_back(makePin("uv", EValueType::VEC2, EPinDirection::INPUT));
+        out_pins_.push_back(makePin("rgba", EValueType::VEC4, EPinDirection::OUTPUT));
     }
 
     // ---- MathNode -----------------------------------------------------------
-    MathNode::MathNode(EMathOp o) : Node(EMatNodeKind::Math), op(o)
+    MathNode::MathNode(EMathOp o) : Node(EMatNodeKind::MATH), op(o)
     {
         setName("Math");
-        in_pins_.push_back(makePin("a", EMatValueType::Float, EPinDirection::Input));
-        in_pins_.push_back(makePin("b", EMatValueType::Float, EPinDirection::Input));
-        out_pins_.push_back(makePin("result", EMatValueType::Float, EPinDirection::Output));
+        in_pins_.push_back(makePin("a", EValueType::FLOAT, EPinDirection::INPUT));
+        in_pins_.push_back(makePin("b", EValueType::FLOAT, EPinDirection::INPUT));
+        out_pins_.push_back(makePin("result", EValueType::FLOAT, EPinDirection::OUTPUT));
     }
 
-    void MathNode::setOperandType(EMatValueType t)
+    void MathNode::setOperandType(EValueType t)
     {
         operand_type = t;
         if (in_pins_.size() >= 2)
@@ -91,23 +91,23 @@ namespace lux::material
     }
 
     // ---- DecodeNormalNode ---------------------------------------------------
-    DecodeNormalNode::DecodeNormalNode() : Node(EMatNodeKind::DecodeNormal)
+    DecodeNormalNode::DecodeNormalNode() : Node(EMatNodeKind::DECODE_NORMAL)
     {
         setName("Decode Normal");
-        in_pins_.push_back(makePin("rgb", EMatValueType::Vec3, EPinDirection::Input));
-        out_pins_.push_back(makePin("normal", EMatValueType::Vec3, EPinDirection::Output));
+        in_pins_.push_back(makePin("rgb", EValueType::VEC3, EPinDirection::INPUT));
+        out_pins_.push_back(makePin("normal", EValueType::VEC3, EPinDirection::OUTPUT));
     }
 
     // ---- SwizzleNode --------------------------------------------------------
-    SwizzleNode::SwizzleNode(EMatValueType source, EMatValueType out)
-        : Node(EMatNodeKind::Swizzle), source_type(source), out_type(out)
+    SwizzleNode::SwizzleNode(EValueType source, EValueType out)
+        : Node(EMatNodeKind::SWIZZLE), source_type(source), out_type(out)
     {
         setName("Swizzle");
-        in_pins_.push_back(makePin("in", source, EPinDirection::Input));
-        out_pins_.push_back(makePin("out", out, EPinDirection::Output));
+        in_pins_.push_back(makePin("in", source, EPinDirection::INPUT));
+        out_pins_.push_back(makePin("out", out, EPinDirection::OUTPUT));
     }
 
-    void SwizzleNode::setTypes(EMatValueType source, EMatValueType out)
+    void SwizzleNode::setTypes(EValueType source, EValueType out)
     {
         source_type = source;
         out_type    = out;
@@ -116,13 +116,13 @@ namespace lux::material
     }
 
     // ---- ParamNode ----------------------------------------------------------
-    ParamNode::ParamNode(EMatValueType t) : Node(EMatNodeKind::Param), type(t)
+    ParamNode::ParamNode(EValueType t) : Node(EMatNodeKind::PARAM), type(t)
     {
         setName("Param");
-        out_pins_.push_back(makePin("value", t, EPinDirection::Output));
+        out_pins_.push_back(makePin("value", t, EPinDirection::OUTPUT));
     }
 
-    void ParamNode::setType(EMatValueType t)
+    void ParamNode::setType(EValueType t)
     {
         type = t;
         if (!out_pins_.empty())
@@ -130,37 +130,37 @@ namespace lux::material
     }
 
     // ---- TbnTransformNode ---------------------------------------------------
-    TbnTransformNode::TbnTransformNode() : Node(EMatNodeKind::TbnTransform)
+    TbnTransformNode::TbnTransformNode() : Node(EMatNodeKind::TBN_TRANSFORM)
     {
         setName("TBN Transform");
-        in_pins_.push_back(makePin("normal_ts", EMatValueType::Vec3, EPinDirection::Input));
-        out_pins_.push_back(makePin("world_normal", EMatValueType::Vec3, EPinDirection::Output));
+        in_pins_.push_back(makePin("normal_ts", EValueType::VEC3, EPinDirection::INPUT));
+        out_pins_.push_back(makePin("world_normal", EValueType::VEC3, EPinDirection::OUTPUT));
     }
 
     // ---- ConstructNode ------------------------------------------------------
-    ConstructNode::ConstructNode(EMatValueType out) : Node(EMatNodeKind::Construct), out_type(out)
+    ConstructNode::ConstructNode(EValueType out) : Node(EMatNodeKind::CONSTRUCT), out_type(out)
     {
         setName("Construct");
-        const int n = (out == EMatValueType::Float) ? 1
-                    : (out == EMatValueType::Vec2)  ? 2
-                    : (out == EMatValueType::Vec3)  ? 3
+        const int n = (out == EValueType::FLOAT) ? 1
+                    : (out == EValueType::VEC2)  ? 2
+                    : (out == EValueType::VEC3)  ? 3
                                                     : 4;
         static const char* const kComp[4] = { "x", "y", "z", "w" };
         for (int i = 0; i < n; ++i)
-            in_pins_.push_back(makePin(kComp[i], EMatValueType::Float, EPinDirection::Input));
-        out_pins_.push_back(makePin("out", out, EPinDirection::Output));
+            in_pins_.push_back(makePin(kComp[i], EValueType::FLOAT, EPinDirection::INPUT));
+        out_pins_.push_back(makePin("out", out, EPinDirection::OUTPUT));
     }
 
     // ---- OutputSurfaceNode --------------------------------------------------
     // One input pin per EMaterialAttribute; name/type/default come from the
     // contract table, and pin index i corresponds directly to attribute i
     // (so lowering can map between them with no extra lookup).
-    OutputSurfaceNode::OutputSurfaceNode() : Node(EMatNodeKind::OutputSurface)
+    OutputSurfaceNode::OutputSurfaceNode() : Node(EMatNodeKind::OUTPUT_SURFACE)
     {
         setName("Output Surface");
         for (const auto& a : kMaterialAttributes)
         {
-            DataPin pin = makePin(a.glsl_name, a.type, EPinDirection::Input);
+            DataPin pin = makePin(a.name, a.type, EPinDirection::INPUT);
             pin.constant[0] = a.dflt[0];
             pin.constant[1] = a.dflt[1];
             pin.constant[2] = a.dflt[2];

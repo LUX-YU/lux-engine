@@ -9,9 +9,8 @@
 //  contract, so they live here — a dependency-free header (only <cstdint>) the
 //  graph/data tiers can include without dragging in the dead closure machinery.
 //
-//    * ELightingTechnique — reused as the graph's shading-model selector
-//      (MaterialGraphContract's EMaterialShadingModel); also the render
-//      MaterialFamily key.
+//    * ELightingTechnique — reused as the Material source graph's shading-model
+//      selector; also the render MaterialFamily key.
 //    * EAlphaMode — render-state (opaque/mask/blend) carried on the graph +
 //      imported descs + the Graph-family bucket key.
 //    * EDiffuseModel / ESpecularModel — the builtin LegacyLit family's still-present

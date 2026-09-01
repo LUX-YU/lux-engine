@@ -2,7 +2,7 @@
 //  MaterialLowering.cpp — material graph -> pure expression ShaderIR
 //  (iterative worklist DFS)
 // -----------------------------------------------------------------------------
-//  ShaderGen's Client A. The data model rdesc::MaterialGraph lives in the
+//  ShaderGen's Client A. The data model graph::MaterialGraph lives in the
 //  description layer; this file lowers it into a backend-neutral ShaderIR
 //  (pure data) that engine/'s GLSL backend then turns into SPIR-V.
 //  The algorithm shares its lineage with lux::matgraph::lowerToIR (an
@@ -24,98 +24,110 @@ namespace lux::shadergen::material
 {
     namespace
     {
-        namespace rdesc = ::lux::material;
+        namespace graph = ::lux::material;
+
+        EValueType mapValueType(graph::EValueType type) noexcept
+        {
+            switch (type)
+            {
+            case graph::EValueType::FLOAT: return EValueType::FLOAT;
+            case graph::EValueType::VEC2: return EValueType::VEC2;
+            case graph::EValueType::VEC3: return EValueType::VEC3;
+            case graph::EValueType::VEC4: return EValueType::VEC4;
+            }
+            return EValueType::FLOAT;
+        }
 
         bool isVector(EValueType t) noexcept
         {
-            return t == EValueType::Vec2 || t == EValueType::Vec3 || t == EValueType::Vec4;
+            return t == EValueType::VEC2 || t == EValueType::VEC3 || t == EValueType::VEC4;
         }
 
         const char* typeName(EValueType t) noexcept
         {
             switch (t)
             {
-            case EValueType::Float: return "float";
-            case EValueType::Vec2:  return "vec2";
-            case EValueType::Vec3:  return "vec3";
-            case EValueType::Vec4:  return "vec4";
+            case EValueType::FLOAT: return "float";
+            case EValueType::VEC2:  return "vec2";
+            case EValueType::VEC3:  return "vec3";
+            case EValueType::VEC4:  return "vec4";
             }
             return "?";
         }
 
-        EOp mapMathOp(rdesc::EMathOp op) noexcept
+        EOp mapMathOp(graph::EMathOp op) noexcept
         {
             switch (op)
             {
-            case rdesc::EMathOp::Mul:       return EOp::Mul;
-            case rdesc::EMathOp::Add:       return EOp::Add;
-            case rdesc::EMathOp::Sub:       return EOp::Sub;
-            case rdesc::EMathOp::Div:       return EOp::Div;
-            case rdesc::EMathOp::Lerp:      return EOp::Lerp;
-            case rdesc::EMathOp::Saturate:  return EOp::Saturate;
-            case rdesc::EMathOp::Dot:       return EOp::Dot;
-            case rdesc::EMathOp::Min:       return EOp::Min;
-            case rdesc::EMathOp::Max:       return EOp::Max;
-            case rdesc::EMathOp::Pow:       return EOp::Pow;
-            case rdesc::EMathOp::Step:      return EOp::Step;
-            case rdesc::EMathOp::Mod:       return EOp::Mod;
-            case rdesc::EMathOp::Cross:     return EOp::Cross;
-            case rdesc::EMathOp::Reflect:   return EOp::Reflect;
-            case rdesc::EMathOp::OneMinus:  return EOp::OneMinus;
-            case rdesc::EMathOp::Abs:       return EOp::Abs;
-            case rdesc::EMathOp::Sqrt:      return EOp::Sqrt;
-            case rdesc::EMathOp::Floor:     return EOp::Floor;
-            case rdesc::EMathOp::Fract:     return EOp::Fract;
-            case rdesc::EMathOp::Sin:       return EOp::Sin;
-            case rdesc::EMathOp::Cos:       return EOp::Cos;
-            case rdesc::EMathOp::Normalize: return EOp::Normalize;
-            case rdesc::EMathOp::Length:    return EOp::Length;
+            case graph::EMathOp::MUL:       return EOp::MUL;
+            case graph::EMathOp::ADD:       return EOp::ADD;
+            case graph::EMathOp::SUB:       return EOp::SUB;
+            case graph::EMathOp::DIV:       return EOp::DIV;
+            case graph::EMathOp::LERP:      return EOp::LERP;
+            case graph::EMathOp::SATURATE:  return EOp::SATURATE;
+            case graph::EMathOp::DOT:       return EOp::DOT;
+            case graph::EMathOp::MIN:       return EOp::MIN;
+            case graph::EMathOp::MAX:       return EOp::MAX;
+            case graph::EMathOp::POW:       return EOp::POW;
+            case graph::EMathOp::STEP:      return EOp::STEP;
+            case graph::EMathOp::MOD:       return EOp::MOD;
+            case graph::EMathOp::CROSS:     return EOp::CROSS;
+            case graph::EMathOp::REFLECT:   return EOp::REFLECT;
+            case graph::EMathOp::ONE_MINUS:  return EOp::ONE_MINUS;
+            case graph::EMathOp::ABS:       return EOp::ABS;
+            case graph::EMathOp::SQRT:      return EOp::SQRT;
+            case graph::EMathOp::FLOOR:     return EOp::FLOOR;
+            case graph::EMathOp::FRACT:     return EOp::FRACT;
+            case graph::EMathOp::SIN:       return EOp::SIN;
+            case graph::EMathOp::COS:       return EOp::COS;
+            case graph::EMathOp::NORMALIZE: return EOp::NORMALIZE;
+            case graph::EMathOp::LENGTH:    return EOp::LENGTH;
             }
-            return EOp::Mul;
+            return EOp::MUL;
         }
 
-        bool isUnaryMathOp(rdesc::EMathOp op) noexcept
+        bool isUnaryMathOp(graph::EMathOp op) noexcept
         {
             switch (op)
             {
-            case rdesc::EMathOp::Saturate:
-            case rdesc::EMathOp::OneMinus:
-            case rdesc::EMathOp::Abs:
-            case rdesc::EMathOp::Sqrt:
-            case rdesc::EMathOp::Floor:
-            case rdesc::EMathOp::Fract:
-            case rdesc::EMathOp::Sin:
-            case rdesc::EMathOp::Cos:
-            case rdesc::EMathOp::Normalize:
-            case rdesc::EMathOp::Length:
+            case graph::EMathOp::SATURATE:
+            case graph::EMathOp::ONE_MINUS:
+            case graph::EMathOp::ABS:
+            case graph::EMathOp::SQRT:
+            case graph::EMathOp::FLOOR:
+            case graph::EMathOp::FRACT:
+            case graph::EMathOp::SIN:
+            case graph::EMathOp::COS:
+            case graph::EMathOp::NORMALIZE:
+            case graph::EMathOp::LENGTH:
                 return true;
             default:
                 return false;
             }
         }
 
-        EValueType mathResultType(rdesc::EMathOp op, EValueType operand) noexcept
+        EValueType mathResultType(graph::EMathOp op, EValueType operand) noexcept
         {
-            if (op == rdesc::EMathOp::Dot || op == rdesc::EMathOp::Length)
-                return EValueType::Float;
+            if (op == graph::EMathOp::DOT || op == graph::EMathOp::LENGTH)
+                return EValueType::FLOAT;
             return operand;
         }
 
-        int usedInputCount(const rdesc::Node* n) noexcept
+        int usedInputCount(const graph::Node* n) noexcept
         {
             switch (n->kind())
             {
-            case rdesc::EMatNodeKind::Constant:
-            case rdesc::EMatNodeKind::Input:
+            case graph::EMatNodeKind::CONSTANT:
+            case graph::EMatNodeKind::INPUT:
                 return 0;
-            case rdesc::EMatNodeKind::SampleTexture:
-            case rdesc::EMatNodeKind::DecodeNormal:
-            case rdesc::EMatNodeKind::Swizzle:
-            case rdesc::EMatNodeKind::TbnTransform:
+            case graph::EMatNodeKind::SAMPLE_TEXTURE:
+            case graph::EMatNodeKind::DECODE_NORMAL:
+            case graph::EMatNodeKind::SWIZZLE:
+            case graph::EMatNodeKind::TBN_TRANSFORM:
                 return 1;
-            case rdesc::EMatNodeKind::Math:
-                return isUnaryMathOp(static_cast<const rdesc::MathNode*>(n)->op) ? 1 : 2;
-            case rdesc::EMatNodeKind::Construct:
+            case graph::EMatNodeKind::MATH:
+                return isUnaryMathOp(static_cast<const graph::MathNode*>(n)->op) ? 1 : 2;
+            case graph::EMatNodeKind::CONSTRUCT:
                 return static_cast<int>(n->inputs().size());
             default:
                 return 0;
@@ -129,15 +141,15 @@ namespace lux::shadergen::material
         // output stays equivalent to the old backend's GLSL). VertexColor was
         // never declared by the old backend, so it's left at -1 for the
         // emitter/ShellTemplate to decide.
-        int32_t materialInputLocation(rdesc::EMaterialInput in) noexcept
+        int32_t materialInputLocation(graph::EMaterialInput in) noexcept
         {
             switch (in)
             {
-            case rdesc::EMaterialInput::WorldPosition: return 0;
-            case rdesc::EMaterialInput::WorldNormal:   return 1;
-            case rdesc::EMaterialInput::UV0:           return 3;
-            case rdesc::EMaterialInput::WorldTangent:  return 5;
-            case rdesc::EMaterialInput::VertexColor:   return -1;
+            case graph::EMaterialInput::WORLD_POSITION: return 0;
+            case graph::EMaterialInput::WORLD_NORMAL:   return 1;
+            case graph::EMaterialInput::UV0:           return 3;
+            case graph::EMaterialInput::WORLD_TANGENT:  return 5;
+            case graph::EMaterialInput::VERTEX_COLOR:   return -1;
             default:                                   return -1;
             }
         }
@@ -146,16 +158,16 @@ namespace lux::shadergen::material
         // color: 0=white, 1=gray, 2=black.
         struct Lowerer
         {
-            const rdesc::MaterialGraph& g;
+            const graph::MaterialGraph& g;
             LowerResult&                result;
             ShaderIR&                   ir;
             std::string*                error;
-            std::unordered_map<rdesc::node_id, int>            color;
-            std::unordered_map<rdesc::node_id, uint32_t>       value_of;
-            std::unordered_map<rdesc::EMaterialInput, uint32_t> input_slot_of;
+            std::unordered_map<graph::node_id, int>            color;
+            std::unordered_map<graph::node_id, uint32_t>       value_of;
+            std::unordered_map<graph::EMaterialInput, uint32_t> input_slot_of;
             bool                                               ok = true;
 
-            Lowerer(const rdesc::MaterialGraph& g_, LowerResult& r_, std::string* e_)
+            Lowerer(const graph::MaterialGraph& g_, LowerResult& r_, std::string* e_)
                 : g(g_), result(r_), ir(r_.ir), error(e_)
             {
             }
@@ -178,7 +190,7 @@ namespace lux::shadergen::material
             uint32_t emitConstant(const float c[4], EValueType t)
             {
                 ShaderIRValue v{};
-                v.op   = EOp::Constant;
+                v.op   = EOp::CONSTANT;
                 v.type = t;
                 v.constant[0] = c[0];
                 v.constant[1] = c[1];
@@ -189,25 +201,25 @@ namespace lux::shadergen::material
 
             // Maps a material shading-input semantic onto a generic inputs
             // slot, creating it lazily on first use.
-            uint32_t inputSlot(rdesc::EMaterialInput in)
+            uint32_t inputSlot(graph::EMaterialInput in)
             {
                 auto it = input_slot_of.find(in);
                 if (it != input_slot_of.end())
                     return it->second;
                 const uint32_t slot = static_cast<uint32_t>(ir.inputs.size());
                 InputSlot s;
-                s.name          = rdesc::kMaterialInputs[static_cast<size_t>(in)].glsl_name;
-                s.type          = rdesc::inputType(in);
+                s.name          = graph::kMaterialInputs[static_cast<size_t>(in)].name;
+                s.type          = mapValueType(graph::inputType(in));
                 s.location      = materialInputLocation(in);  // aligned with the engine material vert interpolant layout
-                s.interpolation = EInterpolation::Smooth;     // material shading inputs are always interpolated
+                s.interpolation = EInterpolation::SMOOTH;     // material shading inputs are always interpolated
                 ir.inputs.push_back(std::move(s));
                 input_slot_of[in] = slot;
                 return slot;
             }
 
-            bool validateSource(const rdesc::DataPin& pin)
+            bool validateSource(const graph::DataPin& pin)
             {
-                const rdesc::Node* src = g.node(pin.source.node);
+                const graph::Node* src = g.node(pin.source.node);
                 if (!src)
                     return fail("dangling connection: source node missing");
                 if (pin.source.pin >= src->outputs().size())
@@ -221,7 +233,7 @@ namespace lux::shadergen::material
             // the already-lowered source value and type-checks it (including
             // UE-style implicit narrowing / scalar splat); if unconnected:
             // materializes a Constant from the pin's default value.
-            uint32_t operandValue(const rdesc::DataPin& pin)
+            uint32_t operandValue(const graph::DataPin& pin)
             {
                 if (!ok)
                     return kNoValue;
@@ -236,7 +248,7 @@ namespace lux::shadergen::material
                     }
                     const uint32_t vidx = it->second;
                     const EValueType produced = ir.values[vidx].type;
-                    if (produced == pin.type)
+                    if (produced == mapValueType(pin.type))
                         return vidx;
 
                     const int ap = static_cast<int>(produced) + 1;   // source arity
@@ -245,40 +257,40 @@ namespace lux::shadergen::material
                     {
                         // larger -> smaller vector: take the leading components.
                         ShaderIRValue v{};
-                        v.op          = EOp::Swizzle;
-                        v.type        = pin.type;
+                        v.op          = EOp::SWIZZLE;
+                        v.type        = mapValueType(pin.type);
                         v.operands[0] = vidx;
                         v.swizzle[0]  = 0; v.swizzle[1] = 1; v.swizzle[2] = 2; v.swizzle[3] = 3;
                         return push(v);
                     }
-                    if (produced == EValueType::Float && an > 1)
+                    if (produced == EValueType::FLOAT && an > 1)
                     {
                         // scalar -> vector: splat (vecN(x)).
                         ShaderIRValue v{};
-                        v.op   = EOp::Construct;
-                        v.type = pin.type;
+                        v.op   = EOp::CONSTRUCT;
+                        v.type = mapValueType(pin.type);
                         for (int i = 0; i < an; ++i) v.operands[static_cast<size_t>(i)] = vidx;
                         return push(v);
                     }
                     fail(std::string("type mismatch: source produces ") + typeName(produced)
-                         + " but pin '" + pin.name + "' expects " + typeName(pin.type)
+                         + " but pin '" + pin.name + "' expects " + typeName(mapValueType(pin.type))
                          + " — insert a Construct node to widen");
                     return kNoValue;
                 }
 
-                return emitConstant(pin.constant, pin.type);
+                return emitConstant(pin.constant, mapValueType(pin.type));
             }
 
             // Iterative post-order DFS: lowers root and its dependency
             // subgraph, returning root's value index.
-            uint32_t lower(rdesc::node_id root)
+            uint32_t lower(graph::node_id root)
             {
-                std::vector<rdesc::node_id> stack;
+                std::vector<graph::node_id> stack;
                 stack.push_back(root);
 
                 while (ok && !stack.empty())
                 {
-                    const rdesc::node_id id = stack.back();
+                    const graph::node_id id = stack.back();
                     const int col = color[id];
 
                     if (col == 2)
@@ -287,7 +299,7 @@ namespace lux::shadergen::material
                         continue;
                     }
 
-                    const rdesc::Node* n = g.node(id);
+                    const graph::Node* n = g.node(id);
                     if (!n)
                     {
                         fail("internal: referenced node id not found");
@@ -303,7 +315,7 @@ namespace lux::shadergen::material
                             used = pin_count;
                         for (int k = 0; k < used; ++k)
                         {
-                            const rdesc::DataPin& pin = n->inputs()[k];
+                            const graph::DataPin& pin = n->inputs()[k];
                             if (!pin.source.valid())
                                 continue;
                             if (!validateSource(pin))
@@ -333,32 +345,32 @@ namespace lux::shadergen::material
                 return it == value_of.end() ? kNoValue : it->second;
             }
 
-            uint32_t emitNode(const rdesc::Node* n)
+            uint32_t emitNode(const graph::Node* n)
             {
                 switch (n->kind())
                 {
-                case rdesc::EMatNodeKind::Constant:
+                case graph::EMatNodeKind::CONSTANT:
                 {
-                    auto* c = static_cast<const rdesc::ConstantNode*>(n);
+                    auto* c = static_cast<const graph::ConstantNode*>(n);
                     ShaderIRValue v{};
-                    v.op   = EOp::Constant;
-                    v.type = c->value_type;
+                    v.op   = EOp::CONSTANT;
+                    v.type = mapValueType(c->value_type);
                     for (int k = 0; k < 4; ++k)
                         v.constant[k] = c->value[k];
                     return push(v);
                 }
-                case rdesc::EMatNodeKind::Input:
+                case graph::EMatNodeKind::INPUT:
                 {
-                    auto* in = static_cast<const rdesc::InputNode*>(n);
+                    auto* in = static_cast<const graph::InputNode*>(n);
                     ShaderIRValue v{};
-                    v.op   = EOp::Input;
-                    v.type = rdesc::inputType(in->input);
+                    v.op   = EOp::INPUT;
+                    v.type = mapValueType(graph::inputType(in->input));
                     v.slot = inputSlot(in->input);
                     return push(v);
                 }
-                case rdesc::EMatNodeKind::SampleTexture:
+                case graph::EMatNodeKind::SAMPLE_TEXTURE:
                 {
-                    auto* s = static_cast<const rdesc::SampleTextureNode*>(n);
+                    auto* s = static_cast<const graph::SampleTextureNode*>(n);
                     if (n->inputs().empty())
                     {
                         fail("SampleTexture node has no 'uv' input pin");
@@ -373,29 +385,29 @@ namespace lux::shadergen::material
                         return kNoValue;
                     }
                     ShaderIRValue v{};
-                    v.op          = EOp::SampleTexture;
-                    v.type        = EValueType::Vec4;
+                    v.op          = EOp::SAMPLE_TEXTURE;
+                    v.type        = EValueType::VEC4;
                     v.slot        = s->texture_slot;
                     v.operands[0] = uv;
                     return push(v);
                 }
-                case rdesc::EMatNodeKind::Param:
+                case graph::EMatNodeKind::PARAM:
                 {
-                    auto* p = static_cast<const rdesc::ParamNode*>(n);
+                    auto* p = static_cast<const graph::ParamNode*>(n);
                     if (p->param_slot >= ir.params.size())
                     {
                         fail("Param references an undeclared parameter slot");
                         return kNoValue;
                     }
                     ShaderIRValue v{};
-                    v.op   = EOp::Param;
+                    v.op   = EOp::PARAM;
                     v.type = ir.params[p->param_slot].type;  // authoritative: the declared parameter type
                     v.slot = p->param_slot;
                     return push(v);
                 }
-                case rdesc::EMatNodeKind::Math:
-                    return emitMath(static_cast<const rdesc::MathNode*>(n));
-                case rdesc::EMatNodeKind::DecodeNormal:
+                case graph::EMatNodeKind::MATH:
+                    return emitMath(static_cast<const graph::MathNode*>(n));
+                case graph::EMatNodeKind::DECODE_NORMAL:
                 {
                     if (n->inputs().empty())
                     {
@@ -406,12 +418,12 @@ namespace lux::shadergen::material
                     if (!ok)
                         return kNoValue;
                     ShaderIRValue v{};
-                    v.op          = EOp::DecodeNormal;
-                    v.type        = EValueType::Vec3;
+                    v.op          = EOp::DECODE_NORMAL;
+                    v.type        = EValueType::VEC3;
                     v.operands[0] = rgb;
                     return push(v);
                 }
-                case rdesc::EMatNodeKind::Swizzle:
+                case graph::EMatNodeKind::SWIZZLE:
                 {
                     if (n->inputs().empty())
                     {
@@ -421,16 +433,16 @@ namespace lux::shadergen::material
                     const uint32_t src = operandValue(n->inputs()[0]);
                     if (!ok)
                         return kNoValue;
-                    auto* sw = static_cast<const rdesc::SwizzleNode*>(n);
+                    auto* sw = static_cast<const graph::SwizzleNode*>(n);
                     ShaderIRValue v{};
-                    v.op          = EOp::Swizzle;
-                    v.type        = sw->out_type;
+                    v.op          = EOp::SWIZZLE;
+                    v.type        = mapValueType(sw->out_type);
                     v.operands[0] = src;
                     for (int k = 0; k < 4; ++k)
                         v.swizzle[k] = sw->components[k];
                     return push(v);
                 }
-                case rdesc::EMatNodeKind::TbnTransform:
+                case graph::EMatNodeKind::TBN_TRANSFORM:
                 {
                     if (n->inputs().empty())
                     {
@@ -441,18 +453,18 @@ namespace lux::shadergen::material
                     if (!ok)
                         return kNoValue;
                     ShaderIRValue v{};
-                    v.op          = EOp::TbnNormal;
-                    v.type        = EValueType::Vec3;
+                    v.op          = EOp::TBN_NORMAL;
+                    v.type        = EValueType::VEC3;
                     v.operands[0] = src;
                     return push(v);
                 }
-                case rdesc::EMatNodeKind::Construct:
+                case graph::EMatNodeKind::CONSTRUCT:
                 {
-                    auto* cs = static_cast<const rdesc::ConstructNode*>(n);
+                    auto* cs = static_cast<const graph::ConstructNode*>(n);
                     const size_t cnt = n->inputs().size() > 4 ? 4 : n->inputs().size();
                     ShaderIRValue v{};
-                    v.op   = EOp::Construct;
-                    v.type = cs->out_type;
+                    v.op   = EOp::CONSTRUCT;
+                    v.type = mapValueType(cs->out_type);
                     for (size_t k = 0; k < cnt; ++k)
                     {
                         v.operands[k] = operandValue(n->inputs()[k]);
@@ -462,19 +474,19 @@ namespace lux::shadergen::material
                     return push(v);
                 }
                 default:
-                    fail(std::string("unsupported node kind in lowering: ") + rdesc::toString(n->kind()));
+                    fail(std::string("unsupported node kind in lowering: ") + graph::toString(n->kind()));
                     return kNoValue;
                 }
             }
 
-            uint32_t emitMath(const rdesc::MathNode* m)
+            uint32_t emitMath(const graph::MathNode* m)
             {
                 if (m->inputs().size() < 2)
                 {
                     fail("Math node is missing input pins");
                     return kNoValue;
                 }
-                if (m->op == rdesc::EMathOp::Lerp)
+                if (m->op == graph::EMathOp::LERP)
                 {
                     fail("Lerp requires 3 inputs; the 2-input Math node cannot express it yet");
                     return kNoValue;
@@ -502,7 +514,7 @@ namespace lux::shadergen::material
                 const EValueType ta = ir.values[a].type;
                 const EValueType tb = ir.values[b].type;
 
-                if ((m->op == rdesc::EMathOp::Dot || m->op == rdesc::EMathOp::Cross) && (ta != tb || !isVector(ta)))
+                if ((m->op == graph::EMathOp::DOT || m->op == graph::EMathOp::CROSS) && (ta != tb || !isVector(ta)))
                 {
                     fail("Dot/Cross require two vectors of equal type");
                     return kNoValue;
@@ -524,10 +536,10 @@ namespace lux::shadergen::material
             bool run()
             {
                 // 1. Find the single OutputSurface.
-                const rdesc::Node* output = nullptr;
+                const graph::Node* output = nullptr;
                 for (const auto& [id, np] : g.nodes())
                 {
-                    if (np->kind() == rdesc::EMatNodeKind::OutputSurface)
+                    if (np->kind() == graph::EMatNodeKind::OUTPUT_SURFACE)
                     {
                         if (output)
                             return fail("material graph has more than one OutputSurface node");
@@ -551,7 +563,7 @@ namespace lux::shadergen::material
                 {
                     ParamSlot s;
                     s.name = p.name;
-                    s.type = p.type;
+                    s.type = mapValueType(p.type);
                     for (int k = 0; k < 4; ++k)
                         s.dflt[k] = p.dflt[k];
                     ir.params.push_back(std::move(s));
@@ -561,21 +573,21 @@ namespace lux::shadergen::material
                 //    the subgraph + type-check; unconnected -> materialize if
                 //    the constant was overridden, otherwise value_id=kNoValue
                 //    so the backend falls back to the contract default).
-                const size_t COUNT = static_cast<size_t>(rdesc::EMaterialAttribute::COUNT);
+                const size_t COUNT = static_cast<size_t>(graph::EMaterialAttribute::COUNT);
                 ir.outputs.reserve(COUNT);
                 for (size_t i = 0; i < COUNT; ++i)
                 {
-                    const rdesc::MaterialAttributeDesc& adesc = rdesc::kMaterialAttributes[i];
+                    const graph::MaterialAttributeDesc& adesc = graph::kMaterialAttributes[i];
                     Output o;
-                    o.name     = adesc.glsl_name;
-                    o.type     = adesc.type;
+                    o.name     = adesc.name;
+                    o.type     = mapValueType(adesc.type);
                     o.value_id = kNoValue;
                     for (int k = 0; k < 4; ++k)
                         o.dflt[k] = adesc.dflt[k];  // default value is self-contained in the IR (consumers never look back at the contract)
 
                     if (i < output->inputs().size())
                     {
-                        const rdesc::DataPin& pin = output->inputs()[i];
+                        const graph::DataPin& pin = output->inputs()[i];
                         if (pin.source.valid())
                         {
                             if (!validateSource(pin))
@@ -595,7 +607,7 @@ namespace lux::shadergen::material
                                 pin.constant[2] != d[2] || pin.constant[3] != d[3];
                             if (overridden)
                             {
-                                o.value_id = emitConstant(pin.constant, pin.type);
+                                o.value_id = emitConstant(pin.constant, mapValueType(pin.type));
                                 if (!ok)
                                     return false;
                             }
@@ -616,7 +628,7 @@ namespace lux::shadergen::material
                 auto cmix = [&](uint64_t x) noexcept { cf ^= x; cf *= 1099511628211ull; };
                 cmix(static_cast<uint32_t>(result.shading_model));
                 cmix(static_cast<uint8_t>(result.alpha_mode));
-                if (result.alpha_mode == rdesc::EAlphaMode::Mask)
+                if (result.alpha_mode == ::lux::rdesc::EAlphaMode::Mask)
                 {
                     uint32_t u;
                     std::memcpy(&u, &result.alpha_cutoff, 4);
@@ -629,7 +641,7 @@ namespace lux::shadergen::material
     } // namespace
 
     lux::cxx::expected<LowerResult, std::string>
-    lowerMaterial(const rdesc::MaterialGraph& graph)
+    lowerMaterial(const graph::MaterialGraph& graph)
     {
         LowerResult out{};
         std::string error;

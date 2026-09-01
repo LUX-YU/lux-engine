@@ -28,15 +28,15 @@
 #include <string>
 #include <vector>
 
-#include <lux/engine/description/MaterialGraphContract.hpp>  // reuses the neutral scalar/vector types
-
 namespace lux::shadergen
 {
-    /// Scalar/vector type. Reuses description's neutral enum (the "Mat" in the
-    /// name is historical; the semantics are generic).
-    /// shadergen code always uses the semantically-neutral alias EValueType,
-    /// never the rdesc name directly.
-    using EValueType = ::lux::rdesc::EMatValueType;
+    enum class EValueType : std::uint8_t
+    {
+        FLOAT,
+        VEC2,
+        VEC3,
+        VEC4
+    };
 
     /// Backend-neutral SSA op set. Pure expressions: math + sampling +
     /// inputs/params + construction + escape hatches.
@@ -44,17 +44,17 @@ namespace lux::shadergen
     /// append at the end -- never reorder or change the meaning of an entry.
     enum class EOp : uint16_t
     {
-        Constant,      ///< a literal (constant[])
-        Input,         ///< read a named input slot (slot -> inputs[])
-        SampleTexture, ///< sample a texture slot (slot -> textures[], operands[0]=uv)
-        Param,         ///< read a param slot (slot -> params[])
-        Mul, Add, Sub, Div, Lerp, Saturate, Dot, Min, Max,
-        Swizzle,       ///< component reshuffle (swizzle[])
-        Construct,     ///< vecN(...)
-        DecodeNormal,  ///< normal-map rgb -> tangent-space normal
-        Pow, Step, Mod, Cross, Reflect, OneMinus, Abs, Sqrt, Floor, Fract,
-        Sin, Cos, Normalize, Length, TbnNormal,
-        RawExpr,       ///< escape hatch: a backend-specific raw shader fragment (slot -> raw_blocks[], see §6.5)
+        CONSTANT,      ///< a literal (constant[])
+        INPUT,         ///< read a named input slot (slot -> inputs[])
+        SAMPLE_TEXTURE, ///< sample a texture slot (slot -> textures[], operands[0]=uv)
+        PARAM,         ///< read a param slot (slot -> params[])
+        MUL, ADD, SUB, DIV, LERP, SATURATE, DOT, MIN, MAX,
+        SWIZZLE,       ///< component reshuffle (swizzle[])
+        CONSTRUCT,     ///< vecN(...)
+        DECODE_NORMAL, ///< normal-map rgb -> tangent-space normal
+        POW, STEP, MOD, CROSS, REFLECT, ONE_MINUS, ABS, SQRT, FLOOR, FRACT,
+        SIN, COS, NORMALIZE, LENGTH, TBN_NORMAL,
+        RAW_EXPR,      ///< escape hatch: a backend-specific raw shader fragment (slot -> raw_blocks[], see §6.5)
     };
 
     inline constexpr uint32_t kNoValue = ~0u;
@@ -73,7 +73,7 @@ namespace lux::shadergen
     };
 
     /// Interpolation qualifier for a shading-stage input.
-    enum class EInterpolation : uint8_t { Smooth, Flat };
+    enum class EInterpolation : uint8_t { SMOOTH, FLAT };
 
     /// A named input slot. Its semantics are defined by the client (for
     /// materials: uv0/world_normal/...); shadergen itself makes no assumption
@@ -85,9 +85,9 @@ namespace lux::shadergen
     struct InputSlot
     {
         std::string    name;
-        EValueType     type          = EValueType::Float;
+        EValueType     type          = EValueType::FLOAT;
         int32_t        location      = -1;
-        EInterpolation interpolation = EInterpolation::Smooth;
+        EInterpolation interpolation = EInterpolation::SMOOTH;
     };
 
     /// A set2 bindless sampler slot.
@@ -100,7 +100,7 @@ namespace lux::shadergen
     struct ParamSlot
     {
         std::string name;
-        EValueType  type = EValueType::Float;
+        EValueType  type = EValueType::FLOAT;
         float       dflt[4] = { 0, 0, 0, 0 };
     };
 
@@ -133,7 +133,7 @@ namespace lux::shadergen
     {
         std::string name;
         uint32_t    value_id = kNoValue;
-        EValueType  type     = EValueType::Float;
+        EValueType  type     = EValueType::FLOAT;
         float       dflt[4]  = { 0, 0, 0, 0 };  ///< the default used when value_id==kNoValue (goes straight into a SPIR-V literal)
     };
 

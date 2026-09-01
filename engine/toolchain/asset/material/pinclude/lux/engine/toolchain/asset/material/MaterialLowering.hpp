@@ -28,8 +28,8 @@ namespace lux::shadergen::material
     struct LowerResult
     {
         ShaderIR ir;
-        ::lux::rdesc::EMaterialShadingModel shading_model =
-            ::lux::rdesc::EMaterialShadingModel::PbrMetallicRoughness;
+        ::lux::rdesc::ELightingTechnique shading_model =
+            ::lux::rdesc::ELightingTechnique::PbrMetallicRoughness;
         ::lux::rdesc::EAlphaMode alpha_mode = ::lux::rdesc::EAlphaMode::Opaque;
         float                    alpha_cutoff = 0.5f;
         bool                     double_sided = false;

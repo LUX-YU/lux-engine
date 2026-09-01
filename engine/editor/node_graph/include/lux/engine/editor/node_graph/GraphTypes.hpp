@@ -10,7 +10,7 @@
 //  GraphLinkView — never stored).
 //
 //  Pin TYPES are split by layer (the A/B decision): the authoritative typed
-//  form (rdesc::EMatValueType / lux::meta::RefType) stays per-domain and never
+//  form (material::EValueType / lux::meta::RefType) stays per-domain and never
 //  crosses up; GraphPinType here is an OPAQUE, derived, draw-only token the
 //  schema styles and the editor validates caps with.
 // =============================================================================

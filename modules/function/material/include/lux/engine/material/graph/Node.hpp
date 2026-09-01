@@ -21,17 +21,17 @@ namespace lux::material
      */
     enum class EMatNodeKind : uint16_t
     {
-        Invalid = 0,
-        Constant,       ///< 0 in, 1 out — a constant value
-        Input,          ///< 0 in, 1 out — a single MaterialInput (uv0 / world_normal / ...)
-        SampleTexture,  ///< 1 in (uv), 1 out (vec4) — samples a bindless texture (set 2)
-        Math,           ///< 2 in, 1 out — arithmetic (op selected via payload)
-        Swizzle,        ///< 1 in, 1 out
-        Construct,      ///< n in, 1 out — assembles a vector
-        DecodeNormal,   ///< 1 in (rgb), 1 out (vec3) — normal-map decode (tangent space)
-        TbnTransform,   ///< 1 in (tangent-space normal), 1 out — TBN transform to world space
-        Param,          ///< 0 in, 1 out — reads a per-material parameter slot (set 4, Graph family)
-        OutputSurface,  ///< n in (one per surface attribute), 0 out — terminal node
+        INVALID = 0,
+        CONSTANT,       ///< 0 in, 1 out — a constant value
+        INPUT,          ///< 0 in, 1 out — a single MaterialInput (uv0 / world_normal / ...)
+        SAMPLE_TEXTURE, ///< 1 in (uv), 1 out (vec4) — samples a bindless texture (set 2)
+        MATH,           ///< 2 in, 1 out — arithmetic (op selected via payload)
+        SWIZZLE,        ///< 1 in, 1 out
+        CONSTRUCT,      ///< n in, 1 out — assembles a vector
+        DECODE_NORMAL,  ///< 1 in (rgb), 1 out (vec3) — normal-map decode (tangent space)
+        TBN_TRANSFORM,  ///< 1 in (tangent-space normal), 1 out — TBN transform to world space
+        PARAM,          ///< 0 in, 1 out — reads a per-material parameter slot (set 4, Graph family)
+        OUTPUT_SURFACE, ///< n in (one per surface attribute), 0 out — terminal node
         COUNT
     };
 

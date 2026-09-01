@@ -22,21 +22,28 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/toolchain/shader/ShaderIR.hpp>
-#include <lux/engine/description/MaterialGraphContract.hpp>  // rdesc::EMaterialPass / EMaterialShadingModel
 #include <lux/engine/description/MaterialEnums.hpp>          // rdesc::EAlphaMode
 #include <lux/engine/description/ShaderInfo.hpp>             // CompiledShader holds a ShaderInfo value
 
 namespace lux::shadergen::glsl
 {
+    enum class EMaterialPass : std::uint8_t
+    {
+        FORWARD = 0,
+        GBUFFER,
+        SHADOW,
+        VIS_BUFFER
+    };
+
     /// Shell parameters: determine which pass shell / shading-model branch / alpha
     /// behavior to generate. Sourced from material lowering's LowerResult (these
     /// live outside the ShaderIR -- they're shell concerns, not expressions).
     struct EmitParams
     {
-        ::lux::rdesc::EMaterialPass          pass          = ::lux::rdesc::EMaterialPass::GBuffer;
-        ::lux::rdesc::EMaterialShadingModel  shading_model = ::lux::rdesc::EMaterialShadingModel::PbrMetallicRoughness;
-        ::lux::rdesc::EAlphaMode             alpha_mode    = ::lux::rdesc::EAlphaMode::Opaque;
-        float                                alpha_cutoff  = 0.5f;
+        EMaterialPass pass{EMaterialPass::GBUFFER};
+        ::lux::rdesc::ELightingTechnique shading_model{::lux::rdesc::ELightingTechnique::PbrMetallicRoughness};
+        ::lux::rdesc::EAlphaMode alpha_mode{::lux::rdesc::EAlphaMode::Opaque};
+        float alpha_cutoff{0.5F};
     };
 
     /// Compilation output: SPIR-V words plus this shader's ShaderInfo (descriptor layout for set2/set4).

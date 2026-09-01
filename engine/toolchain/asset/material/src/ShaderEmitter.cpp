@@ -37,10 +37,10 @@ namespace lux::shadergen::glsl
         {
             switch (t)
             {
-            case EValueType::Float: return "float";
-            case EValueType::Vec2:  return "vec2";
-            case EValueType::Vec3:  return "vec3";
-            case EValueType::Vec4:  return "vec4";
+            case EValueType::FLOAT: return "float";
+            case EValueType::VEC2:  return "vec2";
+            case EValueType::VEC3:  return "vec3";
+            case EValueType::VEC4:  return "vec4";
             }
             return "float";
         }
@@ -49,10 +49,10 @@ namespace lux::shadergen::glsl
         {
             switch (t)
             {
-            case EValueType::Float: return 1;
-            case EValueType::Vec2:  return 2;
-            case EValueType::Vec3:  return 3;
-            case EValueType::Vec4:  return 4;
+            case EValueType::FLOAT: return 1;
+            case EValueType::VEC2:  return 2;
+            case EValueType::VEC3:  return 3;
+            case EValueType::VEC4:  return 4;
             }
             return 1;
         }
@@ -176,44 +176,44 @@ namespace lux::shadergen::glsl
                     std::string rhs;
                     switch (v.op)
                     {
-                    case EOp::Constant:     rhs = literal(v.type, v.constant); break;
-                    case EOp::Input:
+                    case EOp::CONSTANT:     rhs = literal(v.type, v.constant); break;
+                    case EOp::INPUT:
                     {
                         if (v.slot >= ir.inputs.size()) { fail("shadergen: Input slot out of range"); break; }
                         const InputSlot& s = ir.inputs[v.slot];
                         useInput(s);
                         // The WorldTangent interpolant is vec3, but the contract/
                         // downstream code wants Vec4 -> wrap it with handedness w=1.
-                        rhs = (s.name == "world_tangent" && s.type == EValueType::Vec4)
+                        rhs = (s.name == "world_tangent" && s.type == EValueType::VEC4)
                                   ? "vec4(vWorldTangent, 1.0)"
                                   : interpName(s.name);
                         break;
                     }
-                    case EOp::Mul:          rhs = operand(v, 0) + " * " + operand(v, 1); break;
-                    case EOp::Add:          rhs = operand(v, 0) + " + " + operand(v, 1); break;
-                    case EOp::Sub:          rhs = operand(v, 0) + " - " + operand(v, 1); break;
-                    case EOp::Div:          rhs = operand(v, 0) + " / " + operand(v, 1); break;
-                    case EOp::Dot:          rhs = "dot(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Min:          rhs = "min(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Max:          rhs = "max(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Pow:          rhs = "pow(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Step:         rhs = "step(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Mod:          rhs = "mod(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Cross:        rhs = "cross(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Reflect:      rhs = "reflect(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
-                    case EOp::Lerp:         rhs = "mix(" + operand(v, 0) + ", " + operand(v, 1) + ", " + operand(v, 2) + ")"; break;
-                    case EOp::Saturate:     rhs = "clamp(" + operand(v, 0) + ", 0.0, 1.0)"; break;
-                    case EOp::OneMinus:     rhs = "1.0 - " + operand(v, 0); break;
-                    case EOp::Abs:          rhs = "abs(" + operand(v, 0) + ")"; break;
-                    case EOp::Sqrt:         rhs = "sqrt(" + operand(v, 0) + ")"; break;
-                    case EOp::Floor:        rhs = "floor(" + operand(v, 0) + ")"; break;
-                    case EOp::Fract:        rhs = "fract(" + operand(v, 0) + ")"; break;
-                    case EOp::Sin:          rhs = "sin(" + operand(v, 0) + ")"; break;
-                    case EOp::Cos:          rhs = "cos(" + operand(v, 0) + ")"; break;
-                    case EOp::Normalize:    rhs = "normalize(" + operand(v, 0) + ")"; break;
-                    case EOp::Length:       rhs = "length(" + operand(v, 0) + ")"; break;
-                    case EOp::DecodeNormal: rhs = "normalize(" + operand(v, 0) + ".xyz * 2.0 - 1.0)"; break;
-                    case EOp::Swizzle:
+                    case EOp::MUL:          rhs = operand(v, 0) + " * " + operand(v, 1); break;
+                    case EOp::ADD:          rhs = operand(v, 0) + " + " + operand(v, 1); break;
+                    case EOp::SUB:          rhs = operand(v, 0) + " - " + operand(v, 1); break;
+                    case EOp::DIV:          rhs = operand(v, 0) + " / " + operand(v, 1); break;
+                    case EOp::DOT:          rhs = "dot(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::MIN:          rhs = "min(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::MAX:          rhs = "max(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::POW:          rhs = "pow(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::STEP:         rhs = "step(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::MOD:          rhs = "mod(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::CROSS:        rhs = "cross(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::REFLECT:      rhs = "reflect(" + operand(v, 0) + ", " + operand(v, 1) + ")"; break;
+                    case EOp::LERP:         rhs = "mix(" + operand(v, 0) + ", " + operand(v, 1) + ", " + operand(v, 2) + ")"; break;
+                    case EOp::SATURATE:     rhs = "clamp(" + operand(v, 0) + ", 0.0, 1.0)"; break;
+                    case EOp::ONE_MINUS:     rhs = "1.0 - " + operand(v, 0); break;
+                    case EOp::ABS:          rhs = "abs(" + operand(v, 0) + ")"; break;
+                    case EOp::SQRT:         rhs = "sqrt(" + operand(v, 0) + ")"; break;
+                    case EOp::FLOOR:        rhs = "floor(" + operand(v, 0) + ")"; break;
+                    case EOp::FRACT:        rhs = "fract(" + operand(v, 0) + ")"; break;
+                    case EOp::SIN:          rhs = "sin(" + operand(v, 0) + ")"; break;
+                    case EOp::COS:          rhs = "cos(" + operand(v, 0) + ")"; break;
+                    case EOp::NORMALIZE:    rhs = "normalize(" + operand(v, 0) + ")"; break;
+                    case EOp::LENGTH:       rhs = "length(" + operand(v, 0) + ")"; break;
+                    case EOp::DECODE_NORMAL: rhs = "normalize(" + operand(v, 0) + ".xyz * 2.0 - 1.0)"; break;
+                    case EOp::SWIZZLE:
                     {
                         std::string sw;
                         for (int k = 0; k < arity(v.type); ++k)
@@ -221,7 +221,7 @@ namespace lux::shadergen::glsl
                         rhs = operand(v, 0) + "." + sw;
                         break;
                     }
-                    case EOp::Construct:
+                    case EOp::CONSTRUCT:
                     {
                         rhs = std::string(glslType(v.type)) + "(";
                         bool first = true;
@@ -236,7 +236,7 @@ namespace lux::shadergen::glsl
                         break;
                     }
                     // Needs set2/set4 data binding / an additional interpolant / backend-specific text.
-                    case EOp::SampleTexture:
+                    case EOp::SAMPLE_TEXTURE:
                         // TextureRefGPU is the representation-aware ABI shared
                         // with builtin material families. Keep graph sampling on
                         // the same helper so a future provider does not require a
@@ -244,7 +244,7 @@ namespace lux::shadergen::glsl
                         rhs = "luxSampleTexture(_mat.tex[" + std::to_string(v.slot) +
                               "], " + operand(v, 0) + ")";
                         break;
-                    case EOp::Param:
+                    case EOp::PARAM:
                     {
                         // Reads one param lane from the Graph-family SSBO
                         // (slot i -> params[i]), then swizzles it down to the
@@ -254,7 +254,7 @@ namespace lux::shadergen::glsl
                         rhs = "_mat.params[" + std::to_string(v.slot) + "]." + sw;
                         break;
                     }
-                    case EOp::TbnNormal:
+                    case EOp::TBN_NORMAL:
                     {
                         // Tangent-space normal -> world (mat3(T,B,N) * n), using the
                         // interpolated T/B/N (mirroring the engine's
@@ -268,13 +268,13 @@ namespace lux::shadergen::glsl
                         declared_in[5] = { "vec3", "vWorldTangent" };
                         declared_in[6] = { "vec3", "vWorldBitangent" };
                         // Tangent-space normal -> world. The 2*rgb-1 decode is the
-                        // SEPARATE upstream DecodeNormal op (EOp::DecodeNormal); do NOT
+                        // SEPARATE upstream DecodeNormal op (EOp::DECODE_NORMAL); do NOT
                         // re-decode here or a DecodeNormal->TbnTransform chain double-decodes.
                         rhs = "normalize(mat3(normalize(vWorldTangent), normalize(vWorldBitangent), "
                               "normalize(vWorldNormal)) * " + operand(v, 0) + ")";
                         break;
                     }
-                    case EOp::RawExpr:       return fail("shadergen(M1): RawExpr 暂不支持（逃生舱后续）");
+                    case EOp::RAW_EXPR:       return fail("shadergen(M1): RawExpr 暂不支持（逃生舱后续）");
                     default:                 return fail("shadergen: unsupported ShaderIR op");
                     }
                     if (!ok) return false;
@@ -313,19 +313,19 @@ namespace lux::shadergen::glsl
     {
         std::string error;
 
-        if (p.pass == rdesc::EMaterialPass::Shadow || p.pass == rdesc::EMaterialPass::VisBuffer)
+        if (p.pass == EMaterialPass::SHADOW || p.pass == EMaterialPass::VIS_BUFFER)
             return lux::cxx::unexpected(std::string("shadergen: Shadow/VisBuffer passes not supported yet"));
 
-        const bool gbuffer = (p.pass == rdesc::EMaterialPass::GBuffer);
-        const bool unlit   = (p.shading_model == rdesc::EMaterialShadingModel::Unlit);
+        const bool gbuffer = p.pass == EMaterialPass::GBUFFER;
+        const bool unlit = p.shading_model == rdesc::ELightingTechnique::Unlit;
         const bool forward_lit  = !gbuffer && !unlit;
-        const bool forward_toon = forward_lit && (p.shading_model == rdesc::EMaterialShadingModel::Stylized);
+        const bool forward_toon = forward_lit && p.shading_model == rdesc::ELightingTechnique::Stylized;
 
         bool tex_mode = false, param_mode = false;
         for (const auto& v : ir.values)
         {
-            if (v.op == EOp::SampleTexture) tex_mode   = true;
-            if (v.op == EOp::Param)         param_mode = true;
+            if (v.op == EOp::SAMPLE_TEXTURE) tex_mode   = true;
+            if (v.op == EOp::PARAM)         param_mode = true;
         }
 
         Emitter em{ ir, &error };
@@ -357,7 +357,7 @@ namespace lux::shadergen::glsl
             em.declared_in[9] = { "flat uint", "vTransitionFadeOut" };
         }
         const char* gbuffer_sm_id =
-            (p.shading_model == rdesc::EMaterialShadingModel::Stylized) ? "LUX_SM_TOON" : "LUX_SM_PBR";
+            p.shading_model == rdesc::ELightingTechnique::Stylized ? "LUX_SM_TOON" : "LUX_SM_PBR";
 
         std::ostringstream out;
         out << "#version 450\n";

@@ -17,54 +17,54 @@ namespace lux::material
     enum class EMathOp : uint8_t
     {
         // binary (2 operands)
-        Mul,
-        Add,
-        Sub,
-        Div,
-        Dot,        ///< -> Float
-        Min,
-        Max,
-        Pow,
-        Step,
-        Mod,
-        Cross,      ///< Vec3 x Vec3 -> Vec3
-        Reflect,
+        MUL,
+        ADD,
+        SUB,
+        DIV,
+        DOT,        ///< -> Float
+        MIN,
+        MAX,
+        POW,
+        STEP,
+        MOD,
+        CROSS,      ///< Vec3 x Vec3 -> Vec3
+        REFLECT,
         // ternary (currently unsupported by the 2-pin Math node)
-        Lerp,
+        LERP,
         // unary (1 operand; pin 1 ignored)
-        Saturate,
-        OneMinus,   ///< 1 - x
-        Abs,
-        Sqrt,
-        Floor,
-        Fract,
-        Sin,
-        Cos,
-        Normalize,
-        Length      ///< -> Float
+        SATURATE,
+        ONE_MINUS, ///< 1 - x
+        ABS,
+        SQRT,
+        FLOOR,
+        FRACT,
+        SIN,
+        COS,
+        NORMALIZE,
+        LENGTH ///< -> Float
     };
 
     /// Constant node: outputs a single constant value.
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstantNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::Constant;
+        static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTANT;
         ConstantNode();
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<ConstantNode>(*this); }
 
         float         value[4]   = { 0, 0, 0, 0 };
-        EMatValueType value_type = EMatValueType::Vec4;
+        EValueType value_type = EValueType::VEC4;
 
         /// Sets the constant's type and updates the output pin to match (called
         /// by the editor when it changes the arity).
-        void setType(EMatValueType t);
+        void setType(EValueType t);
     };
 
     /// Input node: exposes a single shading input (uv0 / world_normal / ...).
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC InputNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::Input;
+        static constexpr EMatNodeKind kKind = EMatNodeKind::INPUT;
         InputNode();
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<InputNode>(*this); }
 
@@ -76,7 +76,7 @@ namespace lux::material
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SampleTextureNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::SampleTexture;
+        static constexpr EMatNodeKind kKind = EMatNodeKind::SAMPLE_TEXTURE;
         SampleTextureNode();
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<SampleTextureNode>(*this); }
 
@@ -90,16 +90,16 @@ namespace lux::material
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ParamNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::Param;
-        explicit ParamNode(EMatValueType type = EMatValueType::Vec4);
+        static constexpr EMatNodeKind kKind = EMatNodeKind::PARAM;
+        explicit ParamNode(EValueType type = EValueType::VEC4);
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<ParamNode>(*this); }
 
         uint32_t      param_slot = 0;
-        EMatValueType type;
+        EValueType type;
 
         /// Sets the parameter's type and updates the output pin to match (called
         /// by the editor when it changes the arity).
-        void setType(EMatValueType t);
+        void setType(EValueType t);
     };
 
     /// Arithmetic node. `operand_type` determines the type of both operand pins
@@ -108,24 +108,24 @@ namespace lux::material
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MathNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::Math;
-        explicit MathNode(EMathOp op = EMathOp::Mul);
+        static constexpr EMatNodeKind kKind = EMatNodeKind::MATH;
+        explicit MathNode(EMathOp op = EMathOp::MUL);
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<MathNode>(*this); }
 
         EMathOp       op;
-        EMatValueType operand_type = EMatValueType::Float;
+        EValueType operand_type = EValueType::FLOAT;
 
         /// Sets the operand type and updates both input pins to match (and the
         /// output pin, but only as an editor hint — lowering still derives the
         /// real result type from `op`; e.g. Dot always produces Float).
-        void setOperandType(EMatValueType t);
+        void setOperandType(EValueType t);
     };
 
     /// Normal-map decode (rgb -> tangent-space normal).
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC DecodeNormalNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::DecodeNormal;
+        static constexpr EMatNodeKind kKind = EMatNodeKind::DECODE_NORMAL;
         DecodeNormalNode();
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<DecodeNormalNode>(*this); }
     };
@@ -136,7 +136,7 @@ namespace lux::material
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC TbnTransformNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::TbnTransform;
+        static constexpr EMatNodeKind kKind = EMatNodeKind::TBN_TRANSFORM;
         TbnTransformNode();
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<TbnTransformNode>(*this); }
     };
@@ -148,18 +148,18 @@ namespace lux::material
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SwizzleNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::Swizzle;
-        explicit SwizzleNode(EMatValueType source_type = EMatValueType::Vec4,
-                             EMatValueType out_type    = EMatValueType::Vec3);
+        static constexpr EMatNodeKind kKind = EMatNodeKind::SWIZZLE;
+        explicit SwizzleNode(EValueType source_type = EValueType::VEC4,
+                             EValueType out_type    = EValueType::VEC3);
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<SwizzleNode>(*this); }
 
-        EMatValueType source_type;
-        EMatValueType out_type;
+        EValueType source_type;
+        EValueType out_type;
         uint8_t       components[4] = { 0, 1, 2, 3 };
 
         /// Sets the source/output types and updates the pins to match (the input
         /// pin's type is authoritative — resolveInput type-checks against it).
-        void setTypes(EMatValueType source_type, EMatValueType out_type);
+        void setTypes(EValueType source_type, EValueType out_type);
     };
 
     /// Construct: packs arity(out_type) scalar components into a vector
@@ -168,18 +168,18 @@ namespace lux::material
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstructNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::Construct;
-        explicit ConstructNode(EMatValueType out_type = EMatValueType::Vec3);
+        static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTRUCT;
+        explicit ConstructNode(EValueType out_type = EValueType::VEC3);
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<ConstructNode>(*this); }
 
-        EMatValueType out_type;
+        EValueType out_type;
     };
 
     /// Terminal node: one input pin per EMaterialAttribute (in contract order).
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC OutputSurfaceNode : public Node
     {
     public:
-        static constexpr EMatNodeKind kKind = EMatNodeKind::OutputSurface;
+        static constexpr EMatNodeKind kKind = EMatNodeKind::OUTPUT_SURFACE;
         OutputSurfaceNode();
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<OutputSurfaceNode>(*this); }
     };

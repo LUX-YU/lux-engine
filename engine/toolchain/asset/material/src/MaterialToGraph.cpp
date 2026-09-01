@@ -24,9 +24,8 @@ namespace lux::shadergen::material
 
     namespace
     {
-        namespace rdesc = ::lux::material;
-        using EVT  = rdesc::EMatValueType;
-        using EAttr = rdesc::EMaterialAttribute;
+        using EVT = ::lux::material::EValueType;
+        using EAttr = ::lux::material::EMaterialAttribute;
 
         constexpr float kEps = 1e-6f;
         bool isOne(float v)  noexcept { return v > 1.f - kEps && v < 1.f + kEps; }  // occlusion.strength only
@@ -91,7 +90,7 @@ namespace lux::shadergen::material
             // which source component each output channel takes.
             node_id swizzle(node_id src, EVT out_type, uint8_t c0, uint8_t c1 = 0, uint8_t c2 = 0, uint8_t c3 = 0)
             {
-                auto n = std::make_unique<SwizzleNode>(EVT::Vec4, out_type);
+                auto n = std::make_unique<SwizzleNode>(EVT::VEC4, out_type);
                 n->components[0] = c0; n->components[1] = c1; n->components[2] = c2; n->components[3] = c3;
                 const node_id id = g.addNode(std::move(n));
                 g.connect(src, 0, id, 0);
@@ -100,7 +99,7 @@ namespace lux::shadergen::material
 
             node_id mul(node_id a, node_id b, EVT t)
             {
-                auto n = std::make_unique<MathNode>(EMathOp::Mul);
+                auto n = std::make_unique<MathNode>(EMathOp::MUL);
                 n->setOperandType(t);
                 const node_id id = g.addNode(std::move(n));
                 g.connect(a, 0, id, 0);
@@ -138,7 +137,7 @@ namespace lux::shadergen::material
 
         MaterialGraph g;
         Builder b(g);
-        g.shading_model = rdesc::ELightingTechnique::PbrMetallicRoughness;
+        g.shading_model = ::lux::rdesc::ELightingTechnique::PbrMetallicRoughness;
 
         const auto slot = [&g](
             const std::optional<::lux::toolchain::ImportedTextureReference>& texture,
@@ -166,28 +165,28 @@ namespace lux::shadergen::material
         const auto color3 = [&](const std::string& name, const Eigen::Vector3f& v,
                                 std::optional<uint32_t> tex) -> node_id
         {
-            const node_id factor = b.param(name, EVT::Vec3, v.x(), v.y(), v.z());
+            const node_id factor = b.param(name, EVT::VEC3, v.x(), v.y(), v.z());
             if (tex)
-                return b.mul(factor, b.swizzle(b.sample(*tex), EVT::Vec3, 0, 1, 2), EVT::Vec3);
+                return b.mul(factor, b.swizzle(b.sample(*tex), EVT::VEC3, 0, 1, 2), EVT::VEC3);
             return factor;
         };
         // scalar factor [* tex[channel]] as a Param (mirrors Builder::scalar).
         const auto scalar = [&](const std::string& name, float val,
                                 std::optional<uint32_t> tex, uint8_t channel) -> node_id
         {
-            const node_id factor = b.param(name, EVT::Float, val);
+            const node_id factor = b.param(name, EVT::FLOAT, val);
             if (tex)
-                return b.mul(factor, b.swizzle(b.sample(*tex), EVT::Float, channel), EVT::Float);
+                return b.mul(factor, b.swizzle(b.sample(*tex), EVT::FLOAT, channel), EVT::FLOAT);
             return factor;
         };
 
-        b.bind(EAttr::BaseColor, color3("BaseColor", d.base_color, base_color_texture));
+        b.bind(EAttr::BASE_COLOR, color3("BaseColor", d.base_color, base_color_texture));
 
         // Legacy (Phong) imports collapse to PBR with metallic=0 / roughness=0.5.
         const float metallic  = d.legacy_lit ? 0.0f : d.metallic;
         const float roughness = d.legacy_lit ? 0.5f : d.roughness;
-        b.bind(EAttr::Metallic, scalar("Metallic", metallic, metallic_roughness_texture, 0));
-        b.bind(EAttr::Roughness, scalar("Roughness", roughness, metallic_roughness_texture, 1));
+        b.bind(EAttr::METALLIC, scalar("Metallic", metallic, metallic_roughness_texture, 0));
+        b.bind(EAttr::ROUGHNESS, scalar("Roughness", roughness, metallic_roughness_texture, 1));
 
         if (normal_texture)
         {
@@ -196,31 +195,31 @@ namespace lux::shadergen::material
             // MISSING here, so the tangent-space normal was bound directly as the world
             // normal -> ~constant world normal -> flat/unlit shading on every imported
             // normal-mapped material. (engine path mirrors lighting_tbn::calculateWorldNormal)
-            const node_id rgb  = b.swizzle(b.sample(*normal_texture), EVT::Vec3, 0, 1, 2);
+            const node_id rgb  = b.swizzle(b.sample(*normal_texture), EVT::VEC3, 0, 1, 2);
             const node_id decn = g.addNode(std::make_unique<DecodeNormalNode>());
             g.connect(rgb, 0, decn, 0);
             const node_id tbn  = g.addNode(std::make_unique<TbnTransformNode>());
             g.connect(decn, 0, tbn, 0);
-            b.bind(EAttr::NormalTS, tbn);
+            b.bind(EAttr::NORMAL_TS, tbn);
         }
         if (occlusion_texture)
         {
-            const node_id ao = b.swizzle(b.sample(*occlusion_texture), EVT::Float, 0);
-            b.bind(EAttr::AmbientOcclusion,
+            const node_id ao = b.swizzle(b.sample(*occlusion_texture), EVT::FLOAT, 0);
+            b.bind(EAttr::AMBIENT_OCCLUSION,
                    isOne(d.occlusion_strength)
                        ? ao
-                       : b.mul(b.constant(EVT::Float, d.occlusion_strength), ao, EVT::Float));
+                       : b.mul(b.constant(EVT::FLOAT, d.occlusion_strength), ao, EVT::FLOAT));
         }
 
         // emissive = factor(=value*intensity) [* tex.rgb], Param (always bound).
         {
             const Eigen::Vector3f scaled = d.emissive * d.emissive_intensity;
-            const node_id factor = b.param("Emissive", EVT::Vec3, scaled.x(), scaled.y(), scaled.z());
+            const node_id factor = b.param("Emissive", EVT::VEC3, scaled.x(), scaled.y(), scaled.z());
             if (emissive_texture)
-                b.bind(EAttr::Emissive,
-                       b.mul(factor, b.swizzle(b.sample(*emissive_texture), EVT::Vec3, 0, 1, 2), EVT::Vec3));
+                b.bind(EAttr::EMISSIVE,
+                       b.mul(factor, b.swizzle(b.sample(*emissive_texture), EVT::VEC3, 0, 1, 2), EVT::VEC3));
             else
-                b.bind(EAttr::Emissive, factor);
+                b.bind(EAttr::EMISSIVE, factor);
         }
 
         // opacity: glTF alpha-test/blend takes the silhouette from the BASE-COLOR
@@ -232,10 +231,10 @@ namespace lux::shadergen::material
         // sample). Opaque materials keep the plain factor (opacity is unused in
         // the opaque deferred path) so their graph/SPIR-V stays byte-identical and
         // dedups exactly as before.
-        if (d.alpha_mode != rdesc::EAlphaMode::Opaque && base_color_texture)
-            b.bind(EAttr::Opacity, scalar("Opacity", d.opacity, base_color_texture, 3));
+        if (d.alpha_mode != ::lux::rdesc::EAlphaMode::Opaque && base_color_texture)
+            b.bind(EAttr::OPACITY, scalar("Opacity", d.opacity, base_color_texture, 3));
         else
-            b.bind(EAttr::Opacity, b.param("Opacity", EVT::Float, d.opacity));
+            b.bind(EAttr::OPACITY, b.param("Opacity", EVT::FLOAT, d.opacity));
 
         // render state (W3a): alpha mode / cutoff / double-sided 1:1.
         g.render_state.alpha_mode   = d.alpha_mode;

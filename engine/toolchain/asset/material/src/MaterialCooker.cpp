@@ -50,7 +50,7 @@ namespace lux::toolchain
                 LUX_MATERIAL_SHADER_EMITTED_DIR,
                 LUX_MATERIAL_SHADER_SOURCE_DIR
             };
-            const auto compile_pass = [&](lux::rdesc::EMaterialPass pass)
+            const auto compile_pass = [&](lux::shadergen::glsl::EMaterialPass pass)
                 -> lux::cxx::expected<lux::shadergen::glsl::CompiledShader, std::string>
             {
                 lux::shadergen::glsl::EmitParams parameters;
@@ -65,7 +65,7 @@ namespace lux::toolchain
                 );
             };
 
-            auto gbuffer = compile_pass(lux::rdesc::EMaterialPass::GBuffer);
+            auto gbuffer = compile_pass(lux::shadergen::glsl::EMaterialPass::GBUFFER);
             if (!gbuffer)
             {
                 return lux::cxx::unexpected(failure(
@@ -73,7 +73,7 @@ namespace lux::toolchain
                     "gbuffer: " + gbuffer.error()
                 ));
             }
-            auto forward = compile_pass(lux::rdesc::EMaterialPass::Forward);
+            auto forward = compile_pass(lux::shadergen::glsl::EMaterialPass::FORWARD);
             if (!forward)
             {
                 return lux::cxx::unexpected(failure(

@@ -125,7 +125,7 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
 必须同时表达同一职责，禁止只搬文件而保留反向链接，或只改 target 名而让源码继续跨层 include。
 
 - Canonical ontology 固定为 `L0 Modules -> L1 Domain foundation + World + Simulation -> L2 Process ->
-  L3 Scene -> L4 Authoring -> L5 Toolchain -> L6 Product`。World 描述事实；Simulation
+  L3 Scene -> L4 Toolchain -> L5 Editor -> L6 Host/Product`。World 描述事实；Simulation
   同步解释和运行事实；ECS 只是 Simulation 内部机制；Process 负责异步、IO 与 residency；
   Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
 - `World = durable/cooked facts + whole-world storage metadata`；`Simulation = concrete Systems +
@@ -147,7 +147,7 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   `world/partition` 不依赖 WorldDescription；`world/description` 只组合 World identity、partition identity 与
   partition contracts；`world/asset` 才能增加 L0 Asset/Serialization closure。
   Simulation 可依赖 DOMAIN 与 L0，但不得依赖 World，
-  不得依赖 Process、Scene、Authoring、Toolchain、Editor 或 Host。旧 `RUNTIME` classifier
+  不得依赖 Process、Scene、Toolchain、Editor 或 Host。旧 `RUNTIME` classifier
   只对白名单存量 extension 暂留；新 L2/L3 target 必须分别使用 `PROCESS/SCENE`。
 - 所有 production target 必须调用 `lux_classify_target(TARGET ... LAYER ... PRODUCT ... ROLE ...)`。
   不得靠未分类 target、`INTERFACE_LINK_LIBRARIES` 或 generator expression 绕过 DAG 门禁。
@@ -165,8 +165,14 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   `RenderSystem` 是可选的 concrete SceneSystem，要求 Host 提供 `RenderRuntime` capability；它不创建 thread/device，
   只冷装 RenderScene/Feature/feature-owned stages，并通过 `RenderSyncPipeline` 在 stable point发布 StateUpdate、
   在 Presentation 转发。无 RenderSystem 的 Scene 不创建 RenderScene；无 render integration pack 的 Scene 必须 headless。
-- Authoring 保存可编辑源数据，Toolchain 执行 authoring→cooked，Player 只读取 RuntimeLaunchManifest
-  与 cooked pak。Assimp、shaderc、spirv-cross、MLIR/LLVM、Editor UI 不得进入 Player 闭包。
+- `Authoring` 不再是 architecture layer，`engine/authoring` 不得恢复。可编辑 source model 位于其可复用的
+  semantic package（例如 `modules/function/material` 与 `modules/function/flowforge`）；L4 Toolchain执行
+  source/import→compiled/cooked/package，L5 Editor只负责交互式编辑并调用L4 public facade。Player只读取
+  RuntimeLaunchManifest与cooked pak；MaterialGraph、compiler/cooker、Assimp、shaderc、spirv-cross、MLIR/LLVM、
+  GraphKit和Editor UI不得进入Player闭包。
+- Material 固定为 `MaterialGraph -> compileMaterial() -> MaterialDescription -> MaterialAsset`；Graph source位于
+  `modules/function/material`，compiler/cooker位于`engine/toolchain/material`，private MaterialIR/ShaderIR不得安装。
+  `engine/editor/node_graph`只提供domain-independent编辑机制，不得成为source model或compiler owner。
 - Extension 是叶节点。引擎 target 不链接 `extensions/*`；manifest 决定部署和运行期加载。
 - 旧 include、target 或类型搬迁不得留 shim/alias。历史扁平目录名不得重新创建。
 

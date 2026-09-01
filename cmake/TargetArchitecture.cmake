@@ -454,14 +454,15 @@ function(lux_validate_ecs_dimension_closures)
     foreach(player_root game_application player_host lux_player)
         _lux_arch_require_closure_excludes(
             ${player_root}
-            authoring_flowforge authoring_assets project
+            material_graph
             toolchain_shader_ir toolchain_shader_compiler
-            toolchain_material_compiler toolchain_flowforge
+            toolchain_material_compiler toolchain_material_cooker
+            flowforge_compiler node_graph_editor
         )
     endforeach()
 endfunction()
 
-# A TOOLCHAIN configure sees Resource formats, Authoring models, offline
+# A TOOLCHAIN configure sees Resource formats, reusable source models, offline
 # transforms and the schema-only ECS targets those transforms serialize. It
 # still configures no Runtime orchestration, render backend, UI or Host. Some
 # early host build tools are introduced while Resource is configured; starting

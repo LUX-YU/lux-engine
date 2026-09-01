@@ -10,6 +10,7 @@ if(NOT IS_DIRECTORY "${prefix}")
 endif()
 
 foreach(retired_package IN ITEMS
+    "${prefix}/share/lux-engine-authoring"
     "${prefix}/share/lux-engine-world"
     "${prefix}/share/lux-engine-simulation-core"
     "${prefix}/share/lux-engine-process-asset"
@@ -26,6 +27,9 @@ foreach(retired_package IN ITEMS
 endforeach()
 
 foreach(retired_surface IN ITEMS
+    "${prefix}/include/lux/engine/authoring"
+    "${prefix}/include/lux/engine/toolchain/asset/material"
+    "${prefix}/share/lux-engine-toolchain-asset/toolchain_material_cooker"
     "${prefix}/include/lux/engine/domain/WorldObjectId.hpp"
     "${prefix}/include/lux/engine/process/asset"
     "${prefix}/include/lux/engine/process/world"
@@ -69,6 +73,7 @@ foreach(entry IN LISTS installed_entries)
        normalized MATCHES "[/]ecs[/](detail|core/detail|schedule/detail)([/]|$)" OR
        normalized MATCHES "[/]include[/]lux[/]engine[/]ecs([/]|$)" OR
        normalized MATCHES "[/]include[/]lux[/]engine[/]graph_kit([/]|$)" OR
+       normalized MATCHES "[/]include[/]lux[/]engine[/]material[/](compiler[/](MaterialIR|ShaderIR|Lowering|Backend)|import[/]MaterialToGraph)[.]hpp$" OR
        normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]script([/]|$)" OR
        normalized MATCHES "[/]include[/]lux[/]engine[/]resource[/]asset[/]script([/]|$)")
         message(FATAL_ERROR
@@ -90,6 +95,19 @@ foreach(entry IN LISTS installed_entries)
         message(FATAL_ERROR "Install surface exposes retired Transform System path: ${normalized}")
     endif()
 endforeach()
+
+set(material_toolchain_package "${prefix}/share/lux-engine-toolchain-material")
+if(EXISTS "${material_toolchain_package}")
+    foreach(material_contract IN ITEMS
+        "${prefix}/share/lux-engine-function/material_graph/lux-engine-function-material_graph-config-targets.cmake"
+        "${material_toolchain_package}/toolchain_material_compiler/lux-engine-toolchain-material-toolchain_material_compiler-config-targets.cmake"
+        "${material_toolchain_package}/toolchain_material_cooker/lux-engine-toolchain-material-toolchain_material_cooker-config-targets.cmake"
+    )
+        if(NOT EXISTS "${material_contract}")
+            message(FATAL_ERROR "Installed Material target is missing: ${material_contract}")
+        endif()
+    endforeach()
+endif()
 
 foreach(endpoint_header IN ITEMS
     "${prefix}/include/lux/engine/simulation/HookPoint.hpp"

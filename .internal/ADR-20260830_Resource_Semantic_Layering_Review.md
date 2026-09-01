@@ -13,8 +13,9 @@
   absent from active production.
 - `ModelAsset` owns `rdesc::ModelDescription` through `TAsset<T>`. Model wire v2 persists exact node, primitive,
   Mesh/Material, Skeleton, and AnimationClip semantics and does not read or emulate v1 positional fallback.
-- MaterialGraph is Authoring-owned. Its texture slots directly retain Texture AssetIds; Toolchain lowering emits the
-  existing inline GBuffer/Forward SPIR-V and ShaderInfo runtime semantics.
+- MaterialGraph is owned by the reusable `modules/function/material` source-model package. Its texture slots directly
+  retain Texture AssetIds; the L4 Material compiler emits the existing inline GBuffer/Forward SPIR-V and ShaderInfo
+  runtime semantics. This ownership update is governed by `ADR-20260901_L4_Toolchain_Convergence.md`.
 - The concrete Model cooker produces independently loadable typed Assets with deterministic sub-identities. Assimp,
   stb, meshoptimizer, shaderc, rgbcx, and bc7enc remain Toolchain-private.
 - `lux_asset_packer --type model` publishes a transactional typed Asset directory and the existing Pak path reloads the

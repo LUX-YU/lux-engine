@@ -133,7 +133,7 @@ foreach(source IN LISTS production_sources)
     file(READ "${source}" content)
 
     if(content MATCHES
-       "lux/engine/domain/WorldObjectId[.]hpp|lux::domain::WorldObjectId|lux/engine/process/(asset|world)/|lux::process::(asset|world)::|lux/engine/simulation/systems/|lux/engine/scene/runtime/(render|world)/")
+       "lux/engine/authoring/|lux::authoring|lux/engine/domain/WorldObjectId[.]hpp|lux::domain::WorldObjectId|lux/engine/process/(asset|world)/|lux::process::(asset|world)::|lux/engine/simulation/systems/|lux/engine/scene/runtime/(render|world)/|lux/engine/toolchain/asset/material/")
         message(FATAL_ERROR
             "Architecture: active source '${normalized}' references a retired post-cleanup API path."
         )
@@ -600,8 +600,8 @@ endif()
 
 if(EXISTS "${source_root}/engine/toolchain/flowforge")
     string(CONCAT flowforge_compiler_forbidden
-        "lux/engine/(simulation|authoring|editor)|"
-        "lux::engine::(simulation|authoring|editor)|imgui::|[/\\]legacy[/\\]"
+        "lux/engine/(simulation|editor)|"
+        "lux::engine::(simulation|editor)|imgui::|[/\\]legacy[/\\]"
     )
     file(GLOB_RECURSE flowforge_compiler_sources LIST_DIRECTORIES false
         "${source_root}/engine/toolchain/flowforge/*.hpp"
@@ -612,7 +612,7 @@ if(EXISTS "${source_root}/engine/toolchain/flowforge")
         file(READ "${source}" content)
         if(content MATCHES "${flowforge_compiler_forbidden}")
             message(FATAL_ERROR
-                "Architecture: FlowForge compiler '${source}' reaches Simulation, Authoring, or Editor."
+                "Architecture: FlowForge compiler '${source}' reaches Simulation or Editor."
             )
         endif()
     endforeach()
@@ -626,7 +626,7 @@ if(EXISTS "${source_root}/engine/editor/node_graph")
     )
     foreach(source IN LISTS node_graph_editor_sources)
         file(READ "${source}" content)
-        if(content MATCHES "flowforge|engine/simulation|resource/asset|mlir|llvm|[/\\]legacy[/\\]")
+        if(content MATCHES "flowforge|engine/simulation|resource/asset|lux/engine/material/|mlir|llvm|[/\\]legacy[/\\]")
             message(FATAL_ERROR
                 "Architecture: Node Graph Editor package '${source}' is not domain independent."
             )
@@ -1054,16 +1054,39 @@ file(GLOB_RECURSE material_graph_sources LIST_DIRECTORIES false
 )
 foreach(source IN LISTS material_graph_sources)
     file(READ "${source}" content)
-    if(content MATCHES "namespace[ \t]+lux::rdesc")
+    if(content MATCHES "namespace[ \t]+lux::rdesc|lux/engine/(toolchain|editor)/|shaderc|spirv_cross|Vulkan")
         message(FATAL_ERROR
-            "Architecture: MaterialGraph source '${source}' was restored to Resource Description ownership."
+            "Architecture: MaterialGraph source '${source}' acquired compiler, Editor, or backend ownership."
         )
     endif()
 endforeach()
 
+set(material_compiler_header
+    "${source_root}/engine/toolchain/material/include/lux/engine/material/Compiler.hpp"
+)
+if(EXISTS "${material_compiler_header}")
+    file(READ "${material_compiler_header}" material_compiler_public_contract)
+    if(material_compiler_public_contract MATCHES
+       "shaderc|spirv_cross|Vulkan|MLIR|LLVM|resource/asset/|MaterialIR|ShaderIR|Lowering|Backend")
+        message(FATAL_ERROR "Architecture: Material compiler public header leaks an implementation or Asset API.")
+    endif()
+endif()
+
+set(material_shader_ir
+    "${source_root}/engine/toolchain/material/pinclude/lux/engine/material/compiler/ShaderIR.hpp"
+)
+if(EXISTS "${material_shader_ir}")
+    file(READ "${material_shader_ir}" material_shader_ir_contract)
+    if(material_shader_ir_contract MATCHES "MaterialGraphContract|rdesc::EMatValueType")
+        message(FATAL_ERROR "Architecture: private ShaderIR depends on the retired Material graph contract.")
+    endif()
+endif()
+
 file(GLOB_RECURSE runtime_asset_boundary_sources LIST_DIRECTORIES false
     "${source_root}/modules/resource/asset/*.hpp"
     "${source_root}/modules/resource/asset/*.cpp"
+    "${source_root}/modules/function/render/*.hpp"
+    "${source_root}/modules/function/render/*.cpp"
     "${source_root}/engine/domain/*.hpp"
     "${source_root}/engine/domain/*.cpp"
     "${source_root}/engine/process/*.hpp"
@@ -1076,6 +1099,12 @@ foreach(source IN LISTS runtime_asset_boundary_sources)
     if(content MATCHES "#[ \t]*include[ \t]*[<\"](stb_image|spirv_cross|bc7enc|rgbcx)")
         message(FATAL_ERROR
             "Architecture: Runtime source '${source}' includes a Toolchain texture/shader dependency."
+        )
+    endif()
+    if(content MATCHES
+       "#[ \t]*include[ \t]*[<\"]lux/engine/material/(graph|Compiler|Cooker|ImportedMaterialDescription)")
+        message(FATAL_ERROR
+            "Architecture: Runtime source '${source}' depends on the L4 Material source/compiler/cooker."
         )
     endif()
 endforeach()
@@ -1177,19 +1206,19 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/engine/scene/CMakeLists.txt"
     "${source_root}/engine/scene/*/CMakeLists.txt"
     "${source_root}/engine/scene/*/*/CMakeLists.txt"
-    "${source_root}/engine/authoring/CMakeLists.txt"
-    "${source_root}/engine/authoring/*/CMakeLists.txt"
     "${source_root}/engine/editor/CMakeLists.txt"
     "${source_root}/engine/editor/*/CMakeLists.txt"
     "${source_root}/engine/toolchain/CMakeLists.txt"
     "${source_root}/engine/toolchain/*/CMakeLists.txt"
 )
+list(FILTER active_cmake EXCLUDE REGEX "[/\\\\]legacy[/\\\\]")
 foreach(source IN LISTS active_cmake)
     file(READ "${source}" content)
     if(content MATCHES
-       "(^|[^A-Za-z0-9_])(partition_core|world_core|simulation_core|simulation_runtime|scene_core|scene_runtime_(presentation|world|render|render_meta)|process_asset|process_world)([^A-Za-z0-9_]|$)" OR
+       "(^|[^A-Za-z0-9_])(authoring_material|authoring_script|partition_core|world_core|simulation_core|simulation_runtime|scene_core|scene_runtime_(presentation|world|render|render_meta)|process_asset|process_world)([^A-Za-z0-9_]|$)" OR
        content MATCHES
-       "lux-engine-(scene-world-runtime|simulation-core|process-(asset|world)([^A-Za-z0-9_-]|$)|world([^A-Za-z0-9_-]|$))")
+       "lux-engine-(authoring|scene-world-runtime|simulation-core|process-(asset|world)([^A-Za-z0-9_-]|$)|world([^A-Za-z0-9_-]|$))" OR
+       content MATCHES "engine/toolchain/asset/material|lux/engine/toolchain/asset/material")
         message(FATAL_ERROR
             "Architecture: active CMake '${source}' references a retired post-cleanup target or package."
         )
@@ -1255,6 +1284,12 @@ foreach(required_process_file IN ITEMS
         message(FATAL_ERROR
             "Architecture: Process Wave 0 is missing '${required_process_file}'."
         )
+    endif()
+endforeach()
+
+foreach(required_material_consumer IN ITEMS material-graph material-compiler material-cooker)
+    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_material_consumer}/CMakeLists.txt")
+        message(FATAL_ERROR "Architecture: missing installed Material consumer '${required_material_consumer}'.")
     endif()
 endforeach()
 

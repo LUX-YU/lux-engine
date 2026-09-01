@@ -9,6 +9,8 @@ modules/
   core/
   resource/
   function/
+    material/
+    flowforge/
 
 engine/
   domain/
@@ -46,9 +48,12 @@ engine/
     integration/
       world_materialization/
       render/
-  authoring/
   editor/
+    node_graph/
   toolchain/
+    material/
+    flowforge/
+    asset/
 ```
 
 - `modules/` 是可复用 L0 package。
@@ -65,9 +70,10 @@ engine/
   authoritative Registry、一个 Simulation、已安装 SceneSystems 与 Scene cancellation source；`presentation`
   承载 latest-state handoff；`integration/world_materialization` 与 `integration/render` 分别提供机械 ECS
   materialization 与可选 Render SceneSystem integration。Streaming policy 只属于 concrete developer System。
-- `engine/authoring` 持有 authored state、composition 与诊断。
 - `engine/editor` 持有交互式 Editor UI/tooling。
-- `engine/toolchain` 持有离线 compiler、cook、package 与 build tool。
+- `engine/toolchain` 是 L4，持有 deterministic compile、lower、cook、import、package 与 build tool。
+- 可编辑 source model不归Editor私有：MaterialGraph位于`modules/function/material`，FlowGraph位于
+  `modules/function/flowforge`；Editor与Toolchain消费同一个source SSOT。
 - `engine/tools` 是同义叠加的退休目录，不得恢复。
 
 public include 与 namespace 使用职责概念名，不包含 `domain`、层级编号或物理聚合目录名。
@@ -113,8 +119,8 @@ Script artifact 与 Simulation scripting core 各自是独立 package。
 ## Product closure
 
 - PLAYER 只包含 Runtime/Domain 能力，不得链接 Editor、Toolchain、FlowForge compiler、MLIR/LLVM。
-- EDITOR 可以依赖 Authoring 和通用 Node Graph Editor。
-- TOOLCHAIN 可以依赖 Authoring、FlowForge compiler 和语言 packager，但不得依赖 Editor UI。
+- EDITOR 可以依赖 Toolchain public facade 和通用 Node Graph Editor；没有真实consumer时不预装compiler closure。
+- TOOLCHAIN 可以依赖source models、compiler/cooker与语言packager，但不得依赖Editor UI。
 - build-tool 关系通过 custom command/generated file 表达，不作为 Runtime link dependency。
 
 ## Canonical Script / FlowForge ownership
@@ -123,6 +129,8 @@ Script artifact 与 Simulation scripting core 各自是独立 package。
 - Script semantic/runtime primitives 位于 `modules/function/script/core`。
 - Script cooked content/codec 位于 `modules/function/script/artifact`。
 - reusable FlowForge graph/model 位于 `modules/function/flowforge`。
+- MaterialGraph source model 位于 `modules/function/material`。
+- Material compiler/cooker 位于 `engine/toolchain/material`，输出低层MaterialDescription/MaterialAsset。
 - Script runtime composition 位于 `engine/domain/simulation/scripting` 与 `builtin/script`。
 - Node Graph Editor 位于 `engine/editor/node_graph`。
 - FlowForge compiler 位于 `engine/toolchain/flowforge`。

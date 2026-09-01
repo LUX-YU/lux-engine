@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/domain/WorldObjectId.hpp>
+#include <lux/engine/world/WorldObjectId.hpp>
 #include <lux/engine/world/WorldDescription.hpp>
 #include <lux/engine/world/WorldPartition.hpp>
 #include <lux/engine/world/storage/visibility.h>
@@ -18,7 +18,7 @@ namespace lux::world
 
         struct WorldDecodedObjectRecord final
         {
-            domain::WorldObjectId id;
+            world::WorldObjectId id;
             std::size_t first_data{};
             std::size_t data_count{};
         };
@@ -44,7 +44,7 @@ namespace lux::world
             return data_ != nullptr;
         }
 
-        [[nodiscard]] domain::WorldObjectId id() const noexcept;
+        [[nodiscard]] world::WorldObjectId id() const noexcept;
         [[nodiscard]] WorldBundleId bundle() const noexcept;
         [[nodiscard]] WorldBundleGeneration generation() const noexcept;
         [[nodiscard]] std::size_t dataCount() const noexcept;

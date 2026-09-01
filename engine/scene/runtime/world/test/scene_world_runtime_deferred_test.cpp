@@ -178,8 +178,8 @@ namespace
         Fixture()
         {
             const std::array objects{
-                WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(1U), {}},
-                WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(2U), {}}
+                WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(1U), {}},
+                WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(2U), {}}
             };
             auto partition = encodeWorldPartitionData(lux::partition::PartitionOrdinal{0U}, objects);
             assert(partition);

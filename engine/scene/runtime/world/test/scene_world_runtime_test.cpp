@@ -207,8 +207,8 @@ int main()
         WorldEncodedDataRecord{unknown_ordinal, 1U, std::span<const std::byte>{}}
     };
     const std::array objects{
-        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(1U), first_data},
-        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(2U), unknown_data}
+        WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(1U), first_data},
+        WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(2U), unknown_data}
     };
     auto wire = encodeWorldPartitionData(lux::partition::PartitionOrdinal{0U}, objects);
     assert(wire);
@@ -260,8 +260,8 @@ int main()
         WorldEncodedDataRecord{transform_ordinal, 1U, malformed_payload}
     };
     const std::array rollback_objects{
-        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(3U), first_data},
-        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(4U), malformed_data}
+        WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(3U), first_data},
+        WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(4U), malformed_data}
     };
     auto rollback_wire = encodeWorldPartitionData(lux::partition::PartitionOrdinal{0U}, rollback_objects);
     assert(rollback_wire);

@@ -34,7 +34,7 @@ target_compile_definitions(world_storage PRIVATE LUX_ENGINE_WORLD_STORAGE_LIBRAR
 target_link_libraries(
     world_storage
     PUBLIC
-        lux::engine::world
+        lux::engine::world::description
         lux::cxx::algorithm
     PRIVATE
         lux::engine::core::serialization
@@ -42,7 +42,7 @@ target_link_libraries(
 component_add_transitive_commands(
     world_storage
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
-    "find_package(lux-engine-world REQUIRED COMPONENTS world)"
+    "find_package(lux-engine-world-description REQUIRED COMPONENTS world_description)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "if(NOT TARGET lux::engine::world::storage)"
     "add_library(lux::engine::world::storage INTERFACE IMPORTED GLOBAL)"

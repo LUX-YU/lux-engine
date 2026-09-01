@@ -174,7 +174,7 @@ namespace lux::world::detail
 
     struct WorldEncodedObjectRecord final
     {
-        domain::WorldObjectId id;
+        world::WorldObjectId id;
         std::span<const WorldEncodedDataRecord> data;
     };
 

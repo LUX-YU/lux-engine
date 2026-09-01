@@ -12,8 +12,8 @@
 
 namespace lux::world::detail
 {
-    using domain::WorldObjectId;
-    using domain::WorldObjectIdLess;
+    using world::WorldObjectId;
+    using world::WorldObjectIdLess;
     using partition::PartitionOrdinal;
 
     namespace

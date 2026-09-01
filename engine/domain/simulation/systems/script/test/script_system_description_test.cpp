@@ -61,11 +61,11 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::domain::WorldObjectId makeObject(std::uint8_t seed)
+    [[nodiscard]] lux::world::WorldObjectId makeObject(std::uint8_t seed)
     {
         std::array<std::uint8_t, 16U> bytes{};
         bytes[0] = seed;
-        return lux::domain::WorldObjectId{uuids::uuid{bytes}};
+        return lux::world::WorldObjectId{uuids::uuid{bytes}};
     }
 }
 

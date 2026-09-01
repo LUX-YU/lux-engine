@@ -76,7 +76,7 @@ int main()
         ScriptMountId{1U},
         lux::asset::AssetId{asset_bytes},
         EntityScriptMount{
-            lux::domain::WorldObjectId{uuids::uuid{object_bytes}}},
+            lux::world::WorldObjectId{uuids::uuid{object_bytes}}},
         true,
         {}};
     const ScriptBindingDescription update{

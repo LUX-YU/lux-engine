@@ -33,11 +33,11 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::domain::WorldObjectId objectId(std::uint8_t seed)
+    [[nodiscard]] lux::world::WorldObjectId objectId(std::uint8_t seed)
     {
         std::array<std::uint8_t, 16U> bytes{};
         bytes[0] = seed;
-        return lux::domain::WorldObjectId{uuids::uuid{bytes}};
+        return lux::world::WorldObjectId{uuids::uuid{bytes}};
     }
 
     [[nodiscard]] SimulationDescription makeSimulation()
@@ -222,7 +222,7 @@ namespace
     struct Fixture final
     {
         lux::asset::AssetId asset_id{assetId(9U)};
-        lux::domain::WorldObjectId object{objectId(8U)};
+        lux::world::WorldObjectId object{objectId(8U)};
         lux::script::ScriptArtifact artifact{makeArtifact()};
         ecs::Entity entity{ecs::NullEntity};
         std::size_t leases{};
@@ -251,7 +251,7 @@ namespace
 
     bool resolveWorld(
         void* context,
-        const lux::domain::WorldObjectId& object,
+        const lux::world::WorldObjectId& object,
         ecs::Entity& output
     ) noexcept
     {

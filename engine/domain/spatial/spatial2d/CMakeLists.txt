@@ -25,13 +25,13 @@ target_link_libraries(
     spatial2d_index
     PUBLIC
         lux::engine::core::math
-        lux::engine::partition::partition_core
+        lux::engine::partition::identity
         lux::cxx::compile_time
 )
 component_add_transitive_commands(
     spatial2d_index
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-domain-partition REQUIRED COMPONENTS partition_core)"
+    "find_package(lux-engine-partition-identity REQUIRED COMPONENTS partition_identity)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 lux_classify_target(

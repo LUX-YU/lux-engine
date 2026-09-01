@@ -50,17 +50,17 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::domain::WorldObjectId objectId()
+    [[nodiscard]] lux::world::WorldObjectId objectId()
     {
         std::array<std::uint8_t, 16U> bytes{};
         bytes[0] = 0xD5U;
-        return lux::domain::WorldObjectId{uuids::uuid{bytes}};
+        return lux::world::WorldObjectId{uuids::uuid{bytes}};
     }
 
     struct Fixture final
     {
         lux::asset::AssetId asset_id{assetId()};
-        lux::domain::WorldObjectId object{objectId()};
+        lux::world::WorldObjectId object{objectId()};
         std::shared_ptr<const lux::script::ScriptArtifact> artifact;
         lux::simulation::ecs::Entity entity{
             lux::simulation::ecs::NullEntity};
@@ -81,7 +81,7 @@ namespace
 
     bool resolveWorld(
         void* context,
-        const lux::domain::WorldObjectId& object,
+        const lux::world::WorldObjectId& object,
         lux::simulation::ecs::Entity& result
     ) noexcept
     {

@@ -39,8 +39,8 @@ int main()
         WorldEncodedDataRecord{0U, 1U, payload_c}
     };
     const std::array objects{
-        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(1U), first_data},
-        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(2U), second_data}
+        WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(1U), first_data},
+        WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(2U), second_data}
     };
 
     auto partition_wire = encodeWorldPartitionData(lux::partition::PartitionOrdinal{7U}, objects);
@@ -223,7 +223,7 @@ int main()
     assert(partition->objectCount() == 2U);
     const auto first_object = partition->objectAt(0U);
     assert(first_object);
-    assert(first_object.id() == id<lux::domain::WorldObjectId>(1U));
+    assert(first_object.id() == id<lux::world::WorldObjectId>(1U));
     assert(first_object.bundle() == bundle);
     assert(first_object.generation() == generation);
     assert(first_object.dataCount() == 2U);

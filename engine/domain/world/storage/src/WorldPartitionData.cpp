@@ -10,7 +10,7 @@ namespace lux::world
     {
     }
 
-    domain::WorldObjectId WorldPartitionObjectView::id() const noexcept
+    world::WorldObjectId WorldPartitionObjectView::id() const noexcept
     {
         return data_->objects_[object_index_].id;
     }

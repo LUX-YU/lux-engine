@@ -198,7 +198,14 @@ foreach(source IN LISTS production_sources)
     endif()
 
     if(normalized MATCHES "/engine/domain/simulation/")
-        if(content MATCHES
+        set(simulation_dependency_content "${content}")
+        string(REGEX REPLACE
+            "#[ \\t]*include[ \\t]*[<\"]lux/engine/world/WorldObjectId[.]hpp[>\"]"
+            ""
+            simulation_dependency_content
+            "${simulation_dependency_content}"
+        )
+        if(simulation_dependency_content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' includes World or an upper-layer API."
@@ -343,7 +350,14 @@ foreach(source IN LISTS production_sources)
     endif()
 
     if(normalized MATCHES "/engine/domain/world/identity/")
-        if(content MATCHES
+        set(world_identity_dependency_content "${content}")
+        string(REGEX REPLACE
+            "#[ \\t]*include[ \\t]*[<\"]lux/engine/world/WorldObjectId[.]hpp[>\"]"
+            ""
+            world_identity_dependency_content
+            "${world_identity_dependency_content}"
+        )
+        if(world_identity_dependency_content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|simulation|process|scene|runtime|authoring|toolchain|editor|host|extensions)/")
             message(FATAL_ERROR
                 "Architecture: World identity source '${normalized}' depends on a concrete or upper domain."
@@ -361,7 +375,14 @@ foreach(source IN LISTS production_sources)
     endif()
 
     if(normalized MATCHES "/engine/domain/simulation/")
-        if(content MATCHES
+        set(simulation_dependency_content "${content}")
+        string(REGEX REPLACE
+            "#[ \\t]*include[ \\t]*[<\"]lux/engine/world/WorldObjectId[.]hpp[>\"]"
+            ""
+            simulation_dependency_content
+            "${simulation_dependency_content}"
+        )
+        if(simulation_dependency_content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(world|process|scene|authoring|toolchain|editor|host)/")
             message(FATAL_ERROR
                 "Architecture: L1 Simulation source '${normalized}' includes World or an upper-layer API."
@@ -882,8 +903,8 @@ foreach(source IN LISTS installed_public_headers)
     endif()
 endforeach()
 
-if(EXISTS "${source_root}/engine/domain/world/core/include/lux/engine/world/WorldObjectId.hpp")
-    message(FATAL_ERROR "Architecture: retired World-owned WorldObjectId header remains installed in source.")
+if(EXISTS "${source_root}/engine/domain/world/identity/include/lux/engine/domain/WorldObjectId.hpp")
+    message(FATAL_ERROR "Architecture: retired domain-leaking WorldObjectId header remains installed in source.")
 endif()
 if(EXISTS "${source_root}/engine/scene/runtime/world/include/lux/engine/scene/WorldRuntime.hpp")
     message(FATAL_ERROR "Architecture: retired Scene WorldRuntime aggregate header remains in source.")
@@ -1103,7 +1124,7 @@ foreach(installed_consumer IN ITEMS
     scene_meta
     system_foundation
     simulation_runtime
-    world
+    world-description
     world_storage
     typed_resource_assets
 )
@@ -1211,11 +1232,16 @@ foreach(required_process_file IN ITEMS
     endif()
 endforeach()
 
-foreach(required_domain_consumer IN ITEMS domain-partition domain-world-identity)
+foreach(required_domain_consumer IN ITEMS partition-identity world-identity)
     if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_domain_consumer}/CMakeLists.txt")
         message(FATAL_ERROR
             "Architecture: missing installed Domain consumer '${required_domain_consumer}'."
         )
+    endif()
+endforeach()
+foreach(required_world_consumer IN ITEMS world-partition world-description)
+    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_world_consumer}/CMakeLists.txt")
+        message(FATAL_ERROR "Architecture: missing installed World consumer '${required_world_consumer}'.")
     endif()
 endforeach()
 

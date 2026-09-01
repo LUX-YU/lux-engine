@@ -26,7 +26,7 @@ target_compile_definitions(scene_core PRIVATE LUX_ENGINE_SCENE_LIBRARY)
 target_link_libraries(
     scene_core
     PUBLIC
-        lux::engine::world
+        lux::engine::world::description
         lux::engine::simulation::simulation_core
         lux::engine::scene::scene_description
         lux::engine::scene::scene_system
@@ -35,7 +35,7 @@ target_link_libraries(
 )
 component_add_transitive_commands(
     scene_core
-    "find_package(lux-engine-world REQUIRED COMPONENTS world)"
+    "find_package(lux-engine-world-description REQUIRED COMPONENTS world_description)"
     "find_package(lux-engine-simulation-core REQUIRED COMPONENTS simulation_core)"
     "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
     "find_package(lux-engine-scene-system REQUIRED COMPONENTS scene_system)"

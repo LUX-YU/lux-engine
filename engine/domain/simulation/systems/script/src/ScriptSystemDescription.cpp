@@ -72,7 +72,7 @@ namespace lux::simulation::script
             if (mount_ids_.contains(mount.id.value))
                 return lux::cxx::unexpected(EScriptSystemDescriptionError::DUPLICATE_MOUNT_ID);
 
-            std::optional<lux::domain::WorldObjectId> entity_object;
+            std::optional<lux::world::WorldObjectId> entity_object;
             if (const auto* entity = std::get_if<EntityScriptMount>(&mount.scope))
             {
                 entity_object = entity->object;

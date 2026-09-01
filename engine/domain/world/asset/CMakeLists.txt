@@ -29,13 +29,13 @@ target_compile_definitions(
 target_link_libraries(
     world_asset
     PUBLIC
-        lux::engine::world
+        lux::engine::world::description
         lux::engine::resource::asset
     PRIVATE lux::engine::core::serialization
 )
 component_add_transitive_commands(
     world_asset
-    "find_package(lux-engine-world REQUIRED COMPONENTS world)"
+    "find_package(lux-engine-world-description REQUIRED COMPONENTS world_description)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "if(NOT TARGET lux::engine::world::asset)"

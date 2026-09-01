@@ -72,7 +72,6 @@ namespace
 {
     using namespace lux::simulation;
     using namespace lux::simulation::ecs;
-    using namespace lux::domain;
     using namespace lux::partition;
     using namespace lux::world;
     using namespace lux::world::detail;

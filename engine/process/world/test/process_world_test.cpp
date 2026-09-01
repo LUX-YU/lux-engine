@@ -1,4 +1,4 @@
-#include <lux/engine/domain/WorldObjectId.hpp>
+#include <lux/engine/world/WorldObjectId.hpp>
 #include <lux/engine/process/world/WorldPartitionLoadSender.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 #include <lux/engine/world/storage/detail/WorldStorageCodec.hpp>
@@ -109,7 +109,7 @@ int main()
     assert(!lux::process::world::WorldStorageSource::create({}, {}));
 
     const std::array objects{
-        WorldEncodedObjectRecord{id<lux::domain::WorldObjectId>(1U), {}}
+        WorldEncodedObjectRecord{id<lux::world::WorldObjectId>(1U), {}}
     };
     auto partition = encodeWorldPartitionData(lux::partition::PartitionOrdinal{0U}, objects);
     assert(partition);

@@ -156,7 +156,9 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
 - `engine/process/execution` 是领域盲基础设施；`engine/process/world` 与 `engine/process/asset` 可拥有明确的
   time-spanning workflow。领域workflow不得反向进入 execution，也不得依赖 Scene、Render 或 gameplay policy。
 - Render 固定为 `render_client/render_graph/render_vulkan/render_features` 四 target。
-  Simulation extraction 与 FrameCoordinator 只依赖 client；无 render integration pack 的 Scene 必须 headless。
+  `RenderSystem` 是可选的 concrete SceneSystem，要求 Host 提供 `RenderRuntime` capability；它不创建 thread/device，
+  只冷装 RenderScene/Feature/feature-owned stages，并通过 `RenderSyncPipeline` 在 stable point发布 StateUpdate、
+  在 Presentation 转发。无 RenderSystem 的 Scene 不创建 RenderScene；无 render integration pack 的 Scene 必须 headless。
 - Authoring 保存可编辑源数据，Toolchain 执行 authoring→cooked，Player 只读取 RuntimeLaunchManifest
   与 cooked pak。Assimp、shaderc、spirv-cross、MLIR/LLVM、Editor UI 不得进入 Player 闭包。
 - Extension 是叶节点。引擎 target 不链接 `extensions/*`；manifest 决定部署和运行期加载。

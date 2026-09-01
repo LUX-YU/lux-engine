@@ -64,10 +64,13 @@ Canonical user-facing `Transform2D/3D` 与 `WorldTransform2D/3D` 使用 double�
 Scene 不拥有 mandatory streaming/index/residency/render/main-loop state，也不创建 Scene TaskGraph；Simulation 不拥有
 World IO、partition lifecycle 或 wall clock；Process workflow不得认识 Scene 或 gameplay policy。
 
-3D Render integration 是可选的 L3 leaf：`engine/scene/runtime/render` 在 Simulation stable point把
-`Mesh3D/Light3D/WorldTransform3D` 合成为 bounded `RenderProgram(StateUpdate)`；Presentation只转发更新并
-author `RenderProgram(Frame)`。StateUpdate只修改 retained RenderScene，只有 Frame推进渲染生命周期。
-该 leaf不改变 headless Scene core，也不授权 Presentation Registry、Asset resolver或residency framework。
+3D Render integration 是可选的 L3 leaf：`RenderSystem` 是由 SceneDescription 显式选择的 SceneSystem；它要求
+Host 提供共享 `RenderRuntime` capability，冷路径创建自己的 RenderScene、按 metadata/catalog attach Feature，
+并从 feature-owned binding 创建 `RenderSyncStage`。`RenderSyncPipeline` 在 Simulation stable point把
+`Mesh3D/Light3D/WorldTransform3D` 合成为 bounded `RenderProgram(StateUpdate)`，Presentation hook只转发更新；
+Host继续 author `RenderProgram(Frame)`、view、target与camera。StateUpdate只修改 retained RenderScene，只有
+Frame推进渲染生命周期。无 RenderSystem 就没有 Scene render state；无 RenderRuntime provider 的 Scene仍可在
+不选择 RenderSystem 时完全 headless。该 leaf不授权 Presentation Registry、Asset resolver或residency framework。
 
 ## Package 与 collection
 

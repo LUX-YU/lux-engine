@@ -1,10 +1,15 @@
 # L4 Toolchain Convergence
 
-Status: **Closed**
+Status: **Pre-L5 hardening required**
 
 Baseline: `bb2b12b3f425db16eca6a96828a101fd3ae9bad5`
 
-Qualified implementation: `75d82e7a2bae5ae804fc1697e551df4b83643e56`
+Previously qualified implementation: `75d82e7a2bae5ae804fc1697e551df4b83643e56`
+
+The previous qualification remains valid evidence for the tested build and GPU behavior, but a subsequent
+source-level review found four P1 closure items: malformed MaterialGraph validation, installed Material compiler
+relocation, Toolchain Shader support ownership, and GraphKit transaction atomicity. L4 is reopened until those items
+are qualified on a new exact revision. L1-L3 remain closed.
 
 Date: 2026-09-01
 

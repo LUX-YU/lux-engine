@@ -1,5 +1,10 @@
 # L4 Toolchain Convergence Qualification Evidence
 
+> **Erratum (2026-09-01):** This evidence proves that installed consumers configured, linked and ran against the
+> installed package surface on the qualification host. It did not prove that the installed Material compiler was
+> independent of the original source/build shader include directories; those absolute paths were still compiled into
+> the library. L4 is reopened for pre-L5 hardening. A later qualification record must include a true relocation test.
+
 Date: 2026-09-01
 
 Starting baseline: `bb2b12b3f425db16eca6a96828a101fd3ae9bad5`
@@ -60,7 +65,8 @@ E:/SyncForder/CodeRepos/install/qualification/L4Toolchain-75d82e7a
 ```
 
 The installed architecture validator passed against that prefix. The following five consumers independently
-configured, built and ran using only installed package metadata and libraries:
+configured and linked using installed package metadata and libraries, and ran on the same host while the original
+source/build trees remained available:
 
 ```text
 material-graph

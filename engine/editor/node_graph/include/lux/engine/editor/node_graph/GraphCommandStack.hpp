@@ -25,6 +25,11 @@
 //     edits in GraphEditor, not during undo/redo replay; no domain emits
 //     wildcards yet.
 //
+//  ATOMIC COMPOUND EDITS: all journal/history capacity is prepared before the
+//  first domain mutation. A failed edit, undo, or redo replays the successful
+//  prefix's inverse and leaves document, history, redo branch, and revision at
+//  their exact entry state. This relies on IGraphView contract (d).
+//
 //  CAP-AWARE REPLACE-ON-RECONNECT: doConnect reads both endpoints' fan caps
 //  (GraphPinType::fan_cap); a cap-1 endpoint that is already linked gets its
 //  old link explicitly disconnected FIRST, recorded as its own inverse intent
@@ -60,8 +65,8 @@ namespace lux::editor::node_graph
         /// Groups subsequent do* calls into ONE undo step (e.g. delete-node =
         /// N disconnects + 1 detach). Primitives called outside a transaction
         /// auto-wrap themselves.
-        void beginTransaction(std::string label);
-        void commitTransaction();
+        [[nodiscard]] bool beginTransaction(std::string label);
+        [[nodiscard]] bool commitTransaction();
         bool inTransaction() const noexcept
         {
             return in_transaction_;
@@ -82,23 +87,23 @@ namespace lux::editor::node_graph
 
         bool doDisconnect(GraphPinRef from, GraphPinRef to);
 
-        void doMoveNode(GraphNodeRef node, GraphVec2 new_pos);
+        [[nodiscard]] bool doMoveNode(GraphNodeRef node, GraphVec2 new_pos);
 
         /// Drag-gesture flavor: the view may already hold the FINAL position
         /// (live write-back while dragging); the caller supplies the position
         /// at drag START so undo returns there.
-        void doMoveNode(GraphNodeRef node, GraphVec2 old_pos, GraphVec2 new_pos);
+        [[nodiscard]] bool doMoveNode(GraphNodeRef node, GraphVec2 old_pos, GraphVec2 new_pos);
 
         // ---- undo / redo ------------------------------------------------------
         bool undo();
         bool redo();
         bool canUndo() const noexcept
         {
-            return !undo_stack_.empty();
+            return !poisoned_ && !undo_stack_.empty();
         }
         bool canRedo() const noexcept
         {
-            return !redo_stack_.empty();
+            return !poisoned_ && !redo_stack_.empty();
         }
         std::size_t undoDepth() const noexcept
         {
@@ -143,6 +148,11 @@ namespace lux::editor::node_graph
         };
 
         void record(Op op);
+        bool prepareTransaction(std::string label, bool& automatic);
+        bool reservePending(std::size_t additional);
+        bool failTransaction();
+        bool rollbackUndoPrefix(Transaction& transaction, std::size_t first_applied);
+        bool rollbackRedoPrefix(Transaction& transaction, std::size_t applied_count);
         bool applyUndo(Op& op);
         bool applyRedo(Op& op);
         /// True when @p t holds any non-MOVE op (see structureRevision).
@@ -153,6 +163,7 @@ namespace lux::editor::node_graph
         std::vector<Transaction> redo_stack_;
         Transaction pending_;
         bool in_transaction_ = false;
+        bool poisoned_ = false;
         std::uint64_t structure_revision_ = 0;
     };
 

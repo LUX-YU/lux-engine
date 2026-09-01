@@ -69,6 +69,20 @@ namespace
     class StubView final : public IGraphView
     {
     public:
+        enum class EMutation : std::uint8_t
+        {
+            ATTACH,
+            DETACH,
+            CONNECT,
+            DISCONNECT
+        };
+
+        void failMutation(EMutation mutation, std::size_t invocation = 1U)
+        {
+            failed_mutation_ = mutation;
+            failure_countdown_ = invocation == 0U ? 1U : invocation;
+        }
+
         // templates: "src" = 1 unlimited output; "dst" = 2 cap-1 inputs.
         GraphNodeRef addNode(std::string_view template_id) override
         {
@@ -98,6 +112,10 @@ namespace
 
         NodeCapture detachNode(GraphNodeRef node) override
         {
+            if (shouldFail(EMutation::DETACH))
+            {
+                return nullptr;
+            }
             const auto it = nodes_.find(node.id);
             if (it == nodes_.end())
             {
@@ -110,6 +128,10 @@ namespace
 
         bool attachNode(GraphNodeRef original, NodeCapture capture) override
         {
+            if (shouldFail(EMutation::ATTACH))
+            {
+                return false;
+            }
             if (!capture || nodes_.count(original.id) != 0)
             {
                 return false;
@@ -124,6 +146,10 @@ namespace
 
         bool connect(GraphPinRef from, GraphPinRef to) override
         {
+            if (shouldFail(EMutation::CONNECT))
+            {
+                return false;
+            }
             const StubPin* fp = pinAt(from);
             const StubPin* tp = pinAt(to);
             if (!fp || !tp)
@@ -148,6 +174,10 @@ namespace
 
         bool disconnect(GraphPinRef from, GraphPinRef to) override
         {
+            if (shouldFail(EMutation::DISCONNECT))
+            {
+                return false;
+            }
             for (auto it = links_.begin(); it != links_.end(); ++it)
             {
                 if (it->from == from && it->to == to)
@@ -238,6 +268,20 @@ namespace
         }
 
     private:
+        bool shouldFail(EMutation mutation)
+        {
+            if (!failed_mutation_ || *failed_mutation_ != mutation)
+            {
+                return false;
+            }
+            if (--failure_countdown_ != 0U)
+            {
+                return false;
+            }
+            failed_mutation_.reset();
+            return true;
+        }
+
         const StubPin* pinAt(GraphPinRef ref) const
         {
             const auto it = nodes_.find(ref.node.id);
@@ -267,6 +311,8 @@ namespace
         std::map<node_id, std::shared_ptr<StubNode>> nodes_; // ordered: stable forEachNode
         std::vector<StubLink>                        links_;
         node_id                                      next_id_ = 1;
+        std::optional<EMutation>                      failed_mutation_;
+        std::size_t                                   failure_countdown_ = 0U;
     };
 
     /// Minimal schema — proves the interface defaults compile; the stack never
@@ -372,6 +418,76 @@ static void testCapAwareReplace()
           "ONE undo restores the old link and removes the new (one transaction)");
 }
 
+static void testAtomicFailures()
+{
+    std::printf("-- compound edit / undo / redo failure atomicity --\n");
+    StubView view;
+    GraphCommandStack stack(&view);
+
+    const GraphNodeRef src1 = stack.doAddNode("src");
+    const GraphNodeRef src2 = stack.doAddNode("src");
+    const GraphNodeRef dst = stack.doAddNode("dst");
+    const GraphPinRef out1{src1, EPinSide::OUTPUT, 0U};
+    const GraphPinRef out2{src2, EPinSide::OUTPUT, 0U};
+    const GraphPinRef in_a{dst, EPinSide::INPUT, 0U};
+    const GraphPinRef in_b{dst, EPinSide::INPUT, 1U};
+
+    check(stack.doConnect(out1, in_a), "atomic fixture first link");
+    const auto replace_depth = stack.undoDepth();
+    const auto replace_revision = stack.structureRevision();
+    view.failMutation(StubView::EMutation::CONNECT);
+    check(!stack.doConnect(out2, in_a), "failed replacement reports failure");
+    check(view.hasLink(out1, in_a) && !view.hasLink(out2, in_a),
+          "failed replacement restores the old cap-1 link");
+    check(stack.undoDepth() == replace_depth && stack.structureRevision() == replace_revision,
+          "failed replacement leaves history and revision unchanged");
+
+    check(stack.doConnect(out2, in_b), "atomic fixture second link");
+    const auto remove_depth = stack.undoDepth();
+    const auto remove_revision = stack.structureRevision();
+    view.failMutation(StubView::EMutation::DETACH);
+    check(!stack.doRemoveNode(dst), "failed detach reports failure");
+    check(view.hasNode(dst.id) && view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
+          "failed detach restores every incident link");
+    check(stack.undoDepth() == remove_depth && stack.structureRevision() == remove_revision,
+          "failed remove leaves history and revision unchanged");
+
+    check(stack.beginTransaction("manual disconnect"), "manual transaction begins");
+    check(stack.doDisconnect(out1, in_a), "manual transaction first operation succeeds");
+    view.failMutation(StubView::EMutation::DISCONNECT);
+    check(!stack.doDisconnect(out2, in_b), "manual transaction second operation fails");
+    check(!stack.inTransaction() && !stack.commitTransaction(), "failed manual transaction is closed");
+    check(view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
+          "failed manual transaction rolls back its successful prefix");
+    check(stack.undoDepth() == remove_depth && stack.structureRevision() == remove_revision,
+          "failed manual transaction does not alter history");
+
+    check(stack.doRemoveNode(dst), "remove transaction succeeds before replay faults");
+    const auto replay_depth = stack.undoDepth();
+    const auto replay_revision = stack.structureRevision();
+    view.failMutation(StubView::EMutation::CONNECT, 2U);
+    check(!stack.undo(), "mid-transaction undo failure is reported");
+    check(!view.hasNode(dst.id) && view.linkCountTotal() == 0U,
+          "failed undo restores the exact pre-undo document");
+    check(stack.undoDepth() == replay_depth && !stack.canRedo() &&
+          stack.structureRevision() == replay_revision,
+          "failed undo stays on the undo stack and preserves revision");
+
+    check(stack.undo(), "undo retry succeeds after single-shot failure");
+    check(view.hasNode(dst.id) && view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
+          "undo retry restores node and links");
+    const auto redo_revision = stack.structureRevision();
+    view.failMutation(StubView::EMutation::DISCONNECT, 2U);
+    check(!stack.redo(), "mid-transaction redo failure is reported");
+    check(view.hasNode(dst.id) && view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
+          "failed redo restores the exact pre-redo document");
+    check(stack.canRedo() && stack.structureRevision() == redo_revision,
+          "failed redo stays on the redo stack and preserves revision");
+    check(stack.redo(), "redo retry succeeds after single-shot failure");
+    check(!view.hasNode(dst.id) && view.linkCountTotal() == 0U,
+          "redo retry removes the complete transaction");
+}
+
 static void testDisconnectMoveRedoInvalidation()
 {
     std::printf("-- disconnect / move / redo invalidation --\n");
@@ -387,11 +503,12 @@ static void testDisconnectMoveRedoInvalidation()
     check(stack.doDisconnect(out, in_a), "doDisconnect succeeds");
     check(stack.undo() && view.hasLink(out, in_a), "undo restores the link");
 
-    stack.doMoveNode(src, GraphVec2{ 1.0f, 2.0f }, GraphVec2{ 100.0f, 200.0f });
+    check(stack.doMoveNode(src, GraphVec2{ 1.0f, 2.0f }, GraphVec2{ 100.0f, 200.0f }),
+          "move transaction succeeds");
     check(view.nodePos(src)->x == 100.0f, "move applied");
     check(stack.undo() && view.nodePos(src)->x == 1.0f, "move undone to old pos");
     check(stack.canRedo(), "redo branch exists");
-    stack.doMoveNode(src, GraphVec2{ 5.0f, 5.0f });
+    check(stack.doMoveNode(src, GraphVec2{ 5.0f, 5.0f }), "replacement move succeeds");
     check(!stack.canRedo(), "a new edit invalidates the redo branch");
 }
 
@@ -409,7 +526,8 @@ static void testStructureRevision()
     check(stack.structureRevision() > r0, "add bumps the revision");
 
     const auto r1 = stack.structureRevision();
-    stack.doMoveNode(src, GraphVec2{ 0.0f, 0.0f }, GraphVec2{ 10.0f, 10.0f });
+    check(stack.doMoveNode(src, GraphVec2{ 0.0f, 0.0f }, GraphVec2{ 10.0f, 10.0f }),
+          "revision fixture move succeeds");
     check(stack.structureRevision() == r1, "a pure MOVE does NOT bump");
 
     const GraphPinRef out{ src, EPinSide::OUTPUT, 0 };
@@ -487,6 +605,7 @@ int main()
     testAddUndoRedo();
     testRemoveWithLinksOneStep();
     testCapAwareReplace();
+    testAtomicFailures();
     testDisconnectMoveRedoInvalidation();
     testStructureRevision();
     testFallbackLayout();

@@ -20,6 +20,10 @@
 //       inverse intents).
 //   (c) PIN-INDEX STABILITY: pin indices stay valid until reconstructNode()
 //       (which rebuilds the node's dynamic pins; the editor then re-reads).
+//   (d) TRANSACTION INVERSE: false/null mutations have no side effects. Every
+//       successful connect/disconnect and attach/detach pair is immediately
+//       reversible while no external mutation intervenes. GraphCommandStack
+//       relies on this to roll a failed compound transaction back exactly.
 //  Snapshots (GraphPinView/GraphLinkView and the title passed to forEachNode)
 //  borrow domain memory and are valid only during the enclosing call.
 // =============================================================================
@@ -73,21 +77,23 @@ namespace lux::editor::node_graph
         /// node allocates its own pins in its constructor.
         virtual GraphNodeRef addNode(std::string_view template_id) = 0;
 
-        /// Detaches a node, returning an owning capture for undo. The node
+        /// Detaches a node, returning an owning capture for undo. nullptr means
+        /// no mutation occurred. The node
         /// must have no incident links — the editor disconnects them first
         /// (each as a recorded inverse intent).
         virtual NodeCapture detachNode(GraphNodeRef node) = 0;
 
         /// Re-attaches a previously detached node under its ORIGINAL id
-        /// (contract (a)). Returns false if the id is occupied.
+        /// (contract (a)). Returns false without mutation if the id is occupied.
         virtual bool attachNode(GraphNodeRef original, NodeCapture capture) = 0;
 
         /// Connects an output pin to an input pin. Must not implicitly sever
-        /// (contract (b)); returns false if the domain rejects the link.
+        /// (contract (b)); returns false without mutation if the domain rejects the link.
         virtual bool connect(GraphPinRef from, GraphPinRef to) = 0;
 
         /// Removes the specific link (both endpoints identify it — domain graph
         /// exec-in pins fan-in from multiple sources).
+        /// Returns false without mutation when that exact link is absent.
         virtual bool disconnect(GraphPinRef from, GraphPinRef to) = 0;
 
         /// THE one arity-rebuild entry (UE AllocateDefaultPins/ReconstructNode

@@ -391,18 +391,37 @@ namespace lux::editor::node_graph
 
             if (!drag_start.empty() && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
             {
-                commands.beginTransaction("move");
+                bool transaction_ok = commands.beginTransaction("move");
                 for (const auto& [id, start] : drag_start)
                 {
+                    if (!transaction_ok)
+                    {
+                        break;
+                    }
                     const GraphNodeRef node{ id };
                     const GraphVec2 now = view->nodePos(node).value_or(start);
                     if (std::fabs(now.x - start.x) > kDragEpsilon ||
                         std::fabs(now.y - start.y) > kDragEpsilon)
                     {
-                        commands.doMoveNode(node, start, now);
+                        transaction_ok = commands.doMoveNode(node, start, now);
                     }
                 }
-                commands.commitTransaction();
+                transaction_ok = transaction_ok && commands.commitTransaction();
+                if (!transaction_ok)
+                {
+                    view->forEachNode(
+                        [&](GraphNodeRef node, std::string_view)
+                        {
+                            if (const auto restored = view->nodePos(node))
+                            {
+                                ed::SetNodePosition(
+                                    ed::NodeId(bimap.nodeEdId(node)),
+                                    ImVec2(restored->x, restored->y)
+                                );
+                            }
+                        }
+                    );
+                }
                 drag_start.clear();
             }
         }

@@ -799,6 +799,19 @@ if(EXISTS "${source_root}/modules/function/ui")
     endif()
 endif()
 
+foreach(render_protocol_header IN ITEMS
+    "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/RenderProtocol.hpp"
+    "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/protocol/RenderCommTypes.hpp"
+)
+    file(READ "${render_protocol_header}" render_protocol_contract)
+    if(render_protocol_contract MATCHES
+       "SubmitImGuiDrawDataPayload|ImGuiDrawData|ImGuiCommConfig")
+        message(FATAL_ERROR
+            "Architecture: generic Render protocol '${render_protocol_header}' exposes private UI vocabulary."
+        )
+    endif()
+endforeach()
+
 if(EXISTS "${source_root}/engine/editor")
     file(GLOB_RECURSE editor_ui_sources LIST_DIRECTORIES false
         "${source_root}/engine/editor/*.hpp"

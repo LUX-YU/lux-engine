@@ -451,15 +451,6 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<SetActiveScenePayload>);
 
-    // ---- ImGui draw data submission ----
-
-    struct SubmitImGuiDrawDataPayload
-    {
-        RenderSceneId scene_id{};          ///< Which ImGui scene to render to
-        std::uint32_t attachment_index{0}; ///< Index into AttachmentRecord (ImDrawDataSnapshot)
-    };
-    static_assert(std::is_trivially_copyable_v<SubmitImGuiDrawDataPayload>);
-
     // ---- Name-based TypeId query ----
 
     struct QueryTypeIdPayload

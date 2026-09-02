@@ -4,7 +4,6 @@
 #include <lux/engine/ui/UISession.hpp>
 
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
-#include <lux/engine/function/render/client/RenderProtocol.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/renderer/FrameOrchestrator.hpp>
@@ -18,6 +17,7 @@
 #include <memory>
 #include <new>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -27,6 +27,12 @@ namespace lux::editor::application::detail
     {
         inline constexpr render::TypeId kUiDrawDataAttachment = 3U;
         inline constexpr const char* kSubmitOperationName = "LuxUiSubmitDrawData";
+
+        struct UiDrawDataSubmitPayload final
+        {
+            std::uint32_t attachment_index{};
+        };
+        static_assert(std::is_trivially_copyable_v<UiDrawDataSubmitPayload>);
 
         struct ServerState final
         {
@@ -40,7 +46,7 @@ namespace lux::editor::application::detail
         using Dispatcher = Server::Dispatcher;
         using DispatchContext = Dispatcher::Ctx;
 
-        void handleSubmitDrawData(DispatchContext& context, const render::SubmitImGuiDrawDataPayload& payload)
+        void handleSubmitDrawData(DispatchContext& context, const UiDrawDataSubmitPayload& payload)
         {
             auto* state = static_cast<ServerState*>(render::serverExtensionOf(context.user_state));
             if (state == nullptr || payload.attachment_index >= context.program.attachments.size())
@@ -60,7 +66,7 @@ namespace lux::editor::application::detail
                 return 0U;
             auto& target = *static_cast<Dispatcher*>(dispatcher);
             operations[0] = target.allocateAndRegisterUnary<
-                render::SubmitImGuiDrawDataPayload,
+                UiDrawDataSubmitPayload,
                 &handleSubmitDrawData
             >(render::opcodes::CommandOp, kSubmitOperationName);
             return operations[0] == render::kInvalidTypeId ? 0U : 1U;
@@ -449,7 +455,7 @@ namespace lux::editor::application::detail
                 kUiDrawDataAttachment,
                 std::move(snapshot)
             );
-            render::SubmitImGuiDrawDataPayload payload{};
+            UiDrawDataSubmitPayload payload{};
             payload.attachment_index = attachment;
             impl_->programs->builder().push(
                 render::opcodes::CommandOp,

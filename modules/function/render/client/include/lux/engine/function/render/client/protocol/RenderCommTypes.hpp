@@ -129,7 +129,6 @@ namespace lux::render
     /// 名字索引),所以模块间不撞号只能靠这条约定。谁新加一个类型,自己往下取值,
     /// 并在自己的头里定义 —— 不要加回这里:引擎不认识、也不该认识那些类型。
     ///
-    /// 已知在用:3 = ImGuiDrawData(定义在 `lux/engine/ui/ImGuiCommConfig.hpp`)。
     namespace attachment_types
     {
         inline constexpr TypeId BorrowedBytes = 1;

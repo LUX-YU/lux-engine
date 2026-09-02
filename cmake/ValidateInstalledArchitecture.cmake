@@ -174,6 +174,12 @@ foreach(entry IN LISTS installed_text)
             "Installed Inspector SDK exposes backend UI or runtime reflection vocabulary: ${entry}"
         )
     endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]function[/]render[/]client[/]" AND
+       content MATCHES "SubmitImGuiDrawDataPayload|ImGuiDrawData|ImGuiCommConfig")
+        message(FATAL_ERROR
+            "Installed generic Render protocol exposes private UI vocabulary: ${entry}"
+        )
+    endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]ecs[/]" AND
        content MATCHES "CloneFn|default_emplace|COPY_WITHOUT_CLONE")
         message(FATAL_ERROR

@@ -6,6 +6,7 @@
 
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
 #include <lux/engine/ui/detail/EditLifecycle.hpp>
+#include <lux/engine/ui/detail/NullTerminatedText.hpp>
 #include <lux/engine/ui/detail/UiContract.hpp>
 
 #include <algorithm>
@@ -39,16 +40,25 @@ namespace lux::ui
             const void* minimum = spec.minimum ? std::addressof(*spec.minimum) : nullptr;
             const void* maximum = spec.maximum ? std::addressof(*spec.maximum) : nullptr;
             const void* step = spec.step ? std::addressof(*spec.step) : nullptr;
-            const char* format = spec.format.empty() ? nullptr : spec.format.data();
+            const detail::NullTerminatedText label_text{label};
+            const detail::NullTerminatedText format_text{spec.format};
+            const char* format = spec.format.empty() ? nullptr : format_text.c_str();
             bool changed{};
             switch (spec.mode)
             {
             case EScalarEditMode::INPUT:
-                changed = ImGui::InputScalar(label.data(), data_type, std::addressof(value), step, nullptr, format);
+                changed = ImGui::InputScalar(
+                    label_text.c_str(),
+                    data_type,
+                    std::addressof(value),
+                    step,
+                    nullptr,
+                    format
+                );
                 break;
             case EScalarEditMode::DRAG:
                 changed = ImGui::DragScalar(
-                    label.data(),
+                    label_text.c_str(),
                     data_type,
                     std::addressof(value),
                     spec.speed,
@@ -61,7 +71,7 @@ namespace lux::ui
                 if (minimum != nullptr && maximum != nullptr)
                 {
                     changed = ImGui::SliderScalar(
-                        label.data(),
+                        label_text.c_str(),
                         data_type,
                         std::addressof(value),
                         minimum,
@@ -72,7 +82,7 @@ namespace lux::ui
                 else
                 {
                     changed = ImGui::DragScalar(
-                        label.data(),
+                        label_text.c_str(),
                         data_type,
                         std::addressof(value),
                         spec.speed,
@@ -308,47 +318,53 @@ namespace lux::ui
     void Frame::text(std::string_view value)
     {
         requireActive(*this);
-        ImGui::TextUnformatted(value.data(), value.data() + value.size());
+        const char* begin = detail::dataOrEmpty(value);
+        ImGui::TextUnformatted(begin, begin + value.size());
     }
 
     void Frame::textMuted(std::string_view value)
     {
         requireActive(*this);
-        ImGui::TextDisabled("%.*s", static_cast<int>(value.size()), value.data());
+        ImGui::TextDisabled("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
     }
 
     void Frame::textWrapped(std::string_view value)
     {
         requireActive(*this);
-        ImGui::TextWrapped("%.*s", static_cast<int>(value.size()), value.data());
+        ImGui::TextWrapped("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
     }
 
     bool Frame::button(std::string_view label)
     {
         requireActive(*this);
-        return ImGui::Button(label.data());
+        const detail::NullTerminatedText text{label};
+        return ImGui::Button(text.c_str());
     }
 
     bool Frame::smallButton(std::string_view label)
     {
         requireActive(*this);
-        return ImGui::SmallButton(label.data());
+        const detail::NullTerminatedText text{label};
+        return ImGui::SmallButton(text.c_str());
     }
 
     EditResult Frame::checkbox(std::string_view label, bool& value)
     {
         requireActive(*this);
-        return editResult<bool>(ImGui::Checkbox(label.data(), std::addressof(value)));
+        const detail::NullTerminatedText text{label};
+        return editResult<bool>(ImGui::Checkbox(text.c_str(), std::addressof(value)));
     }
 
     EditResult Frame::inputText(std::string_view label, std::string& value, InputTextSpec spec)
     {
         requireActive(*this);
         const auto flags = spec.read_only ? ImGuiInputTextFlags_ReadOnly : ImGuiInputTextFlags_None;
-        const bool changed = spec.hint.empty() ? ImGui::InputText(label.data(), std::addressof(value), flags) :
+        const detail::NullTerminatedText label_text{label};
+        const detail::NullTerminatedText hint_text{spec.hint};
+        const bool changed = spec.hint.empty() ? ImGui::InputText(label_text.c_str(), std::addressof(value), flags) :
                                                  ImGui::InputTextWithHint(
-                                                     label.data(),
-                                                     spec.hint.data(),
+                                                     label_text.c_str(),
+                                                     hint_text.c_str(),
                                                      std::addressof(value),
                                                      flags
                                                  );
@@ -415,14 +431,18 @@ namespace lux::ui
     {
         requireActive(*this);
         const auto selected = std::ranges::find(options, value, &ComboOption::value);
-        const char* preview = selected == options.end() ? "<unknown>" : selected->label.data();
+        const detail::NullTerminatedText label_text{label};
+        const detail::NullTerminatedText preview_text{
+            selected == options.end() ? std::string_view{"<unknown>"} : selected->label
+        };
         bool changed{};
-        if (ImGui::BeginCombo(label.data(), preview))
+        if (ImGui::BeginCombo(label_text.c_str(), preview_text.c_str()))
         {
             for (const auto& option : options)
             {
                 const bool current = option.value == value;
-                if (ImGui::Selectable(option.label.data(), current))
+                const detail::NullTerminatedText option_text{option.label};
+                if (ImGui::Selectable(option_text.c_str(), current))
                 {
                     value = option.value;
                     changed = true;
@@ -449,7 +469,7 @@ namespace lux::ui
     {
         requireActive(*this);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%.*s", static_cast<int>(value.size()), value.data());
+            ImGui::SetTooltip("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
     }
 
     DisabledScope Frame::disabled(bool disabled)
@@ -474,8 +494,9 @@ namespace lux::ui
         requireActive(*this);
         if (!spec.id.isValid())
             detail::failUiContract();
+        const detail::NullTerminatedText id_text{spec.id.name()};
         const bool visible = ImGui::BeginChild(
-            spec.id.name().data(),
+            id_text.c_str(),
             ImVec2{spec.size.width, spec.size.height},
             spec.border
         );
@@ -492,7 +513,8 @@ namespace lux::ui
             flags |= ImGuiTableFlags_BordersInnerV;
         if (spec.row_background)
             flags |= ImGuiTableFlags_RowBg;
-        const bool open = ImGui::BeginTable(spec.id.name().data(), static_cast<int>(spec.columns), flags);
+        const detail::NullTerminatedText id_text{spec.id.name()};
+        const bool open = ImGui::BeginTable(id_text.c_str(), static_cast<int>(spec.columns), flags);
         return TableScope{open};
     }
 
@@ -501,7 +523,8 @@ namespace lux::ui
         requireActive(*this);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted(label.data(), label.data() + label.size());
+        const char* begin = detail::dataOrEmpty(label);
+        ImGui::TextUnformatted(begin, begin + label.size());
         ImGui::TableSetColumnIndex(1);
     }
 
@@ -518,7 +541,8 @@ namespace lux::ui
             flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         if (spec.default_open)
             flags |= ImGuiTreeNodeFlags_DefaultOpen;
-        const bool open = ImGui::TreeNodeEx(spec.label.data(), flags);
+        const detail::NullTerminatedText label_text{spec.label};
+        const bool open = ImGui::TreeNodeEx(label_text.c_str(), flags);
         const bool activated = ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen();
         const bool context_requested = ImGui::IsItemClicked(ImGuiMouseButton_Right);
         return TreeRowScope{open, open && !spec.leaf, activated, context_requested};
@@ -529,7 +553,8 @@ namespace lux::ui
         requireActive(*this);
         if (!id.isValid())
             detail::failUiContract();
-        ImGui::OpenPopup(id.name().data());
+        const detail::NullTerminatedText id_text{id.name()};
+        ImGui::OpenPopup(id_text.c_str());
     }
 
     PopupScope Frame::popup(const PopupSpec& spec)
@@ -537,8 +562,8 @@ namespace lux::ui
         requireActive(*this);
         if (!spec.id.isValid())
             detail::failUiContract();
-        const bool open = spec.modal ? ImGui::BeginPopupModal(spec.id.name().data()) :
-                                       ImGui::BeginPopup(spec.id.name().data());
+        const detail::NullTerminatedText id_text{spec.id.name()};
+        const bool open = spec.modal ? ImGui::BeginPopupModal(id_text.c_str()) : ImGui::BeginPopup(id_text.c_str());
         return PopupScope{open, spec.modal};
     }
 

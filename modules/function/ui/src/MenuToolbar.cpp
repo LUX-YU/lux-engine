@@ -1,5 +1,7 @@
 #include <lux/engine/ui/MenuToolbar.hpp>
 
+#include <lux/engine/ui/detail/NullTerminatedText.hpp>
+
 #include <imgui.h>
 
 #include <lux/engine/ui/CommandRouter.hpp>
@@ -17,7 +19,8 @@ namespace lux::ui
             }
             if (item.kind() == EMenuItemKind::SUBMENU)
             {
-                if (!ImGui::BeginMenu(item.label().data()))
+                const detail::NullTerminatedText label{item.label()};
+                if (!ImGui::BeginMenu(label.c_str()))
                     return;
                 for (const auto& child : item.children())
                     drawMenuItem(child, router);
@@ -31,7 +34,8 @@ namespace lux::ui
             auto label = item.label();
             if (label.empty())
                 label = router.label(item.command());
-            if (ImGui::MenuItem(label.data(), nullptr, state.checked, state.enabled))
+            const detail::NullTerminatedText label_text{label};
+            if (ImGui::MenuItem(label_text.c_str(), nullptr, state.checked, state.enabled))
             {
                 static_cast<void>(router.invoke(item.command()));
             }
@@ -63,7 +67,8 @@ namespace lux::ui
                 continue;
             const auto label = router.label(item.command());
             ImGui::BeginDisabled(!state.enabled);
-            if (ImGui::Button(label.data()))
+            const detail::NullTerminatedText label_text{label};
+            if (ImGui::Button(label_text.c_str()))
                 static_cast<void>(router.invoke(item.command()));
             ImGui::EndDisabled();
         }

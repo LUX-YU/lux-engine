@@ -228,6 +228,24 @@ if(ENABLE_UI_TEST)
     )
     add_test(NAME ui_public_frame_test COMMAND ui_public_frame_test)
 
+    add_executable(ui_backend_string_view_test test/ui_backend_string_view_test.cpp)
+    target_include_directories(ui_backend_string_view_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+    target_link_libraries(ui_backend_string_view_test PRIVATE ui)
+    lux_classify_target(
+        TARGET  ui_backend_string_view_test
+        LAYER   FUNCTION
+        PRODUCT TEST
+        ROLE    FOUNDATION
+    )
+    add_test(NAME ui_backend_string_view_test COMMAND ui_backend_string_view_test)
+    add_test(
+        NAME ui_backend_string_boundary_guard
+        COMMAND
+            ${CMAKE_COMMAND}
+            "-DSOURCES=${CMAKE_CURRENT_SOURCE_DIR}/src/Frame.cpp;${CMAKE_CURRENT_SOURCE_DIR}/src/MenuToolbar.cpp"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/test/ValidateBackendStringBoundaries.cmake
+    )
+
     function(ui_add_contract_probe target)
         add_executable(${target} test/${target}.cpp)
         target_link_libraries(${target} PRIVATE ui)

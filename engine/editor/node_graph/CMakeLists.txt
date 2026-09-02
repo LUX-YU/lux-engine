@@ -11,9 +11,8 @@ generate_visibility_header(
 )
 
 set(LUX_NODE_GRAPH_EDITOR_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/GraphCommandStack.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/GraphLayout.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/GraphEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DefaultImGuiNodeGraphRenderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/GraphEditingSession.cpp
 )
 
 add_component(
@@ -53,11 +52,13 @@ target_compile_definitions(
 target_link_libraries(
     node_graph_editor
     PUBLIC
+    lux::engine::function::graph
     imgui::node_editor
 )
 
 component_add_transitive_commands(
     node_graph_editor
+    "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
     "find_package(imgui REQUIRED COMPONENTS core)"
     "find_package(node_editor REQUIRED COMPONENTS node_editor)"
 )

@@ -1,628 +1,326 @@
-// =============================================================================
-//  graphkit_stub_test — GraphKit P1: the framework's pure logic against a stub
-//  domain (no imgui, builds without the editor component).
-//
-//    1. GraphCommandStack: add/remove/connect/disconnect/move undo+redo, the
-//       ID-STABILITY contract (restored nodes keep their ORIGINAL ids), the
-//       cap-aware replace-on-reconnect (explicit disconnect+connect pair, one
-//       transaction), delete-with-links as ONE undo step, redo invalidation.
-//    2. layoutUnplacedNodes: grid fallback touches only unplaced nodes.
-//    3. detail::PinIdBimap: stable mint, resolve round-trips, eager purge.
-//
-//  Self-checking: exit code 0 on success.
-// =============================================================================
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 
-#include <cstdio>
-#include <map>
+#include <lux/engine/editor/node_graph/DefaultImGuiNodeGraphRenderer.hpp>
+#include <lux/engine/editor/node_graph/GraphEditingSession.hpp>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+#include <lux/engine/material/graph/MaterialGraph.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
+
+#include <cassert>
 #include <memory>
+#include <span>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
-
-#include <lux/engine/editor/node_graph/GraphCommandStack.hpp>
-#include <lux/engine/editor/node_graph/GraphLayout.hpp>
-#include <lux/engine/editor/node_graph/GraphTypes.hpp>
-#include <lux/engine/editor/node_graph/IGraphSchema.hpp>
-#include <lux/engine/editor/node_graph/IGraphView.hpp>
-#include <lux/engine/editor/node_graph/detail/PinIdBimap.hpp>
 
 namespace
 {
+    using namespace lux;
     using namespace lux::editor::node_graph;
 
-    int g_failed = 0;
-
-    void check(bool ok, const char* what)
+    struct StubNode final
     {
-        std::printf("[%s] %s\n", ok ? " ok " : "FAIL", what);
-        if (!ok)
-        {
-            ++g_failed;
-        }
-    }
-
-    // ---- stub domain ---------------------------------------------------------
-    //  Mimics the real adapters: monotonic id allocation, id-preserving attach
-    //  (the FlowGraph::insertNodeAt / addNodeWithId analogue), links stored
-    //  separately, connect REJECTS cap violations instead of severing (port
-    //  contract (b)).
-
-    struct StubPin
-    {
-        std::string  name;
-        GraphPinType type;
+        std::string title;
+        std::vector<graph::PinId> pins;
     };
 
-    struct StubNode
+    struct StubCapture final
     {
-        std::string              title;
-        std::vector<StubPin>     inputs;
-        std::vector<StubPin>     outputs;
-        std::optional<GraphVec2> pos;
+        std::shared_ptr<StubNode> node;
+        graph::DetachedNode topology;
     };
 
-    struct StubLink
+    struct StubActionState final
     {
-        GraphPinRef from;
-        GraphPinRef to;
+        std::string title;
     };
 
-    class StubView final : public IGraphView
+    class StubDocument final : public IGraphDocument
     {
     public:
-        enum class EMutation : std::uint8_t
-        {
-            ATTACH,
-            DETACH,
-            CONNECT,
-            DISCONNECT
-        };
+        graph::GraphTopology& topology() noexcept override { return topology_; }
+        const graph::GraphTopology& topology() const noexcept override { return topology_; }
+        graph::GraphLayout& layout() noexcept override { return layout_; }
+        const graph::GraphLayout& layout() const noexcept override { return layout_; }
 
-        void failMutation(EMutation mutation, std::size_t invocation = 1U)
+        graph::NodeId addNode(graph::NodeTypeId type) override
         {
-            failed_mutation_ = mutation;
-            failure_countdown_ = invocation == 0U ? 1U : invocation;
-        }
-
-        // templates: "src" = 1 unlimited output; "dst" = 2 cap-1 inputs.
-        GraphNodeRef addNode(std::string_view template_id) override
-        {
+            auto id = topology_.addNode(type);
+            if (!id)
+                return {};
             auto node = std::make_shared<StubNode>();
-            if (template_id == "src")
+            node->title = type == graph::NodeTypeId{1U} ? "Source" : "Sink";
+            if (type == graph::NodeTypeId{1U})
             {
-                node->title = "Source";
-                node->outputs.push_back(StubPin{
-                    "out", GraphPinType{ 0x0100u, EPinSide::OUTPUT, kFanUnlimited, false } });
-            }
-            else if (template_id == "dst")
-            {
-                node->title = "Sink";
-                node->inputs.push_back(StubPin{
-                    "a", GraphPinType{ 0x0100u, EPinSide::INPUT, 1, false } });
-                node->inputs.push_back(StubPin{
-                    "b", GraphPinType{ 0x0100u, EPinSide::INPUT, 1, false } });
+                auto pin = topology_.addPin(
+                    *id,
+                    graph::EPinDirection::OUTPUT,
+                    graph::kUnlimitedFan,
+                    graph::PinSemanticId{1U}
+                );
+                if (!pin)
+                    return {};
+                node->pins.push_back(*pin);
             }
             else
             {
-                return {};
+                for (std::uint64_t semantic = 1U; semantic <= 2U; ++semantic)
+                {
+                    auto pin = topology_.addPin(
+                        *id,
+                        graph::EPinDirection::INPUT,
+                        1U,
+                        graph::PinSemanticId{semantic}
+                    );
+                    if (!pin)
+                        return {};
+                    node->pins.push_back(*pin);
+                }
             }
-            const node_id id = next_id_++;
-            nodes_.emplace(id, std::move(node));
-            return GraphNodeRef{ id };
+            nodes_.emplace(*id, std::move(node));
+            return *id;
         }
 
-        NodeCapture detachNode(GraphNodeRef node) override
+        NodeCapture detachNode(graph::NodeId node) override
         {
-            if (shouldFail(EMutation::DETACH))
+            if (fail_detach_)
             {
-                return nullptr;
+                fail_detach_ = false;
+                return {};
             }
-            const auto it = nodes_.find(node.id);
-            if (it == nodes_.end())
-            {
-                return nullptr;
-            }
-            NodeCapture capture = it->second; // shared_ptr<StubNode> -> shared_ptr<void>
-            nodes_.erase(it);
+            const auto found = nodes_.find(node);
+            if (found == nodes_.end())
+                return {};
+            auto detached = topology_.detachNode(node);
+            if (!detached)
+                return {};
+            auto capture = std::make_shared<StubCapture>(StubCapture{found->second, std::move(*detached)});
+            nodes_.erase(found);
             return capture;
         }
 
-        bool attachNode(GraphNodeRef original, NodeCapture capture) override
+        bool attachNode(graph::NodeId original, NodeCapture capture) override
         {
-            if (shouldFail(EMutation::ATTACH))
+            if (fail_attach_)
             {
+                fail_attach_ = false;
                 return false;
             }
-            if (!capture || nodes_.count(original.id) != 0)
-            {
+            auto typed = std::static_pointer_cast<StubCapture>(std::move(capture));
+            if (!typed || typed->topology.node.id != original || nodes_.contains(original))
                 return false;
-            }
-            nodes_.emplace(original.id, std::static_pointer_cast<StubNode>(capture));
-            if (original.id >= next_id_)
-            {
-                next_id_ = original.id + 1; // high-water (the id-stability contract)
-            }
+            if (!topology_.restoreNode(std::move(typed->topology)))
+                return false;
+            nodes_.emplace(original, std::move(typed->node));
             return true;
         }
 
-        bool connect(GraphPinRef from, GraphPinRef to) override
+        std::optional<NodeActionJournal> invokeNodeAction(graph::NodeId node, std::uint64_t action) override
         {
-            if (shouldFail(EMutation::CONNECT))
+            const auto found = nodes_.find(node);
+            if (found == nodes_.end() || action != 1U)
+                return std::nullopt;
+            auto before = std::make_shared<StubActionState>(StubActionState{found->second->title});
+            auto after = std::make_shared<StubActionState>(StubActionState{"Action"});
+            found->second->title = after->title;
+            return NodeActionJournal{std::move(before), std::move(after)};
+        }
+
+        bool restoreNodeAction(graph::NodeId node, NodeCapture state) override
+        {
+            if (fail_action_restore_)
             {
+                fail_action_restore_ = false;
                 return false;
             }
-            const StubPin* fp = pinAt(from);
-            const StubPin* tp = pinAt(to);
-            if (!fp || !tp)
-            {
+            const auto found = nodes_.find(node);
+            auto typed = std::static_pointer_cast<StubActionState>(std::move(state));
+            if (found == nodes_.end() || !typed)
                 return false;
-            }
-            // NO implicit severance: reject when an endpoint is at capacity.
-            if (linkCount(to) >= tp->type.fan_cap || linkCount(from) >= fp->type.fan_cap)
-            {
-                return false;
-            }
-            for (const StubLink& l : links_)
-            {
-                if (l.from == from && l.to == to)
-                {
-                    return false;
-                }
-            }
-            links_.push_back(StubLink{ from, to });
+            found->second->title = typed->title;
             return true;
         }
 
-        bool disconnect(GraphPinRef from, GraphPinRef to) override
-        {
-            if (shouldFail(EMutation::DISCONNECT))
-            {
-                return false;
-            }
-            for (auto it = links_.begin(); it != links_.end(); ++it)
-            {
-                if (it->from == from && it->to == to)
-                {
-                    links_.erase(it);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        void reconstructNode(GraphNodeRef) override {}
-
-        void forEachNode(
-            const std::function<void(GraphNodeRef, std::string_view)>& fn) const override
-        {
-            for (const auto& [id, node] : nodes_)
-            {
-                fn(GraphNodeRef{ id }, node->title);
-            }
-        }
-
-        std::uint32_t pinCount(GraphNodeRef node, EPinSide side) const override
-        {
-            const auto it = nodes_.find(node.id);
-            if (it == nodes_.end())
-            {
-                return 0;
-            }
-            return static_cast<std::uint32_t>(side == EPinSide::INPUT
-                                                  ? it->second->inputs.size()
-                                                  : it->second->outputs.size());
-        }
-
-        GraphPinView pin(GraphNodeRef node, EPinSide side, std::uint32_t index) const override
-        {
-            const StubPin* p = pinAt(GraphPinRef{ node, side, index });
-            if (!p)
-            {
-                return {};
-            }
-            return GraphPinView{ p->name, p->type,
-                                 linkCount(GraphPinRef{ node, side, index }) > 0 };
-        }
-
-        void forEachLink(const std::function<void(GraphLinkView)>& fn) const override
-        {
-            for (const StubLink& l : links_)
-            {
-                fn(GraphLinkView{ l.from, l.to });
-            }
-        }
-
-        std::optional<GraphVec2> nodePos(GraphNodeRef node) const override
-        {
-            const auto it = nodes_.find(node.id);
-            return it == nodes_.end() ? std::nullopt : it->second->pos;
-        }
-
-        void setNodePos(GraphNodeRef node, GraphVec2 pos) override
-        {
-            const auto it = nodes_.find(node.id);
-            if (it != nodes_.end())
-            {
-                it->second->pos = pos;
-            }
-        }
-
-        // test helpers
-        std::size_t nodeCount() const { return nodes_.size(); }
-        std::size_t linkCountTotal() const { return links_.size(); }
-        bool hasNode(node_id id) const { return nodes_.count(id) != 0; }
-        bool hasLink(GraphPinRef from, GraphPinRef to) const
-        {
-            for (const StubLink& l : links_)
-            {
-                if (l.from == from && l.to == to)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-        const StubNode* nodeAt(node_id id) const
-        {
-            const auto it = nodes_.find(id);
-            return it == nodes_.end() ? nullptr : it->second.get();
-        }
+        void failNextDetach() noexcept { fail_detach_ = true; }
+        void failNextAttach() noexcept { fail_attach_ = true; }
+        void failNextActionRestore() noexcept { fail_action_restore_ = true; }
+        [[nodiscard]] std::size_t nodeCount() const noexcept { return nodes_.size(); }
+        [[nodiscard]] std::string_view title(graph::NodeId node) const noexcept { return nodes_.at(node)->title; }
 
     private:
-        bool shouldFail(EMutation mutation)
-        {
-            if (!failed_mutation_ || *failed_mutation_ != mutation)
-            {
-                return false;
-            }
-            if (--failure_countdown_ != 0U)
-            {
-                return false;
-            }
-            failed_mutation_.reset();
-            return true;
-        }
-
-        const StubPin* pinAt(GraphPinRef ref) const
-        {
-            const auto it = nodes_.find(ref.node.id);
-            if (it == nodes_.end())
-            {
-                return nullptr;
-            }
-            const auto& pins =
-                ref.side == EPinSide::INPUT ? it->second->inputs : it->second->outputs;
-            return ref.pin < pins.size() ? &pins[ref.pin] : nullptr;
-        }
-
-        std::size_t linkCount(GraphPinRef ref) const
-        {
-            std::size_t n = 0;
-            for (const StubLink& l : links_)
-            {
-                if ((ref.side == EPinSide::OUTPUT && l.from == ref) ||
-                    (ref.side == EPinSide::INPUT && l.to == ref))
-                {
-                    ++n;
-                }
-            }
-            return n;
-        }
-
-        std::map<node_id, std::shared_ptr<StubNode>> nodes_; // ordered: stable forEachNode
-        std::vector<StubLink>                        links_;
-        node_id                                      next_id_ = 1;
-        std::optional<EMutation>                      failed_mutation_;
-        std::size_t                                   failure_countdown_ = 0U;
+        graph::GraphTopology topology_;
+        graph::GraphLayout layout_;
+        std::unordered_map<graph::NodeId, std::shared_ptr<StubNode>> nodes_;
+        bool fail_detach_{};
+        bool fail_attach_{};
+        bool fail_action_restore_{};
     };
 
-    /// Minimal schema — proves the interface defaults compile; the stack never
-    /// consults it (validation is the GraphEditor's interactive step).
-    class StubSchema final : public IGraphSchema
+    class StubRules final : public IGraphRules
     {
     public:
-        ConnectResult canConnect(GraphPinRef, GraphPinRef, const IGraphView&) const override
+        bool canConnect(const IGraphDocument&, graph::PinId, graph::PinId) const noexcept override
         {
-            return ConnectResult::yes();
+            return true;
         }
-        std::span<const NodeTemplate> palette() const override { return templates_; }
-        PinStyleDesc pinStyle(const GraphPinType&) const override { return {}; }
+    };
+
+    class StubPresentation final : public IGraphPresentation
+    {
+    public:
+        GraphNodePresentation node(graph::NodeId) const noexcept override { return {"Node"}; }
+        GraphPinPresentation pin(graph::PinId) const noexcept override { return {"Pin"}; }
+        std::span<const GraphPaletteEntry> palette() const noexcept override { return palette_; }
 
     private:
-        std::vector<NodeTemplate> templates_{
-            NodeTemplate{ "src", "Source", "Test" },
-            NodeTemplate{ "dst", "Sink", "Test" },
-        };
+        std::vector<GraphPaletteEntry> palette_{{graph::NodeTypeId{1U}, "Source", "Test"}};
     };
-} // namespace
 
-// ---- 1. command stack -------------------------------------------------------
+    class ApplyingSink final : public IGraphIntentSink
+    {
+    public:
+        explicit ApplyingSink(GraphEditingSession& session) noexcept : session_(session) {}
+        void emit(GraphIntent intent) override
+        {
+            ++count;
+            applied &= session_.apply(intent);
+        }
 
-static void testAddUndoRedo()
-{
-    std::printf("-- add / undo / redo (id stability) --\n");
-    StubView view;
-    GraphCommandStack stack(&view);
+        int count{};
+        bool applied{true};
 
-    const GraphNodeRef n = stack.doAddNode("src", GraphVec2{ 10.0f, 20.0f });
-    check(n.valid() && view.hasNode(n.id), "doAddNode creates the node");
-    check(view.nodePos(n).has_value(), "doAddNode places the node");
+    private:
+        GraphEditingSession& session_;
+    };
 
-    check(stack.undo(), "undo succeeds");
-    check(!view.hasNode(n.id) && view.nodeCount() == 0, "undo removes the node");
+    class ReplacementRenderer final : public IGraphRenderer
+    {
+    public:
+        void draw(const char*, const GraphRenderProtocol& protocol, IGraphIntentSink& sink) override
+        {
+            assert(!protocol.topology.nodes().empty());
+            const auto node = protocol.topology.nodes().front().id;
+            sink.emit(MoveNodeIntent{node, graph::GraphNodeLayout{33.0F, 44.0F, true}});
+        }
+    };
 
-    check(stack.redo(), "redo succeeds");
-    check(view.hasNode(n.id), "redo restores the SAME node id (id stability)");
-    const StubNode* restored = view.nodeAt(n.id);
-    check(restored && restored->pos.has_value() &&
-          restored->pos->x == 10.0f && restored->pos->y == 20.0f,
-          "the capture preserved the node payload (position)");
-}
+    [[nodiscard]] graph::PinId pin(
+        const graph::GraphTopology& topology,
+        graph::NodeId owner,
+        graph::EPinDirection direction,
+        std::size_t ordinal = 0U
+    )
+    {
+        std::size_t current{};
+        for (const auto& value : topology.pins())
+        {
+            if (value.owner == owner && value.direction == direction && current++ == ordinal)
+                return value.id;
+        }
+        return {};
+    }
 
-static void testRemoveWithLinksOneStep()
-{
-    std::printf("-- remove node with links = ONE undo step --\n");
-    StubView view;
-    GraphCommandStack stack(&view);
+    void testEditingAndAtomicHistory()
+    {
+        StubDocument document;
+        StubRules rules;
+        GraphEditingSession session{document, rules};
+        assert(session.apply(AddNodeIntent{graph::NodeTypeId{1U}, {1.0F, 2.0F, true}}));
+        const auto source_a = session.selectedNode();
+        assert(session.apply(AddNodeIntent{graph::NodeTypeId{1U}, {3.0F, 4.0F, true}}));
+        const auto source_b = session.selectedNode();
+        assert(session.apply(AddNodeIntent{graph::NodeTypeId{2U}, {5.0F, 6.0F, true}}));
+        const auto sink = session.selectedNode();
+        const auto output_a = pin(document.topology(), source_a, graph::EPinDirection::OUTPUT);
+        const auto output_b = pin(document.topology(), source_b, graph::EPinDirection::OUTPUT);
+        const auto input_a = pin(document.topology(), sink, graph::EPinDirection::INPUT, 0U);
+        const auto input_b = pin(document.topology(), sink, graph::EPinDirection::INPUT, 1U);
 
-    const GraphNodeRef src1 = stack.doAddNode("src");
-    const GraphNodeRef src2 = stack.doAddNode("src");
-    const GraphNodeRef dst  = stack.doAddNode("dst");
+        assert(session.apply(ConnectIntent{output_a, input_a}));
+        assert(session.apply(ConnectIntent{output_b, input_a}));
+        assert(document.topology().findLink(output_a, input_a) == nullptr);
+        assert(document.topology().findLink(output_b, input_a) != nullptr);
+        assert(session.undo());
+        assert(document.topology().findLink(output_a, input_a) != nullptr);
+        assert(document.topology().findLink(output_b, input_a) == nullptr);
+        assert(session.redo());
 
-    const GraphPinRef out1{ src1, EPinSide::OUTPUT, 0 };
-    const GraphPinRef out2{ src2, EPinSide::OUTPUT, 0 };
-    const GraphPinRef in_a{ dst, EPinSide::INPUT, 0 };
-    const GraphPinRef in_b{ dst, EPinSide::INPUT, 1 };
+        assert(session.apply(ConnectIntent{output_a, input_b}));
+        const auto depth = session.undoDepth();
+        document.failNextDetach();
+        assert(!session.apply(RemoveNodeIntent{sink}));
+        assert(document.topology().findLink(output_b, input_a) != nullptr);
+        assert(document.topology().findLink(output_a, input_b) != nullptr);
+        assert(session.undoDepth() == depth);
 
-    check(stack.doConnect(out1, in_a), "connect src1 -> dst.a");
-    check(stack.doConnect(out2, in_b), "connect src2 -> dst.b");
-    check(view.linkCountTotal() == 2, "two links live");
+        assert(session.apply(RemoveNodeIntent{sink}));
+        assert(document.nodeCount() == 2U && document.topology().links().empty());
+        document.failNextAttach();
+        assert(!session.undo());
+        assert(document.nodeCount() == 2U && session.canUndo());
+        assert(session.undo());
+        assert(document.nodeCount() == 3U && document.topology().links().size() == 2U);
 
-    const std::size_t depth_before = stack.undoDepth();
-    check(stack.doRemoveNode(dst), "doRemoveNode succeeds");
-    check(!view.hasNode(dst.id) && view.linkCountTotal() == 0,
-          "node and BOTH incident links removed");
-    check(stack.undoDepth() == depth_before + 1, "delete recorded as ONE undo step");
+        const auto revision = session.structureRevision();
+        assert(session.apply(MoveNodeIntent{source_a, {10.0F, 20.0F, true}}));
+        assert(session.structureRevision() == revision);
+        assert(session.apply(InvokeNodeActionIntent{source_a, 1U}));
+        assert(document.title(source_a) == "Action");
+        document.failNextActionRestore();
+        assert(!session.undo());
+        assert(document.title(source_a) == "Action" && session.canUndo());
+        assert(session.undo());
+        assert(document.title(source_a) == "Source");
+        assert(session.redo());
+        assert(document.title(source_a) == "Action");
+        assert(!session.apply(MoveNodeIntent{graph::NodeId{99999U}, {10.0F, 20.0F, true}}));
+        assert(!session.apply(SelectNodeIntent{graph::NodeId{99999U}, false}));
+        session.setTopologyLocked(true);
+        assert(!session.apply(RemoveNodeIntent{source_a}));
+        session.setTopologyLocked(false);
+    }
 
-    check(stack.undo(), "undo of the delete succeeds");
-    check(view.hasNode(dst.id), "node restored under its ORIGINAL id");
-    check(view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
-          "both links restored by the same undo step");
+    void testRendererReplacementAndSharedConsumers()
+    {
+        StubDocument document;
+        StubRules rules;
+        StubPresentation presentation;
+        GraphEditingSession session{document, rules};
+        assert(session.apply(AddNodeIntent{graph::NodeTypeId{1U}, {}}));
+        ApplyingSink sink{session};
+        ReplacementRenderer renderer;
+        IGraphRenderer& selected_renderer = renderer;
+        selected_renderer.draw(
+            "replacement",
+            GraphRenderProtocol{
+                document.topology(),
+                document.layout(),
+                presentation,
+                false,
+                session.selectedNode()
+            },
+            sink
+        );
+        assert(sink.count == 1 && sink.applied);
+        assert(document.layout().find(session.selectedNode())->x == 33.0F);
 
-    check(stack.redo(), "redo of the delete succeeds");
-    check(!view.hasNode(dst.id) && view.linkCountTotal() == 0, "redo removes node + links again");
-}
+        material::MaterialGraph material_graph;
+        assert(material_graph.addNode(std::make_unique<material::ConstantNode>()).valid());
+        assert(material_graph.topology().nodes().size() == 1U);
 
-static void testCapAwareReplace()
-{
-    std::printf("-- cap-aware replace-on-reconnect --\n");
-    StubView view;
-    GraphCommandStack stack(&view);
-
-    const GraphNodeRef src1 = stack.doAddNode("src");
-    const GraphNodeRef src2 = stack.doAddNode("src");
-    const GraphNodeRef dst  = stack.doAddNode("dst");
-
-    const GraphPinRef out1{ src1, EPinSide::OUTPUT, 0 };
-    const GraphPinRef out2{ src2, EPinSide::OUTPUT, 0 };
-    const GraphPinRef in_a{ dst, EPinSide::INPUT, 0 };
-
-    check(stack.doConnect(out1, in_a), "first link to the cap-1 input");
-    // The stub REJECTS over-cap connects (no implicit severance) — the stack
-    // must pre-disconnect, or this would fail:
-    check(stack.doConnect(out2, in_a), "second connect REPLACES (explicit pre-disconnect)");
-    check(!view.hasLink(out1, in_a) && view.hasLink(out2, in_a),
-          "old link yielded, new link live");
-
-    check(stack.undo(), "undo of the replace succeeds");
-    check(view.hasLink(out1, in_a) && !view.hasLink(out2, in_a),
-          "ONE undo restores the old link and removes the new (one transaction)");
-}
-
-static void testAtomicFailures()
-{
-    std::printf("-- compound edit / undo / redo failure atomicity --\n");
-    StubView view;
-    GraphCommandStack stack(&view);
-
-    const GraphNodeRef src1 = stack.doAddNode("src");
-    const GraphNodeRef src2 = stack.doAddNode("src");
-    const GraphNodeRef dst = stack.doAddNode("dst");
-    const GraphPinRef out1{src1, EPinSide::OUTPUT, 0U};
-    const GraphPinRef out2{src2, EPinSide::OUTPUT, 0U};
-    const GraphPinRef in_a{dst, EPinSide::INPUT, 0U};
-    const GraphPinRef in_b{dst, EPinSide::INPUT, 1U};
-
-    check(stack.doConnect(out1, in_a), "atomic fixture first link");
-    const auto replace_depth = stack.undoDepth();
-    const auto replace_revision = stack.structureRevision();
-    view.failMutation(StubView::EMutation::CONNECT);
-    check(!stack.doConnect(out2, in_a), "failed replacement reports failure");
-    check(view.hasLink(out1, in_a) && !view.hasLink(out2, in_a),
-          "failed replacement restores the old cap-1 link");
-    check(stack.undoDepth() == replace_depth && stack.structureRevision() == replace_revision,
-          "failed replacement leaves history and revision unchanged");
-
-    check(stack.doConnect(out2, in_b), "atomic fixture second link");
-    const auto remove_depth = stack.undoDepth();
-    const auto remove_revision = stack.structureRevision();
-    view.failMutation(StubView::EMutation::DETACH);
-    check(!stack.doRemoveNode(dst), "failed detach reports failure");
-    check(view.hasNode(dst.id) && view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
-          "failed detach restores every incident link");
-    check(stack.undoDepth() == remove_depth && stack.structureRevision() == remove_revision,
-          "failed remove leaves history and revision unchanged");
-
-    check(stack.beginTransaction("manual disconnect"), "manual transaction begins");
-    check(stack.doDisconnect(out1, in_a), "manual transaction first operation succeeds");
-    view.failMutation(StubView::EMutation::DISCONNECT);
-    check(!stack.doDisconnect(out2, in_b), "manual transaction second operation fails");
-    check(!stack.inTransaction() && !stack.commitTransaction(), "failed manual transaction is closed");
-    check(view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
-          "failed manual transaction rolls back its successful prefix");
-    check(stack.undoDepth() == remove_depth && stack.structureRevision() == remove_revision,
-          "failed manual transaction does not alter history");
-
-    check(stack.doRemoveNode(dst), "remove transaction succeeds before replay faults");
-    const auto replay_depth = stack.undoDepth();
-    const auto replay_revision = stack.structureRevision();
-    view.failMutation(StubView::EMutation::CONNECT, 2U);
-    check(!stack.undo(), "mid-transaction undo failure is reported");
-    check(!view.hasNode(dst.id) && view.linkCountTotal() == 0U,
-          "failed undo restores the exact pre-undo document");
-    check(stack.undoDepth() == replay_depth && !stack.canRedo() &&
-          stack.structureRevision() == replay_revision,
-          "failed undo stays on the undo stack and preserves revision");
-
-    check(stack.undo(), "undo retry succeeds after single-shot failure");
-    check(view.hasNode(dst.id) && view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
-          "undo retry restores node and links");
-    const auto redo_revision = stack.structureRevision();
-    view.failMutation(StubView::EMutation::DISCONNECT, 2U);
-    check(!stack.redo(), "mid-transaction redo failure is reported");
-    check(view.hasNode(dst.id) && view.hasLink(out1, in_a) && view.hasLink(out2, in_b),
-          "failed redo restores the exact pre-redo document");
-    check(stack.canRedo() && stack.structureRevision() == redo_revision,
-          "failed redo stays on the redo stack and preserves revision");
-    check(stack.redo(), "redo retry succeeds after single-shot failure");
-    check(!view.hasNode(dst.id) && view.linkCountTotal() == 0U,
-          "redo retry removes the complete transaction");
-}
-
-static void testDisconnectMoveRedoInvalidation()
-{
-    std::printf("-- disconnect / move / redo invalidation --\n");
-    StubView view;
-    GraphCommandStack stack(&view);
-
-    const GraphNodeRef src = stack.doAddNode("src");
-    const GraphNodeRef dst = stack.doAddNode("dst");
-    const GraphPinRef out{ src, EPinSide::OUTPUT, 0 };
-    const GraphPinRef in_a{ dst, EPinSide::INPUT, 0 };
-
-    stack.doConnect(out, in_a);
-    check(stack.doDisconnect(out, in_a), "doDisconnect succeeds");
-    check(stack.undo() && view.hasLink(out, in_a), "undo restores the link");
-
-    check(stack.doMoveNode(src, GraphVec2{ 1.0f, 2.0f }, GraphVec2{ 100.0f, 200.0f }),
-          "move transaction succeeds");
-    check(view.nodePos(src)->x == 100.0f, "move applied");
-    check(stack.undo() && view.nodePos(src)->x == 1.0f, "move undone to old pos");
-    check(stack.canRedo(), "redo branch exists");
-    check(stack.doMoveNode(src, GraphVec2{ 5.0f, 5.0f }), "replacement move succeeds");
-    check(!stack.canRedo(), "a new edit invalidates the redo branch");
-}
-
-// ---- structure revision (bake-on-edit poll) -----------------------------------
-
-static void testStructureRevision()
-{
-    std::printf("-- structureRevision --\n");
-    StubView view;
-    GraphCommandStack stack(&view);
-
-    const auto r0 = stack.structureRevision();
-    const GraphNodeRef src = stack.doAddNode("src");
-    const GraphNodeRef dst = stack.doAddNode("dst");
-    check(stack.structureRevision() > r0, "add bumps the revision");
-
-    const auto r1 = stack.structureRevision();
-    check(stack.doMoveNode(src, GraphVec2{ 0.0f, 0.0f }, GraphVec2{ 10.0f, 10.0f }),
-          "revision fixture move succeeds");
-    check(stack.structureRevision() == r1, "a pure MOVE does NOT bump");
-
-    const GraphPinRef out{ src, EPinSide::OUTPUT, 0 };
-    const GraphPinRef in_a{ dst, EPinSide::INPUT, 0 };
-    stack.doConnect(out, in_a);
-    const auto r2 = stack.structureRevision();
-    check(r2 > r1, "connect bumps");
-
-    check(stack.undo(), "undo connect");
-    check(stack.structureRevision() > r2,
-          "undo of a structural edit ALSO bumps (host must rebake)");
-    const auto r3 = stack.structureRevision();
-    check(stack.redo(), "redo connect");
-    check(stack.structureRevision() > r3, "redo bumps too");
-}
-
-// ---- 2. fallback layout -------------------------------------------------------
-
-static void testFallbackLayout()
-{
-    std::printf("-- layoutUnplacedNodes --\n");
-    StubView view;
-    GraphCommandStack stack(&view);
-
-    const GraphNodeRef a = stack.doAddNode("src");                          // unplaced
-    const GraphNodeRef b = stack.doAddNode("src");                          // unplaced
-    const GraphNodeRef c = stack.doAddNode("src", GraphVec2{ 7.0f, 8.0f }); // placed
-
-    const std::size_t placed = layoutUnplacedNodes(view, GraphVec2{ 0.0f, 0.0f },
-                                                   GraphVec2{ 100.0f, 100.0f }, 2);
-    check(placed == 2, "exactly the unplaced nodes were laid out");
-    check(view.nodePos(c)->x == 7.0f && view.nodePos(c)->y == 8.0f,
-          "already-placed node untouched");
-    const auto pa = view.nodePos(a);
-    const auto pb = view.nodePos(b);
-    check(pa.has_value() && pb.has_value(), "unplaced nodes now have positions");
-    check(pa->x != pb->x || pa->y != pb->y, "assigned positions are distinct");
-}
-
-// ---- 3. PinIdBimap -------------------------------------------------------------
-
-static void testPinIdBimap()
-{
-    std::printf("-- detail::PinIdBimap --\n");
-    lux::editor::node_graph::detail::PinIdBimap bimap;
-
-    const GraphNodeRef n1{ 1 };
-    const GraphNodeRef n2{ 2 };
-    const GraphPinRef p1{ n1, EPinSide::OUTPUT, 0 };
-    const GraphPinRef p2{ n2, EPinSide::INPUT, 1 };
-
-    const auto node_ed = bimap.nodeEdId(n1);
-    const auto pin_ed  = bimap.pinEdId(p1);
-    const auto link_ed = bimap.linkEdId(p1, p2);
-    check(node_ed != 0 && pin_ed != 0 && link_ed != 0, "ids are non-zero");
-    check(bimap.nodeEdId(n1) == node_ed && bimap.pinEdId(p1) == pin_ed,
-          "minting is stable (same ref -> same id)");
-    check(bimap.pinEdId(p2) != pin_ed, "different refs -> different ids");
-
-    check(bimap.nodeFromEdId(node_ed) == n1, "node resolve round-trips");
-    check(bimap.pinFromEdId(pin_ed) == p1, "pin resolve round-trips");
-    GraphPinRef from, to;
-    check(bimap.linkFromEdId(link_ed, from, to) && from == p1 && to == p2,
-          "link resolve round-trips");
-
-    bimap.purgeNode(n1.id);
-    check(!bimap.nodeFromEdId(node_ed).valid(), "purge drops the node mapping");
-    check(!bimap.pinFromEdId(pin_ed).valid(), "purge drops the node's pin mappings");
-    check(!bimap.linkFromEdId(link_ed, from, to), "purge drops links touching the node");
-    check(bimap.pinFromEdId(bimap.pinEdId(p2)) == p2, "other nodes' mappings survive");
+        flowforge::FlowGraph flow_graph;
+        flow_graph.addNodes(std::make_unique<flowforge::OnEventNode>("event"));
+        assert(flow_graph.topology().nodes().size() == 1U);
+    }
 }
 
 int main()
 {
-    testAddUndoRedo();
-    testRemoveWithLinksOneStep();
-    testCapAwareReplace();
-    testAtomicFailures();
-    testDisconnectMoveRedoInvalidation();
-    testStructureRevision();
-    testFallbackLayout();
-    testPinIdBimap();
-
-    // Interface-default smoke: a schema overriding only the pure virtuals
-    // must compile and answer.
-    StubSchema schema;
-    StubView view;
-    check(schema.canConnect({}, {}, view).allowed, "schema interface defaults compile");
-    check(schema.palette().size() == 2, "palette spans templates");
-
-    if (g_failed != 0)
-    {
-        std::printf("graphkit_stub_test: %d check(s) FAILED\n", g_failed);
-        return 1;
-    }
-    std::printf("graphkit_stub_test: all checks passed\n");
+    testEditingAndAtomicHistory();
+    testRendererReplacementAndSharedConsumers();
     return 0;
 }

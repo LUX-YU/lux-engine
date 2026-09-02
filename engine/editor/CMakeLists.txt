@@ -1,1 +1,5 @@
+add_subdirectory(context)
 add_subdirectory(node_graph)
+add_subdirectory(material)
+add_subdirectory(flowforge)
+add_subdirectory(application)

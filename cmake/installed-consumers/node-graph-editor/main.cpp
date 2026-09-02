@@ -1,7 +1,7 @@
-#include <lux/engine/editor/node_graph/GraphTypes.hpp>
+#include <lux/engine/editor/node_graph/GraphIntent.hpp>
 
 int main()
 {
-    const lux::editor::node_graph::GraphNodeRef node{42U};
-    return node.valid() ? 0 : 1;
+    const lux::editor::node_graph::RemoveNodeIntent intent{lux::graph::NodeId{42U}};
+    return intent.node.valid() ? 0 : 1;
 }

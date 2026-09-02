@@ -1,6 +1,11 @@
 add_executable(node_graph_editor_test graphkit_stub_test.cpp)
 target_link_libraries(node_graph_editor_test PRIVATE node_graph_editor)
-target_include_directories(node_graph_editor_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../pinclude)
+target_link_libraries(
+    node_graph_editor_test
+    PRIVATE
+        lux::engine::function::flowforge
+        lux::engine::function::material_graph
+)
 lux_classify_target(
     TARGET  node_graph_editor_test
     LAYER   EDITOR

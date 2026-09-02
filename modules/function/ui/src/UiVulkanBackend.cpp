@@ -1,4 +1,5 @@
 #include <lux/engine/ui/detail/UiVulkanBackend.hpp>
+#include <lux/engine/ui/detail/ImGuiContextLease.hpp>
 
 #include <imgui_impl_vulkan.h>
 
@@ -11,6 +12,7 @@ namespace lux::ui::detail
     {
         ImGui_ImplVulkan_Renderer* renderer{};
         void* render_buffers{};
+        void* context{};
     };
 
     namespace
@@ -32,13 +34,15 @@ namespace lux::ui::detail
         const bool invalid_handles = info.instance == VK_NULL_HANDLE || info.physical_device == VK_NULL_HANDLE ||
             info.device == VK_NULL_HANDLE || info.queue == VK_NULL_HANDLE;
         if (invalid_handles || info.color_format == VK_FORMAT_UNDEFINED || info.image_count == 0U ||
-            font.pixels.empty() || font.width <= 0 || font.height <= 0)
+            font.pixels.empty() || font.width <= 0 || font.height <= 0 || font.context == nullptr)
         {
             return lux::cxx::unexpected(EUiVulkanBackendError::INVALID_CONFIG);
         }
         try
         {
+            ImGuiContextLease context{font.context};
             auto impl = std::make_unique<Impl>();
+            impl->context = font.context;
             VkPipelineRenderingCreateInfoKHR pipeline{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR};
             pipeline.colorAttachmentCount = 1U;
             pipeline.pColorAttachmentFormats = &info.color_format;
@@ -89,6 +93,7 @@ namespace lux::ui::detail
     {
         if (impl_ == nullptr || impl_->renderer == nullptr)
             return;
+        ImGuiContextLease context{impl_->context};
         if (impl_->render_buffers != nullptr)
             ImGui_ImplVulkan_DestroyRenderBuffersEx(impl_->renderer, impl_->render_buffers);
         ImGui_ImplVulkan_DestroyFontsTextureEx(impl_->renderer);

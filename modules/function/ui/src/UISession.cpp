@@ -4,18 +4,38 @@
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 #include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include <lux/engine/ui/detail/UiContract.hpp>
+#include <lux/engine/ui/detail/ImGuiContextLease.hpp>
 #include <lux/engine/ui/detail/UISessionPresentationAccess.hpp>
 
 namespace lux::ui
 {
     namespace detail
     {
+        namespace
+        {
+            std::recursive_mutex imgui_context_mutex;
+        }
+
+        ImGuiContextLease::ImGuiContextLease(void* context) noexcept
+        {
+            imgui_context_mutex.lock();
+            previous_ = ImGui::GetCurrentContext();
+            ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+        }
+
+        ImGuiContextLease::~ImGuiContextLease()
+        {
+            ImGui::SetCurrentContext(static_cast<ImGuiContext*>(previous_));
+            imgui_context_mutex.unlock();
+        }
+
         struct SessionControl final
         {
             explicit SessionControl(UISession* value) noexcept
@@ -44,22 +64,7 @@ namespace lux::ui
 
     namespace
     {
-        class ScopedImGuiContext final
-        {
-        public:
-            explicit ScopedImGuiContext(ImGuiContext* target) noexcept : previous_(ImGui::GetCurrentContext())
-            {
-                ImGui::SetCurrentContext(target);
-            }
-
-            ~ScopedImGuiContext()
-            {
-                ImGui::SetCurrentContext(previous_);
-            }
-
-        private:
-            ImGuiContext* previous_{nullptr};
-        };
+        using ScopedImGuiContext = detail::ImGuiContextLease;
 
         struct PaneRecord final
         {
@@ -951,6 +956,7 @@ namespace lux::ui
         UiFontAtlasSnapshot result;
         result.width = width;
         result.height = height;
+        result.context = session.impl_->context;
         if (pixels != nullptr && width > 0 && height > 0)
         {
             const auto size = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4U;

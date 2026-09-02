@@ -109,6 +109,11 @@ namespace lux::simulation::script
             }
 
             ScriptAwaitableCompletion completion;
+
+            [[nodiscard]] static bool active(void* state) noexcept
+            {
+                return static_cast<AbilityCompletionAdapter*>(state)->completion.active();
+            }
         };
 
         template <>
@@ -141,6 +146,11 @@ namespace lux::simulation::script
             }
 
             ScriptAwaitableCompletion completion;
+
+            [[nodiscard]] static bool active(void* state) noexcept
+            {
+                return static_cast<AbilityCompletionAdapter*>(state)->completion.active();
+            }
         };
     } // namespace detail
 
@@ -191,7 +201,8 @@ namespace lux::simulation::script
         auto completion = Completion::bind(
             std::static_pointer_cast<void>(adapter),
             &Adapter::success,
-            &Adapter::failure
+            &Adapter::failure,
+            &Adapter::active
         );
         auto started = std::invoke(std::forward<Starter>(starter), std::move(completion));
         if (started)

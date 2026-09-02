@@ -6,6 +6,9 @@
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
+#include "DelayAbility.ability.generated.hpp"
+#include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 
@@ -15,6 +18,7 @@
 #include <cstdint>
 #include <memory>
 #include <new>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,6 +34,8 @@ namespace
     inline constexpr HookPointId kTickHook{0x7203U};
     inline constexpr lux::script::ScriptSymbolId kTickSymbol{0x7204U};
     inline constexpr system::SystemInstanceId kStableProbe{0x7205U};
+    using DelayAbility = lux::simulation::script::DelayAbility;
+    using DelayAbilityTraits = lux::script::ScriptAbilityTraits<DelayAbility>;
 
     [[nodiscard]] asset::AssetId assetId(std::uint8_t value)
     {
@@ -57,7 +63,7 @@ namespace
 
         ProbeSystem() noexcept : endpoint(kProbeSystem, kTickHook, hook)
         {
-            ready = hook.prepare(1U) == EEndpointMutationError::NONE;
+            ready = hook.prepare(2U) == EEndpointMutationError::NONE;
         }
 
         void execute() noexcept
@@ -134,6 +140,13 @@ namespace
             true,
             {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
         }));
+        assert(builder.addMount({
+            ScriptMountId{2U},
+            assetId(0x72U),
+            SimulationScriptMount{},
+            true,
+            {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
+        }));
         auto result = std::move(builder).build(*simulation);
         assert(result);
         return std::move(*result);
@@ -144,6 +157,10 @@ namespace
         rdesc::Script description;
         description.module_name = "lux.test.scene-script.fixture";
         description.exports.push_back({"tick", kTickSymbol, {}, {}});
+        description.api_requirements.push_back({
+            lux::script::ScriptApiContractId{DelayAbilityTraits::Description.id.name()},
+            DelayAbilityTraits::Description.schema_hash
+        });
         description.body = rdesc::CppStaticScript{"fixture"};
         auto result = lux::script::ScriptArtifact::create(std::move(description), {});
         assert(result);
@@ -155,7 +172,7 @@ namespace
         std::size_t step_calls{};
         std::size_t resume_calls{};
         std::size_t destroys{};
-        std::vector<ScriptAwaitableCompletion> completions;
+        std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
     };
 
     struct StableProbeSystem final
@@ -235,11 +252,24 @@ namespace
 
     EScriptBackendResult createInstance(
         void* context,
-        const ScriptInstanceCreateContext&,
+        const ScriptInstanceCreateContext& create,
         const lux::script::ScriptArtifact&,
         ScriptBackendInstance& output
     ) noexcept
     {
+        auto& state = *static_cast<BackendState*>(context);
+        if (create.capabilities.size() != 1U)
+            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+        const auto& capability = create.capabilities.front();
+        const lux::script::ScriptAbilityBinding binding{
+            &DelayAbilityTraits::Description,
+            capability.context,
+            capability.dispatch
+        };
+        auto starter = lux::script::ScriptAbilityStarter<DelayAbility>::create(binding);
+        if (!starter)
+            return EScriptBackendResult::CONSTRUCTION_FAILURE;
+        state.delay = std::move(*starter);
         output.value = context;
         return EScriptBackendResult::SUCCESS;
     }
@@ -287,18 +317,23 @@ namespace
     {
         auto& state = *static_cast<BackendState*>(context);
         ++state.step_calls;
-        auto awaiting = step.awaitables.create();
-        if (!awaiting)
-            return ScriptStepResult::failed(1);
+        assert(state.delay.has_value());
         auto* continuation = new (std::nothrow) Continuation{&state};
         if (continuation == nullptr)
-        {
-            step.awaitables.discard(awaiting->id);
             return ScriptStepResult::failed(2);
+        auto result = invokeScriptAbilityAsync<void>(
+            step,
+            [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                return state.delay->nextStep(std::move(completion));
+            }
+        );
+        if (result.state != EScriptStepState::SUSPENDED)
+        {
+            delete continuation;
+            return result;
         }
-        state.completions.push_back(awaiting->completion);
         output = {continuation, &resume, &destroyContinuation};
-        return ScriptStepResult::suspended(awaiting->id);
+        return result;
     }
 
     EScriptBackendResult prepareStepMethod(
@@ -418,7 +453,7 @@ int main()
     Fixture fixture;
     const std::array backends{fixture.backend};
     ScriptRuntimeHost host{
-        ScriptRuntimeLimits{4U, 2U, 4U, 4U, 4U, 4U, 64U, 1U},
+        ScriptRuntimeLimits{8U, 2U, 4U, 2U, 4U, 4U, 64U, 1U, 4U},
         codec_limits,
         {&fixture, &Fixture::resolveArtifact},
         {},
@@ -450,18 +485,26 @@ int main()
     auto executor = task::TaskExecutor::create({1U, 8U});
     assert(executor);
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
-    assert(fixture.backend_state.step_calls == 1U);
-    assert(fixture.backend_state.resume_calls == 0U);
-    assert(fixture.backend_state.completions.size() == 1U);
-    assert(fixture.backend_state.completions.front().ready());
+    assert(fixture.backend_state.step_calls == 2U);
     assert(fixture.backend_state.resume_calls == 0U);
     assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 0U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert(fixture.backend_state.step_calls == 2U);
+    assert((*scene)->executeStablePoint());
     assert(fixture.backend_state.resume_calls == 1U);
-    assert(fixture.backend_state.destroys == 1U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 2U);
+    assert(fixture.backend_state.destroys == 2U);
     const auto* stable_probe = (*scene)->findSceneSystem<StableProbeSystem>();
-    assert(stable_probe != nullptr && stable_probe->observed_resume_calls == 1U);
+    assert(stable_probe != nullptr && stable_probe->observed_resume_calls == 2U);
+
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert(fixture.backend_state.step_calls == 4U);
 
     scene->reset();
+    assert(fixture.backend_state.resume_calls == 2U);
+    assert(fixture.backend_state.destroys == 4U);
     meta::ReflectionRegistry::destroyRegistry();
     return 0;
 }

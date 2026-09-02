@@ -59,6 +59,13 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+include_component_cmake_scripts(script_core)
+lux_script_abilities(
+    TARGET simulation_script
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/simulation/abilities/DelayAbility.hpp
+    LOGICAL_PATHS lux/engine/simulation/abilities/DelayAbility.hpp
+)
+
 add_executable(
     simulation_script_description_test
     test/script_system_description_test.cpp
@@ -119,7 +126,6 @@ target_link_libraries(
     simulation_script_continuation_test
     PRIVATE lux::engine::simulation::simulation_script
 )
-include_component_cmake_scripts(script_core)
 lux_script_abilities(
     TARGET simulation_script_continuation_test
     SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp

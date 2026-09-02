@@ -161,19 +161,26 @@ namespace lux::simulation::script
             return complete(EScriptAwaitableState::FAILED, {}, error);
         }
 
+        [[nodiscard]] bool active() const noexcept
+        {
+            return query_ != nullptr && query_(context_, instance_, awaitable_);
+        }
+
         using CompleteFn = lux::cxx::expected<void, EScriptAwaitableCompletionError> (*)(void*,
                                                                                          ScriptInstanceId,
                                                                                          ScriptAwaitableId,
                                                                                          EScriptAwaitableState,
                                                                                          ScriptOwnedResumeValue,
                                                                                          ScriptStepError) noexcept;
+        using QueryFn = bool (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
 
         ScriptAwaitableCompletion(std::shared_ptr<void> lease,
                                   void* context,
                                   CompleteFn complete,
+                                  QueryFn query,
                                   ScriptInstanceId instance,
                                   ScriptAwaitableId awaitable) noexcept
-            : lease_(std::move(lease)), context_(context), complete_(complete), instance_(instance),
+            : lease_(std::move(lease)), context_(context), complete_(complete), query_(query), instance_(instance),
               awaitable_(awaitable)
         {}
 
@@ -191,6 +198,7 @@ namespace lux::simulation::script
         std::shared_ptr<void> lease_;
         void* context_{};
         CompleteFn complete_{};
+        QueryFn query_{};
         ScriptInstanceId instance_;
         ScriptAwaitableId awaitable_;
     };

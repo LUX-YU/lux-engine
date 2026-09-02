@@ -273,7 +273,7 @@ int main()
         *decoded_script,
         registry,
         clock,
-        ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 2U, 64U, 2U},
+        ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         capabilities,

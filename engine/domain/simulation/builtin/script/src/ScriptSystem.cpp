@@ -1,5 +1,7 @@
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
+#include "DelayAbility.ability.generated.hpp"
 
 #include <lux/cxx/container/SlotMap.hpp>
 
@@ -109,6 +111,33 @@ namespace lux::simulation::script
 
     struct ScriptSystem::State final
     {
+        struct DelayProvider;
+
+        struct NextStepWait final
+        {
+            std::uint64_t target_step{};
+            std::uint64_t sequence{};
+            lux::script::ScriptAbilityCompletion<void> completion;
+        };
+
+        struct NextStepLater final
+        {
+            [[nodiscard]] bool operator()(const NextStepWait& left, const NextStepWait& right) const noexcept
+            {
+                return left.target_step > right.target_step ||
+                    (left.target_step == right.target_step && left.sequence > right.sequence);
+            }
+        };
+
+        struct DelayProvider final
+        {
+            State* owner{};
+
+            [[nodiscard]] lux::script::ScriptAbilityStartResult nextStep(
+                lux::script::ScriptAbilityCompletion<void> completion
+            ) noexcept;
+        };
+
         struct HandlerTag;
         struct Handler;
         using HandlerStorage = lux::cxx::SlotMap<Handler, HandlerTag>;
@@ -352,6 +381,25 @@ namespace lux::simulation::script
                                                                          std::move(value),
                                                                          error);
             }
+
+            [[nodiscard]] bool active(ScriptInstanceId instance, ScriptAwaitableId awaitable) noexcept
+            {
+                std::lock_guard lock{mutex};
+                if (stopping)
+                    return false;
+                const auto* record = awaitables.find(awaitableKey(awaitable));
+                return record != nullptr && record->instance == instance &&
+                    record->state == EScriptAwaitableState::PENDING;
+            }
+
+            [[nodiscard]] static bool activeErased(
+                void* context,
+                ScriptInstanceId instance,
+                ScriptAwaitableId awaitable
+            ) noexcept
+            {
+                return static_cast<AwaitableIngress*>(context)->active(instance, awaitable);
+            }
         };
 
         struct HookBucket final
@@ -432,6 +480,10 @@ namespace lux::simulation::script
         std::vector<std::uint32_t> retirement_queue;
         SparseMountQueue dirty_current;
         SparseMountQueue dirty_processing;
+        DelayProvider delay_provider{this};
+        std::mutex delay_mutex;
+        std::vector<NextStepWait> next_step_waits;
+        std::uint64_t delay_sequence{};
         entt::connection constructed;
         entt::connection updated;
         entt::connection destroyed;
@@ -471,6 +523,96 @@ namespace lux::simulation::script
         [[nodiscard]] bool validInstance(ScriptInstanceId instance) const noexcept
         {
             return instances.find(instanceKey(instance)) != nullptr;
+        }
+
+        [[nodiscard]] lux::script::ScriptAbilityStartResult startNextStep(
+            lux::script::ScriptAbilityCompletion<void> completion
+        ) noexcept
+        {
+            if (stopping || !completion.active())
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::STOPPING)
+                });
+            }
+            const auto current = clock->snapshot();
+            if (current.step_index == std::numeric_limits<std::uint64_t>::max())
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
+                });
+            }
+
+            std::lock_guard lock{delay_mutex};
+            if (next_step_waits.size() >= limits.next_step_wait_capacity)
+            {
+                std::erase_if(next_step_waits, [](const NextStepWait& wait) noexcept {
+                    return !wait.completion.active();
+                });
+                std::make_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
+            }
+            if (next_step_waits.size() >= limits.next_step_wait_capacity)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED)
+                });
+            }
+            if (delay_sequence == std::numeric_limits<std::uint64_t>::max())
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
+                });
+            }
+            try
+            {
+                next_step_waits.push_back({current.step_index + 1U, delay_sequence++, std::move(completion)});
+                std::push_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
+                return {};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::ALLOCATION_FAILURE)
+                });
+            }
+        }
+
+        [[nodiscard]] bool promoteNextStepWaits() noexcept
+        {
+            const auto current = clock->snapshot();
+            for (;;)
+            {
+                std::optional<NextStepWait> ready;
+                {
+                    std::lock_guard lock{delay_mutex};
+                    if (next_step_waits.empty() || next_step_waits.front().target_step > current.step_index)
+                        return true;
+                    std::pop_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
+                    ready.emplace(std::move(next_step_waits.back()));
+                    next_step_waits.pop_back();
+                }
+
+                auto completed = ready->completion.success();
+                if (completed)
+                    continue;
+                switch (completed.error())
+                {
+                case lux::script::EScriptAbilityCompletionError::STALE:
+                case lux::script::EScriptAbilityCompletionError::STOPPING:
+                case lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED:
+                    continue;
+                case lux::script::EScriptAbilityCompletionError::BACKPRESSURE:
+                {
+                    std::lock_guard lock{delay_mutex};
+                    next_step_waits.push_back(std::move(*ready));
+                    std::push_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
+                    return true;
+                }
+                case lux::script::EScriptAbilityCompletionError::INVALID_VALUE:
+                case lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE:
+                    return false;
+                }
+            }
         }
 
         [[nodiscard]] lux::cxx::expected<ScriptInstanceId, EScriptSystemError> createInstanceRecord(
@@ -513,6 +655,7 @@ namespace lux::simulation::script
                                                ScriptAwaitableCompletion{std::static_pointer_cast<void>(ingress),
                                                                          ingress.get(),
                                                                          &AwaitableIngress::completeErased,
+                                                                         &AwaitableIngress::activeErased,
                                                                          instance,
                                                                          id}};
         }
@@ -1533,6 +1676,13 @@ namespace lux::simulation::script
         }
     };
 
+    lux::script::ScriptAbilityStartResult ScriptSystem::State::DelayProvider::nextStep(
+        lux::script::ScriptAbilityCompletion<void> completion
+    ) noexcept
+    {
+        return owner->startNextStep(std::move(completion));
+    }
+
     lux::cxx::expected<ScriptSystem, EScriptSystemError> ScriptSystem::create(
         const SimulationDescription& simulation,
         const ScriptSystemDescription& description,
@@ -1553,7 +1703,7 @@ namespace lux::simulation::script
                                     limits.continuation_capacity_per_instance > limits.continuation_capacity ||
                                     limits.awaitable_capacity == 0U ||
                                     limits.resume_queue_capacity == 0U || limits.max_resume_payload_bytes == 0U ||
-                                    limits.resumes_per_stable_point == 0U;
+                                    limits.resumes_per_stable_point == 0U || limits.next_step_wait_capacity == 0U;
         if (invalid_limits || artifacts.resolve == nullptr)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
@@ -1582,8 +1732,17 @@ namespace lux::simulation::script
 
         try
         {
+            auto state = std::make_unique<State>();
+            state->simulation = std::addressof(simulation);
+            state->description = std::addressof(description);
+            state->registry = std::addressof(registry);
+            state->clock = std::addressof(clock);
+            state->limits = limits;
+            state->delay_provider.owner = state.get();
+            state->next_step_waits.reserve(limits.next_step_wait_capacity);
+
             std::vector<PreparedScriptApiCapability> published_capabilities;
-            published_capabilities.reserve(capabilities.size());
+            published_capabilities.reserve(capabilities.size() + 1U);
             for (const auto& capability : capabilities)
             {
                 if (!capability.contract.isValid() || capability.schema_hash == 0U || capability.dispatch == nullptr)
@@ -1593,6 +1752,19 @@ namespace lux::simulation::script
                                                   capability.context,
                                                   capability.dispatch});
             }
+            const auto delay_binding = lux::script::bindScriptAbility<DelayAbility>(state->delay_provider);
+            const auto delay_publication = publishScriptAbility(delay_binding);
+            if (!delay_publication.contract.isValid() || delay_publication.schema_hash == 0U ||
+                delay_publication.dispatch == nullptr)
+            {
+                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+            }
+            published_capabilities.push_back({
+                lux::script::ScriptApiContractId{delay_publication.contract.name()},
+                delay_publication.schema_hash,
+                delay_publication.context,
+                delay_publication.dispatch
+            });
             std::sort(published_capabilities.begin(),
                       published_capabilities.end(),
                       [](const auto& left, const auto& right) noexcept {
@@ -1667,12 +1839,6 @@ namespace lux::simulation::script
                     return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
             }
 
-            auto state = std::make_unique<State>();
-            state->simulation = std::addressof(simulation);
-            state->description = std::addressof(description);
-            state->registry = std::addressof(registry);
-            state->clock = std::addressof(clock);
-            state->limits = limits;
             state->artifacts = artifacts;
             state->world = world;
             state->host = host;
@@ -1817,6 +1983,9 @@ namespace lux::simulation::script
         }
         state_->dirty_processing.clear();
 
+        if (!state_->promoteNextStepWaits() && !first_error)
+            first_error = EScriptSystemError::INVOCATION_FAILURE;
+
         const auto resumed = state_->drainResumes();
         if (!resumed && !first_error)
             first_error = resumed.error();
@@ -1834,6 +2003,10 @@ namespace lux::simulation::script
         {
             std::lock_guard lock{state_->ingress->mutex};
             state_->ingress->stopping = true;
+        }
+        {
+            std::lock_guard lock{state_->delay_mutex};
+            state_->next_step_waits.clear();
         }
 
         const auto disconnected = state_->disconnectEndpoints();

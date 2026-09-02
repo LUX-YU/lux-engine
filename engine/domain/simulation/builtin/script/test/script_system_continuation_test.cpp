@@ -529,7 +529,7 @@ namespace
         const std::size_t per_instance = continuations_per_instance == 0U
             ? continuations
             : continuations_per_instance;
-        return {16U, instances, continuations, per_instance, awaitables, resumes, 64U, budget};
+        return {16U, instances, continuations, per_instance, awaitables, resumes, 64U, budget, awaitables};
     }
 
     void testCapabilities()
@@ -812,6 +812,12 @@ namespace
         Harness invalid_quota{false};
         const auto invalid_quota_created = invalid_quota.create(limits(1U, 1U, 1U, 1U, 1U, 2U), {});
         assert(!invalid_quota_created && invalid_quota_created.error() == EScriptSystemError::INVALID_INPUT);
+
+        Harness invalid_next_step{false};
+        auto invalid_next_step_limits = limits();
+        invalid_next_step_limits.next_step_wait_capacity = 0U;
+        const auto invalid_next_step_created = invalid_next_step.create(invalid_next_step_limits, {});
+        assert(!invalid_next_step_created && invalid_next_step_created.error() == EScriptSystemError::INVALID_INPUT);
 
         Harness per_instance{false, 2U, false, true};
         per_instance.backend_state.enable_step = true;

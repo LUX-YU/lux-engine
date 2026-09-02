@@ -44,6 +44,7 @@ namespace lux::script
         using CompletionResult = lux::cxx::expected<void, EScriptAbilityCompletionError>;
         using SuccessFn = CompletionResult (*)(void*, Result) noexcept;
         using FailureFn = CompletionResult (*)(void*, ScriptAbilityOperationError) noexcept;
+        using ActiveFn = bool (*)(void*) noexcept;
 
         ScriptAbilityCompletion() = default;
 
@@ -68,24 +69,36 @@ namespace lux::script
             return failure_(state_.get(), error);
         }
 
+        [[nodiscard]] bool active() const noexcept
+        {
+            return *this && (active_ == nullptr || active_(state_.get()));
+        }
+
         [[nodiscard]] static ScriptAbilityCompletion bind(
             std::shared_ptr<void> state,
             SuccessFn success,
-            FailureFn failure
+            FailureFn failure,
+            ActiveFn active = nullptr
         ) noexcept
         {
-            return ScriptAbilityCompletion(std::move(state), success, failure);
+            return ScriptAbilityCompletion(std::move(state), success, failure, active);
         }
 
     private:
-        ScriptAbilityCompletion(std::shared_ptr<void> state, SuccessFn success, FailureFn failure) noexcept
-            : state_(std::move(state)), success_(success), failure_(failure)
+        ScriptAbilityCompletion(
+            std::shared_ptr<void> state,
+            SuccessFn success,
+            FailureFn failure,
+            ActiveFn active
+        ) noexcept
+            : state_(std::move(state)), success_(success), failure_(failure), active_(active)
         {
         }
 
         std::shared_ptr<void> state_;
         SuccessFn success_{};
         FailureFn failure_{};
+        ActiveFn active_{};
     };
 
     template <>
@@ -95,6 +108,7 @@ namespace lux::script
         using CompletionResult = lux::cxx::expected<void, EScriptAbilityCompletionError>;
         using SuccessFn = CompletionResult (*)(void*) noexcept;
         using FailureFn = CompletionResult (*)(void*, ScriptAbilityOperationError) noexcept;
+        using ActiveFn = bool (*)(void*) noexcept;
 
         ScriptAbilityCompletion() = default;
 
@@ -119,24 +133,36 @@ namespace lux::script
             return failure_(state_.get(), error);
         }
 
+        [[nodiscard]] bool active() const noexcept
+        {
+            return *this && (active_ == nullptr || active_(state_.get()));
+        }
+
         [[nodiscard]] static ScriptAbilityCompletion bind(
             std::shared_ptr<void> state,
             SuccessFn success,
-            FailureFn failure
+            FailureFn failure,
+            ActiveFn active = nullptr
         ) noexcept
         {
-            return ScriptAbilityCompletion(std::move(state), success, failure);
+            return ScriptAbilityCompletion(std::move(state), success, failure, active);
         }
 
     private:
-        ScriptAbilityCompletion(std::shared_ptr<void> state, SuccessFn success, FailureFn failure) noexcept
-            : state_(std::move(state)), success_(success), failure_(failure)
+        ScriptAbilityCompletion(
+            std::shared_ptr<void> state,
+            SuccessFn success,
+            FailureFn failure,
+            ActiveFn active
+        ) noexcept
+            : state_(std::move(state)), success_(success), failure_(failure), active_(active)
         {
         }
 
         std::shared_ptr<void> state_;
         SuccessFn success_{};
         FailureFn failure_{};
+        ActiveFn active_{};
     };
 
     template <class Ability>

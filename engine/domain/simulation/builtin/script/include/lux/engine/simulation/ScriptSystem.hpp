@@ -49,6 +49,7 @@ namespace lux::simulation::script
         std::size_t resume_queue_capacity{};
         std::size_t max_resume_payload_bytes{};
         std::size_t resumes_per_stable_point{};
+        std::size_t next_step_wait_capacity{};
     };
 
     namespace detail

@@ -26,6 +26,8 @@ namespace
     inline constexpr EventPointId PulseEvent{104U};
     inline constexpr lux::script::ScriptSymbolId ValueSymbol{201U};
     inline constexpr lux::script::ScriptSymbolId EventSymbol{202U};
+    inline constexpr lux::script::ScriptApiContractIdView AbilityContract{"consumer.InventoryAbility"};
+    inline constexpr std::uint64_t AbilitySchema{0xC011AB1EU};
 
     inline constexpr std::array Hooks{
         makeHookPointSpec<void(float)>(ValueHook, "value"),
@@ -116,7 +118,6 @@ namespace
         return true;
     }
 }
-
 int main()
 {
     using namespace lux::simulation;
@@ -149,7 +150,12 @@ int main()
     assert(projected);
 
     Fixture fixture;
-    auto artifact = lux::script::ScriptArtifact::create(projected->description(), {});
+    auto projected_description = projected->description();
+    projected_description.api_requirements.push_back({
+        lux::script::ScriptApiContractId{AbilityContract.name()},
+        AbilitySchema
+    });
+    auto artifact = lux::script::ScriptArtifact::create(std::move(projected_description), {});
     assert(artifact);
     fixture.artifact = std::make_shared<lux::script::ScriptArtifact>(std::move(*artifact));
     auto artifact_asset = lux::script::ScriptArtifactAsset::create(
@@ -254,13 +260,21 @@ int main()
     assert(backend_result);
     auto backend = std::move(*backend_result);
     const std::array backends{backend.descriptor()};
+    const std::uint32_t ability_dispatch{1U};
+    const std::array capabilities{ScriptApiCapabilityPublication{
+        AbilityContract,
+        AbilitySchema,
+        nullptr,
+        &ability_dispatch
+    }};
     auto created = ScriptSystem::create(
         *simulation_owner,
         *decoded_script,
         registry,
-        2U,
+        ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 64U, 2U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
+        capabilities,
         backends,
         hook_endpoints,
         event_endpoints);

@@ -550,7 +550,7 @@ file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
     if(content MATCHES
-       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if")
+       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|ScriptServices|ServiceRegistry")
         message(FATAL_ERROR
             "Architecture: replacement ScriptSystem source '${source}' restores a retired boundary."
         )
@@ -811,6 +811,31 @@ foreach(render_protocol_header IN ITEMS
         )
     endif()
 endforeach()
+
+file(GLOB_RECURSE script_common_contract_headers LIST_DIRECTORIES false
+    "${source_root}/engine/domain/simulation/scripting/core/include/*.hpp"
+    "${source_root}/engine/domain/simulation/builtin/script/include/*.hpp"
+)
+foreach(source IN LISTS script_common_contract_headers)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "std::(function|any|type_index|coroutine_handle)|lua_State|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|ScriptServices|SceneServices|ServiceRegistry")
+        message(FATAL_ERROR
+            "Architecture: common Script contract '${source}' exposes a language runtime or service-locator boundary."
+        )
+    endif()
+endforeach()
+
+set(script_description_header
+    "${source_root}/modules/resource/description/include/lux/engine/description/Script.hpp"
+)
+file(READ "${script_description_header}" script_description_contract)
+if(NOT script_description_contract MATCHES "ScriptApiRequirement" OR
+   script_description_contract MATCHES "ScriptApiRequirement[^}]*([Pp]rovider|SystemInstanceId)")
+    message(FATAL_ERROR
+        "Architecture: ScriptArtifact requirements are missing or contain provider-specific identity."
+    )
+endif()
 
 if(EXISTS "${source_root}/engine/editor")
     file(GLOB_RECURSE editor_ui_sources LIST_DIRECTORIES false

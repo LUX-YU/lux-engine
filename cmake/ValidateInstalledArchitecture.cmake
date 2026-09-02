@@ -174,6 +174,12 @@ foreach(entry IN LISTS installed_text)
             "Installed Inspector SDK exposes backend UI or runtime reflection vocabulary: ${entry}"
         )
     endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/](scripting|ScriptSystem)" AND
+       content MATCHES "std::(function|any|type_index|coroutine_handle)|lua_State|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|ScriptServices|SceneServices|ServiceRegistry")
+        message(FATAL_ERROR
+            "Installed Script runtime contract exposes a language runtime or service-locator boundary: ${entry}"
+        )
+    endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]function[/]render[/]client[/]" AND
        content MATCHES "SubmitImGuiDrawDataPayload|ImGuiDrawData|ImGuiCommConfig")
         message(FATAL_ERROR

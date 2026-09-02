@@ -529,7 +529,18 @@ namespace
         const std::size_t per_instance = continuations_per_instance == 0U
             ? continuations
             : continuations_per_instance;
-        return {16U, instances, continuations, per_instance, awaitables, resumes, 64U, budget, awaitables};
+        return {
+            16U,
+            instances,
+            continuations,
+            per_instance,
+            awaitables,
+            resumes,
+            64U,
+            budget,
+            awaitables,
+            awaitables
+        };
     }
 
     void testCapabilities()
@@ -818,6 +829,18 @@ namespace
         invalid_next_step_limits.next_step_wait_capacity = 0U;
         const auto invalid_next_step_created = invalid_next_step.create(invalid_next_step_limits, {});
         assert(!invalid_next_step_created && invalid_next_step_created.error() == EScriptSystemError::INVALID_INPUT);
+
+        Harness invalid_simulation_delay{false};
+        auto invalid_simulation_delay_limits = limits();
+        invalid_simulation_delay_limits.simulation_delay_capacity = 0U;
+        const auto invalid_simulation_delay_created = invalid_simulation_delay.create(
+            invalid_simulation_delay_limits,
+            {}
+        );
+        assert(
+            !invalid_simulation_delay_created &&
+            invalid_simulation_delay_created.error() == EScriptSystemError::INVALID_INPUT
+        );
 
         Harness per_instance{false, 2U, false, true};
         per_instance.backend_state.enable_step = true;

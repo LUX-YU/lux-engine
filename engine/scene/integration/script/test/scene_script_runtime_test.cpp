@@ -169,9 +169,18 @@ namespace
 
     struct BackendState final
     {
+        enum class EDelayMode : std::uint8_t
+        {
+            NEXT_STEP,
+            SECONDS,
+            SIMULATION_SECONDS,
+        };
+
         std::size_t step_calls{};
         std::size_t resume_calls{};
         std::size_t destroys{};
+        EDelayMode delay_mode{EDelayMode::NEXT_STEP};
+        double delay_seconds{};
         std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
     };
 
@@ -321,12 +330,33 @@ namespace
         auto* continuation = new (std::nothrow) Continuation{&state};
         if (continuation == nullptr)
             return ScriptStepResult::failed(2);
-        auto result = invokeScriptAbilityAsync<void>(
-            step,
-            [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
-                return state.delay->nextStep(std::move(completion));
+        auto result = [&]() noexcept {
+            switch (state.delay_mode)
+            {
+            case BackendState::EDelayMode::NEXT_STEP:
+                return invokeScriptAbilityAsync<void>(
+                    step,
+                    [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                        return state.delay->nextStep(std::move(completion));
+                    }
+                );
+            case BackendState::EDelayMode::SECONDS:
+                return invokeScriptAbilityAsync<void>(
+                    step,
+                    [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                        return state.delay->seconds(state.delay_seconds, std::move(completion));
+                    }
+                );
+            case BackendState::EDelayMode::SIMULATION_SECONDS:
+                return invokeScriptAbilityAsync<void>(
+                    step,
+                    [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                        return state.delay->simulationSeconds(state.delay_seconds, std::move(completion));
+                    }
+                );
             }
-        );
+            return ScriptStepResult::failed(3);
+        }();
         if (result.state != EScriptStepState::SUSPENDED)
         {
             delete continuation;
@@ -453,7 +483,7 @@ int main()
     Fixture fixture;
     const std::array backends{fixture.backend};
     ScriptRuntimeHost host{
-        ScriptRuntimeLimits{8U, 2U, 4U, 2U, 4U, 4U, 64U, 1U, 4U},
+        ScriptRuntimeLimits{8U, 2U, 4U, 2U, 4U, 4U, 64U, 1U, 4U, 4U},
         codec_limits,
         {&fixture, &Fixture::resolveArtifact},
         {},
@@ -499,12 +529,43 @@ int main()
     const auto* stable_probe = (*scene)->findSceneSystem<StableProbeSystem>();
     assert(stable_probe != nullptr && stable_probe->observed_resume_calls == 2U);
 
+    fixture.backend_state.delay_mode = BackendState::EDelayMode::SECONDS;
+    fixture.backend_state.delay_seconds = 3.0e-9;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     assert(fixture.backend_state.step_calls == 4U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 2U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 2U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{2}));
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 2U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 3U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 4U);
+
+    fixture.backend_state.delay_mode = BackendState::EDelayMode::SIMULATION_SECONDS;
+    fixture.backend_state.delay_seconds = 0.0;
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert(fixture.backend_state.step_calls == 6U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 4U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 5U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 6U);
+
+    fixture.backend_state.delay_seconds = 1000.0;
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert(fixture.backend_state.step_calls == 8U);
 
     scene->reset();
-    assert(fixture.backend_state.resume_calls == 2U);
-    assert(fixture.backend_state.destroys == 4U);
+    assert(fixture.backend_state.resume_calls == 6U);
+    assert(fixture.backend_state.destroys == 8U);
     meta::ReflectionRegistry::destroyRegistry();
     return 0;
 }

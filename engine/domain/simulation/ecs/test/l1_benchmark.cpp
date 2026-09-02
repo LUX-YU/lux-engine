@@ -698,7 +698,7 @@ namespace
                 description,
                 registry,
                 clock,
-                ScriptRuntimeLimits{1U, count, count, count, count, count, 64U, count, count},
+                ScriptRuntimeLimits{1U, count, count, count, count, count, 64U, count, count, count},
                 {this, &resolveArtifact},
                 {},
                 {},

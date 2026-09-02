@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <exception>
 #include <limits>
 #include <mutex>
@@ -129,11 +130,41 @@ namespace lux::simulation::script
             }
         };
 
+        struct SimulationDelayWait final
+        {
+            SimulationDuration deadline{};
+            std::uint64_t minimum_step{};
+            std::uint64_t sequence{};
+            lux::script::ScriptAbilityCompletion<void> completion;
+        };
+
+        struct SimulationDelayLater final
+        {
+            [[nodiscard]] bool operator()(
+                const SimulationDelayWait& left,
+                const SimulationDelayWait& right
+            ) const noexcept
+            {
+                return left.deadline > right.deadline ||
+                    (left.deadline == right.deadline && left.sequence > right.sequence);
+            }
+        };
+
         struct DelayProvider final
         {
             State* owner{};
 
             [[nodiscard]] lux::script::ScriptAbilityStartResult nextStep(
+                lux::script::ScriptAbilityCompletion<void> completion
+            ) noexcept;
+
+            [[nodiscard]] lux::script::ScriptAbilityStartResult seconds(
+                double duration,
+                lux::script::ScriptAbilityCompletion<void> completion
+            ) noexcept;
+
+            [[nodiscard]] lux::script::ScriptAbilityStartResult simulationSeconds(
+                double duration,
                 lux::script::ScriptAbilityCompletion<void> completion
             ) noexcept;
         };
@@ -483,6 +514,7 @@ namespace lux::simulation::script
         DelayProvider delay_provider{this};
         std::mutex delay_mutex;
         std::vector<NextStepWait> next_step_waits;
+        std::vector<SimulationDelayWait> simulation_delays;
         std::uint64_t delay_sequence{};
         entt::connection constructed;
         entt::connection updated;
@@ -606,6 +638,126 @@ namespace lux::simulation::script
                     std::lock_guard lock{delay_mutex};
                     next_step_waits.push_back(std::move(*ready));
                     std::push_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
+                    return true;
+                }
+                case lux::script::EScriptAbilityCompletionError::INVALID_VALUE:
+                case lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE:
+                    return false;
+                }
+            }
+        }
+
+        [[nodiscard]] lux::script::ScriptAbilityStartResult startSimulationDelay(
+            double duration,
+            lux::script::ScriptAbilityCompletion<void> completion
+        ) noexcept
+        {
+            if (stopping || !completion.active())
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::STOPPING)
+                });
+            }
+            if (!std::isfinite(duration) || duration < 0.0)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::INVALID_DURATION)
+                });
+            }
+
+            const long double requested_nanoseconds = static_cast<long double>(duration) * 1'000'000'000.0L;
+            const auto maximum = static_cast<long double>(std::numeric_limits<SimulationDuration::rep>::max());
+            if (requested_nanoseconds > maximum)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
+                });
+            }
+            const auto duration_count = duration == 0.0
+                ? SimulationDuration::rep{}
+                : static_cast<SimulationDuration::rep>(std::ceil(requested_nanoseconds));
+            const auto current = clock->snapshot();
+            const bool is_step_overflow = current.step_index == std::numeric_limits<std::uint64_t>::max();
+            const bool is_deadline_overflow = duration_count > 0 &&
+                current.elapsed.count() > std::numeric_limits<SimulationDuration::rep>::max() - duration_count;
+            if (is_step_overflow || is_deadline_overflow)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
+                });
+            }
+
+            std::lock_guard lock{delay_mutex};
+            if (simulation_delays.size() >= limits.simulation_delay_capacity)
+            {
+                std::erase_if(simulation_delays, [](const SimulationDelayWait& wait) noexcept {
+                    return !wait.completion.active();
+                });
+                std::make_heap(simulation_delays.begin(), simulation_delays.end(), SimulationDelayLater{});
+            }
+            if (simulation_delays.size() >= limits.simulation_delay_capacity)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED)
+                });
+            }
+            if (delay_sequence == std::numeric_limits<std::uint64_t>::max())
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
+                });
+            }
+            try
+            {
+                simulation_delays.push_back({
+                    current.elapsed + SimulationDuration{duration_count},
+                    current.step_index + 1U,
+                    delay_sequence++,
+                    std::move(completion)
+                });
+                std::push_heap(simulation_delays.begin(), simulation_delays.end(), SimulationDelayLater{});
+                return {};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::ALLOCATION_FAILURE)
+                });
+            }
+        }
+
+        [[nodiscard]] bool promoteSimulationDelays() noexcept
+        {
+            const auto current = clock->snapshot();
+            for (;;)
+            {
+                std::optional<SimulationDelayWait> ready;
+                {
+                    std::lock_guard lock{delay_mutex};
+                    if (simulation_delays.empty())
+                        return true;
+                    const auto& next = simulation_delays.front();
+                    if (next.deadline > current.elapsed || next.minimum_step > current.step_index)
+                        return true;
+                    std::pop_heap(simulation_delays.begin(), simulation_delays.end(), SimulationDelayLater{});
+                    ready.emplace(std::move(simulation_delays.back()));
+                    simulation_delays.pop_back();
+                }
+
+                auto completed = ready->completion.success();
+                if (completed)
+                    continue;
+                switch (completed.error())
+                {
+                case lux::script::EScriptAbilityCompletionError::STALE:
+                case lux::script::EScriptAbilityCompletionError::STOPPING:
+                case lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED:
+                    continue;
+                case lux::script::EScriptAbilityCompletionError::BACKPRESSURE:
+                {
+                    std::lock_guard lock{delay_mutex};
+                    simulation_delays.push_back(std::move(*ready));
+                    std::push_heap(simulation_delays.begin(), simulation_delays.end(), SimulationDelayLater{});
                     return true;
                 }
                 case lux::script::EScriptAbilityCompletionError::INVALID_VALUE:
@@ -1683,6 +1835,22 @@ namespace lux::simulation::script
         return owner->startNextStep(std::move(completion));
     }
 
+    lux::script::ScriptAbilityStartResult ScriptSystem::State::DelayProvider::seconds(
+        double duration,
+        lux::script::ScriptAbilityCompletion<void> completion
+    ) noexcept
+    {
+        return owner->startSimulationDelay(duration, std::move(completion));
+    }
+
+    lux::script::ScriptAbilityStartResult ScriptSystem::State::DelayProvider::simulationSeconds(
+        double duration,
+        lux::script::ScriptAbilityCompletion<void> completion
+    ) noexcept
+    {
+        return owner->startSimulationDelay(duration, std::move(completion));
+    }
+
     lux::cxx::expected<ScriptSystem, EScriptSystemError> ScriptSystem::create(
         const SimulationDescription& simulation,
         const ScriptSystemDescription& description,
@@ -1703,7 +1871,8 @@ namespace lux::simulation::script
                                     limits.continuation_capacity_per_instance > limits.continuation_capacity ||
                                     limits.awaitable_capacity == 0U ||
                                     limits.resume_queue_capacity == 0U || limits.max_resume_payload_bytes == 0U ||
-                                    limits.resumes_per_stable_point == 0U || limits.next_step_wait_capacity == 0U;
+                                    limits.resumes_per_stable_point == 0U || limits.next_step_wait_capacity == 0U ||
+                                    limits.simulation_delay_capacity == 0U;
         if (invalid_limits || artifacts.resolve == nullptr)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
@@ -1740,6 +1909,7 @@ namespace lux::simulation::script
             state->limits = limits;
             state->delay_provider.owner = state.get();
             state->next_step_waits.reserve(limits.next_step_wait_capacity);
+            state->simulation_delays.reserve(limits.simulation_delay_capacity);
 
             std::vector<PreparedScriptApiCapability> published_capabilities;
             published_capabilities.reserve(capabilities.size() + 1U);
@@ -1985,6 +2155,8 @@ namespace lux::simulation::script
 
         if (!state_->promoteNextStepWaits() && !first_error)
             first_error = EScriptSystemError::INVOCATION_FAILURE;
+        if (!state_->promoteSimulationDelays() && !first_error)
+            first_error = EScriptSystemError::INVOCATION_FAILURE;
 
         const auto resumed = state_->drainResumes();
         if (!resumed && !first_error)
@@ -2007,6 +2179,7 @@ namespace lux::simulation::script
         {
             std::lock_guard lock{state_->delay_mutex};
             state_->next_step_waits.clear();
+            state_->simulation_delays.clear();
         }
 
         const auto disconnected = state_->disconnectEndpoints();

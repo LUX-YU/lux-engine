@@ -26,7 +26,11 @@ namespace
 
     inline constexpr lux::system::SystemInstanceId kSystem{0x5101U};
     inline constexpr HookPointId kHook{0x5102U};
+    inline constexpr HookPointId kHookSecond{0x5104U};
+    inline constexpr HookPointId kHookThird{0x5105U};
     inline constexpr lux::script::ScriptSymbolId kSymbol{0x5103U};
+    inline constexpr lux::script::ScriptSymbolId kSymbolSecond{0x5106U};
+    inline constexpr lux::script::ScriptSymbolId kSymbolThird{0x5107U};
     using TestAbility = lux::simulation::test::TestAbility;
     using TestAbilityTraits = lux::script::ScriptAbilityTraits<TestAbility>;
     using TestDispatch = TestAbilityTraits::Dispatch;
@@ -120,7 +124,11 @@ namespace
 
     [[nodiscard]] SimulationDescription makeSimulation()
     {
-        constexpr std::array hooks{makeHookPointSpec<void()>(kHook, "tick")};
+        constexpr std::array hooks{
+            makeHookPointSpec<void()>(kHook, "tick"),
+            makeHookPointSpec<void()>(kHookSecond, "tick-second"),
+            makeHookPointSpec<void()>(kHookThird, "tick-third")
+        };
         const SimulationSystemDescription system{
             .type = {.canonical_name = "lux.test.script-continuation", .version = 1U},
             .hooks = hooks};
@@ -136,6 +144,8 @@ namespace
         lux::rdesc::Script description;
         description.module_name = "lux.test.script-continuation.fixture";
         description.exports.push_back({"tick", kSymbol, {}, {}});
+        description.exports.push_back({"tick-second", kSymbolSecond, {}, {}});
+        description.exports.push_back({"tick-third", kSymbolThird, {}, {}});
         if (require_capability)
         {
             description.api_requirements.push_back({lux::script::ScriptApiContractId{kContract.name()}, kSchema});
@@ -381,28 +391,62 @@ namespace
 
     struct Harness final
     {
-        explicit Harness(bool require_capability, std::size_t mount_count = 1U, bool entity_scope = false)
+        explicit Harness(
+            bool require_capability,
+            std::size_t mount_count = 1U,
+            bool entity_scope = false,
+            bool quota_layout = false
+        )
             : simulation(makeSimulation()), artifact(makeArtifact(require_capability)), asset(assetId()),
               object(objectId()), uses_entity_scope(entity_scope)
         {
             if (uses_entity_scope)
                 entity = registry.create();
             ScriptSystemDescriptionBuilder builder;
-            for (std::size_t index{}; index < mount_count; ++index)
+            if (quota_layout)
             {
-                assert(builder.addMount({ScriptMountId{index + 1U},
-                                         asset,
-                                         uses_entity_scope ? ScriptMountScope{EntityScriptMount{object}}
-                                                           : ScriptMountScope{SimulationScriptMount{}},
-                                         true,
-                                         {{kSymbol, HookScriptTarget{kSystem, kHook}}}}));
+                assert(mount_count == 2U && !uses_entity_scope);
+                assert(builder.addMount({
+                    ScriptMountId{1U},
+                    asset,
+                    SimulationScriptMount{},
+                    true,
+                    {
+                        {kSymbol, HookScriptTarget{kSystem, kHook}},
+                        {kSymbolSecond, HookScriptTarget{kSystem, kHookSecond}}
+                    }
+                }));
+                assert(builder.addMount({
+                    ScriptMountId{2U},
+                    asset,
+                    SimulationScriptMount{},
+                    true,
+                    {{kSymbolThird, HookScriptTarget{kSystem, kHookThird}}}
+                }));
+            }
+            else
+            {
+                for (std::size_t index{}; index < mount_count; ++index)
+                {
+                    assert(builder.addMount({ScriptMountId{index + 1U},
+                                             asset,
+                                             uses_entity_scope ? ScriptMountScope{EntityScriptMount{object}}
+                                                               : ScriptMountScope{SimulationScriptMount{}},
+                                             true,
+                                             {{kSymbol, HookScriptTarget{kSystem, kHook}}}}));
+                }
             }
             auto built = std::move(builder).build(simulation);
             assert(built);
             description = std::move(*built);
             assert(hook.prepare(1U) == EEndpointMutationError::NONE);
+            assert(hook_second.prepare(1U) == EEndpointMutationError::NONE);
+            assert(hook_third.prepare(1U) == EEndpointMutationError::NONE);
             bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
-            endpoint = bridge->descriptor();
+            bridge_second =
+                std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHookSecond, hook_second);
+            bridge_third = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHookThird, hook_third);
+            endpoints = {bridge->descriptor(), bridge_second->descriptor(), bridge_third->descriptor()};
             backend = {lux::rdesc::Script::Kind::CPP_STATIC,
                        &backend_state,
                        &createInstance,
@@ -427,7 +471,8 @@ namespace
                 uses_entity_scope ? WorldObjectResolver{this, &resolveWorld} : WorldObjectResolver{},
                 capabilities,
                 std::span{&backend, 1U},
-                include_endpoint ? std::span{&endpoint, 1U} : std::span<const ScriptHookEndpointDescriptor>{},
+                include_endpoint ? std::span<const ScriptHookEndpointDescriptor>{endpoints}
+                                 : std::span<const ScriptHookEndpointDescriptor>{},
                 {});
         }
 
@@ -462,8 +507,12 @@ namespace
         ecs::Entity entity{ecs::NullEntity};
         bool uses_entity_scope{};
         HookPoint<void()> hook;
+        HookPoint<void()> hook_second;
+        HookPoint<void()> hook_third;
         std::unique_ptr<ScriptHookEndpoint<void()>> bridge;
-        ScriptHookEndpointDescriptor endpoint;
+        std::unique_ptr<ScriptHookEndpoint<void()>> bridge_second;
+        std::unique_ptr<ScriptHookEndpoint<void()>> bridge_third;
+        std::array<ScriptHookEndpointDescriptor, 3U> endpoints;
         BackendState backend_state;
         ScriptBackendDescriptor backend;
     };
@@ -472,9 +521,13 @@ namespace
                                              std::size_t continuations = 8U,
                                              std::size_t awaitables = 8U,
                                              std::size_t resumes = 8U,
-                                             std::size_t budget = 8U) noexcept
+                                             std::size_t budget = 8U,
+                                             std::size_t continuations_per_instance = 0U) noexcept
     {
-        return {16U, instances, continuations, awaitables, resumes, 64U, budget};
+        const std::size_t per_instance = continuations_per_instance == 0U
+            ? continuations
+            : continuations_per_instance;
+        return {16U, instances, continuations, per_instance, awaitables, resumes, 64U, budget};
     }
 
     void testCapabilities()
@@ -754,6 +807,53 @@ namespace
 
     void testCapacityAndCancellation()
     {
+        Harness invalid_quota{false};
+        const auto invalid_quota_created = invalid_quota.create(limits(1U, 1U, 1U, 1U, 1U, 2U), {});
+        assert(!invalid_quota_created && invalid_quota_created.error() == EScriptSystemError::INVALID_INPUT);
+
+        Harness per_instance{false, 2U, false, true};
+        per_instance.backend_state.enable_step = true;
+        auto per_instance_created = per_instance.create(limits(2U, 3U, 3U, 3U, 3U, 1U), {});
+        assert(per_instance_created);
+        auto per_instance_system = std::move(*per_instance_created);
+        assert(per_instance_system.prepare());
+        assert(per_instance.hook.dispatch() == 1U);
+        assert(per_instance.hook_third.dispatch() == 1U);
+        assert(per_instance_system.activeContinuationCount() == 2U);
+        assert(per_instance.hook_second.dispatch() == 1U);
+        assert(per_instance_system.activeContinuationCount() == 2U);
+        assert(std::any_of(
+            per_instance_system.failures().begin(),
+            per_instance_system.failures().end(),
+            [](const ScriptSystemFailure& failure) noexcept {
+                return failure.error == EScriptSystemError::INSTANCE_CONTINUATION_CAPACITY_EXCEEDED;
+            }
+        ));
+        assert(per_instance.backend_state.completions.size() == 3U);
+        assert(per_instance_system.executeStablePoint());
+        assert(per_instance_system.activeContinuationCount() == 1U);
+        assert(per_instance.backend_state.completions[1].ready());
+        assert(per_instance_system.executeStablePoint());
+        assert(per_instance_system.activeContinuationCount() == 0U);
+        assert(per_instance_system.shutdown());
+
+        Harness quota_return{false, 2U, false, true};
+        quota_return.backend_state.enable_step = true;
+        auto quota_return_created = quota_return.create(limits(2U, 2U, 2U, 2U, 2U, 1U), {});
+        assert(quota_return_created);
+        auto quota_return_system = std::move(*quota_return_created);
+        assert(quota_return_system.prepare());
+        assert(quota_return.hook.dispatch() == 1U);
+        assert(quota_return.backend_state.completions.front().ready());
+        assert(quota_return_system.executeStablePoint());
+        assert(quota_return_system.activeContinuationCount() == 0U);
+        assert(quota_return.hook_second.dispatch() == 1U);
+        assert(quota_return_system.activeContinuationCount() == 1U);
+        assert(quota_return.backend_state.completions[1].ready());
+        assert(quota_return_system.executeStablePoint());
+        assert(quota_return_system.activeContinuationCount() == 0U);
+        assert(quota_return_system.shutdown());
+
         Harness limited{false, 2U};
         limited.backend_state.enable_step = true;
         auto limited_created = limited.create(limits(2U, 1U, 2U, 1U, 1U), {});

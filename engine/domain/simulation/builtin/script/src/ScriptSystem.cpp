@@ -166,6 +166,7 @@ namespace lux::simulation::script
         {
             ScriptInstanceId id;
             std::uint32_t mount_slot{};
+            std::size_t active_continuations{};
         };
 
         struct ContinuationRecord final
@@ -476,7 +477,7 @@ namespace lux::simulation::script
         {
             if (instances.size() >= limits.instance_capacity)
                 return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-            auto inserted = instances.tryEmplace(InstanceRecord{{}, mount_slot});
+            auto inserted = instances.tryEmplace(InstanceRecord{{}, mount_slot, 0U});
             if (!inserted)
                 return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
             const auto id = instanceId(*inserted);
@@ -624,6 +625,12 @@ namespace lux::simulation::script
             if (stored == nullptr)
                 return;
             const auto continuation = *stored;
+            if (auto* instance = instances.find(instanceKey(continuation.instance)); instance != nullptr)
+            {
+                if (instance->active_continuations == 0U)
+                    std::terminate();
+                --instance->active_continuations;
+            }
             clearActiveHook(continuation);
             static_cast<void>(continuations.erase(continuationKey(id)));
             continuation.backend.destroy(continuation.backend.state);
@@ -680,6 +687,25 @@ namespace lux::simulation::script
                 faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
                 return false;
             }
+            auto* instance = instances.find(instanceKey(mount.instance));
+            if (instance == nullptr)
+            {
+                backend_continuation.destroy(backend_continuation.state);
+                discardAwaitable(mount.instance, result.waiting_on);
+                faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
+                return false;
+            }
+            if (instance->active_continuations >= limits.continuation_capacity_per_instance)
+            {
+                backend_continuation.destroy(backend_continuation.state);
+                discardAwaitable(mount.instance, result.waiting_on);
+                faultInvocation(
+                    mount,
+                    method.symbol,
+                    EScriptSystemError::INSTANCE_CONTINUATION_CAPACITY_EXCEEDED
+                );
+                return false;
+            }
             if (continuations.size() >= limits.continuation_capacity)
             {
                 backend_continuation.destroy(backend_continuation.state);
@@ -703,6 +729,7 @@ namespace lux::simulation::script
             }
             const auto id = continuationId(*inserted);
             continuations[*inserted].id = id;
+            ++instance->active_continuations;
             auto attached = attachWaiter(result.waiting_on, mount.instance, id);
             if (!attached)
             {
@@ -1519,7 +1546,10 @@ namespace lux::simulation::script
         ScriptHostApi host) noexcept
     {
         const bool invalid_limits = limits.failure_capacity == 0U || limits.instance_capacity == 0U ||
-                                    limits.continuation_capacity == 0U || limits.awaitable_capacity == 0U ||
+                                    limits.continuation_capacity == 0U ||
+                                    limits.continuation_capacity_per_instance == 0U ||
+                                    limits.continuation_capacity_per_instance > limits.continuation_capacity ||
+                                    limits.awaitable_capacity == 0U ||
                                     limits.resume_queue_capacity == 0U || limits.max_resume_payload_bytes == 0U ||
                                     limits.resumes_per_stable_point == 0U;
         if (invalid_limits || artifacts.resolve == nullptr)

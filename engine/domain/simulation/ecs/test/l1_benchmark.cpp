@@ -697,7 +697,7 @@ namespace
                 simulation,
                 description,
                 registry,
-                ScriptRuntimeLimits{1U, count, count, count, count, 64U, count},
+                ScriptRuntimeLimits{1U, count, count, count, count, count, 64U, count},
                 {this, &resolveArtifact},
                 {},
                 {},

@@ -43,6 +43,7 @@ namespace lux::simulation::script
         std::size_t failure_capacity{};
         std::size_t instance_capacity{};
         std::size_t continuation_capacity{};
+        std::size_t continuation_capacity_per_instance{};
         std::size_t awaitable_capacity{};
         std::size_t resume_queue_capacity{};
         std::size_t max_resume_payload_bytes{};
@@ -81,6 +82,7 @@ namespace lux::simulation::script
         ALLOCATION_FAILURE,
         ENDPOINT_BUSY,
         CONTINUATION_CAPACITY_EXCEEDED,
+        INSTANCE_CONTINUATION_CAPACITY_EXCEEDED,
         AWAITABLE_CAPACITY_EXCEEDED,
         RESUME_QUEUE_FULL,
         SHUT_DOWN,

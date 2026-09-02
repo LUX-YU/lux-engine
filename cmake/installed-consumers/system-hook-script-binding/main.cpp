@@ -271,7 +271,7 @@ int main()
         *simulation_owner,
         *decoded_script,
         registry,
-        ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 64U, 2U},
+        ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 2U, 64U, 2U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         capabilities,

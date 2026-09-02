@@ -28,7 +28,7 @@ component_add_transitive_commands(
     scene_script_runtime
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script)"
-    "find_package(lux-engine-process REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
 )
 lux_classify_target(
     TARGET  scene_script_runtime

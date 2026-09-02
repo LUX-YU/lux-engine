@@ -2,6 +2,7 @@ add_library(
     editor_application
     STATIC
     src/EditorApplication.cpp
+    src/UiVulkanPresentation.cpp
 )
 target_include_directories(
     editor_application
@@ -11,7 +12,10 @@ target_link_libraries(
     editor_application
     PUBLIC
         lux::engine::editor::editor_context
+        lux::engine::function::ui_vulkan_backend
         lux::engine::process::asset_loading
+        lux::engine::function::render_vulkan
+        lux::engine::platform::window
 )
 lux_classify_target(
     TARGET  editor_application

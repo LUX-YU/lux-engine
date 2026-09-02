@@ -1,0 +1,126 @@
+#pragma once
+// Generated canonical Script Ability descriptor, provider binder and C++ projection.
+#include <lux/engine/function/script/ScriptAbility.hpp>
+#include <array>
+#include <concepts>
+#include <memory>
+#include <utility>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+
+namespace lux::script
+{
+{% for rec_index in marked_record_decls %}{% set rec = decl_from_index(rec_index) %}{% set receiver = annotation_get_for_or(rec, "luxability::contract", "receiver", "none") %}{% if receiver == "none" %}{% set ability_methods = rec.static_method_decls %}{% else %}{% set ability_methods = rec.method_decls %}{% endif %}
+    template <>
+    struct ScriptAbilityTraits<::{{ rec.fq_name }}> final
+    {
+        using Ability = ::{{ rec.fq_name }};
+        inline static constexpr ScriptApiContractIdView Contract{"{{ cxx_str(annotation_get(rec, "id")) }}"};
+        inline static constexpr auto Receiver = EScriptAbilityReceiverKind::{% if receiver == "provider_instance" %}PROVIDER_INSTANCE{% else %}NONE{% endif %};
+
+        struct Dispatch final
+        {
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}            {{ method.result_type_id }} (*{{ method.spelling }})(void*{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}) noexcept{};
+{% endif %}{% endfor %}        };
+
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        static_assert(noexcept({% if receiver == "none" %}Ability::{% else %}std::declval<Ability&>().{% endif %}{{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}std::declval<{{ type.id }}>(){% if not loop.is_last %}, {% endif %}{% endfor %})));
+{% endif %}{% endfor %}
+
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}        inline static constexpr std::array<ScriptAbilityParameterDescription, {{ length(method.params) }}> {{ method.spelling }}Parameters{
+{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{% set lifetime = annotation_get_for_or(param, "luxability::param", "lifetime", "owned_value") %}            ScriptAbilityParameterDescription{"{{ cxx_str(param.name) }}", makeScriptAbilityValue<{{ type.id }}>(EScriptAbilityValueLifetime::{% if lifetime == "stable_id" %}STABLE_ID{% else if lifetime == "borrowed_step" %}BORROWED_STEP{% else %}OWNED_VALUE{% endif %})}{% if not loop.is_last %},{% endif %}
+{% endfor %}        };
+        inline static constexpr std::array<ScriptAbilityValueDescription, {% if method.result_type_id == "void" %}0{% else %}1{% endif %}> {{ method.spelling }}Results{
+{% if method.result_type_id != "void" %}{% set result_lifetime = annotation_get_for_or(method, "luxability::method", "result_lifetime", "owned_value") %}            makeScriptAbilityValue<{{ method.result_type_id }}>(EScriptAbilityValueLifetime::{% if result_lifetime == "stable_id" %}STABLE_ID{% else if result_lifetime == "borrowed_step" %}BORROWED_STEP{% else if result_lifetime == "awaitable" %}AWAITABLE{% else %}OWNED_VALUE{% endif %})
+{% endif %}        };
+{% endif %}{% endfor %}
+        inline static constexpr std::array<ScriptAbilityMethodDescription, {% set count = 0 %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set count = count + 1 %}{% endif %}{% endfor %}{{ count }}> Methods{
+{% set emitted = false %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}{% if emitted %},
+{% endif %}            ScriptAbilityMethodDescription{
+                ScriptApiMethodIdView{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"},
+                "{{ cxx_str(method.spelling) }}",
+                "{{ cxx_str(annotation_get_for_or(method, "luxability::method", "display", method.spelling)) }}",
+                EScriptApiMethodKind::{% if kind == "command" %}COMMAND{% else if kind == "async_operation" %}ASYNC_OPERATION{% else %}QUERY{% endif %},
+                {{ method.spelling }}Parameters,
+                {{ method.spelling }}Results
+            }{% set emitted = true %}{% endif %}{% endfor %}
+        };
+        inline static constexpr ScriptAbilityDescription Description{
+            Contract,
+            "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "display", rec.name)) }}",
+            {{ annotation_get_for_or(rec, "luxability::contract", "version", 1) }}U,
+            scriptAbilitySchemaHash(Contract, Receiver, Methods),
+            Receiver,
+            Methods
+        };
+
+{% if receiver == "provider_instance" %}        template <class Provider>
+        inline static constexpr bool ProviderConforms = requires(
+            Provider& provider{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ method.spelling }}_{{ loop.index }}{% endfor %}{% endif %}{% endfor %}
+        ) {
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}            { provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ method.spelling }}_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %}) } noexcept -> std::same_as<{{ method.result_type_id }}>;
+{% endif %}{% endfor %}        };
+
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        template <class Provider>
+        static {{ method.result_type_id }} {{ method.spelling }}Thunk(void* context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ loop.index }}{% endfor %}) noexcept
+        {
+            auto& provider = *static_cast<Provider*>(context);
+{% if method.result_type_id == "void" %}            provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+{% else %}            return provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+{% endif %}        }
+{% endif %}{% endfor %}
+        template <class Provider>
+        inline static constexpr Dispatch ProviderDispatch{
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}            &{{ method.spelling }}Thunk<Provider>{% if not loop.is_last %},{% endif %}
+{% endif %}{% endfor %}        };
+
+        template <class Provider>
+            requires ProviderConforms<Provider>
+        [[nodiscard]] static ScriptAbilityBinding bind(Provider& provider) noexcept
+        {
+            return {&Description, std::addressof(provider), &ProviderDispatch<Provider>};
+        }
+{% else %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        static {{ method.result_type_id }} {{ method.spelling }}Thunk(void*{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ loop.index }}{% endfor %}) noexcept
+        {
+{% if method.result_type_id == "void" %}            Ability::{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+{% else %}            return Ability::{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+{% endif %}        }
+{% endif %}{% endfor %}        inline static constexpr Dispatch StatelessDispatch{
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}            &{{ method.spelling }}Thunk{% if not loop.is_last %},{% endif %}
+{% endif %}{% endfor %}        };
+        [[nodiscard]] static ScriptAbilityBinding bind() noexcept
+        {
+            return {&Description, nullptr, &StatelessDispatch};
+        }
+{% endif %}    };
+
+    template <>
+    class ScriptAbilityCpp<::{{ rec.fq_name }}> final
+    {
+    public:
+        [[nodiscard]] static lux::cxx::expected<ScriptAbilityCpp, EScriptAbilityBindingError>
+        create(ScriptAbilityBinding binding) noexcept
+        {
+            if (!binding.valid())
+                return lux::cxx::unexpected<EScriptAbilityBindingError>(
+                    EScriptAbilityBindingError::INVALID_BINDING
+                );
+            if (binding.description->id != ScriptAbilityTraits<::{{ rec.fq_name }}>::Description.id ||
+                binding.description->schema_hash != ScriptAbilityTraits<::{{ rec.fq_name }}>::Description.schema_hash)
+                return lux::cxx::unexpected<EScriptAbilityBindingError>(
+                    EScriptAbilityBindingError::CONTRACT_MISMATCH
+                );
+            return ScriptAbilityCpp(binding.context,
+                static_cast<const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch*>(binding.dispatch));
+        }
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        {{ method.result_type_id }} {{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{{ type.id }} {{ param.name }}{% if not loop.is_last %}, {% endif %}{% endfor %}) const noexcept
+        {
+{% if method.result_type_id == "void" %}            dispatch_->{{ method.spelling }}(context_{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
+{% else %}            return dispatch_->{{ method.spelling }}(context_{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
+{% endif %}        }
+{% endif %}{% endfor %}
+    private:
+        ScriptAbilityCpp(void* context, const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch* dispatch) noexcept
+            : context_(context), dispatch_(dispatch) {}
+        void* context_{};
+        const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch* dispatch_{};
+    };
+{% endfor %}} // namespace lux::script

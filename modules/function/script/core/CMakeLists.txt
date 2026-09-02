@@ -47,4 +47,14 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
 )
 
+component_add_cmake_scripts(
+    script_core
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_script_ability_codegen.cmake
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/template/
+    DESTINATION share/lux-engine-function/script_core/cmake_scripts/template
+)
+
 add_subdirectory(test)

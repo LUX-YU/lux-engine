@@ -89,11 +89,21 @@ namespace lux::script
     };
 
     template <class Value>
+    inline constexpr bool ScriptAbilityValueShapeSupported =
+        !std::is_rvalue_reference_v<Value> &&
+        !std::is_volatile_v<std::remove_reference_t<Value>> &&
+        (!std::is_lvalue_reference_v<Value> || std::is_const_v<std::remove_reference_t<Value>>);
+
+    template <class Value>
         requires lux::semantic::TypeDeclared<std::remove_cvref_t<Value>>
     [[nodiscard]] consteval ScriptAbilityValueDescription makeScriptAbilityValue(
         EScriptAbilityValueLifetime lifetime
     ) noexcept
     {
+        static_assert(
+            ScriptAbilityValueShapeSupported<Value>,
+            "Script Ability values support only value or const lvalue-reference shapes"
+        );
         using Type = std::remove_cvref_t<Value>;
         using Traits = lux::semantic::TypeTraits<Type>;
         constexpr auto pass = std::is_lvalue_reference_v<Value>

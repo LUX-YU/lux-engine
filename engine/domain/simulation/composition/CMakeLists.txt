@@ -177,6 +177,50 @@ add_test(
         -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
 )
 
+foreach(reference_case IN ITEMS mutable_parameter mutable_result)
+    add_executable(
+        simulation_script_ability_${reference_case}_negative
+        EXCLUDE_FROM_ALL
+        test/script_ability_${reference_case}_codegen.cpp
+    )
+    target_include_directories(
+        simulation_script_ability_${reference_case}_negative
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/test
+            ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test
+    )
+    target_link_libraries(
+        simulation_script_ability_${reference_case}_negative
+        PRIVATE lux::engine::function::script_core
+    )
+endforeach()
+lux_script_abilities(
+    TARGET simulation_script_ability_mutable_parameter_negative
+    SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/MutableParameterAbility.hpp
+    LOGICAL_PATHS MutableParameterAbility.hpp
+)
+lux_script_abilities(
+    TARGET simulation_script_ability_mutable_result_negative
+    SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/MutableResultAbility.hpp
+    LOGICAL_PATHS MutableResultAbility.hpp
+)
+foreach(reference_case IN ITEMS mutable_parameter mutable_result)
+    lux_classify_target(
+        TARGET  simulation_script_ability_${reference_case}_negative
+        LAYER   SIMULATION
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(
+        NAME simulation_script_ability_${reference_case}_negative
+        COMMAND ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=simulation_script_ability_${reference_case}_negative
+            -DEXPECTED_PATTERN=unsupported.mutable.rvalue.volatile.Script.Ability
+            -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
+endforeach()
+
 if(TARGET script_lua AND TARGET flowforge)
     include_component_cmake_scripts(script_lua)
     add_executable(

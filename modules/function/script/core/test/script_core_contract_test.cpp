@@ -1,5 +1,6 @@
 #include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/function/script/BoundScriptCall.hpp>
+#include <lux/engine/function/script/ScriptAbility.hpp>
 #include <lux/engine/function/script/ScriptApi.hpp>
 #include <lux/engine/function/script/ScriptSymbol.hpp>
 
@@ -18,6 +19,11 @@ int main()
     static_assert(contract.isValid() && method.isValid());
     static_assert(contract.hash() == lux::cxx::Fnv1a64::hash(contract.name()));
     static_assert(lux::script::EScriptApiMethodKind::ASYNC_OPERATION != lux::script::EScriptApiMethodKind::QUERY);
+    static_assert(lux::script::ScriptAbilityValueShapeSupported<std::int32_t>);
+    static_assert(lux::script::ScriptAbilityValueShapeSupported<const std::int32_t&>);
+    static_assert(!lux::script::ScriptAbilityValueShapeSupported<std::int32_t&>);
+    static_assert(!lux::script::ScriptAbilityValueShapeSupported<std::int32_t&&>);
+    static_assert(!lux::script::ScriptAbilityValueShapeSupported<const volatile std::int32_t&>);
 
     lux::script::BoundScriptCall call;
     assert(!call);

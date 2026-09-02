@@ -185,6 +185,7 @@ namespace lux::flowforge
             description.schema_version = lux::rdesc::Script::kSchemaVersion;
             description.module_name = options.module_name;
             description.exports = std::move(object->exports);
+            description.lifecycle = options.lifecycle;
             description.body = lux::rdesc::NativeModuleScript{
                 LUX_SCRIPT_ABI_VERSION,
                 object->state_hash,

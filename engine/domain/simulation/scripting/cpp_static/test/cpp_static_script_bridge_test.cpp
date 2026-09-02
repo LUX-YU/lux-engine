@@ -78,7 +78,7 @@ int main()
         CppStaticRecordSemanticResolver{nullptr, &resolveRecord}
     );
     assert(projected);
-    assert(projected->description().schema_version == 6U);
+    assert(projected->description().schema_version == 7U);
     assert(projected->description().exports.size() == 2U);
     assert(projected->description().exports[0].args[0].canonical_name ==
         "lux.f32");

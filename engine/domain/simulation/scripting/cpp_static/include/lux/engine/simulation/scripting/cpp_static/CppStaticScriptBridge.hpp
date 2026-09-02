@@ -80,7 +80,8 @@ namespace lux::simulation::script
             std::span<const lux::meta::RefMethod* const> methods,
             std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types,
-            void (*attach)(void*, ScriptBehavior&) noexcept = nullptr
+            void (*attach)(void*, ScriptBehavior&) noexcept = nullptr,
+            lux::rdesc::ScriptLifecycleRoles lifecycle = {}
         ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC
@@ -91,7 +92,8 @@ namespace lux::simulation::script
             std::string_view descriptor_key,
             std::span<const lux::meta::RefFunction* const> functions,
             std::span<const lux::script::ScriptSymbolId> symbols,
-            CppStaticRecordSemanticResolver record_types = {}
+            CppStaticRecordSemanticResolver record_types = {},
+            lux::rdesc::ScriptLifecycleRoles lifecycle = {}
         ) noexcept;
 
     struct CppStaticScriptPoolDescription final

@@ -74,6 +74,14 @@ namespace lux::rdesc
         friend bool operator==(const ScriptApiRequirement&, const ScriptApiRequirement&) noexcept = default;
     };
 
+    struct ScriptLifecycleRoles final
+    {
+        lux::script::ScriptSymbolId begin_play{lux::script::InvalidScriptSymbolId};
+        lux::script::ScriptSymbolId end_play{lux::script::InvalidScriptSymbolId};
+
+        friend bool operator==(const ScriptLifecycleRoles&, const ScriptLifecycleRoles&) noexcept = default;
+    };
+
     struct ScriptProvenance final
     {
         std::string compiler_id;
@@ -121,7 +129,7 @@ namespace lux::rdesc
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 6U;
+        static constexpr std::uint32_t kSchemaVersion = 7U;
 
         enum class Kind : std::uint8_t
         {
@@ -140,6 +148,7 @@ namespace lux::rdesc
         std::uint32_t schema_version{kSchemaVersion};
         std::string module_name;
         std::vector<ScriptFunction> exports;
+        ScriptLifecycleRoles lifecycle;
         std::vector<ScriptDependency> dependencies;
         std::vector<ScriptApiRequirement> api_requirements;
         ScriptProvenance provenance;
@@ -237,6 +246,14 @@ namespace lux::rdesc
                 if (!detail::validScriptFunction(function) || !symbols.insert(function.symbol_id).second)
                     return false;
             }
+            const bool has_begin = description.lifecycle.begin_play != lux::script::InvalidScriptSymbolId;
+            const bool has_end = description.lifecycle.end_play != lux::script::InvalidScriptSymbolId;
+            const bool is_duplicate_role = has_begin && has_end &&
+                description.lifecycle.begin_play == description.lifecycle.end_play;
+            const bool is_missing_begin = has_begin && !symbols.contains(description.lifecycle.begin_play);
+            const bool is_missing_end = has_end && !symbols.contains(description.lifecycle.end_play);
+            if (is_duplicate_role || is_missing_begin || is_missing_end)
+                return false;
             std::unordered_set<std::uint64_t> contracts;
             contracts.reserve(description.api_requirements.size());
             for (const auto& requirement : description.api_requirements)

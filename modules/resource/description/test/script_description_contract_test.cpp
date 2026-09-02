@@ -27,6 +27,18 @@ int main()
         {std::byte{1U}, std::byte{2U}}};
     assert(rdesc::validScriptDescription(description));
 
+    auto lifecycle = description;
+    lifecycle.lifecycle.begin_play = 7U;
+    assert(rdesc::validScriptDescription(lifecycle));
+
+    auto missing_lifecycle = description;
+    missing_lifecycle.lifecycle.begin_play = 99U;
+    assert(!rdesc::validScriptDescription(missing_lifecycle));
+
+    auto duplicate_lifecycle = description;
+    duplicate_lifecycle.lifecycle = {7U, 7U};
+    assert(!rdesc::validScriptDescription(duplicate_lifecycle));
+
     auto duplicate = description;
     duplicate.exports.push_back(duplicate.exports.front());
     assert(!rdesc::validScriptDescription(duplicate));

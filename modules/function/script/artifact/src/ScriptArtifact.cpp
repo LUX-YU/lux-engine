@@ -17,7 +17,7 @@ namespace lux::script
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion = 4U;
+        constexpr std::uint32_t kWireVersion = 5U;
 
         class Writer final
         {
@@ -217,6 +217,8 @@ namespace lux::script
                 writer.u32(lux::rdesc::Script::kSchemaVersion);
                 writer.u32(static_cast<std::uint32_t>(description.kind()));
                 writer.string(description.module_name);
+                writer.u64(description.lifecycle.begin_play);
+                writer.u64(description.lifecycle.end_play);
 
                 if (description.exports.size() >
                     std::numeric_limits<std::uint32_t>::max())
@@ -333,7 +335,9 @@ namespace lux::script
                 std::size_t decoded = sizeof(ScriptArtifact);
                 const auto limit = max_decoded_bytes;
                 if (decoded > limit ||
-                    !reader.string(description.module_name, decoded, limit))
+                    !reader.string(description.module_name, decoded, limit) ||
+                    !reader.u64(description.lifecycle.begin_play) ||
+                    !reader.u64(description.lifecycle.end_play))
                 {
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }

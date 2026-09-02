@@ -12,7 +12,10 @@ int main()
 
     rdesc::Script description;
     description.module_name = "lux.test.artifact";
+    description.exports.push_back({"begin", 10U, {}, {}});
     description.exports.push_back({"tick", 11U, {}, {}});
+    description.exports.push_back({"end", 12U, {}, {}});
+    description.lifecycle = {10U, 12U};
     description.api_requirements.push_back({
         script::ScriptApiContractId{"lux.test.Ability"},
         0x11223344U
@@ -44,7 +47,7 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(*encoded),
         decode_limits
     );
-    assert(image && image->data().view()[4] == std::byte{4U});
+    assert(image && image->data().view()[4] == std::byte{5U});
 
     auto decoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
         (*typed)->id(),
@@ -53,14 +56,17 @@ int main()
     );
     assert(decoded);
     const auto& artifact = (*decoded)->data();
-    assert(artifact.description().schema_version == 6U);
+    assert(artifact.description().schema_version == 7U);
+    assert(artifact.description().lifecycle.begin_play == 10U);
+    assert(artifact.description().lifecycle.end_play == 12U);
     assert(artifact.description().api_requirements.size() == 1U);
     assert(artifact.description().api_requirements.front().contract.name() == "lux.test.Ability");
     assert(artifact.description().api_requirements.front().expected_schema_hash == 0x11223344U);
-    assert(artifact.description().exports.front().symbol_id == 11U);
+    assert(artifact.description().exports[1].symbol_id == 11U);
     assert(artifact.payload().size() == 3U);
-    assert(artifact.findExport(11U) == std::addressof(artifact.description().exports.front()));
-    assert(artifact.findExport(12U) == nullptr);
+    assert(artifact.findExport(11U) == std::addressof(artifact.description().exports[1]));
+    assert(artifact.findExport(12U) == std::addressof(artifact.description().exports[2]));
+    assert(artifact.findExport(13U) == nullptr);
 
     auto old_schema = *encoded;
     old_schema[408U] = std::byte{3U};

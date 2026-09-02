@@ -284,7 +284,8 @@ namespace lux::simulation::script
             std::span<const lux::meta::RefMethod* const> methods,
             std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types,
-            void (*attach)(void*, ScriptBehavior&) noexcept
+            void (*attach)(void*, ScriptBehavior&) noexcept,
+            lux::rdesc::ScriptLifecycleRoles lifecycle
         ) noexcept
     {
         if (module_name.empty() || descriptor_key.empty() ||
@@ -303,6 +304,7 @@ namespace lux::simulation::script
             state->description.module_name = module_name;
             state->description.body = lux::rdesc::CppStaticScript{
                 std::string{descriptor_key}};
+            state->description.lifecycle = lifecycle;
             state->descriptor_key = descriptor_key;
             state->reflected_class = std::addressof(reflected_class);
             state->attach = attach;
@@ -346,6 +348,8 @@ namespace lux::simulation::script
                 state->description.exports.push_back(std::move(*projected));
                 state->callables.push_back(Callable{symbol, method, nullptr});
             }
+            if (!lux::rdesc::validScriptDescription(state->description))
+                return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
             return CppStaticScriptDescriptor{std::move(state)};
         }
         catch (const std::bad_alloc&)
@@ -363,7 +367,8 @@ namespace lux::simulation::script
             std::string_view descriptor_key,
             std::span<const lux::meta::RefFunction* const> functions,
             std::span<const lux::script::ScriptSymbolId> symbols,
-            CppStaticRecordSemanticResolver record_types
+            CppStaticRecordSemanticResolver record_types,
+            lux::rdesc::ScriptLifecycleRoles lifecycle
         ) noexcept
     {
         if (module_name.empty() || descriptor_key.empty() ||
@@ -379,6 +384,7 @@ namespace lux::simulation::script
             state->description.module_name = module_name;
             state->description.body = lux::rdesc::CppStaticScript{
                 std::string{descriptor_key}};
+            state->description.lifecycle = lifecycle;
             state->descriptor_key = descriptor_key;
             state->description.exports.reserve(functions.size());
             state->callables.reserve(functions.size());
@@ -421,6 +427,8 @@ namespace lux::simulation::script
                 state->description.exports.push_back(std::move(*projected));
                 state->callables.push_back(Callable{symbol, nullptr, function});
             }
+            if (!lux::rdesc::validScriptDescription(state->description))
+                return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
             return CppStaticScriptDescriptor{std::move(state)};
         }
         catch (const std::bad_alloc&)
@@ -688,7 +696,8 @@ namespace lux::simulation::script
                 artifact.description().module_name ==
                     descriptor.description.module_name &&
                 asset_body->descriptor == descriptor_body->descriptor &&
-                artifact.description().exports == descriptor.description.exports;
+                artifact.description().exports == descriptor.description.exports &&
+                artifact.description().lifecycle == descriptor.description.lifecycle;
         }
 
         static EScriptBackendResult createInstance(

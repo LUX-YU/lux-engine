@@ -46,6 +46,7 @@ namespace lux::flowforge
     {
         std::string module_name;
         std::filesystem::path linker;
+        lux::rdesc::ScriptLifecycleRoles lifecycle;
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC

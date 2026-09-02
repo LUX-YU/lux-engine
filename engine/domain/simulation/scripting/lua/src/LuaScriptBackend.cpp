@@ -193,18 +193,22 @@ namespace lux::simulation::script
             const lux::rdesc::ScriptValueType& type
         ) const noexcept
         {
-            const auto* layout = lux::semantic::builtinLayout(type.type_id);
-            if (!layout || layout->canonical_name != type.canonical_name)
+            if (!lux::rdesc::detail::validScriptValueType(type))
                 return false;
-            switch (layout->abi_kind)
+            switch (type.abi_kind)
             {
             case LUX_SCRIPT_VK_BOOL:
+                return type.size == sizeof(bool) && type.alignment == alignof(bool);
             case LUX_SCRIPT_VK_INT32:
+                return type.size == sizeof(std::int32_t) && type.alignment == alignof(std::int32_t);
             case LUX_SCRIPT_VK_UINT32:
+                return type.size == sizeof(std::uint32_t) && type.alignment == alignof(std::uint32_t);
             case LUX_SCRIPT_VK_INT64:
+                return type.size == sizeof(std::int64_t) && type.alignment == alignof(std::int64_t);
             case LUX_SCRIPT_VK_FLOAT:
+                return type.size == sizeof(float) && type.alignment == alignof(float);
             case LUX_SCRIPT_VK_DOUBLE:
-                return true;
+                return type.size == sizeof(double) && type.alignment == alignof(double);
             default:
                 return false;
             }

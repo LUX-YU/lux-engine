@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
+#include <lux/engine/simulation/SimulationClock.hpp>
 #include <lux/engine/simulation/SimulationSystemDescription.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
@@ -116,6 +117,7 @@ namespace lux::simulation::script
             const SimulationDescription &simulation,
             const ScriptSystemDescription &description,
             ecs::Registry &registry,
+            const SimulationClock &clock,
             ScriptRuntimeLimits limits,
             ScriptArtifactResolver artifacts,
             WorldObjectResolver world,

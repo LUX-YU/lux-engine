@@ -6,6 +6,7 @@
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/SystemTaskResources.hpp>
 #include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
+#include <lux/engine/simulation/scripting/ScriptEndpointBridge.hpp>
 #include <lux/engine/task/TaskCallable.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 
@@ -33,6 +34,16 @@ namespace lux::simulation
 
         [[nodiscard]] std::span<const script::ScriptApiCapabilityPublication>
         scriptApiCapabilities() const noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> publishScriptHook(
+            lux::system::SystemInstanceId provider,
+            script::ScriptHookEndpointDescriptor endpoint
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> publishScriptEvent(
+            lux::system::SystemInstanceId provider,
+            script::ScriptEventEndpointDescriptor endpoint
+        ) noexcept;
 
         template <class Configuration>
         [[nodiscard]] lux::cxx::expected<Configuration, SimulationSystemBuildFailure>

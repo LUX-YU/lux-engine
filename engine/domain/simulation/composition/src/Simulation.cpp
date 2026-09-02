@@ -48,6 +48,8 @@ namespace lux::simulation
         {
             script_abilities.clear();
             script_ability_providers.clear();
+            script_hooks.clear();
+            script_events.clear();
             for (auto iterator = systems.rbegin(); iterator != systems.rend(); ++iterator)
             {
                 if (iterator->object != nullptr)
@@ -63,6 +65,8 @@ namespace lux::simulation
         std::vector<SystemObjectRecord> systems;
         std::vector<script::ScriptApiCapabilityPublication> script_abilities;
         std::vector<lux::system::SystemInstanceId> script_ability_providers;
+        std::vector<script::ScriptHookEndpointDescriptor> script_hooks;
+        std::vector<script::ScriptEventEndpointDescriptor> script_events;
         SimulationClock clock;
         std::unique_ptr<ecs::EcsCommandBuffer> commands;
         ExecutionState execution;
@@ -263,6 +267,96 @@ namespace lux::simulation
     SimulationBuilder::scriptApiCapabilities() const noexcept
     {
         return impl_->owner->script_abilities;
+    }
+
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::publishScriptHook(
+        lux::system::SystemInstanceId provider,
+        script::ScriptHookEndpointDescriptor endpoint
+    ) noexcept
+    {
+        const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
+        const auto described = impl_->owner->description->findHookPoint(provider, endpoint.hook);
+        const bool is_current_provider = current && current.instanceId() == provider;
+        const bool is_invalid_endpoint = endpoint.system != provider || endpoint.context == nullptr ||
+            endpoint.connect == nullptr || endpoint.disconnect == nullptr || !described ||
+            described.parameterCount() != endpoint.signature.parameters.size() || !endpoint.signature.returns.empty();
+        if (!is_current_provider || is_invalid_endpoint)
+        {
+            return lux::cxx::unexpected(buildFailure(
+                ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT,
+                provider
+            ));
+        }
+        for (std::size_t index{}; index < described.parameterCount(); ++index)
+        {
+            if (described.parameterAt(index) != endpoint.signature.parameters[index])
+            {
+                return lux::cxx::unexpected(buildFailure(
+                    ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT,
+                    provider
+                ));
+            }
+        }
+        const bool duplicate = std::ranges::any_of(impl_->owner->script_hooks, [&](const auto& value) noexcept {
+            return value.system == endpoint.system && value.hook == endpoint.hook;
+        });
+        if (duplicate)
+        {
+            return lux::cxx::unexpected(buildFailure(
+                ESimulationSystemBuildError::DUPLICATE_SCRIPT_ENDPOINT,
+                provider
+            ));
+        }
+        try
+        {
+            impl_->owner->script_hooks.push_back(endpoint);
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, provider));
+        }
+    }
+
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::publishScriptEvent(
+        lux::system::SystemInstanceId provider,
+        script::ScriptEventEndpointDescriptor endpoint
+    ) noexcept
+    {
+        const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
+        const auto described = impl_->owner->description->findEvent(provider, endpoint.event);
+        const bool is_current_provider = current && current.instanceId() == provider;
+        const bool is_invalid_endpoint = endpoint.system != provider || endpoint.context == nullptr ||
+            endpoint.connect == nullptr || endpoint.disconnect == nullptr || !described ||
+            described.route() != endpoint.route || described.payloadType() != endpoint.payload_type.type_id ||
+            described.payloadSchemaName() != endpoint.payload_type.canonical_name ||
+            endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF;
+        if (!is_current_provider || is_invalid_endpoint)
+        {
+            return lux::cxx::unexpected(buildFailure(
+                ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT,
+                provider
+            ));
+        }
+        const bool duplicate = std::ranges::any_of(impl_->owner->script_events, [&](const auto& value) noexcept {
+            return value.system == endpoint.system && value.event == endpoint.event;
+        });
+        if (duplicate)
+        {
+            return lux::cxx::unexpected(buildFailure(
+                ESimulationSystemBuildError::DUPLICATE_SCRIPT_ENDPOINT,
+                provider
+            ));
+        }
+        try
+        {
+            impl_->owner->script_events.push_back(endpoint);
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, provider));
+        }
     }
 
     lux::cxx::expected<void*, SimulationSystemBuildFailure> SimulationBuilder::emplaceErased(
@@ -615,6 +709,16 @@ namespace lux::simulation
     Simulation::scriptApiCapabilities() const noexcept
     {
         return impl_->script_abilities;
+    }
+
+    std::span<const script::ScriptHookEndpointDescriptor> Simulation::scriptHookEndpoints() const noexcept
+    {
+        return impl_->script_hooks;
+    }
+
+    std::span<const script::ScriptEventEndpointDescriptor> Simulation::scriptEventEndpoints() const noexcept
+    {
+        return impl_->script_events;
     }
 
     const SimulationClock& Simulation::clock() const noexcept

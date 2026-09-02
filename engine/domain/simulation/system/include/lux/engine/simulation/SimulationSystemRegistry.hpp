@@ -35,6 +35,8 @@ namespace lux::simulation
         TASK_GRAPH_FAILURE,
         COMMAND_PREPARE_FAILURE,
         SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER,
+        INVALID_SCRIPT_ENDPOINT,
+        DUPLICATE_SCRIPT_ENDPOINT,
     };
 
     struct SimulationSystemBuildFailure final

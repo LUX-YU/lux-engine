@@ -349,10 +349,12 @@ namespace
         ControlledHookEndpoint first{kHook, false, true};
         ControlledHookEndpoint second{kSecondaryHook, true, false};
         const std::array endpoints{first.descriptor(), second.descriptor()};
+        SimulationClock clock;
         auto created = ScriptSystem::create(
             simulation,
             *description,
             registry,
+            clock,
             ScriptRuntimeLimits{2U, 1U, 4U, 4U, 4U, 4U, 64U, 4U},
             {&fixture, &resolveAsset},
             {},
@@ -457,10 +459,12 @@ int main()
         &prepareMethod,
         &releaseMethod,
         &destroyInstance}};
+    SimulationClock clock;
     auto created = ScriptSystem::create(
         simulation,
         *description,
         registry,
+        clock,
         ScriptRuntimeLimits{8U, 2U, 8U, 8U, 8U, 8U, 64U, 8U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},

@@ -48,6 +48,7 @@ engine/
     presentation/
     integration/
       world_materialization/
+      script/
       render/
   editor/
     application/
@@ -74,8 +75,9 @@ engine/
 - `engine/scene` 是 L3 runtime composition：`description` 持有 durable SceneSystem composition，`system` 定义
   installer/requirement contract，`meta` 在进程启动时一次构建后 immutable；`composition` 组合一个 World、一个
   authoritative Registry、一个 Simulation、已安装 SceneSystems 与 Scene cancellation source；`presentation`
-  承载 latest-state handoff；`integration/world_materialization` 与 `integration/render` 分别提供机械 ECS
-  materialization 与可选 Render SceneSystem integration。Streaming policy 只属于 concrete developer System。
+  承载 latest-state handoff；`integration/world_materialization`、`integration/script` 与 `integration/render`
+  分别提供机械 ECS materialization、production Script stable-point/Process bridge 与可选 Render SceneSystem
+  integration。Streaming policy 只属于 concrete developer System。
 - `engine/editor` 持有 L5 Editor application composition 与交互式 UI/tooling；`application` 显式 owns
   ExecutionRuntime、root TaskScope、mutable AssetVfs、production AssetRead endpoint、Toolset、EditorSelection、
   UISession与immutable SceneMetaManager，并直接产出Editor executable。`context`只携带named borrowed/read

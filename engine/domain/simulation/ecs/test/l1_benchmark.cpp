@@ -697,6 +697,7 @@ namespace
                 simulation,
                 description,
                 registry,
+                clock,
                 ScriptRuntimeLimits{1U, count, count, count, count, count, 64U, count},
                 {this, &resolveArtifact},
                 {},
@@ -735,6 +736,7 @@ namespace
         lux::script::ScriptArtifact artifact;
         lux::asset::AssetId asset_id;
         ScriptSystemDescription description;
+        SimulationClock clock;
         ecs::Registry registry;
         HookPoint<void(const SimulationStepInfo&)> hook;
         std::unique_ptr<ScriptHookEndpoint<void(const SimulationStepInfo&)>> bridge;

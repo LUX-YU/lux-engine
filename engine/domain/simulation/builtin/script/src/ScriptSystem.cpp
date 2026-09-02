@@ -409,6 +409,7 @@ namespace lux::simulation::script
         const SimulationDescription* simulation{};
         const ScriptSystemDescription* description{};
         ecs::Registry* registry{};
+        const SimulationClock* clock{};
         ScriptRuntimeLimits limits;
         ScriptArtifactResolver artifacts;
         WorldObjectResolver world;
@@ -1536,6 +1537,7 @@ namespace lux::simulation::script
         const SimulationDescription& simulation,
         const ScriptSystemDescription& description,
         ecs::Registry& registry,
+        const SimulationClock& clock,
         ScriptRuntimeLimits limits,
         ScriptArtifactResolver artifacts,
         WorldObjectResolver world,
@@ -1669,6 +1671,7 @@ namespace lux::simulation::script
             state->simulation = std::addressof(simulation);
             state->description = std::addressof(description);
             state->registry = std::addressof(registry);
+            state->clock = std::addressof(clock);
             state->limits = limits;
             state->artifacts = artifacts;
             state->world = world;

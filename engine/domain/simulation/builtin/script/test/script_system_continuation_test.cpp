@@ -466,6 +466,7 @@ namespace
                 simulation,
                 description,
                 registry,
+                clock,
                 limits,
                 {this, &resolveArtifact},
                 uses_entity_scope ? WorldObjectResolver{this, &resolveWorld} : WorldObjectResolver{},
@@ -499,6 +500,7 @@ namespace
         }
 
         SimulationDescription simulation;
+        SimulationClock clock;
         ScriptSystemDescription description;
         lux::script::ScriptArtifact artifact;
         lux::asset::AssetId asset;

@@ -267,10 +267,12 @@ int main()
         nullptr,
         &ability_dispatch
     }};
+    SimulationClock clock;
     auto created = ScriptSystem::create(
         *simulation_owner,
         *decoded_script,
         registry,
+        clock,
         ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 2U, 64U, 2U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},

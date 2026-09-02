@@ -7,6 +7,7 @@
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
+#include <lux/engine/simulation/scripting/ScriptEndpointBridge.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -53,6 +54,12 @@ namespace lux::simulation
 
         [[nodiscard]] std::span<const script::ScriptApiCapabilityPublication>
         scriptApiCapabilities() const noexcept;
+
+        [[nodiscard]] std::span<const script::ScriptHookEndpointDescriptor>
+        scriptHookEndpoints() const noexcept;
+
+        [[nodiscard]] std::span<const script::ScriptEventEndpointDescriptor>
+        scriptEventEndpoints() const noexcept;
 
         [[nodiscard]] const SimulationClock& clock() const noexcept;
 

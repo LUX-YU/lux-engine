@@ -1,0 +1,467 @@
+#include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/scene/Scene.hpp>
+#include <lux/engine/scene/SceneBuilder.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/ScriptRuntimeSystem.hpp>
+#include <lux/engine/simulation/SimulationBuilder.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/world/WorldDescriptionBuilder.hpp>
+
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <new>
+#include <utility>
+#include <vector>
+
+namespace
+{
+    using namespace lux;
+    using namespace lux::scene;
+    using namespace lux::simulation;
+    using namespace lux::simulation::script;
+
+    inline constexpr system::SystemInstanceId kProbeSystem{0x7201U};
+    inline constexpr system::SystemInstanceId kScriptRuntime{0x7202U};
+    inline constexpr HookPointId kTickHook{0x7203U};
+    inline constexpr lux::script::ScriptSymbolId kTickSymbol{0x7204U};
+    inline constexpr system::SystemInstanceId kStableProbe{0x7205U};
+
+    [[nodiscard]] asset::AssetId assetId(std::uint8_t value)
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes[0] = value;
+        return asset::AssetId{bytes};
+    }
+
+    template <class Type>
+    [[nodiscard]] Type worldId(std::uint8_t value)
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes[15] = value;
+        return Type{uuids::uuid(bytes)};
+    }
+
+    struct ProbeSystem final
+    {
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "tick")};
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.test.scene-script.probe", .version = 1U},
+            .hooks = Hooks
+        };
+
+        ProbeSystem() noexcept : endpoint(kProbeSystem, kTickHook, hook)
+        {
+            ready = hook.prepare(1U) == EEndpointMutationError::NONE;
+        }
+
+        void execute() noexcept
+        {
+            static_cast<void>(hook.dispatch());
+        }
+
+        HookPoint<void()> hook;
+        ScriptHookEndpoint<void()> endpoint;
+        bool ready{};
+    };
+
+    [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> installProbe(
+        SimulationBuilder& builder,
+        SimulationSystemView description
+    ) noexcept
+    {
+        auto probe = builder.emplaceSystem<ProbeSystem>(description.instanceId());
+        if (!probe)
+            return lux::cxx::unexpected(probe.error());
+        if (!(*probe)->ready)
+        {
+            return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                ESimulationSystemBuildError::CONSTRUCTION_FAILURE,
+                description.instanceId()
+            });
+        }
+        auto published = builder.publishScriptHook(description.instanceId(), (*probe)->endpoint.descriptor());
+        if (!published)
+            return published;
+        return builder.addSystemTask<ProbeSystem>(
+            description.instanceId(),
+            [](ProbeSystem& value) noexcept { value.execute(); }
+        );
+    }
+
+    [[nodiscard]] SimulationSystemRegistration probeRegistration() noexcept
+    {
+        return {
+            .type = system::systemTypeId(ProbeSystem::Description.type.canonical_name),
+            .cpp_type = cxx::typeToken<ProbeSystem>(),
+            .description = &ProbeSystem::Description,
+            .access = ProbeSystem::Access.spec(),
+            .configuration = {},
+            .install = &installProbe
+        };
+    }
+
+    [[nodiscard]] SimulationDescription makeSimulationDescription(
+        const ScriptSystemDescription& script_description,
+        ScriptSystemCodecLimits codec_limits
+    )
+    {
+        SimulationDescriptionBuilder builder;
+        assert(builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
+        assert(addScriptSystemData(builder, script_description, codec_limits));
+        auto result = std::move(builder).build();
+        assert(result);
+        return std::move(*result);
+    }
+
+    [[nodiscard]] ScriptSystemDescription makeScriptDescription()
+    {
+        SimulationDescriptionBuilder simulation_builder;
+        assert(simulation_builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
+        auto simulation = std::move(simulation_builder).build();
+        assert(simulation);
+
+        ScriptSystemDescriptionBuilder builder;
+        assert(builder.addMount({
+            ScriptMountId{1U},
+            assetId(0x72U),
+            SimulationScriptMount{},
+            true,
+            {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
+        }));
+        auto result = std::move(builder).build(*simulation);
+        assert(result);
+        return std::move(*result);
+    }
+
+    [[nodiscard]] lux::script::ScriptArtifact makeArtifact()
+    {
+        rdesc::Script description;
+        description.module_name = "lux.test.scene-script.fixture";
+        description.exports.push_back({"tick", kTickSymbol, {}, {}});
+        description.body = rdesc::CppStaticScript{"fixture"};
+        auto result = lux::script::ScriptArtifact::create(std::move(description), {});
+        assert(result);
+        return std::move(*result);
+    }
+
+    struct BackendState final
+    {
+        std::size_t step_calls{};
+        std::size_t resume_calls{};
+        std::size_t destroys{};
+        std::vector<ScriptAwaitableCompletion> completions;
+    };
+
+    struct StableProbeSystem final
+    {
+        inline static constexpr system::SystemTypeDescription Description{
+            .canonical_name = "lux.test.scene-script.stable-probe",
+            .version = 1U
+        };
+
+        explicit StableProbeSystem(BackendState& state) noexcept : state_(&state)
+        {
+        }
+
+        void executeStablePoint() noexcept
+        {
+            observed_resume_calls = state_->resume_calls;
+        }
+
+        BackendState* state_{};
+        std::size_t observed_resume_calls{};
+    };
+
+    [[nodiscard]] lux::cxx::expected<void, SceneSystemBuildFailure> installStableProbe(
+        SceneBuilder& builder,
+        SceneSystemView description
+    ) noexcept
+    {
+        auto* state = builder.require<BackendState>(description.instanceId(), "backend_state");
+        if (state == nullptr)
+        {
+            return lux::cxx::unexpected(SceneSystemBuildFailure{
+                ESceneSystemBuildError::MISSING_REQUIREMENT,
+                description.instanceId()
+            });
+        }
+        auto installed = builder.emplaceSystem<StableProbeSystem>(description.instanceId(), *state);
+        if (!installed)
+            return lux::cxx::unexpected(installed.error());
+        return builder.addStablePointTask<StableProbeSystem>(
+            description.instanceId(),
+            [](StableProbeSystem& value) noexcept { value.executeStablePoint(); }
+        );
+    }
+
+    [[nodiscard]] SceneSystemRegistration stableProbeRegistration() noexcept
+    {
+        static constexpr std::array requirements{
+            SceneSystemRequirementSpec{
+                .name = "backend_state",
+                .capability = "lux.test.script.backend-state",
+                .expected_type = cxx::typeToken<BackendState>(),
+                .optional = false
+            }
+        };
+        return {
+            .type = system::systemTypeId(StableProbeSystem::Description.canonical_name),
+            .cpp_type = cxx::typeToken<StableProbeSystem>(),
+            .description = &StableProbeSystem::Description,
+            .configuration = {},
+            .observations = {},
+            .requirements = requirements,
+            .connections = {},
+            .project_object = sceneSystemObjectProjection<StableProbeSystem>(),
+            .install = &installStableProbe
+        };
+    }
+
+    struct Continuation final
+    {
+        BackendState* owner{};
+    };
+
+    int invokeSync(lux_script_call_frame*)
+    {
+        return 0;
+    }
+
+    EScriptBackendResult createInstance(
+        void* context,
+        const ScriptInstanceCreateContext&,
+        const lux::script::ScriptArtifact&,
+        ScriptBackendInstance& output
+    ) noexcept
+    {
+        output.value = context;
+        return EScriptBackendResult::SUCCESS;
+    }
+
+    EScriptBackendResult prepareMethod(
+        void*,
+        ScriptBackendInstance,
+        const rdesc::ScriptFunction&,
+        lux::script::BoundScriptCall& output
+    ) noexcept
+    {
+        output = {&invokeSync, nullptr};
+        return EScriptBackendResult::SUCCESS;
+    }
+
+    void releaseMethod(void*, ScriptBackendInstance, lux::script::BoundScriptCall) noexcept
+    {
+    }
+
+    void destroyInstance(void*, ScriptBackendInstance) noexcept
+    {
+    }
+
+    ScriptStepResult resume(void* value, ScriptStepContext&, const ScriptResumePacket& packet) noexcept
+    {
+        auto& continuation = *static_cast<Continuation*>(value);
+        assert(packet.state == EScriptAwaitableState::READY);
+        ++continuation.owner->resume_calls;
+        return ScriptStepResult::completed();
+    }
+
+    void destroyContinuation(void* value) noexcept
+    {
+        auto* continuation = static_cast<Continuation*>(value);
+        ++continuation->owner->destroys;
+        delete continuation;
+    }
+
+    ScriptStepResult invokeStep(
+        void* context,
+        lux_script_call_frame&,
+        ScriptStepContext& step,
+        ScriptBackendContinuation& output
+    ) noexcept
+    {
+        auto& state = *static_cast<BackendState*>(context);
+        ++state.step_calls;
+        auto awaiting = step.awaitables.create();
+        if (!awaiting)
+            return ScriptStepResult::failed(1);
+        auto* continuation = new (std::nothrow) Continuation{&state};
+        if (continuation == nullptr)
+        {
+            step.awaitables.discard(awaiting->id);
+            return ScriptStepResult::failed(2);
+        }
+        state.completions.push_back(awaiting->completion);
+        output = {continuation, &resume, &destroyContinuation};
+        return ScriptStepResult::suspended(awaiting->id);
+    }
+
+    EScriptBackendResult prepareStepMethod(
+        void* context,
+        ScriptBackendInstance,
+        const rdesc::ScriptFunction&,
+        BoundScriptStepCall& output
+    ) noexcept
+    {
+        output = {context, &invokeStep};
+        return EScriptBackendResult::SUCCESS;
+    }
+
+    void releaseStepMethod(void*, ScriptBackendInstance, BoundScriptStepCall) noexcept
+    {
+    }
+
+    struct Fixture final
+    {
+        Fixture() : artifact(makeArtifact())
+        {
+            backend = {
+                rdesc::Script::Kind::CPP_STATIC,
+                &backend_state,
+                &createInstance,
+                &prepareMethod,
+                &releaseMethod,
+                &destroyInstance,
+                &prepareStepMethod,
+                &releaseStepMethod
+            };
+        }
+
+        static bool resolveArtifact(
+            void* context,
+            const asset::AssetId& requested,
+            ResolvedScriptArtifact& output
+        ) noexcept
+        {
+            auto& self = *static_cast<Fixture*>(context);
+            if (requested != assetId(0x72U))
+                return false;
+            output.artifact = &self.artifact;
+            return true;
+        }
+
+        BackendState backend_state;
+        lux::script::ScriptArtifact artifact;
+        ScriptBackendDescriptor backend;
+    };
+
+    [[nodiscard]] std::shared_ptr<const world::WorldDescription> makeWorld()
+    {
+        world::WorldDescriptionBuilder builder;
+        assert(builder.setIdentity(
+            worldId<world::WorldBundleId>(1U),
+            worldId<world::WorldBundleGeneration>(2U),
+            "script-runtime-test"
+        ));
+        assert(builder.setPartitioner({world::worldPartitionerId("test.none"), 1U}, 0U));
+        auto world = std::move(builder).build();
+        assert(world);
+        return std::make_shared<world::WorldDescription>(std::move(*world));
+    }
+} // namespace
+
+int main()
+{
+    using namespace lux;
+    using namespace lux::scene;
+    using namespace lux::simulation;
+    using namespace lux::simulation::script;
+
+    const ScriptSystemCodecLimits codec_limits{4096U, 4096U, 4096U};
+    auto script_description = makeScriptDescription();
+    auto simulation = std::make_shared<SimulationDescription>(
+        makeSimulationDescription(script_description, codec_limits)
+    );
+
+    SceneDescriptionBuilder scene_builder;
+    scene_builder.setWorld(assetId(1U));
+    scene_builder.setSimulation(assetId(2U));
+    assert(scene_builder.addSystem(
+        kScriptRuntime,
+        "script-runtime",
+        system::systemTypeId(ScriptRuntimeSystem::Description.canonical_name),
+        ScriptRuntimeSystem::Description.version,
+        {},
+        0U
+    ));
+    assert(scene_builder.bindRequirement(kScriptRuntime, "script_runtime_host", "host.script"));
+    assert(scene_builder.addSystem(
+        kStableProbe,
+        "stable-probe",
+        system::systemTypeId(StableProbeSystem::Description.canonical_name),
+        StableProbeSystem::Description.version,
+        {},
+        0U
+    ));
+    assert(scene_builder.bindRequirement(kStableProbe, "backend_state", "host.backend-state"));
+    assert(scene_builder.addDependency(kScriptRuntime, kStableProbe));
+    auto scene_description = std::move(scene_builder).build();
+    assert(scene_description);
+
+    meta::ReflectionRegistry::initRegistry();
+    SimulationSystemRegistry simulation_systems;
+    assert(simulation_systems.add(probeRegistration()));
+    auto components = ecs::ComponentSchemaSet::build({});
+    assert(components);
+    auto meta = SceneMetaManager::build({
+        std::move(*components),
+        std::move(simulation_systems),
+        {builtinScriptRuntimeSystemRegistration(), stableProbeRegistration()}
+    });
+    assert(meta);
+
+    Fixture fixture;
+    const std::array backends{fixture.backend};
+    ScriptRuntimeHost host{
+        ScriptRuntimeLimits{4U, 2U, 4U, 4U, 4U, 4U, 64U, 1U},
+        codec_limits,
+        {&fixture, &Fixture::resolveArtifact},
+        {},
+        backends,
+        {}
+    };
+    const auto provider = makeSceneCapabilityProvider<ScriptRuntimeHost>(
+        "host.script",
+        "lux.script.runtime.host",
+        host
+    );
+    const auto backend_provider = makeSceneCapabilityProvider<BackendState>(
+        "host.backend-state",
+        "lux.test.script.backend-state",
+        fixture.backend_state
+    );
+    const std::array providers{provider, backend_provider};
+    auto scene = Scene::create({
+        std::make_shared<SceneDescription>(std::move(*scene_description)),
+        makeWorld(),
+        simulation,
+        *meta,
+        providers
+    });
+    assert(scene);
+    auto* runtime = (*scene)->findSceneSystem<ScriptRuntimeSystem>();
+    assert(runtime != nullptr);
+
+    auto executor = task::TaskExecutor::create({1U, 8U});
+    assert(executor);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert(fixture.backend_state.step_calls == 1U);
+    assert(fixture.backend_state.resume_calls == 0U);
+    assert(fixture.backend_state.completions.size() == 1U);
+    assert(fixture.backend_state.completions.front().ready());
+    assert(fixture.backend_state.resume_calls == 0U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 1U);
+    assert(fixture.backend_state.destroys == 1U);
+    const auto* stable_probe = (*scene)->findSceneSystem<StableProbeSystem>();
+    assert(stable_probe != nullptr && stable_probe->observed_resume_calls == 1U);
+
+    scene->reset();
+    meta::ReflectionRegistry::destroyRegistry();
+    return 0;
+}

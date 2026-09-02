@@ -1,4 +1,5 @@
 #include <lux/engine/editor/application/UiVulkanPresentation.hpp>
+#include <lux/engine/editor/application/detail/PresentationThreadStart.hpp>
 
 #include <lux/engine/ui/UISession.hpp>
 
@@ -346,41 +347,57 @@ namespace lux::editor::application::detail
             const auto required = window::LuxWindow::requiredVulkanInstanceExtensions();
             extensions.assign(required.begin(), required.end());
             auto* raw = impl.get();
-            impl->server_thread = std::jthread([
+            auto server_thread = startPresentationThread([
                 raw,
                 &window,
                 font = std::move(font),
                 extensions = std::move(extensions),
                 validation = config.enable_validation
             ]() mutable {
-                MainWindowUiRenderServer server(
-                    raw->frame_channel,
-                    raw->control_channel,
-                    raw->upload_channel,
-                    raw->sync
-                );
-                render::ServerConfig server_config;
-                server_config.instance_extensions = std::move(extensions);
-                server_config.enable_validation = validation;
-                auto initialized = server.initialize(std::move(server_config), std::move(font));
-                if (initialized)
-                    initialized = server.attach(window);
-                if (!initialized)
-                {
-                    raw->startup_error = initialized.error();
-                    raw->startup_state.store(2U, std::memory_order_release);
+                return std::jthread([
+                    raw,
+                    &window,
+                    font = std::move(font),
+                    extensions = std::move(extensions),
+                    validation
+                ]() mutable {
+                    MainWindowUiRenderServer server(
+                        raw->frame_channel,
+                        raw->control_channel,
+                        raw->upload_channel,
+                        raw->sync
+                    );
+                    render::ServerConfig server_config;
+                    server_config.instance_extensions = std::move(extensions);
+                    server_config.enable_validation = validation;
+                    auto initialized = server.initialize(std::move(server_config), std::move(font));
+                    if (initialized)
+                        initialized = server.attach(window);
+                    if (!initialized)
+                    {
+                        raw->startup_error = initialized.error();
+                        raw->startup_state.store(2U, std::memory_order_release);
+                        raw->startup_state.notify_all();
+                        raw->sync->requestStop();
+                        return;
+                    }
+                    raw->submit_operation = server.submitOperation();
+                    raw->startup_state.store(1U, std::memory_order_release);
                     raw->startup_state.notify_all();
+                    while (server.tick())
+                    {
+                    }
                     raw->sync->requestStop();
-                    return;
-                }
-                raw->submit_operation = server.submitOperation();
-                raw->startup_state.store(1U, std::memory_order_release);
-                raw->startup_state.notify_all();
-                while (server.tick())
-                {
-                }
-                raw->sync->requestStop();
+                });
             });
+            if (!server_thread)
+            {
+                return lux::cxx::unexpected(UiVulkanPresentationFailure{
+                    server_thread.error(),
+                    {}
+                });
+            }
+            impl->server_thread = std::move(*server_thread);
             while (impl->startup_state.load(std::memory_order_acquire) == 0U)
                 impl->startup_state.wait(0U, std::memory_order_acquire);
             if (impl->startup_state.load(std::memory_order_acquire) != 1U)

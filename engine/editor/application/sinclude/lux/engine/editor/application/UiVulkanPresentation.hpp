@@ -26,6 +26,7 @@ namespace lux::editor::application::detail
     {
         INVALID_CONFIG,
         ALLOCATION_FAILURE,
+        THREAD_CREATION_FAILURE,
         RENDER_START_FAILURE,
         FRAME_CAPTURE_FAILURE,
         FRAME_SUBMIT_FAILURE,

@@ -1,0 +1,86 @@
+#pragma once
+
+#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
+
+namespace lux::editor
+{
+    enum class EEditorApplicationError : std::uint8_t
+    {
+        INVALID_STATE,
+        EXECUTION_CREATE_FAILURE,
+        VFS_MOUNT_FAILURE,
+        ASSET_READ_CREATE_FAILURE,
+        ALLOCATION_FAILURE,
+        TASK_CLOSE_FAILURE,
+        ASSET_READ_JOIN_FAILURE,
+        EXECUTION_JOIN_FAILURE,
+    };
+
+    struct EditorApplicationCreateInfo final
+    {
+        process::ExecutionRuntimeConfig execution;
+        process::asset_loading::VfsAssetReadEndpointConfig asset_read;
+        scene::SceneMetaManager scene_meta;
+        std::vector<asset::MountDesc> mounts;
+    };
+
+    class EditorApplication final
+    {
+    public:
+        using CreateResult = lux::cxx::expected<std::unique_ptr<EditorApplication>, EEditorApplicationError>;
+        using ContextResult = lux::cxx::expected<std::reference_wrapper<EditorContext>, EEditorApplicationError>;
+
+        [[nodiscard]] static CreateResult create(EditorApplicationCreateInfo info) noexcept;
+
+        ~EditorApplication() noexcept;
+        EditorApplication(const EditorApplication&) = delete;
+        EditorApplication& operator=(const EditorApplication&) = delete;
+        EditorApplication(EditorApplication&&) = delete;
+        EditorApplication& operator=(EditorApplication&&) = delete;
+
+        template<class Tool, class... Args>
+        [[nodiscard]] auto installTool(Args&&... args) noexcept
+        {
+            return toolset_->install<Tool>(std::forward<Args>(args)...);
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, EEditorApplicationError> start() noexcept;
+        [[nodiscard]] ContextResult context() noexcept;
+        [[nodiscard]] lux::cxx::expected<std::size_t, EEditorApplicationError>
+        drainMain(std::size_t budget = static_cast<std::size_t>(-1)) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EEditorApplicationError> shutdown() noexcept;
+
+    private:
+        enum class EState : std::uint8_t
+        {
+            COMPOSING,
+            RUNNING,
+            STOPPING,
+            JOINED,
+        };
+
+        EditorApplication(process::ExecutionRuntime runtime, scene::SceneMetaManager scene_meta);
+        [[nodiscard]] bool closeRootTasks() noexcept;
+
+        process::ExecutionRuntime execution_;
+        asset::AssetVfs vfs_;
+        std::shared_ptr<process::asset_loading::VfsAssetReadEndpoint> asset_read_endpoint_;
+        scene::SceneMetaManager scene_meta_;
+        std::optional<ui::UISession> ui_;
+        std::optional<EditorSelection> selection_;
+        std::optional<Toolset> toolset_;
+        std::optional<process::TaskScope> tasks_;
+        std::optional<EditorContext> context_;
+        EState state_{EState::COMPOSING};
+    };
+} // namespace lux::editor

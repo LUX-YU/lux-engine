@@ -245,6 +245,7 @@ if(ENABLE_UI_TEST)
         src/DrawDataSnapshot.cpp
     )
     target_link_libraries(ui_drawdata_test PRIVATE imgui::core)
+    target_compile_definitions(ui_drawdata_test PRIVATE LUX_FUNCTION_LIBRARY)
     target_include_directories(
         ui_drawdata_test
         PRIVATE

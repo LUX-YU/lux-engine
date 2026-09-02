@@ -111,9 +111,19 @@ add_executable(
     simulation_script_continuation_test
     test/script_system_continuation_test.cpp
 )
+target_include_directories(
+    simulation_script_continuation_test
+    PRIVATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test
+)
 target_link_libraries(
     simulation_script_continuation_test
     PRIVATE lux::engine::simulation::simulation_script
+)
+include_component_cmake_scripts(script_core)
+lux_script_abilities(
+    TARGET simulation_script_continuation_test
+    SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp
+    LOGICAL_PATHS TestAbility.hpp
 )
 if(MSVC)
     target_compile_options(simulation_script_continuation_test PRIVATE /UNDEBUG)

@@ -180,6 +180,12 @@ foreach(entry IN LISTS installed_text)
             "Installed Script runtime contract exposes a language runtime or service-locator boundary: ${entry}"
         )
     endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]function[/]script[/]ScriptAbility" AND
+       content MATCHES "Scene|Simulation|SystemInstanceId|Physics|AssetLoading|std::(function|any|type_index)|ScriptApiManager|AbilityManager|ServiceRegistry")
+        message(FATAL_ERROR
+            "Installed Script Ability contract exposes Engine ontology or service lookup: ${entry}"
+        )
+    endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]function[/]render[/]client[/]" AND
        content MATCHES "SubmitImGuiDrawDataPayload|ImGuiDrawData|ImGuiCommConfig")
         message(FATAL_ERROR

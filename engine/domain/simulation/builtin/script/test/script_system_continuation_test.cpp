@@ -1,4 +1,7 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include "TestAbility.hpp"
+#include "TestAbility.ability.generated.hpp"
+
 #include <lux/engine/simulation/ScriptSystem.hpp>
 
 #include <algorithm>
@@ -22,13 +25,11 @@ namespace
     inline constexpr lux::system::SystemInstanceId kSystem{0x5101U};
     inline constexpr HookPointId kHook{0x5102U};
     inline constexpr lux::script::ScriptSymbolId kSymbol{0x5103U};
-    inline constexpr lux::script::ScriptApiContractIdView kContract{"lux.test.ScriptAbility"};
-    inline constexpr std::uint64_t kSchema{0xA51117U};
-
-    struct TestDispatch final
-    {
-        int (*read)(void*, int) noexcept {};
-    };
+    using TestAbility = lux::simulation::test::TestAbility;
+    using TestAbilityTraits = lux::script::ScriptAbilityTraits<TestAbility>;
+    using TestDispatch = TestAbilityTraits::Dispatch;
+    inline constexpr auto kContract = TestAbilityTraits::Description.id;
+    inline constexpr std::uint64_t kSchema = TestAbilityTraits::Description.schema_hash;
 
     struct TestProvider final
     {
@@ -45,14 +46,33 @@ namespace
         int value{7};
         int calls{};
         int* destructions{};
-    };
 
-    int readProvider(void* context, int input) noexcept
-    {
-        auto& provider = *static_cast<TestProvider*>(context);
-        ++provider.calls;
-        return provider.value + input;
-    }
+        int readValue(int input) noexcept
+        {
+            ++calls;
+            return value + input;
+        }
+
+        void setValue(int new_value) noexcept
+        {
+            value = new_value;
+        }
+
+        std::uint64_t identity(std::uint64_t input) noexcept
+        {
+            return input;
+        }
+
+        const int& borrowedValue() noexcept
+        {
+            return value;
+        }
+
+        std::uint64_t beginOperation(std::uint64_t request) noexcept
+        {
+            return request;
+        }
+    };
 
     [[nodiscard]] lux::asset::AssetId assetId()
     {
@@ -144,7 +164,7 @@ namespace
         ++call.instance->owner->sync_calls;
         if (call.instance->dispatch != nullptr)
         {
-            const int result = call.instance->dispatch->read(call.instance->provider, 5);
+            const int result = call.instance->dispatch->readValue(call.instance->provider, 5);
             return result == 12 ? 0 : 91;
         }
         return 0;
@@ -386,8 +406,8 @@ namespace
         int constructions{}, destructions{};
         {
             TestProvider provider{constructions, destructions};
-            const TestDispatch dispatch{&readProvider};
-            const std::array publication{ScriptApiCapabilityPublication{kContract, kSchema, &provider, &dispatch}};
+            const auto ability = lux::script::bindScriptAbility<TestAbility>(provider);
+            const std::array publication{publishScriptAbility(ability)};
             Harness available{true};
             auto created = available.create(limits(), publication);
             assert(created);
@@ -411,10 +431,10 @@ namespace
         assert(missing.backend_state.creates == 0U);
         assert(missing_system.shutdown());
 
-        TestDispatch dispatch{&readProvider};
         TestProvider mismatch_provider{constructions, destructions};
-        const std::array mismatch_publication{
-            ScriptApiCapabilityPublication{kContract, kSchema + 1U, &mismatch_provider, &dispatch}};
+        auto mismatch_capability = publishScriptAbility(lux::script::bindScriptAbility<TestAbility>(mismatch_provider));
+        ++mismatch_capability.schema_hash;
+        const std::array mismatch_publication{mismatch_capability};
         Harness mismatch{true};
         auto mismatch_created = mismatch.create(limits(), mismatch_publication);
         assert(mismatch_created);
@@ -425,8 +445,9 @@ namespace
         assert(mismatch.backend_state.creates == 0U);
         assert(mismatch_system.shutdown());
 
-        const std::array ambiguous{ScriptApiCapabilityPublication{kContract, kSchema, &mismatch_provider, &dispatch},
-                                   ScriptApiCapabilityPublication{kContract, kSchema, &mismatch_provider, &dispatch}};
+        const auto duplicate_capability =
+            publishScriptAbility(lux::script::bindScriptAbility<TestAbility>(mismatch_provider));
+        const std::array ambiguous{duplicate_capability, duplicate_capability};
         Harness duplicate{false};
         const auto duplicate_created = duplicate.create(limits(), ambiguous);
         assert(!duplicate_created &&

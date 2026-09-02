@@ -1612,6 +1612,12 @@ if(NOT EXISTS "${source_root}/cmake/installed-consumers/asset-vfs-view/CMakeList
     message(FATAL_ERROR "Architecture: missing installed AssetVfsView consumer.")
 endif()
 
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/script-ability-codegen/CMakeLists.txt")
+    message(FATAL_ERROR
+        "Architecture: missing installed Script Ability codegen consumer."
+    )
+endif()
+
 if(EXISTS "${source_root}/engine/editor/material" AND
    EXISTS "${source_root}/engine/editor/flowforge" AND
    NOT EXISTS "${source_root}/cmake/installed-consumers/editor-graph-adapters/CMakeLists.txt")
@@ -1932,6 +1938,42 @@ foreach(source IN LISTS script_foundation_sources)
         )
     endif()
 endforeach()
+
+set(script_ability_contract
+    "${source_root}/modules/function/script/core/include/lux/engine/function/script/ScriptAbility.hpp"
+)
+set(script_ability_codegen
+    "${source_root}/modules/function/script/core/template/script_ability.template"
+)
+set(script_ability_codegen_cmake
+    "${source_root}/modules/function/script/core/cmake/engine_script_ability_codegen.cmake"
+)
+file(READ "${script_ability_contract}" script_ability_public_contract)
+file(READ "${script_ability_codegen}" script_ability_generated_contract)
+file(READ "${script_ability_codegen_cmake}" script_ability_codegen_contract)
+if(script_ability_public_contract MATCHES
+   "Scene|Simulation|SystemInstanceId|Physics|AssetLoading|std::(function|any|type_index)|ScriptApiManager|AbilityManager|ServiceRegistry")
+    message(FATAL_ERROR
+        "Architecture: generic Script Ability contract acquired Engine ontology or service lookup."
+    )
+endif()
+if(script_ability_generated_contract MATCHES
+   "new[ \t]+Provider|make_shared<Provider>|shared_ptr<Provider>|dynamic_cast|GetGlobal|ServiceRegistry")
+    message(FATAL_ERROR
+        "Architecture: generated Script Ability binding constructs, owns or discovers providers."
+    )
+endif()
+if(script_ability_codegen_contract MATCHES "file.*GLOB" OR
+   NOT script_ability_codegen_contract MATCHES "TARGET_FILES[ \t]+[$][{]ARGS_SOURCES[}]")
+    message(FATAL_ERROR
+        "Architecture: Script Ability codegen is not an explicit source opt-in."
+    )
+endif()
+if(EXISTS "${source_root}/modules/function/script/sdk")
+    message(FATAL_ERROR
+        "Architecture: Engine Script Abilities were centralized in modules/function/script/sdk."
+    )
+endif()
 
 set(script_system_source
     "${source_root}/engine/domain/simulation/builtin/script/src/ScriptSystem.cpp"

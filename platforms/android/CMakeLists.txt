@@ -35,7 +35,7 @@ lux_classify_target(
 add_library(luxsmoke SHARED smoke/smoke_main.cpp)
 lux_classify_target(
     TARGET  luxsmoke
-    LAYER   HOST
+    LAYER   SCENE
     PRODUCT TEST
     ROLE    COMPOSITION
 )
@@ -85,14 +85,14 @@ endforeach()
 # be kept as an undefined-then-resolved symbol.
 target_link_options(luxsmoke PRIVATE "-u" "ANativeActivity_onCreate")
 
-# ── luxgame — the GAME front end (NativeActivity → SceneRuntime) ─────────────
-# The editor→binary loop's Android leg: boots the pak extracted from the APK's
-# assets/ through the SAME SceneRuntime + standard feature plan the desktop
-# player drives. The smoke harness above stays as the bring-up gauntlet.
+# ── luxgame — dormant runtime-clean qualification scaffold ──────────────────
+# This is not the normative shipping product target. Project-specific target
+# generation remains stopped until its manifest/selection specification is
+# approved; the existing scaffold is retained only for later Android review.
 add_library(luxgame SHARED game/game_main.cpp)
 lux_classify_target(
     TARGET  luxgame
-    LAYER   HOST
+    LAYER   SCENE
     PRODUCT PLAYER
     ROLE    COMPOSITION
 )

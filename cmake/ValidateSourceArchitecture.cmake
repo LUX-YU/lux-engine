@@ -440,9 +440,15 @@ foreach(source IN LISTS production_sources)
     endif()
 
     if(normalized MATCHES "/engine/process/" AND content MATCHES
-       "ProcessRuntime|AsyncRuntime|AsyncRuntimeBuilder|ProcessBuilder|ProcessScope|ProcessScheduler|OperationRegistry|parallelTransform|BatchJoin|AsyncGraph|std::function")
+       "ProcessRuntime|AsyncRuntime|AsyncRuntimeBuilder|ProcessBuilder|ProcessScope|ProcessScheduler|OperationRegistry|parallelTransform|BatchJoin|AsyncGraph|ProcessSender|JobSystem|JobManager|std::function")
         message(FATAL_ERROR
             "Architecture: Process source '${normalized}' restores a runtime wrapper, registry or deferred API."
+        )
+    endif()
+    if(normalized MATCHES "/engine/process/" AND content MATCHES "BlockingScheduler" AND
+       NOT normalized MATCHES "/engine/process/(execution|asset_loading)/")
+        message(FATAL_ERROR
+            "Architecture: BlockingScheduler is authorized only for execution and the V2 AssetRead endpoint."
         )
     endif()
 endforeach()
@@ -618,6 +624,117 @@ if(EXISTS "${source_root}/engine/toolchain/flowforge")
     endforeach()
 endif()
 
+if(EXISTS "${source_root}/engine/editor/context")
+    set(editor_context_cmake "${source_root}/engine/editor/context/CMakeLists.txt")
+    file(READ "${editor_context_cmake}" editor_context_cmake_contract)
+    if(NOT editor_context_cmake_contract MATCHES "LAYER[ \t\r\n]+EDITOR" OR
+       NOT editor_context_cmake_contract MATCHES "PRODUCT[ \t\r\n]+EDITOR" OR
+       editor_context_cmake_contract MATCHES
+           "toolchain_material|material_compiler|flowforge_compiler|CompilerManager|ServiceRegistry")
+        message(FATAL_ERROR
+            "Architecture: Editor Context must remain an EDITOR foundation without concrete Tool dependencies."
+        )
+    endif()
+
+    file(GLOB_RECURSE editor_context_sources LIST_DIRECTORIES false
+        "${source_root}/engine/editor/context/include/*.hpp"
+        "${source_root}/engine/editor/context/src/*.cpp"
+    )
+    foreach(source IN LISTS editor_context_sources)
+        file(READ "${source}" content)
+        if(content MATCHES
+           "EditorContext[ \t\r\n]*::[ \t\r\n]*instance|EditorServices|ServiceRegistry|ServiceProvider|resolveService|getAnything|CompilerManager|CompilerRegistry")
+            message(FATAL_ERROR
+                "Architecture: Editor Context '${source}' restores a singleton, service locator or compiler registry."
+            )
+        endif()
+        if(content MATCHES
+           "lux/engine/(material/Compiler|flowforge/Compiler)[.]hpp|toolchain_(material|flowforge)|flowforge_compiler")
+            message(FATAL_ERROR
+                "Architecture: Editor Context '${source}' depends on a concrete Toolchain tool."
+            )
+        endif()
+    endforeach()
+
+    set(editor_context_header
+        "${source_root}/engine/editor/context/include/lux/engine/editor/EditorContext.hpp"
+    )
+    file(READ "${editor_context_header}" editor_context_contract)
+    foreach(required_accessor IN ITEMS toolchain vfs assetRead execution tasks selection ui sceneMeta)
+        if(NOT editor_context_contract MATCHES "${required_accessor}[ \t\r\n]*[(]")
+            message(FATAL_ERROR
+                "Architecture: EditorContext is missing normative '${required_accessor}()' capability."
+            )
+        endif()
+    endforeach()
+    if(editor_context_contract MATCHES
+       "(Toolset|asset::AssetVfs|process::TaskScope|EditorSelection|ui::UISession|scene::SceneMetaManager)[ \t]+[a-z_]+_;")
+        message(FATAL_ERROR
+            "Architecture: v2 EditorContext must not value-own application service lifetime."
+        )
+    endif()
+endif()
+
+if(EXISTS "${source_root}/engine/editor/application")
+    set(editor_application_cmake "${source_root}/engine/editor/application/CMakeLists.txt")
+    file(READ "${editor_application_cmake}" editor_application_cmake_contract)
+    if(NOT editor_application_cmake_contract MATCHES "TARGET[ \t\r\n]+editor_application" OR
+       NOT editor_application_cmake_contract MATCHES "LAYER[ \t\r\n]+EDITOR" OR
+       NOT editor_application_cmake_contract MATCHES "ROLE[ \t\r\n]+COMPOSITION" OR
+       NOT editor_application_cmake_contract MATCHES "add_executable[(]lux_editor")
+        message(FATAL_ERROR
+            "Architecture: EditorApplication must be the L5 EDITOR composition leaf producing lux_editor."
+        )
+    endif()
+    file(GLOB_RECURSE editor_application_sources LIST_DIRECTORIES false
+        "${source_root}/engine/editor/application/*.hpp"
+        "${source_root}/engine/editor/application/*.cpp"
+    )
+    foreach(source IN LISTS editor_application_sources)
+        file(READ "${source}" content)
+        if(content MATCHES "ProductHost|ApplicationServices|ServiceRegistry|EditorHost|EditorApplication::instance")
+            message(FATAL_ERROR
+                "Architecture: EditorApplication '${source}' restores a Host layer or service locator."
+            )
+        endif()
+    endforeach()
+endif()
+
+set(asset_vfs_header
+    "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/storage/AssetVfs.hpp"
+)
+file(READ "${asset_vfs_header}" asset_vfs_contract)
+if(NOT asset_vfs_contract MATCHES "class[ \t\r\n]+LUX_ASSET_PUBLIC[ \t\r\n]+AssetVfsView" OR
+   NOT asset_vfs_contract MATCHES "AssetVfsView[ \t\r\n]+view[(]" OR
+   asset_vfs_contract MATCHES "AssetVfs::Get|static[ \t\r\n]+AssetVfs")
+    message(FATAL_ERROR
+        "Architecture: AssetVfs must expose explicit control plane + AssetVfsView without global state."
+    )
+endif()
+
+if(EXISTS "${source_root}/modules/function/graph")
+    set(function_graph_cmake "${source_root}/modules/function/graph/CMakeLists.txt")
+    file(READ "${function_graph_cmake}" function_graph_cmake_contract)
+    if(NOT function_graph_cmake_contract MATCHES "LAYER[ \t\r\n]+FUNCTION" OR
+       function_graph_cmake_contract MATCHES "LAYER[ \t\r\n]+(EDITOR|TOOLCHAIN)")
+        message(FATAL_ERROR "Architecture: shared Graph Source is not a FUNCTION foundation.")
+    endif()
+    file(GLOB_RECURSE function_graph_sources LIST_DIRECTORIES false
+        "${source_root}/modules/function/graph/*.hpp"
+        "${source_root}/modules/function/graph/*.cpp"
+        "${source_root}/modules/function/graph/*.cmake"
+    )
+    foreach(source IN LISTS function_graph_sources)
+        file(READ "${source}" content)
+        if(content MATCHES
+           "lux/engine/(editor|material|flowforge|toolchain)/|imgui|ImGui|RuntimeObject|EValueType|RefType")
+            message(FATAL_ERROR
+                "Architecture: shared Graph Source '${source}' acquired domain, Editor or Toolchain semantics."
+            )
+        endif()
+    endforeach()
+endif()
+
 if(EXISTS "${source_root}/engine/editor/node_graph")
     set(node_graph_editor_cmake "${source_root}/engine/editor/node_graph/CMakeLists.txt")
     file(READ "${node_graph_editor_cmake}" node_graph_editor_cmake_contract)
@@ -631,14 +748,40 @@ if(EXISTS "${source_root}/engine/editor/node_graph")
         "${source_root}/engine/editor/node_graph/*.cmake"
     )
     foreach(source IN LISTS node_graph_editor_sources)
+        if(source MATCHES "[/\\]test[/\\]")
+            continue()
+        endif()
         file(READ "${source}" content)
         if(content MATCHES "flowforge|engine/simulation|resource/asset|lux/engine/material/|mlir|llvm|[/\\]legacy[/\\]")
             message(FATAL_ERROR
                 "Architecture: Node Graph Editor package '${source}' is not domain independent."
             )
         endif()
+        if(content MATCHES "IGraphView|IGraphSchema|class[ \t]+GraphEditor|GraphCommandStack")
+            message(FATAL_ERROR
+                "Architecture: Node Graph Editor '${source}' restores the retired projection/monolith API."
+            )
+        endif()
     endforeach()
 endif()
+
+foreach(domain_adapter IN ITEMS material flowforge)
+    if(EXISTS "${source_root}/engine/editor/${domain_adapter}")
+        file(GLOB_RECURSE domain_adapter_sources LIST_DIRECTORIES false
+            "${source_root}/engine/editor/${domain_adapter}/*.hpp"
+            "${source_root}/engine/editor/${domain_adapter}/*.cpp"
+            "${source_root}/engine/editor/${domain_adapter}/*.cmake"
+        )
+        foreach(source IN LISTS domain_adapter_sources)
+            file(READ "${source}" content)
+            if(content MATCHES "toolchain_|Compiler|Cooker|MaterialIR|FlowForgeIR|mlir|llvm")
+                message(FATAL_ERROR
+                    "Architecture: Graph domain adapter '${source}' acquired Toolchain or compiler ownership."
+                )
+            endif()
+        endforeach()
+    endif()
+endforeach()
 
 foreach(capacity_header IN ITEMS
     "${source_root}/modules/core/serialization/include/lux/engine/serialization/SerializationError.hpp"
@@ -921,6 +1064,12 @@ foreach(source IN LISTS installed_public_headers)
     if(content MATCHES "#[ \t]*include[ \t]*[<\"]Jolt/|JPH::")
         message(FATAL_ERROR
             "Architecture: installed public header '${source}' exposes private Jolt ABI."
+        )
+    endif()
+    if(normalized MATCHES "/engine/process/" AND content MATCHES "BlockingScheduler" AND
+       NOT normalized MATCHES "/engine/process/(execution|asset_loading)/")
+        message(FATAL_ERROR
+            "Architecture: BlockingScheduler is authorized only for execution and the V2 AssetRead endpoint."
         )
     endif()
 endforeach()
@@ -1311,6 +1460,12 @@ endforeach()
 set(process_timer_header
     "${source_root}/engine/process/execution/include/lux/engine/process/Timer.hpp"
 )
+set(process_runtime_header
+    "${source_root}/engine/process/execution/include/lux/engine/process/ExecutionRuntime.hpp"
+)
+set(process_task_scope_header
+    "${source_root}/engine/process/execution/include/lux/engine/process/TaskScope.hpp"
+)
 set(process_port_sender_header
     "${source_root}/engine/process/execution/include/lux/engine/process/PortSender.hpp"
 )
@@ -1320,6 +1475,8 @@ set(process_installed_consumer
 foreach(required_process_file IN ITEMS
     "${process_timer_header}"
     "${process_port_sender_header}"
+    "${process_runtime_header}"
+    "${process_task_scope_header}"
     "${process_installed_consumer}"
 )
     if(NOT EXISTS "${required_process_file}")
@@ -1334,6 +1491,26 @@ foreach(required_material_consumer IN ITEMS material-graph material-compiler mat
         message(FATAL_ERROR "Architecture: missing installed Material consumer '${required_material_consumer}'.")
     endif()
 endforeach()
+
+if(EXISTS "${source_root}/engine/editor/context" AND
+   NOT EXISTS "${source_root}/cmake/installed-consumers/editor-context/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed Editor Context consumer.")
+endif()
+
+if(EXISTS "${source_root}/modules/function/graph" AND
+   NOT EXISTS "${source_root}/cmake/installed-consumers/function-graph/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed shared Graph Source consumer.")
+endif()
+
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/asset-vfs-view/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed AssetVfsView consumer.")
+endif()
+
+if(EXISTS "${source_root}/engine/editor/material" AND
+   EXISTS "${source_root}/engine/editor/flowforge" AND
+   NOT EXISTS "${source_root}/cmake/installed-consumers/editor-graph-adapters/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed Graph domain adapters consumer.")
+endif()
 
 foreach(required_domain_consumer IN ITEMS partition-identity world-identity)
     if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_domain_consumer}/CMakeLists.txt")

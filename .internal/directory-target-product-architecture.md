@@ -9,6 +9,7 @@ modules/
   core/
   resource/
   function/
+    graph/
     material/
     flowforge/
 
@@ -49,6 +50,8 @@ engine/
       world_materialization/
       render/
   editor/
+    application/
+    context/
     node_graph/
   toolchain/
     shader/
@@ -64,19 +67,31 @@ engine/
   这些foundation不拥有 World、Simulation runtime object、scheduler、registry、codec或streaming policy。
 - `engine/domain/world` 与 `engine/domain/simulation` 是 sibling runtime domains，均可依赖窄义 `DOMAIN`
   foundation，但不得互相依赖。
-- `engine/process` 是 L2 collection；`execution` 叶包保持领域盲，具体 `world_loading`/`asset_loading` 叶包可拥有明确的
-  time-spanning workflow，但不得把领域语义反向塞入 execution。
+- `engine/process` 是 L2 collection；`execution` 叶包拥有领域盲的 `ExecutionRuntime`、bounded CPU/Main
+  schedulers、root-capable `TaskScope`、Timer 与 PortSender mechanism。`BlockingScheduler` 只能在 V2 production
+  AssetRead gate 中加入并由后续 blocking stages 复用；`ProcessSender` 仍是 P1 held。具体
+  `world_loading`/`asset_loading` 叶包可拥有明确的 time-spanning workflow，但不得把领域语义反向塞入 execution。
 - `engine/scene` 是 L3 runtime composition：`description` 持有 durable SceneSystem composition，`system` 定义
   installer/requirement contract，`meta` 在进程启动时一次构建后 immutable；`composition` 组合一个 World、一个
   authoritative Registry、一个 Simulation、已安装 SceneSystems 与 Scene cancellation source；`presentation`
   承载 latest-state handoff；`integration/world_materialization` 与 `integration/render` 分别提供机械 ECS
   materialization 与可选 Render SceneSystem integration。Streaming policy 只属于 concrete developer System。
-- `engine/editor` 持有交互式 Editor UI/tooling。
+- `engine/editor` 持有 L5 Editor application composition 与交互式 UI/tooling；`application` 显式 owns
+  ExecutionRuntime、root TaskScope、mutable AssetVfs、production AssetRead endpoint、Toolset、EditorSelection、
+  UISession与immutable SceneMetaManager，并直接产出Editor executable。`context`只携带named borrowed/read
+  capabilities，不拥有任何application service lifetime。Context/Toolset不得成为singleton、字符串service locator
+  或具体compiler registry。
+- `modules/resource/asset` 的 `AssetVfs` 是 application-owned mutable control plane；copy-on-write发布immutable
+  mount table，`AssetVfsView`是copyable read capability。runtime/script content read走L2 `AssetReadPort`，不得在
+  game/main/UI thread同步执行可能阻塞的provider open。
 - `engine/toolchain` 是 L4，持有 deterministic compile、lower、cook、import、package 与 build tool。
 - `engine/toolchain/shader` owns shared SPIR-V reflection object code and the LGLSL emitter; Material-specific IR,
   lowering and GLSL shells remain private to `engine/toolchain/material`.
 - 可编辑 source model不归Editor私有：MaterialGraph位于`modules/function/material`，FlowGraph位于
   `modules/function/flowforge`；Editor与Toolchain消费同一个source SSOT。
+- `modules/function/graph` owns shared structural GraphTopology、GraphLayout与stable Node/Pin identity；Material与
+  FlowForge只共享结构，不共享payload或compiler IR。`engine/editor/node_graph`直接消费该结构，并把 editing session、
+  render protocol与concrete ImGui renderer分离。
 - `engine/tools` 是同义叠加的退休目录，不得恢复。
 
 public include 与 namespace 使用职责概念名，不包含 `domain`、层级编号或物理聚合目录名。
@@ -98,10 +113,10 @@ Scene 不拥有 mandatory streaming/index/residency/render/main-loop state，也
 World IO、partition lifecycle 或 wall clock；Process workflow不得认识 Scene 或 gameplay policy。
 
 3D Render integration 是可选的 L3 leaf：`RenderSystem` 是由 SceneDescription 显式选择的 SceneSystem；它要求
-Host 提供共享 `RenderRuntime` capability，冷路径创建自己的 RenderScene、按 metadata/catalog attach Feature，
+application composition 提供共享 `RenderRuntime` capability，冷路径创建自己的 RenderScene、按 metadata/catalog attach Feature，
 并从 feature-owned binding 创建 `RenderSyncStage`。`RenderSyncPipeline` 在 Simulation stable point把
 `Mesh3D/Light3D/WorldTransform3D` 合成为 bounded `RenderProgram(StateUpdate)`，Presentation hook只转发更新；
-Host继续 author `RenderProgram(Frame)`、view、target与camera。StateUpdate只修改 retained RenderScene，只有
+application composition继续 author `RenderProgram(Frame)`、view、target与camera。StateUpdate只修改 retained RenderScene，只有
 Frame推进渲染生命周期。无 RenderSystem 就没有 Scene render state；无 RenderRuntime provider 的 Scene仍可在
 不选择 RenderSystem 时完全 headless。该 leaf不授权 Presentation Registry、Asset resolver或residency framework。
 
@@ -121,7 +136,8 @@ Script artifact 与 Simulation scripting core 各自是独立 package。
 
 ## Product closure
 
-- PLAYER 只包含 Runtime/Domain 能力，不得链接 Editor、Toolchain、FlowForge compiler、MLIR/LLVM。
+- PLAYER 只是runtime-clean qualification profile，只包含 Runtime/Domain 能力，不得链接 Editor、Toolchain、
+  FlowForge compiler、MLIR/LLVM；最终shipping executable必须等待project manifest/target-generation contract。
 - EDITOR 可以依赖 Toolchain public facade 和通用 Node Graph Editor；没有真实consumer时不预装compiler closure。
 - TOOLCHAIN 可以依赖source models、compiler/cooker与语言packager，但不得依赖Editor UI。
 - build-tool 关系通过 custom command/generated file 表达，不作为 Runtime link dependency。

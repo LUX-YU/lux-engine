@@ -11,6 +11,9 @@ authority. Follow the linked ADR and satisfy its reopening evidence before creat
 | ScriptSystem capability injection / registration | Held | `ADR-20260830_Resource_Semantic_Layering_Review.md` | Resident ScriptArtifact/backend capability ownership proven without Services, Context or a capability bag. |
 | Jolt far-origin dense broadphase | Held | `lux-engine-l0-l3-baseline-v3.1/ARCHITECTURE-GAPS.md` | Fixed-density broadphase sweep across increasing absolute coordinates and concrete private-region evidence. |
 | Plugin hot reload | Held | `ADR-20260901_L3_Scene_System_Meta_Convergence.md` | A product requirement for mutation after startup; startup metadata remains immutable until then. |
+| MaterialEditor durable persistence | Held | `lux-engine-architecture-implementation-docset-2026-09-02/07-implementation-roadmap-and-gates.md` | Approved MaterialGraph source codec and stable document identity. |
+| FlowForgeEditor durable persistence / packaging | Held | `lux-engine-architecture-implementation-docset-2026-09-02/07-implementation-roadmap-and-gates.md` | Approved FlowGraph codec and stable ScriptSymbol source identity. |
+| Project-specific product target generation | Held | `lux-engine-architecture-implementation-docset-2026-09-02/09-product-runtime-vfs-and-async-script.md` | Approved project manifest, target inputs, module selection and packaging specification. |
 | GPU CI | Deferred | `l4-toolchain-convergence.md` | A release gate requiring repeatable physical-GPU qualification across maintained runners. |
 
 Current L1-L3 and L4 closure work may update status and links here, but must not place implementation designs in this

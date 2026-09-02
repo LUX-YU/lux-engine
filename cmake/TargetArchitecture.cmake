@@ -2,7 +2,7 @@ include_guard(GLOBAL)
 
 set(_LUX_ARCH_LAYERS
     PLATFORM CORE RESOURCE FUNCTION DOMAIN WORLD SIMULATION
-    PROCESS SCENE RUNTIME TOOLCHAIN EDITOR HOST
+    PROCESS SCENE RUNTIME TOOLCHAIN EDITOR
 )
 set(_LUX_ARCH_PRODUCTS
     RUNTIME PLAYER EDITOR TOOLCHAIN BUILD_TOOL TEST
@@ -187,10 +187,6 @@ function(_lux_arch_dependency_allowed consumer_layer dependency_layer output)
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "EDITOR")
-        if(NOT dependency_layer STREQUAL "HOST")
-            set(allowed TRUE)
-        endif()
-    elseif(consumer_layer STREQUAL "HOST")
         set(allowed TRUE)
     endif()
     set(${output} ${allowed} PARENT_SCOPE)
@@ -303,7 +299,7 @@ function(lux_validate_target_dag)
                     )
                 endif()
 
-                # Concrete extensions are leaves. Hosts may load them from a
+                # Concrete extensions are leaves. Application composition may load them from a
                 # manifest but no engine domain links their implementation.
                 if(dependency_role STREQUAL "EXTENSION" AND
                    NOT consumer_role STREQUAL "EXTENSION")
@@ -464,7 +460,7 @@ endfunction()
 
 # A TOOLCHAIN configure sees Resource formats, reusable source models, offline
 # transforms and the schema-only ECS targets those transforms serialize. It
-# still configures no Runtime orchestration, render backend, UI or Host. Some
+# still configures no Runtime orchestration, render backend or UI. Some
 # early host build tools are introduced while Resource is configured; starting
 # from every classified Toolchain and Build-Tool product therefore gives the
 # default `all` target an explicit, auditable closure without hard-coding

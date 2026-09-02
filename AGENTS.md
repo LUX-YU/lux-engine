@@ -125,12 +125,14 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
 必须同时表达同一职责，禁止只搬文件而保留反向链接，或只改 target 名而让源码继续跨层 include。
 
 - Canonical ontology 固定为 `L0 Modules -> L1 Domain foundation + World + Simulation -> L2 Process ->
-  L3 Scene -> L4 Toolchain -> L5 Editor -> L6 Host/Product`。World 描述事实；Simulation
+  L3 Scene -> L4 Toolchain -> L5 Editor`。Product/Application composition 是 build closure 维度，不是架构层；
+  L5 `EditorApplication` 可直接产出 Editor executable，最终游戏由另行批准的 project-specific target generation
+  组合。World 描述事实；Simulation
   同步解释和运行事实；ECS 只是 Simulation 内部机制；Process 负责异步、IO 与 residency；
   Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
 - `World = durable/cooked facts + whole-world storage metadata`；`Simulation = concrete Systems +
   synchronous rules + compiled schedule`；`Scene = one World + one authoritative Registry + one Simulation`。
-  SceneSystem 只承担跨 Simulation/Process/Host capability 的 L3 composition；由 owning `SceneDescription`、
+  SceneSystem 只承担跨 Simulation/Process/application capability 的 L3 composition；由 owning `SceneDescription`、
   immutable `SceneMetaManager` 与串行 stable/presentation hooks 安装，不得创建第二个 Scene TaskGraph。
   Streaming policy 只属于 concrete developer System；Presentation 是可独立采样的 runtime concern，
   不是 architecture layer。Canonical Transform2D/3D 与 WorldTransform2D/3D 一律使用 double。
@@ -147,13 +149,14 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   `world/partition` 不依赖 WorldDescription；`world/description` 只组合 World identity、partition identity 与
   partition contracts；`world/asset` 才能增加 L0 Asset/Serialization closure。
   Simulation 可依赖 DOMAIN 与 L0，但不得依赖 World，
-  不得依赖 Process、Scene、Toolchain、Editor 或 Host。旧 `RUNTIME` classifier
+  不得依赖 Process、Scene、Toolchain 或 Editor。旧 `RUNTIME` classifier
   只对白名单存量 extension 暂留；新 L2/L3 target 必须分别使用 `PROCESS/SCENE`。
 - 所有 production target 必须调用 `lux_classify_target(TARGET ... LAYER ... PRODUCT ... ROLE ...)`。
   不得靠未分类 target、`INTERFACE_LINK_LIBRARIES` 或 generator expression 绕过 DAG 门禁。
 - `LUX_BUILD_PROFILE` 只有 `DEVELOPER/PLAYER/EDITOR/TOOLCHAIN`；Android 使用 `PLAYER`
   配合 Android toolchain/triplet；不得恢复 OS-shaped profile，也不得恢复
-  `LUX_BUILD_EDITOR`。同一 Developer 构建树里的 `lux_player` 也必须保持 runtime-clean。
+  `LUX_BUILD_EDITOR`。`PLAYER` 仅是 runtime-clean qualification profile，不是最终交付产品身份；
+  project manifest/target-generation contract 未批准前不得发明 generic Player/Host framework。
 - BUILD_TOOL 关系只用 `lux_add_build_tool_dependency()`、custom command 与 generated file；
   shader compiler、asset packer、meta generator 不得作为 Runtime link dependency。
 - `engine/process/execution` 是领域盲基础设施；`engine/process/world_loading` 与 `engine/process/asset_loading` 可拥有明确的
@@ -162,7 +165,8 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   `engine/scene/integration/{world_materialization,render}` 只拥有对应的 L3 integration；不得恢复历史
   `scene/core` 或 `scene/runtime` 聚合目录。
 - Render 固定为 `render_client/render_graph/render_vulkan/render_features` 四 target。
-  `RenderSystem` 是可选的 concrete SceneSystem，要求 Host 提供 `RenderRuntime` capability；它不创建 thread/device，
+  `RenderSystem` 是可选的 concrete SceneSystem，要求 application composition 提供 `RenderRuntime` capability；
+  它不创建 thread/device，
   只冷装 RenderScene/Feature/feature-owned stages，并通过 `RenderSyncPipeline` 在 stable point发布 StateUpdate、
   在 Presentation 转发。无 RenderSystem 的 Scene 不创建 RenderScene；无 render integration pack 的 Scene 必须 headless。
 - `Authoring` 不再是 architecture layer，`engine/authoring` 不得恢复。可编辑 source model 位于其可复用的

@@ -8,14 +8,14 @@ foreach(probe IN ITEMS spatial3d spatial2d pixel robot)
     )
     lux_classify_target(
         TARGET  architecture_probe_${probe}
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
     add_test(NAME architecture_probe_${probe} COMMAND architecture_probe_${probe})
     set_tests_properties(
         architecture_probe_${probe}
-        PROPERTIES LABELS "architecture;probe;host"
+        PROPERTIES LABELS "architecture;probe;composition"
     )
 endforeach()
 
@@ -31,14 +31,14 @@ target_link_libraries(
 )
 lux_classify_target(
     TARGET  architecture_probe_jolt_l1
-    LAYER   HOST
+    LAYER   SCENE
     PRODUCT TEST
     ROLE    COMPOSITION
 )
 add_test(NAME architecture_probe_jolt_l1 COMMAND architecture_probe_jolt_l1)
 set_tests_properties(
     architecture_probe_jolt_l1
-    PROPERTIES LABELS "architecture;probe;host;physics3d;jolt"
+    PROPERTIES LABELS "architecture;probe;composition;physics3d;jolt"
 )
 
 if(TARGET render_vulkan)
@@ -55,7 +55,7 @@ if(TARGET render_vulkan)
     )
     lux_classify_target(
         TARGET  architecture_probe_render_lanes
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
@@ -63,7 +63,7 @@ if(TARGET render_vulkan)
     set_tests_properties(
         architecture_probe_render_lanes
         PROPERTIES
-            LABELS "architecture;probe;host;presentation;render;gpu"
+            LABELS "architecture;probe;composition;presentation;render;gpu"
             SKIP_RETURN_CODE 77
             TIMEOUT 30
     )
@@ -93,7 +93,7 @@ if(LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION AND TARGET render_vulkan)
     )
     lux_classify_target(
         TARGET  l1_l3_render_lane_window_qualification
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
@@ -104,7 +104,7 @@ if(LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION AND TARGET render_vulkan)
     set_tests_properties(
         l1_l3_render_lane_window_qualification
         PROPERTIES
-            LABELS "architecture;qualification;host;simulation;presentation;render;gpu;window"
+            LABELS "architecture;qualification;composition;simulation;presentation;render;gpu;window"
             SKIP_RETURN_CODE 77
             TIMEOUT 30
     )
@@ -170,7 +170,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     )
     lux_classify_target(
         TARGET  texture_asset_vulkan_qualification
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
@@ -178,7 +178,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     set_tests_properties(
         texture_asset_vulkan_qualification
         PROPERTIES
-            LABELS "architecture;qualification;host;render;gpu;texture;asset"
+            LABELS "architecture;qualification;composition;render;gpu;texture;asset"
             SKIP_RETURN_CODE 77
             TIMEOUT 120
     )
@@ -243,7 +243,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     )
     lux_classify_target(
         TARGET  model_asset_vulkan_qualification
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
@@ -254,7 +254,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     set_tests_properties(
         model_asset_vulkan_qualification
         PROPERTIES
-            LABELS "architecture;qualification;host;render;gpu;model;asset"
+            LABELS "architecture;qualification;composition;render;gpu;model;asset"
             SKIP_RETURN_CODE 77
             TIMEOUT 120
     )
@@ -291,7 +291,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     )
     lux_classify_target(
         TARGET  l1_l3_render_sync_3d_qualification
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
@@ -299,7 +299,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     set_tests_properties(
         l1_l3_render_sync_3d_qualification
         PROPERTIES
-            LABELS "architecture;qualification;host;render;gpu;l1;l3"
+            LABELS "architecture;qualification;composition;render;gpu;l1;l3"
             SKIP_RETURN_CODE 77
             TIMEOUT 120
     )
@@ -335,7 +335,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     )
     lux_classify_target(
         TARGET  large_3d_scene_performance_qualification
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
@@ -346,7 +346,7 @@ if(TARGET render_features AND TARGET lux_asset_packer AND LUX_BUILD_PACKED_RENDE
     set_tests_properties(
         large_3d_scene_performance_qualification
         PROPERTIES
-            LABELS "architecture;qualification;host;render;gpu;performance;large-scene"
+            LABELS "architecture;qualification;composition;render;gpu;performance;large-scene"
             SKIP_RETURN_CODE 77
             TIMEOUT 180
     )
@@ -417,7 +417,7 @@ if(LUX_BUILD_PRELOADED_SPATIAL3D_PROBE)
     )
     lux_classify_target(
         TARGET  architecture_probe_spatial3d_preloaded
-        LAYER   HOST
+        LAYER   SCENE
         PRODUCT TEST
         ROLE    COMPOSITION
     )
@@ -425,7 +425,7 @@ if(LUX_BUILD_PRELOADED_SPATIAL3D_PROBE)
     set_tests_properties(
         architecture_probe_spatial3d_preloaded
         PROPERTIES
-            LABELS "architecture;probe;host;spatial3d;jolt;render;gpu"
+            LABELS "architecture;probe;composition;spatial3d;jolt;render;gpu"
             SKIP_RETURN_CODE 77
             TIMEOUT 120
     )

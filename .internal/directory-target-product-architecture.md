@@ -80,7 +80,9 @@ engine/
   ExecutionRuntime、root TaskScope、mutable AssetVfs、production AssetRead endpoint、Toolset、EditorSelection、
   UISession与immutable SceneMetaManager，并直接产出Editor executable。`context`只携带named borrowed/read
   capabilities，不拥有任何application service lifetime。Context/Toolset不得成为singleton、字符串service locator
-  或具体compiler registry。
+  或具体compiler registry。`inspector` 是 L5 integration leaf：使用 immutable typed generated binding table、
+  `EditorSelection` 与 feature-local undo journal；generated/plugin API 只调用 Lux UI，字段热路径不得遍历 runtime
+  reflection，semantic relation 必须走 canonical domain mutation。
 - `modules/resource/asset` 的 `AssetVfs` 是 application-owned mutable control plane；copy-on-write发布immutable
   mount table，`AssetVfsView`是copyable read capability。runtime/script content read走L2 `AssetReadPort`，不得在
   game/main/UI thread同步执行可能阻塞的provider open。

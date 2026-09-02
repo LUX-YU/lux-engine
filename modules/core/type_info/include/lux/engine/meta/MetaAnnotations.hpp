@@ -48,6 +48,12 @@
 ///   readonly=true           Show the field but prevent editing.
 ///   labels=<a>,<b>,…        Per-component axis labels for vector fields
 ///                           (e.g. labels=R,G,B overrides the default X/Y/Z).
+///   widget=<kind>           Generated Editor widget: default, drag, slider,
+///                           input, color, asset, enum, or readonly.
+///   speed=<number>          Drag edit speed encoded in generated C++.
+///   step=<number>           Input edit step encoded in generated C++.
+///   semantic_editor=<id>    Route mutation through a named canonical domain
+///                           operation rather than direct field assignment.
 #define LUX_MEMBER(...) LUX_META(luxref::property::member, ##__VA_ARGS__)
 
 /// Explicitly exclude a public member from reflection.

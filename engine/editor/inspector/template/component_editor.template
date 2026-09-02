@@ -1,0 +1,75 @@
+#pragma once
+// Generated typed L5 component binding. This projection intentionally contains
+// no runtime reflection traversal and only calls the public Lux UI contract.
+#include <lux/engine/editor/inspector/ComponentEditorBinding.hpp>
+#include <lux/engine/editor/inspector/GeneratedFieldEditor.hpp>
+#include <lux/engine/editor/inspector/SemanticFieldEditors.hpp>
+#include <array>
+#include <span>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+
+namespace lux::editor::inspector::generated
+{
+{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}
+    [[nodiscard]] inline bool {{ projection_symbol }}Draw{{ decl.name }}(
+        simulation::ecs::Registry& registry,
+        simulation::ecs::Entity entity,
+        InspectorContext& context
+    ) noexcept
+    {
+        auto* component = registry.try_get<::{{ decl.fq_name }}>(entity);
+        if (component == nullptr)
+            return false;
+        bool changed{};
+{% for field_id in decl.field_decls %}{% set field = decl_from_id(field_id) %}{% if field.visibility == 1 and not annotation_has(field, "luxref::property::skip") %}{% set display = annotation_get_for_or(field, "luxref::property::member", "display_name", field.name) %}{% set tooltip = annotation_get_for_or(field, "luxref::property::member", "tooltip", "") %}{% set widget = annotation_get_for_or(field, "luxref::property::member", "widget", "default") %}{% set semantic = annotation_get_for_or(field, "luxref::property::member", "semantic_editor", "") %}        changed |= {% if semantic == "parent_relation" %}editParentRelation(
+            registry,
+            entity,
+            context,
+            GeneratedFieldSpec{
+                "{{ cxx_str(field.name) }}",
+                "{{ cxx_str(display) }}",
+                "{{ cxx_str(tooltip) }}",
+                EGeneratedWidget::DEFAULT,
+                0.1,
+                {},
+                {},
+                {},
+                false
+            }
+        ){% else %}editGeneratedField<::{{ decl.fq_name }}, &::{{ decl.fq_name }}::{{ field.name }}>(
+            registry,
+            entity,
+            *component,
+            context,
+            GeneratedFieldSpec{
+                "{{ cxx_str(field.name) }}",
+                "{{ cxx_str(display) }}",
+                "{{ cxx_str(tooltip) }}",
+                {% if widget == "drag" %}EGeneratedWidget::DRAG{% else if widget == "slider" %}EGeneratedWidget::SLIDER{% else if widget == "input" %}EGeneratedWidget::INPUT{% else if widget == "color" %}EGeneratedWidget::COLOR{% else if widget == "asset" %}EGeneratedWidget::ASSET{% else if widget == "enum" %}EGeneratedWidget::ENUM{% else if widget == "readonly" %}EGeneratedWidget::READ_ONLY{% else %}EGeneratedWidget::DEFAULT{% endif %},
+                {% if annotation_count(field, "speed") > 0 %}{{ annotation_get(field, "speed") }}{% else %}0.1{% endif %},
+                {% if annotation_count(field, "min") > 0 %}std::optional<double>{ {{ annotation_get(field, "min") }} }{% else %}std::nullopt{% endif %},
+                {% if annotation_count(field, "max") > 0 %}std::optional<double>{ {{ annotation_get(field, "max") }} }{% else %}std::nullopt{% endif %},
+                {% if annotation_count(field, "step") > 0 %}std::optional<double>{ {{ annotation_get(field, "step") }} }{% else %}std::nullopt{% endif %},
+                {% if annotation_get_for_or(field, "luxref::property::member", "readonly", false) %}true{% else %}false{% endif %}
+            }
+        ){% endif %};
+{% endif %}{% endfor %}        return changed;
+    }
+{% endif %}{% endfor %}
+
+    [[nodiscard]] inline std::span<const ComponentEditorBinding>
+    {{ projection_symbol }}ComponentEditorBindings() noexcept
+    {
+{% set binding_count = 0 %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}{% set binding_count = binding_count + 1 %}{% endif %}{% endfor %}        static const std::array<ComponentEditorBinding, {{ binding_count }}> bindings{
+{% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}{% if emitted %},
+{% endif %}            ComponentEditorBinding{
+                lux::cxx::typeToken<::{{ decl.fq_name }}>(),
+                simulation::ecs::componentSchemaId("{{ cxx_str(annotation_get(decl, "schema")) }}"),
+                "{{ cxx_str(decl.name) }}",
+                {{ projection_symbol }}Draw{{ decl.name }},
+                {}
+            }{% set emitted = true %}{% endif %}{% endfor %}
+        };
+        return bindings;
+    }
+} // namespace lux::editor::inspector::generated

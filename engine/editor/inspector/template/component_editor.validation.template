@@ -1,0 +1,7 @@
+{
+  "diagnostics": [
+{% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}{% for field_id in decl.field_decls %}{% set field = decl_from_id(field_id) %}{% if field.visibility == 1 and annotation_has(field, "luxref::property::member") %}{% set widget = annotation_get_for_or(field, "luxref::property::member", "widget", "default") %}{% if widget != "default" and widget != "drag" and widget != "slider" and widget != "input" and widget != "color" and widget != "asset" and widget != "enum" and widget != "readonly" %}{% if emitted %},{% endif %}
+    {"severity":"error","declaration":{{ json_str(field.fq_name) }},"message":"unsupported generated Editor widget"}{% set emitted = true %}{% endif %}{% set semantic = annotation_get_for_or(field, "luxref::property::member", "semantic_editor", "") %}{% if semantic != "" and semantic != "parent_relation" %}{% if emitted %},{% endif %}
+    {"severity":"error","declaration":{{ json_str(field.fq_name) }},"message":"unknown semantic_editor; provide an approved generated semantic binding"}{% set emitted = true %}{% endif %}{% endif %}{% endfor %}{% endif %}{% endfor %}
+  ]
+}

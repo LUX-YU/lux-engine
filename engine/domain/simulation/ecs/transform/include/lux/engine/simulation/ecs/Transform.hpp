@@ -9,9 +9,9 @@ namespace lux::simulation::ecs
 {
     struct LUX_COMPONENT(schema = "lux.ecs.Transform2D", version = 1, snapshot = COPY, semantic = FOUNDATION, editor = true) Transform2D final
     {
-        Eigen::Vector2d translation{Eigen::Vector2d::Zero()};
-        double rotation{};
-        Eigen::Vector2d scale{Eigen::Vector2d::Ones()};
+        Eigen::Vector2d LUX_MEMBER(display_name = Translation, speed = 0.05) translation{Eigen::Vector2d::Zero()};
+        double LUX_MEMBER(display_name = Rotation, speed = 0.01) rotation{};
+        Eigen::Vector2d LUX_MEMBER(display_name = Scale, speed = 0.01) scale{Eigen::Vector2d::Ones()};
     };
 
     struct LUX_COMPONENT(schema = "lux.ecs.WorldTransform2D", version = 1, snapshot = REBUILD, semantic = RUNTIME_DERIVED, editor = false) WorldTransform2D final
@@ -21,9 +21,9 @@ namespace lux::simulation::ecs
 
     struct LUX_COMPONENT(schema = "lux.ecs.Transform3D", version = 1, snapshot = COPY, semantic = FOUNDATION, editor = true) Transform3D final
     {
-        Eigen::Vector3d translation{Eigen::Vector3d::Zero()};
-        Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
-        Eigen::Vector3d scale{Eigen::Vector3d::Ones()};
+        Eigen::Vector3d LUX_MEMBER(display_name = Translation, speed = 0.05) translation{Eigen::Vector3d::Zero()};
+        Eigen::Quaterniond LUX_MEMBER(display_name = Rotation) rotation{Eigen::Quaterniond::Identity()};
+        Eigen::Vector3d LUX_MEMBER(display_name = Scale, speed = 0.01) scale{Eigen::Vector3d::Ones()};
     };
 
     struct LUX_COMPONENT(schema = "lux.ecs.WorldTransform3D", version = 1, snapshot = REBUILD, semantic = RUNTIME_DERIVED, editor = false) WorldTransform3D final

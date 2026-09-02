@@ -1,0 +1,525 @@
+# L5 AssetBrowser、AssetVfs 与文件变化响应设计
+
+Status: **Normative Product-wide Asset / L5 Editor Design (v3)**
+
+Implementation gate: **R0 + A + U1** for AssetBrowser UI；existing B/V2 are reused for background/IO work.
+
+---
+
+## 1. 分层
+
+```text
+L0 Resource
+    AssetId
+    IAssetProvider
+    AssetVfs mutable control plane
+    AssetVfsView immutable/read capability
+
+Platform
+    FileWatcher (efsw; raw OS events)
+
+L2 Process
+    execution
+        ExecutionRuntime / schedulers / TaskScope
+    asset_loading
+        ReadAssetImage port + typed loadAsset<T>() Sender
+
+L4 Toolchain
+    Texture/Model/Shader/Material cooker/importer
+
+L5 Editor
+    EditorApplication owns mutable VFS + Editor root task lifetime
+    EditorContext borrows AssetVfsView / AssetReadPort
+    AssetBrowser / AssetFileMonitor
+    no AssetIndex/Catalog in Wave D
+```
+
+## 2. AssetVfs 是 Product-wide capability，不是 Editor-owned service
+
+同一个虚拟资源命名空间必须在 Editor 与 generated game executable 中保持一致：
+
+```text
+/Engine
+/Game
+/PluginX
+/Patch...
+```
+
+ownership：
+
+```text
+EditorApplication / GeneratedGame composition
+    owns mutable AssetVfs
+        mount / unmount / provider lifetime
+            ↓ publish
+        AssetVfsView
+            resolve/open/enumerate/pathOf
+```
+
+EditorContext 仅携带 `AssetVfsView`；AssetBrowser/Inspector/MaterialEditor 不得 mount/unmount。
+
+### 2.1 当前 VFS contract 与已落地的并发 foundation
+
+现有 VFS verbs 保留：
+
+```text
+resolve(vpath) -> AssetId
+open(AssetId)  -> opaque bytes
+enumerate()
+pathOf(AssetId)
+mount/unmount
+```
+
+Reviewed foundation 已实现 read plane/control plane 分离的目标方向：mount change 通过 copy/rebuild immutable mount table 后 publication；read view 从已发布 snapshot 执行，snapshot 保留 provider lifetime。该实现方向现在是 normative contract，不应在 Wave D 重新退化为 mutable-vector readers + coarse global lock。
+
+```text
+AssetVfs control plane
+    rare mount/unmount
+      -> copy/rebuild immutable MountTable
+      -> publish shared immutable snapshot
+
+AssetVfsView
+    loads/carries safe immutable MountTable snapshot
+    -> read-only resolve/open/enumerate/pathOf traversal
+```
+
+Required semantics：
+
+```text
+read/read concurrent safety
+mount publication never invalidates active readers
+provider lifetime covers every published snapshot that references it
+mount mutation remains low-frequency control-plane work
+```
+
+High-frequency reads MUST NOT depend on a global coarse-grained mount-table mutex.
+
+### 2.2 禁止 UE-style lazy singleton 化
+
+MUST NOT：
+
+```text
+AssetVfs::Get()
+static AssetVfs instance lazy init
+static resolve/open/mount methods backed by hidden global state
+```
+
+VFS 必须由 product/application composition 显式创建、初始化 mount roots、发布 view，并以显式 shutdown 顺序销毁。
+
+## 3. AssetBrowser 是窗口，不是文件系统 owner
+
+推荐：
+
+```cpp
+class AssetBrowser final : public ui::Pane
+{
+public:
+    explicit AssetBrowser(EditorContext& context);
+    void draw(ui::Frame& frame) override; // exact Pane signature may follow Wave U API
+
+private:
+    EditorContext& context_;
+
+    std::string current_vpath_;
+    std::string search_;
+    EViewMode view_mode_;
+    AssetId selected_;
+};
+```
+
+AssetBrowser 负责：
+
+- folder/tree/breadcrumb UI；
+- grid/list UI；
+- search/filter UI；
+- selection；
+- context commands；
+- drag source；
+- status/diagnostic presentation。
+
+不负责：
+
+- owning VFS；
+- walking arbitrary disk every frame；
+- constructing compiler/cooker；
+- residency manager；
+- process executor；
+- project lifetime。
+
+AssetBrowser UI MUST use Lux UI public API。Grid/list/table/tree/breadcrumb/drag-drop/thumbnail presentation MUST NOT depend directly on Dear ImGui types. Shared visual metrics come from `ui::Theme`; Legacy AssetBrowser may be used as the selected visual/interaction reference.
+
+---
+
+
+## 4. Wave D 不创建 AssetIndex/Catalog
+
+首轮 AssetBrowser 直接消费 authoritative `AssetVfs`：
+
+```text
+AssetBrowser
+    -> context.vfs() [AssetVfsView].enumerate/resolve/pathOf
+    -> context.assetRead() for potentially blocking content reads
+```
+
+Inspector AssetId picker 和 Material/FlowForge asset picker 在 v1 也直接通过 Context 的 `AssetVfsView` 查询/resolve；实际 asset image/content 读取走 `assetRead()`/typed asset-loading Sender。
+
+虽然未来 fuzzy search、thumbnail metadata、referencer query 可能证明共享 index 有价值，但 **Wave D MUST NOT 根据“已经有第二个消费者”自行引入 AssetIndex/Catalog**。原因：
+
+- VFS 已经提供 authoritative mounted view；
+- 首轮性能数据尚未证明必须维护第二份索引；
+- FileWatch invalidation/index rebuild 会扩大一致性表面；
+- “AssetIndex” 很容易演化成第二个资产 SSOT/Manager。
+
+只有经过单独架构 review，才能新增：
+
+```text
+AssetIndex = rebuildable editor query acceleration
+VFS        = sole authoritative mounted resource visibility
+```
+
+在此之前所有实现必须接受 VFS-first 的简单模型。
+
+## 5. Asset Browser vs Content Browser
+
+第一阶段严格区分：
+
+### AssetBrowser
+
+浏览已经进入 VFS/Asset storage 的 engine assets。
+
+### Future ContentBrowser
+
+还要理解：
+
+```text
+.fbx/.gltf/.png/.psd source files
+MaterialGraph source documents
+FlowGraph source documents
+source -> cooked asset relationship
+import settings
+reimport state
+```
+
+在 Project/source content contract 未冻结前，不要把 AssetBrowser 命名/实现成万能 ContentBrowser。
+
+---
+
+## 6. Runtime async asset loading 已有主干
+
+当前 `engine/process/asset_loading` 已有：
+
+```text
+ReadAssetImage
+AssetReadPort
+loadAsset<ConcreteAsset>(port, AssetId, limits) -> Sender
+```
+
+这应成为 Editor 与最终游戏共享的 typed async asset-loading workflow。
+
+Product composition MUST 提供一个以当前 VFS/provider 为 storage source 的 production `AssetReadPort` endpoint。该 endpoint MUST NOT 在 game/main/UI submitter thread 上同步执行可能阻塞的 `provider->open()`；可由未来 `BlockingScheduler`、native async file IO 或等价 bounded IO backend 驱动。
+
+脚本只得到 `AssetReadPort`/更窄 typed load capability，不得到 mutable VFS control plane。
+
+---
+
+## 7. FileWatcher 当前不是 filesystem polling
+
+当前 `modules/platform/filewatch` 使用 efsw：
+
+```text
+Windows ReadDirectoryChangesW
+Linux inotify
+macOS FSEvents
+BSD kqueue
+fallback generic polling only when backend unavailable
+```
+
+OS callback 在 watcher thread 进入内部 queue；调用方使用 `drain()` 获取 raw events。
+
+因此当前模式是：
+
+```text
+Event-driven producer
++
+polled delivery boundary
+```
+
+不是每帧扫描 filesystem。
+
+---
+
+## 8. 不把 Platform FileWatcher 改成 LuxObject
+
+`FileWatcher` 应继续是 platform mechanism：
+
+```text
+watch / unwatch
+raw event queue
+drain
+```
+
+不要让 Platform 层依赖 Editor/LuxObject control plane。
+
+L5 使用 wrapper：
+
+```text
+platform::FileWatcher
+       ↓ raw FileEvent
+AssetFileMonitor (L5, may be LuxObject)
+       ↓ normalize/debounce/stable-write
+semantic editor event
+       ↓
+Toolset import/reload tool
+```
+
+---
+
+## 9. AssetFileMonitor 职责
+
+```cpp
+class AssetFileMonitor final : public object::Object<AssetFileMonitor>
+{
+public:
+    static const signal_type<AssetFilesChanged> changed;
+
+    void setRoots(...);
+    void pump(); // drain raw watcher events
+};
+```
+
+它负责：
+
+- path normalization；
+- platform case behavior；
+- duplicate Modified coalescing；
+- write stabilization；
+- rename normalization；
+- project generation/revision tagging；
+- translate raw filesystem event into Editor semantic fact。
+
+它不负责直接 Cook Material/Model；后续交给 Toolset。
+
+---
+
+## 10. 当前 FileWatcher 值得修的 contract
+
+### 10.1 Absolute path
+
+Header 声明 `FileEvent::path` 为绝对路径，但实现 `watch()` 仅 `lexically_normal()`，未强制 `absolute()`。
+
+建议修正为：
+
+```text
+watch root -> absolute + lexical normalization
+emitted event -> absolute normalized path
+```
+
+并写跨平台 test。
+
+
+### 10.2 Project switch stale events：generation filtering 为唯一 v1 correctness mechanism
+
+当前 `unwatchAll()` 允许已排队 raw event 继续存在，因此 Project/root 切换时必须用 generation 过滤：
+
+```text
+watch generation = N
+raw events drained under N
+
+switch project/root
+    -> generation = N + 1
+    -> unwatch old roots
+    -> watch new roots
+
+semantic processing only accepts events tagged/currently resolved for N + 1
+```
+
+Wave D MUST 实现 generation filtering；不得只依赖“先 drain 一次应该够了”的时序假设。
+
+`FileWatcher::clearPending()` 可以未来作为 mechanical optimization，但它不是 v1 correctness contract，Wave D MUST NOT 因此扩展 platform public API。
+
+### 10.3 Queue overflow
+
+efsw/platform event burst 未来可能需要：
+
+```text
+OVERFLOW / RESCAN_REQUIRED
+```
+
+一旦无法保证 exact raw history，上层应该重新 enumerate/rescan，而不是静默丢事件。
+
+第一版若 backend 没有 overflow signal，可先记录为 held requirement。
+
+---
+
+## 11. 每帧 drain 的性能
+
+Editor 每 frame：
+
+```cpp
+watcher.drain();
+```
+
+空事件路径成本主要是 mutex + vector exchange，通常远低于 UI/render workload；文件变动的人类时间尺度不要求 sub-frame latency。
+
+所以第一版无需为“完全 push”引入线程 callback 直接触碰 Editor state。
+
+未来若确有需求，可给 L2/platform 加：
+
+```text
+wait-and-drain / coordinator signal
+```
+
+然后通过 owner-thread dispatcher 发布，但不是 L5 bring-up blocker。
+
+---
+
+## 12. 文件变动到 Toolchain
+
+例如外部修改 `.gltf`：
+
+```text
+OS event
+ -> FileWatcher
+ -> AssetFileMonitor stable change
+ -> Asset source mapping
+ -> context.toolchain().get<ModelCooker/Importer>()
+ -> L2 background execution
+ -> output asset published
+ -> application/project composition republishes provider/VFS view when visibility changes
+ -> AssetBrowser redraw
+```
+
+Material/FlowForge source 文件同理，但 source document format 需单独冻结。
+
+---
+
+
+## 13. Import / Cook 异步
+
+AssetBrowser/FileMonitor 不拥有 worker threads。耗时 import/cook 走：
+
+```text
+EditorContext.Toolset concrete L4 tool
+    -> domain Sender with owned request/snapshot
+    -> EditorApplication-owned root TaskScope exposed through Context
+    -> L2 CpuScheduler
+    -> Wave V2 IO isolation (`BlockingScheduler` or native async IO) for blocking storage stages
+    -> optional ProcessSender only for real external-tool process stages
+    -> MainScheduler
+    -> VFS/project state re-resolve by stable identity
+```
+
+Wave D UI 本身不要求 V2；但一旦 import/read stage 可能阻塞 storage，必须复用 V2 IO isolation。`ProcessSender` 仍只在真实外部进程 lifecycle 需求下引入。任何情况下不得自己 `std::thread`/`std::async`。
+
+结果 apply 必须重新检查 project generation / stable asset identity，不能 capture AssetBrowser pointer 或跨线程持有 VFS entry 临时引用。
+
+## 14. Drag/Drop
+
+AssetBrowser 通过 Lux UI drag/drop API 产生的 payload 应包含稳定身份：
+
+```text
+AssetId
+possibly AssetTypeId
+```
+
+不要让 drag payload 持有 backend/UI transient pointer，也不要持有：
+
+- provider pointer；
+- file path pointer；
+- loaded Asset object pointer。
+
+接收方通过 `context.vfs()` (`AssetVfsView`) 重新 resolve；Wave D 不维护 AssetIndex。
+
+---
+
+## 15. Delete / Rename / Create
+
+这些不是 AssetBrowser 内部直接文件操作。
+
+推荐走 contextual command + dedicated tool/action：
+
+```text
+AssetBrowser selected AssetId
+       ↓
+editor.asset.delete command
+       ↓
+Editor/tool action
+       ↓ validate references / provider mutability
+       ↓ publish
+       ↓ update provider/project state; VFS view reflects published visibility
+```
+
+VFS 本身只有 generic mount/open/enumerate，不应被扩展成全功能 writable filesystem。
+
+Writable source/provider contract 应在真实 Project/Content workflow 时定义。
+
+---
+
+## 16. Thumbnail
+
+Thumbnail 是典型异步 Editor facility，可进入 Toolset 或 Editor-wide thumbnail tool：
+
+```text
+visible AssetId
+ -> ThumbnailTool request
+ -> cache hit: immediate
+ -> cache miss: L2 background / Render capability
+ -> completion
+ -> UI redraw next frame
+```
+
+AssetBrowser 不拥有 thumbnail execution lifetime。Thumbnail/image presentation uses a Lux-owned opaque `ui::TextureHandle` (or an approved equivalent), not `ImTextureID`; backend mapping belongs to `UISession`/private UI backend。
+
+---
+
+## 17. 测试矩阵
+
+### VFS integration
+
+- mount priority/recency；
+- enumeration shadow semantics；
+- pathOf；
+- AssetBrowser close does not affect VFS；
+- concurrent AssetVfsView reads during mount-table publication；
+- old view/snapshot lifetime remains safe after republish；
+
+### FileWatcher
+
+- emitted paths absolute normalized；
+- add/modify/delete/rename；
+- recursive roots；
+- duplicate watch no-op；
+- project root generation isolation；
+- burst coalescing in AssetFileMonitor；
+- stable-write debounce。
+
+### Async
+
+- AssetBrowser closed before import completion；
+- completion updates project/VFS-visible state without dangling UI pointer；
+- project close cancels/discards project-specific result；
+- plugin tool import contribution。
+
+---
+
+## 18. 禁止项
+
+```text
+No Pane-owned VFS.
+No EditorContext-owned mutable VFS.
+No AssetVfs singleton/static state.
+No game/main-thread synchronous asset IO through script-facing APIs.
+No per-window filesystem SSOT.
+No FileWatcher -> Editor direct cross-thread mutation.
+No FileWatcher LuxObject dependency in Platform.
+No per-frame full recursive filesystem scanning.
+No VFS turned into writable generic filesystem.
+No AssetBrowser-owned compiler/executor lifetime.
+No silent stale events across project switch.
+No direct Dear ImGui dependency in AssetBrowser/AssetFileMonitor feature code.
+No ImTextureID/backend pointer in thumbnail or drag/drop public contracts.
+```
+
+---
+
+> Coding implementation MUST also comply with `08-normative-execution-contract.md` and `10-lux-ui-foundation-and-legacy-visual-parity.md` for UI code.

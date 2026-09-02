@@ -39,9 +39,12 @@ namespace
             return value;
         }
 
-        std::uint64_t beginOperation(std::uint64_t request) noexcept
+        lux::script::ScriptAbilityStartResult beginOperation(
+            std::uint64_t,
+            lux::script::ScriptAbilityCompletion<std::uint64_t>
+        ) noexcept
         {
-            return request;
+            return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{74});
         }
     };
 }

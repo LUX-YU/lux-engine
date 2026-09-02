@@ -3,12 +3,14 @@
 #include "TestAbility.ability.generated.hpp"
 
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <new>
 #include <optional>
@@ -31,6 +33,14 @@ namespace
     inline constexpr auto kContract = TestAbilityTraits::Description.id;
     inline constexpr std::uint64_t kSchema = TestAbilityTraits::Description.schema_hash;
 
+    enum class EAsyncProviderMode : std::uint8_t
+    {
+        REJECT,
+        DELAYED,
+        EAGER_SUCCESS,
+        EAGER_FAILURE,
+    };
+
     struct TestProvider final
     {
         explicit TestProvider(int& constructions, int& destructions) noexcept : destructions(&destructions)
@@ -46,6 +56,9 @@ namespace
         int value{7};
         int calls{};
         int* destructions{};
+        EAsyncProviderMode async_mode{EAsyncProviderMode::REJECT};
+        std::optional<lux::script::ScriptAbilityCompletion<std::uint64_t>> pending;
+        std::optional<lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>> eager_completion;
 
         int readValue(int input) noexcept
         {
@@ -68,9 +81,26 @@ namespace
             return value;
         }
 
-        std::uint64_t beginOperation(std::uint64_t request) noexcept
+        lux::script::ScriptAbilityStartResult beginOperation(
+            std::uint64_t request,
+            lux::script::ScriptAbilityCompletion<std::uint64_t> completion
+        ) noexcept
         {
-            return request;
+            switch (async_mode)
+            {
+            case EAsyncProviderMode::DELAYED:
+                pending = std::move(completion);
+                return {};
+            case EAsyncProviderMode::EAGER_SUCCESS:
+                eager_completion = completion.success(request + 1U);
+                return {};
+            case EAsyncProviderMode::EAGER_FAILURE:
+                eager_completion = completion.fail({91});
+                return {};
+            case EAsyncProviderMode::REJECT:
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{81});
+            }
+            return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{82});
         }
     };
 
@@ -139,6 +169,7 @@ namespace
     struct BackendState final
     {
         bool enable_step{};
+        bool enable_ability_async{};
         bool eager_first{};
         bool eager_resuspend{};
         bool typed_result{};
@@ -154,8 +185,11 @@ namespace
         std::size_t max_resume_depth{};
         bool saw_typed_result{};
         bool saw_failure{};
+        std::int32_t failure_status{};
+        std::uint64_t ability_result{};
         std::thread::id resume_thread;
         std::vector<ScriptAwaitableCompletion> completions;
+        std::optional<lux::script::ScriptAbilityStarter<TestAbility>> ability_starter;
     };
 
     int invokeSync(lux_script_call_frame* frame)
@@ -186,6 +220,18 @@ namespace
             assert(create.capabilities.size() == 1U);
             instance->provider = create.capabilities.front().context;
             instance->dispatch = static_cast<const TestDispatch*>(create.capabilities.front().dispatch);
+            const lux::script::ScriptAbilityBinding binding{
+                &TestAbilityTraits::Description,
+                instance->provider,
+                instance->dispatch
+            };
+            auto starter = lux::script::ScriptAbilityStarter<TestAbility>::create(binding);
+            if (!starter)
+            {
+                delete instance;
+                return EScriptBackendResult::CONSTRUCTION_FAILURE;
+            }
+            state.ability_starter = std::move(*starter);
         }
         ++state.creates;
         output.value = instance;
@@ -234,11 +280,23 @@ namespace
         {
             assert(packet.error.valid());
             owner.saw_failure = true;
+            owner.failure_status = packet.error.status;
         }
         else
         {
             assert(packet.state == EScriptAwaitableState::READY);
-            if (owner.typed_result)
+            if (owner.enable_ability_async)
+            {
+                assert(packet.value != nullptr && packet.value->type.has_value());
+                assert(packet.value->type->type_id == lux::semantic::typeId("lux.u64"));
+                assert(packet.value->bytes.size() == sizeof(std::uint64_t));
+                std::memcpy(
+                    std::addressof(owner.ability_result),
+                    packet.value->bytes.data(),
+                    sizeof(owner.ability_result)
+                );
+            }
+            else if (owner.typed_result)
             {
                 assert(packet.value != nullptr && packet.value->type.has_value());
                 assert(packet.value->type->type_id == lux::semantic::typeId("lux.i32"));
@@ -274,20 +332,38 @@ namespace
     {
         auto& state = *static_cast<BackendState*>(context);
         ++state.step_calls;
-        auto awaiting = step.awaitables.create(
-            state.typed_result ? std::optional{lux::rdesc::makeScriptValueType<std::int32_t>()} : std::nullopt);
-        if (!awaiting)
-            return ScriptStepResult::failed(71);
-        state.completions.push_back(awaiting->completion);
+        ScriptStepResult result;
+        if (state.enable_ability_async)
+        {
+            assert(state.ability_starter.has_value());
+            result = invokeScriptAbilityAsync<std::uint64_t>(
+                step,
+                [&state](lux::script::ScriptAbilityCompletion<std::uint64_t> completion) noexcept {
+                    return state.ability_starter->beginOperation(41U, std::move(completion));
+                }
+            );
+        }
+        else
+        {
+            auto awaiting = step.awaitables.create(
+                state.typed_result ? std::optional{lux::rdesc::makeScriptValueType<std::int32_t>()} : std::nullopt
+            );
+            if (!awaiting)
+                return ScriptStepResult::failed(71);
+            state.completions.push_back(awaiting->completion);
+            if (state.eager_first)
+                assert(awaiting->completion.ready());
+            result = ScriptStepResult::suspended(awaiting->id);
+        }
+        if (result.state != EScriptStepState::SUSPENDED)
+            return result;
         auto* continuation = new (std::nothrow) ContinuationState();
         if (continuation == nullptr)
             return ScriptStepResult::failed(72);
         continuation->owner = &state;
         continuation->suspensions_remaining = state.suspensions_after_first;
         output = {continuation, &resumeContinuation, &destroyContinuation};
-        if (state.eager_first)
-            assert(awaiting->completion.ready());
-        return ScriptStepResult::suspended(awaiting->id);
+        return result;
     }
 
     EScriptBackendResult prepareStepMethod(void* context,
@@ -548,6 +624,134 @@ namespace
         assert(failed_system.shutdown());
     }
 
+    void testAsyncAbilityInvocation()
+    {
+        int constructions{}, destructions{};
+        {
+            TestProvider provider{constructions, destructions};
+            provider.async_mode = EAsyncProviderMode::DELAYED;
+            const std::array capabilities{
+                publishScriptAbility(lux::script::bindScriptAbility<TestAbility>(provider))
+            };
+            Harness delayed{true};
+            delayed.backend_state.enable_step = true;
+            delayed.backend_state.enable_ability_async = true;
+            auto created = delayed.create(limits(), capabilities);
+            assert(created);
+            auto system = std::move(*created);
+            assert(system.prepare());
+            assert(delayed.hook.dispatch() == 1U);
+            assert(provider.pending.has_value());
+            assert(system.activeAwaitableCount() == 1U);
+            assert(system.activeContinuationCount() == 1U);
+
+            const auto completion = *provider.pending;
+            std::optional<lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>> completed;
+            std::thread worker([&]() noexcept { completed = completion.success(42U); });
+            worker.join();
+            assert(completed.has_value() && *completed);
+            const auto duplicate = completion.success(43U);
+            assert(!duplicate && duplicate.error() == lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED);
+            assert(delayed.backend_state.resume_calls == 0U);
+            assert(system.executeStablePoint());
+            assert(delayed.backend_state.resume_calls == 1U);
+            assert(delayed.backend_state.ability_result == 42U);
+            assert(delayed.backend_state.resume_thread == std::this_thread::get_id());
+            assert(system.activeAwaitableCount() == 0U);
+            assert(system.activeContinuationCount() == 0U);
+            assert(system.shutdown());
+        }
+
+        {
+            TestProvider provider{constructions, destructions};
+            provider.async_mode = EAsyncProviderMode::EAGER_SUCCESS;
+            const std::array capabilities{
+                publishScriptAbility(lux::script::bindScriptAbility<TestAbility>(provider))
+            };
+            Harness eager{true};
+            eager.backend_state.enable_step = true;
+            eager.backend_state.enable_ability_async = true;
+            auto created = eager.create(limits(), capabilities);
+            assert(created);
+            auto system = std::move(*created);
+            assert(system.prepare());
+            assert(eager.hook.dispatch() == 1U);
+            assert(provider.eager_completion.has_value() && *provider.eager_completion);
+            assert(eager.backend_state.resume_calls == 0U);
+            assert(system.executeStablePoint());
+            assert(eager.backend_state.resume_calls == 1U);
+            assert(eager.backend_state.ability_result == 42U);
+            assert(eager.backend_state.max_resume_depth == 1U);
+            assert(system.shutdown());
+        }
+
+        {
+            TestProvider provider{constructions, destructions};
+            provider.async_mode = EAsyncProviderMode::EAGER_FAILURE;
+            const std::array capabilities{
+                publishScriptAbility(lux::script::bindScriptAbility<TestAbility>(provider))
+            };
+            Harness failed{true};
+            failed.backend_state.enable_step = true;
+            failed.backend_state.enable_ability_async = true;
+            auto created = failed.create(limits(), capabilities);
+            assert(created);
+            auto system = std::move(*created);
+            assert(system.prepare());
+            assert(failed.hook.dispatch() == 1U);
+            assert(provider.eager_completion.has_value() && *provider.eager_completion);
+            assert(system.executeStablePoint());
+            assert(failed.backend_state.saw_failure);
+            assert(failed.backend_state.failure_status == 91);
+            assert(system.shutdown());
+        }
+
+        {
+            TestProvider provider{constructions, destructions};
+            provider.async_mode = EAsyncProviderMode::REJECT;
+            const std::array capabilities{
+                publishScriptAbility(lux::script::bindScriptAbility<TestAbility>(provider))
+            };
+            Harness rejected{true};
+            rejected.backend_state.enable_step = true;
+            rejected.backend_state.enable_ability_async = true;
+            auto created = rejected.create(limits(), capabilities);
+            assert(created);
+            auto system = std::move(*created);
+            assert(system.prepare());
+            assert(rejected.hook.dispatch() == 1U);
+            assert(system.activeAwaitableCount() == 0U);
+            assert(system.activeContinuationCount() == 0U);
+            assert(!system.failures().empty());
+            assert(system.failures().front().error == EScriptSystemError::INVOCATION_FAILURE);
+            assert(system.failures().front().status == 81);
+            assert(system.shutdown());
+        }
+
+        {
+            TestProvider provider{constructions, destructions};
+            provider.async_mode = EAsyncProviderMode::DELAYED;
+            const std::array capabilities{
+                publishScriptAbility(lux::script::bindScriptAbility<TestAbility>(provider))
+            };
+            Harness late{true};
+            late.backend_state.enable_step = true;
+            late.backend_state.enable_ability_async = true;
+            auto created = late.create(limits(), capabilities);
+            assert(created);
+            auto system = std::move(*created);
+            assert(system.prepare());
+            assert(late.hook.dispatch() == 1U);
+            assert(provider.pending.has_value());
+            const auto completion = *provider.pending;
+            assert(system.shutdown());
+            const auto completed = completion.success(44U);
+            assert(!completed && completed.error() == lux::script::EScriptAbilityCompletionError::STOPPING);
+            assert(late.backend_state.resume_calls == 0U);
+        }
+        assert(constructions == destructions);
+    }
+
     void testCapacityAndCancellation()
     {
         Harness limited{false, 2U};
@@ -636,6 +840,7 @@ int main()
 {
     testCapabilities();
     testSyncAndContinuation();
+    testAsyncAbilityInvocation();
     testCapacityAndCancellation();
     return 0;
 }

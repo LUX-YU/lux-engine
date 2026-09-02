@@ -1,6 +1,7 @@
 #pragma once
 // Generated canonical Script Ability descriptor, provider binder and C++ projection.
 #include <lux/engine/function/script/ScriptAbility.hpp>
+#include <lux/engine/function/script/ScriptAbilityAsync.hpp>
 #include <array>
 #include <concepts>
 #include <memory>
@@ -19,10 +20,13 @@ namespace lux::script
 
         struct Dispatch final
         {
-{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}            {{ method.result_type_id }} (*{{ method.spelling }})(void*{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}) noexcept{};
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}            {% if kind == "async_operation" %}ScriptAbilityStartResult{% else %}{{ method.result_type_id }}{% endif %} (*{{ method.spelling }})(void*{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}{% if kind == "async_operation" %}, ScriptAbilityCompletion<{{ method.result_type_id }}>{% endif %}) noexcept{};
 {% endif %}{% endfor %}        };
 
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        static_assert(noexcept({% if receiver == "none" %}Ability::{% else %}std::declval<Ability&>().{% endif %}{{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}std::declval<{{ type.id }}>(){% if not loop.is_last %}, {% endif %}{% endfor %})));
+{% if annotation_get_for_or(method, "luxability::method", "kind", "query") == "async_operation" and method.result_type_id != "void" %}        static_assert(ScriptAbilityValueShapeSupported<{{ method.result_type_id }}>);
+        static_assert(std::is_trivially_copyable_v<{{ method.result_type_id }}>);
+{% endif %}
 {% endif %}{% endfor %}
 
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}        inline static constexpr std::array<ScriptAbilityParameterDescription, {{ length(method.params) }}> {{ method.spelling }}Parameters{
@@ -57,14 +61,15 @@ namespace lux::script
         inline static constexpr bool ProviderConforms = requires(
             Provider& provider{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ method.spelling }}_{{ loop.index }}{% endfor %}{% endif %}{% endfor %}
         ) {
-{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}            { provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ method.spelling }}_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %}) } noexcept -> std::same_as<{{ method.result_type_id }}>;
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}            { provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ method.spelling }}_{{ loop.index }}{% if not loop.is_last or kind == "async_operation" %}, {% endif %}{% endfor %}{% if kind == "async_operation" %}ScriptAbilityCompletion<{{ method.result_type_id }}>{}{% endif %}) } noexcept -> std::same_as<{% if kind == "async_operation" %}ScriptAbilityStartResult{% else %}{{ method.result_type_id }}{% endif %}>;
 {% endif %}{% endfor %}        };
 
-{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        template <class Provider>
-        static {{ method.result_type_id }} {{ method.spelling }}Thunk(void* context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ loop.index }}{% endfor %}) noexcept
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}        template <class Provider>
+        static {% if kind == "async_operation" %}ScriptAbilityStartResult{% else %}{{ method.result_type_id }}{% endif %} {{ method.spelling }}Thunk(void* context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ loop.index }}{% endfor %}{% if kind == "async_operation" %}, ScriptAbilityCompletion<{{ method.result_type_id }}> completion{% endif %}) noexcept
         {
             auto& provider = *static_cast<Provider*>(context);
-{% if method.result_type_id == "void" %}            provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+{% if kind == "async_operation" %}            return provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}, {% endfor %}std::move(completion));
+{% else if method.result_type_id == "void" %}            provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
 {% else %}            return provider.{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
 {% endif %}        }
 {% endif %}{% endfor %}
@@ -79,9 +84,10 @@ namespace lux::script
         {
             return {&Description, std::addressof(provider), &ProviderDispatch<Provider>};
         }
-{% else %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        static {{ method.result_type_id }} {{ method.spelling }}Thunk(void*{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ loop.index }}{% endfor %}) noexcept
+{% else %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}        static {% if kind == "async_operation" %}ScriptAbilityStartResult{% else %}{{ method.result_type_id }}{% endif %} {{ method.spelling }}Thunk(void*{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ loop.index }}{% endfor %}{% if kind == "async_operation" %}, ScriptAbilityCompletion<{{ method.result_type_id }}> completion{% endif %}) noexcept
         {
-{% if method.result_type_id == "void" %}            Ability::{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+{% if kind == "async_operation" %}            return Ability::{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}, {% endfor %}std::move(completion));
+{% else if method.result_type_id == "void" %}            Ability::{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
 {% else %}            return Ability::{{ method.spelling }}({% for param_id in method.params %}arg_{{ loop.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
 {% endif %}        }
 {% endif %}{% endfor %}        inline static constexpr Dispatch StatelessDispatch{
@@ -92,6 +98,37 @@ namespace lux::script
             return {&Description, nullptr, &StatelessDispatch};
         }
 {% endif %}    };
+
+    template <>
+    class ScriptAbilityStarter<::{{ rec.fq_name }}> final
+    {
+    public:
+        [[nodiscard]] static lux::cxx::expected<ScriptAbilityStarter, EScriptAbilityBindingError>
+        create(ScriptAbilityBinding binding) noexcept
+        {
+            if (!binding.valid())
+                return lux::cxx::unexpected<EScriptAbilityBindingError>(
+                    EScriptAbilityBindingError::INVALID_BINDING
+                );
+            if (binding.description->id != ScriptAbilityTraits<::{{ rec.fq_name }}>::Description.id ||
+                binding.description->schema_hash != ScriptAbilityTraits<::{{ rec.fq_name }}>::Description.schema_hash)
+                return lux::cxx::unexpected<EScriptAbilityBindingError>(
+                    EScriptAbilityBindingError::CONTRACT_MISMATCH
+                );
+            return ScriptAbilityStarter(binding.context,
+                static_cast<const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch*>(binding.dispatch));
+        }
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") and annotation_get_for_or(method, "luxability::method", "kind", "query") == "async_operation" %}        ScriptAbilityStartResult {{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{{ type.id }} {{ param.name }}, {% endfor %}ScriptAbilityCompletion<{{ method.result_type_id }}> completion) const noexcept
+        {
+            return dispatch_->{{ method.spelling }}(context_{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %}, std::move(completion));
+        }
+{% endif %}{% endfor %}
+    private:
+        ScriptAbilityStarter(void* context, const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch* dispatch) noexcept
+            : context_(context), dispatch_(dispatch) {}
+        void* context_{};
+        const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch* dispatch_{};
+    };
 
     template <>
     class ScriptAbilityCpp<::{{ rec.fq_name }}> final
@@ -112,7 +149,7 @@ namespace lux::script
             return ScriptAbilityCpp(binding.context,
                 static_cast<const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch*>(binding.dispatch));
         }
-{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        {{ method.result_type_id }} {{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{{ type.id }} {{ param.name }}{% if not loop.is_last %}, {% endif %}{% endfor %}) const noexcept
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") and annotation_get_for_or(method, "luxability::method", "kind", "query") != "async_operation" %}        {{ method.result_type_id }} {{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{{ type.id }} {{ param.name }}{% if not loop.is_last %}, {% endif %}{% endfor %}) const noexcept
         {
 {% if method.result_type_id == "void" %}            dispatch_->{{ method.spelling }}(context_{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
 {% else %}            return dispatch_->{{ method.spelling }}(context_{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});

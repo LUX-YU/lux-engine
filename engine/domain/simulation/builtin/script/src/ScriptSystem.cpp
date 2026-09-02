@@ -594,6 +594,15 @@ namespace lux::simulation::script
                 static_cast<void>(ingress->awaitables.erase(awaitableKey(awaitable)));
         }
 
+        static void discardAwaitableErased(
+            void* context,
+            ScriptInstanceId instance,
+            ScriptAwaitableId awaitable
+        ) noexcept
+        {
+            static_cast<State*>(context)->discardAwaitable(instance, awaitable);
+        }
+
         [[nodiscard]] std::optional<ResumeRecord> popResume() noexcept
         {
             std::lock_guard lock{ingress->mutex};
@@ -870,7 +879,12 @@ namespace lux::simulation::script
             if (method.step)
             {
                 ScriptBackendContinuation continuation;
-                ScriptStepContext context{mount.instance, this, &State::createAwaitableErased};
+                ScriptStepContext context{
+                    mount.instance,
+                    this,
+                    &State::createAwaitableErased,
+                    &State::discardAwaitableErased
+                };
                 const auto result = method.step.invoke(method.step.context, frame, context, continuation);
                 if (result.state == EScriptStepState::COMPLETED && result.valid())
                 {
@@ -1411,7 +1425,12 @@ namespace lux::simulation::script
 
             continuation->waiting_on = {};
             ScriptResumePacket packet{resume.awaitable, outcome->state, std::addressof(outcome->value), outcome->error};
-            ScriptStepContext context{resume.instance, this, &State::createAwaitableErased};
+            ScriptStepContext context{
+                resume.instance,
+                this,
+                &State::createAwaitableErased,
+                &State::discardAwaitableErased
+            };
             const auto result = continuation->backend.resume(continuation->backend.state, context, packet);
 
             continuation = continuations.find(continuationKey(resume.continuation));

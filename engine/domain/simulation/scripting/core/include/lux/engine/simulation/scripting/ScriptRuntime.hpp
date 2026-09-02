@@ -227,18 +227,26 @@ namespace lux::simulation::script
             return create_(context_, instance_, std::move(result_type));
         }
 
+        void discard(ScriptAwaitableId awaitable) const noexcept
+        {
+            if (discard_ != nullptr && awaitable.valid())
+                discard_(context_, instance_, awaitable);
+        }
+
         using CreateFn = lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> (*)(
             void*,
             ScriptInstanceId,
             std::optional<lux::rdesc::ScriptValueType>) noexcept;
+        using DiscardFn = void (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
 
     private:
-        ScriptAwaitableFactory(void* context, CreateFn create, ScriptInstanceId instance) noexcept
-            : context_(context), create_(create), instance_(instance)
+        ScriptAwaitableFactory(void* context, CreateFn create, DiscardFn discard, ScriptInstanceId instance) noexcept
+            : context_(context), create_(create), discard_(discard), instance_(instance)
         {}
 
         void* context_{};
         CreateFn create_{};
+        DiscardFn discard_{};
         ScriptInstanceId instance_;
 
         friend struct ScriptStepContext;
@@ -246,8 +254,13 @@ namespace lux::simulation::script
 
     struct ScriptStepContext final
     {
-        ScriptStepContext(ScriptInstanceId instance, void* context, ScriptAwaitableFactory::CreateFn create) noexcept
-            : instance(instance), awaitables(context, create, instance)
+        ScriptStepContext(
+            ScriptInstanceId instance,
+            void* context,
+            ScriptAwaitableFactory::CreateFn create,
+            ScriptAwaitableFactory::DiscardFn discard
+        ) noexcept
+            : instance(instance), awaitables(context, create, discard, instance)
         {}
 
         ScriptStepContext(const ScriptStepContext&) = delete;

@@ -16,6 +16,12 @@
 
 namespace
 {
+    template <class Api>
+    concept HasImmediateBeginOperation = requires(Api api)
+    {
+        api.beginOperation(std::uint64_t{});
+    };
+
     struct TestProvider final
     {
         std::int32_t value{};
@@ -43,9 +49,12 @@ namespace
             return value;
         }
 
-        std::uint64_t beginOperation(std::uint64_t request) noexcept
+        lux::script::ScriptAbilityStartResult beginOperation(
+            std::uint64_t,
+            lux::script::ScriptAbilityCompletion<std::uint64_t>
+        ) noexcept
         {
-            return request;
+            return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{71});
         }
     };
 
@@ -95,9 +104,12 @@ namespace
             return value_;
         }
 
-        std::uint64_t beginOperation(std::uint64_t request) noexcept
+        lux::script::ScriptAbilityStartResult beginOperation(
+            std::uint64_t,
+            lux::script::ScriptAbilityCompletion<std::uint64_t>
+        ) noexcept
         {
-            return request;
+            return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{72});
         }
 
         ProviderLifetime* lifetime_{};
@@ -142,9 +154,12 @@ namespace
             return borrowed_value_;
         }
 
-        std::uint64_t beginOperation(std::uint64_t request) noexcept
+        lux::script::ScriptAbilityStartResult beginOperation(
+            std::uint64_t,
+            lux::script::ScriptAbilityCompletion<std::uint64_t>
+        ) noexcept
         {
-            return request;
+            return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{73});
         }
 
         ProviderLifetime* lifetime_{};
@@ -214,6 +229,7 @@ int main()
     static_assert(ScriptAbilityTraits<TestAbility>::Description.schema_hash != 0U);
     static_assert(ScriptAbilityTraits<TestAbility>::Description.methods.size() == 5U);
     static_assert(ScriptAbilityTraits<TestStatelessAbility>::Description.methods.size() == 1U);
+    static_assert(!HasImmediateBeginOperation<ScriptAbilityCpp<TestAbility>>);
     static_assert(ScriptAbilityTraits<TestAbility>::Description.schema_version == 1U);
     constexpr auto ReversedMethods = []() consteval {
         auto methods = ScriptAbilityTraits<TestAbility>::Methods;
@@ -324,7 +340,10 @@ int main()
     assert(provider.calls == 2U);
     assert(api->identity(0x51U) == 0x51U);
     assert(&api->borrowedValue() == &provider.value);
-    assert(api->beginOperation(0x52U) == 0x52U);
+    auto starter = lux::script::ScriptAbilityStarter<TestAbility>::create(binding);
+    assert(starter);
+    auto rejected_start = starter->beginOperation(0x52U, {});
+    assert(!rejected_start && rejected_start.error().status == 71);
 
     const auto& methods = ScriptAbilityTraits<TestAbility>::Description.methods;
     assert(methods[2].parameters.front().value.lifetime == lux::script::EScriptAbilityValueLifetime::STABLE_ID);

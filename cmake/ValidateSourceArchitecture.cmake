@@ -1942,6 +1942,9 @@ endforeach()
 set(script_ability_contract
     "${source_root}/modules/function/script/core/include/lux/engine/function/script/ScriptAbility.hpp"
 )
+set(script_ability_async_contract
+    "${source_root}/modules/function/script/core/include/lux/engine/function/script/ScriptAbilityAsync.hpp"
+)
 set(script_ability_codegen
     "${source_root}/modules/function/script/core/template/script_ability.template"
 )
@@ -1949,9 +1952,12 @@ set(script_ability_codegen_cmake
     "${source_root}/modules/function/script/core/cmake/engine_script_ability_codegen.cmake"
 )
 file(READ "${script_ability_contract}" script_ability_public_contract)
+file(READ "${script_ability_async_contract}" script_ability_async_public_contract)
 file(READ "${script_ability_codegen}" script_ability_generated_contract)
 file(READ "${script_ability_codegen_cmake}" script_ability_codegen_contract)
 if(script_ability_public_contract MATCHES
+   "Scene|Simulation|SystemInstanceId|Physics|AssetLoading|std::(function|any|type_index)|ScriptApiManager|AbilityManager|ServiceRegistry" OR
+   script_ability_async_public_contract MATCHES
    "Scene|Simulation|SystemInstanceId|Physics|AssetLoading|std::(function|any|type_index)|ScriptApiManager|AbilityManager|ServiceRegistry")
     message(FATAL_ERROR
         "Architecture: generic Script Ability contract acquired Engine ontology or service lookup."

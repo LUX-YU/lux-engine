@@ -297,6 +297,43 @@ int main()
             ScriptAbilityTraits<TestAbility>::Description.schema_version
         ) != ScriptAbilityTraits<TestAbility>::Description.schema_hash
     );
+    static constexpr std::array ChangedResultTypes{
+        lux::script::makeScriptAbilityValue<std::uint32_t>(
+            lux::script::EScriptAbilityValueLifetime::OWNED_VALUE
+        )
+    };
+    constexpr auto ChangedResultTypeMethods = []() consteval {
+        auto methods = ScriptAbilityTraits<TestAbility>::Methods;
+        methods[0].results = ChangedResultTypes;
+        return methods;
+    }();
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            ScriptAbilityTraits<TestAbility>::Receiver,
+            ChangedResultTypeMethods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) != ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
+    static constexpr std::array RenamedParameters{
+        lux::script::ScriptAbilityParameterDescription{
+            "renamed-input",
+            ScriptAbilityTraits<TestAbility>::Methods[0].parameters[0].value
+        }
+    };
+    constexpr auto RenamedParameterMethods = []() consteval {
+        auto methods = ScriptAbilityTraits<TestAbility>::Methods;
+        methods[0].parameters = RenamedParameters;
+        return methods;
+    }();
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            ScriptAbilityTraits<TestAbility>::Receiver,
+            RenamedParameterMethods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) == ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
     constexpr auto ChangedDisplayMethods = []() consteval {
         auto methods = ScriptAbilityTraits<TestAbility>::Methods;
         methods[0].display_name = "Renamed Display";

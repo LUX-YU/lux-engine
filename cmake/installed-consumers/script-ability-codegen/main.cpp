@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <memory>
 
 namespace
 {
@@ -24,6 +25,20 @@ namespace
             last_item = item;
             value = count;
         }
+
+        lux::script::ScriptAbilityStartResult countLater(
+            std::uint64_t item,
+            lux::script::ScriptAbilityCompletion<std::int32_t> completion
+        ) noexcept
+        {
+            last_item = item;
+            auto completed = completion.success(value);
+            return completed
+                ? lux::script::ScriptAbilityStartResult{}
+                : lux::script::ScriptAbilityStartResult{
+                    lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{91})
+                };
+        }
     };
 
     struct InvalidProvider final
@@ -31,6 +46,34 @@ namespace
         void count(std::uint64_t) noexcept
         {
         }
+    };
+
+    struct CompletionState final
+    {
+        std::int32_t value{};
+    };
+
+    lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> completeCount(
+        void* state,
+        std::int32_t value
+    ) noexcept
+    {
+        static_cast<CompletionState*>(state)->value = value;
+        return {};
+    }
+
+    lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> failCount(
+        void*,
+        lux::script::ScriptAbilityOperationError
+    ) noexcept
+    {
+        return {};
+    }
+
+    template <class Api>
+    concept HasImmediateCountLater = requires(Api api)
+    {
+        api.countLater(std::uint64_t{});
     };
 }
 
@@ -41,6 +84,7 @@ int main()
     static_assert(Traits::ProviderConforms<InventoryProvider>);
     static_assert(!Traits::ProviderConforms<InvalidProvider>);
     static_assert(Traits::Description.schema_hash != 0U);
+    static_assert(!HasImmediateCountLater<lux::script::ScriptAbilityCpp<Ability>>);
 
     InventoryProvider provider;
     const auto binding = lux::script::bindScriptAbility<Ability>(provider);
@@ -49,5 +93,17 @@ int main()
     api->setCount(17U, 4);
     assert(api->count(17U) == 4);
     assert(provider.last_item == 17U);
+
+    auto starter = lux::script::ScriptAbilityStarter<Ability>::create(binding);
+    assert(starter);
+    auto state = std::make_shared<CompletionState>();
+    auto completion = lux::script::ScriptAbilityCompletion<std::int32_t>::bind(
+        std::static_pointer_cast<void>(state),
+        &completeCount,
+        &failCount
+    );
+    assert(starter->countLater(18U, std::move(completion)));
+    assert(state->value == 4);
+    assert(provider.last_item == 18U);
     return 0;
 }

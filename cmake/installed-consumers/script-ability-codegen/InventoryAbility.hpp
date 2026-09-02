@@ -30,5 +30,14 @@ namespace installed_consumer
             LUX_SCRIPT_PARAM(lifetime = stable_id) std::uint64_t item,
             LUX_SCRIPT_PARAM(lifetime = owned_value) std::int32_t count
         ) noexcept;
+
+        LUX_SCRIPT_ASYNC(
+            id = consumer.inventory.count_later,
+            display = CountLater,
+            result_lifetime = awaitable
+        )
+        std::int32_t countLater(
+            LUX_SCRIPT_PARAM(lifetime = stable_id) std::uint64_t item
+        ) noexcept;
     };
 } // namespace installed_consumer

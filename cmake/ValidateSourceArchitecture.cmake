@@ -681,7 +681,7 @@ if(EXISTS "${source_root}/engine/editor/application")
     if(NOT editor_application_cmake_contract MATCHES "TARGET[ \t\r\n]+editor_application" OR
        NOT editor_application_cmake_contract MATCHES "LAYER[ \t\r\n]+EDITOR" OR
        NOT editor_application_cmake_contract MATCHES "ROLE[ \t\r\n]+COMPOSITION" OR
-       NOT editor_application_cmake_contract MATCHES "add_executable[(]lux_editor")
+       NOT editor_application_cmake_contract MATCHES "add_executable[ \t\r\n]*[(][ \t\r\n]*lux_editor")
         message(FATAL_ERROR
             "Architecture: EditorApplication must be the L5 EDITOR composition leaf producing lux_editor."
         )

@@ -24,11 +24,17 @@ lux_classify_target(
     ROLE    COMPOSITION
 )
 
-add_executable(lux_editor app/main.cpp)
+add_executable(
+    lux_editor
+    app/main.cpp
+    app/EditorBootstrap.cpp
+)
+target_include_directories(lux_editor PRIVATE app)
 target_link_libraries(
     lux_editor
     PRIVATE
         editor_application
+        lux::engine::editor::editor_inspector
         lux::engine::scene::scene_meta
 )
 lux_classify_target(

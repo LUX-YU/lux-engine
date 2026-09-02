@@ -36,7 +36,11 @@ target_link_libraries(
         lux::engine::world::identity
         lux::engine::resource::identity
         lux::engine::function::script_artifact
+    PRIVATE
+        lux::cxx::container
 )
+
+find_package(lux-cxx REQUIRED COMPONENTS container)
 component_add_transitive_commands(
     simulation_script
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
@@ -101,4 +105,28 @@ lux_classify_target(
 add_test(
     NAME simulation_script_runtime_test
     COMMAND simulation_script_runtime_test
+)
+
+add_executable(
+    simulation_script_continuation_test
+    test/script_system_continuation_test.cpp
+)
+target_link_libraries(
+    simulation_script_continuation_test
+    PRIVATE lux::engine::simulation::simulation_script
+)
+if(MSVC)
+    target_compile_options(simulation_script_continuation_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_continuation_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_script_continuation_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME simulation_script_continuation_test
+    COMMAND simulation_script_continuation_test
 )

@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/SimulationSystemDescription.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
 #include <lux/engine/simulation/scripting/ScriptEndpointBridge.hpp>
 #include <lux/engine/simulation/ScriptSystemDescription.hpp>
 #include <lux/engine/simulation/script_system/visibility.h>
@@ -37,6 +38,17 @@ namespace lux::simulation::script
         bool (*resolve)(void*, const lux::world::WorldObjectId&, ecs::Entity&) noexcept{};
     };
 
+    struct ScriptRuntimeLimits final
+    {
+        std::size_t failure_capacity{};
+        std::size_t instance_capacity{};
+        std::size_t continuation_capacity{};
+        std::size_t awaitable_capacity{};
+        std::size_t resume_queue_capacity{};
+        std::size_t max_resume_payload_bytes{};
+        std::size_t resumes_per_stable_point{};
+    };
+
     namespace detail
     {
         struct ScriptAttachment final
@@ -50,11 +62,15 @@ namespace lux::simulation::script
         INVALID_INPUT,
         DUPLICATE_BACKEND_KIND,
         DUPLICATE_ENDPOINT,
+        SCRIPT_CAPABILITY_ID_COLLISION,
+        SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER,
         CAPACITY_EXCEEDED,
         ASSET_NOT_RESIDENT,
         INVALID_ASSET,
         SYMBOL_NOT_FOUND,
-        ENDPOINT_NOT_FOUND,
+        SCRIPT_ENDPOINT_NOT_FOUND,
+        SCRIPT_CAPABILITY_NOT_FOUND,
+        SCRIPT_CAPABILITY_SCHEMA_MISMATCH,
         SIGNATURE_MISMATCH,
         SCOPE_MISMATCH,
         BACKEND_NOT_AVAILABLE,
@@ -64,6 +80,9 @@ namespace lux::simulation::script
         INVOCATION_FAILURE,
         ALLOCATION_FAILURE,
         ENDPOINT_BUSY,
+        CONTINUATION_CAPACITY_EXCEEDED,
+        AWAITABLE_CAPACITY_EXCEEDED,
+        RESUME_QUEUE_FULL,
         SHUT_DOWN,
     };
 
@@ -95,9 +114,10 @@ namespace lux::simulation::script
             const SimulationDescription &simulation,
             const ScriptSystemDescription &description,
             ecs::Registry &registry,
-            std::size_t failure_capacity,
+            ScriptRuntimeLimits limits,
             ScriptArtifactResolver artifacts,
             WorldObjectResolver world,
+            std::span<const ScriptApiCapabilityPublication> capabilities,
             std::span<const ScriptBackendDescriptor> backends,
             std::span<const ScriptHookEndpointDescriptor> hooks,
             std::span<const ScriptEventEndpointDescriptor> events,
@@ -117,12 +137,16 @@ namespace lux::simulation::script
         prepare() noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
-        flushMutations() noexcept;
+        executeStablePoint() noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         shutdown() noexcept;
 
         [[nodiscard]] std::size_t activeInstanceCount() const noexcept;
+
+        [[nodiscard]] std::size_t activeContinuationCount() const noexcept;
+
+        [[nodiscard]] std::size_t activeAwaitableCount() const noexcept;
 
         [[nodiscard]] std::span<const ScriptSystemFailure> failures() const noexcept;
 

@@ -353,8 +353,9 @@ namespace
             simulation,
             *description,
             registry,
-            2U,
+            ScriptRuntimeLimits{2U, 1U, 4U, 4U, 4U, 64U, 4U},
             {&fixture, &resolveAsset},
+            {},
             {},
             backends,
             endpoints,
@@ -376,7 +377,7 @@ namespace
         const auto repeated_prepare = system.prepare();
         assert(!repeated_prepare);
         assert(repeated_prepare.error() == EScriptSystemError::ENDPOINT_BUSY);
-        const auto flushed = system.flushMutations();
+        const auto flushed = system.executeStablePoint();
         assert(!flushed);
         assert(flushed.error() == EScriptSystemError::ENDPOINT_BUSY);
 
@@ -388,7 +389,6 @@ namespace
         assert(fixture.leases == 1U && fixture.releases == 1U);
     }
 }
-
 int main()
 {
     using namespace lux::simulation;
@@ -461,9 +461,10 @@ int main()
         simulation,
         *description,
         registry,
-        8U,
+        ScriptRuntimeLimits{8U, 2U, 8U, 8U, 8U, 64U, 8U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
+        {},
         backends,
         hook_endpoints,
         event_endpoints
@@ -504,13 +505,13 @@ int main()
 
     const auto destroyed_entity = fixture.entity;
     registry.destroy(destroyed_entity);
-    const auto pending_world = system.flushMutations();
+    const auto pending_world = system.executeStablePoint();
     assert(!pending_world);
     assert(pending_world.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
     assert(system.activeInstanceCount() == 1U);
 
     fixture.entity = registry.create();
-    assert(system.flushMutations());
+    assert(system.executeStablePoint());
     assert(system.activeInstanceCount() == 2U);
     assert(backend_state.creates == 3U);
     assert(backend_state.prepares == 10U);
@@ -530,7 +531,7 @@ int main()
     assert(system.activeInstanceCount() == 1U);
     assert(system.failures().size() == 1U);
     assert(system.failures().front().status == 9);
-    assert(system.flushMutations());
+    assert(system.executeStablePoint());
     assert(backend_state.destroys == 2U);
     assert(backend_state.releases == 8U);
     assert(backend_state.releases - releases_before_fault == 4U);
@@ -540,6 +541,8 @@ int main()
     assert(hook.dispatch(step) == 1U);
     assert(backend_state.shutdown_error == EScriptSystemError::ENDPOINT_BUSY);
     assert(system.activeInstanceCount() == 1U);
+    const auto stopping_stable_point = system.executeStablePoint();
+    assert(!stopping_stable_point && stopping_stable_point.error() == EScriptSystemError::ENDPOINT_BUSY);
 
     assert(system.shutdown());
     assert(backend_state.destroys == 3U);

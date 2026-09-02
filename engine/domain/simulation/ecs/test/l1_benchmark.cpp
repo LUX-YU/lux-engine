@@ -697,8 +697,9 @@ namespace
                 simulation,
                 description,
                 registry,
-                1U,
+                ScriptRuntimeLimits{1U, count, count, count, count, 64U, count},
                 {this, &resolveArtifact},
+                {},
                 {},
                 std::span{&backend_descriptor, 1U},
                 std::span{&hook_descriptor, 1U},
@@ -982,7 +983,6 @@ namespace
         return 0;
     }
 }
-
 int main(int argc, char** argv)
 {
     const auto options = parseOptions(argc, argv);

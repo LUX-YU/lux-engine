@@ -4,11 +4,14 @@
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
+#include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
+#include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <variant>
+#include <span>
 
 namespace lux::simulation::script
 {
@@ -182,6 +185,24 @@ namespace lux::simulation::script
         lux::asset::AssetId asset;
         ScriptInstanceScope scope;
         ScriptBehavior* behavior{};
+        ScriptInstanceId instance;
+        std::span<const PreparedScriptApiCapability> capabilities;
+    };
+
+    struct BoundScriptStepCall final
+    {
+        void* context{};
+        ScriptStepResult (*invoke)(
+            void*,
+            lux_script_call_frame&,
+            ScriptStepContext&,
+            ScriptBackendContinuation&
+        ) noexcept{};
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return invoke != nullptr;
+        }
     };
 
     struct ScriptBackendDescriptor final
@@ -208,6 +229,17 @@ namespace lux::simulation::script
         void (*destroyInstance)(
             void*,
             ScriptBackendInstance
+        ) noexcept{};
+        EScriptBackendResult (*prepareStepMethod)(
+            void*,
+            ScriptBackendInstance,
+            const lux::rdesc::ScriptFunction&,
+            BoundScriptStepCall&
+        ) noexcept{};
+        void (*releaseStepMethod)(
+            void*,
+            ScriptBackendInstance,
+            BoundScriptStepCall
         ) noexcept{};
     };
 }

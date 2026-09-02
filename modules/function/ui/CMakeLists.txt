@@ -245,7 +245,12 @@ if(ENABLE_UI_TEST)
         src/DrawDataSnapshot.cpp
     )
     target_link_libraries(ui_drawdata_test PRIVATE imgui::core)
-    target_include_directories(ui_drawdata_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+    target_include_directories(
+        ui_drawdata_test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+            ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
+    )
     add_test(NAME ui_drawdata_test COMMAND ui_drawdata_test)
 
     add_executable(ui_public_frame_test test/ui_public_frame_test.cpp)

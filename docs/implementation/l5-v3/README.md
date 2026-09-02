@@ -4,9 +4,9 @@ Status: **Normative architecture + current implementation roadmap**
 
 This revision supersedes `lux-engine-architecture-implementation-docset-2026-09-02 v2`.
 
-Reviewed repository checkpoint: `main@4593ce9b02ddbe35d81de2ded309666ede0bb8da` (`docs(qualification): record l5 v2 foundation closure`).
+Reviewed repository checkpoint for this revision: `main@2caaa6f7b35ad759d32e9f9763a67dcb559b8860` (`test(ui): match snapshot linkage contract`).
 
-> v3 keeps the v2 ownership, VFS, execution, graph and product decisions, but updates the implementation plan to match the current halfway-implemented repository. It also introduces a normative Lux UI boundary that keeps Dear ImGui and imgui-node-editor private to `modules/function/ui`.
+> v3 keeps the ownership, VFS, execution, graph, product and Lux UI decisions, and now also freezes the runtime scripting capability/coroutine model. Dear ImGui remains private to `modules/function/ui`; Script API contracts remain independent of concrete providers such as Jolt/other physics backends.
 
 ## Major convergence changes
 
@@ -22,6 +22,11 @@ Reviewed repository checkpoint: `main@4593ce9b02ddbe35d81de2ded309666ede0bb8da` 
 10. **Graph rendering is backend-isolated.** `GraphEditingSession` and `GraphRenderProtocol` remain as implemented; the default renderer consumes `ui::NodeCanvas`, while imgui-node-editor is hidden inside the UI backend.
 11. **Product/runtime decisions remain unchanged.** Final game output is project-specific; `PLAYER` is only a runtime-clean qualification profile; VFS remains explicit/product-wide; async script work still requires explicit continuation/suspension.
 12. **Persistence and Product STOP gates remain.** Material/Flow durable source persistence, Flow stable ScriptSymbol identity and project target-generation input formats must be approved before those features are completed.
+13. **Script API is now a capability contract.** Scripts depend on stable callable contracts such as `PhysicsQuery3D`; Scene/System/integration providers implement those contracts. Missing/incompatible capabilities fail script mount early.
+14. **Coroutine/await is the canonical cross-frame script control-flow model.** FlowForge uses an explicit state machine; Lua/C++/future Python may use native language coroutine mechanisms behind one backend-neutral continuation/awaitable contract.
+15. **Event + await coexist.** Hook/Event remain engine-to-script contracts; `Event.next(...)` may be awaited without turning EventPoint into a per-coroutine connection framework.
+16. **Delay semantics are split.** `Delay.seconds()` means Simulation time; `Delay.realSeconds()` uses monotonic real time; all script resume still occurs only at an explicit Simulation stable point.
+17. **Script API contract does not mandate dispatch.** Dynamic `context + function pointer` binding is allowed at dynamic boundaries; project-specific C++/FlowForge shipping paths may use generated/static specialization and Link Time Optimization for hot calls.
 
 ## Terminology
 
@@ -34,10 +39,11 @@ Reviewed repository checkpoint: `main@4593ce9b02ddbe35d81de2ded309666ede0bb8da` 
 
 ## Current implementation checkpoint
 
-The reviewed code direction is acceptable and should be continued after a narrow repair/requalification pass:
+The reviewed repository has moved beyond the original foundation-only checkpoint：
 
 ```text
-Implemented foundation direction:
+Closed/preserved foundation:
+    R0  Foundation requalification/hotfix
     B   L2 Execution
     V1  AssetVfs read/control split
     V2  VFS-backed AssetRead / blocking IO isolation
@@ -45,19 +51,21 @@ Implemented foundation direction:
     F   Shared Graph Source
     G   Graph editing/render protocol split
 
-Immediate gate before new feature work:
-    R0  Foundation Requalification / hotfix
+Editor/UI implementation now present:
+    U0/U1 direction  Lux UI backend isolation + real windowed UI presentation
+    C direction      generated EntityInspector mounted as a real visible slice
 
-Next Editor work:
-    U   Lux UI Foundation / ImGui isolation
-    C   Generated EntityInspector
-    D   AssetBrowser + FileMonitor
-    E   SceneEditor / Outliner / Viewport
+Immediate Editor gate:
+    qualify/close the current visible U/C checkpoint before broadening Editor feature scope
 
-Later:
-    H/I MaterialEditor / FlowForgeEditor after UI + persistence prerequisites
-    S   Runtime async scripting after an explicit continuation ABI/design gate
-    P   Project target generation remains STOP until manifest/target spec approval
+Runtime scripting:
+    S0 design        FROZEN by `11-script-api-capabilities-coroutines-and-await.md`
+    S1+              may begin after the current U/C checkpoint qualification; it does not wait for D/E/U2 completion
+
+Later Editor/product work:
+    D/E              AssetBrowser + SceneEditor can proceed in parallel with scripting after their gates
+    H/I              MaterialEditor / FlowForgeEditor after UI + persistence prerequisites
+    P                project target generation remains STOP until manifest/target spec approval
 ```
 
 ## Reading order
@@ -68,6 +76,7 @@ Later:
 4. `10-lux-ui-foundation-and-legacy-visual-parity.md` for any Editor UI work
 5. Current-wave functional document(s)
 6. `09-product-runtime-vfs-and-async-script.md` whenever work touches product composition, VFS ownership, asset IO or script/cross-frame async behavior
+7. `11-script-api-capabilities-coroutines-and-await.md` for any Script API, capability binding, coroutine/await, Event.await or async script implementation
 
 File numbering is reading organization, **not implementation order**.
 
@@ -84,13 +93,15 @@ File numbering is reading organization, **not implementation order**.
 - `08-normative-execution-contract.md` — highest-priority MUST/MUST NOT/STOP contract for coding agents.
 - `09-product-runtime-vfs-and-async-script.md` — generated product target model, product-wide capabilities, VFS ownership/concurrency and async script/cross-frame contract.
 - `10-lux-ui-foundation-and-legacy-visual-parity.md` — Lux UI public/private boundary, object/immediate-mode model, Theme, Legacy visual parity, plugin/codegen and graph UI rules.
+- `11-script-api-capabilities-coroutines-and-await.md` — Script API capability contracts, mount requirements, backend-neutral continuation/awaitable model, Event.await, Simulation/real-time Delay semantics, language projections and static/dynamic binding performance policy.
 
 ## Normative priority
 
 1. Current repository canonical L0–L4/L5 topology facts that have not been explicitly superseded by an approved architecture decision.
-2. `08-normative-execution-contract.md`.
-3. `07-implementation-roadmap-and-gates.md`.
-4. `10-lux-ui-foundation-and-legacy-visual-parity.md` for UI/backend questions.
-5. Functional design documents.
+2. For Script API capability / coroutine / await / Event.await / Delay-time semantics: `11-script-api-capabilities-coroutines-and-await.md`. It explicitly supersedes conflicting older scripting clauses in `06`/`07`/`08`/`09`.
+3. `08-normative-execution-contract.md` for general ownership/execution MUST/MUST NOT rules not superseded by item 2.
+4. `07-implementation-roadmap-and-gates.md`.
+5. `10-lux-ui-foundation-and-legacy-visual-parity.md` for UI/backend questions.
+6. Functional design documents.
 
 If implementation requires changing an owner, introducing a global singleton/service locator, exposing ImGui outside the private UI backend, creating a retained-mode widget framework, adding a new architecture layer, or resolving a STOP condition, the coding agent MUST stop for architecture review rather than improvise.

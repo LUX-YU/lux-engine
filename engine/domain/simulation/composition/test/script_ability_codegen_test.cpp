@@ -12,6 +12,7 @@
 #include <concepts>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 namespace
 {
@@ -214,6 +215,20 @@ int main()
     static_assert(ScriptAbilityTraits<TestAbility>::Description.methods.size() == 5U);
     static_assert(ScriptAbilityTraits<TestStatelessAbility>::Description.methods.size() == 1U);
     static_assert(ScriptAbilityTraits<TestAbility>::Description.schema_version == 1U);
+    constexpr auto ReversedMethods = []() consteval {
+        auto methods = ScriptAbilityTraits<TestAbility>::Methods;
+        for (std::size_t index{}; index < methods.size() / 2U; ++index)
+            std::swap(methods[index], methods[methods.size() - index - 1U]);
+        return methods;
+    }();
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            ScriptAbilityTraits<TestAbility>::Receiver,
+            ReversedMethods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) == ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
     constexpr auto ChangedMethods = []() consteval {
         auto methods = ScriptAbilityTraits<TestAbility>::Methods;
         methods[0].kind = lux::script::EScriptApiMethodKind::COMMAND;
@@ -225,6 +240,74 @@ int main()
             ScriptAbilityTraits<TestAbility>::Receiver,
             ChangedMethods,
             ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) != ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
+    static constexpr std::array ChangedParameters{
+        lux::script::ScriptAbilityParameterDescription{
+            "input",
+            lux::script::makeScriptAbilityValue<std::uint32_t>(
+                lux::script::EScriptAbilityValueLifetime::OWNED_VALUE
+            )
+        }
+    };
+    constexpr auto ChangedParameterMethods = []() consteval {
+        auto methods = ScriptAbilityTraits<TestAbility>::Methods;
+        methods[0].parameters = ChangedParameters;
+        return methods;
+    }();
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            ScriptAbilityTraits<TestAbility>::Receiver,
+            ChangedParameterMethods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) != ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
+    static constexpr std::array ChangedResults{
+        lux::script::makeScriptAbilityValue<std::int32_t>(
+            lux::script::EScriptAbilityValueLifetime::STABLE_ID
+        )
+    };
+    constexpr auto ChangedLifetimeMethods = []() consteval {
+        auto methods = ScriptAbilityTraits<TestAbility>::Methods;
+        methods[0].results = ChangedResults;
+        return methods;
+    }();
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            ScriptAbilityTraits<TestAbility>::Receiver,
+            ChangedLifetimeMethods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) != ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
+    constexpr auto ChangedDisplayMethods = []() consteval {
+        auto methods = ScriptAbilityTraits<TestAbility>::Methods;
+        methods[0].display_name = "Renamed Display";
+        return methods;
+    }();
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            ScriptAbilityTraits<TestAbility>::Receiver,
+            ChangedDisplayMethods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) == ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            lux::script::EScriptAbilityReceiverKind::NONE,
+            ScriptAbilityTraits<TestAbility>::Methods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version
+        ) != ScriptAbilityTraits<TestAbility>::Description.schema_hash
+    );
+    static_assert(
+        lux::script::scriptAbilitySchemaHash(
+            ScriptAbilityTraits<TestAbility>::Contract,
+            ScriptAbilityTraits<TestAbility>::Receiver,
+            ScriptAbilityTraits<TestAbility>::Methods,
+            ScriptAbilityTraits<TestAbility>::Description.schema_version + 1U
         ) != ScriptAbilityTraits<TestAbility>::Description.schema_hash
     );
 

@@ -142,6 +142,41 @@ add_test(
         -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
 )
 
+add_executable(
+    simulation_script_ability_duplicate_method_negative
+    EXCLUDE_FROM_ALL
+    test/script_ability_duplicate_method_codegen.cpp
+)
+target_include_directories(
+    simulation_script_ability_duplicate_method_negative
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+        ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test
+)
+target_link_libraries(
+    simulation_script_ability_duplicate_method_negative
+    PRIVATE lux::engine::function::script_core
+)
+lux_script_abilities(
+    TARGET simulation_script_ability_duplicate_method_negative
+    SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/DuplicateMethodIdAbility.hpp
+    LOGICAL_PATHS DuplicateMethodIdAbility.hpp
+)
+lux_classify_target(
+    TARGET  simulation_script_ability_duplicate_method_negative
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    COMPOSITION
+)
+add_test(
+    NAME simulation_script_ability_duplicate_method_negative
+    COMMAND ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=simulation_script_ability_duplicate_method_negative
+        -DEXPECTED_PATTERN=duplicate.Script.Ability.MethodId
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)
+
 if(TARGET script_lua AND TARGET flowforge)
     include_component_cmake_scripts(script_lua)
     add_executable(

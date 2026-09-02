@@ -43,6 +43,7 @@ namespace lux::script
                 {{ method.spelling }}Results
             }{% set emitted = true %}{% endif %}{% endfor %}
         };
+        static_assert(scriptAbilityMethodIdsUnique(Methods), "Script Ability MethodId values must be unique");
         inline static constexpr ScriptAbilityDescription Description{
             Contract,
             "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "display", rec.name)) }}",

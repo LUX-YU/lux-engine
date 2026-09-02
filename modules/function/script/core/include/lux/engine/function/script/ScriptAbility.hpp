@@ -9,6 +9,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <type_traits>
@@ -151,7 +152,40 @@ namespace lux::script
             hash.u32(value.alignment);
             hash.byte(static_cast<std::uint8_t>(value.lifetime));
         }
+
+        [[nodiscard]] constexpr std::size_t canonicalMethodRank(
+            std::span<const ScriptAbilityMethodDescription> methods,
+            std::size_t candidate
+        ) noexcept
+        {
+            std::size_t rank{};
+            for (std::size_t index{}; index < methods.size(); ++index)
+            {
+                const auto left = methods[index].id.name();
+                const auto right = methods[candidate].id.name();
+                if (left < right || (left == right && index < candidate))
+                    ++rank;
+            }
+            return rank;
+        }
     } // namespace detail
+
+    [[nodiscard]] constexpr bool scriptAbilityMethodIdsUnique(
+        std::span<const ScriptAbilityMethodDescription> methods
+    ) noexcept
+    {
+        for (std::size_t left{}; left < methods.size(); ++left)
+        {
+            if (!methods[left].id.isValid())
+                return false;
+            for (std::size_t right{left + 1U}; right < methods.size(); ++right)
+            {
+                if (methods[left].id == methods[right].id)
+                    return false;
+            }
+        }
+        return true;
+    }
 
     [[nodiscard]] constexpr std::uint64_t scriptAbilitySchemaHash(
         ScriptApiContractIdView id,
@@ -160,13 +194,28 @@ namespace lux::script
         std::uint32_t schema_version = 1U
     ) noexcept
     {
+        if (!id.isValid() || !scriptAbilityMethodIdsUnique(methods))
+            return 0U;
+
         detail::AbilitySchemaHasher hash;
         hash.u32(schema_version);
         hash.text(id.name());
         hash.byte(static_cast<std::uint8_t>(receiver));
         hash.u32(static_cast<std::uint32_t>(methods.size()));
-        for (const auto& method : methods)
+        for (std::size_t ordinal{}; ordinal < methods.size(); ++ordinal)
         {
+            const ScriptAbilityMethodDescription* canonical{};
+            for (std::size_t candidate{}; candidate < methods.size(); ++candidate)
+            {
+                if (detail::canonicalMethodRank(methods, candidate) == ordinal)
+                {
+                    canonical = std::addressof(methods[candidate]);
+                    break;
+                }
+            }
+            if (canonical == nullptr)
+                return 0U;
+            const auto& method = *canonical;
             hash.text(method.id.name());
             hash.byte(static_cast<std::uint8_t>(method.kind));
             hash.u32(static_cast<std::uint32_t>(method.parameters.size()));

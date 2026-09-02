@@ -1,8 +1,9 @@
 # Lux UI Foundation、Dear ImGui Isolation 与 Legacy Visual / Interaction Parity
 
-Status: **Normative L0 UI / L5 Editor Integration Design (v3 docset)**
-
+Status: **Normative L0 UI / L5 Editor Integration Design (v3 docset)**  
 Parent documents: `00-L5-architecture-overview.md`, `07-implementation-roadmap-and-gates.md`, `08-normative-execution-contract.md`
+
+---
 
 ## 1. 目标
 
@@ -10,14 +11,18 @@ Lux 需要尽快进入真实 Editor UI 开发，但不能让每个 L5 feature �
 
 本设计冻结以下目标：
 
-- `modules/function/ui` 是 Lux 公共 UI 边界。
-- Dear ImGui / imgui-node-editor 只存在于该 module 的 private backend implementation。
-- Editor、generated binding、plugin SDK 只看见 Lux UI 类型与 API。
-- 长生命周期语义对象采用 object-oriented 组织；leaf widget 保持 immediate-mode。
-- Legacy 可作为 selected visual / interaction / behavior reference，但不是 ownership/architecture source of truth。
-- UI styling 通过 Theme/design tokens 收敛，不在各个窗口复制 magic colors/spacing。
-- 不为理论上的第二 backend 提前创建 `IUiBackend` 虚接口体系。
-- 首轮 UI foundation 只实现 C/D/E/G/H/I 真实需要的 surface；不造通用 GUI framework。
+```text
+1. modules/function/ui 是 Lux 公共 UI 边界。
+2. Dear ImGui / imgui-node-editor 只存在于该 module 的 private backend implementation。
+3. Editor、generated binding、plugin SDK 只看见 Lux UI 类型与 API。
+4. 长生命周期语义对象采用 object-oriented 组织；leaf widget 保持 immediate-mode。
+5. Legacy 可作为 selected visual / interaction / behavior reference，但不是 ownership/architecture source of truth。
+6. UI styling 通过 Theme/design tokens 收敛，不在各个窗口复制 magic colors/spacing。
+7. 不为理论上的第二 backend 提前创建 IUiBackend 虚接口体系。
+8. 首轮 UI foundation 只实现 C/D/E/G/H/I 真实需要的 surface；不造通用 GUI framework。
+```
+
+---
 
 ## 2. 层级与依赖方向
 
@@ -62,6 +67,8 @@ engine/editor/* -> imgui-node-editor.h
 
 The only normal production target allowed to compile/link those backend APIs directly is the private Lux UI backend target/source set. Backend-specific tests may be colocated with that implementation.
 
+---
+
 ## 3. Public API 不得泄漏 backend vocabulary
 
 Lux public UI headers MUST NOT expose or transitively require：
@@ -99,6 +106,8 @@ ui::NodeCanvas
 
 如果一个 feature 需要一个当前 public Lux UI 不能表达的 backend-specific capability，coding agent MUST first determine whether it is a real reusable UI semantic. It MUST NOT solve the problem by leaking `ImGui*` through an escape hatch.
 
+---
+
 ## 4. Object-oriented semantic UI + immediate-mode leaf controls
 
 Lux UI 的“面向对象感”冻结在正确层级。
@@ -112,6 +121,7 @@ ui::UISession
 ui::Pane
 ui::CommandRouter
 ui::ViewportElement
+
 EntityInspector
 AssetBrowser
 SceneEditor
@@ -186,6 +196,8 @@ TreeView asset_tree_;
 
 unless a specific control has real persistent semantic state that cannot be represented by feature-local model state + immediate draw.
 
+---
+
 ## 5. 不创建 retained-mode widget framework
 
 The Lux UI layer is not Qt/WPF-like retained-mode UI and is not a second scene graph.
@@ -207,13 +219,28 @@ Feature data remains owned by the feature/domain. The UI renders current state a
 
 This keeps the useful Dear ImGui execution model while preventing backend API leakage.
 
+---
+
 ## 6. 不提前创建 `IUiBackend`
 
-Current architecture has one real UI backend. Therefore v1 MUST NOT introduce a virtual leaf interface with hundreds of `button`/`checkbox`/`text` calls.
+Current architecture has one real UI backend. Therefore v1 MUST NOT introduce：
+
+```cpp
+class IUiBackend
+{
+public:
+    virtual bool button(...) = 0;
+    virtual bool checkbox(...) = 0;
+    virtual void text(...) = 0;
+    // hundreds of virtual leaf calls
+};
+```
 
 Backend hiding is achieved by C++ target/source/private implementation boundaries, not by virtual dispatch at every widget call.
 
 A backend interface may only be designed after a second real backend exists or an independently approved test/backend requirement proves the need. Until then, adding an abstract backend is over-abstraction and a STOP/review condition.
+
+---
 
 ## 7. UISession、Frame 与 backend ownership
 
@@ -246,6 +273,8 @@ application begins UI frame
 
 Feature code MUST NOT call backend global frame functions directly.
 
+---
+
 ## 8. Theme / design tokens
 
 Legacy-like visual consistency MUST be represented through an explicit Lux theme rather than repeated literal styling in panes.
@@ -268,11 +297,26 @@ Theme
 └─ GraphStyle
 ```
 
-Examples of data that belong in Theme/tokens：panel padding, row height, item/section spacing, selection/background/border colors, toolbar height, property label/value behavior, tree indentation, asset tile metrics, and graph node/pin/link metrics.
+Examples of data that belong in Theme/tokens：
+
+```text
+panel padding
+row height
+item spacing
+section spacing
+selection/background/border colors
+toolbar height
+property label/value column behavior
+tree indentation
+asset thumbnail/tile metrics
+graph node chrome/pin/link metrics
+```
 
 Feature code MAY choose semantic variants (`warning`, `selected`, `disabled`, `primary action`, domain node category), but SHOULD NOT duplicate raw RGB values and global spacing constants.
 
 DPI/font scaling must be handled at UISession/Theme/backend boundary. Panes must not assume a fixed framebuffer pixel density.
+
+---
 
 ## 9. Legacy reference contract
 
@@ -321,6 +365,8 @@ Pixel-perfect output is not a normative requirement because font rasterization, 
 
 For important surfaces, side-by-side reference screenshots MAY be used as review evidence. Screenshot tests SHOULD focus on layout/style regressions only after the UI is deterministic enough to make them useful.
 
+---
+
 ## 10. Generated Inspector / Value Binding contract
 
 Generated UI MUST target Lux UI, not Dear ImGui.
@@ -339,7 +385,13 @@ Lux UI public API
 ImGui backend
 ```
 
-Forbidden path：generated source including `imgui.h` and calling `ImGui::DragScalar(...)`.
+Forbidden path：
+
+```text
+generated source
+    -> #include <imgui.h>
+    -> ImGui::DragScalar(...)
+```
 
 `EditorValueBinding<T>` is the stable typed semantic layer for primitive/property editing. It receives enough Lux UI/context capability to draw and report mutation/gesture lifecycle without knowing backend types.
 
@@ -358,6 +410,8 @@ struct EditorValueBinding<double>
 ```
 
 The private ImGui backend MUST preserve `double` precision using appropriate scalar APIs; generated/public code never names `ImGuiDataType_Double`.
+
+---
 
 ## 11. Property editing and gesture semantics
 
@@ -387,6 +441,8 @@ struct EditResult final
 ```
 
 Exact names are implementation-level, but EntityInspector/Gizmo/Graph editing MUST be able to implement canonical undo gesture semantics without using ImGui internals.
+
+---
 
 ## 12. Tables、Trees、Menus、Popup、Drag/Drop
 
@@ -418,27 +474,66 @@ AssetBrowser
 
 MUST NOT expose ImGui payload pointer lifetime as the domain contract.
 
+---
+
 ## 13. Texture / image presentation seam
 
 Public UI MUST NOT expose `ImTextureID`.
 
-Use an opaque Lux presentation handle such as `ui::TextureHandle` or an already-existing equivalent render/UI presentation handle if the current codebase provides one.
+Use an opaque Lux presentation handle such as：
+
+```text
+ui::TextureHandle
+```
+
+or an already-existing equivalent render/UI presentation handle if the current codebase provides one.
 
 Mapping to backend texture identifiers belongs to `UISession`/private render bridge.
 
-This seam is used by Asset thumbnails, Material preview, Scene viewport presentation, and icons/atlas where applicable.
+This seam is used by：
+
+```text
+Asset thumbnails
+Material preview
+Scene viewport presentation
+icons/atlas where applicable
+```
 
 The UI layer does not own the underlying RenderRuntime/device/resource lifetime unless an existing narrow UI resource contract explicitly says so.
+
+---
 
 ## 14. ViewportElement
 
 `ui::ViewportElement` remains a backend-independent UI interaction/presentation seam.
 
-It may expose Lux semantics such as content size/origin, local pointer coordinates, hover/focus, resize, mouse/button interaction, drag/drop target, and presentation texture/target handle.
+It may expose Lux semantics such as：
 
-It MUST NOT learn about Scene, Entity, Material, Model, RenderRuntime ownership, Vulkan/DirectX/Metal backend objects, or ImGui types.
+```text
+content size/origin
+local pointer coordinates
+hover/focus
+resize
+mouse/button interaction
+drag/drop target
+presentation texture/target handle
+```
+
+It MUST NOT learn about：
+
+```text
+Scene
+Entity
+Material
+Model
+RenderRuntime ownership
+Vulkan/DirectX/Metal backend objects
+ImGui types
+```
 
 SceneEditor interprets those Lux UI facts using L3/L5 capabilities.
+
+---
 
 ## 15. Graph NodeCanvas isolation
 
@@ -460,11 +555,24 @@ imgui-node-editor / Dear ImGui
 
 `ui::NodeCanvas` is a presentation/interaction primitive, not a graph source model. It MUST NOT own Material/Flow topology or semantic rules.
 
-Public `NodeCanvas` may express begin/end node, node/pin presentation ids, node position/layout facts, pin/link draw calls, selection/hover, connection/context gestures, and canvas zoom/pan facts.
+Public `NodeCanvas` may express：
+
+```text
+begin/end node
+node/pin presentation ids
+node position/layout facts
+pin/link draw calls
+selection/hover
+connection gesture
+context gesture
+canvas zoom/pan facts
+```
 
 Graph `NodeId`/`PinId` remain owned by `modules/function/graph`; the renderer adapts them to any UI presentation identity needed by `NodeCanvas`.
 
 MUST NOT move Graph undo/topology mutation into `NodeCanvas`.
+
+---
 
 ## 16. Plugin UI contract
 
@@ -484,6 +592,8 @@ window factory/contribution
 It MUST NOT require plugin authors to include Dear ImGui or imgui-node-editor.
 
 Plugin code that intentionally bypasses this and directly links ImGui is outside the supported Editor UI ABI/SDK contract and MUST NOT be required for normal plugin functionality.
+
+---
 
 ## 17. Source topology recommendation
 
@@ -515,6 +625,8 @@ modules/function/ui/
 ```
 
 This is not permission to create all files up front. Wave U should add only the public concepts actually consumed by C/D/E/G/H/I.
+
+---
 
 ## 18. Wave U implementation split
 
@@ -565,6 +677,8 @@ remove backend types/includes from engine/editor graph public/private feature co
 
 H/I require U2 for their graph UI path.
 
+---
+
 ## 19. Qualification / dependency guards
 
 Wave U must add automated guards, not only code-review convention.
@@ -581,6 +695,8 @@ At minimum：
 ```
 
 A repository dependency probe/grep is acceptable as an additional guard, but compile/link closure is the stronger proof.
+
+---
 
 ## 20. Legacy parity review gate
 
@@ -602,6 +718,8 @@ Graph:
 
 Parity review MUST NOT block architecture improvements merely because Legacy internal behavior depended on broken ownership. In conflicts, current normative architecture wins.
 
+---
+
 ## 21. Explicit non-goals
 
 Wave U is NOT：
@@ -616,6 +734,8 @@ a reason to move domain state into widgets
 a reason to make every UI element a LuxObject
 a reason to expose ImGui escape hatches
 ```
+
+---
 
 ## 22. MUST NOT list
 
@@ -634,6 +754,8 @@ No NodeCanvas ownership of Graph source/edit semantics.
 No Legacy ownership architecture copied for visual parity.
 ```
 
+---
+
 ## 23. Ready definition
 
 Lux UI Foundation is ready when：
@@ -649,5 +771,7 @@ Graph default renderer reaches imgui-node-editor only through ui::NodeCanvas pri
 Legacy visual/interaction review can be performed independently from architecture ownership
 no retained-mode widget framework or speculative backend abstraction was introduced
 ```
+
+---
 
 > Coding implementation MUST also comply with `08-normative-execution-contract.md` and the execution order in `07-implementation-roadmap-and-gates.md`.

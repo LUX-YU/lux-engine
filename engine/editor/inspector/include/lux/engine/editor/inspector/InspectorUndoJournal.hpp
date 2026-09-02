@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <memory>
 #include <new>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -97,7 +98,7 @@ namespace lux::editor::inspector
                 lux::cxx::TypeToken operation_component,
                 lux::cxx::TypeToken operation_value,
                 std::string_view operation_field
-            ) noexcept
+            )
                 : target(operation_target),
                   component(operation_component),
                   value(operation_value),
@@ -122,7 +123,7 @@ namespace lux::editor::inspector
             EditorSelectionValue target;
             lux::cxx::TypeToken component;
             lux::cxx::TypeToken value;
-            std::string_view field;
+            std::string field;
         };
 
         template<class Component, class Value>

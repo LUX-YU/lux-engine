@@ -28,6 +28,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace
@@ -215,6 +216,34 @@ int main()
     assert(pane.undoJournal().redo(context));
     assert(registry.get<ecs::Transform3D>(entity).translation == after_translation);
     assert(observer.update_count == 3);
+
+    pane.undoJournal().clear();
+    auto& light = registry.emplace<ecs::Light3D>(entity);
+    const auto before_light = light.value;
+    auto after_light = before_light;
+    after_light.type = lux::rdesc::ELightType::SPOT;
+    std::string dynamic_field = "value";
+    assert((pane.undoJournal().begin<ecs::Light3D, lux::rdesc::LightDescription>(
+        selection.current(),
+        dynamic_field,
+        before_light,
+        inspector::applyPlainField<ecs::Light3D, &ecs::Light3D::value>
+    )));
+    assert((inspector::applyPlainField<ecs::Light3D, &ecs::Light3D::value>(registry, entity, after_light)));
+    dynamic_field.clear();
+    dynamic_field.shrink_to_fit();
+    const std::string commit_field = "value";
+    assert((pane.undoJournal().commit<ecs::Light3D, lux::rdesc::LightDescription>(
+        selection.current(),
+        commit_field,
+        after_light
+    )));
+    assert(!pane.undoJournal().hasActiveGesture());
+    assert(pane.undoJournal().undoDepth() == 1U);
+    assert(pane.undoJournal().undo(context));
+    assert(registry.get<ecs::Light3D>(entity).value == before_light);
+    assert(pane.undoJournal().redo(context));
+    assert(registry.get<ecs::Light3D>(entity).value == after_light);
 
     assert((pane.undoJournal().begin<ecs::Parent, ecs::Entity>(
         selection.current(),

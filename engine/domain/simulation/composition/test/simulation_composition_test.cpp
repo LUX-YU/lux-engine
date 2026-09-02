@@ -5,6 +5,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -311,6 +312,31 @@ int main()
 
     {
         Registry registry;
+        const std::array<
+            std::pair<lux::system::SystemInstanceId, const SimulationSystemDescription*>,
+            0U
+        > systems{};
+        auto simulation = Simulation::create(registry, description(systems), registry_types);
+        assert(simulation);
+        assert(simulation->execute(*executor, SimulationDuration{7}));
+        assert(simulation->execute(*executor, SimulationDuration{}));
+        const auto before_invalid = simulation->clock().snapshot();
+        const auto negative = simulation->execute(*executor, SimulationDuration{-1});
+        assert(!negative && negative.error().code == ESimulationExecutionError::INVALID_STEP_TIME);
+        assert(simulation->clock().snapshot().elapsed == before_invalid.elapsed);
+        const auto overflow = simulation->execute(
+            *executor,
+            SimulationDuration{std::numeric_limits<SimulationDuration::rep>::max()}
+        );
+        assert(!overflow && overflow.error().code == ESimulationExecutionError::INVALID_STEP_TIME);
+        const auto clock = simulation->clock().snapshot();
+        assert(clock.elapsed == SimulationDuration{7});
+        assert(clock.delta == SimulationDuration{});
+        assert(clock.step_index == 2U);
+    }
+
+    {
+        Registry registry;
         TestContext context;
         registry.ctx().emplace<TestContext>(std::move(context));
         const std::array systems{
@@ -325,7 +351,11 @@ int main()
         );
         assert(simulation);
         Simulation moved = std::move(*simulation);
-        assert(moved.execute(*executor));
+        assert(moved.execute(*executor, SimulationDuration{5}));
+        const auto clock = moved.clock().snapshot();
+        assert(clock.elapsed == SimulationDuration{5});
+        assert(clock.delta == SimulationDuration{5});
+        assert(clock.step_index == 1U);
         const auto& result = registry.ctx().get<TestContext>();
         assert((result.order == std::vector<int>{1, 2}));
     }
@@ -336,7 +366,11 @@ int main()
         const std::array systems{std::pair{CommandId, &CommandSystem::Description}};
         auto simulation = Simulation::create(registry, description(systems), registry_types);
         assert(simulation);
-        assert(simulation->execute(*executor));
+        assert(simulation->execute(*executor, SimulationDuration{}));
+        const auto clock = simulation->clock().snapshot();
+        assert(clock.elapsed == SimulationDuration{});
+        assert(clock.delta == SimulationDuration{});
+        assert(clock.step_index == 1U);
         assert(registry.view<const Marker>().size() == 1U);
     }
 
@@ -347,7 +381,7 @@ int main()
         const std::array systems{std::pair{CommandId, &CommandSystem::Description}};
         auto simulation = Simulation::create(registry, description(systems), registry_types);
         assert(simulation);
-        auto executed = simulation->execute(*executor);
+        auto executed = simulation->execute(*executor, SimulationDuration{1});
         assert(!executed);
         assert(executed.error().code == ESimulationExecutionError::SYSTEM_TASK_FAILURE);
         assert(executed.error().system == CommandId);

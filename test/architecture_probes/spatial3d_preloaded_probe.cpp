@@ -1091,7 +1091,7 @@ int main()
         }
 
         auto executor = lux::task::TaskExecutor::create({0U, 1U});
-        if (!executor || !(*scene)->simulation().execute(*executor))
+        if (!executor || !(*scene)->simulation().execute(*executor, lux::simulation::SimulationDuration{1}))
             return 6;
         const auto& state = (*scene)->registry().ctx().get<Spatial3DProbeState>();
         if (!state.ran || !state.contact || state.partition.value != 0U)

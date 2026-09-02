@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationDescription.hpp>
+#include <lux/engine/simulation/SimulationClock.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/composition/visibility.h>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
@@ -18,6 +19,7 @@ namespace lux::simulation
 {
     enum class ESimulationExecutionError : std::uint8_t
     {
+        INVALID_STEP_TIME,
         TASK_EXECUTOR_FAILURE,
         SYSTEM_TASK_FAILURE,
         ECS_COMMAND_FAILURE,
@@ -52,8 +54,10 @@ namespace lux::simulation
         [[nodiscard]] std::span<const script::ScriptApiCapabilityPublication>
         scriptApiCapabilities() const noexcept;
 
+        [[nodiscard]] const SimulationClock& clock() const noexcept;
+
         [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure>
-        execute(task::TaskExecutor& executor) noexcept;
+        execute(task::TaskExecutor& executor, SimulationDuration effective_delta) noexcept;
 
     private:
         struct Impl;

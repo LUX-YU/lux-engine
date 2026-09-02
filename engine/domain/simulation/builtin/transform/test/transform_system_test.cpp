@@ -254,9 +254,9 @@ namespace
         assert(simulation);
         auto executor = lux::task::TaskExecutor::create({0U, 1U});
         assert(executor);
-        assert(simulation->execute(*executor));
+        assert(simulation->execute(*executor, lux::simulation::SimulationDuration{1}));
         assert(reparent(registry, child, root));
-        assert(simulation->execute(*executor));
+        assert(simulation->execute(*executor, lux::simulation::SimulationDuration{1}));
 
         const auto world2d = registry.get<WorldTransform2D>(child).value.translation();
         const auto world3d = registry.get<WorldTransform3D>(child).value.translation();
@@ -266,7 +266,7 @@ namespace
         assert(near(world3d.y(), 204.0));
         assert(near(world3d.z(), 305.0));
 
-        assert(simulation->execute(*executor));
+        assert(simulation->execute(*executor, lux::simulation::SimulationDuration{1}));
     }
 
     void testRegisteredCompositionDiscardsBothDimensionsOnFailure()
@@ -290,7 +290,7 @@ namespace
         assert(simulation);
         auto executor = lux::task::TaskExecutor::create({0U, 1U});
         assert(executor);
-        const auto executed = simulation->execute(*executor);
+        const auto executed = simulation->execute(*executor, lux::simulation::SimulationDuration{1});
         assert(!executed);
         assert(!registry.all_of<WorldTransform2D>(first));
         assert(!registry.all_of<WorldTransform3D>(first));

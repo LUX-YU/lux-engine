@@ -24,5 +24,5 @@ int main()
         return 2;
 
     auto executor = lux::task::TaskExecutor::create({0U, 0U});
-    return executor && simulation->execute(*executor) ? 0 : 3;
+    return executor && simulation->execute(*executor, lux::simulation::SimulationDuration{1}) ? 0 : 3;
 }

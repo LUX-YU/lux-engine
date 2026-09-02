@@ -506,7 +506,7 @@ namespace
         auto executor = lux::task::TaskExecutor::create({0U, 1U});
         if (!executor)
             throw std::runtime_error("Jolt probe TaskExecutor creation failed");
-        const auto executed = simulation->execute(*executor);
+        const auto executed = simulation->execute(*executor, lux::simulation::SimulationDuration{1});
         if (!executed)
             throw std::runtime_error("Jolt probe primary task failed");
         return registry.ctx().get<ProbeContext>().result;

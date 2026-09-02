@@ -96,7 +96,7 @@ int main()
                     -2.0
                 };
             });
-            if (!simulation->execute(*executor))
+            if (!simulation->execute(*executor, lux::simulation::SimulationDuration{1}))
             {
                 simulation_failed.store(true, std::memory_order_relaxed);
                 return;

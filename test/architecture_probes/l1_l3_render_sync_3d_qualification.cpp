@@ -400,7 +400,9 @@ int main()
     registry.emplace<simulation::ecs::WorldTransform3D>(light_entity, light_transform);
 
     auto executor = task::TaskExecutor::create(task::TaskExecutorConfig{0U, 64U});
-    if (!executor || !scene_value.simulation().execute(*executor) || !scene_value.executeStablePoint())
+    if (!executor ||
+        !scene_value.simulation().execute(*executor, lux::simulation::SimulationDuration{1}) ||
+        !scene_value.executeStablePoint())
     {
         return 15;
     }
@@ -445,7 +447,8 @@ int main()
             }.toRotationMatrix();
             transform.value.translation().z() = -2.0;
         });
-        if (!scene_value.simulation().execute(*executor) || !scene_value.executeStablePoint() ||
+        if (!scene_value.simulation().execute(*executor, lux::simulation::SimulationDuration{1}) ||
+            !scene_value.executeStablePoint() ||
             !scene_value.executePresentation() || !fixture.session().waitAndPumpReplies() ||
             !fixture.session().beginFrame() || !fixture.session().trySubmitFrame() ||
             !fixture.session().waitAndPumpReplies())

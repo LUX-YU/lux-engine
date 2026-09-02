@@ -63,6 +63,7 @@ namespace lux::simulation
         std::vector<SystemObjectRecord> systems;
         std::vector<script::ScriptApiCapabilityPublication> script_abilities;
         std::vector<lux::system::SystemInstanceId> script_ability_providers;
+        SimulationClock clock;
         std::unique_ptr<ecs::EcsCommandBuffer> commands;
         ExecutionState execution;
         task::TaskGraph graph;
@@ -616,9 +617,28 @@ namespace lux::simulation
         return impl_->script_abilities;
     }
 
-    lux::cxx::expected<void, SimulationExecutionFailure>
-    Simulation::execute(task::TaskExecutor& executor) noexcept
+    const SimulationClock& Simulation::clock() const noexcept
     {
+        return impl_->clock;
+    }
+
+    lux::cxx::expected<void, SimulationExecutionFailure>
+    Simulation::execute(task::TaskExecutor& executor, SimulationDuration effective_delta) noexcept
+    {
+        const auto clock = impl_->clock.snapshot();
+        const auto delta_count = effective_delta.count();
+        const auto elapsed_count = clock.elapsed.count();
+        const bool is_negative_delta = delta_count < 0;
+        const bool is_step_overflow = clock.step_index == std::numeric_limits<std::uint64_t>::max();
+        const bool is_time_overflow = delta_count > 0 &&
+            elapsed_count > std::numeric_limits<SimulationDuration::rep>::max() - delta_count;
+        if (is_negative_delta || is_step_overflow || is_time_overflow)
+        {
+            return lux::cxx::unexpected(
+                SimulationExecutionFailure{ESimulationExecutionError::INVALID_STEP_TIME, {}, {}, {}}
+            );
+        }
+        impl_->clock.advance(effective_delta);
         impl_->execution.system_failure.store(0U, std::memory_order_release);
         impl_->execution.command_failure.reset();
         if (impl_->commands)

@@ -254,6 +254,36 @@ if(ENABLE_UI_TEST)
     )
     add_test(NAME ui_drawdata_test COMMAND ui_drawdata_test)
 
+    add_executable(
+        ui_drag_drop_scope_test
+        test/ui_drag_drop_scope_test.cpp
+        src/DragDrop.cpp
+    )
+    target_include_directories(
+        ui_drag_drop_scope_test
+        BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test/fake_imgui
+    )
+    target_include_directories(
+        ui_drag_drop_scope_test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_compile_definitions(ui_drag_drop_scope_test PRIVATE LUX_FUNCTION_LIBRARY)
+    target_link_libraries(
+        ui_drag_drop_scope_test
+        PRIVATE
+            lux::cxx::core
+            lux::cxx::compile_time
+    )
+    lux_classify_target(
+        TARGET  ui_drag_drop_scope_test
+        LAYER   FUNCTION
+        PRODUCT TEST
+        ROLE    FOUNDATION
+    )
+    add_test(NAME ui_drag_drop_scope_test COMMAND ui_drag_drop_scope_test)
+
     add_executable(ui_public_frame_test test/ui_public_frame_test.cpp)
     target_link_libraries(ui_public_frame_test PRIVATE ui)
     lux_classify_target(

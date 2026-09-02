@@ -312,7 +312,7 @@ namespace lux::ui
 
     std::optional<DragDropPayloadView> DropTargetScope::accept()
     {
-        return active_ ? detail::acceptDragDropPayload() : std::nullopt;
+        return active_ ? detail::acceptDragDropPayloadInActiveTarget() : std::nullopt;
     }
 
     void Frame::text(std::string_view value)

@@ -24,18 +24,25 @@ namespace lux::ui
 
     namespace detail
     {
-        std::optional<DragDropPayloadView> acceptDragDropPayload()
+        std::optional<DragDropPayloadView> acceptDragDropPayloadInActiveTarget()
         {
             std::optional<DragDropPayloadView> result;
-            if (!ImGui::BeginDragDropTarget())
-                return result;
             if (const auto* payload = ImGui::AcceptDragDropPayload(kPayloadName))
             {
                 const auto bytes = std::span{
                     static_cast<const std::byte*>(payload->Data),
-                    static_cast<std::size_t>(payload->DataSize)};
+                    static_cast<std::size_t>(payload->DataSize)
+                };
                 result = decodeDragDropPayload(bytes);
             }
+            return result;
+        }
+
+        std::optional<DragDropPayloadView> acceptDragDropPayload()
+        {
+            if (!ImGui::BeginDragDropTarget())
+                return std::nullopt;
+            auto result = acceptDragDropPayloadInActiveTarget();
             ImGui::EndDragDropTarget();
             return result;
         }

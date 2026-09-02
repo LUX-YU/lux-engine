@@ -68,5 +68,6 @@ namespace lux::ui::detail
         return DragDropPayloadView{id, bytes.subspan(sizeof(header) + header.name_size)};
     }
 
+    [[nodiscard]] std::optional<DragDropPayloadView> acceptDragDropPayloadInActiveTarget();
     [[nodiscard]] std::optional<DragDropPayloadView> acceptDragDropPayload();
 } // namespace lux::ui::detail

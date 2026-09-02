@@ -788,6 +788,15 @@ if(EXISTS "${source_root}/modules/function/ui")
             "Architecture: Lux UI exported target still propagates ImGui or lacks its private concrete backend."
         )
     endif()
+
+    set(ui_frame_source "${source_root}/modules/function/ui/src/Frame.cpp")
+    file(READ "${ui_frame_source}" ui_frame_contract)
+    if(NOT ui_frame_contract MATCHES
+       "return active_ [?] detail::acceptDragDropPayloadInActiveTarget[(][)] : std::nullopt")
+        message(FATAL_ERROR
+            "Architecture: DropTargetScope::accept must not begin a nested backend drop-target scope."
+        )
+    endif()
 endif()
 
 if(EXISTS "${source_root}/engine/editor")

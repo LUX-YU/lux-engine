@@ -4,6 +4,9 @@
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/ui/Frame.hpp>
 
+#include <entt/entity/entity.hpp>
+
+#include <string>
 #include <utility>
 
 namespace lux::editor::inspector
@@ -49,6 +52,18 @@ namespace lux::editor::inspector
             return;
         }
 
+        frame.text("Entity #" + std::to_string(entt::to_integral(selection.entity)));
+        {
+            auto disabled = frame.disabled(!undo_.canUndo());
+            if (frame.smallButton("Undo"))
+                static_cast<void>(undo_.undo(*context_));
+        }
+        {
+            auto disabled = frame.disabled(!undo_.canRedo());
+            if (frame.smallButton("Redo"))
+                static_cast<void>(undo_.redo(*context_));
+        }
+
         InspectorContext inspector_context{*context_, frame, undo_, selection};
         auto& registry = scene->registry();
         for (const auto& schema : context_->sceneMeta().components().all())
@@ -60,17 +75,33 @@ namespace lux::editor::inspector
             if (binding == nullptr || binding->schema != schema.id)
             {
                 ++last_draw_.missing_bindings;
-                frame.text(schema.id.name);
-                frame.textMuted("<Editor binding unavailable>");
+                auto group = frame.treeRow(ui::TreeRowSpec{
+                    ui::WidgetIdView{schema.id.name},
+                    schema.id.name,
+                    false,
+                    false,
+                    true
+                });
+                if (group.open())
+                    frame.textMuted("<Editor binding unavailable>");
                 continue;
             }
-            frame.text(binding->display_name);
+            auto group = frame.treeRow(ui::TreeRowSpec{
+                ui::WidgetIdView{schema.id.name},
+                binding->display_name,
+                false,
+                false,
+                true
+            });
+            if (!group.open())
+                continue;
             auto table = frame.table(ui::TableSpec{
                 ui::WidgetIdView{schema.id.name},
                 2U,
                 false,
                 false,
-                true
+                true,
+                frame.theme().metrics.property_label_width
             });
             if (table.visible())
                 static_cast<void>(binding->draw(registry, selection.entity, inspector_context));

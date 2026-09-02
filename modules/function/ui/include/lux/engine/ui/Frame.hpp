@@ -31,6 +31,7 @@ namespace lux::ui
         bool headers{};
         bool borders{true};
         bool row_background{true};
+        float first_column_width{};
     };
 
     struct TreeRowSpec final

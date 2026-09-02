@@ -515,13 +515,19 @@ namespace lux::ui
             flags |= ImGuiTableFlags_RowBg;
         const detail::NullTerminatedText id_text{spec.id.name()};
         const bool open = ImGui::BeginTable(id_text.c_str(), static_cast<int>(spec.columns), flags);
+        if (open && spec.first_column_width > 0.0F)
+        {
+            ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthFixed, spec.first_column_width);
+            for (std::uint32_t column = 1U; column < spec.columns; ++column)
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+        }
         return TableScope{open};
     }
 
     void Frame::propertyRow(std::string_view label)
     {
         requireActive(*this);
-        ImGui::TableNextRow();
+        ImGui::TableNextRow(ImGuiTableRowFlags_None, theme().metrics.row_height);
         ImGui::TableSetColumnIndex(0);
         const char* begin = detail::dataOrEmpty(label);
         ImGui::TextUnformatted(begin, begin + label.size());

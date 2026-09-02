@@ -1,10 +1,38 @@
 #include <lux/engine/ui/detail/ImGuiDrawDataSnapshot.hpp>
+#include <lux/engine/ui/detail/UiVulkanBackend.hpp>
 
 #include <memory>
 #include <utility>
 
 namespace lux::ui::detail
 {
+    struct UiDrawDataSnapshot::Impl final
+    {
+        ImGuiDrawDataSnapshot snapshot;
+    };
+
+    UiDrawDataSnapshot::UiDrawDataSnapshot() : impl_(std::make_unique<Impl>()) {}
+    UiDrawDataSnapshot::~UiDrawDataSnapshot() = default;
+    UiDrawDataSnapshot::UiDrawDataSnapshot(UiDrawDataSnapshot&&) noexcept = default;
+    UiDrawDataSnapshot& UiDrawDataSnapshot::operator=(UiDrawDataSnapshot&&) noexcept = default;
+
+    bool UiDrawDataSnapshot::valid() const noexcept
+    {
+        return impl_ != nullptr && impl_->snapshot.drawData().Valid;
+    }
+
+    void UiDrawDataSnapshot::captureCurrent()
+    {
+        const auto* draw_data = ImGui::GetDrawData();
+        if (draw_data != nullptr && draw_data->Valid)
+            impl_->snapshot.capture(*draw_data);
+    }
+
+    const void* UiDrawDataSnapshot::nativeDrawData() const noexcept
+    {
+        return impl_ == nullptr ? nullptr : std::addressof(impl_->snapshot.drawData());
+    }
+
     ImGuiDrawDataSnapshot::~ImGuiDrawDataSnapshot()
     {
         clear();

@@ -16,6 +16,7 @@ target_include_directories(
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${LUX_GENERATE_HEADER_DIR}
 )
 target_compile_definitions(ui_imgui_backend PRIVATE LUX_FUNCTION_LIBRARY)
@@ -28,6 +29,7 @@ target_link_libraries(
         lux::cxx::compile_time
         lux::engine::core::object
 )
+
 lux_classify_target(
     TARGET ui_imgui_backend
     LAYER FUNCTION
@@ -92,6 +94,34 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE DOMAIN
 )
+
+if(LUX_PROFILE_HAS_EDITOR)
+    find_package(imgui REQUIRED COMPONENTS vulkan)
+    find_package(Vulkan REQUIRED)
+    add_library(ui_vulkan_backend STATIC src/UiVulkanBackend.cpp)
+    add_library(lux::engine::function::ui_vulkan_backend ALIAS ui_vulkan_backend)
+    target_include_directories(
+        ui_vulkan_backend
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_link_libraries(
+        ui_vulkan_backend
+        PRIVATE
+            ui
+            imgui::vulkan
+        PUBLIC Vulkan::Vulkan
+    )
+    target_link_libraries(ui_imgui_backend PRIVATE Vulkan::Vulkan)
+    lux_classify_target(
+        TARGET  ui_vulkan_backend
+        LAYER   FUNCTION
+        PRODUCT EDITOR
+        ROLE    INTEGRATION
+    )
+endif()
 
 include_component_cmake_scripts(meta)
 engine_add_type_runtime_info(

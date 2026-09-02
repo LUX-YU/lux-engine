@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <lux/engine/ui/detail/UiContract.hpp>
+#include <lux/engine/ui/detail/UISessionPresentationAccess.hpp>
 
 namespace lux::ui
 {
@@ -928,4 +929,42 @@ namespace lux::ui
         return impl_->context;
     }
 #endif
+
+    detail::UiDrawDataSnapshot detail::UISessionPresentationAccess::capture(UISession& session)
+    {
+        LUX_UI_CHECK_OWNER(session.control_->owner, session.control_->owner_token);
+        ScopedImGuiContext context{session.impl_->context};
+        UiDrawDataSnapshot snapshot;
+        snapshot.captureCurrent();
+        return snapshot;
+    }
+
+    detail::UiFontAtlasSnapshot detail::UISessionPresentationAccess::captureFontAtlas(UISession& session)
+    {
+        LUX_UI_CHECK_OWNER(session.control_->owner, session.control_->owner_token);
+        ScopedImGuiContext context{session.impl_->context};
+        unsigned char* pixels{};
+        int width{};
+        int height{};
+        ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        UiFontAtlasSnapshot result;
+        result.width = width;
+        result.height = height;
+        if (pixels != nullptr && width > 0 && height > 0)
+        {
+            const auto size = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4U;
+            result.pixels.assign(pixels, pixels + size);
+        }
+        return result;
+    }
+
+    detail::UiDrawDataSnapshot detail::captureUiDrawData(UISession& session)
+    {
+        return UISessionPresentationAccess::capture(session);
+    }
+
+    detail::UiFontAtlasSnapshot detail::captureUiFontAtlas(UISession& session)
+    {
+        return UISessionPresentationAccess::captureFontAtlas(session);
+    }
 } // namespace lux::ui

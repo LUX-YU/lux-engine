@@ -19,6 +19,7 @@ namespace lux::ui
     namespace detail
     {
         struct SessionControl;
+        struct UISessionPresentationAccess;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
         struct UISessionDiagnosticsAccess;
 #endif
@@ -133,6 +134,7 @@ namespace lux::ui
         friend class PaneRegistration;
         friend class PaneFactoryRegistration;
         friend class Frame;
+        friend struct detail::UISessionPresentationAccess;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
         friend struct detail::UISessionDiagnosticsAccess;
 #endif

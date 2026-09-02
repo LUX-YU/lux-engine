@@ -5,6 +5,7 @@
 #include <lux/engine/simulation/composition/visibility.h>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/SystemTaskResources.hpp>
+#include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
 #include <lux/engine/task/TaskCallable.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 
@@ -12,6 +13,7 @@
 #include <cstddef>
 #include <memory>
 #include <new>
+#include <span>
 #include <type_traits>
 #include <utility>
 
@@ -23,6 +25,14 @@ namespace lux::simulation
     {
     public:
         [[nodiscard]] ecs::Registry& registry() noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> publishScriptAbility(
+            lux::system::SystemInstanceId provider,
+            const lux::script::ScriptAbilityBinding& binding
+        ) noexcept;
+
+        [[nodiscard]] std::span<const script::ScriptApiCapabilityPublication>
+        scriptApiCapabilities() const noexcept;
 
         template <class Configuration>
         [[nodiscard]] lux::cxx::expected<Configuration, SimulationSystemBuildFailure>

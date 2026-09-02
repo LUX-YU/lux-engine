@@ -34,6 +34,7 @@ namespace lux::simulation
         MISSING_PRIMARY_TASK,
         TASK_GRAPH_FAILURE,
         COMMAND_PREPARE_FAILURE,
+        SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER,
     };
 
     struct SimulationSystemBuildFailure final

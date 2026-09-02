@@ -25,6 +25,7 @@ namespace lux::simulation
             void* object{};
             void (*destroy)(void*) noexcept{};
         };
+
     } // namespace
 
     struct Simulation::Impl final
@@ -45,6 +46,8 @@ namespace lux::simulation
 
         ~Impl() noexcept
         {
+            script_abilities.clear();
+            script_ability_providers.clear();
             for (auto iterator = systems.rbegin(); iterator != systems.rend(); ++iterator)
             {
                 if (iterator->object != nullptr)
@@ -58,6 +61,8 @@ namespace lux::simulation
         ecs::Registry* registry{};
         std::shared_ptr<const SimulationDescription> description;
         std::vector<SystemObjectRecord> systems;
+        std::vector<script::ScriptApiCapabilityPublication> script_abilities;
+        std::vector<lux::system::SystemInstanceId> script_ability_providers;
         std::unique_ptr<ecs::EcsCommandBuffer> commands;
         ExecutionState execution;
         task::TaskGraph graph;
@@ -203,6 +208,60 @@ namespace lux::simulation
     ecs::Registry& SimulationBuilder::registry() noexcept
     {
         return *impl_->owner->registry;
+    }
+
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::publishScriptAbility(
+        lux::system::SystemInstanceId provider,
+        const lux::script::ScriptAbilityBinding& binding
+    ) noexcept
+    {
+        const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
+        const auto* provider_record = impl_->findRecord(provider);
+        const bool is_current_provider = current && current.instanceId() == provider;
+        const bool has_owned_provider = provider_record != nullptr &&
+            (binding.description != nullptr &&
+             (binding.description->receiver == lux::script::EScriptAbilityReceiverKind::NONE ||
+              provider_record->object == binding.context));
+        if (!is_current_provider || !has_owned_provider || !binding.valid())
+        {
+            return lux::cxx::unexpected(
+                buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, provider)
+            );
+        }
+
+        for (std::size_t index{}; index < impl_->owner->script_abilities.size(); ++index)
+        {
+            if (impl_->owner->script_abilities[index].contract == binding.description->id)
+            {
+                return lux::cxx::unexpected(buildFailure(
+                    ESimulationSystemBuildError::SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER,
+                    provider,
+                    impl_->owner->script_ability_providers[index]
+                ));
+            }
+        }
+
+        try
+        {
+            const std::size_t next_size = impl_->owner->script_abilities.size() + 1U;
+            impl_->owner->script_abilities.reserve(next_size);
+            impl_->owner->script_ability_providers.reserve(next_size);
+            impl_->owner->script_abilities.push_back(script::publishScriptAbility(binding));
+            impl_->owner->script_ability_providers.push_back(provider);
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(
+                buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, provider)
+            );
+        }
+    }
+
+    std::span<const script::ScriptApiCapabilityPublication>
+    SimulationBuilder::scriptApiCapabilities() const noexcept
+    {
+        return impl_->owner->script_abilities;
     }
 
     lux::cxx::expected<void*, SimulationSystemBuildFailure> SimulationBuilder::emplaceErased(
@@ -549,6 +608,12 @@ namespace lux::simulation
     const SimulationDescription& Simulation::description() const noexcept
     {
         return *impl_->description;
+    }
+
+    std::span<const script::ScriptApiCapabilityPublication>
+    Simulation::scriptApiCapabilities() const noexcept
+    {
+        return impl_->script_abilities;
     }
 
     lux::cxx::expected<void, SimulationExecutionFailure>

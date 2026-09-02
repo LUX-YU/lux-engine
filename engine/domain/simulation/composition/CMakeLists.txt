@@ -31,6 +31,7 @@ target_link_libraries(
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::task
         lux::engine::core::task
+        lux::engine::simulation::simulation_scripting_core
 )
 component_add_transitive_commands(
     simulation_composition
@@ -38,6 +39,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core ecs_task)"
     "find_package(lux-engine-core REQUIRED COMPONENTS task)"
+    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_scripting_core)"
     "add_library(lux::engine::simulation::composition INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::simulation::composition PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::simulation::simulation_composition)"
 )
@@ -66,6 +68,132 @@ lux_classify_target(
     ROLE    COMPOSITION
 )
 add_test(NAME simulation_composition_test COMMAND simulation_composition_test)
+
+include_component_cmake_scripts(script_core)
+add_executable(
+    simulation_script_ability_codegen_test
+    test/script_ability_codegen_test.cpp
+)
+target_include_directories(
+    simulation_script_ability_codegen_test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+        ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test
+)
+target_link_libraries(
+    simulation_script_ability_codegen_test
+    PRIVATE
+        lux::engine::simulation::composition
+        lux::engine::function::script_core
+)
+lux_script_abilities(
+    TARGET simulation_script_ability_codegen_test
+    SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp
+    LOGICAL_PATHS TestAbility.hpp
+)
+if(MSVC)
+    target_compile_options(simulation_script_ability_codegen_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_ability_codegen_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_script_ability_codegen_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    COMPOSITION
+)
+add_test(
+    NAME simulation_script_ability_codegen_test
+    COMMAND simulation_script_ability_codegen_test
+)
+
+add_executable(
+    simulation_script_ability_borrowed_async_negative
+    EXCLUDE_FROM_ALL
+    test/script_ability_invalid_codegen.cpp
+)
+target_include_directories(
+    simulation_script_ability_borrowed_async_negative
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+        ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test
+)
+target_link_libraries(
+    simulation_script_ability_borrowed_async_negative
+    PRIVATE lux::engine::function::script_core
+)
+lux_script_abilities(
+    TARGET simulation_script_ability_borrowed_async_negative
+    SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/InvalidBorrowedAsyncAbility.hpp
+    LOGICAL_PATHS InvalidBorrowedAsyncAbility.hpp
+)
+lux_classify_target(
+    TARGET  simulation_script_ability_borrowed_async_negative
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    COMPOSITION
+)
+add_test(
+    NAME simulation_script_ability_borrowed_async_negative
+    COMMAND ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=simulation_script_ability_borrowed_async_negative
+        -DEXPECTED_PATTERN=BORROWED_STEP
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)
+
+if(TARGET script_lua AND TARGET flowforge)
+    include_component_cmake_scripts(script_lua)
+    add_executable(
+        simulation_script_ability_projection_test
+        test/script_ability_projection_test.cpp
+    )
+    target_include_directories(
+        simulation_script_ability_projection_test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/test
+            ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test
+    )
+    target_link_libraries(
+        simulation_script_ability_projection_test
+        PRIVATE
+            lux::engine::simulation::composition
+            lux::engine::function::script_core
+            lux::engine::function::script_lua
+            lux::engine::function::flowforge
+    )
+    lux_script_abilities(
+        TARGET simulation_script_ability_projection_test
+        SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp
+        LOGICAL_PATHS TestAbility.hpp
+    )
+    lux_script_ability_lua_projection(
+        TARGET simulation_script_ability_projection_test
+        SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp
+        LOGICAL_PATHS TestAbility.hpp
+    )
+    if(MSVC)
+        target_compile_options(simulation_script_ability_projection_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(simulation_script_ability_projection_test PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(
+        TARGET  simulation_script_ability_projection_test
+        LAYER   SIMULATION
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    add_test(
+        NAME simulation_script_ability_projection_test
+        COMMAND simulation_script_ability_projection_test
+    )
+    add_test(
+        NAME simulation_script_ability_codegen_deterministic
+        COMMAND ${CMAKE_COMMAND} -E compare_files
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/simulation_script_ability_codegen_test/script_abilities/TestAbility.ability.generated.hpp
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/simulation_script_ability_projection_test/script_abilities/TestAbility.ability.generated.hpp
+    )
+endif()
 
 install_components(
     PROJECT_NAME lux-engine-simulation-composition

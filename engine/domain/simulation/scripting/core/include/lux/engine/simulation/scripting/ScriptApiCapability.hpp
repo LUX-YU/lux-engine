@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/function/script/ScriptApi.hpp>
+#include <lux/engine/function/script/ScriptAbility.hpp>
 
 #include <cstdint>
 
@@ -21,4 +21,18 @@ namespace lux::simulation::script
         void* context{};
         const void* dispatch{};
     };
+
+    [[nodiscard]] inline ScriptApiCapabilityPublication publishScriptAbility(
+        const lux::script::ScriptAbilityBinding& binding
+    ) noexcept
+    {
+        if (!binding.valid())
+            return {};
+        return {
+            binding.description->id,
+            binding.description->schema_hash,
+            binding.context,
+            binding.dispatch
+        };
+    }
 } // namespace lux::simulation::script

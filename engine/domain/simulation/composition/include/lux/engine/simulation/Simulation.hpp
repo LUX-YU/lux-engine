@@ -5,12 +5,14 @@
 #include <lux/engine/simulation/composition/visibility.h>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
+#include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstdint>
 #include <memory>
+#include <span>
 
 namespace lux::simulation
 {
@@ -46,6 +48,9 @@ namespace lux::simulation
         ) noexcept;
 
         [[nodiscard]] const SimulationDescription& description() const noexcept;
+
+        [[nodiscard]] std::span<const script::ScriptApiCapabilityPublication>
+        scriptApiCapabilities() const noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure>
         execute(task::TaskExecutor& executor) noexcept;

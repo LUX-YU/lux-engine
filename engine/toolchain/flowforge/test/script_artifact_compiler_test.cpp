@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -36,6 +37,9 @@ int main()
         graph,
         lux::flowforge::FlowForgeCompileOptions{.module_name = "gameplay.behavior"}
     );
+    if (!compiled)
+        std::fprintf(stderr, "FlowForge compile failed: %u %s\n", static_cast<unsigned>(compiled.error().code),
+                     compiled.error().message.c_str());
     assert(compiled);
     assert(!compiled->payload().empty());
     assert(compiled->findExport(Symbol) == &compiled->description().exports.front());

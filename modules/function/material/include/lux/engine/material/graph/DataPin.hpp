@@ -14,13 +14,14 @@
 #include <vector>
 
 #include <lux/engine/material/graph/Types.hpp>
+#include <lux/engine/function/graph/GraphTypes.hpp>
 
 namespace lux::material
 {
-    using node_id = uint64_t;
-
-    inline constexpr node_id invalid_node = ~0ull;
     inline constexpr uint32_t invalid_pin = ~0u;
+
+    using lux::graph::NodeId;
+    using lux::graph::PinId;
 
     enum class EPinDirection : uint8_t
     {
@@ -34,12 +35,12 @@ namespace lux::material
      */
     struct PinLink
     {
-        node_id  node = invalid_node;  ///< Source node
+        NodeId   node{};               ///< Source node
         uint32_t pin  = invalid_pin;   ///< Index of the output pin on the source node
 
         bool valid() const noexcept
         {
-            return node != invalid_node && pin != invalid_pin;
+            return node.valid() && pin != invalid_pin;
         }
     };
 
@@ -54,8 +55,8 @@ namespace lux::material
         std::string   name;
         EValueType type      = EValueType::FLOAT;
         EPinDirection direction = EPinDirection::INPUT;
-        PinLink       source;                    ///< Only meaningful for input pins
         float         constant[4] = { 0, 0, 0, 0 }; ///< Default constant used when an input is unconnected
+        PinId         id;                           ///< Stable shared-topology identity
     };
 
 } // namespace lux::material

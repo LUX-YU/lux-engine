@@ -12,7 +12,7 @@ namespace lux::flowforge
         try
         {
             std::unordered_set<std::uint64_t> export_ids;
-            std::unordered_set<std::uint64_t> entry_node_ids;
+            std::unordered_set<lux::graph::NodeId> entry_node_ids;
             std::unordered_set<lux::script::ScriptSymbolId> symbols;
             export_ids.reserve(graph.exports().size());
             entry_node_ids.reserve(graph.exports().size());
@@ -21,7 +21,7 @@ namespace lux::flowforge
             for (const auto& exported : graph.exports())
             {
                 const Node* entry = graph.findNodeById(exported.entry_node_id);
-                const bool is_invalid_identity = !exported.id || exported.entry_node_id == 0U ||
+                const bool is_invalid_identity = !exported.id || !exported.entry_node_id.valid() ||
                     exported.symbol == lux::script::InvalidScriptSymbolId;
                 const bool is_duplicate_identity = !export_ids.insert(exported.id.value).second ||
                     !entry_node_ids.insert(exported.entry_node_id).second || !symbols.insert(exported.symbol).second;

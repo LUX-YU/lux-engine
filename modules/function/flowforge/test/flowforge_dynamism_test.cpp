@@ -144,8 +144,11 @@ static void testRebind()
     static lux::meta::RefFunction fn_b        = makeFnB();
     static lux::meta::RefFunction fn_producer = makeFnProducer();
 
-    lux::flowforge::NativeFuncCall producer(1, fn_producer);
-    lux::flowforge::NativeFuncCall consumer(2, fn_a);
+    lux::flowforge::FlowGraph graph;
+    const auto producer_index = graph.addNodes(std::make_unique<lux::flowforge::NativeFuncCall>(1, fn_producer));
+    const auto consumer_index = graph.addNodes(std::make_unique<lux::flowforge::NativeFuncCall>(2, fn_a));
+    auto& producer = static_cast<lux::flowforge::NativeFuncCall&>(*graph.getNode(producer_index).node);
+    auto& consumer = static_cast<lux::flowforge::NativeFuncCall&>(*graph.getNode(consumer_index).node);
 
     check(consumer.dataInPins().size() == 2, "fnA: two parameter pins");
     check(consumer.inPins().size() == 3, "fnA: in_pins_ = exec_in + 2 params");

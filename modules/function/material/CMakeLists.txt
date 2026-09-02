@@ -30,12 +30,14 @@ target_compile_definitions(
 target_link_libraries(
     material_graph
     PUBLIC
+        lux::engine::function::graph
         lux::engine::resource::description
         lux::engine::resource::identity
 )
 
 component_add_transitive_commands(
     material_graph
+    "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
 )
 

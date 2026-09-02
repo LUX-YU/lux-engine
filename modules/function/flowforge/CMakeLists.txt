@@ -41,6 +41,7 @@ target_compile_definitions(
 target_link_libraries(
     flowforge
     PUBLIC
+        lux::engine::function::graph
         lux::cxx::container
         lux::cxx::algorithm
         lux::cxx::reflection_runtime
@@ -52,6 +53,7 @@ target_link_libraries(
 component_add_transitive_commands(
     flowforge
     "find_package(lux-cxx REQUIRED COMPONENTS container algorithm reflection_runtime)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"

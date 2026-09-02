@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/flowforge/visibility.h>
+#include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/function/script/ScriptSymbol.hpp>
 
 #include <cstdint>
@@ -24,7 +25,7 @@ namespace lux::flowforge
     struct ExportMethodNode final
     {
         FlowForgeExportNodeId id;
-        std::uint64_t entry_node_id{};
+        lux::graph::NodeId entry_node_id{};
         lux::script::ScriptSymbolId symbol{};
     };
 

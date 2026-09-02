@@ -27,7 +27,7 @@ namespace lux::material
     {
         EMaterialCompileError code{EMaterialCompileError::INVALID_GRAPH};
         std::string message;
-        std::uint64_t node_id{invalid_node};
+        NodeId node_id{};
         std::uint32_t pin_index{invalid_pin};
     };
 

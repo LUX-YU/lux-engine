@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <lux/engine/material/graph/Node.hpp>
+#include <lux/engine/function/graph/GraphLayout.hpp>
 #include <lux/engine/description/MaterialEnums.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/material/graph/visibility.h>
@@ -61,30 +62,38 @@ namespace lux::material
         /// working copy from the graph an asset owns.
         [[nodiscard]] MaterialGraph clone() const;
 
-        node_id     addNode(std::unique_ptr<Node> node);
-        Node*       node(node_id id) noexcept;
-        const Node* node(node_id id) const noexcept;
-        void        removeNode(node_id id);
+        NodeId     addNode(std::unique_ptr<Node> node);
+        Node*       node(NodeId id) noexcept;
+        const Node* node(NodeId id) const noexcept;
+        void        removeNode(NodeId id);
 
         /// Inserts a node with a specific id (GraphKit's undo relies on stable ids:
         /// restoring a deleted node must reuse its original id, since both
         /// connections and recorded undo actions reference nodes by id). Returns
-        /// invalid_node if the id is already taken, invalid, or node is null;
+        /// Invalid NodeId if the id is already taken, invalid, or node is null;
         /// next_id_ is bumped to the high-water mark so later addNode calls never
         /// collide with it.
-        node_id addNodeWithId(node_id id, std::unique_ptr<Node> node);
+        NodeId addNodeWithId(NodeId id, std::unique_ptr<Node> node);
 
         /// Removes a node without destroying it and without touching other nodes'
         /// input connections (the editor disconnects the recorded links one by one
         /// before extracting). Returns nullptr if the node doesn't exist.
-        [[nodiscard]] std::unique_ptr<Node> extractNode(node_id id);
+        [[nodiscard]] std::unique_ptr<Node> extractNode(NodeId id);
 
         /// Connects output pin src_pin of src to input pin dst_pin of dst. Returns
         /// whether the connection succeeded.
-        bool connect(node_id src, uint32_t src_pin, node_id dst, uint32_t dst_pin);
-        void disconnect(node_id dst, uint32_t dst_pin);
+        [[nodiscard]] bool canConnect(NodeId src, uint32_t src_pin, NodeId dst, uint32_t dst_pin) const noexcept;
+        bool connect(NodeId src, uint32_t src_pin, NodeId dst, uint32_t dst_pin);
+        void disconnect(NodeId dst, uint32_t dst_pin);
+        [[nodiscard]] PinLink source(NodeId dst, uint32_t dst_pin) const noexcept;
+        [[nodiscard]] PinLink source(PinId input) const noexcept;
 
-        const std::unordered_map<node_id, std::unique_ptr<Node>>& nodes() const noexcept
+        [[nodiscard]] lux::graph::GraphTopology& topology() noexcept { return topology_; }
+        [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept { return topology_; }
+        [[nodiscard]] lux::graph::GraphLayout& layout() noexcept { return layout_; }
+        [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept { return layout_; }
+
+        const std::unordered_map<NodeId, std::unique_ptr<Node>>& nodes() const noexcept
         {
             return nodes_;
         }
@@ -95,8 +104,11 @@ namespace lux::material
         RenderState                  render_state;
 
     private:
-        std::unordered_map<node_id, std::unique_ptr<Node>> nodes_;
-        node_id                                            next_id_ = 1;
+        [[nodiscard]] bool registerNodeStructure(Node& node, bool preserve_pin_ids) noexcept;
+
+        std::unordered_map<NodeId, std::unique_ptr<Node>> nodes_;
+        lux::graph::GraphTopology topology_;
+        lux::graph::GraphLayout layout_;
     };
 
 } // namespace lux::material

@@ -4,6 +4,7 @@
 #include <new>
 #include <vector>
 #include "NodeBase.hpp"
+#include <lux/engine/function/graph/GraphLayout.hpp>
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
 #include <lux/cxx/container/SparseSet.hpp>
 
@@ -25,13 +26,12 @@ namespace lux::flowforge
         // This’s a kind of compromise
         static constexpr size_t set_offset = 1;
     public:
-        FlowGraph(){}
-
-        ~FlowGraph() = default; // Nodes are owned by unique_ptr, will be cleaned up
+        FlowGraph();
+        ~FlowGraph();
         FlowGraph(const FlowGraph&) = delete;
         FlowGraph& operator=(const FlowGraph&) = delete;
-        FlowGraph(FlowGraph&&) = default;
-        FlowGraph& operator=(FlowGraph&&) = default;
+        FlowGraph(FlowGraph&& other) noexcept;
+        FlowGraph& operator=(FlowGraph&& other) noexcept;
 
 
         // Defined out-of-line in FlowGraph.cpp: forces MSVC to generate an exported
@@ -71,58 +71,23 @@ namespace lux::flowforge
             return exports_;
         }
 
-        // Every node entering the graph is re-keyed with a STABLE id from
-        // the graph's monotonic counter (never recycled) — the pointer-based
-        // ids the convenience constructors self-assign are process-local.
-        // Pin ids are re-derived from the node id (see makePinId).
-        size_t addNodes(std::unique_ptr<Node> node)
-        {
-            node->assignStableId(next_node_id_++);
-            const auto idx = nodes_.emplace(std::move(node), 0);
-            nodes_.at(idx).index = idx;
-            return idx;
-        }
+        size_t addNodes(std::unique_ptr<Node> node);
 
         /**
          * @brief Decode path: adds a node KEEPING the given (serialized)
          *        stable id and bumps the counter past it, so later addNodes
          *        can never mint a duplicate.
          */
-        size_t addNodesWithId(uint64_t stable_id, std::unique_ptr<Node> node) {
-            node->assignStableId(stable_id);
-            if (stable_id >= next_node_id_)
-                next_node_id_ = stable_id + 1;
-            const auto idx = nodes_.emplace(std::move(node), 0);
-            nodes_.at(idx).index = idx;
-            return idx;
-        }
+        size_t addNodesWithId(NodeId stable_id, std::unique_ptr<Node> node);
 
         /**
          * @brief Finds a live node by its STABLE id (linear scan — decode /
          *        error-reporting path, not a hot path).
          */
-        Node* findNodeById(uint64_t stable_id) {
-            for (auto& storage : nodes_.values())
-                if (storage.node && storage.node->id() == stable_id)
-                    return storage.node.get();
-            return nullptr;
-        }
-        const Node* findNodeById(uint64_t stable_id) const {
-            for (auto& storage : nodes_.values())
-                if (storage.node && storage.node->id() == stable_id)
-                    return storage.node.get();
-            return nullptr;
-        }
+        Node* findNodeById(NodeId stable_id);
+        const Node* findNodeById(NodeId stable_id) const;
 
-        bool removeNode(size_t index)
-        {
-            if (!nodes_.contains(index))
-            {
-                return false;
-            }
-            nodes_.erase(index);
-            return true;
-        }
+        bool removeNode(size_t index);
 
         /**
          * @brief Detaches a node, moving its semantic storage out intact.
@@ -131,10 +96,7 @@ namespace lux::flowforge
          *        the node's links first; the index is recycled like removeNode.
          * @return True if the index was live and the storage was moved out.
          */
-        bool extractNode(size_t index, NodeStorage& out)
-        {
-            return nodes_.extract(index, out);
-        }
+        bool extractNode(size_t index, NodeStorage& out);
 
         /**
          * @brief Restores a node at a CALLER-CHOSEN index. Use when other data still
@@ -144,15 +106,7 @@ namespace lux::flowforge
          *        never be handed out again by a later addNodes.
          * @return True if the index was free and the node was inserted.
          */
-        bool insertNodeAt(size_t index, std::unique_ptr<Node> node)
-        {
-            if (!nodes_.try_emplace_at(index, std::move(node), 0))
-            {
-                return false;
-            }
-            nodes_.at(index).index = index;
-            return true;
-        }
+        bool insertNodeAt(size_t index, std::unique_ptr<Node> node);
 
         bool hasNode(size_t index) const
         {
@@ -166,6 +120,21 @@ namespace lux::flowforge
         const NodeStorage& getNode(size_t idx) const {
             return nodes_.at(idx);
         }
+
+        [[nodiscard]] lux::graph::GraphTopology& topology() noexcept { return topology_; }
+        [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept { return topology_; }
+        [[nodiscard]] lux::graph::GraphLayout& layout() noexcept { return layout_; }
+        [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept { return layout_; }
+
+        [[nodiscard]] Pin* findPin(PinId id) noexcept;
+        [[nodiscard]] const Pin* findPin(PinId id) const noexcept;
+        [[nodiscard]] std::vector<Pin*> linkedPins(PinId id);
+        [[nodiscard]] std::vector<const Pin*> linkedPins(PinId id) const;
+        [[nodiscard]] ELinkError connect(Pin& first, Pin& second) noexcept;
+        [[nodiscard]] ELinkError disconnect(Pin& first, Pin& second) noexcept;
+        [[nodiscard]] bool registerPin(Pin& pin) noexcept;
+        void unregisterPin(Pin& pin) noexcept;
+        [[nodiscard]] bool assignPinId(Pin& pin, PinId id) noexcept;
 
         // ------------------------------------------------------------------
         // Graph-local variables. Each variable owns a stable, monotonically
@@ -236,14 +205,16 @@ namespace lux::flowforge
         std::vector<GraphVariable>&       variables()       { return variables_; }
 
     private:
+        [[nodiscard]] bool attachNodeStructure(Node& node, bool preserve_pin_ids) noexcept;
+        void rebindNodes() noexcept;
+
         std::vector<GraphVariable>              variables_;
         std::vector<ExportMethodNode>           exports_;
         uint64_t                                next_var_id_{1};
-        // Monotonic STABLE node-id counter (never recycled; serialized ids
-        // bump it past themselves via addNodesWithId).
-        uint64_t                                next_node_id_{1};
         // start from one
         lux::cxx::AutoSparseSet<NodeStorage, 1> nodes_;
+        lux::graph::GraphTopology topology_;
+        lux::graph::GraphLayout layout_;
     };
 
 } // namespace lux::flowforge

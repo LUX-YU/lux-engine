@@ -62,8 +62,8 @@ namespace lux::material
         /// from the graph an asset owns (the graph itself is move-only).
         [[nodiscard]] virtual std::unique_ptr<Node> clone() const = 0;
 
-        node_id      id() const noexcept { return id_; }
-        void         setId(node_id id) noexcept { id_ = id; }
+        NodeId      id() const noexcept { return id_; }
+        void        setId(NodeId id) noexcept { id_ = id; }
         EMatNodeKind kind() const noexcept { return kind_; }
 
         /// Safe downcast to a concrete node type — no RTTI. Keys kind() against
@@ -83,14 +83,6 @@ namespace lux::material
         const std::vector<DataPin>& inputs()  const noexcept { return in_pins_; }
         std::vector<DataPin>&       outputs() noexcept { return out_pins_; }
         const std::vector<DataPin>& outputs() const noexcept { return out_pins_; }
-
-        // ---- Editor metadata (not read by lowering; persisted with the graph since LMGR v2) ----
-        // Canvas position is read/written by GraphKit via IGraphView::nodePos/setNodePos.
-        // After decoding a v1 asset, ui_placed=false, so GraphLayout arranges nodes on a
-        // grid; the next save then upgrades it to v2. clone() carries this over
-        // automatically via the protected copy constructor.
-        float ui_pos[2] = { 0.0f, 0.0f };
-        bool  ui_placed = false;
 
     protected:
         class ConstructionKey final
@@ -116,7 +108,7 @@ namespace lux::material
         // (prevents slicing).
         Node(const Node&) = default;
 
-        node_id              id_ = invalid_node;
+        NodeId               id_{};
         const EMatNodeKind   kind_;
         std::string          name_;
         std::vector<DataPin> in_pins_;

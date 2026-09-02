@@ -3,6 +3,7 @@
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 
 #include <memory>
+#include <cstdio>
 
 int main()
 {
@@ -23,5 +24,8 @@ int main()
         graph,
         lux::flowforge::FlowForgeCompileOptions{.module_name = "lux.consumer.flowforge"}
     );
+    if (!artifact)
+        std::fprintf(stderr, "FlowForge consumer compile failed: %u %s\n",
+                     static_cast<unsigned>(artifact.error().code), artifact.error().message.c_str());
     return artifact && artifact->findExport(1U) ? 0 : 1;
 }

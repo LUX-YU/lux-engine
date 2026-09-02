@@ -1,5 +1,6 @@
 #include "lux/engine/flowforge/graph/NodeBase.hpp"
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
 
 namespace lux::flowforge
 {
@@ -82,18 +83,27 @@ namespace lux::flowforge
     /**
      * @brief Adds an ExecOutPin to this SequenceNode.
      */
-    void SequenceNode::addExecOutPin()
+    ExecOutPin* SequenceNode::addExecOutPin(PinId stable_id)
     {
-        exec_out_pins_.emplace_back(std::make_unique<ExecOutPin>(this));
+        auto pin = std::make_unique<ExecOutPin>(this);
+        if (stable_id.valid() && (graph() == nullptr || !graph()->assignPinId(*pin, stable_id)))
+            return nullptr;
+        auto* result = pin.get();
+        exec_out_pins_.push_back(std::move(pin));
+        return result;
     }
 
     /**
      * @brief Removes the last ExecOutPin from this SequenceNode.
      */
-    void SequenceNode::removeExecOutPin()
+    PinId SequenceNode::removeExecOutPin()
     {
+        if (exec_out_pins_.empty())
+            return {};
+        const auto id = exec_out_pins_.back()->id();
         removeOutPin(exec_out_pins_.back().get());
         exec_out_pins_.pop_back();
+        return id;
     }
 
     // ====================== ForLoopNode ======================

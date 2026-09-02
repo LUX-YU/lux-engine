@@ -19,7 +19,7 @@ namespace lux::material
         [[nodiscard]] MaterialCompileFailure failure(
             EMaterialCompileError code,
             std::string message,
-            std::uint64_t node_id = invalid_node,
+            NodeId node_id = {},
             std::uint32_t pin_index = invalid_pin
         ) noexcept
         {
@@ -107,14 +107,15 @@ namespace lux::material
 
         [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure> invalidGraph(
             std::string message,
-            node_id node = invalid_node,
+            NodeId node = {},
             std::uint32_t pin = invalid_pin
         )
         {
             return lux::cxx::unexpected(failure(EMaterialCompileError::INVALID_GRAPH, std::move(message), node, pin));
         }
 
-        [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure> validatePins(const Node& node)
+        [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure>
+        validatePins(const MaterialGraph& graph, const Node& node)
         {
             const auto validate = [&](const std::vector<DataPin>& pins, EPinDirection expected)
                 -> lux::cxx::expected<void, MaterialCompileFailure>
@@ -122,12 +123,13 @@ namespace lux::material
                 for (std::uint32_t index = 0U; index < pins.size(); ++index)
                 {
                     const auto& pin = pins[index];
-                    const bool has_source_node = pin.source.node != invalid_node;
-                    const bool has_source_pin = pin.source.pin != invalid_pin;
-                    const bool has_partial_source = has_source_node != has_source_pin;
-                    const bool output_has_source = expected == EPinDirection::OUTPUT && has_source_node;
-                    if (!validValueType(pin.type) || pin.direction != expected || has_partial_source ||
-                        output_has_source || !finiteValues(pin.constant))
+                    const auto* structural = graph.topology().findPin(pin.id);
+                    const auto structural_direction = expected == EPinDirection::OUTPUT ?
+                        lux::graph::EPinDirection::OUTPUT : lux::graph::EPinDirection::INPUT;
+                    const bool is_invalid_structure = structural == nullptr || structural->owner != node.id() ||
+                        structural->direction != structural_direction;
+                    if (!validValueType(pin.type) || pin.direction != expected || !pin.id.valid() ||
+                        is_invalid_structure || !finiteValues(pin.constant))
                         return invalidGraph("invalid material pin contract", node.id(), index);
                 }
                 return {};
@@ -150,7 +152,7 @@ namespace lux::material
         [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure>
         validateNode(const MaterialGraph& graph, const Node& node)
         {
-            if (auto pins = validatePins(node); !pins)
+            if (auto pins = validatePins(graph, node); !pins)
                 return pins;
 
             const auto requireShape = [&](std::size_t inputs, std::size_t outputs)
@@ -315,7 +317,7 @@ namespace lux::material
 
             for (const auto& [id, node] : graph.nodes())
             {
-                if (!node || id == invalid_node || node->id() != id)
+                if (!node || !id.valid() || node->id() != id || graph.topology().findNode(id) == nullptr)
                     return invalidGraph("material graph contains an invalid node identity", id);
                 if (auto validation = validateNode(graph, *node); !validation)
                     return validation;
@@ -325,13 +327,13 @@ namespace lux::material
             {
                 for (std::uint32_t pin_index = 0U; pin_index < node->inputs().size(); ++pin_index)
                 {
-                    const auto& pin = node->inputs()[pin_index];
-                    if (!pin.source.valid())
+                    const auto source = graph.source(id, pin_index);
+                    if (!source.valid())
                         continue;
-                    const auto* source = graph.node(pin.source.node);
-                    if (source == nullptr || pin.source.pin >= source->outputs().size())
+                    const auto* source_node = graph.node(source.node);
+                    if (source_node == nullptr || source.pin >= source_node->outputs().size())
                         return invalidGraph("material connection references an invalid output",
-                                            pin.source.node, pin.source.pin);
+                                            source.node, source.pin);
                 }
             }
             return {};

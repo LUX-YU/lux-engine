@@ -92,31 +92,35 @@ int main()
     const auto cyclic = compileMaterial(cycle);
     assert(!cyclic);
     assert(cyclic.error().code == EMaterialCompileError::CYCLE);
-    assert(cyclic.error().node_id != invalid_node);
+    assert(cyclic.error().node_id.valid());
 
     auto invalid_reference = validGraph();
     auto& invalid_reference_pin =
         outputNode(invalid_reference).inputs()[static_cast<std::uint32_t>(EMaterialAttribute::BASE_COLOR)];
-    invalid_reference_pin.source = PinLink{999U, 0U};
+    invalid_reference_pin.id = lux::graph::PinId{999U};
     const auto dangling = compileMaterial(invalid_reference);
     assert(!dangling && dangling.error().code == EMaterialCompileError::INVALID_GRAPH);
-    assert(dangling.error().node_id == 999U);
+    assert(dangling.error().node_id.valid());
 
     auto invalid_pin = validGraph();
     auto& invalid_output_pin =
         outputNode(invalid_pin).inputs()[static_cast<std::uint32_t>(EMaterialAttribute::BASE_COLOR)];
-    invalid_output_pin.source.pin = 7U;
+    invalid_output_pin.id = {};
     const auto bad_pin = compileMaterial(invalid_pin);
     assert(!bad_pin && bad_pin.error().code == EMaterialCompileError::INVALID_GRAPH);
-    assert(bad_pin.error().pin_index == 7U);
+    assert(bad_pin.error().pin_index == 0U);
 
     MaterialGraph mismatch;
     auto vec2 = std::make_unique<ConstantNode>();
     vec2->setType(EValueType::VEC2);
     const auto vec2_id = mismatch.addNode(std::move(vec2));
     const auto mismatch_output = mismatch.addNode(std::make_unique<OutputSurfaceNode>());
-    assert(mismatch.connect(vec2_id, 0U, mismatch_output,
-                            static_cast<std::uint32_t>(EMaterialAttribute::BASE_COLOR)));
+    const auto mismatch_pin = static_cast<std::uint32_t>(EMaterialAttribute::BASE_COLOR);
+    assert(!mismatch.connect(vec2_id, 0U, mismatch_output, mismatch_pin));
+    assert(mismatch.topology().connect(
+        mismatch.node(vec2_id)->outputs()[0U].id,
+        mismatch.node(mismatch_output)->inputs()[mismatch_pin].id
+    ));
     const auto type_mismatch = compileMaterial(mismatch);
     assert(!type_mismatch && type_mismatch.error().code == EMaterialCompileError::TYPE_MISMATCH);
 
@@ -173,7 +177,7 @@ int main()
     expect_invalid_graph(invalid_pin_direction);
 
     auto partial_link = validGraph();
-    outputNode(partial_link).inputs()[0].source = PinLink{invalid_node, 0U};
+    outputNode(partial_link).inputs()[0].id = {};
     expect_invalid_graph(partial_link);
 
     auto non_finite_pin = validGraph();

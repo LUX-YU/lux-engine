@@ -10,6 +10,7 @@ generate_visibility_header(
 if(NOT TARGET script_core)
     add_subdirectory(script/core)
 endif()
+add_subdirectory(graph)
 add_subdirectory(flowforge)
 if((LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT) AND
    NOT TARGET material_graph)
@@ -44,6 +45,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     set(LUX_FUNCTION_COMPONENTS
         animation
         flowforge
+        graph
         navigation
         navigation_detour3d
         render_client
@@ -56,6 +58,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
 else()
     set(LUX_FUNCTION_COMPONENTS
         flowforge
+        graph
         render_client
         render_client_meta
         render_standard_content

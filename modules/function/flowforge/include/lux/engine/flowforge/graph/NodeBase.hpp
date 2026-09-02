@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <lux/cxx/container/SparseSet.hpp>
+#include <lux/engine/function/graph/GraphTopology.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/meta/RuntimeObject.hpp>
 
@@ -20,21 +21,10 @@
   */
 namespace lux::flowforge
 {
-    static constexpr uint64_t invalid_id = std::numeric_limits<uint64_t>::max();
+    class FlowGraph;
 
-    /**
-     * @brief Stable pin id derived from the owning node's stable id and the
-     *        pin's position:
-     *        | node_id (44 bits) | is_out (4 bits) | ordinal (16 bits) |
-     *        Derived ids are unique within a graph as long as node ids are
-     *        (FlowGraph hands them out from a monotonic counter).
-     */
-    static constexpr uint64_t makePinId(uint64_t node_id, bool is_out, uint16_t ordinal)
-    {
-        return (node_id << 20)
-             | (static_cast<uint64_t>(is_out ? 1u : 0u) << 16)
-             | static_cast<uint64_t>(ordinal);
-    }
+    using lux::graph::NodeId;
+    using lux::graph::PinId;
 
     /**
      * @enum ENodeOperation
@@ -219,8 +209,8 @@ namespace lux::flowforge
     struct LastLink
     {
         bool      exist{false};    ///< Indicates if a previous link existed.
-        uintptr_t in_pin_id{ 0 };  ///< ID of the input pin previously linked.
-        uintptr_t out_pin_id{ 0 }; ///< ID of the output pin previously linked.
+        PinId in_pin_id{};  ///< ID of the input pin previously linked.
+        PinId out_pin_id{}; ///< ID of the output pin previously linked.
     };
 
     // Forward declarations
@@ -251,6 +241,7 @@ namespace lux::flowforge
     class Pin
     {
         friend class Node;
+        friend class FlowGraph;
 
     public:
         /**
@@ -264,7 +255,7 @@ namespace lux::flowforge
         /**
          * @brief Virtual destructor for Pin.
          */
-        virtual ~Pin() = default;
+        virtual ~Pin();
 
         /**
          * @brief Gets the kind of this Pin.
@@ -316,17 +307,17 @@ namespace lux::flowforge
          * @brief Gets the unique ID of this Pin.
          * @return A 64-bit integer representing the ID.
          */
-        uint64_t id() const;
+        PinId id() const;
 
     protected:
         /**
          * @brief Assigns a unique ID to this Pin.
          * @param id The new ID value.
          */
-        void setId(uint64_t id);
+        void setId(PinId id);
 
     private:
-        uint64_t    id_; ///< Unique ID for the pin.
+        PinId       id_; ///< Stable shared-topology identity.
         EPinKind    kind_;             ///< The kind of this pin.
         std::string name_;             ///< A user-defined name for this pin.
         Node*       node_;             ///< Pointer to the parent Node.
@@ -359,7 +350,7 @@ namespace lux::flowforge
          * @brief Gets all ExecOutPins linked to this ExecInPin.
          * @return A const reference to a vector of ExecOutPin pointers.
          */
-        const std::vector<ExecOutPin*>& linkedPins() const;
+        [[nodiscard]] std::vector<ExecOutPin*> linkedPins() const;
 
         /**
          * @brief Checks if a given ExecOutPin is already linked.
@@ -390,8 +381,6 @@ namespace lux::flowforge
          */
         ELinkError unlinkFrom(Pin* pin) override;
 
-    private:
-        std::vector<ExecOutPin*> linked_pins_; ///< List of ExecOutPins linked to this ExecInPin.
     };
 
     /**
@@ -446,8 +435,6 @@ namespace lux::flowforge
 
         ExecInPin* nextPin();
 
-    private:
-        ExecInPin* next_pin_{ nullptr }; ///< The ExecInPin linked to this ExecOutPin.
     };
 
     /**
@@ -547,7 +534,6 @@ namespace lux::flowforge
 
     private:
         DataPinInfo                info_; ///< Type info for this data pin.
-        DataOutPin*                linked_pin_{ nullptr }; ///< Linked DataOutPin.
 		bool                       allow_default_; ///< Flag to allow default value.
         bool 					   is_necessary_; ///< Flag to indicate if this pin is necessary.
         lux::meta::RuntimeObject   data_; ///< Constant data storage.
@@ -587,7 +573,7 @@ namespace lux::flowforge
          * @brief Gets all DataInPins linked to this DataOutPin.
          * @return A const reference to a vector of DataInPin pointers.
          */
-        const std::vector<DataInPin*>& linkPins() const;
+        [[nodiscard]] std::vector<DataInPin*> linkPins() const;
 
         /**
          * @brief Checks if this DataOutPin can link to another Pin.
@@ -618,8 +604,7 @@ namespace lux::flowforge
         const DataPinInfo& info() const;
 
     private:
-        DataPinInfo             info_;         ///< Type info for this data pin.
-        std::vector<DataInPin*> linked_pins_;  ///< All DataInPins linked to this DataOutPin.
+        DataPinInfo info_; ///< Type info for this data pin.
     };
 
     /**
@@ -662,18 +647,15 @@ namespace lux::flowforge
          * @brief Gets the unique ID of this Node.
          * @return The Node's ID.
          */
-        uint64_t id() const;
+        NodeId id() const;
 
         /**
-         * @brief Re-keys this node — and, derived from it, every current pin
-         *        (by position, see makePinId) — with a STABLE id.
-         *        FlowGraph::addNodes calls this with its monotonic counter;
-         *        the pointer-based ids the convenience constructors
-         *        self-assign are process-local and must never be serialized.
-         *        Call again (with the same id) after adding/removing dynamic
-         *        pins so their ids are re-derived.
+         * @brief Re-keys this node with a stable shared-topology id.
+         *        Pin identity is allocated independently by GraphTopology.
          */
-        void assignStableId(uint64_t id);
+        void assignStableId(NodeId id);
+        void assignGraph(FlowGraph* graph) noexcept;
+        [[nodiscard]] FlowGraph* graph() const noexcept { return graph_; }
 
         /**
          * @brief Name of the NodeRegistry creator that instantiated this
@@ -683,15 +665,6 @@ namespace lux::flowforge
          */
         const std::string& creatorName() const { return creator_name_; }
         void setCreatorName(std::string_view name) { creator_name_ = name; }
-
-        /**
-         * @brief Editor canvas position, persisted with the graph (mirrors
-         *        the MaterialGraph precedent: position lives on the domain
-         *        node because the editor's side tables don't survive a
-         *        save/load round trip).
-         */
-        bool  ui_placed{ false };
-        float ui_pos[2]{ 0.0f, 0.0f };
 
         /**
          * @brief Gets the operation type of this Node.
@@ -765,7 +738,8 @@ namespace lux::flowforge
         std::vector<Pin*> in_pins_;   ///< A list of pointers to this Node's input pins.
         std::vector<Pin*> out_pins_;  ///< A list of pointers to this Node's output pins.
 
-        uint64_t          id_;        ///< The unique ID of the Node.
+        NodeId            id_;        ///< Stable shared-topology identity.
+        FlowGraph*        graph_{};   ///< Borrowed graph while attached.
         ENodeOperation    operation_; ///< The operation type of the Node.
         std::string       name_;      ///< A user-defined name for the Node.
         std::string       creator_name_; ///< NodeRegistry creator that built this node (may be empty).

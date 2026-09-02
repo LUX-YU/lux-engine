@@ -35,9 +35,9 @@ namespace lux::material::compiler
         struct Builder
         {
             MaterialGraph& g;
-            node_id        uv;   // the shared Input(UV0)
-            node_id        out;  // the single OutputSurface
-            std::unordered_map<uint32_t, node_id> sample_cache;  // texture_index -> SampleTexture node
+            NodeId        uv;   // the shared Input(UV0)
+            NodeId        out;  // the single OutputSurface
+            std::unordered_map<uint32_t, NodeId> sample_cache;  // texture_index -> SampleTexture node
 
             explicit Builder(MaterialGraph& graph) : g(graph)
             {
@@ -45,7 +45,7 @@ namespace lux::material::compiler
                 out = g.addNode(std::make_unique<OutputSurfaceNode>());
             }
 
-            node_id constant(EVT t, float x, float y = 0, float z = 0, float w = 0)
+            NodeId constant(EVT t, float x, float y = 0, float z = 0, float w = 0)
             {
                 auto n = std::make_unique<ConstantNode>();
                 n->setType(t);
@@ -59,7 +59,7 @@ namespace lux::material::compiler
             // only in factor VALUES produce BYTE-IDENTICAL SPIR-V (the value lives in the
             // SSBO, not the shader) -> dedup to ONE shared PSO, and a Material Instance can
             // override the value per-instance. Structural literals stay Constant.
-            node_id param(const std::string& name, EVT t, float x, float y = 0, float z = 0, float w = 0)
+            NodeId param(const std::string& name, EVT t, float x, float y = 0, float z = 0, float w = 0)
             {
                 ParamSlotDecl decl;
                 decl.name    = name;
@@ -74,13 +74,13 @@ namespace lux::material::compiler
 
             // Samples a given texture_index (the same texture shares one
             // SampleTexture node), returning a vec4 node.
-            node_id sample(uint32_t tex_index)
+            NodeId sample(uint32_t tex_index)
             {
                 if (auto it = sample_cache.find(tex_index); it != sample_cache.end())
                     return it->second;
                 auto n = std::make_unique<SampleTextureNode>();
                 n->texture_slot = tex_index;
-                const node_id id = g.addNode(std::move(n));
+                const NodeId id = g.addNode(std::move(n));
                 g.connect(uv, 0, id, 0);   // uv -> sample
                 sample_cache.emplace(tex_index, id);
                 return id;
@@ -88,26 +88,26 @@ namespace lux::material::compiler
 
             // Swizzles `out_type` out of a vec4 source; components specifies
             // which source component each output channel takes.
-            node_id swizzle(node_id src, EVT out_type, uint8_t c0, uint8_t c1 = 0, uint8_t c2 = 0, uint8_t c3 = 0)
+            NodeId swizzle(NodeId src, EVT out_type, uint8_t c0, uint8_t c1 = 0, uint8_t c2 = 0, uint8_t c3 = 0)
             {
                 auto n = std::make_unique<SwizzleNode>(EVT::VEC4, out_type);
                 n->components[0] = c0; n->components[1] = c1; n->components[2] = c2; n->components[3] = c3;
-                const node_id id = g.addNode(std::move(n));
+                const NodeId id = g.addNode(std::move(n));
                 g.connect(src, 0, id, 0);
                 return id;
             }
 
-            node_id mul(node_id a, node_id b, EVT t)
+            NodeId mul(NodeId a, NodeId b, EVT t)
             {
                 auto n = std::make_unique<MathNode>(EMathOp::MUL);
                 n->setOperandType(t);
-                const node_id id = g.addNode(std::move(n));
+                const NodeId id = g.addNode(std::move(n));
                 g.connect(a, 0, id, 0);
                 g.connect(b, 0, id, 1);
                 return id;
             }
 
-            void bind(EAttr attr, node_id v) { g.connect(v, 0, out, static_cast<uint32_t>(attr)); }
+            void bind(EAttr attr, NodeId v) { g.connect(v, 0, out, static_cast<uint32_t>(attr)); }
             // (The rdesc-closure helpers color3/scalar/bindNormal/bindEmissive/bindOpacity
             //  + the materialToGraph(rdesc::Material) overload were retired in W5c — the
             //  closure rdesc::Material is gone; the ImportedMaterialDesc overload below
@@ -163,18 +163,18 @@ namespace lux::material::compiler
 
         // color3 factor [* tex.rgb] as a Param (mirrors Builder::color3).
         const auto color3 = [&](const std::string& name, const Eigen::Vector3f& v,
-                                std::optional<uint32_t> tex) -> node_id
+                                std::optional<uint32_t> tex) -> NodeId
         {
-            const node_id factor = b.param(name, EVT::VEC3, v.x(), v.y(), v.z());
+            const NodeId factor = b.param(name, EVT::VEC3, v.x(), v.y(), v.z());
             if (tex)
                 return b.mul(factor, b.swizzle(b.sample(*tex), EVT::VEC3, 0, 1, 2), EVT::VEC3);
             return factor;
         };
         // scalar factor [* tex[channel]] as a Param (mirrors Builder::scalar).
         const auto scalar = [&](const std::string& name, float val,
-                                std::optional<uint32_t> tex, uint8_t channel) -> node_id
+                                std::optional<uint32_t> tex, uint8_t channel) -> NodeId
         {
-            const node_id factor = b.param(name, EVT::FLOAT, val);
+            const NodeId factor = b.param(name, EVT::FLOAT, val);
             if (tex)
                 return b.mul(factor, b.swizzle(b.sample(*tex), EVT::FLOAT, channel), EVT::FLOAT);
             return factor;
@@ -195,16 +195,16 @@ namespace lux::material::compiler
             // MISSING here, so the tangent-space normal was bound directly as the world
             // normal -> ~constant world normal -> flat/unlit shading on every imported
             // normal-mapped material. (engine path mirrors lighting_tbn::calculateWorldNormal)
-            const node_id rgb  = b.swizzle(b.sample(*normal_texture), EVT::VEC3, 0, 1, 2);
-            const node_id decn = g.addNode(std::make_unique<DecodeNormalNode>());
+            const NodeId rgb  = b.swizzle(b.sample(*normal_texture), EVT::VEC3, 0, 1, 2);
+            const NodeId decn = g.addNode(std::make_unique<DecodeNormalNode>());
             g.connect(rgb, 0, decn, 0);
-            const node_id tbn  = g.addNode(std::make_unique<TbnTransformNode>());
+            const NodeId tbn  = g.addNode(std::make_unique<TbnTransformNode>());
             g.connect(decn, 0, tbn, 0);
             b.bind(EAttr::NORMAL_TS, tbn);
         }
         if (occlusion_texture)
         {
-            const node_id ao = b.swizzle(b.sample(*occlusion_texture), EVT::FLOAT, 0);
+            const NodeId ao = b.swizzle(b.sample(*occlusion_texture), EVT::FLOAT, 0);
             b.bind(EAttr::AMBIENT_OCCLUSION,
                    isOne(d.occlusion_strength)
                        ? ao
@@ -214,7 +214,7 @@ namespace lux::material::compiler
         // emissive = factor(=value*intensity) [* tex.rgb], Param (always bound).
         {
             const Eigen::Vector3f scaled = d.emissive * d.emissive_intensity;
-            const node_id factor = b.param("Emissive", EVT::VEC3, scaled.x(), scaled.y(), scaled.z());
+            const NodeId factor = b.param("Emissive", EVT::VEC3, scaled.x(), scaled.y(), scaled.z());
             if (emissive_texture)
                 b.bind(EAttr::EMISSIVE,
                        b.mul(factor, b.swizzle(b.sample(*emissive_texture), EVT::VEC3, 0, 1, 2), EVT::VEC3));

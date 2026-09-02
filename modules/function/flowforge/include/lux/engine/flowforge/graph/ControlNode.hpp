@@ -88,12 +88,12 @@ namespace lux::flowforge
         /**
          * @brief Adds a new ExecOutPin to this SequenceNode.
          */
-        void addExecOutPin();
+        [[nodiscard]] ExecOutPin* addExecOutPin(PinId stable_id = {});
 
         /**
          * @brief Removes the last ExecOutPin from this SequenceNode.
          */
-        void removeExecOutPin();
+        [[nodiscard]] PinId removeExecOutPin();
 
 		using ExecIntermediateNode::addExecOutPin;
 		using ExecIntermediateNode::removeExecOutPin;

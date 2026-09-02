@@ -165,8 +165,8 @@ namespace lux::material::compiler
             MaterialIR&                result;
             ShaderIR&                   ir;
             MaterialCompileFailure*     error;
-            std::unordered_map<graph::node_id, int>            color;
-            std::unordered_map<graph::node_id, uint32_t>       value_of;
+            std::unordered_map<graph::NodeId, int>             color;
+            std::unordered_map<graph::NodeId, uint32_t>        value_of;
             std::unordered_map<graph::EMaterialInput, uint32_t> input_slot_of;
             bool                                               ok = true;
 
@@ -178,7 +178,7 @@ namespace lux::material::compiler
             bool fail(
                 std::string message,
                 EMaterialCompileError code = EMaterialCompileError::LOWERING_FAILURE,
-                std::uint64_t node_id = graph::invalid_node,
+                graph::NodeId node_id = {},
                 std::uint32_t pin_index = graph::invalid_pin
             )
             {
@@ -190,7 +190,7 @@ namespace lux::material::compiler
 
             ShaderValueType valueType(
                 graph::EValueType source,
-                std::uint64_t node_id = graph::invalid_node,
+                graph::NodeId node_id = {},
                 std::uint32_t pin_index = graph::invalid_pin
             )
             {
@@ -201,7 +201,7 @@ namespace lux::material::compiler
                 return result;
             }
 
-            EOp mathOp(graph::EMathOp source, std::uint64_t node_id)
+            EOp mathOp(graph::EMathOp source, graph::NodeId node_id)
             {
                 EOp result{};
                 if (!mapMathOp(source, result))
@@ -254,16 +254,16 @@ namespace lux::material::compiler
                 return slot;
             }
 
-            bool validateSource(const graph::DataPin& pin)
+            bool validateSource(graph::PinLink source)
             {
-                const graph::Node* src = g.node(pin.source.node);
+                const graph::Node* src = g.node(source.node);
                 if (!src)
                     return fail("dangling connection: source node missing", EMaterialCompileError::INVALID_GRAPH,
-                                pin.source.node, pin.source.pin);
-                if (pin.source.pin >= src->outputs().size())
+                                source.node, source.pin);
+                if (source.pin >= src->outputs().size())
                     return fail("connection references an invalid source output pin",
-                                EMaterialCompileError::INVALID_GRAPH, pin.source.node, pin.source.pin);
-                if (pin.source.pin != 0)
+                                EMaterialCompileError::INVALID_GRAPH, source.node, source.pin);
+                if (source.pin != 0)
                     return fail("multi-output nodes are not supported yet");
                 return true;
             }
@@ -277,9 +277,10 @@ namespace lux::material::compiler
                 if (!ok)
                     return kNoValue;
 
-                if (pin.source.valid())
+                const auto source = g.source(pin.id);
+                if (source.valid())
                 {
-                    auto it = value_of.find(pin.source.node);
+                    auto it = value_of.find(source.node);
                     if (it == value_of.end())
                     {
                         fail("internal: operand was not lowered before use");
@@ -287,7 +288,7 @@ namespace lux::material::compiler
                     }
                     const uint32_t vidx = it->second;
                     const ShaderValueType produced = ir.values[vidx].type;
-                    const auto expected = valueType(pin.type, pin.source.node, pin.source.pin);
+                    const auto expected = valueType(pin.type, source.node, source.pin);
                     if (!ok)
                         return kNoValue;
                     if (produced == expected)
@@ -317,7 +318,7 @@ namespace lux::material::compiler
                     fail(std::string("type mismatch: source produces ") + typeName(produced) + " but pin '" +
                              pin.name + "' expects " + typeName(expected) +
                              " — insert a Construct node to widen",
-                         EMaterialCompileError::TYPE_MISMATCH, pin.source.node, pin.source.pin);
+                         EMaterialCompileError::TYPE_MISMATCH, source.node, source.pin);
                     return kNoValue;
                 }
 
@@ -327,14 +328,14 @@ namespace lux::material::compiler
 
             // Iterative post-order DFS: lowers root and its dependency
             // subgraph, returning root's value index.
-            uint32_t lower(graph::node_id root)
+            uint32_t lower(graph::NodeId root)
             {
-                std::vector<graph::node_id> stack;
+                std::vector<graph::NodeId> stack;
                 stack.push_back(root);
 
                 while (ok && !stack.empty())
                 {
-                    const graph::node_id id = stack.back();
+                    const graph::NodeId id = stack.back();
                     const int col = color[id];
 
                     if (col == 2)
@@ -360,19 +361,20 @@ namespace lux::material::compiler
                         for (int k = 0; k < used; ++k)
                         {
                             const graph::DataPin& pin = n->inputs()[k];
-                            if (!pin.source.valid())
+                            const auto source = g.source(pin.id);
+                            if (!source.valid())
                                 continue;
-                            if (!validateSource(pin))
+                            if (!validateSource(source))
                                 return kNoValue;
-                            const int sc = color[pin.source.node];
+                            const int sc = color[source.node];
                             if (sc == 1)
                             {
                                 fail("cycle detected in material graph", EMaterialCompileError::CYCLE,
-                                     pin.source.node);
+                                     source.node);
                                 return kNoValue;
                             }
                             if (sc != 2)
-                                stack.push_back(pin.source.node);
+                                stack.push_back(source.node);
                         }
                     }
                     else  // col == 1: children already emitted -> emit this node
@@ -660,11 +662,12 @@ namespace lux::material::compiler
                     if (i < output->inputs().size())
                     {
                         const graph::DataPin& pin = output->inputs()[i];
-                        if (pin.source.valid())
+                        const auto source = g.source(pin.id);
+                        if (source.valid())
                         {
-                            if (!validateSource(pin))
+                            if (!validateSource(source))
                                 return false;
-                            lower(pin.source.node);
+                            lower(source.node);
                             if (!ok)
                                 return false;
                             o.value_id = operandValue(pin);
@@ -722,7 +725,7 @@ namespace lux::material::compiler
         MaterialCompileFailure error{
             EMaterialCompileError::LOWERING_FAILURE,
             "lowerMaterial failed",
-            graph::invalid_node,
+            {},
             graph::invalid_pin
         };
         Lowerer lowerer(graph, out, &error);

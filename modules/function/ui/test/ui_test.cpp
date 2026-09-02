@@ -5,6 +5,7 @@
 
 #include <lux/engine/ui/UI.hpp>
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
+#include <lux/engine/ui/detail/EditLifecycle.hpp>
 #include <lux/engine/ui/detail/UISessionDiagnostics.hpp>
 
 #include <imgui.h>
@@ -85,6 +86,11 @@ namespace
 int
 main()
 {
+    constexpr auto unopened_choice = lux::ui::detail::atomicEditResult(false);
+    static_assert(!unopened_choice.changed && !unopened_choice.began && !unopened_choice.committed);
+    constexpr auto selected_choice = lux::ui::detail::atomicEditResult(true);
+    static_assert(selected_choice.changed && selected_choice.began && selected_choice.committed);
+
     std::array<std::byte, lux::ui::detail::kInlineDragDropBytes> inline_payload{};
     std::vector<std::byte> heap_payload;
     const std::array small_content{std::byte{0x1}, std::byte{0x2}, std::byte{0x3}};

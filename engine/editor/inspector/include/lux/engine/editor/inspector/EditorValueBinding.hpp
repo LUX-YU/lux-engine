@@ -268,7 +268,6 @@ namespace lux::editor::inspector
             ui::EditResult result;
             auto type = static_cast<std::int64_t>(value.type);
             auto type_edit = context.frame.editChoice("Type", type, options);
-            type_edit.began = type_edit.changed;
             if (type_edit.changed)
                 value.type = static_cast<rdesc::ELightType>(type);
             detail::merge(result, type_edit);

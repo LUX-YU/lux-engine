@@ -5,6 +5,7 @@
 #include <imgui_stdlib.h>
 
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
+#include <lux/engine/ui/detail/EditLifecycle.hpp>
 #include <lux/engine/ui/detail/UiContract.hpp>
 
 #include <algorithm>
@@ -416,10 +417,8 @@ namespace lux::ui
         const auto selected = std::ranges::find(options, value, &ComboOption::value);
         const char* preview = selected == options.end() ? "<unknown>" : selected->label.data();
         bool changed{};
-        bool began{};
         if (ImGui::BeginCombo(label.data(), preview))
         {
-            began = true;
             for (const auto& option : options)
             {
                 const bool current = option.value == value;
@@ -433,7 +432,7 @@ namespace lux::ui
             }
             ImGui::EndCombo();
         }
-        return {changed, began, changed, false};
+        return detail::atomicEditResult(changed);
     }
 
     bool Frame::lastItemHovered() const noexcept

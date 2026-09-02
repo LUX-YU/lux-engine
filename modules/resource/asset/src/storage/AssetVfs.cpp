@@ -2,103 +2,199 @@
 #include <lux/engine/resource/asset/storage/VirtualPath.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <new>
 #include <unordered_set>
+#include <utility>
+#include <vector>
+
+namespace lux::asset::detail
+{
+    struct Mount final
+    {
+        MountId id{};
+        std::string root;
+        std::shared_ptr<IAssetProvider> provider;
+        int priority{};
+        std::uint64_t sequence{};
+    };
+
+    struct MountTable final
+    {
+        std::vector<Mount> mounts;
+    };
+
+    struct AssetVfsState final
+    {
+        AssetVfsState() : published(std::make_shared<const MountTable>())
+        {
+        }
+
+        std::mutex control_mutex;
+        std::atomic<std::shared_ptr<const MountTable>> published;
+        MountId next_id{1U};
+        std::uint64_t next_sequence{1U};
+    };
+} // namespace lux::asset::detail
 
 namespace lux::asset
 {
-    MountId AssetVfs::mount(MountDesc desc)
+    namespace
     {
-        if (!desc.provider || !VirtualPath::isLegalRoot(desc.root))
-            return kInvalidMountId;
-
-        Mount m{next_id_++, std::move(desc.root), std::move(desc.provider), desc.priority, next_seq_++};
-
-        // Insert keeping (priority desc, seq desc): the first position whose
-        // mount loses to the new one. Equal priority -> the new (higher seq)
-        // mount lands BEFORE existing ones = head-insert, newest wins.
-        const auto pos = std::find_if(mounts_.begin(), mounts_.end(), [&](const Mount& other) {
-            return other.priority < m.priority || (other.priority == m.priority && other.seq < m.seq);
+        [[nodiscard]] std::shared_ptr<const detail::MountTable>
+        snapshot(const std::shared_ptr<detail::AssetVfsState>& state) noexcept
+        {
+            return state ? state->published.load(std::memory_order_acquire) : nullptr;
         }
-        );
-        const MountId id = m.id;
-        mounts_.insert(pos, std::move(m));
-        return id;
-    }
+    } // namespace
 
-    void AssetVfs::unmount(MountId id)
+    AssetVfsView::AssetVfsView(std::shared_ptr<detail::AssetVfsState> state) noexcept
+        : state_(std::move(state))
     {
-        std::erase_if(mounts_, [id](const Mount& m) { return m.id == id; });
     }
 
-    AssetId AssetVfs::resolve(std::string_view vpath) const
+    AssetVfsView::operator bool() const noexcept
+    {
+        return static_cast<bool>(state_);
+    }
+
+    AssetId AssetVfsView::resolve(std::string_view vpath) const
     {
         const auto parsed = VirtualPath::parse(vpath);
-        if (!parsed.has_value())
-            return AssetId{};
+        const auto table = snapshot(state_);
+        if (!parsed || !table)
+            return {};
 
-        const std::string_view rel = parsed.value().relPath();
-        for (const Mount& m : mounts_)
+        const auto relative = parsed->relPath();
+        for (const auto& mount : table->mounts)
         {
-            // m.root is "/Game"; parsed root() is "Game".
-            if (std::string_view{m.root}.substr(1) != parsed.value().root())
+            if (std::string_view{mount.root}.substr(1U) != parsed->root())
                 continue;
-            if (const auto id = m.provider->resolve(rel))
+            if (const auto id = mount.provider->resolve(relative))
                 return *id;
         }
-        return AssetId{};
+        return {};
     }
 
-    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfs::open(const AssetId& id) const
+    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfsView::open(AssetId id) const
     {
-        if (id.isNull())
+        const auto table = snapshot(state_);
+        if (id.isNull() || !table)
             return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
 
-        for (const Mount& m : mounts_)
-        {
-            if (m.provider->contains(id))
-                return m.provider->open(id); // tombstone claims + fails here
-        }
+        for (const auto& mount : table->mounts)
+            if (mount.provider->contains(id))
+                return mount.provider->open(id);
         return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
     }
 
-    void AssetVfs::enumerate(const std::function<void(const ProviderEntry&)>& fn) const
+    void AssetVfsView::enumerate(const std::function<void(const ProviderEntry&)>& fn) const
     {
+        const auto table = snapshot(state_);
+        if (!table)
+            return;
+
         std::unordered_set<AssetId> claimed_ids;
         std::unordered_set<std::string> claimed_paths;
-
-        for (const Mount& m : mounts_)
+        for (const auto& mount : table->mounts)
         {
-            m.provider->enumerate([&](const ProviderEntry& e) {
-                if (!claimed_ids.insert(e.id).second)
-                    return; // id already won by a higher mount
-                if (e.tombstone)
-                    return; // claims the id, emits nothing
-
-                ProviderEntry abs = e;
-                abs.vpath = m.root + "/" + e.vpath;
-                if (!claimed_paths.insert(abs.vpath).second)
-                    return; // path shadowed by a higher mount
-                fn(abs);
-            }
-            );
+            mount.provider->enumerate([&](const ProviderEntry& entry) {
+                if (!claimed_ids.insert(entry.id).second || entry.tombstone)
+                    return;
+                auto absolute = entry;
+                absolute.vpath = mount.root + "/" + entry.vpath;
+                if (claimed_paths.insert(absolute.vpath).second)
+                    fn(absolute);
+            });
         }
     }
 
-    std::optional<std::string> AssetVfs::pathOf(const AssetId& id) const
+    std::optional<std::string> AssetVfsView::pathOf(AssetId id) const
     {
-        if (id.isNull())
+        const auto table = snapshot(state_);
+        if (id.isNull() || !table)
             return std::nullopt;
 
-        for (const Mount& m : mounts_)
+        for (const auto& mount : table->mounts)
         {
-            if (!m.provider->contains(id))
+            if (!mount.provider->contains(id))
                 continue;
-            // Winner found; a tombstone has no path — report absent.
-            if (auto rel = m.provider->pathOf(id))
-                return m.root + "/" + *rel;
+            if (auto relative = mount.provider->pathOf(id))
+                return mount.root + "/" + *relative;
             return std::nullopt;
         }
         return std::nullopt;
     }
 
-}
+    AssetVfs::AssetVfs() : state_(std::make_shared<detail::AssetVfsState>())
+    {
+    }
+
+    AssetVfs::~AssetVfs() = default;
+
+    MountId AssetVfs::mount(MountDesc desc)
+    {
+        if (!desc.provider || !VirtualPath::isLegalRoot(desc.root))
+            return kInvalidMountId;
+
+        std::lock_guard lock{state_->control_mutex};
+        if (state_->next_id == kInvalidMountId || state_->next_sequence == 0U)
+            return kInvalidMountId;
+
+        try
+        {
+            const auto current = state_->published.load(std::memory_order_acquire);
+            auto next = std::make_shared<detail::MountTable>(*current);
+            detail::Mount mount{
+                state_->next_id,
+                std::move(desc.root),
+                std::move(desc.provider),
+                desc.priority,
+                state_->next_sequence
+            };
+            const auto position = std::ranges::find_if(next->mounts, [&](const detail::Mount& other) noexcept {
+                return other.priority < mount.priority ||
+                    (other.priority == mount.priority && other.sequence < mount.sequence);
+            });
+            next->mounts.insert(position, std::move(mount));
+            const auto result = state_->next_id++;
+            ++state_->next_sequence;
+            state_->published.store(std::move(next), std::memory_order_release);
+            return result;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return kInvalidMountId;
+        }
+    }
+
+    void AssetVfs::unmount(MountId id)
+    {
+        if (id == kInvalidMountId)
+            return;
+
+        std::lock_guard lock{state_->control_mutex};
+        const auto current = state_->published.load(std::memory_order_acquire);
+        const auto found = std::ranges::find_if(current->mounts, [id](const detail::Mount& mount) noexcept {
+            return mount.id == id;
+        });
+        if (found == current->mounts.end())
+            return;
+
+        auto next = std::make_shared<detail::MountTable>(*current);
+        std::erase_if(next->mounts, [id](const detail::Mount& mount) noexcept { return mount.id == id; });
+        state_->published.store(std::move(next), std::memory_order_release);
+    }
+
+    AssetVfsView AssetVfs::view() const noexcept
+    {
+        return AssetVfsView{state_};
+    }
+
+    std::size_t AssetVfs::mountCount() const noexcept
+    {
+        const auto table = snapshot(state_);
+        return table ? table->mounts.size() : 0U;
+    }
+} // namespace lux::asset

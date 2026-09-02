@@ -1,4 +1,6 @@
+#include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/process/PortSender.hpp>
+#include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/process/Timer.hpp>
 
 #include <stdexec/execution.hpp>
@@ -125,5 +127,26 @@ int main()
         PortReceiver{&value, &port_failed}
     );
     stdexec::start(port_state);
-    return value == 42 && !port_failed ? 0 : 3;
+    if (value != 42 || port_failed)
+        return 3;
+
+    auto runtime_created = lux::process::ExecutionRuntime::create({2U, 4U, 4U, {4U}});
+    if (!runtime_created)
+        return 4;
+    auto runtime = std::move(*runtime_created);
+    lux::process::TaskScope scope;
+    std::atomic_bool cpu_ran{};
+    auto cpu_work = stdexec::schedule(runtime.cpu()) |
+        stdexec::then([&cpu_ran]() noexcept {
+            cpu_ran.store(true, std::memory_order_release);
+            cpu_ran.notify_all();
+        });
+    if (!scope.start(std::move(cpu_work)))
+        return 5;
+    cpu_ran.wait(false, std::memory_order_acquire);
+    const auto closed = stdexec::sync_wait(scope.close());
+    if (!closed || !cpu_ran.load(std::memory_order_acquire))
+        return 6;
+    runtime.requestStop();
+    return runtime.join() ? 0 : 7;
 }

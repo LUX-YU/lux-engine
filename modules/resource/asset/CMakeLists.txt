@@ -115,7 +115,7 @@ foreach(test_name IN ITEMS
     )
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
-foreach(test_name IN ITEMS pak_archive_public_test asset_storage_contract_test)
+foreach(test_name IN ITEMS pak_archive_public_test asset_storage_contract_test asset_vfs_view_test)
     add_executable(
         ${test_name}
         ${CMAKE_CURRENT_SOURCE_DIR}/test/storage/${test_name}.cpp

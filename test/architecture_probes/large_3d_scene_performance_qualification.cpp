@@ -46,7 +46,7 @@ namespace
 
     template <class Asset>
     [[nodiscard]] std::shared_ptr<const Asset> decode(
-        lux::asset::AssetVfs& vfs,
+        lux::asset::AssetVfsView vfs,
         lux::asset::AssetId id
     )
     {
@@ -81,11 +81,12 @@ int main(int argc, char** argv)
     for (const auto& entry : pak->entries)
         if (entry.magic_number == ModelAsset::primary_magic) model_id = entry.id;
     if (model_id.isNull()) return 4;
-    const auto model = decode<ModelAsset>(*vfs, model_id);
+    const auto view = vfs->view();
+    const auto model = decode<ModelAsset>(view, model_id);
     if (!model || model->data().primitives.empty()) return 5;
     const auto& primitive = model->data().primitives.front();
-    const auto mesh_asset = decode<MeshAsset>(*vfs, primitive.mesh);
-    const auto material_asset = decode<MaterialAsset>(*vfs, primitive.material);
+    const auto mesh_asset = decode<MeshAsset>(view, primitive.mesh);
+    const auto material_asset = decode<MaterialAsset>(view, primitive.material);
     if (!mesh_asset || !material_asset) return 6;
 
     std::atomic_int validation_errors{};
@@ -242,7 +243,7 @@ int main(int argc, char** argv)
         {
             const auto texture_id = material_asset->data().texture_slot_ids[slot];
             if (texture_id.isNull()) continue;
-            const auto texture_asset = decode<TextureAsset>(*vfs, texture_id);
+            const auto texture_asset = decode<TextureAsset>(view, texture_id);
             if (!texture_asset) return 9;
             const auto& texture = texture_asset->data();
             std::vector<OwnedTextureMipLevel> mip_levels;

@@ -59,8 +59,11 @@ namespace lux::asset
         bool tombstone{false};
     };
 
-    /// UUID/relative-path to opaque bytes. Providers have no cache, residency,
-    /// reference-counting, decoding, or asynchronous orchestration behavior.
+    /// UUID/relative-path to opaque bytes. Providers have no residency,
+    /// decoding, or asynchronous orchestration behavior. All const read verbs
+    /// must support concurrent calls: AssetVfsView can invoke one provider from
+    /// multiple runtime/Editor worker threads. Mutable caches therefore require
+    /// provider-owned synchronization and must not share a stream cursor.
     class LUX_ASSET_PUBLIC IAssetProvider
     {
     public:

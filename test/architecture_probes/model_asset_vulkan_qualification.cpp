@@ -24,7 +24,7 @@ namespace
     inline constexpr int kSkip = 77;
 
     template <class Asset>
-    [[nodiscard]] std::shared_ptr<const Asset> decode(lux::asset::AssetVfs& vfs, lux::asset::AssetId id)
+    [[nodiscard]] std::shared_ptr<const Asset> decode(lux::asset::AssetVfsView vfs, lux::asset::AssetId id)
     {
         const auto blob = vfs.open(id);
         if (!blob)
@@ -65,14 +65,15 @@ int main()
             model_id = entry.id;
         }
     }
-    const auto model = decode<ModelAsset>(*vfs, model_id);
+    const auto view = vfs->view();
+    const auto model = decode<ModelAsset>(view, model_id);
     if (!model || model->data().primitives.empty())
     {
         return 4;
     }
     const auto& primitive = model->data().primitives.front();
-    const auto mesh_asset = decode<MeshAsset>(*vfs, primitive.mesh);
-    const auto material_asset = decode<MaterialAsset>(*vfs, primitive.material);
+    const auto mesh_asset = decode<MeshAsset>(view, primitive.mesh);
+    const auto material_asset = decode<MaterialAsset>(view, primitive.material);
     if (!mesh_asset || !material_asset)
     {
         return 5;

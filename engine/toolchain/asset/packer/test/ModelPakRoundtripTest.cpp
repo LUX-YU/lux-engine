@@ -14,7 +14,7 @@ namespace
 {
     template <class Asset>
     std::shared_ptr<const Asset> decode(
-        lux::asset::AssetVfs& vfs,
+        lux::asset::AssetVfsView vfs,
         lux::asset::AssetId id
     )
     {
@@ -42,23 +42,24 @@ int main()
     assert(provider);
     lux::asset::AssetVfs vfs;
     assert(vfs.mount({"/Game", *provider, 0}) != lux::asset::kInvalidMountId);
+    const auto view = vfs.view();
 
     lux::asset::AssetId model_id;
     for (const auto& entry : pak_info->entries)
         if (entry.magic_number == lux::asset::ModelAsset::primary_magic) model_id = entry.id;
     assert(!model_id.isNull());
-    const auto model = decode<lux::asset::ModelAsset>(vfs, model_id);
+    const auto model = decode<lux::asset::ModelAsset>(view, model_id);
     assert(model->data().primitives.size() == 3U);
 
     for (const auto& primitive : model->data().primitives)
     {
-        const auto mesh = decode<lux::asset::MeshAsset>(vfs, primitive.mesh);
-        const auto material = decode<lux::asset::MaterialAsset>(vfs, primitive.material);
+        const auto mesh = decode<lux::asset::MeshAsset>(view, primitive.mesh);
+        const auto material = decode<lux::asset::MaterialAsset>(view, primitive.material);
         assert(!mesh->data().vertices.empty());
         for (const auto texture_id : material->data().texture_slot_ids)
         {
             if (texture_id.isNull()) continue;
-            const auto texture = decode<lux::asset::TextureAsset>(vfs, texture_id);
+            const auto texture = decode<lux::asset::TextureAsset>(view, texture_id);
             assert(texture->data().mipCount() != 0U);
         }
     }

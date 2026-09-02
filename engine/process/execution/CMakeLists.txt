@@ -13,6 +13,7 @@ add_component(
     NAMESPACE      lux::engine::process
     OUTPUT_NAME    lux_engine_process_execution
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ExecutionRuntime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Timer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TimerFailureInjection.cpp
 )
@@ -77,6 +78,36 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 add_test(NAME process_port_sender_test COMMAND process_port_sender_test)
+
+add_executable(process_execution_runtime_test test/execution_runtime_test.cpp)
+target_link_libraries(process_execution_runtime_test PRIVATE lux::engine::process::process_execution)
+if(MSVC)
+    target_compile_options(process_execution_runtime_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(process_execution_runtime_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  process_execution_runtime_test
+    LAYER   PROCESS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(NAME process_execution_runtime_test COMMAND process_execution_runtime_test)
+
+add_executable(process_task_scope_test test/task_scope_test.cpp)
+target_link_libraries(process_task_scope_test PRIVATE lux::engine::process::process_execution)
+if(MSVC)
+    target_compile_options(process_task_scope_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(process_task_scope_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  process_task_scope_test
+    LAYER   PROCESS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(NAME process_task_scope_test COMMAND process_task_scope_test)
 
 add_executable(process_execution_benchmark test/process_execution_benchmark.cpp)
 execute_process(

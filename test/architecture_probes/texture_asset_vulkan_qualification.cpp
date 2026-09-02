@@ -45,10 +45,11 @@ int main(int argc, char** argv)
     auto vfs = std::make_shared<AssetVfs>();
     if (vfs->mount({"/Game", *provider, 0}) == kInvalidMountId)
         return 3;
-    const auto requested = vfs->resolve("/Game/checker");
+    const auto view = vfs->view();
+    const auto requested = view.resolve("/Game/checker");
     if (requested.isNull())
         return 4;
-    const auto blob = vfs->open(requested);
+    const auto blob = view.open(requested);
     if (!blob)
         return 5;
     const auto texture_asset = TAssetSerDeser<TextureAsset>::decode(

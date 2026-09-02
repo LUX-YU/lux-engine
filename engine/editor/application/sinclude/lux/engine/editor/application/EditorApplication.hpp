@@ -2,6 +2,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 
 #include <cstddef>
@@ -9,21 +10,46 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace lux::editor
 {
+    namespace application::detail
+    {
+        class UiVulkanPresentation;
+    }
+
     enum class EEditorApplicationError : std::uint8_t
     {
         INVALID_STATE,
         EXECUTION_CREATE_FAILURE,
         VFS_MOUNT_FAILURE,
         ASSET_READ_CREATE_FAILURE,
+        WINDOW_RUNTIME_CREATE_FAILURE,
+        WINDOW_CREATE_FAILURE,
+        PRESENTATION_CREATE_FAILURE,
+        PRESENTATION_FRAME_FAILURE,
+        PRESENTATION_JOIN_FAILURE,
         ALLOCATION_FAILURE,
         TASK_CLOSE_FAILURE,
         ASSET_READ_JOIN_FAILURE,
         EXECUTION_JOIN_FAILURE,
+    };
+
+    struct EditorPresentationConfig final
+    {
+        std::uint32_t width{};
+        std::uint32_t height{};
+        std::string title;
+        std::size_t frame_capacity{};
+        std::size_t control_capacity{};
+        std::size_t upload_capacity{};
+        std::size_t upload_byte_capacity{};
+        render::ProgramMemoryHints program_memory;
+        bool visible{true};
+        bool enable_validation{};
     };
 
     struct EditorApplicationCreateInfo final
@@ -32,6 +58,7 @@ namespace lux::editor
         process::asset_loading::VfsAssetReadEndpointConfig asset_read;
         scene::SceneMetaManager scene_meta;
         std::vector<asset::MountDesc> mounts;
+        std::optional<EditorPresentationConfig> presentation;
     };
 
     class EditorApplication final
@@ -68,6 +95,8 @@ namespace lux::editor
         [[nodiscard]] ContextResult context() noexcept;
         [[nodiscard]] lux::cxx::expected<std::size_t, EEditorApplicationError>
         drainMain(std::size_t budget = static_cast<std::size_t>(-1)) noexcept;
+        [[nodiscard]] lux::cxx::expected<std::size_t, EEditorApplicationError>
+        run(std::size_t max_frames = 0U) noexcept;
         [[nodiscard]] lux::cxx::expected<void, EEditorApplicationError> shutdown() noexcept;
 
     private:
@@ -79,8 +108,14 @@ namespace lux::editor
             JOINED,
         };
 
-        EditorApplication(process::ExecutionRuntime runtime, scene::SceneMetaManager scene_meta);
+        EditorApplication(
+            process::ExecutionRuntime runtime,
+            scene::SceneMetaManager scene_meta,
+            std::optional<EditorPresentationConfig> presentation
+        );
         [[nodiscard]] bool closeRootTasks() noexcept;
+        void feedWindowInput() noexcept;
+        void clearWindowCallbacks() noexcept;
 
         process::ExecutionRuntime execution_;
         asset::AssetVfs vfs_;
@@ -91,6 +126,9 @@ namespace lux::editor
         std::optional<Toolset> toolset_;
         std::optional<process::TaskScope> tasks_;
         std::optional<EditorContext> context_;
+        std::optional<EditorPresentationConfig> presentation_config_;
+        struct PresentationOwners;
+        std::unique_ptr<PresentationOwners> presentation_owners_;
         EState state_{EState::COMPOSING};
     };
 } // namespace lux::editor

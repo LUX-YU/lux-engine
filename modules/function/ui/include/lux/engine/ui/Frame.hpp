@@ -52,6 +52,7 @@ namespace lux::ui
     {
         Size display_size;
         float delta_seconds{};
+        Vec2 framebuffer_scale{1.0F, 1.0F};
     };
 
     class LUX_FUNCTION_PUBLIC DisabledScope final

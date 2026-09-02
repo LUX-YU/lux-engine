@@ -776,6 +776,7 @@ namespace lux::ui
         auto& io = ImGui::GetIO();
         io.DisplaySize = {info.display_size.width, info.display_size.height};
         io.DeltaTime = info.delta_seconds;
+        io.DisplayFramebufferScale = {info.framebuffer_scale.x, info.framebuffer_scale.y};
         ImGui::NewFrame();
         impl_->frame_open = true;
         return Frame{*this};

@@ -139,6 +139,8 @@ int main()
 
     auto context = (*application)->context();
     assert(context);
+    assert(!(*application)->run(1U));
+    assert((*application)->run(1U).error() == lux::editor::EEditorApplicationError::INVALID_STATE);
     auto& capabilities = context->get();
     assert(capabilities.vfs().resolve("/Game/probe") == assetId(1U));
     assert(capabilities.assetRead());

@@ -259,6 +259,7 @@ foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-scene/scene_composition/lux-engine-scene-scene_composition-config-targets.cmake"
     "${prefix}/share/lux-engine-scene-presentation/scene_presentation/lux-engine-scene-presentation-scene_presentation-config-targets.cmake"
     "${prefix}/share/lux-engine-scene-world-materialization/scene_world_materialization/lux-engine-scene-world-materialization-scene_world_materialization-config-targets.cmake"
+    "${prefix}/share/lux-engine-scene-script-runtime/scene_script_runtime/lux-engine-scene-script-runtime-scene_script_runtime-config-targets.cmake"
     "${prefix}/share/lux-engine-scene-render/scene_render/lux-engine-scene-render-scene_render-config-targets.cmake"
 )
     if(NOT EXISTS "${contract_file}")

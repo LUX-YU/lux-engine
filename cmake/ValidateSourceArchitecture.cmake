@@ -1182,6 +1182,29 @@ if(EXISTS "${source_root}/engine/scene/integration/world_materialization/include
     message(FATAL_ERROR "Architecture: retired Scene WorldRuntime aggregate header remains in source.")
 endif()
 
+set(scene_script_runtime_cmake "${source_root}/engine/scene/integration/script/CMakeLists.txt")
+if(NOT EXISTS "${scene_script_runtime_cmake}")
+    message(FATAL_ERROR "Missing canonical Scene script runtime integration leaf")
+endif()
+file(READ "${scene_script_runtime_cmake}" scene_script_runtime_contract)
+if(NOT scene_script_runtime_contract MATCHES "lux::engine::process::process_execution" OR
+   NOT scene_script_runtime_contract MATCHES "lux::engine::simulation::simulation_script")
+    message(FATAL_ERROR "Scene script runtime must explicitly bridge Process execution and Simulation Script")
+endif()
+file(READ "${source_root}/engine/domain/simulation/builtin/script/CMakeLists.txt" simulation_script_contract)
+if(simulation_script_contract MATCHES "lux::engine::process")
+    message(FATAL_ERROR "L1 Simulation Script must not link Process execution for Delay")
+endif()
+file(GLOB_RECURSE scene_script_runtime_sources
+    "${source_root}/engine/scene/integration/script/include/*.hpp"
+    "${source_root}/engine/scene/integration/script/src/*.cpp")
+foreach(scene_script_runtime_source IN LISTS scene_script_runtime_sources)
+    file(READ "${scene_script_runtime_source}" scene_script_runtime_content)
+    if(scene_script_runtime_content MATCHES "(ScriptTimeManager|AsyncManager|SceneServices|ServiceRegistry|shared_ptr[<][^>]*ScriptSystem)")
+        message(FATAL_ERROR "Scene script runtime reintroduced a forbidden manager/service/ScriptSystem owner")
+    endif()
+endforeach()
+
 foreach(typed_asset_header IN ITEMS
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/Asset.hpp"
     "${source_root}/modules/resource/asset/include/lux/engine/resource/asset/AssetSerDeser.hpp"

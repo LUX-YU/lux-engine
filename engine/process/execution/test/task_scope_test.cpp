@@ -145,6 +145,55 @@ namespace
         closeScope(scope);
     }
 
+    void testInlineNestedStartAdmission()
+    {
+        lux::process::TaskScope scope;
+        std::atomic_bool nested_entered{};
+        std::atomic_bool nested_release{};
+        std::atomic_bool nested_completed{};
+        std::atomic_bool outer_returned{};
+        std::atomic_bool nested_admitted{};
+
+        std::jthread starter([&] {
+            const auto outer = scope.start(
+                stdexec::just() |
+                stdexec::then([&]() noexcept {
+                    const auto nested = scope.start(
+                        stdexec::just() |
+                        stdexec::then([&]() noexcept {
+                            nested_entered.store(true, std::memory_order_release);
+                            nested_entered.notify_all();
+                            nested_release.wait(false, std::memory_order_acquire);
+                            nested_completed.store(true, std::memory_order_release);
+                        })
+                    );
+                    nested_admitted.store(static_cast<bool>(nested), std::memory_order_release);
+                })
+            );
+            assert(outer);
+            outer_returned.store(true, std::memory_order_release);
+        });
+        nested_entered.wait(false, std::memory_order_acquire);
+
+        std::atomic_bool close_returned{};
+        std::jthread closer([&] {
+            closeScope(scope);
+            close_returned.store(true, std::memory_order_release);
+        });
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        assert(!outer_returned.load(std::memory_order_acquire));
+        assert(!close_returned.load(std::memory_order_acquire));
+
+        nested_release.store(true, std::memory_order_release);
+        nested_release.notify_all();
+        starter.join();
+        closer.join();
+        assert(nested_admitted.load(std::memory_order_acquire));
+        assert(nested_completed.load(std::memory_order_acquire));
+        assert(outer_returned.load(std::memory_order_acquire));
+        assert(close_returned.load(std::memory_order_acquire));
+    }
+
     void testStartCloseAdmissionRace()
     {
         lux::process::TaskScope scope;
@@ -235,6 +284,7 @@ int main()
     testStopPropagationAndCloseRace();
     testMainCompletionRequiresDrain();
     testInlineReentrantStop();
+    testInlineNestedStartAdmission();
     testStartCloseAdmissionRace();
     testStopStartRace();
     return 0;

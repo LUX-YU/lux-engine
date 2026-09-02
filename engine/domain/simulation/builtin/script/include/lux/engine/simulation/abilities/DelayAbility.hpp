@@ -47,5 +47,14 @@ namespace lux::simulation::script
         void simulationSeconds(
             LUX_SCRIPT_PARAM(lifetime = owned_value) double duration
         ) noexcept;
+
+        LUX_SCRIPT_ASYNC(
+            id = lux.simulation.delay.real_seconds,
+            display = RealSeconds,
+            result_lifetime = awaitable
+        )
+        void realSeconds(
+            LUX_SCRIPT_PARAM(lifetime = owned_value) double duration
+        ) noexcept;
     };
 } // namespace lux::simulation::script

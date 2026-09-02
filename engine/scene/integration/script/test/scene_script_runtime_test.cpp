@@ -3,6 +3,7 @@
 #include <lux/engine/scene/SceneBuilder.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
+#include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
@@ -14,11 +15,13 @@
 
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <new>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -174,6 +177,7 @@ namespace
             NEXT_STEP,
             SECONDS,
             SIMULATION_SECONDS,
+            REAL_SECONDS,
         };
 
         std::size_t step_calls{};
@@ -354,6 +358,13 @@ namespace
                         return state.delay->simulationSeconds(state.delay_seconds, std::move(completion));
                     }
                 );
+            case BackendState::EDelayMode::REAL_SECONDS:
+                return invokeScriptAbilityAsync<void>(
+                    step,
+                    [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                        return state.delay->realSeconds(state.delay_seconds, std::move(completion));
+                    }
+                );
             }
             return ScriptStepResult::failed(3);
         }();
@@ -455,6 +466,7 @@ int main()
         0U
     ));
     assert(scene_builder.bindRequirement(kScriptRuntime, "script_runtime_host", "host.script"));
+    assert(scene_builder.bindRequirement(kScriptRuntime, "timer", "host.timer"));
     assert(scene_builder.addSystem(
         kStableProbe,
         "stable-probe",
@@ -485,6 +497,7 @@ int main()
     ScriptRuntimeHost host{
         ScriptRuntimeLimits{8U, 2U, 4U, 2U, 4U, 4U, 64U, 1U, 4U, 4U},
         codec_limits,
+        4U,
         {&fixture, &Fixture::resolveArtifact},
         {},
         backends,
@@ -500,7 +513,15 @@ int main()
         "lux.test.script.backend-state",
         fixture.backend_state
     );
-    const std::array providers{provider, backend_provider};
+    auto execution = process::ExecutionRuntime::create({1U, 8U, 8U, {8U}, std::nullopt});
+    assert(execution);
+    auto timer = execution->timer();
+    const auto timer_provider = makeSceneCapabilityProvider<process::TimerClient>(
+        "host.timer",
+        "lux.process.timer",
+        timer
+    );
+    const std::array providers{provider, backend_provider, timer_provider};
     auto scene = Scene::create({
         std::make_shared<SceneDescription>(std::move(*scene_description)),
         makeWorld(),
@@ -559,13 +580,39 @@ int main()
     assert((*scene)->executeStablePoint());
     assert(fixture.backend_state.resume_calls == 6U);
 
-    fixture.backend_state.delay_seconds = 1000.0;
+    fixture.backend_state.delay_mode = BackendState::EDelayMode::REAL_SECONDS;
+    fixture.backend_state.delay_seconds = 0.02;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     assert(fixture.backend_state.step_calls == 8U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 6U);
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    assert(fixture.backend_state.resume_calls == 6U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 7U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 8U);
+
+    fixture.backend_state.delay_seconds = 0.0;
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert(fixture.backend_state.step_calls == 10U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 8U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 9U);
+    assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 10U);
+
+    fixture.backend_state.delay_seconds = 1000.0;
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert(fixture.backend_state.step_calls == 12U);
 
     scene->reset();
-    assert(fixture.backend_state.resume_calls == 6U);
-    assert(fixture.backend_state.destroys == 8U);
+    assert(fixture.backend_state.resume_calls == 10U);
+    assert(fixture.backend_state.destroys == 12U);
+    execution->requestStop();
+    assert(execution->join());
     meta::ReflectionRegistry::destroyRegistry();
     return 0;
 }

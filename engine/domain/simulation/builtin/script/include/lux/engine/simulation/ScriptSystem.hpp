@@ -7,6 +7,7 @@
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
 #include <lux/engine/simulation/scripting/ScriptEndpointBridge.hpp>
+#include <lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp>
 #include <lux/engine/simulation/ScriptSystemDescription.hpp>
 #include <lux/engine/simulation/script_system/visibility.h>
 
@@ -127,7 +128,8 @@ namespace lux::simulation::script
             std::span<const ScriptBackendDescriptor> backends,
             std::span<const ScriptHookEndpointDescriptor> hooks,
             std::span<const ScriptEventEndpointDescriptor> events,
-            ScriptHostApi host = {}) noexcept;
+            ScriptHostApi host = {},
+            ScriptRealDelayEndpoint real_delay = {}) noexcept;
 
         ScriptSystem(ScriptSystem &&) noexcept;
 

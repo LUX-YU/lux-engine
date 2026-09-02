@@ -167,6 +167,11 @@ namespace lux::simulation::script
                 double duration,
                 lux::script::ScriptAbilityCompletion<void> completion
             ) noexcept;
+
+            [[nodiscard]] lux::script::ScriptAbilityStartResult realSeconds(
+                double duration,
+                lux::script::ScriptAbilityCompletion<void> completion
+            ) noexcept;
         };
 
         struct HandlerTag;
@@ -493,6 +498,7 @@ namespace lux::simulation::script
         ScriptArtifactResolver artifacts;
         WorldObjectResolver world;
         ScriptHostApi host;
+        ScriptRealDelayEndpoint real_delay;
         std::array<ScriptBackendDescriptor, kBackendKindCount> backends;
         std::vector<ScriptHookEndpointDescriptor> hook_endpoints;
         std::vector<ScriptEventEndpointDescriptor> event_endpoints;
@@ -724,6 +730,40 @@ namespace lux::simulation::script
                     static_cast<std::int32_t>(EScriptDelayStatus::ALLOCATION_FAILURE)
                 });
             }
+        }
+
+        [[nodiscard]] lux::script::ScriptAbilityStartResult startRealDelay(
+            double duration,
+            lux::script::ScriptAbilityCompletion<void> completion
+        ) noexcept
+        {
+            if (stopping || !completion.active() || !real_delay)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::STOPPING)
+                });
+            }
+            if (!std::isfinite(duration) || duration < 0.0)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::INVALID_DURATION)
+                });
+            }
+            if (duration == 0.0)
+                return startNextStep(std::move(completion));
+
+            const long double requested_nanoseconds = static_cast<long double>(duration) * 1'000'000'000.0L;
+            const auto maximum = static_cast<long double>(std::numeric_limits<std::chrono::nanoseconds::rep>::max());
+            if (requested_nanoseconds > maximum)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
+                });
+            }
+            const auto duration_count = static_cast<std::chrono::nanoseconds::rep>(
+                std::ceil(requested_nanoseconds)
+            );
+            return real_delay.invoke(std::chrono::nanoseconds{duration_count}, std::move(completion));
         }
 
         [[nodiscard]] bool promoteSimulationDelays() noexcept
@@ -1851,6 +1891,14 @@ namespace lux::simulation::script
         return owner->startSimulationDelay(duration, std::move(completion));
     }
 
+    lux::script::ScriptAbilityStartResult ScriptSystem::State::DelayProvider::realSeconds(
+        double duration,
+        lux::script::ScriptAbilityCompletion<void> completion
+    ) noexcept
+    {
+        return owner->startRealDelay(duration, std::move(completion));
+    }
+
     lux::cxx::expected<ScriptSystem, EScriptSystemError> ScriptSystem::create(
         const SimulationDescription& simulation,
         const ScriptSystemDescription& description,
@@ -1863,7 +1911,8 @@ namespace lux::simulation::script
         std::span<const ScriptBackendDescriptor> backends,
         std::span<const ScriptHookEndpointDescriptor> hooks,
         std::span<const ScriptEventEndpointDescriptor> events,
-        ScriptHostApi host) noexcept
+        ScriptHostApi host,
+        ScriptRealDelayEndpoint real_delay) noexcept
     {
         const bool invalid_limits = limits.failure_capacity == 0U || limits.instance_capacity == 0U ||
                                     limits.continuation_capacity == 0U ||
@@ -2012,6 +2061,7 @@ namespace lux::simulation::script
             state->artifacts = artifacts;
             state->world = world;
             state->host = host;
+            state->real_delay = real_delay;
             state->backends = backend_table;
             state->hook_endpoints.assign(hooks.begin(), hooks.end());
             state->event_endpoints.assign(events.begin(), events.end());

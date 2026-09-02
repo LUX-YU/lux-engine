@@ -16,7 +16,7 @@ namespace lux::ui
     Pane::Pane(lux::object::ObjectDispatcherRef dispatcher, PaneId id, PaneTypeId type, std::string title)
         : Object(std::move(dispatcher)), id_(std::move(id)), type_(std::move(type)), title_(std::move(title))
     {
-        rebuildImguiLabel();
+        rebuildWindowLabel();
     }
 
     Pane::~Pane() = default;
@@ -26,7 +26,7 @@ namespace lux::ui
         if (title_ == title)
             return;
         title_ = std::move(title);
-        rebuildImguiLabel();
+        rebuildWindowLabel();
     }
 
     void Pane::setVisible(bool visible)
@@ -45,10 +45,10 @@ namespace lux::ui
         notify<focusChanged>(PaneFocusChanged{focused_});
     }
 
-    void Pane::rebuildImguiLabel()
+    void Pane::rebuildWindowLabel()
     {
-        imgui_label_ = title_;
-        imgui_label_ += "###";
-        imgui_label_ += id_.name();
+        window_label_ = title_;
+        window_label_ += "###";
+        window_label_ += id_.name();
     }
 } // namespace lux::ui

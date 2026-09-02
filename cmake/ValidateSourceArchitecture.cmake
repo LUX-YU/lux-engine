@@ -765,6 +765,53 @@ if(EXISTS "${source_root}/engine/editor/node_graph")
     endforeach()
 endif()
 
+if(EXISTS "${source_root}/modules/function/ui")
+    file(GLOB_RECURSE ui_public_headers LIST_DIRECTORIES false
+        "${source_root}/modules/function/ui/include/*.hpp"
+        "${source_root}/modules/function/ui/include/*.h"
+    )
+    foreach(source IN LISTS ui_public_headers)
+        file(READ "${source}" content)
+        if(content MATCHES
+           "imgui|ImGui|ImVec[24]|ImTextureID|ImDraw(Data|List)|ImGui[A-Za-z0-9_]*Flags|ax::NodeEditor")
+            message(FATAL_ERROR
+                "Architecture: Lux UI public header '${source}' exposes a backend type/include."
+            )
+        endif()
+    endforeach()
+
+    set(ui_cmake "${source_root}/modules/function/ui/CMakeLists.txt")
+    file(READ "${ui_cmake}" ui_cmake_contract)
+    if(ui_cmake_contract MATCHES "\"find_package[(]imgui" OR
+       NOT ui_cmake_contract MATCHES "PRIVATE[ \t\r\n]+ui_imgui_backend")
+        message(FATAL_ERROR
+            "Architecture: Lux UI exported target still propagates ImGui or lacks its private concrete backend."
+        )
+    endif()
+endif()
+
+if(EXISTS "${source_root}/engine/editor")
+    file(GLOB_RECURSE editor_ui_sources LIST_DIRECTORIES false
+        "${source_root}/engine/editor/*.hpp"
+        "${source_root}/engine/editor/*.h"
+        "${source_root}/engine/editor/*.cpp"
+    )
+    foreach(source IN LISTS editor_ui_sources)
+        file(TO_CMAKE_PATH "${source}" normalized_source)
+        if(normalized_source MATCHES "/test/" OR
+           normalized_source MATCHES "/node_graph/src/DefaultImGuiNodeGraphRenderer[.]cpp$")
+            continue()
+        endif()
+        file(READ "${source}" content)
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"](imgui[.]h|imgui_internal[.]h|imgui_node_editor[.]h)[>\"]")
+            message(FATAL_ERROR
+                "Architecture: Editor source '${source}' directly includes the private UI backend."
+            )
+        endif()
+    endforeach()
+endif()
+
 foreach(domain_adapter IN ITEMS material flowforge)
     if(EXISTS "${source_root}/engine/editor/${domain_adapter}")
         file(GLOB_RECURSE domain_adapter_sources LIST_DIRECTORIES false

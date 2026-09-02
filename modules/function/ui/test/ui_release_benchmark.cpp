@@ -5,6 +5,7 @@
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
 #include <lux/engine/ui/detail/UISessionDiagnostics.hpp>
 
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -95,10 +96,10 @@ namespace
         }
 
     protected:
-        void draw(lux::ui::PaneDrawContext& context) override
+        void draw(lux::ui::Frame& frame, lux::ui::PaneDrawContext& context) override
         {
             context.activateContext(contexts_.front());
-            ImGui::TextUnformatted("benchmark");
+            frame.text("benchmark");
         }
 
     private:
@@ -125,9 +126,9 @@ namespace
 
     void drawFrame(lux::ui::UISession& session)
     {
-        session.beginFrame({1280.0F, 720.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        static_cast<void>(session.endFrame());
+        auto frame = session.beginFrame({{1280.0F, 720.0F}, 1.0F / 60.0F});
+        frame.drawPanes();
+        frame.finish();
     }
 
     void benchmarkPanes(std::size_t pane_count)

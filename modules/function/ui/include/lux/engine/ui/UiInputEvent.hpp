@@ -1,34 +1,54 @@
 #pragma once
 
-// Platform-neutral adapter seam into this ImGui-based UI foundation.
-
 #include <variant>
 
-#include <imgui.h>
+#include <lux/engine/ui/Geometry.hpp>
 
 namespace lux::ui
 {
+    enum class EPointerButton
+    {
+        LEFT,
+        MIDDLE,
+        RIGHT,
+    };
+
+    enum class EKey
+    {
+        NONE,
+        TAB,
+        ENTER,
+        ESCAPE,
+        SPACE,
+        BACKSPACE,
+        DELETE_KEY,
+        LEFT,
+        RIGHT,
+        UP,
+        DOWN,
+        HOME,
+        END,
+    };
+
     struct UiPointerMove final
     {
-        float x{0.0F};
-        float y{0.0F};
+        Point position;
     };
 
     struct UiPointerButton final
     {
-        ImGuiMouseButton button{ImGuiMouseButton_Left};
+        EPointerButton button{EPointerButton::LEFT};
         bool down{false};
     };
 
     struct UiPointerWheel final
     {
-        float horizontal{0.0F};
-        float vertical{0.0F};
+        Vec2 delta;
     };
 
     struct UiKey final
     {
-        ImGuiKey key{ImGuiKey_None};
+        EKey key{EKey::NONE};
         bool down{false};
     };
 

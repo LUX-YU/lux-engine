@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include <lux/engine/ui/UI.hpp>
+
 #include <lux/engine/ui/detail/CommandRouterDiagnostics.hpp>
 
 #include <array>
@@ -29,7 +30,7 @@ namespace
         int draw_count{0};
 
     protected:
-        void draw(lux::ui::PaneDrawContext&) override
+        void draw(lux::ui::Frame& frame, lux::ui::PaneDrawContext&) override
         {
             ++draw_count;
             if (reset_during_draw)
@@ -51,15 +52,15 @@ namespace
                 hide_during_draw = false;
                 setVisible(false);
             }
-            ImGui::TextUnformatted("reentrant");
+            frame.text("reentrant");
         }
     };
 
     void drawFrame(lux::ui::UISession& session)
     {
-        session.beginFrame({640.0F, 360.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        static_cast<void>(session.endFrame());
+        auto frame = session.beginFrame({{640.0F, 360.0F}, 1.0F / 60.0F});
+        frame.drawPanes();
+        frame.finish();
     }
 
     class CommandReceiver final : public lux::object::Object<CommandReceiver>

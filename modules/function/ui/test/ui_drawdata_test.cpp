@@ -3,7 +3,7 @@
 #endif
 #include <cassert>
 
-#include <lux/engine/ui/DrawDataSnapshot.hpp>
+#include <lux/engine/ui/detail/ImGuiDrawDataSnapshot.hpp>
 
 #include <utility>
 
@@ -20,16 +20,16 @@ main()
     data.CmdListsCount = 1;
     data.TotalVtxCount = list.VtxBuffer.Size;
     data.TotalIdxCount = list.IdxBuffer.Size;
-    lux::ui::DrawDataSnapshot snapshot;
+    lux::ui::detail::ImGuiDrawDataSnapshot snapshot;
     snapshot.capture(data);
     assert(snapshot.drawData().CmdListsCount == 1);
     assert(snapshot.drawData().CmdLists[0] != &list);
-    lux::ui::DrawDataSnapshot moved{std::move(snapshot)};
+    lux::ui::detail::ImGuiDrawDataSnapshot moved{std::move(snapshot)};
     assert(moved.drawData().CmdListsCount == 1);
     assert(moved.drawData().CmdLists[0] != &list);
     assert(snapshot.drawData().CmdListsCount == 0);
 
-    lux::ui::DrawDataSnapshot assigned;
+    lux::ui::detail::ImGuiDrawDataSnapshot assigned;
     assigned = std::move(moved);
     assert(assigned.drawData().CmdListsCount == 1);
     assert(assigned.drawData().CmdLists[0] != &list);

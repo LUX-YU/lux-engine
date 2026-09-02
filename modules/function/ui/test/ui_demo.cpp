@@ -1,5 +1,6 @@
 #include <lux/engine/ui/UI.hpp>
 
+
 #include <array>
 #include <memory>
 
@@ -24,11 +25,11 @@ namespace
         }
 
     protected:
-        void draw(lux::ui::PaneDrawContext& context) override
+        void draw(lux::ui::Frame& frame, lux::ui::PaneDrawContext& context) override
         {
             context.activateContext(lux::ui::UiContextIdView{"demo.local"});
-            ImGui::TextUnformatted("Pane + Context + Command + Factory + Layout + Viewport");
-            static_cast<void>(viewport_.draw(ImTextureID{}));
+            frame.text("Pane + Context + Command + Factory + Layout + Viewport");
+            static_cast<void>(viewport_.draw(frame, {}));
         }
 
     private:
@@ -73,11 +74,11 @@ main()
     if (!save)
         return 5;
 
-    for (int frame = 0; frame < 3; ++frame)
+    for (int frame_index = 0; frame_index < 3; ++frame_index)
     {
-        session.beginFrame({640.0F, 360.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        static_cast<void>(session.endFrame());
+        auto frame = session.beginFrame({{640.0F, 360.0F}, 1.0F / 60.0F});
+        frame.drawPanes();
+        frame.finish();
     }
     return session.captureLayout().bytes().empty() ? 6 : 0;
 }

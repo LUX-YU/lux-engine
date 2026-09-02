@@ -21,6 +21,9 @@ namespace lux::ui
     struct PayloadTypeIdTag final
     {
     };
+    struct WidgetIdTag final
+    {
+    };
 
     using PaneId = lux::cxx::StableNameId<PaneIdTag>;
     using PaneIdView = lux::cxx::StableNameIdView<PaneIdTag>;
@@ -32,6 +35,8 @@ namespace lux::ui
     using UiCommandIdView = lux::cxx::StableNameIdView<UiCommandIdTag>;
     using PayloadTypeId = lux::cxx::StableNameId<PayloadTypeIdTag>;
     using PayloadTypeIdView = lux::cxx::StableNameIdView<PayloadTypeIdTag>;
+    using WidgetId = lux::cxx::StableNameId<WidgetIdTag>;
+    using WidgetIdView = lux::cxx::StableNameIdView<WidgetIdTag>;
 
     inline constexpr UiContextIdView kGlobalContext{"lux.ui.global"};
 } // namespace lux::ui

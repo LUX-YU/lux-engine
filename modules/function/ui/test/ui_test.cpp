@@ -7,14 +7,16 @@
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
 #include <lux/engine/ui/detail/UISessionDiagnostics.hpp>
 
+#include <imgui.h>
+
 #include <array>
 #include <concepts>
 #include <memory>
 #include <type_traits>
 #include <vector>
 
-static_assert(std::same_as<decltype(lux::ui::UiPointerButton::button), ImGuiMouseButton>);
-static_assert(std::same_as<decltype(lux::ui::UiKey::key), ImGuiKey>);
+static_assert(std::same_as<decltype(lux::ui::UiPointerButton::button), lux::ui::EPointerButton>);
+static_assert(std::same_as<decltype(lux::ui::UiKey::key), lux::ui::EKey>);
 static_assert(std::copy_constructible<lux::ui::LayoutSnapshot>);
 static_assert(std::is_copy_assignable_v<lux::ui::LayoutSnapshot>);
 static_assert(!std::default_initializable<lux::ui::LayoutSnapshot>);
@@ -51,7 +53,7 @@ namespace
         int global_count{0};
 
     protected:
-        void draw(lux::ui::PaneDrawContext& context) override
+        void draw(lux::ui::Frame&, lux::ui::PaneDrawContext& context) override
         {
             context.activateContext(lux::ui::UiContextIdView{"test.local.first"});
             context.activateContext(lux::ui::UiContextIdView{"test.local.second"});
@@ -71,6 +73,13 @@ namespace
         }
         int count{0};
     };
+
+    void drawFrame(lux::ui::UISession& session, lux::ui::Size size)
+    {
+        auto frame = session.beginFrame({size, 1.0F / 60.0F});
+        frame.drawPanes();
+        frame.finish();
+    }
 } // namespace
 
 int
@@ -112,11 +121,9 @@ main()
             lux::ui::detail::UISessionDiagnosticsAccess::contextIdentity(first_session) !=
             lux::ui::detail::UISessionDiagnosticsAccess::contextIdentity(second_session));
         assert(ImGui::GetCurrentContext() == external_context);
-        first_session.beginFrame({64.0F, 64.0F}, 1.0F / 60.0F);
-        static_cast<void>(first_session.endFrame());
+        drawFrame(first_session, {64.0F, 64.0F});
         assert(ImGui::GetCurrentContext() == external_context);
-        second_session.beginFrame({64.0F, 64.0F}, 1.0F / 60.0F);
-        static_cast<void>(second_session.endFrame());
+        drawFrame(second_session, {64.0F, 64.0F});
         assert(ImGui::GetCurrentContext() == external_context);
     }
     {
@@ -204,19 +211,13 @@ main()
         auto global = router.bindGlobal<&TestPane::globalDelete>(*delete_command, first);
         assert(global);
 
-        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        static_cast<void>(session.endFrame());
+        drawFrame(session, {800.0F, 600.0F});
         assert(session.requestFocus(first.id().view()));
         assert(!first.focused());
-        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        static_cast<void>(session.endFrame());
+        drawFrame(session, {800.0F, 600.0F});
         if (!first.focused())
         {
-            session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
-            session.drawPanes();
-            static_cast<void>(session.endFrame());
+            drawFrame(session, {800.0F, 600.0F});
         }
         assert(first.focused());
         assert(focus_changes == 1 && last_focus);
@@ -234,14 +235,10 @@ main()
 
         assert(session.requestFocus(second.id().view()));
         assert(first.focused());
-        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        static_cast<void>(session.endFrame());
+        drawFrame(session, {800.0F, 600.0F});
         if (first.focused())
         {
-            session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
-            session.drawPanes();
-            static_cast<void>(session.endFrame());
+            drawFrame(session, {800.0F, 600.0F});
         }
         assert(!first.focused());
         assert(focus_changes == 2 && !last_focus);
@@ -285,9 +282,7 @@ main()
         assert(temporary);
         assert(router.invoke(*temporary) == lux::ui::ECommandDispatchResult::NOT_FOUND);
 
-        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        assert(session.endFrame() != nullptr);
+        drawFrame(session, {800.0F, 600.0F});
         const auto layout = session.captureLayout();
         assert(!layout.bytes().empty());
         auto decoded = lux::ui::LayoutSnapshot::fromBytes(layout.bytes());
@@ -297,12 +292,10 @@ main()
         auto moved_layout = std::move(copied_layout);
         assert(moved_layout.bytes().size() == decoded->bytes().size());
         assert(session.restoreLayout(moved_layout));
-        session.feedInput(lux::ui::UiPointerMove{20.0F, 30.0F});
-        session.feedInput(lux::ui::UiKey{ImGuiKey_Delete, true});
-        session.feedInput(lux::ui::UiPointerButton{ImGuiMouseButton_Left, true});
-        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
-        session.drawPanes();
-        static_cast<void>(session.endFrame());
+        session.feedInput(lux::ui::UiPointerMove{{20.0F, 30.0F}});
+        session.feedInput(lux::ui::UiKey{lux::ui::EKey::DELETE_KEY, true});
+        session.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, true});
+        drawFrame(session, {800.0F, 600.0F});
         assert(ImGui::GetCurrentContext() == external_context);
 
         std::vector<lux::ui::MenuItem> menu;

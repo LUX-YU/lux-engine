@@ -1,5 +1,7 @@
 #include <lux/engine/ui/UISession.hpp>
 
+#include <imgui.h>
+
 #include <algorithm>
 #include <cstring>
 #include <thread>
@@ -90,16 +92,97 @@ namespace lux::ui
             bool tombstone{false};
         };
 
+        [[nodiscard]] ImVec4 toImGuiColor(Color value) noexcept
+        {
+            return ImVec4{value.red, value.green, value.blue, value.alpha};
+        }
+
+        void applyTheme(const Theme& theme) noexcept
+        {
+            auto& style = ImGui::GetStyle();
+            style.WindowPadding = {theme.spacing.panel_padding.x, theme.spacing.panel_padding.y};
+            style.FramePadding = {theme.spacing.item.x, theme.spacing.compact.y};
+            style.ItemSpacing = {theme.spacing.item.x, theme.spacing.item.y};
+            style.IndentSpacing = theme.metrics.tree_indent;
+            style.WindowRounding = theme.metrics.rounding;
+            style.ChildRounding = theme.metrics.rounding;
+            style.FrameRounding = theme.metrics.rounding;
+            style.PopupRounding = theme.metrics.rounding;
+            style.WindowBorderSize = theme.metrics.border_width;
+            style.ChildBorderSize = theme.metrics.border_width;
+            style.FrameBorderSize = 0.0F;
+            style.Colors[ImGuiCol_WindowBg] = toImGuiColor(theme.palette.window_background);
+            style.Colors[ImGuiCol_ChildBg] = toImGuiColor(theme.palette.panel_background);
+            style.Colors[ImGuiCol_FrameBg] = toImGuiColor(theme.palette.field_background);
+            style.Colors[ImGuiCol_Text] = toImGuiColor(theme.palette.text);
+            style.Colors[ImGuiCol_TextDisabled] = toImGuiColor(theme.palette.muted_text);
+            style.Colors[ImGuiCol_Border] = toImGuiColor(theme.palette.border);
+            style.Colors[ImGuiCol_CheckMark] = toImGuiColor(theme.palette.accent);
+            style.Colors[ImGuiCol_SliderGrab] = toImGuiColor(theme.palette.accent);
+            style.Colors[ImGuiCol_Header] = toImGuiColor(theme.palette.selection);
+            style.Colors[ImGuiCol_HeaderHovered] = toImGuiColor(theme.palette.accent);
+            style.Colors[ImGuiCol_HeaderActive] = toImGuiColor(theme.palette.selection);
+        }
+
+        [[nodiscard]] int toImGuiButton(EPointerButton button) noexcept
+        {
+            switch (button)
+            {
+            case EPointerButton::LEFT:
+                return ImGuiMouseButton_Left;
+            case EPointerButton::MIDDLE:
+                return ImGuiMouseButton_Middle;
+            case EPointerButton::RIGHT:
+                return ImGuiMouseButton_Right;
+            }
+            return ImGuiMouseButton_Left;
+        }
+
+        [[nodiscard]] ImGuiKey toImGuiKey(EKey key) noexcept
+        {
+            switch (key)
+            {
+            case EKey::NONE:
+                return ImGuiKey_None;
+            case EKey::TAB:
+                return ImGuiKey_Tab;
+            case EKey::ENTER:
+                return ImGuiKey_Enter;
+            case EKey::ESCAPE:
+                return ImGuiKey_Escape;
+            case EKey::SPACE:
+                return ImGuiKey_Space;
+            case EKey::BACKSPACE:
+                return ImGuiKey_Backspace;
+            case EKey::DELETE_KEY:
+                return ImGuiKey_Delete;
+            case EKey::LEFT:
+                return ImGuiKey_LeftArrow;
+            case EKey::RIGHT:
+                return ImGuiKey_RightArrow;
+            case EKey::UP:
+                return ImGuiKey_UpArrow;
+            case EKey::DOWN:
+                return ImGuiKey_DownArrow;
+            case EKey::HOME:
+                return ImGuiKey_Home;
+            case EKey::END:
+                return ImGuiKey_End;
+            }
+            return ImGuiKey_None;
+        }
+
     } // namespace
 
     struct UISession::Impl final
     {
-        explicit Impl(UISession* value) noexcept : owner(value)
+        Impl(UISession* value, Theme theme_value) noexcept : owner(value), theme(std::move(theme_value))
         {
         }
 
         UISession* owner{nullptr};
         ImGuiContext* context{nullptr};
+        Theme theme;
         lux::object::ObjectMessageQueue messages;
         CommandRouter command_router;
         std::vector<PaneRecord> panes;
@@ -328,6 +411,51 @@ namespace lux::ui
         }
     };
 
+    Frame::Frame(UISession& session) noexcept : session_(&session)
+    {
+    }
+
+    Frame::Frame(Frame&& other) noexcept : session_(std::exchange(other.session_, nullptr))
+    {
+    }
+
+    Frame& Frame::operator=(Frame&& other) noexcept
+    {
+        if (this != std::addressof(other))
+        {
+            finish();
+            session_ = std::exchange(other.session_, nullptr);
+        }
+        return *this;
+    }
+
+    Frame::~Frame() noexcept
+    {
+        finish();
+    }
+
+    void Frame::drawPanes()
+    {
+        if (session_ == nullptr)
+            detail::failUiContract();
+        session_->drawPanes(*this);
+    }
+
+    void Frame::finish() noexcept
+    {
+        if (session_ == nullptr)
+            return;
+        session_->endFrame(*this);
+        session_ = nullptr;
+    }
+
+    const Theme& Frame::theme() const noexcept
+    {
+        if (session_ == nullptr)
+            detail::failUiContract();
+        return session_->theme();
+    }
+
     PaneRegistration::PaneRegistration(std::weak_ptr<detail::SessionControl> control, std::uint64_t token) noexcept
         : control_(std::move(control)), token_(token)
     {
@@ -411,8 +539,9 @@ namespace lux::ui
         control_.reset();
     }
 
-    UISession::UISession()
-        : impl_(std::make_unique<Impl>(this)), control_(std::make_shared<detail::SessionControl>(this))
+    UISession::UISession(UISessionCreateInfo info)
+        : impl_(std::make_unique<Impl>(this, std::move(info.theme))),
+          control_(std::make_shared<detail::SessionControl>(this))
     {
         auto* previous = ImGui::GetCurrentContext();
         impl_->context = ImGui::CreateContext();
@@ -422,6 +551,7 @@ namespace lux::ui
             int width = 0;
             int height = 0;
             ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+            applyTheme(impl_->theme);
         }
         ImGui::SetCurrentContext(previous);
         impl_->focused_contexts.reserve(8);
@@ -596,20 +726,21 @@ namespace lux::ui
                 using Value = std::remove_cvref_t<decltype(value)>;
                 if constexpr (std::same_as<Value, UiPointerMove>)
                 {
-                    io.AddMousePosEvent(value.x, value.y);
+                    io.AddMousePosEvent(value.position.x, value.position.y);
                 }
                 else if constexpr (std::same_as<Value, UiPointerButton>)
                 {
-                    io.AddMouseButtonEvent(value.button, value.down);
+                    io.AddMouseButtonEvent(toImGuiButton(value.button), value.down);
                 }
                 else if constexpr (std::same_as<Value, UiPointerWheel>)
                 {
-                    io.AddMouseWheelEvent(value.horizontal, value.vertical);
+                    io.AddMouseWheelEvent(value.delta.x, value.delta.y);
                 }
                 else if constexpr (std::same_as<Value, UiKey>)
                 {
-                    if (value.key != ImGuiKey_None)
-                        io.AddKeyEvent(value.key, value.down);
+                    const auto key = toImGuiKey(value.key);
+                    if (key != ImGuiKey_None)
+                        io.AddKeyEvent(key, value.down);
                 }
                 else if constexpr (std::same_as<Value, UiText>)
                 {
@@ -624,7 +755,7 @@ namespace lux::ui
         );
     }
 
-    void UISession::beginFrame(ImVec2 display_size, float delta_seconds)
+    Frame UISession::beginFrame(FrameInfo info)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (impl_->frame_open)
@@ -642,16 +773,17 @@ namespace lux::ui
             impl_->commitHover({});
         }
         auto& io = ImGui::GetIO();
-        io.DisplaySize = display_size;
-        io.DeltaTime = delta_seconds;
+        io.DisplaySize = {info.display_size.width, info.display_size.height};
+        io.DeltaTime = info.delta_seconds;
         ImGui::NewFrame();
         impl_->frame_open = true;
+        return Frame{*this};
     }
 
-    void UISession::drawPanes()
+    void UISession::drawPanes(Frame& frame)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        if (!impl_->frame_open)
+        if (!impl_->frame_open || frame.session_ != this)
             detail::failUiContract();
         ScopedImGuiContext context{impl_->context};
         PaneHandle focused_candidate;
@@ -680,9 +812,9 @@ namespace lux::ui
 #endif
             impl_->frame_context_scratch.clear();
             PaneDrawContext draw_context{impl_->frame_context_scratch};
-            if (ImGui::Begin(pane->imgui_label_.c_str(), &visible))
+            if (ImGui::Begin(pane->window_label_.c_str(), &visible))
             {
-                pane->draw(draw_context);
+                pane->draw(frame, draw_context);
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
                 impl_->wrapper_growth_count += impl_->frame_context_scratch.capacity() != scratch_capacity;
 #endif
@@ -712,16 +844,21 @@ namespace lux::ui
         impl_->commitHover(hovered_candidate);
     }
 
-    ImDrawData* UISession::endFrame()
+    void UISession::endFrame(Frame& frame) noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        if (!impl_->frame_open)
+        if (!impl_->frame_open || frame.session_ != this)
             detail::failUiContract();
         ScopedImGuiContext context{impl_->context};
         ImGui::Render();
         impl_->frame_open = false;
         impl_->compactPaneRecords();
-        return ImGui::GetDrawData();
+    }
+
+    const Theme& UISession::theme() const noexcept
+    {
+        LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
+        return impl_->theme;
     }
 
     LayoutSnapshot UISession::captureLayout() const

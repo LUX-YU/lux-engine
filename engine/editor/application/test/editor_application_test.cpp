@@ -112,7 +112,7 @@ namespace
         }
 
     protected:
-        void draw(lux::ui::PaneDrawContext&) override {}
+        void draw(lux::ui::Frame&, lux::ui::PaneDrawContext&) override {}
     };
 }
 

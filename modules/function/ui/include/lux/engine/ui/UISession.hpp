@@ -4,14 +4,14 @@
 #include <memory>
 #include <span>
 
-#include <imgui.h>
-
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/ui/CommandRouter.hpp>
+#include <lux/engine/ui/Frame.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/PaneFactory.hpp>
+#include <lux/engine/ui/Theme.hpp>
 #include <lux/engine/ui/UiInputEvent.hpp>
 
 namespace lux::ui
@@ -30,6 +30,11 @@ namespace lux::ui
         DUPLICATE_FACTORY,
         INVALID_ID,
         FOREIGN_SESSION
+    };
+
+    struct UISessionCreateInfo final
+    {
+        Theme theme{Theme::luxDark()};
     };
 
     class UISession;
@@ -94,7 +99,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC UISession final
     {
     public:
-        UISession();
+        explicit UISession(UISessionCreateInfo info = {});
         ~UISession();
         UISession(const UISession&) = delete;
         UISession& operator=(const UISession&) = delete;
@@ -117,10 +122,8 @@ namespace lux::ui
         [[nodiscard]] Pane* focusedPane() const noexcept;
         [[nodiscard]] std::span<const UiContextIdView> focusedContexts() const noexcept;
 
-        void beginFrame(ImVec2 display_size, float delta_seconds);
+        [[nodiscard]] Frame beginFrame(FrameInfo info);
         void feedInput(const UiInputEvent& event);
-        void drawPanes();
-        [[nodiscard]] ImDrawData* endFrame();
 
         [[nodiscard]] LayoutSnapshot captureLayout() const;
 
@@ -129,10 +132,14 @@ namespace lux::ui
     private:
         friend class PaneRegistration;
         friend class PaneFactoryRegistration;
+        friend class Frame;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
         friend struct detail::UISessionDiagnosticsAccess;
 #endif
         void updateCommandRoute(lux::object::LuxObject* activation_scope, std::span<const UiContextIdView> contexts);
+        void drawPanes(Frame& frame);
+        void endFrame(Frame& frame) noexcept;
+        [[nodiscard]] const Theme& theme() const noexcept;
         void unregisterPane(std::uint64_t token) noexcept;
         void unregisterFactory(std::uint64_t token) noexcept;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)

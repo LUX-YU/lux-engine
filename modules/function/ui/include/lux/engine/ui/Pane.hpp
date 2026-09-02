@@ -12,6 +12,8 @@
 
 namespace lux::ui
 {
+    class Frame;
+
     namespace detail
     {
         struct PaneStateAccess;
@@ -92,7 +94,7 @@ namespace lux::ui
         }
 
     protected:
-        virtual void draw(PaneDrawContext& context) = 0;
+        virtual void draw(Frame& frame, PaneDrawContext& context) = 0;
 
     private:
         friend class UISession;
@@ -102,12 +104,12 @@ namespace lux::ui
         {
             hovered_ = hovered;
         }
-        void rebuildImguiLabel();
+        void rebuildWindowLabel();
 
         PaneId id_;
         PaneTypeId type_;
         std::string title_;
-        std::string imgui_label_;
+        std::string window_label_;
         bool visible_{true};
         bool focused_{false};
         bool hovered_{false};

@@ -162,6 +162,12 @@ foreach(entry IN LISTS installed_text)
             "Installed file restores retired top-level ECS surface: ${entry}"
         )
     endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]ui[/]" AND
+       content MATCHES "imgui|ImGui|ImVec[24]|ImTextureID|ImDraw(Data|List)|ax::NodeEditor")
+        message(FATAL_ERROR
+            "Installed Lux UI header exposes a private backend type/include: ${entry}"
+        )
+    endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]ecs[/]" AND
        content MATCHES "CloneFn|default_emplace|COPY_WITHOUT_CLONE")
         message(FATAL_ERROR

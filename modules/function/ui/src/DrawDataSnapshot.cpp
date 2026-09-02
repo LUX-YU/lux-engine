@@ -1,23 +1,23 @@
-#include <lux/engine/ui/DrawDataSnapshot.hpp>
+#include <lux/engine/ui/detail/ImGuiDrawDataSnapshot.hpp>
 
 #include <memory>
 #include <utility>
 
-namespace lux::ui
+namespace lux::ui::detail
 {
-    DrawDataSnapshot::~DrawDataSnapshot()
+    ImGuiDrawDataSnapshot::~ImGuiDrawDataSnapshot()
     {
         clear();
     }
 
-    DrawDataSnapshot::DrawDataSnapshot(DrawDataSnapshot&& other) noexcept
+    ImGuiDrawDataSnapshot::ImGuiDrawDataSnapshot(ImGuiDrawDataSnapshot&& other) noexcept
         : draw_data_(other.draw_data_), owned_lists_(std::move(other.owned_lists_))
     {
         rebuildPointers();
         other.draw_data_.Clear();
     }
 
-    DrawDataSnapshot& DrawDataSnapshot::operator=(DrawDataSnapshot&& other) noexcept
+    ImGuiDrawDataSnapshot& ImGuiDrawDataSnapshot::operator=(ImGuiDrawDataSnapshot&& other) noexcept
     {
         if (this == std::addressof(other))
             return *this;
@@ -29,7 +29,7 @@ namespace lux::ui
         return *this;
     }
 
-    void DrawDataSnapshot::capture(const ImDrawData& draw_data)
+    void ImGuiDrawDataSnapshot::capture(const ImDrawData& draw_data)
     {
         clear();
         draw_data_ = draw_data;
@@ -42,7 +42,7 @@ namespace lux::ui
         rebuildPointers();
     }
 
-    void DrawDataSnapshot::clear() noexcept
+    void ImGuiDrawDataSnapshot::clear() noexcept
     {
         for (auto* list : owned_lists_)
             IM_DELETE(list);
@@ -50,7 +50,7 @@ namespace lux::ui
         draw_data_.Clear();
     }
 
-    void DrawDataSnapshot::rebuildPointers() noexcept
+    void ImGuiDrawDataSnapshot::rebuildPointers() noexcept
     {
         draw_data_.CmdLists.clear();
         draw_data_.CmdLists.reserve(static_cast<int>(owned_lists_.size()));
@@ -58,4 +58,4 @@ namespace lux::ui
             draw_data_.CmdLists.push_back(list);
         draw_data_.CmdListsCount = draw_data_.CmdLists.Size;
     }
-} // namespace lux::ui
+} // namespace lux::ui::detail

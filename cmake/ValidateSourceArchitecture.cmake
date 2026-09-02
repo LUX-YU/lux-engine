@@ -795,6 +795,7 @@ if(EXISTS "${source_root}/engine/editor")
         "${source_root}/engine/editor/*.hpp"
         "${source_root}/engine/editor/*.h"
         "${source_root}/engine/editor/*.cpp"
+        "${source_root}/engine/editor/*.template"
     )
     foreach(source IN LISTS editor_ui_sources)
         file(TO_CMAKE_PATH "${source}" normalized_source)
@@ -807,6 +808,12 @@ if(EXISTS "${source_root}/engine/editor")
            "#[ \t]*include[ \t]*[<\"](imgui[.]h|imgui_internal[.]h|imgui_node_editor[.]h)[>\"]")
             message(FATAL_ERROR
                 "Architecture: Editor source '${source}' directly includes the private UI backend."
+            )
+        endif()
+        if(normalized_source MATCHES "/inspector/" AND
+           content MATCHES "RefClass|RefField|ReflectionRegistry|ImGui::|ImGui[A-Z]|imgui_node_editor")
+            message(FATAL_ERROR
+                "Architecture: generated Inspector contract '${source}' restored reflection or backend UI coupling."
             )
         endif()
     endforeach()
@@ -1542,6 +1549,11 @@ endforeach()
 if(EXISTS "${source_root}/engine/editor/context" AND
    NOT EXISTS "${source_root}/cmake/installed-consumers/editor-context/CMakeLists.txt")
     message(FATAL_ERROR "Architecture: missing installed Editor Context consumer.")
+endif()
+
+if(EXISTS "${source_root}/engine/editor/inspector" AND
+   NOT EXISTS "${source_root}/cmake/installed-consumers/editor-inspector/CMakeLists.txt")
+    message(FATAL_ERROR "Architecture: missing installed EntityInspector consumer.")
 endif()
 
 if(EXISTS "${source_root}/modules/function/graph" AND

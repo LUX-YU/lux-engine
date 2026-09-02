@@ -168,6 +168,12 @@ foreach(entry IN LISTS installed_text)
             "Installed Lux UI header exposes a private backend type/include: ${entry}"
         )
     endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]editor[/]inspector[/]" AND
+       content MATCHES "imgui|ImGui|ImVec[24]|ImTextureID|ImDraw(Data|List)|ax::NodeEditor|RefClass|RefField|ReflectionRegistry")
+        message(FATAL_ERROR
+            "Installed Inspector SDK exposes backend UI or runtime reflection vocabulary: ${entry}"
+        )
+    endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]ecs[/]" AND
        content MATCHES "CloneFn|default_emplace|COPY_WITHOUT_CLONE")
         message(FATAL_ERROR

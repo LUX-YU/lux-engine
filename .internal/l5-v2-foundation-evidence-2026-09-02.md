@@ -2,7 +2,12 @@
 
 Date: 2026-09-02
 
-Status: **Foundation tranche complete; implementation stopped before C/D/E/S/H/I/P**
+Status: **SUPERSEDED — not accepted as clean-checkout foundation closure evidence**
+
+The recorded qualification ran with CMake-referenced test sources that existed only as ignored, untracked working-tree
+files. Therefore the results below are retained as historical local-run evidence only；they do not prove that
+`main@4593ce9b` was a reproducible source snapshot. Foundation remains open until the tracked-source hotfix is
+qualified from an independent clean clone.
 
 Starting revision: `75dffbf48b1f8b172299ce40d48025db41e867ab`
 

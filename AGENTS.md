@@ -161,6 +161,9 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   shader compiler、asset packer、meta generator 不得作为 Runtime link dependency。
 - `engine/process/execution` 是领域盲基础设施；`engine/process/world_loading` 与 `engine/process/asset_loading` 可拥有明确的
   time-spanning workflow。领域workflow不得反向进入 execution，也不得依赖 Scene、Render 或 gameplay policy。
+  `TaskScope` 只接管 lifetime：交入 `start()` 前必须已消费业务 value/error，使 sender 只剩无载荷
+  `set_value()` 与可选 `set_stopped`。start/stop/close admission 必须线性化，但不得持 TaskScope 自身锁调用
+  eager sender、`async_scope::spawn/request_stop`、stop callback、receiver 或用户代码。
 - `engine/scene/composition` 组合 Scene ownership，`engine/scene/presentation` 承载 independently sampled state，
   `engine/scene/integration/{world_materialization,render}` 只拥有对应的 L3 integration；不得恢复历史
   `scene/core` 或 `scene/runtime` 聚合目录。
@@ -337,6 +340,10 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface 
 - `-k 0` 让一次构建吐出全部错误
 - 改了 `CMakeLists.txt` 之后要**跑两轮**，第二轮应当 `ninja: no work to do`
 - **不得并发**跑构建与实机验证（obj 锁 / 半写 DLL 会造出假崩溃）
+- Foundation/closure qualification 必须绑定一个 clean tracked commit；先运行
+  `cmake -DLUX_SOURCE_DIR=<repo> -P cmake/ValidateTrackedSnapshot.cmake`，再从该 commit 的独立
+  clean clone 配置。不得用被 `.gitignore` 隐藏的本地源码补齐 CMake 输入；仓库根也不得再用裸
+  `test` 规则忽略任意层级的 source test 目录。
 - 默认验证矩阵不再包含 Android configure/build/CTest/closure；除非用户另行明确要求。
   上述 Android install include 同步仍保留，它只是避免 meta-gen 读取旧公共头，不代表
   Android 构建验证。

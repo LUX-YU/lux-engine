@@ -4,10 +4,11 @@
 #include <lux/engine/process/visibility.h>
 
 #include <exec/async_scope.hpp>
-#include <exec/materialize.hpp>
 #include <stdexec/execution.hpp>
 
 #include <atomic>
+#include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <mutex>
@@ -34,6 +35,25 @@ namespace lux::process
         };
 
         using AsyncScopeEmptySender = decltype(std::declval<exec::async_scope&>().on_empty());
+
+        template<class... Types>
+        struct TaskScopeTypeList final
+        {
+        };
+
+        template<class Sender>
+        concept TaskScopeLifetimeSender = stdexec::sender_of<Sender, stdexec::set_value_t()> &&
+            std::same_as<
+                stdexec::error_types_of_t<Sender, stdexec::empty_env, TaskScopeTypeList>,
+                TaskScopeTypeList<>
+            >;
+
+        struct TaskScopeCloseWaiter final
+        {
+            TaskScopeCloseWaiter* next{};
+            void* operation{};
+            void (*start)(void*) noexcept{};
+        };
     } // namespace detail
 
     class TaskScope;
@@ -77,7 +97,9 @@ namespace lux::process
                 : operation_(stdexec::connect(
                       stdexec::then(std::move(sender), Close{&scope}),
                       std::move(receiver)
-                  ))
+                  )),
+                  scope_(&scope),
+                  waiter_{nullptr, this, &Operation::startOnEmpty}
             {
             }
 
@@ -86,13 +108,18 @@ namespace lux::process
             Operation(Operation&&) = delete;
             Operation& operator=(Operation&&) = delete;
 
-            void start() & noexcept
-            {
-                stdexec::start(operation_);
-            }
+            void start() & noexcept;
 
         private:
+            static void startOnEmpty(void* value) noexcept
+            {
+                auto& self = *static_cast<Operation*>(value);
+                stdexec::start(self.operation_);
+            }
+
             WrappedOperation operation_;
+            TaskScope* scope_{};
+            detail::TaskScopeCloseWaiter waiter_;
         };
 
         template<class Receiver>
@@ -133,45 +160,48 @@ namespace lux::process
         TaskScope(TaskScope&&) = delete;
         TaskScope& operator=(TaskScope&&) = delete;
 
-        template<stdexec::sender Sender>
+        /**
+         * Owns only lifetime. The sender must already have consumed every
+         * semantic value/error and expose set_value() with no payload, no
+         * set_error channel, and an optional set_stopped channel.
+         */
+        template<class Sender>
+            requires detail::TaskScopeLifetimeSender<Sender>
         [[nodiscard]] lux::cxx::expected<void, ETaskStartError> start(Sender&& sender) noexcept
         {
-            std::lock_guard lock{mutex_};
-            if (state_.load(std::memory_order_acquire) != detail::ETaskScopeState::OPEN)
+            if (!beginStart())
                 return lux::cxx::unexpected(ETaskStartError::STOPPING);
             try
             {
-                // async_scope::spawn currently accepts exception_ptr errors only;
-                // materialize preserves every terminal channel as a value while
-                // retaining structured lifetime and stop propagation.
-                auto terminal = exec::materialize(std::forward<Sender>(sender)) |
-                    stdexec::then([]<class... Values>(Values&&...) noexcept {});
-                scope_.spawn(std::move(terminal));
+                scope_.spawn(std::forward<Sender>(sender));
+                finishStart();
                 return {};
             }
             catch (const std::bad_alloc&)
             {
+                finishStart();
                 return lux::cxx::unexpected(ETaskStartError::ALLOCATION_FAILURE);
             }
             catch (...)
             {
+                finishStart();
                 return lux::cxx::unexpected(ETaskStartError::BACKEND_FAILURE);
             }
         }
 
         void requestStop() noexcept
         {
-            std::lock_guard lock{mutex_};
-            auto expected = detail::ETaskScopeState::OPEN;
-            if (state_.compare_exchange_strong(
-                    expected,
-                    detail::ETaskScopeState::STOPPING,
-                    std::memory_order_acq_rel,
-                    std::memory_order_acquire
-                ))
+            bool request_scope_stop{};
             {
-                static_cast<void>(scope_.request_stop());
+                std::lock_guard lock{mutex_};
+                if (state_.load(std::memory_order_acquire) == detail::ETaskScopeState::OPEN)
+                {
+                    state_.store(detail::ETaskScopeState::STOPPING, std::memory_order_release);
+                    request_scope_stop = true;
+                }
             }
+            if (request_scope_stop)
+                static_cast<void>(scope_.request_stop());
         }
 
         [[nodiscard]] TaskScopeCloseSender close() noexcept
@@ -193,6 +223,55 @@ namespace lux::process
     private:
         friend class TaskScopeCloseSender;
 
+        [[nodiscard]] bool beginStart() noexcept
+        {
+            std::lock_guard lock{mutex_};
+            if (state_.load(std::memory_order_acquire) != detail::ETaskScopeState::OPEN)
+                return false;
+            ++in_flight_starts_;
+            return true;
+        }
+
+        void finishStart() noexcept
+        {
+            detail::TaskScopeCloseWaiter* ready{};
+            {
+                std::lock_guard lock{mutex_};
+                --in_flight_starts_;
+                if (in_flight_starts_ == 0U)
+                {
+                    ready = close_waiters_;
+                    close_waiters_ = nullptr;
+                }
+            }
+            while (ready != nullptr)
+            {
+                auto* next = ready->next;
+                ready->next = nullptr;
+                ready->start(ready->operation);
+                ready = next;
+            }
+        }
+
+        void startClose(detail::TaskScopeCloseWaiter& waiter) noexcept
+        {
+            bool start_now{};
+            {
+                std::lock_guard lock{mutex_};
+                if (in_flight_starts_ == 0U)
+                {
+                    start_now = true;
+                }
+                else
+                {
+                    waiter.next = close_waiters_;
+                    close_waiters_ = &waiter;
+                }
+            }
+            if (start_now)
+                waiter.start(waiter.operation);
+        }
+
         void markClosed() noexcept
         {
             state_.store(detail::ETaskScopeState::CLOSED, std::memory_order_release);
@@ -201,7 +280,15 @@ namespace lux::process
         exec::async_scope scope_;
         mutable std::mutex mutex_;
         std::atomic<detail::ETaskScopeState> state_{detail::ETaskScopeState::OPEN};
+        std::size_t in_flight_starts_{};
+        detail::TaskScopeCloseWaiter* close_waiters_{};
     };
+
+    template<class Receiver>
+    void TaskScopeCloseSender::Operation<Receiver>::start() & noexcept
+    {
+        scope_->startClose(waiter_);
+    }
 
     template<class Receiver>
     void TaskScopeCloseSender::Operation<Receiver>::Close::operator()() const noexcept

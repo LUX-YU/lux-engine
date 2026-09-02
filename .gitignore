@@ -15,7 +15,6 @@ tools_temp
 out
 cmake-build-debug
 cmake-build-release
-test
 
 # AI Agent
 .claude

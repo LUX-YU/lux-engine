@@ -49,8 +49,18 @@ namespace lux::editor
         EditorApplication& operator=(EditorApplication&&) = delete;
 
         template<class Tool, class... Args>
-        [[nodiscard]] auto installTool(Args&&... args) noexcept
+        [[nodiscard]] lux::cxx::expected<std::reference_wrapper<Tool>, ToolsetFailure>
+        installTool(Args&&... args) noexcept
         {
+            const auto type = lux::cxx::typeToken<Tool>();
+            if (state_ == EState::RUNNING)
+            {
+                return lux::cxx::unexpected(ToolsetFailure{EToolsetError::FROZEN, type, {}});
+            }
+            if (state_ != EState::COMPOSING || !toolset_)
+            {
+                return lux::cxx::unexpected(ToolsetFailure{EToolsetError::STOPPING, type, {}});
+            }
             return toolset_->install<Tool>(std::forward<Args>(args)...);
         }
 

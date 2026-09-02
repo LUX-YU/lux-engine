@@ -108,6 +108,27 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 add_test(NAME process_task_scope_test COMMAND process_task_scope_test)
+set_tests_properties(process_task_scope_test PROPERTIES TIMEOUT 30)
+
+foreach(probe IN ITEMS task_scope_unconsumed_value_negative task_scope_unconsumed_error_negative)
+    add_executable(${probe} EXCLUDE_FROM_ALL test/${probe}.cpp)
+    target_link_libraries(${probe} PRIVATE lux::engine::process::process_execution)
+    lux_classify_target(
+        TARGET  ${probe}
+        LAYER   PROCESS
+        PRODUCT TEST
+        ROLE    FOUNDATION
+    )
+    add_test(
+        NAME ${probe}
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=${probe}
+            -DEXPECTED_PATTERN=TaskScopeLifetimeSender
+            -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
+endforeach()
 
 add_executable(process_execution_benchmark test/process_execution_benchmark.cpp)
 execute_process(

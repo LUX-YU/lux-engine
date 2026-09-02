@@ -3,10 +3,12 @@
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/process/Timer.hpp>
 
+#include <exec/materialize.hpp>
 #include <stdexec/execution.hpp>
 
 #include <atomic>
 #include <chrono>
+#include <concepts>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -136,16 +138,22 @@ int main()
     auto runtime = std::move(*runtime_created);
     lux::process::TaskScope scope;
     std::atomic_bool cpu_ran{};
-    auto cpu_work = stdexec::schedule(runtime.cpu()) |
+    std::atomic_bool cpu_failed{};
+    auto scheduled = stdexec::schedule(runtime.cpu()) |
         stdexec::then([&cpu_ran]() noexcept {
             cpu_ran.store(true, std::memory_order_release);
             cpu_ran.notify_all();
+        });
+    auto cpu_work = exec::materialize(std::move(scheduled)) |
+        stdexec::then([&cpu_failed]<class Tag, class... Values>(Tag, Values&&...) noexcept {
+            if constexpr (!std::same_as<Tag, stdexec::set_value_t>)
+                cpu_failed.store(true, std::memory_order_release);
         });
     if (!scope.start(std::move(cpu_work)))
         return 5;
     cpu_ran.wait(false, std::memory_order_acquire);
     const auto closed = stdexec::sync_wait(scope.close());
-    if (!closed || !cpu_ran.load(std::memory_order_acquire))
+    if (!closed || !cpu_ran.load(std::memory_order_acquire) || cpu_failed.load(std::memory_order_acquire))
         return 6;
     runtime.requestStop();
     return runtime.join() ? 0 : 7;

@@ -87,9 +87,8 @@ namespace
 
         NodeCapture detachNode(graph::NodeId node) override
         {
-            if (fail_detach_)
+            if (fail_detach_at_ != 0U && --fail_detach_at_ == 0U)
             {
-                fail_detach_ = false;
                 return {};
             }
             const auto found = nodes_.find(node);
@@ -105,9 +104,8 @@ namespace
 
         bool attachNode(graph::NodeId original, NodeCapture capture) override
         {
-            if (fail_attach_)
+            if (fail_attach_at_ != 0U && --fail_attach_at_ == 0U)
             {
-                fail_attach_ = false;
                 return false;
             }
             auto typed = std::static_pointer_cast<StubCapture>(std::move(capture));
@@ -132,9 +130,8 @@ namespace
 
         bool restoreNodeAction(graph::NodeId node, NodeCapture state) override
         {
-            if (fail_action_restore_)
+            if (fail_action_restore_at_ != 0U && --fail_action_restore_at_ == 0U)
             {
-                fail_action_restore_ = false;
                 return false;
             }
             const auto found = nodes_.find(node);
@@ -145,9 +142,12 @@ namespace
             return true;
         }
 
-        void failNextDetach() noexcept { fail_detach_ = true; }
-        void failNextAttach() noexcept { fail_attach_ = true; }
-        void failNextActionRestore() noexcept { fail_action_restore_ = true; }
+        void failDetachAt(std::size_t call) noexcept { fail_detach_at_ = call; }
+        void failAttachAt(std::size_t call) noexcept { fail_attach_at_ = call; }
+        void failActionRestoreAt(std::size_t call) noexcept { fail_action_restore_at_ = call; }
+        void failNextDetach() noexcept { failDetachAt(1U); }
+        void failNextAttach() noexcept { failAttachAt(1U); }
+        void failNextActionRestore() noexcept { failActionRestoreAt(1U); }
         [[nodiscard]] std::size_t nodeCount() const noexcept { return nodes_.size(); }
         [[nodiscard]] std::string_view title(graph::NodeId node) const noexcept { return nodes_.at(node)->title; }
 
@@ -155,9 +155,9 @@ namespace
         graph::GraphTopology topology_;
         graph::GraphLayout layout_;
         std::unordered_map<graph::NodeId, std::shared_ptr<StubNode>> nodes_;
-        bool fail_detach_{};
-        bool fail_attach_{};
-        bool fail_action_restore_{};
+        std::size_t fail_detach_at_{};
+        std::size_t fail_attach_at_{};
+        std::size_t fail_action_restore_at_{};
     };
 
     class StubRules final : public IGraphRules
@@ -222,6 +222,39 @@ namespace
                 return value.id;
         }
         return {};
+    }
+
+    struct SessionSnapshot final
+    {
+        std::vector<graph::NodeRecord> nodes;
+        std::vector<graph::PinRecord> pins;
+        std::vector<graph::LinkRecord> links;
+        std::vector<graph::GraphLayoutEntry> layout;
+        std::vector<std::pair<graph::NodeId, std::string>> titles;
+        graph::NodeId selected;
+        std::size_t undo_depth{};
+        std::uint64_t revision{};
+        bool can_undo{};
+        bool can_redo{};
+
+        [[nodiscard]] bool operator==(const SessionSnapshot&) const = default;
+    };
+
+    [[nodiscard]] SessionSnapshot capture(const StubDocument& document, const GraphEditingSession& session)
+    {
+        SessionSnapshot snapshot;
+        snapshot.nodes.assign(document.topology().nodes().begin(), document.topology().nodes().end());
+        snapshot.pins.assign(document.topology().pins().begin(), document.topology().pins().end());
+        snapshot.links.assign(document.topology().links().begin(), document.topology().links().end());
+        snapshot.layout.assign(document.layout().all().begin(), document.layout().all().end());
+        for (const auto& node : snapshot.nodes)
+            snapshot.titles.emplace_back(node.id, document.title(node.id));
+        snapshot.selected = session.selectedNode();
+        snapshot.undo_depth = session.undoDepth();
+        snapshot.revision = session.structureRevision();
+        snapshot.can_undo = session.canUndo();
+        snapshot.can_redo = session.canRedo();
+        return snapshot;
     }
 
     void testEditingAndAtomicHistory()
@@ -316,11 +349,53 @@ namespace
         flow_graph.addNodes(std::make_unique<flowforge::OnEventNode>("event"));
         assert(flow_graph.topology().nodes().size() == 1U);
     }
+
+    void testTransactionFaultRollbackAndPoison()
+    {
+        StubRules rules;
+        {
+            StubDocument document;
+            GraphEditingSession session{document, rules};
+            assert(session.apply(AddNodeIntent{graph::NodeTypeId{1U}, {1.0F, 2.0F, true}}));
+            const auto source = session.selectedNode();
+            assert(session.apply(AddNodeIntent{graph::NodeTypeId{2U}, {3.0F, 4.0F, true}}));
+            const auto sink = session.selectedNode();
+            assert(session.apply(ConnectIntent{
+                pin(document.topology(), source, graph::EPinDirection::OUTPUT),
+                pin(document.topology(), sink, graph::EPinDirection::INPUT)
+            }));
+            const auto before = capture(document, session);
+
+            assert(session.beginTransaction("fault injected transaction"));
+            assert(session.apply(MoveNodeIntent{source, {30.0F, 40.0F, true}}));
+            assert(session.apply(InvokeNodeActionIntent{source, 1U}));
+            document.failDetachAt(1U);
+            assert(!session.apply(RemoveNodeIntent{sink}));
+            assert(!session.poisoned());
+            assert(capture(document, session) == before);
+        }
+
+        {
+            StubDocument document;
+            GraphEditingSession session{document, rules};
+            assert(session.beginTransaction("rollback failure"));
+            assert(session.apply(AddNodeIntent{graph::NodeTypeId{1U}, {1.0F, 2.0F, true}}));
+            const auto added = session.selectedNode();
+            document.failDetachAt(1U);
+            assert(!session.apply(DisconnectIntent{graph::PinId{999U}, graph::PinId{1000U}}));
+            assert(session.poisoned());
+            assert(!session.apply(MoveNodeIntent{added, {8.0F, 9.0F, true}}));
+            assert(!session.beginTransaction("rejected"));
+            assert(!session.undo());
+            assert(!session.redo());
+        }
+    }
 }
 
 int main()
 {
     testEditingAndAtomicHistory();
     testRendererReplacementAndSharedConsumers();
+    testTransactionFaultRollbackAndPoison();
     return 0;
 }

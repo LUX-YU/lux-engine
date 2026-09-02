@@ -13,6 +13,10 @@ int main()
     rdesc::Script description;
     description.module_name = "lux.test.artifact";
     description.exports.push_back({"tick", 11U, {}, {}});
+    description.api_requirements.push_back({
+        script::ScriptApiContractId{"lux.test.Ability"},
+        0x11223344U
+    });
     description.body = rdesc::LuaSourceScript{"module"};
     auto source_result = script::ScriptArtifact::create(
         std::move(description),
@@ -40,7 +44,7 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(*encoded),
         decode_limits
     );
-    assert(image && image->data().view()[4] == std::byte{3U});
+    assert(image && image->data().view()[4] == std::byte{4U});
 
     auto decoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
         (*typed)->id(),
@@ -49,7 +53,10 @@ int main()
     );
     assert(decoded);
     const auto& artifact = (*decoded)->data();
-    assert(artifact.description().schema_version == 5U);
+    assert(artifact.description().schema_version == 6U);
+    assert(artifact.description().api_requirements.size() == 1U);
+    assert(artifact.description().api_requirements.front().contract.name() == "lux.test.Ability");
+    assert(artifact.description().api_requirements.front().expected_schema_hash == 0x11223344U);
     assert(artifact.description().exports.front().symbol_id == 11U);
     assert(artifact.payload().size() == 3U);
     assert(artifact.findExport(11U) == std::addressof(artifact.description().exports.front()));

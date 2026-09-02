@@ -15,6 +15,10 @@ int main()
         7U,
         {rdesc::makeScriptValueType<std::int32_t>()},
         {}});
+    description.api_requirements.push_back({
+        script::ScriptApiContractId{"lux.test.Ability"},
+        0x1234U
+    });
     description.body = rdesc::NativeModuleScript{
         LUX_SCRIPT_ABI_VERSION,
         91U,
@@ -43,5 +47,13 @@ int main()
     auto invalid_layout = description;
     invalid_layout.exports.front().args.front().alignment = 3U;
     assert(!rdesc::validScriptDescription(invalid_layout));
+
+    auto invalid_requirement = description;
+    invalid_requirement.api_requirements.front().expected_schema_hash = 0U;
+    assert(!rdesc::validScriptDescription(invalid_requirement));
+
+    auto duplicate_requirement = description;
+    duplicate_requirement.api_requirements.push_back(duplicate_requirement.api_requirements.front());
+    assert(!rdesc::validScriptDescription(duplicate_requirement));
     return 0;
 }

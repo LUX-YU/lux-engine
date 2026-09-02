@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/core/semantic/SemanticType.hpp>
+#include <lux/engine/function/script/ScriptApi.hpp>
 #include <lux/engine/function/script/ScriptSymbol.hpp>
 
 #include <algorithm>
@@ -65,6 +66,14 @@ namespace lux::rdesc
             noexcept = default;
     };
 
+    struct ScriptApiRequirement final
+    {
+        lux::script::ScriptApiContractId contract;
+        std::uint64_t expected_schema_hash{};
+
+        friend bool operator==(const ScriptApiRequirement&, const ScriptApiRequirement&) noexcept = default;
+    };
+
     struct ScriptProvenance final
     {
         std::string compiler_id;
@@ -112,7 +121,7 @@ namespace lux::rdesc
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 5U;
+        static constexpr std::uint32_t kSchemaVersion = 6U;
 
         enum class Kind : std::uint8_t
         {
@@ -132,6 +141,7 @@ namespace lux::rdesc
         std::string module_name;
         std::vector<ScriptFunction> exports;
         std::vector<ScriptDependency> dependencies;
+        std::vector<ScriptApiRequirement> api_requirements;
         ScriptProvenance provenance;
         Body body;
 
@@ -226,6 +236,16 @@ namespace lux::rdesc
             {
                 if (!detail::validScriptFunction(function) || !symbols.insert(function.symbol_id).second)
                     return false;
+            }
+            std::unordered_set<std::uint64_t> contracts;
+            contracts.reserve(description.api_requirements.size());
+            for (const auto& requirement : description.api_requirements)
+            {
+                if (!requirement.contract.isValid() || requirement.expected_schema_hash == 0U ||
+                    !contracts.insert(requirement.contract.hash()).second)
+                {
+                    return false;
+                }
             }
             return true;
         }

@@ -8,6 +8,7 @@
 #include <limits>
 #include <new>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 
 namespace lux::script
@@ -16,7 +17,7 @@ namespace lux::script
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion = 3U;
+        constexpr std::uint32_t kWireVersion = 4U;
 
         class Writer final
         {
@@ -243,6 +244,13 @@ namespace lux::script
                     writer.string(dependency.kind);
                     writer.string(dependency.id);
                 }
+                writer.u32(static_cast<std::uint32_t>(description.api_requirements.size()));
+                for (const auto& requirement : description.api_requirements)
+                {
+                    writer.string(requirement.contract.name());
+                    writer.u64(requirement.contract.hash());
+                    writer.u64(requirement.expected_schema_hash);
+                }
                 const auto& provenance = description.provenance;
                 writer.string(provenance.compiler_id);
                 writer.string(provenance.compiler_version);
@@ -391,6 +399,24 @@ namespace lux::script
                     }
                     description.dependencies.push_back(std::move(dependency));
                 }
+                if (!reader.u32(count) || !reserveRecords(
+                        description.api_requirements, count, decoded, limit,
+                        reader.remaining()))
+                {
+                    return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                }
+                for (std::uint32_t index{}; index < count; ++index)
+                {
+                    std::string name;
+                    std::uint64_t hash{};
+                    std::uint64_t schema{};
+                    if (!reader.string(name, decoded, limit) || !reader.u64(hash) || !reader.u64(schema) ||
+                        name.empty() || lux::cxx::Fnv1a64::hash(name) != hash)
+                    {
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    }
+                    description.api_requirements.push_back({lux::script::ScriptApiContractId{name}, schema});
+                }
                 auto& provenance = description.provenance;
                 if (!reader.string(provenance.compiler_id, decoded, limit) ||
                     !reader.string(provenance.compiler_version, decoded, limit) ||
@@ -496,6 +522,16 @@ namespace lux::script
                 const auto symbol = function.symbol_id;
                 if (!artifact.export_index_.emplace(symbol, index).second)
                     return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+            }
+            std::unordered_set<std::uint64_t> requirements;
+            requirements.reserve(artifact.description_.api_requirements.size());
+            for (const auto& requirement : artifact.description_.api_requirements)
+            {
+                if (!requirement.contract.isValid() || requirement.expected_schema_hash == 0U ||
+                    !requirements.insert(requirement.contract.hash()).second)
+                {
+                    return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+                }
             }
             return artifact;
         }

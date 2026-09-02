@@ -31,19 +31,20 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
-find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
 
 target_link_libraries(
     script_core
     PUBLIC
         lux::engine::core::semantic
+        lux::cxx::core
         lux::cxx::compile_time
 )
 
 component_add_transitive_commands(
     script_core
     "find_package(lux-engine-core REQUIRED COMPONENTS semantic)"
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
 )
 
 add_subdirectory(test)

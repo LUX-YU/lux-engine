@@ -2,6 +2,7 @@
 #include "InventoryAbility.ability.generated.hpp"
 
 #include <lux/engine/function/script/ScriptAbility.hpp>
+#include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
 
 #include <cassert>
 #include <cstdint>
@@ -105,5 +106,18 @@ int main()
     assert(starter->countLater(18U, std::move(completion)));
     assert(state->value == 4);
     assert(provider.last_item == 18U);
+
+    lux::flowforge::ScriptAbilityNodeCatalog catalog;
+    assert(catalog.add(lux::flowforge::makeScriptAbilityCatalogContribution<Ability>()));
+    const auto* count_node = catalog.view().find(
+        Traits::Description.id,
+        lux::script::ScriptApiMethodIdView{"consumer.inventory.count"}
+    );
+    assert(count_node != nullptr);
+    lux::flowforge::ScriptAbilityNode graph_node{*count_node};
+    assert(graph_node.contract() == Traits::Description.id);
+    assert(graph_node.method() == count_node->method);
+    assert(graph_node.parameterPins().size() == 1U);
+    assert(graph_node.resultPins().size() == 1U);
     return 0;
 }

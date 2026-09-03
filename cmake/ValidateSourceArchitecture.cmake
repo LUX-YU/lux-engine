@@ -2065,6 +2065,30 @@ foreach(source IN LISTS flowforge_compiler_sources)
     endif()
 endforeach()
 
+file(GLOB_RECURSE flowforge_function_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/flowforge/*.hpp"
+    "${source_root}/modules/function/flowforge/*.cpp"
+)
+foreach(source IN LISTS flowforge_function_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "FlowForgeRuntime|FlowForgeVM|FlowForgeScheduler|FlowForgeAwaitManager|lux/engine/simulation/|ScriptSystem|SystemInstanceId|ServiceRegistry")
+        message(FATAL_ERROR
+            "Architecture: generic FlowForge source '${source}' acquired runtime ownership or Simulation ontology."
+        )
+    endif()
+endforeach()
+
+set(native_script_backend_source
+    "${source_root}/engine/domain/simulation/scripting/native/src/NativeScriptBackend.cpp"
+)
+file(READ "${native_script_backend_source}" native_script_backend_contract)
+if(native_script_backend_contract MATCHES "lux/engine/flowforge/|FlowGraph|ScriptAbilityNode")
+    message(FATAL_ERROR
+        "Architecture: NativeScriptBackend depends on the FlowForge frontend."
+    )
+endif()
+
 set(dense_event_storage
     "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp"
 )

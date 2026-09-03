@@ -3,7 +3,7 @@ project(lux_script_ability_codegen_consumer LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
-find_package(lux-engine-function REQUIRED COMPONENTS script_core)
+find_package(lux-engine-function REQUIRED COMPONENTS script_core flowforge)
 
 include_component_cmake_scripts(lux::engine::function::script_core)
 if(NOT COMMAND lux_script_abilities)
@@ -23,7 +23,9 @@ target_include_directories(
 target_compile_features(lux_script_ability_codegen_consumer PRIVATE cxx_std_20)
 target_link_libraries(
     lux_script_ability_codegen_consumer
-    PRIVATE lux::engine::function::script_core
+    PRIVATE
+        lux::engine::function::script_core
+        lux::engine::function::flowforge
 )
 lux_script_abilities(
     TARGET lux_script_ability_codegen_consumer

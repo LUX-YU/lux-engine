@@ -301,6 +301,8 @@ namespace lux::simulation::script
 
         [[nodiscard]] bool initializeEvents() noexcept
         {
+            static constexpr std::string_view wrapper_source =
+                "return function(start) return function() start(); return coroutine.yield() end end";
             lua_getglobal(state, "lux");
             if (!lua_istable(state, -1))
             {
@@ -310,6 +312,18 @@ namespace lux::simulation::script
             const auto lux_index = lua_gettop(state);
             lua_newtable(state);
             const auto event_index = lua_gettop(state);
+            if (luaL_loadbufferx(
+                    state,
+                    wrapper_source.data(),
+                    wrapper_source.size(),
+                    "lux.Event.wrapper",
+                    "t"
+                ) != LUA_OK || lua_pcall(state, 0, 1, 0) != LUA_OK || !lua_isfunction(state, -1))
+            {
+                lua_settop(state, lux_index - 1);
+                return false;
+            }
+            const auto factory_index = lua_gettop(state);
             std::size_t first_source{};
             while (first_source < event_sources.size())
             {
@@ -321,9 +335,15 @@ namespace lux::simulation::script
                 {
                     const auto& source = event_sources[ordinal];
                     lua_pushlstring(state, source.event_name.data(), source.event_name.size());
+                    lua_pushvalue(state, factory_index);
                     lua_pushlightuserdata(state, this);
                     lua_pushinteger(state, static_cast<lua_Integer>(ordinal));
                     lua_pushcclosure(state, &State::invokeEventWait, 2);
+                    if (lua_pcall(state, 1, 1, 0) != LUA_OK)
+                    {
+                        lua_settop(state, lux_index - 1);
+                        return false;
+                    }
                     lua_settable(state, system_index);
                     ++ordinal;
                 }
@@ -333,6 +353,7 @@ namespace lux::simulation::script
                 lua_pop(state, 1);
                 first_source = ordinal;
             }
+            lua_pop(state, 1);
             lua_pushvalue(state, event_index);
             lua_setfield(state, lux_index, "Event");
             lua_pop(state, 2);
@@ -1368,7 +1389,7 @@ namespace lux::simulation::script
             execution->continuation->waiting_on = admission.waiting_on;
             execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
             execution->continuation->pending_operation = EPendingOperation::EVENT;
-            return lux::script::lua::detail::yieldLuaInvocation(state, 0);
+            return 0;
         }
 
         static int invoke(lux_script_call_frame* frame) noexcept

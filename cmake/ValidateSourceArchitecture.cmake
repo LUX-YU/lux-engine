@@ -550,7 +550,7 @@ file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
     if(content MATCHES
-       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|ScriptServices|ServiceRegistry")
+       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|EventManager|ScriptEventManager|AwaitableManager|ScriptServices|ServiceRegistry")
         message(FATAL_ERROR
             "Architecture: replacement ScriptSystem source '${source}' restores a retired boundary."
         )
@@ -1638,6 +1638,11 @@ endif()
 if(NOT EXISTS "${source_root}/cmake/installed-consumers/script-ability-codegen/CMakeLists.txt")
     message(FATAL_ERROR
         "Architecture: missing installed Script Ability codegen consumer."
+    )
+endif()
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/system-event-await-runtime/CMakeLists.txt")
+    message(FATAL_ERROR
+        "Architecture: missing installed Script Event await runtime consumer."
     )
 endif()
 if(NOT EXISTS "${source_root}/cmake/installed-consumers/lua-script-packager/CMakeLists.txt")

@@ -35,7 +35,10 @@ int main()
     auto graph = makeGraph("tick", Symbol);
     auto compiled = lux::flowforge::compileFlowForgeScript(
         graph,
-        lux::flowforge::FlowForgeCompileOptions{.module_name = "gameplay.behavior"}
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.behavior",
+            .lifecycle = {.begin_play = Symbol}
+        }
     );
     if (!compiled)
         std::fprintf(stderr, "FlowForge compile failed: %u %s\n", static_cast<unsigned>(compiled.error().code),
@@ -43,6 +46,7 @@ int main()
     assert(compiled);
     assert(!compiled->payload().empty());
     assert(compiled->findExport(Symbol) == &compiled->description().exports.front());
+    assert(compiled->description().lifecycle.begin_play == Symbol);
 
     auto loaded = lux::script::loadNativeModule(compiled->payload(), "gameplay.behavior");
     assert(loaded);
@@ -53,10 +57,14 @@ int main()
 
     auto compiled_again = lux::flowforge::compileFlowForgeScript(
         graph,
-        lux::flowforge::FlowForgeCompileOptions{.module_name = "gameplay.behavior"}
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.behavior",
+            .lifecycle = {.begin_play = Symbol}
+        }
     );
     assert(compiled_again);
     assert(compiled_again->description().exports == compiled->description().exports);
+    assert(compiled_again->description().lifecycle == compiled->description().lifecycle);
     assert(std::ranges::equal(compiled_again->payload(), compiled->payload()));
 
     auto renamed_graph = makeGraph("renamed_tick", Symbol);

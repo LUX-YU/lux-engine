@@ -16,19 +16,34 @@ namespace
         lux::semantic::Layout& result
     ) noexcept
     {
-        const auto* reflected = static_cast<const lux::meta::RefClass*>(
-            type.ptr);
-        if (!reflected || reflected->full_name !=
-            "lux::simulation::test::BridgeRecord")
-            return false;
-        constexpr std::string_view name{"lux.test.BridgeRecord"};
-        result = {
-            lux::semantic::typeId(name),
-            name,
-            LUX_SCRIPT_VK_STRUCT_REF,
-            sizeof(lux::simulation::test::BridgeRecord),
-            alignof(lux::simulation::test::BridgeRecord)};
-        return true;
+        const auto base = static_cast<lux::meta::EBaseType>(type.qtype.base);
+        const auto* reflected = base == lux::meta::EBaseType::Record
+            ? static_cast<const lux::meta::RefClass*>(type.ptr)
+            : nullptr;
+        if (reflected && reflected->full_name == "lux::simulation::test::BridgeRecord")
+        {
+            constexpr std::string_view name{"lux.test.BridgeRecord"};
+            result = {
+                lux::semantic::typeId(name),
+                name,
+                LUX_SCRIPT_VK_STRUCT_REF,
+                sizeof(lux::simulation::test::BridgeRecord),
+                alignof(lux::simulation::test::BridgeRecord)};
+            return true;
+        }
+        if (type.hash == lux::cxx::type_hash<lux::simulation::script::EScriptEndPlayReason>())
+        {
+            using Reason = lux::simulation::script::EScriptEndPlayReason;
+            using Traits = lux::semantic::TypeTraits<Reason>;
+            result = {
+                lux::semantic::typeId(Traits::CanonicalName),
+                Traits::CanonicalName,
+                Traits::AbiKind,
+                Traits::Size,
+                Traits::Alignment};
+            return true;
+        }
+        return false;
     }
 
     [[nodiscard]] lux::asset::AssetId assetId()
@@ -48,11 +63,13 @@ int main()
     auto& registry = lux::meta::ReflectionRegistry::instance();
     const auto* reflected = registry.findClass(
         "lux::simulation::test::BridgeBehavior");
-    assert(reflected && reflected->methods.size() == 3U);
+    assert(reflected && reflected->methods.size() == 5U);
 
     const lux::meta::RefMethod* value_method{};
     const lux::meta::RefMethod* record_method{};
     const lux::meta::RefMethod* throwing_method{};
+    const lux::meta::RefMethod* begin_method{};
+    const lux::meta::RefMethod* end_method{};
     for (const auto& method : reflected->methods)
     {
         if (method.invokable.name == "onValue")
@@ -61,25 +78,40 @@ int main()
             record_method = &method;
         else if (method.invokable.name == "throwing")
             throwing_method = &method;
+        else if (method.invokable.name == "admitToGameplay")
+            begin_method = &method;
+        else if (method.invokable.name == "leaveGameplay")
+            end_method = &method;
         assert(method.invokable.name != "unmarkedHelper");
     }
-    assert(value_method && record_method && throwing_method);
+    assert(value_method && record_method && throwing_method && begin_method && end_method);
+    lux::semantic::Layout lifecycle_layout;
+    assert(resolveRecord(nullptr, end_method->invokable.parameters.front().type, lifecycle_layout));
+    assert(lifecycle_layout.type_id == lux::semantic::typeId(lifecycle_layout.canonical_name));
+    assert(lifecycle_layout.size == end_method->invokable.parameters.front().type.size);
+    assert(lifecycle_layout.alignment == end_method->invokable.parameters.front().type.alignment);
 
-    const std::array selected{value_method, record_method};
+    const std::array selected{value_method, record_method, begin_method, end_method};
     const std::array symbols{
         lux::script::ScriptSymbolId{101U},
-        lux::script::ScriptSymbolId{102U}};
+        lux::script::ScriptSymbolId{102U},
+        lux::script::ScriptSymbolId{104U},
+        lux::script::ScriptSymbolId{105U}};
     auto projected = projectCppStaticEntityScript(
         "lux.test.bridge-behavior",
         "bridge-behavior-v1",
         *reflected,
         selected,
         symbols,
-        CppStaticRecordSemanticResolver{nullptr, &resolveRecord}
+        CppStaticRecordSemanticResolver{nullptr, &resolveRecord},
+        nullptr,
+        {symbols[2], symbols[3]}
     );
     assert(projected);
     assert(projected->description().schema_version == 7U);
-    assert(projected->description().exports.size() == 2U);
+    assert(projected->description().exports.size() == 4U);
+    assert(projected->description().lifecycle.begin_play == symbols[2]);
+    assert(projected->description().lifecycle.end_play == symbols[3]);
     assert(projected->description().exports[0].args[0].canonical_name ==
         "lux.f32");
     assert(projected->description().exports[1].args[0].canonical_name ==
@@ -160,6 +192,38 @@ int main()
     assert(call.invoke(&frame) == 0);
     assert(test::observed_value == value);
 
+    lux::script::BoundScriptCall begin_call;
+    lux::script::BoundScriptCall end_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        instance,
+        entity_asset.description().exports[2],
+        begin_call
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        instance,
+        entity_asset.description().exports[3],
+        end_call
+    ) == EScriptBackendResult::SUCCESS);
+    lux_script_call_frame begin_frame{
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
+    assert(begin_call.invoke(&begin_frame) == 0);
+    frame.user_context = call.context;
+    assert(call.invoke(&frame) == 0);
+    const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
+    lux_script_value_slot end_argument{
+        LUX_SCRIPT_VK_UINT32,
+        {},
+        sizeof(end_reason),
+        lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
+        const_cast<EScriptEndPlayReason*>(std::addressof(end_reason))};
+    lux_script_call_frame end_frame{
+        &end_argument, 1U, 0U, nullptr, 0U, 0U, nullptr, end_call.context};
+    assert(end_call.invoke(&end_frame) == 0);
+    assert(test::observed_lifecycle_value == 11);
+    assert(test::observed_end_reason == end_reason);
+
     auto tampered_description = entity_asset.description();
     tampered_description.module_name = "lux.test.tampered";
     auto tampered = lux::script::ScriptArtifact::create(std::move(tampered_description), {});
@@ -175,8 +239,12 @@ int main()
         rejected_instance
     ) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
 
+    descriptor.releaseMethod(descriptor.context, instance, end_call);
+    descriptor.releaseMethod(descriptor.context, instance, begin_call);
     descriptor.releaseMethod(descriptor.context, instance, call);
     descriptor.destroyInstance(descriptor.context, instance);
+    assert(test::constructed_objects == 1U);
+    assert(test::destroyed_objects == 1U);
     ScriptBackendInstance recycled_instance;
     assert(descriptor.createInstance(
         descriptor.context,
@@ -202,6 +270,8 @@ int main()
         recycled_call
     );
     descriptor.destroyInstance(descriptor.context, recycled_instance);
+    assert(test::constructed_objects == 2U);
+    assert(test::destroyed_objects == 2U);
 
     auto global_asset_result = lux::script::ScriptArtifact::create(global->description(), {});
     assert(global_asset_result);

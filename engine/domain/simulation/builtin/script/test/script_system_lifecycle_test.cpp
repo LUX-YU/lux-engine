@@ -117,12 +117,16 @@ namespace
         std::size_t destroys{};
         std::size_t first_begin_create_count{};
         std::size_t resumes{};
+        std::size_t tick_calls{};
         std::size_t continuation_destroys{};
         std::size_t fail_begin_serial{};
+        std::size_t fail_tick_serial{};
         bool fail_end{};
         bool async_tick{};
+        HookPoint<void()>* hook{};
         std::vector<std::uint32_t> end_values;
         std::vector<EScriptEndPlayReason> end_reasons;
+        std::vector<std::size_t> end_normal_dispatches;
         std::vector<ScriptAwaitableCompletion> completions;
     };
 
@@ -143,6 +147,9 @@ namespace
         }
         if (call.symbol == kTick)
         {
+            ++state.tick_calls;
+            if (state.fail_tick_serial == instance.serial)
+                return 32;
             ++instance.value;
             return 0;
         }
@@ -154,6 +161,10 @@ namespace
             ++state.ends;
             state.end_values.push_back(instance.value);
             state.end_reasons.push_back(reason);
+            const auto calls_before = state.tick_calls;
+            if (state.hook)
+                static_cast<void>(state.hook->dispatch());
+            state.end_normal_dispatches.push_back(state.tick_calls - calls_before);
             return state.fail_end ? 41 : 0;
         }
         return 42;
@@ -229,6 +240,7 @@ namespace
     ) noexcept
     {
         auto& call = *static_cast<PreparedCall*>(context);
+        ++call.instance->owner->tick_calls;
         auto awaiting = step.awaitables.create();
         if (!awaiting)
             return ScriptStepResult::failed(51);
@@ -304,6 +316,7 @@ namespace
             assert(hook.prepare(1U) == EEndpointMutationError::NONE);
             bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             endpoint = bridge->descriptor();
+            backend_state.hook = std::addressof(hook);
             backend = {
                 lux::rdesc::Script::Kind::CPP_STATIC,
                 &backend_state,
@@ -409,6 +422,26 @@ namespace
         assert(none_system.shutdown());
         assert(none.backend_state.begins == 0U && none.backend_state.ends == 0U);
 
+        Harness begin_only{1U, false, true, false};
+        auto begin_only_created = begin_only.create();
+        assert(begin_only_created);
+        auto begin_only_system = std::move(*begin_only_created);
+        assert(begin_only_system.prepare());
+        assert(begin_only_system.shutdown());
+        assert(begin_only.backend_state.begins == 1U);
+        assert(begin_only.backend_state.ends == 0U);
+        assert(begin_only.backend_state.destroys == 1U);
+
+        Harness end_only{1U, false, false, true};
+        auto end_only_created = end_only.create();
+        assert(end_only_created);
+        auto end_only_system = std::move(*end_only_created);
+        assert(end_only_system.prepare());
+        assert(end_only_system.shutdown());
+        assert(end_only.backend_state.begins == 0U);
+        assert(end_only.backend_state.ends == 1U);
+        assert(end_only.backend_state.destroys == 1U);
+
         Harness begin_failure{3U, false, true, true};
         begin_failure.backend_state.fail_begin_serial = 2U;
         auto begin_created = begin_failure.create();
@@ -432,6 +465,22 @@ namespace
         assert(end_failure.backend_state.ends == 1U);
         assert(end_failure.backend_state.destroys == 1U);
         assert(!end_failure.backend_state.end_reasons.empty());
+
+        Harness normal_failure{1U, false, true, true};
+        normal_failure.backend_state.fail_tick_serial = 1U;
+        auto normal_created = normal_failure.create();
+        assert(normal_created);
+        auto normal_system = std::move(*normal_created);
+        assert(normal_system.prepare());
+        assert(normal_failure.hook.dispatch() == 1U);
+        assert(normal_system.activeInstanceCount() == 0U);
+        assert(normal_system.executeStablePoint());
+        assert(normal_failure.backend_state.ends == 1U);
+        assert(normal_failure.backend_state.destroys == 1U);
+        assert(normal_failure.backend_state.end_reasons.front() == EScriptEndPlayReason::FAULTED);
+        assert(normal_system.shutdown());
+        assert(normal_failure.backend_state.ends == 1U);
+        assert(normal_failure.backend_state.destroys == 1U);
     }
 
     void testSignatureValidation()
@@ -473,6 +522,9 @@ namespace
         assert(harness.backend_state.ends == 2U);
         assert(harness.backend_state.destroys == 2U);
         assert(harness.backend_state.continuation_destroys == 2U);
+        assert(std::ranges::all_of(harness.backend_state.end_normal_dispatches, [](std::size_t count) {
+            return count == 0U;
+        }));
         assert(harness.backend_state.begins == 4U);
         assert(system.activeInstanceCount() == 2U);
         const auto late = late_completion.ready();

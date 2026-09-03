@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 
 #include <lua.hpp>
@@ -135,7 +136,7 @@ int main()
         &pushCollisionEvent};
     auto created_backend = LuaScriptBackend::create(
         4U,
-        7U,
+        11U,
         {},
         std::span{&collision_marshaller, 1U}
     );
@@ -186,12 +187,25 @@ int main()
         18U,
         {},
         {i32}};
+    const lux::rdesc::ScriptFunction begin_lifecycle{
+        "admit_to_gameplay",
+        19U,
+        {},
+        {}};
+    const lux::rdesc::ScriptFunction end_lifecycle{
+        "leave_gameplay",
+        20U,
+        {lux::rdesc::makeScriptValueType<EScriptEndPlayReason>()},
+        {}};
     description.exports.push_back(function);
     description.exports.push_back(bad_return);
     description.exports.push_back(escape_host);
     description.exports.push_back(probe_escaped_host);
     description.exports.push_back(on_collision);
     description.exports.push_back(collision_count);
+    description.exports.push_back(begin_lifecycle);
+    description.exports.push_back(end_lifecycle);
+    description.lifecycle = {begin_lifecycle.symbol_id, end_lifecycle.symbol_id};
     constexpr std::string_view source = R"lua(
         local escaped_get = nil
         return {
@@ -220,6 +234,18 @@ int main()
             end,
             collision_count = function(self)
                 return self.collisions or 0
+            end,
+            admit_to_gameplay = function(self)
+                if self.begun then
+                    error("duplicate lifecycle admission")
+                end
+                self.begun = true
+            end,
+            leave_gameplay = function(self, reason)
+                if not self.begun or self.count < 1 or reason ~= 2 then
+                    error("lifecycle state mismatch")
+                end
+                self.ended = true
             end
         }
     )lua";
@@ -268,6 +294,41 @@ int main()
         asset,
         second_instance
     ) == EScriptBackendResult::SUCCESS);
+
+    lux::script::BoundScriptCall first_begin;
+    lux::script::BoundScriptCall second_begin;
+    lux::script::BoundScriptCall first_end;
+    lux::script::BoundScriptCall second_end;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        begin_lifecycle,
+        first_begin
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        second_instance,
+        begin_lifecycle,
+        second_begin
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        end_lifecycle,
+        first_end
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        second_instance,
+        end_lifecycle,
+        second_end
+    ) == EScriptBackendResult::SUCCESS);
+    lux_script_call_frame first_begin_frame{
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, first_begin.context};
+    lux_script_call_frame second_begin_frame{
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, second_begin.context};
+    assert(first_begin.invoke(&first_begin_frame) == 0);
+    assert(second_begin.invoke(&second_begin_frame) == 0);
 
     lux::script::BoundScriptCall first;
     lux::script::BoundScriptCall second;
@@ -402,6 +463,20 @@ int main()
     frame.user_context = second.context;
     assert(second.invoke(&frame) != 0);
 
+    const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
+    lux_script_value_slot end_reason_slot{
+        LUX_SCRIPT_VK_UINT32,
+        {},
+        sizeof(end_reason),
+        lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
+        const_cast<EScriptEndPlayReason*>(std::addressof(end_reason))};
+    lux_script_call_frame first_end_frame{
+        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, first_end.context};
+    lux_script_call_frame second_end_frame{
+        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, second_end.context};
+    assert(first_end.invoke(&first_end_frame) == 0);
+    assert(second_end.invoke(&second_end_frame) == 0);
+
     auto unsupported = function;
     unsupported.symbol_id = 12U;
     unsupported.args = {{
@@ -470,6 +545,8 @@ int main()
     ) == EScriptBackendResult::SUCCESS);
     assert(exhausted_call.context == recycled_call_context);
     descriptor.releaseMethod(descriptor.context, first_instance, exhausted_call);
+    descriptor.releaseMethod(descriptor.context, first_instance, first_end);
+    descriptor.releaseMethod(descriptor.context, first_instance, first_begin);
     descriptor.releaseMethod(descriptor.context, first_instance, first);
     descriptor.releaseMethod(descriptor.context, first_instance, escape_call);
     descriptor.destroyInstance(descriptor.context, first_instance);
@@ -494,6 +571,8 @@ int main()
     assert(escaped_is_dead);
 
     descriptor.releaseMethod(descriptor.context, second_instance, second);
+    descriptor.releaseMethod(descriptor.context, second_instance, second_end);
+    descriptor.releaseMethod(descriptor.context, second_instance, second_begin);
     descriptor.releaseMethod(descriptor.context, second_instance, probe_call);
     descriptor.releaseMethod(
         descriptor.context,

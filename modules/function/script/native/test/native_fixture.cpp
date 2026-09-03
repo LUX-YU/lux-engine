@@ -49,6 +49,24 @@ namespace
         return 0;
     }
 
+    int admitToGameplay(lux_script_call_frame* frame) noexcept
+    {
+        if (!frame || !frame->user_context || frame->arg_count != 0U)
+            return 10;
+        *static_cast<float*>(frame->user_context) += 10.0F;
+        return 0;
+    }
+
+    int leaveGameplay(lux_script_call_frame* frame) noexcept
+    {
+        const bool invalid_frame = !frame || !frame->user_context || frame->arg_count != 1U || !frame->args ||
+            !frame->args[0].data;
+        if (invalid_frame)
+            return 11;
+        const auto reason = *static_cast<const std::uint32_t*>(frame->args[0].data);
+        return reason == 2U && *static_cast<const float*>(frame->user_context) >= 10.0F ? 0 : 12;
+    }
+
     const lux_script_type_desc kFloatType{
         "lux.f32",
         lux::semantic::typeId("lux.f32"),
@@ -60,6 +78,14 @@ namespace
     const lux_script_type_desc kUint32Type{
         "lux.u32",
         lux::semantic::typeId("lux.u32"),
+        sizeof(std::uint32_t),
+        alignof(std::uint32_t),
+        LUX_SCRIPT_VK_UINT32,
+        {}};
+
+    const lux_script_type_desc kEndPlayReasonType{
+        "lux.simulation.ScriptEndPlayReason",
+        lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
         sizeof(std::uint32_t),
         alignof(std::uint32_t),
         LUX_SCRIPT_VK_UINT32,
@@ -82,7 +108,9 @@ namespace
             0,
             &increment},
         {"OnUpdate", 2, kUpdateArgs, 1, nullptr, 0, &onUpdate},
-        {"OnUpdate", 3, kPairArgs, 2, nullptr, 0, &onPair}};
+        {"OnUpdate", 3, kPairArgs, 2, nullptr, 0, &onPair},
+        {"AdmitToGameplay", 4, nullptr, 0, nullptr, 0, &admitToGameplay},
+        {"LeaveGameplay", 5, &kEndPlayReasonType, 1, nullptr, 0, &leaveGameplay}};
 
     const lux_script_module_desc kModule{
 #if defined(LUX_SCRIPT_FIXTURE_SECOND_MODULE)
@@ -104,7 +132,7 @@ namespace
         64,
         64,
         kFunctions,
-        3,
+        5,
         0};
 }
 

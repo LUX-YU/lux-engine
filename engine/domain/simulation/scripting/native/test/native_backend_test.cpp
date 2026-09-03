@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 
 #include <array>
 #include <cassert>
@@ -103,7 +104,18 @@ int main()
             lux::rdesc::makeScriptValueType<float>(),
             lux::rdesc::makeScriptValueType<std::uint32_t>()},
         {}};
-    description.exports = {increment, function, pair};
+    const lux::rdesc::ScriptFunction begin_lifecycle{
+        "AdmitToGameplay",
+        4U,
+        {},
+        {}};
+    const lux::rdesc::ScriptFunction end_lifecycle{
+        "LeaveGameplay",
+        5U,
+        {lux::rdesc::makeScriptValueType<EScriptEndPlayReason>()},
+        {}};
+    description.exports = {increment, function, pair, begin_lifecycle, end_lifecycle};
+    description.lifecycle = {begin_lifecycle.symbol_id, end_lifecycle.symbol_id};
     auto asset_result = lux::script::ScriptArtifact::create(description, {});
     assert(asset_result);
     auto asset = std::move(*asset_result);
@@ -258,6 +270,35 @@ int main()
     assert(third.invoke(&frame) == 0);
     assert(*static_cast<float*>(third.context) == delta);
 
+    lux::script::BoundScriptCall begin_call;
+    lux::script::BoundScriptCall end_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        begin_lifecycle,
+        begin_call
+    ) == EScriptBackendResult::SUCCESS);
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        end_lifecycle,
+        end_call
+    ) == EScriptBackendResult::SUCCESS);
+    lux_script_call_frame begin_frame{
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
+    assert(begin_call.invoke(&begin_frame) == 0);
+    assert(*static_cast<float*>(first.context) == delta + 10.0F);
+    const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
+    lux_script_value_slot end_slot{
+        LUX_SCRIPT_VK_UINT32,
+        {},
+        sizeof(end_reason),
+        lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
+        const_cast<EScriptEndPlayReason*>(std::addressof(end_reason))};
+    lux_script_call_frame end_frame{
+        &end_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, end_call.context};
+    assert(end_call.invoke(&end_frame) == 0);
+
     auto mismatched = function;
     mismatched.args[0].canonical_name = "lux.f64";
     mismatched.args[0].type_id = lux::semantic::typeId("lux.f64");
@@ -270,6 +311,8 @@ int main()
     ) == EScriptBackendResult::UNSUPPORTED_SIGNATURE);
 
     descriptor.releaseMethod(descriptor.context, first_instance, first);
+    descriptor.releaseMethod(descriptor.context, first_instance, end_call);
+    descriptor.releaseMethod(descriptor.context, first_instance, begin_call);
     descriptor.releaseMethod(descriptor.context, second_instance, second);
     descriptor.releaseMethod(descriptor.context, third_instance, third);
     descriptor.destroyInstance(descriptor.context, first_instance);

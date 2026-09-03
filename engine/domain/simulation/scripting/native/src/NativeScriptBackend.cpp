@@ -156,6 +156,20 @@ namespace lux::simulation::script
                     {}};
                 return true;
             }
+            const bool is_portable_custom_scalar = semantic.abi_kind >= LUX_SCRIPT_VK_BOOL &&
+                semantic.abi_kind <= LUX_SCRIPT_VK_DOUBLE;
+            if (is_portable_custom_scalar)
+            {
+                result = lux_script_type_desc{
+                    semantic.canonical_name.c_str(),
+                    semantic.type_id,
+                    semantic.size,
+                    semantic.alignment,
+                    semantic.abi_kind,
+                    static_cast<std::uint8_t>(semantic.pass),
+                    {}};
+                return true;
+            }
             return record_layouts.resolve && record_layouts.resolve(
                 record_layouts.context,
                 semantic.type_id,

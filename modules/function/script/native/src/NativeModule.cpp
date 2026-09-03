@@ -139,7 +139,9 @@ namespace lux::script
                             builtin->alignment != type.align;
                         return !is_invalid_builtin;
                     }
-                    return type.kind == LUX_SCRIPT_VK_STRUCT_REF;
+                    const bool is_portable_custom_scalar = type.kind >= LUX_SCRIPT_VK_BOOL &&
+                        type.kind <= LUX_SCRIPT_VK_DOUBLE;
+                    return is_portable_custom_scalar || type.kind == LUX_SCRIPT_VK_STRUCT_REF;
                 };
                 for (std::uint32_t argument{}; argument < function.arg_count; ++argument)
                 {

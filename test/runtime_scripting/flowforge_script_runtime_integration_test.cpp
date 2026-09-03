@@ -213,6 +213,7 @@ namespace
     };
     static constexpr lux::script::ScriptAbilityDescription kTestAbility{
         kTestContract,
+        "RuntimeTest",
         "Runtime Test",
         1U,
         kTestSchema,

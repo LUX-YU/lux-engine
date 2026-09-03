@@ -2793,6 +2793,10 @@ namespace lux::simulation::script
 
                 const auto described = simulation.findEvent(events[index].system, events[index].event);
                 const auto& owned = events[index].payload_projection.owned_layout;
+                const auto* builtin = lux::semantic::builtinLayout(owned.type_id);
+                const bool is_invalid_builtin = builtin != nullptr &&
+                    (builtin->canonical_name != owned.canonical_name || builtin->abi_kind != owned.abi_kind ||
+                     builtin->size != owned.size || builtin->alignment != owned.alignment);
                 const bool is_invalid_identity = !events[index].system.valid() || !events[index].event.valid();
                 const bool is_invalid_functions =
                     events[index].connect == nullptr || events[index].disconnect == nullptr;
@@ -2804,7 +2808,7 @@ namespace lux::simulation::script
                     owned.type_id != events[index].payload_type.type_id ||
                     owned.canonical_name != events[index].payload_type.canonical_name || owned.abi_kind == 0U ||
                     owned.size == 0U || owned.alignment == 0U ||
-                    (owned.alignment & (owned.alignment - 1U)) != 0U;
+                    (owned.alignment & (owned.alignment - 1U)) != 0U || is_invalid_builtin;
                 if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
                     return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 

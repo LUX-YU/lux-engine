@@ -326,6 +326,10 @@ namespace lux::simulation
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const auto described = impl_->owner->description->findEvent(provider, endpoint.event);
         const auto& owned = endpoint.payload_projection.owned_layout;
+        const auto* builtin = lux::semantic::builtinLayout(owned.type_id);
+        const bool is_invalid_builtin = builtin != nullptr &&
+            (builtin->canonical_name != owned.canonical_name || builtin->abi_kind != owned.abi_kind ||
+             builtin->size != owned.size || builtin->alignment != owned.alignment);
         const bool is_current_provider = current && current.instanceId() == provider;
         const bool is_invalid_endpoint = endpoint.system != provider || endpoint.context == nullptr ||
             endpoint.connect == nullptr || endpoint.disconnect == nullptr || !described ||
@@ -334,7 +338,7 @@ namespace lux::simulation
             endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
             owned.type_id != endpoint.payload_type.type_id ||
             owned.canonical_name != endpoint.payload_type.canonical_name || owned.abi_kind == 0U || owned.size == 0U ||
-            owned.alignment == 0U || (owned.alignment & (owned.alignment - 1U)) != 0U;
+            owned.alignment == 0U || (owned.alignment & (owned.alignment - 1U)) != 0U || is_invalid_builtin;
         if (!is_current_provider || is_invalid_endpoint)
         {
             return lux::cxx::unexpected(buildFailure(

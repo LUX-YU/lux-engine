@@ -66,6 +66,21 @@ Script framework FREEZE
 
 There is intentionally **no planned S7**. New Script/runtime work after S6 must be justified by a real product/editor/gameplay consumer.
 
+Product storage has also gained a frozen logical direction before Product Track P:
+
+```text
+PAK-0
+    LuxPak cooker/reader prototype + index/chunk/update benchmark
+        ↓
+PAK-1
+    immutable Base/Patch LuxPak shipping storage closure
+        ↓
+P
+    project-specific target/product manifest + package selection closure
+```
+
+`PAK-0/PAK-1` do not create a new architecture layer. They define the shipping storage/provider contract consumed by the existing Product/VFS/AssetRead model.
+
 ---
 
 ## 2. Post-S6 mainline
@@ -98,6 +113,8 @@ P   project-specific target/product closure after project manifest spec
 ```
 
 `D`, `E`, and the later part of `U2` may proceed in parallel where their dependencies allow. The roadmap is a dependency DAG, not a requirement that every commit be serialized.
+
+`PAK-0` may proceed as an independent Product/VFS storage experiment once current runtime priorities permit; `PAK-1` must be closed before final shipping Product P can claim incremental cooked-content packaging. It must not block unrelated Editor/UI framework closure.
 
 `FC` is the point at which Lux may call the v1 engine framework architecture closed. Feature production after FC should normally consume the existing architecture rather than reopen root ownership/runtime boundaries.
 
@@ -160,12 +177,13 @@ When documents conflict, use this order:
 3. `11-script-api-capabilities-coroutines-and-await.md` for Script Ability/capability/provider/coroutine/await/Event/Delay/backend portability semantics.
 4. `12-script-ability-reflection-provider-binding-and-codegen.md` for Ability declaration, identity/naming, receiver/provider binding, CMake codegen and language/tool projections.
 5. `14-plugin-package-and-extension-composition.md` for Project Module vs Plugin Package, multi-facet source-plugin composition and RenderFeature/Editor extension rules.
-6. `08-normative-execution-contract.md` for general ownership/execution/lifetime MUST/MUST NOT rules not superseded above.
-7. `07-implementation-roadmap-and-gates.md` for the **current implementation order/gates**.
-8. `10-lux-ui-foundation-and-legacy-visual-parity.md` for Lux UI/private backend/Legacy visual-parity rules.
-9. The remaining functional design documents.
+6. `15-luxpak-indexed-content-container-and-incremental-update.md` for shipping Pak storage, persisted AssetId/VFS indexes, ContentEntry→Segment→Chunk, immutable Patch Pak and incremental-update semantics.
+7. `08-normative-execution-contract.md` for general ownership/execution/lifetime MUST/MUST NOT rules not superseded above.
+8. `07-implementation-roadmap-and-gates.md` for the **current implementation order/gates**.
+9. `10-lux-ui-foundation-and-legacy-visual-parity.md` for Lux UI/private backend/Legacy visual-parity rules.
+10. The remaining functional design documents.
 
-`09-product-runtime-vfs-and-async-script.md` remains normative for Product/VFS/AssetRead ownership but is **historical context** for old Script sequencing; detailed Script semantics and sequencing are superseded by `11/12/13` + `07`.
+`09-product-runtime-vfs-and-async-script.md` remains normative for Product/VFS/AssetRead ownership but is **historical context** for old Script sequencing; detailed Script semantics and sequencing are superseded by `11/12/13` + `07`. LuxPak/Patch storage details are superseded by `15`.
 
 `01-editor-context-toolset-and-plugins.md` remains normative for EditorApplication/EditorContext/Toolset and Editor contribution lifetime. Its older general “plugin” wording is interpreted through `14`; it does not define an all-engine plugin framework.
 
@@ -192,10 +210,16 @@ For Plugin/package/extension work read:
 9. `14-plugin-package-and-extension-composition.md`
 10. the owner-specific contract (Simulation, Render, Toolchain, Editor, etc.)
 
+For Product/VFS/Pak/update work read:
+
+11. `03-asset-vfs-filewatch.md`
+12. `09-product-runtime-vfs-and-async-script.md`
+13. `15-luxpak-indexed-content-container-and-incremental-update.md`
+
 For UI/Editor work read:
 
-11. `10-lux-ui-foundation-and-legacy-visual-parity.md`
-12. `01`–`05` as relevant
+14. `10-lux-ui-foundation-and-legacy-visual-parity.md`
+15. `01`–`05` as relevant
 
 File numbering is reading organization, **not implementation order**.
 
@@ -210,7 +234,7 @@ File numbering is reading organization, **not implementation order**.
 - `04-scene-editor-outliner-viewport.md` — SceneEditor/Outliner/Viewport and optional hierarchy projection.
 - `05-shared-graph-source-and-graphkit.md` — shared GraphTopology/GraphLayout and graph editing/render protocol.
 - `06-toolchain-process-async-execution.md` — L2 execution, TaskScope, compiler Sender model and AssetRead mechanisms.
-- `07-implementation-roadmap-and-gates.md` — **current unique execution DAG**, Script S4-P→S6, post-S6 Editor return, R1 and FC.
+- `07-implementation-roadmap-and-gates.md` — **current unique execution DAG**, Script S4-P→S6, post-S6 Editor return, R1/FC and Product storage/P gates.
 - `08-normative-execution-contract.md` — general ownership/execution MUST/MUST NOT/STOP contract.
 - `09-product-runtime-vfs-and-async-script.md` — Product/VFS/AssetRead normative design; old Script sequencing retained only as historical context.
 - `10-lux-ui-foundation-and-legacy-visual-parity.md` — Lux UI public/private boundary, object/immediate model, Theme and backend isolation.
@@ -218,6 +242,7 @@ File numbering is reading organization, **not implementation order**.
 - `12-script-ability-reflection-provider-binding-and-codegen.md` — current Ability reflection/binding/naming/codegen/projection contract.
 - `13-script-gameplay-object-lifecycle.md` — Script object incarnation, BeginPlay/EndPlay and materialization/retirement contract.
 - `14-plugin-package-and-extension-composition.md` — source-plugin packaging, multi-facet target composition, RenderFeature and Editor extension boundaries.
+- `15-luxpak-indexed-content-container-and-incremental-update.md` — immutable LuxPak logical layout, persisted indexes, chunk storage, patch/update and PAK-0/PAK-1 gates.
 
 ---
 
@@ -240,6 +265,9 @@ no Material/Flow persistence format invented from UI work
 no project/plugin manifest invented before Product Track P
 no PluginManager/IPlugin used to bypass normal owner-specific registration
 no RenderPlugin layer duplicating RenderFeature
+no runtime Pak payload scan or runtime rebuild of Asset/VFS package indexes
+no in-place Base Pak mutation for normal shipping updates
+no encryption/DRM framework introduced before a separately approved security requirement
 ```
 
 Legacy remains a visual/interaction/behavior reference only, never an ownership or architecture source.
@@ -255,4 +283,4 @@ Exact benchmark numbers, machine-specific timings, CTest totals and qualificatio
 .internal/*performance-baseline*.md
 ```
 
-Normative documents define semantic contracts, complexity invariants and qualification requirements. They MUST NOT turn one machine's PB0/PB1/PB2 timing into a universal architecture threshold.
+Normative documents define semantic contracts, complexity invariants and qualification requirements. They MUST NOT turn one machine's PB0/PB1/PB2/PAK-0 timing into a universal architecture threshold.

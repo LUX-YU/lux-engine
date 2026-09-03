@@ -3,11 +3,13 @@
 #include <lux/engine/flowforge/compiler/visibility.h>
 #include <lux/engine/flowforge/script/ScriptAbilityCatalog.hpp>
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
+#include <lux/engine/function/script/ScriptEvent.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 
 namespace lux::flowforge
@@ -34,6 +36,8 @@ namespace lux::flowforge
         UNKNOWN_SCRIPT_ABILITY_METHOD,
         SCRIPT_ABILITY_SCHEMA_MISMATCH,
         SCRIPT_ABILITY_REQUIREMENT_CONFLICT,
+        UNKNOWN_SCRIPT_EVENT_SOURCE,
+        SCRIPT_EVENT_SCHEMA_MISMATCH,
         UNSUPPORTED_SCRIPT_ABILITY_TYPE,
         BORROWED_VALUE_CROSSES_SUSPENSION,
         ASYNC_LIFECYCLE_NOT_SUPPORTED,
@@ -58,6 +62,7 @@ namespace lux::flowforge
         std::filesystem::path linker;
         lux::rdesc::ScriptLifecycleRoles lifecycle;
         ScriptAbilityNodeCatalogView script_abilities;
+        std::span<const lux::script::ScriptEventSourceDescription> script_events;
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC

@@ -2,6 +2,7 @@
 
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+#include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
 
 #include <algorithm>
@@ -16,9 +17,9 @@ namespace lux::flowforge
 {
     namespace
     {
-        [[nodiscard]] const ScriptAbilityNode* earlierWitness(
-            const ScriptAbilityNode* left,
-            const ScriptAbilityNode* right
+        [[nodiscard]] const Node* earlierWitness(
+            const Node* left,
+            const Node* right
         ) noexcept
         {
             if (left == nullptr)
@@ -93,6 +94,10 @@ namespace lux::flowforge
                     if (ability->methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
                         summary.direct_witness = earlierWitness(summary.direct_witness, ability);
                 }
+                else if (node.operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
+                {
+                    summary.direct_witness = earlierWitness(summary.direct_witness, std::addressof(node));
+                }
                 else if (node.operation() == ENodeOperation::GRAPH_FUNC_CALL)
                 {
                     const auto* callee = static_cast<const GraphFuncCallNode&>(node).callee();
@@ -139,7 +144,7 @@ namespace lux::flowforge
         return {};
     }
 
-    const ScriptAbilityNode* SuspensionAnalysis::callWitness(const Node& node) const noexcept
+    const Node* SuspensionAnalysis::callWitness(const Node& node) const noexcept
     {
         if (node.operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
         {
@@ -147,22 +152,22 @@ namespace lux::flowforge
             return ability->methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION ? ability : nullptr;
         }
         if (node.operation() != ENodeOperation::GRAPH_FUNC_CALL)
-            return nullptr;
+            return node.operation() == ENodeOperation::SCRIPT_EVENT_WAIT ? std::addressof(node) : nullptr;
         const auto* callee = static_cast<const GraphFuncCallNode&>(node).callee();
         const auto found = functions_.find(callee);
         return found == functions_.end() ? nullptr : found->second.transitive_witness;
     }
 
-    const ScriptAbilityNode* SuspensionAnalysis::firstSuspensionFrom(const ExecOutPin& start) const
+    const Node* SuspensionAnalysis::firstSuspensionFrom(const ExecOutPin& start) const
     {
-        const ScriptAbilityNode* result{};
+        const Node* result{};
         visitDirectExecution(start, [&](const Node& node) {
             result = earlierWitness(result, callWitness(node));
         });
         return result;
     }
 
-    const ScriptAbilityNode* SuspensionAnalysis::suspensionBetween(
+    const Node* SuspensionAnalysis::suspensionBetween(
         const ExecOutPin& start,
         const Node& target
     ) const
@@ -170,13 +175,13 @@ namespace lux::flowforge
         struct Visit final
         {
             const Node* node{};
-            const ScriptAbilityNode* suspension{};
+            const Node* suspension{};
         };
 
         std::queue<Visit> pending;
         std::unordered_set<const Node*> visited_without_suspension;
-        std::unordered_map<const Node*, const ScriptAbilityNode*> visited_with_suspension;
-        const ScriptAbilityNode* result{};
+        std::unordered_map<const Node*, const Node*> visited_with_suspension;
+        const Node* result{};
         if (const auto* next = start.nextPin())
             pending.push({next->node(), nullptr});
 

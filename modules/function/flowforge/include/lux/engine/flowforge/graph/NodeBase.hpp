@@ -49,6 +49,7 @@ namespace lux::flowforge
         NATIVE_FUNC_CALL, // 1 exec in, 1 exec out. n data in (arguments). n data out (return value).
         GRAPH_FUNC_CALL,  // 1 exec in, 1 exec out. n data in (arguments). n data out (return values). Calls a FuncDef in the same graph.
         SCRIPT_ABILITY_CALL, // Explicit Script Ability call; identity is ContractId + MethodId.
+        SCRIPT_EVENT_WAIT, // Explicit one-shot Script Event wait; concrete identity is owned by its domain projection.
 
         // object — the graph never OWNS objects: object references are
         // engine-provided pointers (event/function parameters). CREATE_OBJECT
@@ -113,6 +114,7 @@ namespace lux::flowforge
         case ENodeOperation::NATIVE_FUNC_CALL:return "Native Function Call";
         case ENodeOperation::GRAPH_FUNC_CALL: return "Graph Function Call";
         case ENodeOperation::SCRIPT_ABILITY_CALL: return "Script Ability Call";
+        case ENodeOperation::SCRIPT_EVENT_WAIT: return "Script Event Wait";
         case ENodeOperation::CREATE_OBJECT: return "Create Object";
         case ENodeOperation::GET_OBJECT:    return "Get Object";
         case ENodeOperation::SET_OBJECT:    return "Set Object";

@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 /** Increment whenever the layout below changes in a non-additive way. */
-#define LUX_SCRIPT_ABI_VERSION 3u
+#define LUX_SCRIPT_ABI_VERSION 4u
 
 /** Symbol name compiled modules must export. */
 #define LUX_SCRIPT_MODULE_ENTRY "lux_script_get_module"
@@ -87,6 +87,17 @@ typedef struct lux_script_ability_import_desc {
     const lux_script_type_desc* results;
     uint32_t                    result_count;
 } lux_script_ability_import_desc;
+
+/** Immutable one-shot Script Event wait import owned by a compiled module. */
+typedef struct lux_script_event_wait_import_desc {
+    uint64_t system_id;
+    uint64_t event_id;
+    uint64_t payload_schema_hash;
+    uint32_t payload_schema_version;
+    uint8_t route;
+    uint8_t reserved[3];
+    lux_script_type_desc payload;
+} lux_script_event_wait_import_desc;
 
 typedef int (*lux_script_ability_invoke_fn)(
     void* context,
@@ -162,10 +173,16 @@ typedef int (*lux_script_start_async_fn)(
     uint32_t arg_count,
     lux_script_async_token* waiting_on);
 
+typedef int (*lux_script_start_event_wait_fn)(
+    void* context,
+    uint32_t ordinal,
+    lux_script_async_token* waiting_on);
+
 /** Invocation-local host seam. Completion never resumes script directly. */
 typedef struct lux_script_step_host {
     void* context;
     lux_script_start_async_fn start_async;
+    lux_script_start_event_wait_fn start_event_wait;
 } lux_script_step_host;
 
 typedef int (*lux_script_step_start_fn)(
@@ -226,6 +243,10 @@ typedef struct lux_script_module_desc {
     const lux_script_ability_import_desc* ability_imports;
     uint32_t                              ability_import_count;
     uint32_t                              reserved2;
+
+    const lux_script_event_wait_import_desc* event_wait_imports;
+    uint32_t                                 event_wait_import_count;
+    uint32_t                                 reserved3;
 } lux_script_module_desc;
 
 /*---------------------------------------------------------------------------

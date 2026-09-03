@@ -24,6 +24,7 @@ add_component(
         src/script/ScriptGraph.cpp
         src/script/ScriptAbilityCatalog.cpp
         src/script/ScriptAbilityNode.cpp
+        src/script/ScriptEventAwaitNode.cpp
 )
 
 component_include_directories(

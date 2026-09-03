@@ -31,6 +31,7 @@
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
 #include "lux/engine/flowforge/graph/ObjectNode.hpp"
 #include "lux/engine/flowforge/graph/ArithmeticNode.hpp"
+#include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
 #include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
 
 namespace lux::flowforge
@@ -98,6 +99,7 @@ namespace lux::flowforge
         mlir::Value state_ptr;
         mlir::Value ability_runtime;
         std::unordered_map<std::uint64_t, std::uint32_t> ability_ordinals;
+        std::unordered_map<std::uint64_t, std::uint32_t> event_wait_ordinals;
 
         const Node* current_node = nullptr;
         const Pin* current_pin = nullptr;
@@ -398,6 +400,8 @@ namespace lux::flowforge
         FlowForgeResult<void> lowerNativeCallImpl(const Node&, mlir::Value in_tok, ValueMaps&, BuilderContext&);
         FlowForgeResult<void>
         lowerScriptAbilityCallImpl(const ScriptAbilityNode&, mlir::Value in_tok, ValueMaps&, BuilderContext&);
+        FlowForgeResult<void>
+        lowerScriptEventWaitImpl(const ScriptEventAwaitNode&, mlir::Value in_tok, ValueMaps&, BuilderContext&);
 
         // Per-region recursive lowering driver.
         //
@@ -489,6 +493,14 @@ namespace lux::flowforge
             std::uint64_t node{};
         };
         std::vector<AbilityKey> ability_keys;
+        struct EventWaitKey final
+        {
+            std::uint64_t system{};
+            std::uint64_t event{};
+            std::uint8_t route{};
+            std::uint64_t node{};
+        };
+        std::vector<EventWaitKey> event_wait_keys;
         for (auto& storage : g.nodes())
         {
             const Node* n = storage.node.get();
@@ -496,6 +508,16 @@ namespace lux::flowforge
             {
                 const auto& ability = static_cast<const ScriptAbilityNode&>(*n);
                 ability_keys.push_back({ability.contract().name(), ability.method().name(), n->id().value});
+            }
+            else if (n->operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
+            {
+                const auto& event = static_cast<const ScriptEventAwaitNode&>(*n).source();
+                event_wait_keys.push_back({
+                    event.system_id,
+                    event.event_id,
+                    static_cast<std::uint8_t>(event.route),
+                    n->id().value
+                });
             }
             switch (n->operation())
             {
@@ -558,6 +580,31 @@ namespace lux::flowforge
                 ++next_ordinal;
             }
             bc.ability_ordinals.emplace(key.node, next_ordinal - 1U);
+        }
+        std::ranges::sort(event_wait_keys, [](const auto& left, const auto& right) {
+            if (left.system != right.system)
+                return left.system < right.system;
+            if (left.event != right.event)
+                return left.event < right.event;
+            return left.route < right.route;
+        });
+        next_ordinal = 0U;
+        std::uint64_t previous_system{};
+        std::uint64_t previous_event{};
+        std::uint8_t previous_route{};
+        has_previous = false;
+        for (const auto& key : event_wait_keys)
+        {
+            if (!has_previous || key.system != previous_system || key.event != previous_event ||
+                key.route != previous_route)
+            {
+                previous_system = key.system;
+                previous_event = key.event;
+                previous_route = key.route;
+                has_previous = true;
+                ++next_ordinal;
+            }
+            bc.event_wait_ordinals.emplace(key.node, next_ordinal - 1U);
         }
         if (entries.empty())
         {
@@ -937,6 +984,15 @@ namespace lux::flowforge
                 LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(call.execOutPin().id().value, bc));
                 cur_tok = next_token;
                 cur_pin = &call.execOutPin();
+                break;
+            }
+
+            case ENodeOperation::SCRIPT_EVENT_WAIT: {
+                const auto& wait = static_cast<const ScriptEventAwaitNode&>(*node);
+                LUX_FF_TRY(lowerScriptEventWaitImpl(wait, in_tok, vm, bc));
+                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(wait.execOutPin().id().value, bc));
+                cur_tok = next_token;
+                cur_pin = &wait.execOutPin();
                 break;
             }
 
@@ -2126,6 +2182,43 @@ namespace lux::flowforge
             vm.exec_data[call.resultPins().front()->id().value] = invoked.getResult(0);
         vm.exec_tok[call.execOutPin().id().value] = in_tok;
         bc.current_pin = nullptr;
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::lowerScriptEventWaitImpl(
+        const ScriptEventAwaitNode& wait,
+        mlir::Value in_tok,
+        ValueMaps& vm,
+        BuilderContext& bc
+    )
+    {
+        const auto ordinal = bc.event_wait_ordinals.find(wait.id().value);
+        const auto* type = wait.payloadPin().info().type;
+        if (ordinal == bc.event_wait_ordinals.end() || type == nullptr)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{
+                .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
+                .message = "Script Event wait has no canonical payload",
+                .node_id = wait.id().value
+            });
+        }
+        const auto result_type = refTypeToMLIR(bc, *type);
+        if (mlir::isa<mlir::LLVM::LLVMPointerType>(result_type))
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{
+                .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
+                .message = "record Script Event payloads are not supported by FlowForge S5.1",
+                .node_id = wait.id().value,
+                .pin_id = wait.payloadPin().id().value
+            });
+        }
+        const auto name = "lux_ff_event_wait_" + std::to_string(ordinal->second) + "_node_" +
+            std::to_string(wait.id().value);
+        const auto function_type = bc.builder.getFunctionType({}, {result_type});
+        const auto function = getOrDeclareExternFunc(bc, name, function_type);
+        auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, mlir::ValueRange{});
+        vm.exec_data[wait.payloadPin().id().value] = invoked.getResult(0);
+        vm.exec_tok[wait.execOutPin().id().value] = in_tok;
         return {};
     }
 

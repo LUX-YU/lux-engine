@@ -29,6 +29,7 @@
 #include "lux/engine/flowforge/compiler/Passes.hpp"
 #include "lux/engine/flowforge/compiler/ScriptInstance.hpp"
 #include "lux/engine/flowforge/compiler/SuspensionAnalysis.hpp"
+#include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
 #include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
@@ -80,7 +81,8 @@
 // re-checks the LLVM side against the DataLayout at cook time.
 static_assert(sizeof(lux_script_type_desc) == 32, "ABI drift: type_desc");
 static_assert(sizeof(lux_script_function_desc) == 64, "ABI drift: function_desc");
-static_assert(sizeof(lux_script_module_desc) == 64, "ABI drift: module_desc");
+static_assert(sizeof(lux_script_module_desc) == 80, "ABI drift: module_desc");
+static_assert(sizeof(lux_script_event_wait_import_desc) == 64, "ABI drift: event_wait_import_desc");
 static_assert(sizeof(lux_script_value_slot) == 24, "ABI drift: value_slot");
 
 namespace lux::flowforge
@@ -97,6 +99,11 @@ namespace lux::flowforge
         struct AbilityImportInfo final
         {
             const ScriptAbilityNode* node{};
+        };
+
+        struct EventWaitImportInfo final
+        {
+            const ScriptEventAwaitNode* node{};
         };
 
         struct NativeStepInfo final
@@ -129,6 +136,41 @@ namespace lux::flowforge
                     result.back().node->method() == node->method())
                 {
                     continue;
+                }
+                result.push_back({node});
+            }
+            return result;
+        }
+
+        [[nodiscard]] std::vector<EventWaitImportInfo> collectEventWaitImports(const FlowGraph& graph)
+        {
+            std::vector<const ScriptEventAwaitNode*> nodes;
+            for (const auto& storage : graph.nodes())
+            {
+                if (storage.node->operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
+                    nodes.push_back(static_cast<const ScriptEventAwaitNode*>(storage.node.get()));
+            }
+            std::ranges::sort(nodes, [](const auto* left, const auto* right) {
+                const auto& a = left->source();
+                const auto& b = right->source();
+                if (a.system_id != b.system_id)
+                    return a.system_id < b.system_id;
+                if (a.event_id != b.event_id)
+                    return a.event_id < b.event_id;
+                return a.route < b.route;
+            });
+            std::vector<EventWaitImportInfo> result;
+            for (const auto* node : nodes)
+            {
+                if (!result.empty())
+                {
+                    const auto& previous = result.back().node->source();
+                    const auto& current = node->source();
+                    if (previous.system_id == current.system_id && previous.event_id == current.event_id &&
+                        previous.route == current.route)
+                    {
+                        continue;
+                    }
                 }
                 result.push_back({node});
             }
@@ -362,6 +404,7 @@ namespace lux::flowforge
             llvm::Module& module,
             const EventInfo& event,
             const std::vector<AbilityImportInfo>& imports,
+            const std::vector<EventWaitImportInfo>& event_imports,
             NativeStepInfo& result,
             std::string& error
         )
@@ -378,6 +421,7 @@ namespace lux::flowforge
                 llvm::CallInst* call{};
                 std::uint32_t import_ordinal{};
                 std::uint64_t node_id{};
+                bool event_wait{};
             };
             std::vector<AwaitSite> awaits;
             for (auto& block : *target)
@@ -386,19 +430,26 @@ namespace lux::flowforge
                 {
                     auto* call = llvm::dyn_cast<llvm::CallInst>(&instruction);
                     const auto* callee = call != nullptr ? call->getCalledFunction() : nullptr;
-                    if (callee == nullptr || !callee->getName().starts_with("lux_ff_ability_async_"))
+                    if (callee == nullptr)
                         continue;
-                    const auto suffix = callee->getName().drop_front(std::strlen("lux_ff_ability_async_"));
+                    const bool is_ability = callee->getName().starts_with("lux_ff_ability_async_");
+                    const bool is_event = callee->getName().starts_with("lux_ff_event_wait_");
+                    if (!is_ability && !is_event)
+                        continue;
+                    const auto prefix_size = is_event ? std::strlen("lux_ff_event_wait_") :
+                        std::strlen("lux_ff_ability_async_");
+                    const auto suffix = callee->getName().drop_front(prefix_size);
                     const auto separator = suffix.find("_node_");
                     std::uint64_t ordinal{};
                     std::uint64_t node_id{};
                     if (separator == llvm::StringRef::npos || suffix.take_front(separator).getAsInteger(10, ordinal) ||
-                        suffix.drop_front(separator + 6U).getAsInteger(10, node_id) || ordinal >= imports.size())
+                        suffix.drop_front(separator + 6U).getAsInteger(10, node_id) ||
+                        (is_event ? ordinal >= event_imports.size() : ordinal >= imports.size()))
                     {
-                        error = "FlowForge async Ability marker has an invalid stable identity";
+                        error = "FlowForge suspension marker has an invalid stable identity";
                         return false;
                     }
-                    awaits.push_back({call, static_cast<std::uint32_t>(ordinal), node_id});
+                    awaits.push_back({call, static_cast<std::uint32_t>(ordinal), node_id, is_event});
                 }
             }
             if (awaits.empty())
@@ -508,6 +559,8 @@ namespace lux::flowforge
             std::uint64_t scratch_alignment{alignof(lux_script_async_token)};
             for (const auto& await : awaits)
             {
+                if (await.event_wait)
+                    continue;
                 const auto& import = *imports[await.import_ordinal].node;
                 std::uint64_t required = import.parameters().size() * sizeof(lux_script_value_slot);
                 for (const auto& parameter : import.parameters())
@@ -612,24 +665,31 @@ namespace lux::flowforge
                 auto* scratch =
                     suspend_builder.CreateGEP(i8, frame_argument, llvm::ConstantInt::get(i64, scratch_offset));
                 llvm::Value* arguments = llvm::ConstantPointerNull::get(ptr_type);
-                const auto& import = *imports[awaits[await_index].import_ordinal].node;
-                std::uint64_t scratch_cursor = import.parameters().size() * sizeof(lux_script_value_slot);
+                const auto* ability_import = awaits[await_index].event_wait
+                    ? nullptr
+                    : imports[awaits[await_index].import_ordinal].node;
+                std::uint64_t scratch_cursor = ability_import == nullptr
+                    ? 0U
+                    : ability_import->parameters().size() * sizeof(lux_script_value_slot);
                 if (!visible_arguments.empty())
                 {
                     arguments = scratch;
                     for (std::size_t index{}; index < visible_arguments.size(); ++index)
                     {
-                        scratch_cursor = alignFrameOffset(scratch_cursor, import.parameters()[index].value.alignment);
+                        scratch_cursor = alignFrameOffset(
+                            scratch_cursor,
+                            ability_import->parameters()[index].value.alignment
+                        );
                         auto* storage =
                             suspend_builder.CreateGEP(i8, scratch, llvm::ConstantInt::get(i64, scratch_cursor));
-                        scratch_cursor += import.parameters()[index].value.size;
+                        scratch_cursor += ability_import->parameters()[index].value.size;
                         suspend_builder.CreateStore(visible_arguments[index], storage);
                         auto* slot = suspend_builder.CreateGEP(
                             i8,
                             arguments,
                             llvm::ConstantInt::get(i64, index * sizeof(lux_script_value_slot))
                         );
-                        storeValueSlot(suspend_builder, slot, import.parameters()[index].value, storage);
+                        storeValueSlot(suspend_builder, slot, ability_import->parameters()[index].value, storage);
                     }
                 }
                 scratch_cursor = alignFrameOffset(scratch_cursor, alignof(lux_script_async_token));
@@ -639,18 +699,43 @@ namespace lux::flowforge
                 };
                 auto* host_context =
                     suspend_builder.CreateLoad(ptr_type, host_field(offsetof(lux_script_step_host, context)));
-                auto* start_async =
-                    suspend_builder.CreateLoad(ptr_type, host_field(offsetof(lux_script_step_host, start_async)));
-                auto* start_type = llvm::FunctionType::get(i32, {ptr_type, i32, ptr_type, i32, ptr_type}, false);
-                auto* status = suspend_builder.CreateCall(
-                    start_type,
-                    start_async,
-                    {host_context,
-                     llvm::ConstantInt::get(i32, awaits[await_index].import_ordinal),
-                     arguments,
-                     llvm::ConstantInt::get(i32, visible_arguments.size()),
-                     token}
-                );
+                llvm::Value* status{};
+                if (awaits[await_index].event_wait)
+                {
+                    auto* start_event = suspend_builder.CreateLoad(
+                        ptr_type,
+                        host_field(offsetof(lux_script_step_host, start_event_wait))
+                    );
+                    auto* start_type = llvm::FunctionType::get(i32, {ptr_type, i32, ptr_type}, false);
+                    status = suspend_builder.CreateCall(
+                        start_type,
+                        start_event,
+                        {host_context, llvm::ConstantInt::get(i32, awaits[await_index].import_ordinal), token}
+                    );
+                }
+                else
+                {
+                    auto* start_async = suspend_builder.CreateLoad(
+                        ptr_type,
+                        host_field(offsetof(lux_script_step_host, start_async))
+                    );
+                    auto* start_type = llvm::FunctionType::get(
+                        i32,
+                        {ptr_type, i32, ptr_type, i32, ptr_type},
+                        false
+                    );
+                    status = suspend_builder.CreateCall(
+                        start_type,
+                        start_async,
+                        {
+                            host_context,
+                            llvm::ConstantInt::get(i32, awaits[await_index].import_ordinal),
+                            arguments,
+                            llvm::ConstantInt::get(i32, visible_arguments.size()),
+                            token
+                        }
+                    );
+                }
                 const auto next_pc = static_cast<std::uint32_t>(await_index + 1U);
                 suspend_builder.CreateStore(llvm::ConstantInt::get(i32, next_pc), frame_argument);
                 auto* admitted = suspend_builder.CreateICmpEQ(status, llvm::ConstantInt::get(i32, 0));
@@ -971,6 +1056,17 @@ namespace lux::flowforge
             for (const auto& await : awaits)
             {
                 frame_hash = appendFrameHash(frame_hash, await.node_id);
+                if (await.event_wait)
+                {
+                    const auto& source = event_imports[await.import_ordinal].node->source();
+                    frame_hash = appendFrameHash(frame_hash, source.system_id);
+                    frame_hash = appendFrameHash(frame_hash, source.event_id);
+                    frame_hash = appendFrameHash(frame_hash, static_cast<std::uint8_t>(source.route));
+                    frame_hash = appendFrameHash(frame_hash, source.payload.type_id);
+                    frame_hash = appendFrameHash(frame_hash, source.payload.size);
+                    frame_hash = appendFrameHash(frame_hash, source.payload.alignment);
+                    continue;
+                }
                 const auto& import = *imports[await.import_ordinal].node;
                 for (const auto& parameter : import.parameters())
                 {
@@ -1046,6 +1142,7 @@ namespace lux::flowforge
             llvm::Module& module,
             const std::vector<EventInfo>& events,
             const std::vector<AbilityImportInfo>& imports,
+            const std::vector<EventWaitImportInfo>& event_imports,
             const SuspensionAnalysis& suspension_analysis,
             std::vector<NativeStepInfo>& steps,
             std::string& error
@@ -1056,7 +1153,14 @@ namespace lux::flowforge
             steps.resize(events.size());
             for (std::size_t index{}; index < events.size(); ++index)
             {
-                if (!lowerEventToStateMachine(module, events[index], imports, steps[index], error))
+                if (!lowerEventToStateMachine(
+                        module,
+                        events[index],
+                        imports,
+                        event_imports,
+                        steps[index],
+                        error
+                    ))
                     return false;
                 const bool expected_suspension =
                     suspension_analysis.firstSuspensionFrom(events[index].node->execOutPin()) != nullptr;
@@ -1083,8 +1187,9 @@ namespace lux::flowforge
             for (auto iterator = module.begin(); iterator != module.end();)
             {
                 auto& function = *iterator++;
-                if (function.isDeclaration() && function.use_empty() &&
-                    function.getName().starts_with("lux_ff_ability_async_"))
+                const bool is_suspension_marker = function.getName().starts_with("lux_ff_ability_async_") ||
+                    function.getName().starts_with("lux_ff_event_wait_");
+                if (function.isDeclaration() && function.use_empty() && is_suspension_marker)
                 {
                     function.eraseFromParent();
                 }
@@ -1248,6 +1353,7 @@ namespace lux::flowforge
             const std::string& module_name,
             const std::vector<EventInfo>& events,
             const std::vector<AbilityImportInfo>& ability_imports,
+            const std::vector<EventWaitImportInfo>& event_imports,
             const std::vector<NativeStepInfo>& steps,
             const std::vector<lux::rdesc::ScriptFunction>& exports,
             const std::vector<llvm::Function*>& wrappers,
@@ -1280,11 +1386,32 @@ namespace lux::flowforge
                 {ptr_ty, i64, ptr_ty, i64, i64, i32, i8, pad3, ptr_ty, i32, ptr_ty, i32},
                 "lux_script_ability_import_desc"
             );
+            auto* event_wait_import_ty = llvm::StructType::create(
+                ctx,
+                {i64, i64, i64, i32, i8, pad3, type_desc_ty},
+                "lux_script_event_wait_import_desc"
+            );
             auto* step_desc_ty =
                 llvm::StructType::create(ctx, {i32, i32, i64, ptr_ty, ptr_ty, ptr_ty}, "lux_script_step_desc");
             auto* module_desc_ty = llvm::StructType::create(
                 ctx,
-                {ptr_ty, i32, i32, i64, i32, i32, ptr_ty, i32, i32, ptr_ty, i32, i32},
+                {
+                    ptr_ty,
+                    i32,
+                    i32,
+                    i64,
+                    i32,
+                    i32,
+                    ptr_ty,
+                    i32,
+                    i32,
+                    ptr_ty,
+                    i32,
+                    i32,
+                    ptr_ty,
+                    i32,
+                    i32
+                },
                 "lux_script_module_desc"
             );
 
@@ -1299,6 +1426,11 @@ namespace lux::flowforge
             if (!checkLayout(type_desc_ty, sizeof(lux_script_type_desc), "type_desc") ||
                 !checkLayout(func_desc_ty, sizeof(lux_script_function_desc), "function_desc") ||
                 !checkLayout(ability_import_ty, sizeof(lux_script_ability_import_desc), "ability_import_desc") ||
+                !checkLayout(
+                    event_wait_import_ty,
+                    sizeof(lux_script_event_wait_import_desc),
+                    "event_wait_import_desc"
+                ) ||
                 !checkLayout(step_desc_ty, sizeof(lux_script_step_desc), "step_desc") ||
                 !checkLayout(module_desc_ty, sizeof(lux_script_module_desc), "module_desc"))
                 return false;
@@ -1448,6 +1580,50 @@ namespace lux::flowforge
                 );
             }
 
+            llvm::SmallVector<llvm::Constant*, 8> event_wait_descriptions;
+            for (const auto& import : event_imports)
+            {
+                const auto& source = import.node->source();
+                const auto& payload = source.payload;
+                auto* payload_description = llvm::ConstantStruct::get(
+                    type_desc_ty,
+                    {
+                        makeCStr(m, payload.canonical_name, "_lfd_event_payload"),
+                        llvm::ConstantInt::get(i64, payload.type_id),
+                        llvm::ConstantInt::get(i32, payload.size),
+                        llvm::ConstantInt::get(i32, payload.alignment),
+                        llvm::ConstantInt::get(i8, payload.abi_kind),
+                        llvm::ConstantInt::get(i8, LUX_SCRIPT_PASS_VALUE),
+                        pad_zero
+                    }
+                );
+                event_wait_descriptions.push_back(llvm::ConstantStruct::get(
+                    event_wait_import_ty,
+                    {
+                        llvm::ConstantInt::get(i64, source.system_id),
+                        llvm::ConstantInt::get(i64, source.event_id),
+                        llvm::ConstantInt::get(i64, source.payload_schema_hash),
+                        llvm::ConstantInt::get(i32, source.payload_schema_version),
+                        llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(source.route)),
+                        pad3_zero,
+                        payload_description
+                    }
+                ));
+            }
+            llvm::Constant* event_wait_imports_ptr = null_ptr;
+            if (!event_wait_descriptions.empty())
+            {
+                auto* array_type = llvm::ArrayType::get(event_wait_import_ty, event_wait_descriptions.size());
+                event_wait_imports_ptr = new llvm::GlobalVariable(
+                    m,
+                    array_type,
+                    true,
+                    llvm::GlobalValue::PrivateLinkage,
+                    llvm::ConstantArray::get(array_type, event_wait_descriptions),
+                    "_lfd_event_wait_imports"
+                );
+            }
+
             llvm::Constant* fns_ptr = null_ptr;
             if (!fn_descs.empty())
             {
@@ -1482,6 +1658,9 @@ namespace lux::flowforge
                         ability_imports_ptr,
                         llvm::ConstantInt::get(i32, ability_descriptions.size()),
                         llvm::ConstantInt::get(i32, 0),
+                        event_wait_imports_ptr,
+                        llvm::ConstantInt::get(i32, event_wait_descriptions.size()),
+                        llvm::ConstantInt::get(i32, 0)
                     }
                 ),
                 "_lfd_module"
@@ -1540,6 +1719,7 @@ namespace lux::flowforge
 
         std::vector<EventInfo> events;
         const auto ability_imports = collectAbilityImports(graph);
+        const auto event_wait_imports = collectEventWaitImports(graph);
         events.reserve(graph.exports().size());
         artifact_out.exports.reserve(graph.exports().size());
         for (const auto& exported : graph.exports())
@@ -1614,7 +1794,15 @@ namespace lux::flowforge
         std::vector<NativeStepInfo> steps;
         {
             std::string err;
-            if (!lowerAsyncEvents(*llmod, events, ability_imports, suspension_analysis, steps, err))
+            if (!lowerAsyncEvents(
+                    *llmod,
+                    events,
+                    ability_imports,
+                    event_wait_imports,
+                    suspension_analysis,
+                    steps,
+                    err
+                ))
                 return fail(std::move(err));
         }
 
@@ -1654,6 +1842,7 @@ namespace lux::flowforge
                     options.module_name,
                     events,
                     ability_imports,
+                    event_wait_imports,
                     steps,
                     artifact_out.exports,
                     wrappers,

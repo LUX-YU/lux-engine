@@ -85,6 +85,12 @@ namespace lux::script
                     scriptFailure(EScriptError::INVALID_MODULE, "native script Ability import table is null")
                 );
             }
+            if (descriptor->event_wait_import_count != 0U && descriptor->event_wait_imports == nullptr)
+            {
+                return lux::cxx::unexpected(
+                    scriptFailure(EScriptError::INVALID_MODULE, "native script Event wait import table is null")
+                );
+            }
             if (descriptor->state_align == 0U || (descriptor->state_align & (descriptor->state_align - 1U)) != 0U)
             {
                 return lux::cxx::unexpected(
@@ -253,6 +259,50 @@ namespace lux::script
                 }
             }
 
+            for (std::uint32_t index{}; index < descriptor->event_wait_import_count; ++index)
+            {
+                const auto& import = descriptor->event_wait_imports[index];
+                const bool is_invalid_identity = import.system_id == 0U || import.event_id == 0U;
+                const bool is_invalid_schema = import.payload_schema_hash == 0U ||
+                    import.payload_schema_version == 0U;
+                const bool is_invalid_route = import.route > 1U;
+                const auto& payload = import.payload;
+                const bool is_invalid_payload_identity = payload.name == nullptr || payload.name[0] == '\0' ||
+                    payload.type_id == 0U || payload.type_id != lux::semantic::typeId(payload.name);
+                const bool is_invalid_payload_layout = payload.size == 0U || payload.align == 0U ||
+                    (payload.align & (payload.align - 1U)) != 0U || payload.pass != LUX_SCRIPT_PASS_VALUE ||
+                    payload.kind < LUX_SCRIPT_VK_BOOL || payload.kind > LUX_SCRIPT_VK_STRUCT_REF;
+                bool is_duplicate{};
+                for (std::uint32_t previous{}; previous < index; ++previous)
+                {
+                    const auto& candidate = descriptor->event_wait_imports[previous];
+                    if (candidate.system_id == import.system_id && candidate.event_id == import.event_id)
+                    {
+                        is_duplicate = true;
+                        break;
+                    }
+                }
+                if (is_invalid_identity || is_invalid_schema || is_invalid_route || is_invalid_payload_identity ||
+                    is_invalid_payload_layout || is_duplicate)
+                {
+                    return lux::cxx::unexpected(
+                        scriptFailure(EScriptError::INVALID_MODULE, "native script Event wait import is invalid")
+                    );
+                }
+                if (const auto* builtin = lux::semantic::builtinLayout(payload.type_id))
+                {
+                    const bool is_invalid_builtin = builtin->canonical_name != payload.name ||
+                        builtin->abi_kind != payload.kind || builtin->size != payload.size ||
+                        builtin->alignment != payload.align;
+                    if (is_invalid_builtin)
+                    {
+                        return lux::cxx::unexpected(
+                            scriptFailure(EScriptError::INVALID_MODULE, "native script Event payload is invalid")
+                        );
+                    }
+                }
+            }
+
             if (const auto bind =
                     reinterpret_cast<lux_script_bind_host_fn>(state->library.get_symbol(LUX_SCRIPT_BIND_HOST_ENTRY)))
             {
@@ -294,6 +344,13 @@ namespace lux::script
         if (!state_ || !state_->descriptor || state_->descriptor->ability_import_count == 0U)
             return {};
         return {state_->descriptor->ability_imports, state_->descriptor->ability_import_count};
+    }
+
+    std::span<const lux_script_event_wait_import_desc> NativeModule::eventWaitImports() const noexcept
+    {
+        if (!state_ || !state_->descriptor || state_->descriptor->event_wait_import_count == 0U)
+            return {};
+        return {state_->descriptor->event_wait_imports, state_->descriptor->event_wait_import_count};
     }
 
     const lux_script_function_desc* NativeModule::findFunction(std::string_view name) const noexcept

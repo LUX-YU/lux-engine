@@ -4,6 +4,7 @@
 #include <lux/engine/flowforge/compiler/IR.hpp>
 #include <lux/engine/flowforge/compiler/SuspensionAnalysis.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
@@ -218,6 +219,44 @@ namespace lux::flowforge
             }
         }
 
+        [[nodiscard]] FlowForgeResult<void> validateEventSources(
+            const FlowGraph& graph,
+            std::span<const lux::script::ScriptEventSourceDescription> sources
+        ) noexcept
+        {
+            for (const auto& storage : graph.nodes())
+            {
+                if (storage.node->operation() != ENodeOperation::SCRIPT_EVENT_WAIT)
+                    continue;
+                const auto& node = static_cast<const ScriptEventAwaitNode&>(*storage.node);
+                const auto& expected = node.source();
+                const auto found = std::ranges::find_if(sources, [&](const auto& candidate) noexcept {
+                    return candidate.system_id == expected.system_id && candidate.event_id == expected.event_id &&
+                        candidate.route == expected.route;
+                });
+                if (found == sources.end())
+                {
+                    return lux::cxx::unexpected(FlowForgeFailure{
+                        .code = EFlowForgeError::UNKNOWN_SCRIPT_EVENT_SOURCE,
+                        .message = "the Script Event source is not present in the supplied catalog",
+                        .node_id = node.id().value
+                    });
+                }
+                const bool is_schema_mismatch = found->payload != expected.payload ||
+                    found->payload_schema_hash != expected.payload_schema_hash ||
+                    found->payload_schema_version != expected.payload_schema_version;
+                if (is_schema_mismatch)
+                {
+                    return lux::cxx::unexpected(FlowForgeFailure{
+                        .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
+                        .message = "the Script Event source schema does not match the supplied catalog",
+                        .node_id = node.id().value
+                    });
+                }
+            }
+            return {};
+        }
+
         [[nodiscard]] std::vector<const Node*> executableConsumers(const DataOutPin& output)
         {
             std::vector<const Node*> consumers;
@@ -291,7 +330,7 @@ namespace lux::flowforge
                 const auto* entry = graph.findNodeById(exported.entry_node_id);
                 if (entry == nullptr)
                     continue;
-                const ScriptAbilityNode* suspension{};
+                const Node* suspension{};
                 for (const auto* pin : entry->outPins())
                 {
                     if (pin->kind() == EPinKind::EXEC_OUT)
@@ -331,6 +370,9 @@ namespace lux::flowforge
             auto requirements = deriveAbilityRequirements(graph, options.script_abilities);
             if (!requirements)
                 return lux::cxx::unexpected(std::move(requirements.error()));
+            auto event_sources = validateEventSources(graph, options.script_events);
+            if (!event_sources)
+                return lux::cxx::unexpected(std::move(event_sources.error()));
             auto suspension_analysis = SuspensionAnalysis::create(graph);
             if (!suspension_analysis)
                 return lux::cxx::unexpected(std::move(suspension_analysis.error()));

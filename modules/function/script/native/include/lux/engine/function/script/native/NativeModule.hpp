@@ -33,6 +33,7 @@ namespace lux::script
         [[nodiscard]] std::string_view name() const noexcept;
         [[nodiscard]] std::span<const lux_script_function_desc> functions() const noexcept;
         [[nodiscard]] std::span<const lux_script_ability_import_desc> abilityImports() const noexcept;
+        [[nodiscard]] std::span<const lux_script_event_wait_import_desc> eventWaitImports() const noexcept;
         [[nodiscard]] const lux_script_function_desc* findFunction(std::string_view name) const noexcept;
         [[nodiscard]] const lux_script_function_desc* findFunction(ScriptSymbolId symbol) const noexcept;
         [[nodiscard]] std::uint32_t abiVersion() const noexcept;

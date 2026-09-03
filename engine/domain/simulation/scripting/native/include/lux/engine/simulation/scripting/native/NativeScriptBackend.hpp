@@ -46,6 +46,7 @@ namespace lux::simulation::script
         std::size_t max_ability_imports_per_module{};
         std::size_t max_continuation_frame_bytes{};
         NativeScriptRecordLayoutResolver record_layouts;
+        std::size_t max_event_wait_imports_per_module{64U};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_PUBLIC NativeScriptBackend final

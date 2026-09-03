@@ -258,6 +258,8 @@ namespace lux::simulation::script
             const auto imports = instance.module->module->abilityImports();
             if (imports.size() > config.max_ability_imports_per_module)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
+            if (instance.module->module->eventWaitImports().size() > config.max_event_wait_imports_per_module)
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
             try
             {
                 instance.abilities.clear();
@@ -399,6 +401,38 @@ namespace lux::simulation::script
             return result.state == EScriptStepState::FAILED && result.error.valid() ? result.error.status : -1;
         }
 
+        static int startEventWait(
+            void* opaque,
+            std::uint32_t ordinal,
+            lux_script_async_token* waiting_on
+        ) noexcept
+        {
+            auto& adapter = *static_cast<StepAdapter*>(opaque);
+            if (adapter.call == nullptr || adapter.call->instance == nullptr || adapter.context == nullptr ||
+                adapter.call->instance->module == nullptr || adapter.call->instance->module->module == nullptr ||
+                waiting_on == nullptr)
+            {
+                return -1;
+            }
+            const auto imports = adapter.call->instance->module->module->eventWaitImports();
+            if (ordinal >= imports.size())
+                return -1;
+            const auto& source = imports[ordinal];
+            const auto route = source.route == 0U
+                ? EEventRoute::SIMULATION_BROADCAST
+                : EEventRoute::ENTITY_TARGETED;
+            const auto result = adapter.context->event_waits.wait({
+                lux::system::SystemInstanceId{source.system_id},
+                EventPointId{source.event_id},
+                route
+            });
+            if (!result)
+                return -1000 - static_cast<std::int32_t>(result.error());
+            waiting_on->slot = result->slot;
+            waiting_on->generation = result->generation;
+            return 0;
+        }
+
         [[nodiscard]] static ScriptStepResult stepResult(lux_script_step_outcome outcome) noexcept
         {
             switch (outcome.state)
@@ -491,7 +525,7 @@ namespace lux::simulation::script
                 };
             }
             StepAdapter adapter{continuation.call, std::addressof(context)};
-            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility};
+            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility, &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = continuation.call->function->step->resume(
                 std::addressof(host),
@@ -528,7 +562,7 @@ namespace lux::simulation::script
             frame.native_instance = std::addressof(prepared.instance->native_context);
             frame.user_context = prepared.instance->state;
             StepAdapter adapter{std::addressof(prepared), std::addressof(context)};
-            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility};
+            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility, &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = prepared.function->step->start(
                 std::addressof(frame),
@@ -938,7 +972,8 @@ namespace lux::simulation::script
     {
         const bool is_invalid_config = config.module_capacity == 0U || config.instance_capacity == 0U ||
             config.prepared_call_capacity == 0U || config.continuation_capacity == 0U ||
-            config.max_ability_imports_per_module == 0U || config.max_continuation_frame_bytes == 0U;
+            config.max_ability_imports_per_module == 0U || config.max_continuation_frame_bytes == 0U ||
+            config.max_event_wait_imports_per_module == 0U;
         if (!resolver.resolve || is_invalid_config)
         {
             return;

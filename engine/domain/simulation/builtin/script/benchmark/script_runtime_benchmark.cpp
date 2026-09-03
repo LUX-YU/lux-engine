@@ -39,7 +39,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -600,7 +599,6 @@ namespace
                     const auto entity = registry.create();
                     objects.push_back(object);
                     entities.push_back(entity);
-                    object_index.emplace(object, index);
                     scope = EntityScriptMount{object};
                 }
                 if (!description_builder.addMount({
@@ -731,10 +729,21 @@ namespace
         ) noexcept
         {
             auto& self = *static_cast<RuntimeHarness*>(opaque);
-            const auto found = self.object_index.find(object);
-            if (found == self.object_index.end() || found->second >= self.entities.size())
+            const auto bytes = object.value.as_bytes();
+            if (std::to_integer<std::uint8_t>(bytes.front()) != 0xB1U)
                 return false;
-            output = self.entities[found->second];
+            std::uint64_t encoded_index{};
+            for (std::size_t byte{}; byte < sizeof(std::uint64_t); ++byte)
+            {
+                encoded_index |= static_cast<std::uint64_t>(std::to_integer<std::uint8_t>(bytes[8U + byte])) <<
+                    (byte * 8U);
+            }
+            if (encoded_index > (std::numeric_limits<std::size_t>::max)())
+                return false;
+            const auto index = static_cast<std::size_t>(encoded_index);
+            if (index >= self.entities.size())
+                return false;
+            output = self.entities[index];
             return self.registry.valid(output);
         }
 
@@ -764,7 +773,7 @@ namespace
             );
         }
 
-        void churn(std::size_t first, std::size_t count)
+        void rematerialize(std::size_t first, std::size_t count)
         {
             if (!entity_scope || entities.empty())
                 throw std::runtime_error("benchmark churn requires entity scope");
@@ -774,7 +783,6 @@ namespace
                 registry.destroy(entities[index]);
                 entities[index] = registry.create();
             }
-            stablePoint();
         }
 
         SimulationDescription simulation_description;
@@ -794,7 +802,6 @@ namespace
         std::optional<ScriptSystem> system;
         std::vector<lux::world::WorldObjectId> objects;
         std::vector<ecs::Entity> entities;
-        std::unordered_map<lux::world::WorldObjectId, std::size_t, lux::world::WorldObjectIdHash> object_index;
         bool entity_scope{};
     };
 
@@ -1457,11 +1464,21 @@ namespace
         RuntimeHarness harness{options.size, EScenarioMode::SYNC, options.resume_budget, true};
         const auto churn_count = (std::max)(std::size_t{1U}, (std::min)(std::size_t{100U}, options.size / 10U));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
-            harness.churn(frame * churn_count, churn_count);
+        {
+            harness.rematerialize(frame * churn_count, churn_count);
+            harness.stablePoint();
+        }
         for (std::size_t frame{}; frame < options.frames; ++frame)
         {
-            rows.push_back(measureRow("scene-object-churn", "synthetic-object", options.size, frame, [&] {
-                harness.churn((frame + options.warmups) * churn_count, churn_count);
+            const auto first = (frame + options.warmups) * churn_count;
+            rows.push_back(measureRow("scene-object-churn-signal", "synthetic-object", options.size, frame, [&] {
+                harness.rematerialize(first, churn_count);
+                Row row;
+                appendRuntimeStats(row, harness);
+                return row;
+            }));
+            rows.push_back(measureRow("scene-object-churn-stable-point", "synthetic-object", options.size, frame, [&] {
+                harness.stablePoint();
                 Row row;
                 appendRuntimeStats(row, harness);
                 return row;

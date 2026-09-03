@@ -248,6 +248,8 @@ namespace lux::simulation::script
             ScriptInstanceId id;
             std::uint32_t mount_slot{};
             std::size_t active_continuations{};
+            ScriptContinuationId first_continuation;
+            ScriptAwaitableId first_awaitable;
         };
 
         struct ContinuationRecord final
@@ -258,6 +260,8 @@ namespace lux::simulation::script
             ScriptAwaitableId waiting_on;
             std::uint32_t method_slot{};
             bool hook_single_flight{};
+            ScriptContinuationId instance_previous;
+            ScriptContinuationId instance_next;
         };
 
         struct ResumeRecord final
@@ -319,6 +323,8 @@ namespace lux::simulation::script
             ScriptOwnedResumeValue value;
             ScriptStepError error;
             bool resume_enqueued{};
+            ScriptAwaitableId instance_previous;
+            ScriptAwaitableId instance_next;
         };
 
         using InstanceStorage = lux::cxx::SlotMap<InstanceRecord, InstanceTag>;
@@ -846,7 +852,8 @@ namespace lux::simulation::script
             ScriptInstanceId instance,
             std::optional<lux::rdesc::ScriptValueType> result_type) noexcept
         {
-            if (!validInstance(instance))
+            auto* owner = instances.find(instanceKey(instance));
+            if (owner == nullptr)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
             if (result_type &&
                 (!AwaitableIngress::validValueType(*result_type) || result_type->size > ingress->max_payload_bytes))
@@ -864,7 +871,17 @@ namespace lux::simulation::script
             if (!inserted)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::ALLOCATION_FAILURE);
             const auto id = awaitableId(*inserted);
-            ingress->awaitables[*inserted].id = id;
+            auto& record = ingress->awaitables[*inserted];
+            record.id = id;
+            record.instance_next = owner->first_awaitable;
+            if (record.instance_next.valid())
+            {
+                auto* next = ingress->awaitables.find(awaitableKey(record.instance_next));
+                if (next == nullptr)
+                    std::terminate();
+                next->instance_previous = id;
+            }
+            owner->first_awaitable = id;
             return ScriptAwaitableRegistration{id,
                                                ScriptAwaitableCompletion{std::static_pointer_cast<void>(ingress),
                                                                          ingress.get(),
@@ -912,6 +929,38 @@ namespace lux::simulation::script
             ScriptStepError error;
         };
 
+        void unlinkAwaitableOwnership(AwaitableRecord& record) noexcept
+        {
+            auto* owner = instances.find(instanceKey(record.instance));
+            if (record.instance_previous.valid())
+            {
+                auto* previous = ingress->awaitables.find(awaitableKey(record.instance_previous));
+                if (previous != nullptr)
+                    previous->instance_next = record.instance_next;
+            }
+            else if (owner != nullptr && owner->first_awaitable == record.id)
+            {
+                owner->first_awaitable = record.instance_next;
+            }
+            if (record.instance_next.valid())
+            {
+                auto* next = ingress->awaitables.find(awaitableKey(record.instance_next));
+                if (next != nullptr)
+                    next->instance_previous = record.instance_previous;
+            }
+            record.instance_previous = {};
+            record.instance_next = {};
+        }
+
+        [[nodiscard]] bool eraseAwaitableLocked(ScriptAwaitableId id) noexcept
+        {
+            auto* record = ingress->awaitables.find(awaitableKey(id));
+            if (record == nullptr)
+                return false;
+            unlinkAwaitableOwnership(*record);
+            return ingress->awaitables.erase(awaitableKey(id));
+        }
+
         [[nodiscard]] std::optional<AwaitableOutcome> takeAwaitable(ResumeRecord resume) noexcept
         {
             std::lock_guard lock{ingress->mutex};
@@ -923,23 +972,22 @@ namespace lux::simulation::script
                 return std::nullopt;
             }
             AwaitableOutcome outcome{record->state, std::move(record->value), record->error};
-            static_cast<void>(ingress->awaitables.erase(awaitableKey(resume.awaitable)));
+            static_cast<void>(eraseAwaitableLocked(resume.awaitable));
             return outcome;
         }
 
-        void cancelAwaitables(ScriptInstanceId instance) noexcept
+        void cancelAwaitables(ScriptInstanceId instance, ScriptAwaitableId first) noexcept
         {
             std::lock_guard lock{ingress->mutex};
-            std::size_t index{};
-            while (index < ingress->awaitables.values().size())
+            auto current = first;
+            while (current.valid())
             {
-                const auto id = ingress->awaitables.values()[index].id;
-                if (ingress->awaitables.values()[index].instance == instance)
-                {
-                    static_cast<void>(ingress->awaitables.erase(awaitableKey(id)));
-                    continue;
-                }
-                ++index;
+                auto* record = ingress->awaitables.find(awaitableKey(current));
+                if (record == nullptr || record->instance != instance)
+                    std::terminate();
+                const auto next = record->instance_next;
+                static_cast<void>(eraseAwaitableLocked(current));
+                current = next;
             }
         }
 
@@ -950,7 +998,7 @@ namespace lux::simulation::script
             std::lock_guard lock{ingress->mutex};
             auto* record = ingress->awaitables.find(awaitableKey(awaitable));
             if (record != nullptr && record->instance == instance)
-                static_cast<void>(ingress->awaitables.erase(awaitableKey(awaitable)));
+                static_cast<void>(eraseAwaitableLocked(awaitable));
         }
 
         static void discardAwaitableErased(
@@ -988,24 +1036,37 @@ namespace lux::simulation::script
                 if (instance->active_continuations == 0U)
                     std::terminate();
                 --instance->active_continuations;
+                if (!continuation.instance_previous.valid() && instance->first_continuation == id)
+                    instance->first_continuation = continuation.instance_next;
+            }
+            if (continuation.instance_previous.valid())
+            {
+                auto* previous = continuations.find(continuationKey(continuation.instance_previous));
+                if (previous != nullptr)
+                    previous->instance_next = continuation.instance_next;
+            }
+            if (continuation.instance_next.valid())
+            {
+                auto* next = continuations.find(continuationKey(continuation.instance_next));
+                if (next != nullptr)
+                    next->instance_previous = continuation.instance_previous;
             }
             clearActiveHook(continuation);
             static_cast<void>(continuations.erase(continuationKey(id)));
             continuation.backend.destroy(continuation.backend.state);
         }
 
-        void destroyContinuations(ScriptInstanceId instance) noexcept
+        void destroyContinuations(ScriptInstanceId instance, ScriptContinuationId first) noexcept
         {
-            std::size_t index{};
-            while (index < continuations.values().size())
+            auto current = first;
+            while (current.valid())
             {
-                const auto record = continuations.values()[index];
-                if (record.instance == instance)
-                {
-                    destroyContinuation(record.id);
-                    continue;
-                }
-                ++index;
+                const auto* record = continuations.find(continuationKey(current));
+                if (record == nullptr || record->instance != instance)
+                    std::terminate();
+                const auto next = record->instance_next;
+                destroyContinuation(current);
+                current = next;
             }
         }
 
@@ -1014,9 +1075,14 @@ namespace lux::simulation::script
             const auto instance = mount.instance;
             if (!instance.valid())
                 return;
+            const auto* record = instances.find(instanceKey(instance));
+            if (record == nullptr)
+                std::terminate();
+            const auto first_awaitable = record->first_awaitable;
+            const auto first_continuation = record->first_continuation;
             static_cast<void>(instances.erase(instanceKey(instance)));
-            cancelAwaitables(instance);
-            destroyContinuations(instance);
+            cancelAwaitables(instance, first_awaitable);
+            destroyContinuations(instance, first_continuation);
             mount.instance = {};
         }
 
@@ -1088,7 +1154,17 @@ namespace lux::simulation::script
                 return false;
             }
             const auto id = continuationId(*inserted);
-            continuations[*inserted].id = id;
+            auto& stored = continuations[*inserted];
+            stored.id = id;
+            stored.instance_next = instance->first_continuation;
+            if (stored.instance_next.valid())
+            {
+                auto* next = continuations.find(continuationKey(stored.instance_next));
+                if (next == nullptr)
+                    std::terminate();
+                next->instance_previous = id;
+            }
+            instance->first_continuation = id;
             ++instance->active_continuations;
             auto attached = attachWaiter(result.waiting_on, mount.instance, id);
             if (!attached)

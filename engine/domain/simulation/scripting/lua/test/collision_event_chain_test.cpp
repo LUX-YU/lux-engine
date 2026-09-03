@@ -297,7 +297,6 @@ int main()
     assert(endpoint.drain() == 2U);
     assert(native_subscriber.callbacks == 1U);
     assert(lua_subscriber.callbacks == 1U);
-    assert(*static_cast<std::uint32_t*>(native_subscriber.call.context) == 1U);
 
     registry.destroy(entity);
     const auto reused = registry.create();

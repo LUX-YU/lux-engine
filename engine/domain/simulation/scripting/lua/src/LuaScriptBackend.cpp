@@ -1329,21 +1329,27 @@ namespace lux::simulation::script
             const auto route = source.route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
                 ? EEventRoute::SIMULATION_BROADCAST
                 : EEventRoute::ENTITY_TARGETED;
-            const auto waiting = execution->step->event_waits.wait({
-                lux::system::SystemInstanceId{source.system_id},
-                EventPointId{source.event_id},
-                route
-            });
-            if (!waiting)
+            std::int32_t admission_failure{};
+            {
+                const auto waiting = execution->step->event_waits.wait({
+                    lux::system::SystemInstanceId{source.system_id},
+                    EventPointId{source.event_id},
+                    route
+                });
+                if (!waiting)
+                    admission_failure = kEventWaitFailure - static_cast<std::int32_t>(waiting.error());
+                else
+                    execution->continuation->waiting_on = *waiting;
+            }
+            if (admission_failure != 0)
             {
                 return abilityFailure(
                     state,
                     execution->continuation,
-                    kEventWaitFailure - static_cast<std::int32_t>(waiting.error()),
+                    admission_failure,
                     "Script Event wait admission failed"
                 );
             }
-            execution->continuation->waiting_on = *waiting;
             execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
             execution->continuation->pending_operation = EPendingOperation::EVENT;
             return lux::script::lua::detail::yieldLuaInvocation(state, 0);

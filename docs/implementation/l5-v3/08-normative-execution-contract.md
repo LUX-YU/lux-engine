@@ -11,6 +11,7 @@ Specialized normative contracts supersede this general contract only in their ex
 12  Script Ability reflection / naming / provider binding / codegen / projection
 13  gameplay Script object incarnation / BeginPlay / EndPlay / retirement
 14  Project Module / source Plugin Package / Editor Extension / RenderFeature composition
+15  LuxPak shipping storage / persisted indexes / Chunk / Patch / incremental update semantics
 ```
 
 Outside those specialized domains, this file remains the highest-priority general execution/ownership contract. A coding agent MUST NOT use a specialized document as permission to violate unrelated lower-layer ownership, product classification, reproducibility or lifecycle rules.
@@ -31,6 +32,7 @@ Outside those specialized domains, this file remains the highest-priority genera
 - MUST keep Dear ImGui/imgui-node-editor private to the approved Lux UI backend after Wave U migration。
 - MUST treat Project Module as the normal game-extension unit and Plugin Package only as optional source distribution/build composition; every plugin facet keeps its original owner, dependency direction and product classification。
 - MUST use owner-specific extension/composition seams (System registration, Script Ability/Event codegen, RenderFeature registration, Toolset/Editor contribution, etc.) rather than routing all extensions through one universal Plugin runtime。
+- MUST treat LuxPak as an immutable cooked-storage provider format under AssetVfs/AssetRead, never as a replacement VFS/AssetManager or a runtime package service locator。
 
 ### MUST NOT
 
@@ -56,6 +58,9 @@ PluginManager / PluginServices / generic PluginContext
 all-engine ContributionRegistry
 RenderPlugin parallel to RenderFeature
 Plugin-specific Component/System/Ability identity wrappers
+runtime Pak payload scan / per-mount index reconstruction
+in-place mutable Base Pak update model
+PakManager / PakService root replacing VFS/provider ownership
 ```
 
 ---
@@ -213,7 +218,7 @@ Legacy MAY be used as selected visual/interaction/behavior reference；MUST NOT 
 
 ---
 
-## 7. AssetVfs / Asset Loading Contract
+## 7. AssetVfs / Asset Loading / PakProvider Contract
 
 MUST preserve `AssetVfs` as an explicit instance with explicit initialization and shutdown。
 
@@ -223,6 +228,7 @@ MUST split semantics：
 AssetVfs       = mutable low-frequency mount/unmount control plane
 AssetVfsView   = read capability for resolve/open/enumerate/pathOf
 AssetReadPort  = asynchronous/time-spanning read capability used by asset_loading
+PakProvider    = ordinary immutable shipping storage provider backed by LuxPak
 ```
 
 Concurrent read vs mount publication MUST have an explicit race-free contract；current preferred/implemented direction is immutable MountTable snapshot publication with provider lifetime retained by snapshots。
@@ -232,6 +238,28 @@ Script/runtime code MUST NOT receive mutable AssetVfs control plane and MUST NOT
 Current `process/asset_loading::loadAsset<T>()` MUST remain the typed async decode workflow；product composition MUST provide a non-owner-thread-blocking production `AssetReadPort` endpoint before exposing async asset loading to scripts。
 
 Project/Plugin package assets use the same product-wide VFS/pak mechanisms. MUST NOT create PluginVfs, per-plugin AssetManager or per-plugin resource database merely for package ownership.
+
+When LuxPak/PAK-0 work begins, MUST preserve the specialized `15` model:
+
+```text
+AssetId -> persisted flat hash -> ContentEntry
+canonical VFS path -> persisted compact prefix index -> ContentEntry
+ContentEntry -> Segment -> Chunk
+```
+
+The persisted path trie/radix is an authoritative PakProvider storage index, not the Wave-D-prohibited rebuildable Editor AssetIndex/Catalog.
+
+MUST NOT:
+
+```text
+scan Pak payload on mount
+rebuild std::unordered_map for every AssetId at runtime
+rebuild heap radix/path nodes from all cooked paths at runtime
+make a full-path hash the only VFS storage structure if prefix/enumeration requires a second ad-hoc directory SSOT
+make LuxPak itself own global VFS mount/shadow semantics
+```
+
+Canonical virtual-path bytes used by Cooker and runtime MUST be identical before PAK-1 shipping closure.
 
 ---
 
@@ -510,6 +538,8 @@ Wave D MUST consume VFS directly through `AssetVfsView`.
 
 MUST NOT create AssetIndex/Catalog framework。
 
+PakProvider's persisted AssetId hash/path radix index defined by `15` is an authoritative provider storage representation and is not the prohibited Editor query AssetIndex/Catalog.
+
 File switch correctness MUST use generation filtering。
 
 MUST NOT add `clearPending()` as substitute correctness mechanism。
@@ -616,13 +646,26 @@ MUST NOT solve these gates by restoring legacy Authoring。
 
 ---
 
-## 26. Product Target Contract
+## 26. Product Target / LuxPak Contract
 
 Final shipped game MUST be modeled as a project-specific generated executable target。`PLAYER` MAY remain as a runtime-clean qualification profile only；MUST NOT become the normative final-product executable architecture。
 
 Coding agent MUST STOP before implementing target generation if project manifest / target input contract is not approved；MUST NOT invent a generic Player/Host framework or manifest format。
 
-Source Plugin Package identity/dependencies/selectable facets belong to this same future Product Track P target-generation contract. Until P is approved, the CMake target graph is the source-plugin composition truth; MUST NOT invent a second `plugin.toml`/`luxplugin.json` manifest universe.
+Source Plugin Package identity/dependencies/selectable facets belong to this same future Product Track P target-generation contract. Until P is approved, the CMake target graph is the source-plugin composition truth；MUST NOT invent a second `plugin.toml`/`luxplugin.json` manifest universe.
+
+Shipping cooked storage MUST follow `15` once PAK-0/PAK-1 begins. PAK-1 owns **how** cooked content is stored and incrementally updated; Product P owns **which** selected project/plugin content is assigned to which product/container/release variant.
+
+Runtime installed storage and release/network distribution MUST remain separated:
+
+```text
+LuxPak/PatchLuxPak -> PakProvider -> AssetVfs/AssetRead
+Release Manifest/Updater -> acquisition/install/publication
+```
+
+Normal `loadAsset()` MUST NOT hide an HTTP/CDN request merely because a future updater uses content-addressed chunks.
+
+Encryption/DRM is not part of PAK-0/PAK-1 without a separate approved security requirement.
 
 ---
 
@@ -687,7 +730,7 @@ MUST NOT:
 route all extension points through IPlugin/PluginManager
 make RenderFeature depend upward on Simulation/System/Editor
 make EditorContext an arbitrary plugin System locator
-create per-plugin VFS/AssetManager
+create per-plugin VFS/AssetManager/Pak runtime
 require binary hot-unload semantics for source sharing
 ```
 
@@ -717,6 +760,16 @@ IPlugin / PluginManager / PluginServices / all-engine ContributionRegistry
 RenderPlugin parallel to RenderFeature
 RenderFeature depending upward on Simulation/System/Editor
 binary hot-unload architecture introduced merely for source Plugin sharing
+runtime Pak payload scan / per-mount AssetId/path index reconstruction
+full-path hash used as the only VFS Pak index while prefix/enumeration requires a second ad-hoc directory SSOT
+Asset permanently equated to one physical blob
+one monolithic compressed stream for the whole Pak
+in-place mutation of installed Base Pak for normal updates
+fallback through a higher-priority Pak tombstone
+network/CDN request hidden inside normal loadAsset()
+unbounded patch chain without compaction/rebase policy
+implementation-specific STL memory image used as Pak wire format
+encryption/DRM/key-management framework introduced during PAK-0 without separate approval
 ```
 
 The agent must report the blocking fact and smallest missing design decision, not invent missing architecture。
@@ -781,6 +834,23 @@ second/no-op build after generated/CMake work
 installed/relocated consumer without private repository paths
 ```
 
+Every PAK-0/PAK-1 storage closure MUST prove the applicable subset:
+
+```text
+large persisted AssetId index exact-hit/miss stress
+canonical VFS path exact-hit/miss/prefix-enumeration stress
+no runtime hash/radix reconstruction
+malformed/corrupt TOC bounds/integrity fail closed
+random small-read amplification vs chunk policy
+large sequential/load-group throughput
+compression codec qualification
+Base/Patch ADD/REPLACE/TOMBSTONE overlay
+path rename without unchanged payload retransmission
+content-hash incremental release diff
+bounded patch-chain/rebase behavior
+cross-platform wire reproducibility
+```
+
 Every architecture migration MUST run relevant product closure and install/relocated consumer tests from a reproducible committed source snapshot。
 
 ---
@@ -798,6 +868,7 @@ Product closure impact
 Install/public API impact
 UI/backend dependency impact when relevant
 Plugin/package facet impact when relevant
+Pak/storage/update impact when relevant
 Remaining STOP conditions
 No out-of-wave abstractions introduced
 ```

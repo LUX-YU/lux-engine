@@ -6,7 +6,8 @@
 
 namespace lux::simulation::ecs
 {
-    struct LUX_COMPONENT(schema = "lux.ecs.Parent", version = 1, snapshot = COPY, semantic = FOUNDATION, editor = true) Parent final
+    struct LUX_COMPONENT(schema = "lux.ecs.Parent", version = 1, snapshot = COPY, semantic = FOUNDATION, editor = true)
+        Parent final
     {
         Entity LUX_MEMBER(display_name = Parent, semantic_editor = parent_relation) entity{NullEntity};
     };

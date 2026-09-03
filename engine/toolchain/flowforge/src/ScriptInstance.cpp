@@ -19,7 +19,7 @@
 
 namespace lux::flowforge
 {
-    FlowScriptInstance::FlowScriptInstance()  = default;
+    FlowScriptInstance::FlowScriptInstance() = default;
     FlowScriptInstance::~FlowScriptInstance() = default;
 
     std::string FlowScriptInstance::invokerSymbol(const lux::meta::RefInvokable& fn)
@@ -31,7 +31,8 @@ namespace lux::flowforge
         // on another), so the hash must be an algorithm we own: FNV-1a.
         // llvm::hash_value is documented as unstable across executions.
         uint64_t h = 0xcbf29ce484222325ULL;
-        for (char c : fn.full_name) {
+        for (char c : fn.full_name)
+        {
             h ^= static_cast<unsigned char>(c);
             h *= 0x100000001b3ULL;
         }
@@ -46,8 +47,7 @@ namespace lux::flowforge
         sym.reserve(sym.size() + event_name.size());
         for (char c : event_name)
         {
-            const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-                         || (c >= '0' && c <= '9') || c == '_';
+            const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
             sym.push_back(ok ? c : '_');
         }
         return sym;
@@ -73,11 +73,7 @@ namespace lux::flowforge
                 if (node == nullptr || node->operation() != ENodeOperation::ON_EVENT)
                     continue;
                 const auto& event = static_cast<const OnEventNode&>(*node);
-                inst->events_.push_back(EventEntry{
-                    event.name(),
-                    eventSymbol(event.name()),
-                    event.paramInfos().size()
-                });
+                inst->events_.push_back(EventEntry{event.name(), eventSymbol(event.name()), event.paramInfos().size()});
             }
 
             auto builder = MLIRBuilder::create(context);
@@ -115,9 +111,9 @@ namespace lux::flowforge
             }
             inst->engine_ = std::move(*maybe_engine);
 
-        // Bind host symbols: every reflected function's invoker trampoline
-        // (under its _lfi_ symbol) + the caller's hand-written C-ABI hosts.
-        // Name storage only needs to survive the registerSymbols call.
+            // Bind host symbols: every reflected function's invoker trampoline
+            // (under its _lfi_ symbol) + the caller's hand-written C-ABI hosts.
+            // Name storage only needs to survive the registerSymbols call.
             std::vector<std::pair<std::string, void*>> bound;
             if (lux::meta::ReflectionRegistry::initialized())
             {
@@ -139,20 +135,17 @@ namespace lux::flowforge
             }
             if (!bound.empty())
             {
-                inst->engine_->registerSymbols(
-                    [&](llvm::orc::MangleAndInterner mangle)
+                inst->engine_->registerSymbols([&](llvm::orc::MangleAndInterner mangle) {
+                    llvm::orc::SymbolMap map;
+                    for (const auto& [name, address] : bound)
                     {
-                        llvm::orc::SymbolMap map;
-                        for (const auto& [name, address] : bound)
-                        {
-                            map[mangle(name)] = llvm::orc::ExecutorSymbolDef{
-                                llvm::orc::ExecutorAddr::fromPtr(address),
-                                llvm::JITSymbolFlags::Exported
-                            };
-                        }
-                        return map;
+                        map[mangle(name)] = llvm::orc::ExecutorSymbolDef{
+                            llvm::orc::ExecutorAddr::fromPtr(address),
+                            llvm::JITSymbolFlags::Exported
+                        };
                     }
-                );
+                    return map;
+                });
             }
 
             return inst;
@@ -170,29 +163,26 @@ namespace lux::flowforge
     void FlowScriptInstance::resetInstanceState()
     {
         std::fill(state_.begin(), state_.end(), std::byte{0});
-        if (!ir_) return;
+        if (!ir_)
+            return;
         const auto& defaults = ir_->impl().state_defaults;
         if (!defaults.empty() && !state_.empty())
-            std::memcpy(state_.data(), defaults.data(),
-                        std::min(defaults.size(), state_.size()));
+            std::memcpy(state_.data(), defaults.data(), std::min(defaults.size(), state_.size()));
     }
 
     bool FlowScriptInstance::hasEvent(std::string_view event) const
     {
         for (const auto& e : events_)
-            if (e.name == event) return true;
+            if (e.name == event)
+                return true;
         return false;
     }
 
-    FlowForgeResult<void> FlowScriptInstance::invoke(
-        std::string_view event,
-        std::span<void* const> args
-    ) noexcept
+    FlowForgeResult<void> FlowScriptInstance::invoke(std::string_view event, std::span<void* const> args) noexcept
     {
         try
         {
-            const auto fail = [](EFlowForgeError code, std::string message) -> FlowForgeResult<void>
-            {
+            const auto fail = [](EFlowForgeError code, std::string message) -> FlowForgeResult<void> {
                 return lux::cxx::unexpected(FlowForgeFailure{.code = code, .message = std::move(message)});
             };
             if (!engine_)
@@ -218,10 +208,10 @@ namespace lux::flowforge
                 );
             }
 
-        // Packed convention: slot i points at the i-th argument's STORAGE.
-        // Slot 0 is the hidden instance-state pointer, so its storage is a
-        // local void* holding the block's base address (null when the graph
-        // is stateless — generated code then never dereferences it).
+            // Packed convention: slot i points at the i-th argument's STORAGE.
+            // Slot 0 is the hidden instance-state pointer, so its storage is a
+            // local void* holding the block's base address (null when the graph
+            // is stateless — generated code then never dereferences it).
             void* state_base = state_.empty() ? nullptr : static_cast<void*>(state_.data());
             llvm::SmallVector<void*, 8> packed;
             packed.reserve(args.size() + 1);

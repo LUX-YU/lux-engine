@@ -38,29 +38,43 @@ using namespace lux::flowforge;
 static int g_pass = 0;
 static int g_fail = 0;
 
-static void check(bool cond, const std::string& desc) {
-    if (cond) { std::cout << "  PASS  " << desc << std::endl; ++g_pass; }
-    else      { std::cout << "  FAIL  " << desc << std::endl; ++g_fail; }
+static void check(bool cond, const std::string& desc)
+{
+    if (cond)
+    {
+        std::cout << "  PASS  " << desc << std::endl;
+        ++g_pass;
+    }
+    else
+    {
+        std::cout << "  FAIL  " << desc << std::endl;
+        ++g_fail;
+    }
 }
 
-static bool contains(const std::string& haystack, const std::string& needle) {
+static bool contains(const std::string& haystack, const std::string& needle)
+{
     return haystack.find(needle) != std::string::npos;
 }
 
-static void printBanner(const char* title) {
-    std::cout << "\n" << std::string(60, '=') << "\n"
+static void printBanner(const char* title)
+{
+    std::cout << "\n"
+              << std::string(60, '=') << "\n"
               << "  " << title << "\n"
-              << std::string(60, '=') << std::endl;   // flush: keeps the last
-                                                      // banner visible if a
-                                                      // later step crashes
+              << std::string(60, '=') << std::endl; // flush: keeps the last
+                                                    // banner visible if a
+                                                    // later step crashes
 }
 
 // Helper: set an i32 constant on a node's (only) DATA_IN pin.
-static void setI32OnFirstDataIn(Node& n, int32_t v) {
-    for (auto* pin : n.inPins()) {
-        if (pin->kind() == EPinKind::DATA_IN) {
-            static_cast<DataInPin*>(pin)->setConstantData(
-                lux::meta::RuntimeObject(int32_t{ v }));
+static void setI32OnFirstDataIn(Node& n, int32_t v)
+{
+    for (auto* pin : n.inPins())
+    {
+        if (pin->kind() == EPinKind::DATA_IN)
+        {
+            static_cast<DataInPin*>(pin)->setConstantData(lux::meta::RuntimeObject(int32_t{v}));
             return;
         }
     }
@@ -80,42 +94,44 @@ static void setI32OnFirstDataIn(Node& n, int32_t v) {
 // pick them up as flowforge.return's Variadic $rets operands. For today
 // we just verify the void-return shape and document the gap.
 //---------------------------------------------------------------
-static void test_return_basic() {
+static void test_return_basic()
+{
     printBanner("Test 1: Start -> Return (void)");
-    auto ctx   = std::make_unique<IRContext>();
+    auto ctx = std::make_unique<IRContext>();
     auto graph = FlowGraph();
 
     auto start = std::make_unique<StartNode>();
-    auto ret   = std::make_unique<ReturnNode>();
+    auto ret = std::make_unique<ReturnNode>();
 
     LastLink ll;
     start->execOutPin().linkTo(&ret->execInPin(), ll);
-    setI32OnFirstDataIn(*ret, 42);  // currently a no-op — see comment.
+    setI32OnFirstDataIn(*ret, 42); // currently a no-op — see comment.
 
     graph.addNodes(std::move(start));
     graph.addNodes(std::move(ret));
 
     MLIRBuilder builder(ctx.get());
-    auto ir   = test::require(builder.generateIR(graph), "generateIR");
+    auto ir = test::require(builder.generateIR(graph), "generateIR");
     auto text = ir->toString();
     std::cout << text << "\n";
 
-    check(contains(text, "flowforge.start"),  "IR contains flowforge.start");
+    check(contains(text, "flowforge.start"), "IR contains flowforge.start");
     check(contains(text, "flowforge.return"), "IR contains flowforge.return");
     // Current behavior: return has just the token, because ReturnNode owns no
     // DataInPin. If this assertion ever flips (because the runtime ReturnNode
     // starts exposing data input pins) consciously rebaseline -- A7 then
     // does its job and the return op will carry value operands too.
-    check(contains(text, "flowforge.return\"(%0)") ||
-          contains(text, "flowforge.return(%0)"),
-          "Return takes only the token (ReturnNode has no DataInPin today)");
+    check(
+        contains(text, "flowforge.return\"(%0)") || contains(text, "flowforge.return(%0)"),
+        "Return takes only the token (ReturnNode has no DataInPin today)"
+    );
     // Audit A11: the flow-graph body is wrapped in a func.func @main so the
     // emitted IR can flow through standard MLIR conversion passes. Both the
     // pretty (`func.func @main()`) and generic (`"func.func"() ... sym_name =
     // "main"`) printer forms contain the substring `func.func` plus the name
     // `main`.
-    check(contains(text, "func.func"),       "IR is wrapped in a func.func (A11)");
-    check(contains(text, "main"),            "func.func is named main (A11)");
+    check(contains(text, "func.func"), "IR is wrapped in a func.func (A11)");
+    check(contains(text, "main"), "func.func is named main (A11)");
 }
 
 //---------------------------------------------------------------
@@ -123,14 +139,15 @@ static void test_return_basic() {
 //   Verifies: ForLoop lowering produces flowforge.for_loop with
 //             index bounds; .completed() pin threads to downstream.
 //---------------------------------------------------------------
-static void test_for_loop() {
+static void test_for_loop()
+{
     printBanner("Test 2: Start -> ForLoop(default 0..10) -> Return");
-    auto ctx   = std::make_unique<IRContext>();
+    auto ctx = std::make_unique<IRContext>();
     auto graph = FlowGraph();
 
     auto start = std::make_unique<StartNode>();
-    auto loop  = std::make_unique<ForLoopNode>();
-    auto ret   = std::make_unique<ReturnNode>();
+    auto loop = std::make_unique<ForLoopNode>();
+    auto ret = std::make_unique<ReturnNode>();
 
     LastLink ll;
     start->execOutPin().linkTo(&loop->execInPin(), ll);
@@ -145,13 +162,13 @@ static void test_for_loop() {
     graph.addNodes(std::move(ret));
 
     MLIRBuilder builder(ctx.get());
-    auto ir   = test::require(builder.generateIR(graph), "generateIR");
+    auto ir = test::require(builder.generateIR(graph), "generateIR");
     auto text = ir->toString();
     std::cout << text << "\n";
 
     check(contains(text, "flowforge.for_loop"), "IR contains flowforge.for_loop");
-    check(contains(text, "flowforge.return"),   "IR contains flowforge.return");
-    check(contains(text, "index"),              "IR uses index type for loop bounds");
+    check(contains(text, "flowforge.return"), "IR contains flowforge.return");
+    check(contains(text, "index"), "IR uses index type for loop bounds");
 }
 
 //---------------------------------------------------------------
@@ -164,18 +181,19 @@ static void test_for_loop() {
 //   module body — unverifiable past the flowforge dialect because no
 //   predecessor branches feed the arg.
 //---------------------------------------------------------------
-static void test_branch_merge() {
+static void test_branch_merge()
+{
     printBanner("Test 3: Start -> Branch -> (true|false) -> Return");
-    auto ctx   = std::make_unique<IRContext>();
+    auto ctx = std::make_unique<IRContext>();
     auto graph = FlowGraph();
 
     auto start = std::make_unique<StartNode>();
-    auto br    = std::make_unique<BranchNode>();
-    auto ret   = std::make_unique<ReturnNode>();
+    auto br = std::make_unique<BranchNode>();
+    auto ret = std::make_unique<ReturnNode>();
 
     LastLink ll;
     start->execOutPin().linkTo(&br->execInPin(), ll);
-    const_cast<ExecOutPin&>(br->execOutPinUp())  .linkTo(&ret->execInPin(), ll);
+    const_cast<ExecOutPin&>(br->execOutPinUp()).linkTo(&ret->execInPin(), ll);
     const_cast<ExecOutPin&>(br->execOutPinDown()).linkTo(&ret->execInPin(), ll);
     setI32OnFirstDataIn(*ret, 0);
 
@@ -184,30 +202,33 @@ static void test_branch_merge() {
     graph.addNodes(std::move(ret));
 
     MLIRBuilder builder(ctx.get());
-    auto ir   = test::require(builder.generateIR(graph), "generateIR");
+    auto ir = test::require(builder.generateIR(graph), "generateIR");
     auto text = ir->toString();
     std::cout << text << "\n";
 
-    check(contains(text, "flowforge.branch"),       "IR contains flowforge.branch");
-    check(contains(text, "flowforge.yield"),        "IR contains flowforge.yield (branch regions)");
-    check(contains(text, "i1"),                     "IR uses i1 for branch condition type");
+    check(contains(text, "flowforge.branch"), "IR contains flowforge.branch");
+    check(contains(text, "flowforge.yield"), "IR contains flowforge.yield (branch regions)");
+    check(contains(text, "i1"), "IR uses i1 for branch condition type");
     // Convergent legs now go through token_merge, not an orphan block-arg
     // at module body level.
-    check(contains(text, "flowforge.token_merge"),  "IR contains flowforge.token_merge (A5)");
-    check(!contains(text, "^bb0(%arg0: !flowforge.token):\n  \"flowforge.return"),
-                                                    "no orphan block-arg feeding return (A5)");
+    check(contains(text, "flowforge.token_merge"), "IR contains flowforge.token_merge (A5)");
+    check(
+        !contains(text, "^bb0(%arg0: !flowforge.token):\n  \"flowforge.return"),
+        "no orphan block-arg feeding return (A5)"
+    );
 }
 
 //---------------------------------------------------------------
 // Test 4: Multiple START nodes -> structured failure (audit A8).
 //---------------------------------------------------------------
-static void test_multi_start_error() {
+static void test_multi_start_error()
+{
     printBanner("Test 4: Multiple START nodes -> structured failure");
-    auto ctx   = std::make_unique<IRContext>();
+    auto ctx = std::make_unique<IRContext>();
     auto graph = FlowGraph();
 
-    auto s1  = std::make_unique<StartNode>();
-    auto s2  = std::make_unique<StartNode>();
+    auto s1 = std::make_unique<StartNode>();
+    auto s2 = std::make_unique<StartNode>();
     auto ret = std::make_unique<ReturnNode>();
     LastLink ll;
     s1->execOutPin().linkTo(&ret->execInPin(), ll);
@@ -223,10 +244,7 @@ static void test_multi_start_error() {
     if (!built)
     {
         std::cout << "  reported: " << built.error().message << "\n";
-        check(
-            contains(built.error().message, "more than one"),
-            "error message mentions 'more than one'"
-        );
+        check(contains(built.error().message, "more than one"), "error message mentions 'more than one'");
     }
 }
 
@@ -235,15 +253,16 @@ static void test_multi_start_error() {
 //         (audit A4). Module IDs differ between two consecutive calls,
 //         so any LLVM globals get distinct symbol prefixes (audit C5).
 //---------------------------------------------------------------
-static void test_builder_reuse_module_ids() {
+static void test_builder_reuse_module_ids()
+{
     printBanner("Test 5: MLIRBuilder reused -> fresh module_id per call (A4 + C5)");
     auto ctx = std::make_unique<IRContext>();
     MLIRBuilder builder(ctx.get());
 
     auto build_simple = []() {
-        auto g  = FlowGraph();
-        auto s  = std::make_unique<StartNode>();
-        auto r  = std::make_unique<ReturnNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&r->execInPin(), ll);
         // Set an i32 const so something gets materialised (arith.constant op).
@@ -253,11 +272,11 @@ static void test_builder_reuse_module_ids() {
         return g;
     };
 
-    auto g1   = build_simple();
-    auto ir1  = test::require(builder.generateIR(g1), "generateIR(g1)");
+    auto g1 = build_simple();
+    auto ir1 = test::require(builder.generateIR(g1), "generateIR(g1)");
     auto txt1 = ir1->toString();
-    auto g2   = build_simple();
-    auto ir2  = test::require(builder.generateIR(g2), "generateIR(g2)");
+    auto g2 = build_simple();
+    auto ir2 = test::require(builder.generateIR(g2), "generateIR(g2)");
     auto txt2 = ir2->toString();
 
     std::cout << "--- ir1 ---\n" << txt1 << "\n--- ir2 ---\n" << txt2 << "\n";
@@ -294,22 +313,23 @@ static void test_builder_reuse_module_ids() {
 // — visibly unverifiable past the flowforge dialect. The structured form
 // is what the lowering pass (Test 7) consumes.
 //---------------------------------------------------------------
-static void test_kitchen_sink_complex() {
+static void test_kitchen_sink_complex()
+{
     printBanner("Test 6: COMPLEX — Start -> Branch -> (true: ForLoop | false: WhileLoop) -> Return");
-    auto ctx   = std::make_unique<IRContext>();
+    auto ctx = std::make_unique<IRContext>();
     auto graph = FlowGraph();
 
-    auto start  = std::make_unique<StartNode>();
-    auto br     = std::make_unique<BranchNode>();
-    auto forLp  = std::make_unique<ForLoopNode>();
-    auto whlLp  = std::make_unique<WhileLoopNode>();
-    auto ret    = std::make_unique<ReturnNode>();
+    auto start = std::make_unique<StartNode>();
+    auto br = std::make_unique<BranchNode>();
+    auto forLp = std::make_unique<ForLoopNode>();
+    auto whlLp = std::make_unique<WhileLoopNode>();
+    auto ret = std::make_unique<ReturnNode>();
 
     LastLink ll;
     start->execOutPin().linkTo(&br->execInPin(), ll);
 
     // true leg  -> for-loop
-    const_cast<ExecOutPin&>(br->execOutPinUp())  .linkTo(&forLp->execInPin(), ll);
+    const_cast<ExecOutPin&>(br->execOutPinUp()).linkTo(&forLp->execInPin(), ll);
     // false leg -> while-loop
     const_cast<ExecOutPin&>(br->execOutPinDown()).linkTo(&whlLp->execInPin(), ll);
 
@@ -324,27 +344,29 @@ static void test_kitchen_sink_complex() {
     graph.addNodes(std::move(ret));
 
     MLIRBuilder builder(ctx.get());
-    auto ir   = test::require(builder.generateIR(graph), "generateIR");
+    auto ir = test::require(builder.generateIR(graph), "generateIR");
     auto text = ir->toString();
     std::cout << text << "\n";
 
     // Each control op surfaces at module body.
-    check(contains(text, "flowforge.start"),     "IR contains flowforge.start");
-    check(contains(text, "flowforge.branch"),    "IR contains flowforge.branch");
-    check(contains(text, "flowforge.for_loop"),  "IR contains flowforge.for_loop");
-    check(contains(text, "flowforge.while_loop"),"IR contains flowforge.while_loop");
-    check(contains(text, "flowforge.return"),    "IR contains flowforge.return");
+    check(contains(text, "flowforge.start"), "IR contains flowforge.start");
+    check(contains(text, "flowforge.branch"), "IR contains flowforge.branch");
+    check(contains(text, "flowforge.for_loop"), "IR contains flowforge.for_loop");
+    check(contains(text, "flowforge.while_loop"), "IR contains flowforge.while_loop");
+    check(contains(text, "flowforge.return"), "IR contains flowforge.return");
     // Yield terminators show up for all four region-owning blocks
     // (Branch.then/else + ForLoop.body + WhileLoop.body). WhileLoop no
     // longer has a cond region — the (loop-invariant) condition is a plain
     // operand of flowforge.while_loop.
-    check(contains(text, "flowforge.yield"),     "IR contains flowforge.yield");
+    check(contains(text, "flowforge.yield"), "IR contains flowforge.yield");
 
     // Audit A5: convergent legs (ForLoop.completed + WhileLoop.completed)
     // are joined via flowforge.token_merge before Return; no orphan
     // block-arg at module body level.
-    check(contains(text, "flowforge.token_merge"),
-          "IR contains flowforge.token_merge (A5 — convergence is an explicit op)");
+    check(
+        contains(text, "flowforge.token_merge"),
+        "IR contains flowforge.token_merge (A5 — convergence is an explicit op)"
+    );
 
     // Audit B4: the loops are nested INSIDE the branch's regions, not
     // siblings. If a loop op's first operand references a block-arg
@@ -352,15 +374,18 @@ static void test_kitchen_sink_complex() {
     // print before it, e.g. the leading instance-state pointer), it's
     // nested inside that region — an op at module-body level would be
     // referencing a numbered SSA result (%N) from the outer scope instead.
-    check(contains(text, "\"flowforge.for_loop\"(%arg"),
-          "for_loop's first arg is the branch then-region's block-arg (B4: nested)");
-    check(contains(text, "\"flowforge.while_loop\"(%arg"),
-          "while_loop's first arg is the branch else-region's block-arg (B4: nested)");
+    check(
+        contains(text, "\"flowforge.for_loop\"(%arg"),
+        "for_loop's first arg is the branch then-region's block-arg (B4: nested)"
+    );
+    check(
+        contains(text, "\"flowforge.while_loop\"(%arg"),
+        "while_loop's first arg is the branch else-region's block-arg (B4: nested)"
+    );
     // The branch's yields now carry the loops' completed-results (printed
     // with the tablegen result name, `yield %doneExec`), not just a
     // pass-through block-arg.
-    check(contains(text, "flowforge.yield %doneExec"),
-          "branch region yields a loop's .completed token (B4)");
+    check(contains(text, "flowforge.yield %doneExec"), "branch region yields a loop's .completed token (B4)");
 }
 
 //---------------------------------------------------------------
@@ -371,39 +396,36 @@ static void test_kitchen_sink_complex() {
 //   pass is run on a freshly-generated module each time to avoid
 //   coupling between sub-tests.
 //---------------------------------------------------------------
-static void test_lower_to_cf() {
+static void test_lower_to_cf()
+{
     printBanner("Test 7: FlowForge -> CF lowering pass");
 
-    auto run = [](const std::string& label, FlowGraph& graph,
-                  const std::string& must_have,
-                  const std::string& must_have_2 = "") {
-        std::cout << "\n--- " << label << " ---\n";
-        auto ctx = std::make_unique<IRContext>();
-        MLIRBuilder builder(ctx.get());
-        auto ir = test::require(builder.generateIR(graph), "generateIR");
-        test::require(lux::flowforge::lowerToCF(*ir), "lowerToCF");
-        auto text = ir->toString();
-        std::cout << text << "\n";
+    auto run =
+        [](const std::string& label, FlowGraph& graph, const std::string& must_have, const std::string& must_have_2 = ""
+        ) {
+            std::cout << "\n--- " << label << " ---\n";
+            auto ctx = std::make_unique<IRContext>();
+            MLIRBuilder builder(ctx.get());
+            auto ir = test::require(builder.generateIR(graph), "generateIR");
+            test::require(lux::flowforge::lowerToCF(*ir), "lowerToCF");
+            auto text = ir->toString();
+            std::cout << text << "\n";
 
-        check(!contains(text, "flowforge."),
-              label + ": no flowforge ops survive lowering");
-        // The MLIR pretty-printer abbreviates `func.return` to bare `return`
-        // when it's the terminator of a func.func body, so accept either form.
-        check(contains(text, "func.return") || contains(text, "    return\n"),
-              label + ": func.return present");
-        if (!must_have.empty())
-            check(contains(text, must_have),
-                  label + ": IR contains " + must_have);
-        if (!must_have_2.empty())
-            check(contains(text, must_have_2),
-                  label + ": IR contains " + must_have_2);
-    };
+            check(!contains(text, "flowforge."), label + ": no flowforge ops survive lowering");
+            // The MLIR pretty-printer abbreviates `func.return` to bare `return`
+            // when it's the terminator of a func.func body, so accept either form.
+            check(contains(text, "func.return") || contains(text, "    return\n"), label + ": func.return present");
+            if (!must_have.empty())
+                check(contains(text, must_have), label + ": IR contains " + must_have);
+            if (!must_have_2.empty())
+                check(contains(text, must_have_2), label + ": IR contains " + must_have_2);
+        };
 
     // 7a. Start -> Return -> just func.func @main with func.return.
     {
-        auto g  = FlowGraph();
-        auto s  = std::make_unique<StartNode>();
-        auto r  = std::make_unique<ReturnNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&r->execInPin(), ll);
         g.addNodes(std::move(s));
@@ -413,10 +435,10 @@ static void test_lower_to_cf() {
 
     // 7b. Start -> ForLoop -> Return -> loop blocks with cf branches.
     {
-        auto g     = FlowGraph();
-        auto s     = std::make_unique<StartNode>();
-        auto loop  = std::make_unique<ForLoopNode>();
-        auto r     = std::make_unique<ReturnNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
+        auto loop = std::make_unique<ForLoopNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&loop->execInPin(), ll);
         const_cast<ExecOutPin&>(loop->completed()).linkTo(&r->execInPin(), ll);
@@ -428,13 +450,13 @@ static void test_lower_to_cf() {
 
     // 7c. Start -> Branch -> (true|false) -> Return -> cf.cond_br present.
     {
-        auto g  = FlowGraph();
-        auto s  = std::make_unique<StartNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
         auto br = std::make_unique<BranchNode>();
-        auto r  = std::make_unique<ReturnNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&br->execInPin(), ll);
-        const_cast<ExecOutPin&>(br->execOutPinUp())  .linkTo(&r->execInPin(), ll);
+        const_cast<ExecOutPin&>(br->execOutPinUp()).linkTo(&r->execInPin(), ll);
         const_cast<ExecOutPin&>(br->execOutPinDown()).linkTo(&r->execInPin(), ll);
         g.addNodes(std::move(s));
         g.addNodes(std::move(br));
@@ -444,10 +466,10 @@ static void test_lower_to_cf() {
 
     // 7d. Start -> WhileLoop -> Return -> cond/body blocks with cf branches.
     {
-        auto g    = FlowGraph();
-        auto s    = std::make_unique<StartNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
         auto loop = std::make_unique<WhileLoopNode>();
-        auto r    = std::make_unique<ReturnNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&loop->execInPin(), ll);
         const_cast<ExecOutPin&>(loop->completed()).linkTo(&r->execInPin(), ll);
@@ -459,15 +481,15 @@ static void test_lower_to_cf() {
 
     // 7e. Kitchen-sink: Branch -> (ForLoop | WhileLoop) -> Return.
     {
-        auto g     = FlowGraph();
-        auto s     = std::make_unique<StartNode>();
-        auto br    = std::make_unique<BranchNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
+        auto br = std::make_unique<BranchNode>();
         auto forLp = std::make_unique<ForLoopNode>();
         auto whlLp = std::make_unique<WhileLoopNode>();
-        auto r     = std::make_unique<ReturnNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&br->execInPin(), ll);
-        const_cast<ExecOutPin&>(br->execOutPinUp())  .linkTo(&forLp->execInPin(), ll);
+        const_cast<ExecOutPin&>(br->execOutPinUp()).linkTo(&forLp->execInPin(), ll);
         const_cast<ExecOutPin&>(br->execOutPinDown()).linkTo(&whlLp->execInPin(), ll);
         const_cast<ExecOutPin&>(forLp->completed()).linkTo(&r->execInPin(), ll);
         const_cast<ExecOutPin&>(whlLp->completed()).linkTo(&r->execInPin(), ll);
@@ -487,11 +509,11 @@ static void test_lower_to_cf() {
 //   then JIT-executes @main via runMainJIT to confirm the produced
 //   IR is actually runnable end-to-end.
 //---------------------------------------------------------------
-static void test_lower_to_llvm_and_jit() {
+static void test_lower_to_llvm_and_jit()
+{
     printBanner("Test 8: FlowForge -> LLVM lowering + JIT");
 
-    auto run = [](const std::string& label, FlowGraph& graph,
-                  bool also_jit) {
+    auto run = [](const std::string& label, FlowGraph& graph, bool also_jit) {
         std::cout << "\n--- " << label << " ---\n";
         auto ctx = std::make_unique<IRContext>();
         MLIRBuilder builder(ctx.get());
@@ -501,28 +523,22 @@ static void test_lower_to_llvm_and_jit() {
         auto text = ir->toString();
         std::cout << text << "\n";
 
-        check(!contains(text, "flowforge."),
-              label + ": no flowforge ops survive lowering");
-        check(!contains(text, "scf."),
-              label + ": no scf ops survive lowering");
-        check(contains(text, "llvm."),
-              label + ": IR contains llvm.* ops");
+        check(!contains(text, "flowforge."), label + ": no flowforge ops survive lowering");
+        check(!contains(text, "scf."), label + ": no scf ops survive lowering");
+        check(contains(text, "llvm."), label + ": IR contains llvm.* ops");
 
         if (also_jit)
         {
-            int result = test::require(
-                lux::flowforge::runMainJIT(*ir),
-                "runMainJIT"
-            );
+            int result = test::require(lux::flowforge::runMainJIT(*ir), "runMainJIT");
             check(result == 0, label + ": runMainJIT returned 0");
         }
     };
 
     // 8a. Start -> Return  (trivial; JIT should succeed instantly).
     {
-        auto g  = FlowGraph();
-        auto s  = std::make_unique<StartNode>();
-        auto r  = std::make_unique<ReturnNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&r->execInPin(), ll);
         g.addNodes(std::move(s));
@@ -532,10 +548,10 @@ static void test_lower_to_llvm_and_jit() {
 
     // 8b. Start -> ForLoop -> Return  (10 iterations of an empty body).
     {
-        auto g    = FlowGraph();
-        auto s    = std::make_unique<StartNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
         auto loop = std::make_unique<ForLoopNode>();
-        auto r    = std::make_unique<ReturnNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&loop->execInPin(), ll);
         const_cast<ExecOutPin&>(loop->completed()).linkTo(&r->execInPin(), ll);
@@ -548,13 +564,13 @@ static void test_lower_to_llvm_and_jit() {
     // 8c. Branch with both legs converging. JIT-execute: should take one
     //     leg (the const-false cond default leads to else) and complete.
     {
-        auto g  = FlowGraph();
-        auto s  = std::make_unique<StartNode>();
+        auto g = FlowGraph();
+        auto s = std::make_unique<StartNode>();
         auto br = std::make_unique<BranchNode>();
-        auto r  = std::make_unique<ReturnNode>();
+        auto r = std::make_unique<ReturnNode>();
         LastLink ll;
         s->execOutPin().linkTo(&br->execInPin(), ll);
-        const_cast<ExecOutPin&>(br->execOutPinUp())  .linkTo(&r->execInPin(), ll);
+        const_cast<ExecOutPin&>(br->execOutPinUp()).linkTo(&r->execInPin(), ll);
         const_cast<ExecOutPin&>(br->execOutPinDown()).linkTo(&r->execInPin(), ll);
         g.addNodes(std::move(s));
         g.addNodes(std::move(br));
@@ -569,7 +585,8 @@ static void test_lower_to_llvm_and_jit() {
 //   lowerChain deliberately does NOT add a blanket fallback that
 //   masks unknown ops.
 //---------------------------------------------------------------
-static void test_unsupported_op_failure() {
+static void test_unsupported_op_failure()
+{
     printBanner("Test 9: Unsupported op (none here) -> structured failure");
     // We currently have no public node class for ADD etc., so we can't
     // construct one without manual ENodeOperation manipulation. This test
@@ -587,14 +604,15 @@ static void test_unsupported_op_failure() {
 //   CF lowering (an early return is a single jump to the function's
 //   exit block). The graph compiles, verifies, lowers and JITs.
 //---------------------------------------------------------------
-static void test_nested_return_supported() {
+static void test_nested_return_supported()
+{
     printBanner("Test 10: Return inside a Branch leg compiles and runs");
-    auto ctx   = std::make_unique<IRContext>();
+    auto ctx = std::make_unique<IRContext>();
     auto graph = FlowGraph();
 
-    auto s  = std::make_unique<StartNode>();
+    auto s = std::make_unique<StartNode>();
     auto br = std::make_unique<BranchNode>();
-    auto r  = std::make_unique<ReturnNode>();
+    auto r = std::make_unique<ReturnNode>();
     LastLink ll;
     s->execOutPin().linkTo(&br->execInPin(), ll);
     // Only the true leg is linked — the Return sits inside the leg's
@@ -606,10 +624,8 @@ static void test_nested_return_supported() {
 
     MLIRBuilder builder(ctx.get());
     auto ir = test::require(builder.generateIR(graph), "generateIR");
-    check(contains(ir->toString(), "flowforge.return"),
-          "nested return: flowforge.return emitted inside the leg");
-    check(test::require(runMainJIT(*ir), "runMainJIT") == 0,
-          "nested return: JIT ran");
+    check(contains(ir->toString(), "flowforge.return"), "nested return: flowforge.return emitted inside the leg");
+    check(test::require(runMainJIT(*ir), "runMainJIT") == 0, "nested return: JIT ran");
 }
 
 //---------------------------------------------------------------
@@ -619,69 +635,71 @@ static void test_nested_return_supported() {
 //   GlobalOp), carries a trailing '\0', and the JITed call hands a native
 //   callee a usable const char*.
 //---------------------------------------------------------------
-static std::string      g_seen_str;
-static int              g_str_calls = 0;
-extern "C" void lux_flow_print_str(const char* s) {
+static std::string g_seen_str;
+static int g_str_calls = 0;
+extern "C" void lux_flow_print_str(const char* s)
+{
     ++g_str_calls;
     g_seen_str = s ? s : "<null>";
 }
 
-static void test_string_constant_jit() {
+static void test_string_constant_jit()
+{
     printBanner("Test 11: NativeFuncCall(std::string constant) -> JIT C-string");
 
     static lux::meta::RefFunction fn = [] {
         lux::meta::RefFunction f{};
-        f.invokable.name        = "lux_flow_print_str";
-        f.invokable.full_name   = "lux_flow_print_str";
+        f.invokable.name = "lux_flow_print_str";
+        f.invokable.full_name = "lux_flow_print_str";
         f.invokable.return_type = lux::meta::ref_type_of_v<void>;
         // Declared as std::string on the reflection side; Record-typed
         // parameters are !llvm.ptr at the ABI level, so the native callee
         // receives a NUL-terminated const char*.
-        f.invokable.parameters  = {
-            lux::meta::RefParam{ "s", lux::meta::ref_type_of_v<std::string> },
+        f.invokable.parameters = {
+            lux::meta::RefParam{"s", lux::meta::ref_type_of_v<std::string>},
         };
         return f;
     }();
 
-    auto ctx   = std::make_unique<IRContext>();
+    auto ctx = std::make_unique<IRContext>();
     auto graph = FlowGraph();
-    auto s     = std::make_unique<StartNode>();
-    auto call  = std::make_unique<NativeFuncCall>(fn);
-    auto r     = std::make_unique<ReturnNode>();
+    auto s = std::make_unique<StartNode>();
+    auto call = std::make_unique<NativeFuncCall>(fn);
+    auto r = std::make_unique<ReturnNode>();
 
     LastLink ll;
     s->execOutPin().linkTo(&call->execInPin(), ll);
     call->execOutPin().linkTo(&r->execInPin(), ll);
     check(call->dataInPins().size() == 1, "call has exactly the 's' pin");
-    check(call->dataInPins()[0]->setConstantData(
-              lux::meta::RuntimeObject(std::string("hello, flowforge"))),
-          "std::string constant set on the pin");
+    check(
+        call->dataInPins()[0]->setConstantData(lux::meta::RuntimeObject(std::string("hello, flowforge"))),
+        "std::string constant set on the pin"
+    );
 
     graph.addNodes(std::move(s));
     graph.addNodes(std::move(call));
     graph.addNodes(std::move(r));
 
     MLIRBuilder builder(ctx.get());
-    auto ir   = test::require(builder.generateIR(graph), "generateIR");
+    auto ir = test::require(builder.generateIR(graph), "generateIR");
     auto text = ir->toString();
     std::cout << text << "\n";
-    check(contains(text, "llvm.mlir.global"),   "IR contains the string storage global");
-    check(contains(text, "llvm.mlir.addressof"),"IR takes the global's address");
+    check(contains(text, "llvm.mlir.global"), "IR contains the string storage global");
+    check(contains(text, "llvm.mlir.addressof"), "IR takes the global's address");
 
     g_seen_str.clear();
     g_str_calls = 0;
     int rc = test::require(
-        runMainJIT(*ir,
-            { JitNativeSymbol{ "lux_flow_print_str",
-                               reinterpret_cast<void*>(&lux_flow_print_str) } }),
+        runMainJIT(*ir, {JitNativeSymbol{"lux_flow_print_str", reinterpret_cast<void*>(&lux_flow_print_str)}}),
         "runMainJIT"
     );
-    check(rc == 0,                           "runMainJIT returned 0");
-    check(g_str_calls == 1,                  "native callee called exactly once");
-    check(g_seen_str == "hello, flowforge",  "callee saw the NUL-terminated string");
+    check(rc == 0, "runMainJIT returned 0");
+    check(g_str_calls == 1, "native callee called exactly once");
+    check(g_seen_str == "hello, flowforge", "callee saw the NUL-terminated string");
 }
 
-int main() {
+int main()
+{
     // std::string RuntimeObjects (test 11) resolve their reflection info
     // through the registry, which meta_module_init populates.
     lux::meta::meta_module_init();
@@ -707,7 +725,8 @@ int main() {
     test_nested_return_supported();
     test_string_constant_jit();
 
-    std::cout << "\n" << std::string(60, '=') << "\n"
+    std::cout << "\n"
+              << std::string(60, '=') << "\n"
               << "  Summary: " << g_pass << " passed, " << g_fail << " failed\n"
               << std::string(60, '=') << "\n";
     return g_fail == 0 ? 0 : 1;

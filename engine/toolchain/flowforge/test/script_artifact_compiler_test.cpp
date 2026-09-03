@@ -216,7 +216,9 @@ namespace
         graph.addNodes(std::move(write));
         graph.addNodes(std::move(read));
         lux::flowforge::LastLink previous;
-        assert(event_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
+        assert(
+            event_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS
+        );
         assert(write_ptr->execOutPin().linkTo(&read_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
         assert(graph.addExport({
             lux::flowforge::FlowForgeExportNodeId{2U},
@@ -243,9 +245,15 @@ namespace
         graph.addNodes(std::move(second));
         graph.addNodes(std::move(write));
         lux::flowforge::LastLink previous;
-        assert(event_ptr->execOutPin().linkTo(&first_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
-        assert(first_ptr->execOutPin().linkTo(&second_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
-        assert(second_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
+        assert(
+            event_ptr->execOutPin().linkTo(&first_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS
+        );
+        assert(
+            first_ptr->execOutPin().linkTo(&second_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS
+        );
+        assert(
+            second_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS
+        );
         assert(graph.addExport({
             lux::flowforge::FlowForgeExportNodeId{3U},
             graph.getNode(event_index).node->id(),
@@ -270,8 +278,12 @@ namespace
         graph.addNodes(std::move(wait));
         graph.addNodes(std::move(write));
         lux::flowforge::LastLink previous;
-        assert(event_ptr->execOutPin().linkTo(&borrow_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
-        assert(borrow_ptr->execOutPin().linkTo(&wait_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
+        assert(
+            event_ptr->execOutPin().linkTo(&borrow_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS
+        );
+        assert(
+            borrow_ptr->execOutPin().linkTo(&wait_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS
+        );
         assert(wait_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == lux::flowforge::ELinkError::SUCCESS);
         assert(borrow_ptr->resultPins().front()->linkTo(write_ptr->parameterPins().front().get(), previous) ==
             lux::flowforge::ELinkError::SUCCESS);

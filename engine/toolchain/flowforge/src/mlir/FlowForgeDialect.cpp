@@ -19,11 +19,7 @@ namespace mlir::flowforge
 {
     void FlowForgeDialect::initialize()
     {
-        addTypes<
-            FLOWFORGE_TOKEN_TYPE,
-            FLOWFORGE_OBJECT_TYPE,
-            FLOWFORGE_STRING_TYPE
-        >();
+        addTypes<FLOWFORGE_TOKEN_TYPE, FLOWFORGE_OBJECT_TYPE, FLOWFORGE_STRING_TYPE>();
 
         addOperations<
             StartOp,
@@ -35,10 +31,8 @@ namespace mlir::flowforge
             BreakOp,
             UnreachableOp,
             ReturnOp,
-            TokenMergeOp
-        >();
+            TokenMergeOp>();
     }
-
 
     FlowForgeDialect::~FlowForgeDialect() = default;
 
@@ -55,10 +49,10 @@ namespace mlir::flowforge
         return getOperands().slice(0, 1);
     }
 
-    void BranchOp::getSuccessorRegions(FLOWFORGE_REGION_BRANCH_PARAM,
-        SmallVectorImpl<RegionSuccessor>& regions)
+    void BranchOp::getSuccessorRegions(FLOWFORGE_REGION_BRANCH_PARAM, SmallVectorImpl<RegionSuccessor>& regions)
     {
-        if (FLOWFORGE_IS_PARENT_REGION) {
+        if (FLOWFORGE_IS_PARENT_REGION)
+        {
             // Coming from parent operation: exactly one leg runs.
             regions.emplace_back(&FLOWFORGE_GET_THEN_REGION(*this), FLOWFORGE_GET_THEN_REGION(*this).getArguments());
             regions.emplace_back(&FLOWFORGE_GET_ELSE_REGION(*this), FLOWFORGE_GET_ELSE_REGION(*this).getArguments());
@@ -67,10 +61,13 @@ namespace mlir::flowforge
 
         // Coming from one of the child regions - determine which one
         Region* fromRegion = FLOWFORGE_GET_REGION_OR_NULL;
-        if (fromRegion == &FLOWFORGE_GET_THEN_REGION(*this)) {
+        if (fromRegion == &FLOWFORGE_GET_THEN_REGION(*this))
+        {
             // From then region -> trueExec (result 0)
             regions.emplace_back(getResults().slice(0, 1));
-        } else {
+        }
+        else
+        {
             // From else region -> falseExec (result 1)
             regions.emplace_back(getResults().slice(1, 1));
         }
@@ -88,8 +85,8 @@ namespace mlir::flowforge
         return getOperands().slice(0, 1);
     }
 
-    void ForLoopOp::getSuccessorRegions(FLOWFORGE_REGION_BRANCH_PARAM,
-        SmallVectorImpl<RegionSuccessor>& regions) {
+    void ForLoopOp::getSuccessorRegions(FLOWFORGE_REGION_BRANCH_PARAM, SmallVectorImpl<RegionSuccessor>& regions)
+    {
         auto& body = FLOWFORGE_GET_BODY_REGION(*this);
         // Token block-arg only — the IV (block-arg 1) is loop-defined.
         auto bodyTokenArg = body.getArguments().slice(0, 1);
@@ -117,8 +114,8 @@ namespace mlir::flowforge
         return getOperation()->getOperands().slice(0, 1);
     }
 
-    void WhileLoopOp::getSuccessorRegions(FLOWFORGE_REGION_BRANCH_PARAM,
-        SmallVectorImpl<RegionSuccessor>& regions) {
+    void WhileLoopOp::getSuccessorRegions(FLOWFORGE_REGION_BRANCH_PARAM, SmallVectorImpl<RegionSuccessor>& regions)
+    {
         auto& cond = getCondRegion();
         auto& body = getBodyRegion();
         if (FLOWFORGE_IS_PARENT_REGION)
@@ -128,11 +125,14 @@ namespace mlir::flowforge
         }
 
         Region* fromRegion = FLOWFORGE_GET_REGION_OR_NULL;
-        if (fromRegion == &cond) {
+        if (fromRegion == &cond)
+        {
             // cond true -> body; cond false -> doneExec
             regions.emplace_back(&body, body.getArguments());
             regions.emplace_back(getResults().slice(1, 1));
-        } else {
+        }
+        else
+        {
             // body -> back to cond
             regions.emplace_back(&cond, cond.getArguments());
         }

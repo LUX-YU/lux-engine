@@ -90,7 +90,9 @@ namespace
                     pending.state,
                     lux::cxx::unexpected(
                         async::OperationFailure<process::world_loading::WorldStorageRuntimeFailure>::domain(
-                            {process::world_loading::EWorldStorageRuntimeError::RANGE_OVERFLOW, operation.volume, operation.offset}
+                            {process::world_loading::EWorldStorageRuntimeError::RANGE_OVERFLOW,
+                             operation.volume,
+                             operation.offset}
                         )
                     )
                 );
@@ -358,7 +360,12 @@ int main()
 
         ReceiverState result;
         auto operation = stdexec::connect(
-            process::world_loading::loadWorldPartition(*source, lux::partition::PartitionOrdinal{0U}, volume->size(), {}),
+            process::world_loading::loadWorldPartition(
+                *source,
+                lux::partition::PartitionOrdinal{0U},
+                volume->size(),
+                {}
+            ),
             Receiver{&result}
         );
         stdexec::start(operation);

@@ -191,16 +191,16 @@ namespace lux::scene
             }
             try
             {
-                lux::cxx::move_only_function<bool()> invoke(
-                    [object = static_cast<Type*>(system), function = Function(std::forward<Callable>(callable))]() noexcept {
-                        if constexpr (std::same_as<Result, bool>)
-                        {
-                            return function(*object);
-                        }
-                        function(*object);
-                        return true;
+                lux::cxx::move_only_function<bool()> invoke([object = static_cast<Type*>(system),
+                                                             function = Function(std::forward<Callable>(callable))](
+                                                            ) noexcept {
+                    if constexpr (std::same_as<Result, bool>)
+                    {
+                        return function(*object);
                     }
-                );
+                    function(*object);
+                    return true;
+                });
                 return addHookErased(instance, stable, std::move(invoke));
             }
             catch (const std::bad_alloc&)

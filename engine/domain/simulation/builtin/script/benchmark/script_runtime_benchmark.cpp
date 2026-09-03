@@ -1165,8 +1165,9 @@ namespace
             {
                 const ScriptInstanceCreateContext context{
                     assetId(),
-                    entity_scope ? ScriptInstanceScope{EntityScriptScope{ecs::Entity{static_cast<std::uint32_t>(index + 1U)}}}
-                                 : ScriptInstanceScope{SimulationScriptScope{}},
+                    entity_scope
+                        ? ScriptInstanceScope{EntityScriptScope{ecs::Entity{static_cast<std::uint32_t>(index + 1U)}}}
+                        : ScriptInstanceScope{SimulationScriptScope{}},
                     nullptr
                 };
                 if (descriptor.createInstance(descriptor.context, context, artifact, instances[index]) !=
@@ -1254,7 +1255,9 @@ namespace
             reflected_class.name = "CppLifecycleObject";
             reflected_class.full_name = "lux.benchmark.CppLifecycleObject";
             reflected_class.type = lux::meta::ref_type_of_v<CppLifecycleObject>;
-            reflected_class.construct = [](void* memory) { std::construct_at(static_cast<CppLifecycleObject*>(memory)); };
+            reflected_class.construct = [](void* memory) {
+                std::construct_at(static_cast<CppLifecycleObject*>(memory));
+            };
             reflected_class.destruct = [](void* object) { std::destroy_at(static_cast<CppLifecycleObject*>(object)); };
 
             initializeMethod(begin, "admit", [](void* object, void**, void*) {
@@ -1851,8 +1854,9 @@ namespace
         }
         const auto churn_total = churn_count * (options.warmups + options.frames);
         if (harness.backend_state.creates != options.size + churn_total ||
-            harness.backend_state.destroys != churn_total || harness.backend_state.begins != options.size + churn_total ||
-            harness.backend_state.ends != churn_total || harness.system->activeInstanceCount() != options.size)
+            harness.backend_state.destroys != churn_total ||
+            harness.backend_state.begins != options.size + churn_total || harness.backend_state.ends != churn_total ||
+            harness.system->activeInstanceCount() != options.size)
         {
             throw std::runtime_error("object-churn benchmark observation mismatch");
         }

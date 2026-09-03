@@ -106,7 +106,8 @@ namespace lux::scene
         [[nodiscard]] const simulation::SimulationSystemRegistration* getSimulationSystemMeta(
             const system::SystemTypeId& type
         ) const noexcept;
-        [[nodiscard]] const SceneSystemRegistration* getSceneSystemMeta(const system::SystemTypeId& type) const noexcept;
+        [[nodiscard]] const SceneSystemRegistration* getSceneSystemMeta(const system::SystemTypeId& type
+        ) const noexcept;
         [[nodiscard]] const RenderFeatureMeta* getRenderFeatureMeta(render::FeatureTypeId type) const noexcept;
         [[nodiscard]] const RenderFeatureMeta* getRenderFeatureMeta(std::string_view stable_name) const noexcept;
         [[nodiscard]] std::span<const ComponentSystemUsage> systemsUsingComponent(

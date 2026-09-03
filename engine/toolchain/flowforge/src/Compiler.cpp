@@ -185,7 +185,8 @@ namespace lux::flowforge
                         });
                     }
                     const bool is_schema_mismatch = catalog_node->schema_version != node->expectedSchemaVersion() ||
-                        catalog_node->schema_hash != node->expectedSchemaHash() || catalog_node->kind != node->methodKind();
+                        catalog_node->schema_hash != node->expectedSchemaHash() ||
+                        catalog_node->kind != node->methodKind();
                     if (is_schema_mismatch)
                     {
                         return lux::cxx::unexpected(FlowForgeFailure{

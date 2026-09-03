@@ -251,7 +251,8 @@ namespace
         lux::async::OperationPort<Operation> port{endpoint};
         stdexec::inplace_stop_source stop;
         auto sender = lux::process::portSender(port, std::move(operation), {.accounted_bytes = 17U});
-        auto state = stdexec::connect(std::move(sender), Receiver<typename Operation::Value>{&result, stop.get_token()});
+        auto state =
+            stdexec::connect(std::move(sender), Receiver<typename Operation::Value>{&result, stop.get_token()});
         stdexec::start(state);
         assert(result.completions.load(std::memory_order_acquire) == 1U);
         assert(endpoint->submits == 1U);

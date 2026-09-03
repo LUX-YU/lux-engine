@@ -78,10 +78,10 @@
 // of the element sequences used below does match MSVC/Itanium for these
 // plain structs; the static_asserts pin the C side, and emitModuleDesc
 // re-checks the LLVM side against the DataLayout at cook time.
-static_assert(sizeof(lux_script_type_desc)     == 32, "ABI drift: type_desc");
+static_assert(sizeof(lux_script_type_desc) == 32, "ABI drift: type_desc");
 static_assert(sizeof(lux_script_function_desc) == 64, "ABI drift: function_desc");
-static_assert(sizeof(lux_script_module_desc)   == 64, "ABI drift: module_desc");
-static_assert(sizeof(lux_script_value_slot)    == 24, "ABI drift: value_slot");
+static_assert(sizeof(lux_script_module_desc) == 64, "ABI drift: module_desc");
+static_assert(sizeof(lux_script_value_slot) == 24, "ABI drift: value_slot");
 
 namespace lux::flowforge
 {
@@ -135,22 +135,18 @@ namespace lux::flowforge
             return result;
         }
 
-        [[nodiscard]] std::optional<lux::rdesc::ScriptValueType> projectType(
-            const lux::meta::RefType& type
-        )
+        [[nodiscard]] std::optional<lux::rdesc::ScriptValueType> projectType(const lux::meta::RefType& type)
         {
             using lux::meta::EBaseType;
             using lux::meta::ETypeQual;
             const auto qualifier = static_cast<ETypeQual>(type.qtype.qual);
-            const bool is_unsupported_qualifier = qualifier != ETypeQual::Value &&
-                qualifier != ETypeQual::LRefToConst;
+            const bool is_unsupported_qualifier = qualifier != ETypeQual::Value && qualifier != ETypeQual::LRefToConst;
             if (is_unsupported_qualifier)
             {
                 return std::nullopt;
             }
 
-            const auto builtin = [&type]() -> std::optional<lux::rdesc::ScriptValueType>
-            {
+            const auto builtin = [&type]() -> std::optional<lux::rdesc::ScriptValueType> {
                 switch (static_cast<EBaseType>(type.qtype.base))
                 {
                 case EBaseType::Bool:
@@ -196,15 +192,22 @@ namespace lux::flowforge
             };
         }
 
-        llvm::Constant* makeCStr(llvm::Module& m, llvm::StringRef s,
-                                 const llvm::Twine& name)
+        llvm::Constant* makeCStr(llvm::Module& m, llvm::StringRef s, const llvm::Twine& name)
         {
-            auto* data = llvm::ConstantDataArray::getString(m.getContext(), s,
-                                                            /*AddNull=*/true);
+            auto* data = llvm::ConstantDataArray::getString(
+                m.getContext(),
+                s,
+                /*AddNull=*/true
+            );
             auto* g = new llvm::GlobalVariable(
-                m, data->getType(), /*isConstant=*/true,
-                llvm::GlobalValue::PrivateLinkage, data, name);
-            return g;   // opaque-pointer world: the global IS a ptr constant
+                m,
+                data->getType(),
+                /*isConstant=*/true,
+                llvm::GlobalValue::PrivateLinkage,
+                data,
+                name
+            );
+            return g; // opaque-pointer world: the global IS a ptr constant
         }
 
         void exportSymbol(llvm::Function* f, const llvm::Triple& triple)
@@ -229,9 +232,15 @@ namespace lux::flowforge
             const auto field = [&](std::size_t offset) {
                 return builder.CreateGEP(i8, slot, llvm::ConstantInt::get(i64, offset));
             };
-            builder.CreateStore(llvm::ConstantInt::get(i8, type.abi_kind), field(offsetof(lux_script_value_slot, kind)));
+            builder.CreateStore(
+                llvm::ConstantInt::get(i8, type.abi_kind),
+                field(offsetof(lux_script_value_slot, kind))
+            );
             builder.CreateStore(llvm::ConstantInt::get(i32, type.size), field(offsetof(lux_script_value_slot, size)));
-            builder.CreateStore(llvm::ConstantInt::get(i64, type.type_id), field(offsetof(lux_script_value_slot, type_id)));
+            builder.CreateStore(
+                llvm::ConstantInt::get(i64, type.type_id),
+                field(offsetof(lux_script_value_slot, type_id))
+            );
             builder.CreateStore(data, field(offsetof(lux_script_value_slot, data)));
         }
 
@@ -253,7 +262,8 @@ namespace lux::flowforge
                     continue;
                 const auto name = "lux_ff_ability_sync_" + std::to_string(ordinal);
                 auto* function = module.getFunction(name);
-                if (function == nullptr || !function->isDeclaration() || function->arg_size() != 1U + description.parameters().size())
+                if (function == nullptr || !function->isDeclaration() ||
+                    function->arg_size() != 1U + description.parameters().size())
                 {
                     error = "missing or invalid synchronous Script Ability import '" + name + "'";
                     return false;
@@ -265,14 +275,10 @@ namespace lux::flowforge
                 const auto runtime_field = [&](std::size_t offset) {
                     return builder.CreateGEP(i8, runtime, llvm::ConstantInt::get(i64, offset));
                 };
-                auto* runtime_context = builder.CreateLoad(
-                    ptr_type,
-                    runtime_field(offsetof(lux_script_ability_runtime, context))
-                );
-                auto* invoke = builder.CreateLoad(
-                    ptr_type,
-                    runtime_field(offsetof(lux_script_ability_runtime, invoke))
-                );
+                auto* runtime_context =
+                    builder.CreateLoad(ptr_type, runtime_field(offsetof(lux_script_ability_runtime, context)));
+                auto* invoke =
+                    builder.CreateLoad(ptr_type, runtime_field(offsetof(lux_script_ability_runtime, invoke)));
 
                 llvm::Value* arguments = llvm::ConstantPointerNull::get(ptr_type);
                 if (!description.parameters().empty())
@@ -303,22 +309,16 @@ namespace lux::flowforge
                     storeValueSlot(builder, results, description.results().front(), result_storage);
                 }
 
-                auto* invoke_type = llvm::FunctionType::get(
-                    i32,
-                    {ptr_type, i32, ptr_type, i32, ptr_type, i32},
-                    false
-                );
+                auto* invoke_type = llvm::FunctionType::get(i32, {ptr_type, i32, ptr_type, i32, ptr_type, i32}, false);
                 const auto status = builder.CreateCall(
                     invoke_type,
                     invoke,
-                    {
-                        runtime_context,
-                        llvm::ConstantInt::get(i32, ordinal),
-                        arguments,
-                        llvm::ConstantInt::get(i32, description.parameters().size()),
-                        results,
-                        llvm::ConstantInt::get(i32, description.results().size())
-                    }
+                    {runtime_context,
+                     llvm::ConstantInt::get(i32, ordinal),
+                     arguments,
+                     llvm::ConstantInt::get(i32, description.parameters().size()),
+                     results,
+                     llvm::ConstantInt::get(i32, description.results().size())}
                 );
                 if (description.results().empty())
                 {
@@ -328,7 +328,9 @@ namespace lux::flowforge
                 {
                     const auto value = builder.CreateLoad(function->getReturnType(), result_storage);
                     const auto success = builder.CreateICmpEQ(status, llvm::ConstantInt::get(i32, 0));
-                    builder.CreateRet(builder.CreateSelect(success, value, llvm::Constant::getNullValue(value->getType())));
+                    builder.CreateRet(
+                        builder.CreateSelect(success, value, llvm::Constant::getNullValue(value->getType()))
+                    );
                 }
             }
             return true;
@@ -349,18 +351,10 @@ namespace lux::flowforge
             return (value + alignment - 1U) & ~(alignment - 1U);
         }
 
-        void storeOutcomeField(
-            llvm::IRBuilder<>& builder,
-            llvm::Value* outcome,
-            std::size_t offset,
-            llvm::Value* value
-        )
+        void storeOutcomeField(llvm::IRBuilder<>& builder, llvm::Value* outcome, std::size_t offset, llvm::Value* value)
         {
-            auto* address = builder.CreateGEP(
-                builder.getInt8Ty(),
-                outcome,
-                llvm::ConstantInt::get(builder.getInt64Ty(), offset)
-            );
+            auto* address =
+                builder.CreateGEP(builder.getInt8Ty(), outcome, llvm::ConstantInt::get(builder.getInt64Ty(), offset));
             builder.CreateStore(value, address);
         }
 
@@ -520,10 +514,8 @@ namespace lux::flowforge
                 {
                     required = alignFrameOffset(required, parameter.value.alignment);
                     required += parameter.value.size;
-                    scratch_alignment = (std::max)(
-                        scratch_alignment,
-                        static_cast<std::uint64_t>(parameter.value.alignment)
-                    );
+                    scratch_alignment =
+                        (std::max)(scratch_alignment, static_cast<std::uint64_t>(parameter.value.alignment));
                 }
                 required = alignFrameOffset(required, alignof(lux_script_async_token));
                 required += sizeof(lux_script_async_token);
@@ -549,11 +541,7 @@ namespace lux::flowforge
                 {
                     auto* user = llvm::cast<llvm::Instruction>(use->getUser());
                     llvm::IRBuilder<> builder(user);
-                    auto* address = builder.CreateGEP(
-                        i8,
-                        frame_argument,
-                        llvm::ConstantInt::get(i64, slot.offset)
-                    );
+                    auto* address = builder.CreateGEP(i8, frame_argument, llvm::ConstantInt::get(i64, slot.offset));
                     use->set(address);
                 }
                 slot.allocation->eraseFromParent();
@@ -621,11 +609,8 @@ namespace lux::flowforge
                 marker->eraseFromParent();
 
                 llvm::IRBuilder<> suspend_builder(suspend_block);
-                auto* scratch = suspend_builder.CreateGEP(
-                    i8,
-                    frame_argument,
-                    llvm::ConstantInt::get(i64, scratch_offset)
-                );
+                auto* scratch =
+                    suspend_builder.CreateGEP(i8, frame_argument, llvm::ConstantInt::get(i64, scratch_offset));
                 llvm::Value* arguments = llvm::ConstantPointerNull::get(ptr_type);
                 const auto& import = *imports[awaits[await_index].import_ordinal].node;
                 std::uint64_t scratch_cursor = import.parameters().size() * sizeof(lux_script_value_slot);
@@ -635,11 +620,8 @@ namespace lux::flowforge
                     for (std::size_t index{}; index < visible_arguments.size(); ++index)
                     {
                         scratch_cursor = alignFrameOffset(scratch_cursor, import.parameters()[index].value.alignment);
-                        auto* storage = suspend_builder.CreateGEP(
-                            i8,
-                            scratch,
-                            llvm::ConstantInt::get(i64, scratch_cursor)
-                        );
+                        auto* storage =
+                            suspend_builder.CreateGEP(i8, scratch, llvm::ConstantInt::get(i64, scratch_cursor));
                         scratch_cursor += import.parameters()[index].value.size;
                         suspend_builder.CreateStore(visible_arguments[index], storage);
                         auto* slot = suspend_builder.CreateGEP(
@@ -651,37 +633,23 @@ namespace lux::flowforge
                     }
                 }
                 scratch_cursor = alignFrameOffset(scratch_cursor, alignof(lux_script_async_token));
-                auto* token = suspend_builder.CreateGEP(
-                    i8,
-                    scratch,
-                    llvm::ConstantInt::get(i64, scratch_cursor)
-                );
+                auto* token = suspend_builder.CreateGEP(i8, scratch, llvm::ConstantInt::get(i64, scratch_cursor));
                 const auto host_field = [&](std::size_t offset) {
                     return suspend_builder.CreateGEP(i8, host_argument, llvm::ConstantInt::get(i64, offset));
                 };
-                auto* host_context = suspend_builder.CreateLoad(
-                    ptr_type,
-                    host_field(offsetof(lux_script_step_host, context))
-                );
-                auto* start_async = suspend_builder.CreateLoad(
-                    ptr_type,
-                    host_field(offsetof(lux_script_step_host, start_async))
-                );
-                auto* start_type = llvm::FunctionType::get(
-                    i32,
-                    {ptr_type, i32, ptr_type, i32, ptr_type},
-                    false
-                );
+                auto* host_context =
+                    suspend_builder.CreateLoad(ptr_type, host_field(offsetof(lux_script_step_host, context)));
+                auto* start_async =
+                    suspend_builder.CreateLoad(ptr_type, host_field(offsetof(lux_script_step_host, start_async)));
+                auto* start_type = llvm::FunctionType::get(i32, {ptr_type, i32, ptr_type, i32, ptr_type}, false);
                 auto* status = suspend_builder.CreateCall(
                     start_type,
                     start_async,
-                    {
-                        host_context,
-                        llvm::ConstantInt::get(i32, awaits[await_index].import_ordinal),
-                        arguments,
-                        llvm::ConstantInt::get(i32, visible_arguments.size()),
-                        token
-                    }
+                    {host_context,
+                     llvm::ConstantInt::get(i32, awaits[await_index].import_ordinal),
+                     arguments,
+                     llvm::ConstantInt::get(i32, visible_arguments.size()),
+                     token}
                 );
                 const auto next_pc = static_cast<std::uint32_t>(await_index + 1U);
                 suspend_builder.CreateStore(llvm::ConstantInt::get(i32, next_pc), frame_argument);
@@ -723,21 +691,10 @@ namespace lux::flowforge
                 );
                 suspend_builder.CreateRetVoid();
 
-                auto* resume_entry = llvm::BasicBlock::Create(
-                    context,
-                    "resume." + std::to_string(next_pc),
-                    core
-                );
-                auto* resume_ready = llvm::BasicBlock::Create(
-                    context,
-                    "resume.ready." + std::to_string(next_pc),
-                    core
-                );
-                auto* resume_failed = llvm::BasicBlock::Create(
-                    context,
-                    "resume.failed." + std::to_string(next_pc),
-                    core
-                );
+                auto* resume_entry = llvm::BasicBlock::Create(context, "resume." + std::to_string(next_pc), core);
+                auto* resume_ready = llvm::BasicBlock::Create(context, "resume.ready." + std::to_string(next_pc), core);
+                auto* resume_failed =
+                    llvm::BasicBlock::Create(context, "resume.failed." + std::to_string(next_pc), core);
                 dispatch_switch->addCase(llvm::ConstantInt::get(i32, next_pc), resume_entry);
                 llvm::IRBuilder<> resume_builder(resume_entry);
                 auto* resume_state_address = resume_builder.CreateGEP(
@@ -747,10 +704,7 @@ namespace lux::flowforge
                 );
                 auto* resume_state = resume_builder.CreateLoad(i8, resume_state_address);
                 resume_builder.CreateCondBr(
-                    resume_builder.CreateICmpEQ(
-                        resume_state,
-                        llvm::ConstantInt::get(i8, LUX_SCRIPT_RESUME_READY)
-                    ),
+                    resume_builder.CreateICmpEQ(resume_state, llvm::ConstantInt::get(i8, LUX_SCRIPT_RESUME_READY)),
                     resume_ready,
                     resume_failed
                 );
@@ -920,10 +874,8 @@ namespace lux::flowforge
             start_core_arguments.push_back(abilities);
             if (target->arg_size() > 2U)
             {
-                auto* argument_slots = start_builder.CreateLoad(
-                    ptr_type,
-                    start_field(call_frame, offsetof(lux_script_call_frame, args))
-                );
+                auto* argument_slots =
+                    start_builder.CreateLoad(ptr_type, start_field(call_frame, offsetof(lux_script_call_frame, args)));
                 for (std::size_t index{2U}; index < target->arg_size(); ++index)
                 {
                     auto* slot = start_builder.CreateGEP(
@@ -931,10 +883,8 @@ namespace lux::flowforge
                         argument_slots,
                         llvm::ConstantInt::get(i64, (index - 2U) * sizeof(lux_script_value_slot))
                     );
-                    auto* data = start_builder.CreateLoad(
-                        ptr_type,
-                        start_field(slot, offsetof(lux_script_value_slot, data))
-                    );
+                    auto* data =
+                        start_builder.CreateLoad(ptr_type, start_field(slot, offsetof(lux_script_value_slot, data)));
                     start_core_arguments.push_back(
                         start_builder.CreateLoad(target->getFunctionType()->getParamType(index), data)
                     );
@@ -942,11 +892,8 @@ namespace lux::flowforge
             }
             for (std::size_t index{}; index < start_core_arguments.size(); ++index)
             {
-                auto* address = start_builder.CreateGEP(
-                    i8,
-                    start_frame,
-                    llvm::ConstantInt::get(i64, argument_offsets[index])
-                );
+                auto* address =
+                    start_builder.CreateGEP(i8, start_frame, llvm::ConstantInt::get(i64, argument_offsets[index]));
                 start_builder.CreateStore(start_core_arguments[index], address);
             }
             start_core_arguments.insert(
@@ -973,11 +920,8 @@ namespace lux::flowforge
             llvm::SmallVector<llvm::Value*, 12> resume_core_arguments;
             for (std::size_t index{}; index < target->arg_size(); ++index)
             {
-                auto* address = resume_wrapper.CreateGEP(
-                    i8,
-                    resume_frame,
-                    llvm::ConstantInt::get(i64, argument_offsets[index])
-                );
+                auto* address =
+                    resume_wrapper.CreateGEP(i8, resume_frame, llvm::ConstantInt::get(i64, argument_offsets[index]));
                 resume_core_arguments.push_back(
                     resume_wrapper.CreateLoad(target->getFunctionType()->getParamType(index), address)
                 );
@@ -1051,11 +995,7 @@ namespace lux::flowforge
             return true;
         }
 
-        bool inlineGraphFunctions(
-            llvm::Module& module,
-            const std::vector<EventInfo>& events,
-            std::string& error
-        )
+        bool inlineGraphFunctions(llvm::Module& module, const std::vector<EventInfo>& events, std::string& error)
         {
             for (const auto& event : events)
             {
@@ -1153,9 +1093,7 @@ namespace lux::flowforge
         }
 
         // ---- step 2 + 3: import slots + bind_host --------------------------
-        bool rewriteImportsToSlots(llvm::Module& m,
-                                   std::vector<std::string>& imports_out,
-                                   std::string& err)
+        bool rewriteImportsToSlots(llvm::Module& m, std::vector<std::string>& imports_out, std::string& err)
         {
             auto& ctx = m.getContext();
             auto* ptr_ty = llvm::PointerType::get(ctx, 0);
@@ -1167,30 +1105,42 @@ namespace lux::flowforge
             if (externs.empty())
                 return true;
 
-            struct Slot { std::string name; llvm::GlobalVariable* g; };
+            struct Slot
+            {
+                std::string name;
+                llvm::GlobalVariable* g;
+            };
             std::vector<Slot> slots;
             slots.reserve(externs.size());
 
-            for (llvm::Function* f : externs) {
+            for (llvm::Function* f : externs)
+            {
                 const std::string name = f->getName().str();
                 auto* slot = new llvm::GlobalVariable(
-                    m, ptr_ty, /*isConstant=*/false,
+                    m,
+                    ptr_ty,
+                    /*isConstant=*/false,
                     llvm::GlobalValue::InternalLinkage,
                     llvm::ConstantPointerNull::get(ptr_ty),
-                    "_lfimp_" + name);
+                    "_lfimp_" + name
+                );
 
-                for (llvm::User* u : llvm::make_early_inc_range(f->users())) {
+                for (llvm::User* u : llvm::make_early_inc_range(f->users()))
+                {
                     auto* call = llvm::dyn_cast<llvm::CallBase>(u);
-                    if (!call || call->getCalledOperand() != f) {
-                        err = "import '" + name + "' is referenced by a "
-                              "non-call use (address taken?) — cannot slot it";
+                    if (!call || call->getCalledOperand() != f)
+                    {
+                        err = "import '" + name +
+                            "' is referenced by a "
+                            "non-call use (address taken?) — cannot slot it";
                         return false;
                     }
                     llvm::IRBuilder<> b(call);
                     auto* fp = b.CreateLoad(ptr_ty, slot, name + ".fp");
                     call->setCalledOperand(fp);
                 }
-                if (!f->use_empty()) {
+                if (!f->use_empty())
+                {
                     err = "import '" + name + "' still has uses after rewrite";
                     return false;
                 }
@@ -1201,27 +1151,23 @@ namespace lux::flowforge
 
             // int lux_script_bind_host(lux_host_resolve_fn, void*, uint32_t)
             auto* i32 = llvm::Type::getInt32Ty(ctx);
-            auto* bind_ft = llvm::FunctionType::get(
-                i32, {ptr_ty, ptr_ty, i32}, /*vararg=*/false);
-            auto* bind_fn = llvm::Function::Create(
-                bind_ft, llvm::GlobalValue::ExternalLinkage,
-                LUX_SCRIPT_BIND_HOST_ENTRY, m);
+            auto* bind_ft = llvm::FunctionType::get(i32, {ptr_ty, ptr_ty, i32}, /*vararg=*/false);
+            auto* bind_fn =
+                llvm::Function::Create(bind_ft, llvm::GlobalValue::ExternalLinkage, LUX_SCRIPT_BIND_HOST_ENTRY, m);
 
             auto* entry = llvm::BasicBlock::Create(ctx, "entry", bind_fn);
             llvm::IRBuilder<> b(entry);
-            llvm::Value* resolve  = bind_fn->getArg(0);
+            llvm::Value* resolve = bind_fn->getArg(0);
             llvm::Value* host_ctx = bind_fn->getArg(1);
-            auto* resolve_ft = llvm::FunctionType::get(
-                ptr_ty, {ptr_ty, ptr_ty}, /*vararg=*/false);
+            auto* resolve_ft = llvm::FunctionType::get(ptr_ty, {ptr_ty, ptr_ty}, /*vararg=*/false);
 
             llvm::Value* missing = llvm::ConstantInt::get(i32, 0);
-            for (const Slot& s : slots) {
+            for (const Slot& s : slots)
+            {
                 auto* name_c = makeCStr(m, s.name, "_lfimp_name");
-                auto* addr = b.CreateCall(resolve_ft, resolve,
-                                          {host_ctx, name_c});
+                auto* addr = b.CreateCall(resolve_ft, resolve, {host_ctx, name_c});
                 b.CreateStore(addr, s.g);
-                auto* isnull = b.CreateICmpEQ(
-                    addr, llvm::ConstantPointerNull::get(ptr_ty));
+                auto* isnull = b.CreateICmpEQ(addr, llvm::ConstantPointerNull::get(ptr_ty));
                 missing = b.CreateAdd(missing, b.CreateZExt(isnull, i32));
             }
             b.CreateRet(missing);
@@ -1229,9 +1175,7 @@ namespace lux::flowforge
         }
 
         // ---- step 4: one call_frame wrapper per event ----------------------
-        llvm::Function* emitEventWrapper(llvm::Module& m,
-                                         const EventInfo& ev,
-                                         std::string& err)
+        llvm::Function* emitEventWrapper(llvm::Module& m, const EventInfo& ev, std::string& err)
         {
             auto& ctx = m.getContext();
             auto* ptr_ty = llvm::PointerType::get(ctx, 0);
@@ -1239,7 +1183,8 @@ namespace lux::flowforge
             auto* i64 = llvm::Type::getInt64Ty(ctx);
 
             llvm::Function* target = m.getFunction(ev.symbol);
-            if (!target) {
+            if (!target)
+            {
                 err = "event function '" + ev.symbol + "' missing in module";
                 return nullptr;
             }
@@ -1248,52 +1193,47 @@ namespace lux::flowforge
             const size_t payload_count = tft->getNumParams() - 2;
 
             auto* wrap_ft = llvm::FunctionType::get(i32, {ptr_ty}, false);
-            auto* wrap = llvm::Function::Create(
-                wrap_ft, llvm::GlobalValue::InternalLinkage,
-                "lux_fnwrap_" + ev.symbol, m);
+            auto* wrap =
+                llvm::Function::Create(wrap_ft, llvm::GlobalValue::InternalLinkage, "lux_fnwrap_" + ev.symbol, m);
 
             auto* entry = llvm::BasicBlock::Create(ctx, "entry", wrap);
             llvm::IRBuilder<> b(entry);
             llvm::Value* frame = wrap->getArg(0);
 
             auto gepByte = [&](llvm::Value* base, uint64_t off) {
-                return b.CreateGEP(b.getInt8Ty(), base,
-                                   llvm::ConstantInt::get(i64, off));
+                return b.CreateGEP(b.getInt8Ty(), base, llvm::ConstantInt::get(i64, off));
             };
 
             llvm::Value* native_instance = b.CreateLoad(
                 ptr_ty,
                 gepByte(frame, offsetof(lux_script_call_frame, native_instance)),
-                "native.instance");
+                "native.instance"
+            );
             llvm::Value* state = b.CreateLoad(
                 ptr_ty,
                 gepByte(native_instance, offsetof(lux_script_native_instance_context, state)),
-                "state");
+                "state"
+            );
             llvm::Value* abilities = b.CreateLoad(
                 ptr_ty,
                 gepByte(native_instance, offsetof(lux_script_native_instance_context, abilities)),
-                "abilities");
+                "abilities"
+            );
 
             llvm::SmallVector<llvm::Value*, 8> call_args;
             call_args.push_back(state);
             call_args.push_back(abilities);
-            if (payload_count > 0) {
-                llvm::Value* args_base = b.CreateLoad(
-                    ptr_ty,
-                    gepByte(frame, offsetof(lux_script_call_frame, args)),
-                    "args");
-                for (size_t i = 0; i < payload_count; ++i) {
-                    llvm::Value* slot =
-                        gepByte(args_base, i * sizeof(lux_script_value_slot));
-                    llvm::Value* data = b.CreateLoad(
-                        ptr_ty,
-                        gepByte(slot, offsetof(lux_script_value_slot, data)));
+            if (payload_count > 0)
+            {
+                llvm::Value* args_base =
+                    b.CreateLoad(ptr_ty, gepByte(frame, offsetof(lux_script_call_frame, args)), "args");
+                for (size_t i = 0; i < payload_count; ++i)
+                {
+                    llvm::Value* slot = gepByte(args_base, i * sizeof(lux_script_value_slot));
+                    llvm::Value* data = b.CreateLoad(ptr_ty, gepByte(slot, offsetof(lux_script_value_slot, data)));
                     // args[i].data points AT the value's storage; load it
                     // with the event function's own parameter type.
-                    call_args.push_back(
-                        b.CreateLoad(tft->getParamType(
-                                         static_cast<unsigned>(i + 2)),
-                                     data));
+                    call_args.push_back(b.CreateLoad(tft->getParamType(static_cast<unsigned>(i + 2)), data));
                 }
             }
 
@@ -1303,22 +1243,24 @@ namespace lux::flowforge
         }
 
         // ---- step 5: descriptor globals + lux_script_get_module ------------
-        bool emitModuleDesc(llvm::Module& m,
-                            const std::string& module_name,
-                            const std::vector<EventInfo>& events,
-                            const std::vector<AbilityImportInfo>& ability_imports,
-                            const std::vector<NativeStepInfo>& steps,
-                            const std::vector<lux::rdesc::ScriptFunction>& exports,
-                            const std::vector<llvm::Function*>& wrappers,
-                            uint64_t state_layout_hash,
-                            uint32_t state_size,
-                            uint32_t state_align,
-                            std::string& err)
+        bool emitModuleDesc(
+            llvm::Module& m,
+            const std::string& module_name,
+            const std::vector<EventInfo>& events,
+            const std::vector<AbilityImportInfo>& ability_imports,
+            const std::vector<NativeStepInfo>& steps,
+            const std::vector<lux::rdesc::ScriptFunction>& exports,
+            const std::vector<llvm::Function*>& wrappers,
+            uint64_t state_layout_hash,
+            uint32_t state_size,
+            uint32_t state_align,
+            std::string& err
+        )
         {
             auto& ctx = m.getContext();
             const llvm::DataLayout& dl = m.getDataLayout();
             auto* ptr_ty = llvm::PointerType::get(ctx, 0);
-            auto* i8  = llvm::Type::getInt8Ty(ctx);
+            auto* i8 = llvm::Type::getInt8Ty(ctx);
             auto* i32 = llvm::Type::getInt32Ty(ctx);
             auto* i64 = llvm::Type::getInt64Ty(ctx);
             auto* pad3 = llvm::ArrayType::get(i8, 3);
@@ -1326,38 +1268,39 @@ namespace lux::flowforge
 
             // Mirrors of the C structs. checkLayout guards against any
             // DataLayout divergence from the host compiler's layout.
-            auto* type_desc_ty = llvm::StructType::create(
-                ctx, {ptr_ty, i64, i32, i32, i8, i8, pad6},
-                "lux_script_type_desc");
+            auto* type_desc_ty =
+                llvm::StructType::create(ctx, {ptr_ty, i64, i32, i32, i8, i8, pad6}, "lux_script_type_desc");
             auto* func_desc_ty = llvm::StructType::create(
-                ctx, {ptr_ty, i64, ptr_ty, i32, ptr_ty, i32, ptr_ty, ptr_ty},
-                "lux_script_function_desc");
+                ctx,
+                {ptr_ty, i64, ptr_ty, i32, ptr_ty, i32, ptr_ty, ptr_ty},
+                "lux_script_function_desc"
+            );
             auto* ability_import_ty = llvm::StructType::create(
                 ctx,
                 {ptr_ty, i64, ptr_ty, i64, i64, i32, i8, pad3, ptr_ty, i32, ptr_ty, i32},
-                "lux_script_ability_import_desc");
-            auto* step_desc_ty = llvm::StructType::create(
-                ctx,
-                {i32, i32, i64, ptr_ty, ptr_ty, ptr_ty},
-                "lux_script_step_desc");
+                "lux_script_ability_import_desc"
+            );
+            auto* step_desc_ty =
+                llvm::StructType::create(ctx, {i32, i32, i64, ptr_ty, ptr_ty, ptr_ty}, "lux_script_step_desc");
             auto* module_desc_ty = llvm::StructType::create(
                 ctx,
                 {ptr_ty, i32, i32, i64, i32, i32, ptr_ty, i32, i32, ptr_ty, i32, i32},
-                "lux_script_module_desc");
+                "lux_script_module_desc"
+            );
 
-            const auto checkLayout = [&](llvm::StructType* t, size_t c_size,
-                                         const char* what) {
-                if (dl.getTypeAllocSize(t) != c_size) {
+            const auto checkLayout = [&](llvm::StructType* t, size_t c_size, const char* what) {
+                if (dl.getTypeAllocSize(t) != c_size)
+                {
                     err = std::string("ABI layout mismatch for ") + what;
                     return false;
                 }
                 return true;
             };
-            if (!checkLayout(type_desc_ty, sizeof(lux_script_type_desc), "type_desc")
-                || !checkLayout(func_desc_ty, sizeof(lux_script_function_desc), "function_desc")
-                || !checkLayout(ability_import_ty, sizeof(lux_script_ability_import_desc), "ability_import_desc")
-                || !checkLayout(step_desc_ty, sizeof(lux_script_step_desc), "step_desc")
-                || !checkLayout(module_desc_ty, sizeof(lux_script_module_desc), "module_desc"))
+            if (!checkLayout(type_desc_ty, sizeof(lux_script_type_desc), "type_desc") ||
+                !checkLayout(func_desc_ty, sizeof(lux_script_function_desc), "function_desc") ||
+                !checkLayout(ability_import_ty, sizeof(lux_script_ability_import_desc), "ability_import_desc") ||
+                !checkLayout(step_desc_ty, sizeof(lux_script_step_desc), "step_desc") ||
+                !checkLayout(module_desc_ty, sizeof(lux_script_module_desc), "module_desc"))
                 return false;
 
             auto* null_ptr = llvm::ConstantPointerNull::get(ptr_ty);
@@ -1373,15 +1316,13 @@ namespace lux::flowforge
                 {
                     descriptions.push_back(llvm::ConstantStruct::get(
                         type_desc_ty,
-                        {
-                            makeCStr(m, value.canonical_name, "_lfd_ability_type"),
-                            llvm::ConstantInt::get(i64, value.type_id),
-                            llvm::ConstantInt::get(i32, value.size),
-                            llvm::ConstantInt::get(i32, value.alignment),
-                            llvm::ConstantInt::get(i8, value.abi_kind),
-                            llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(value.pass)),
-                            pad_zero
-                        }
+                        {makeCStr(m, value.canonical_name, "_lfd_ability_type"),
+                         llvm::ConstantInt::get(i64, value.type_id),
+                         llvm::ConstantInt::get(i32, value.size),
+                         llvm::ConstantInt::get(i32, value.alignment),
+                         llvm::ConstantInt::get(i8, value.abi_kind),
+                         llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(value.pass)),
+                         pad_zero}
                     ));
                 }
                 auto* array_type = llvm::ArrayType::get(type_desc_ty, descriptions.size());
@@ -1396,38 +1337,40 @@ namespace lux::flowforge
             };
 
             llvm::SmallVector<llvm::Constant*, 8> fn_descs;
-            for (size_t e = 0; e < events.size(); ++e) {
+            for (size_t e = 0; e < events.size(); ++e)
+            {
                 const auto& function = exports[e];
                 const auto& params = function.args;
 
                 // Per-event argument type_desc array (may be empty).
                 llvm::Constant* args_ptr = null_ptr;
-                if (!params.empty()) {
+                if (!params.empty())
+                {
                     llvm::SmallVector<llvm::Constant*, 8> arg_descs;
-                    for (const auto& parameter : params) {
+                    for (const auto& parameter : params)
+                    {
                         arg_descs.push_back(llvm::ConstantStruct::get(
                             type_desc_ty,
                             {
-                                makeCStr(
-                                    m,
-                                    parameter.canonical_name,
-                                    "_lfd_argname"
-                                ),
+                                makeCStr(m, parameter.canonical_name, "_lfd_argname"),
                                 llvm::ConstantInt::get(i64, parameter.type_id),
                                 llvm::ConstantInt::get(i32, parameter.size),
                                 llvm::ConstantInt::get(i32, parameter.alignment),
                                 llvm::ConstantInt::get(i8, parameter.abi_kind),
                                 llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(parameter.pass)),
                                 pad_zero,
-                            }));
+                            }
+                        ));
                     }
-                    auto* arr_ty = llvm::ArrayType::get(
-                        type_desc_ty, arg_descs.size());
+                    auto* arr_ty = llvm::ArrayType::get(type_desc_ty, arg_descs.size());
                     args_ptr = new llvm::GlobalVariable(
-                        m, arr_ty, /*isConstant=*/true,
+                        m,
+                        arr_ty,
+                        /*isConstant=*/true,
                         llvm::GlobalValue::PrivateLinkage,
                         llvm::ConstantArray::get(arr_ty, arg_descs),
-                        "_lfd_args");
+                        "_lfd_args"
+                    );
                 }
 
                 llvm::Constant* step_pointer = null_ptr;
@@ -1440,14 +1383,12 @@ namespace lux::flowforge
                         llvm::GlobalValue::PrivateLinkage,
                         llvm::ConstantStruct::get(
                             step_desc_ty,
-                            {
-                                llvm::ConstantInt::get(i32, steps[e].frame_size),
-                                llvm::ConstantInt::get(i32, steps[e].frame_align),
-                                llvm::ConstantInt::get(i64, steps[e].frame_hash),
-                                steps[e].start,
-                                steps[e].resume,
-                                steps[e].destroy
-                            }
+                            {llvm::ConstantInt::get(i32, steps[e].frame_size),
+                             llvm::ConstantInt::get(i32, steps[e].frame_align),
+                             llvm::ConstantInt::get(i64, steps[e].frame_hash),
+                             steps[e].start,
+                             steps[e].resume,
+                             steps[e].destroy}
                         ),
                         "_lfd_step"
                     );
@@ -1458,13 +1399,13 @@ namespace lux::flowforge
                         makeCStr(m, function.name, "_lfd_fnname"),
                         llvm::ConstantInt::get(i64, events[e].authored_symbol),
                         args_ptr,
-                        llvm::ConstantInt::get(
-                            i32, static_cast<uint32_t>(params.size())),
-                        null_ptr,                          // no returns today
+                        llvm::ConstantInt::get(i32, static_cast<uint32_t>(params.size())),
+                        null_ptr, // no returns today
                         llvm::ConstantInt::get(i32, 0),
                         wrappers[e],
                         step_pointer,
-                    }));
+                    }
+                ));
             }
 
             llvm::SmallVector<llvm::Constant*, 8> ability_descriptions;
@@ -1479,20 +1420,18 @@ namespace lux::flowforge
                 auto* results = emitTypeArray(node.results(), "_lfd_ability_results");
                 ability_descriptions.push_back(llvm::ConstantStruct::get(
                     ability_import_ty,
-                    {
-                        makeCStr(m, node.contract().name(), "_lfd_ability_contract"),
-                        llvm::ConstantInt::get(i64, node.contract().hash()),
-                        makeCStr(m, node.method().name(), "_lfd_ability_method"),
-                        llvm::ConstantInt::get(i64, node.method().hash()),
-                        llvm::ConstantInt::get(i64, node.expectedSchemaHash()),
-                        llvm::ConstantInt::get(i32, node.expectedSchemaVersion()),
-                        llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(node.methodKind())),
-                        pad3_zero,
-                        args,
-                        llvm::ConstantInt::get(i32, node.parameters().size()),
-                        results,
-                        llvm::ConstantInt::get(i32, node.results().size())
-                    }
+                    {makeCStr(m, node.contract().name(), "_lfd_ability_contract"),
+                     llvm::ConstantInt::get(i64, node.contract().hash()),
+                     makeCStr(m, node.method().name(), "_lfd_ability_method"),
+                     llvm::ConstantInt::get(i64, node.method().hash()),
+                     llvm::ConstantInt::get(i64, node.expectedSchemaHash()),
+                     llvm::ConstantInt::get(i32, node.expectedSchemaVersion()),
+                     llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(node.methodKind())),
+                     pad3_zero,
+                     args,
+                     llvm::ConstantInt::get(i32, node.parameters().size()),
+                     results,
+                     llvm::ConstantInt::get(i32, node.results().size())}
                 ));
             }
             llvm::Constant* ability_imports_ptr = null_ptr;
@@ -1510,16 +1449,23 @@ namespace lux::flowforge
             }
 
             llvm::Constant* fns_ptr = null_ptr;
-            if (!fn_descs.empty()) {
+            if (!fn_descs.empty())
+            {
                 auto* fns_ty = llvm::ArrayType::get(func_desc_ty, fn_descs.size());
                 fns_ptr = new llvm::GlobalVariable(
-                    m, fns_ty, /*isConstant=*/true,
+                    m,
+                    fns_ty,
+                    /*isConstant=*/true,
                     llvm::GlobalValue::PrivateLinkage,
-                    llvm::ConstantArray::get(fns_ty, fn_descs), "_lfd_functions");
+                    llvm::ConstantArray::get(fns_ty, fn_descs),
+                    "_lfd_functions"
+                );
             }
 
             auto* desc = new llvm::GlobalVariable(
-                m, module_desc_ty, /*isConstant=*/true,
+                m,
+                module_desc_ty,
+                /*isConstant=*/true,
                 llvm::GlobalValue::PrivateLinkage,
                 llvm::ConstantStruct::get(
                     module_desc_ty,
@@ -1531,20 +1477,20 @@ namespace lux::flowforge
                         llvm::ConstantInt::get(i32, state_size),
                         llvm::ConstantInt::get(i32, state_align),
                         fns_ptr,
-                        llvm::ConstantInt::get(
-                            i32, static_cast<uint32_t>(fn_descs.size())),
+                        llvm::ConstantInt::get(i32, static_cast<uint32_t>(fn_descs.size())),
                         llvm::ConstantInt::get(i32, 0),
                         ability_imports_ptr,
                         llvm::ConstantInt::get(i32, ability_descriptions.size()),
                         llvm::ConstantInt::get(i32, 0),
-                    }),
-                "_lfd_module");
+                    }
+                ),
+                "_lfd_module"
+            );
 
             // const lux_script_module_desc* lux_script_get_module(void)
             auto* get_ft = llvm::FunctionType::get(ptr_ty, {}, false);
-            auto* get_fn = llvm::Function::Create(
-                get_ft, llvm::GlobalValue::ExternalLinkage,
-                LUX_SCRIPT_MODULE_ENTRY, m);
+            auto* get_fn =
+                llvm::Function::Create(get_ft, llvm::GlobalValue::ExternalLinkage, LUX_SCRIPT_MODULE_ENTRY, m);
             auto* bb = llvm::BasicBlock::Create(ctx, "entry", get_fn);
             llvm::IRBuilder<> b(bb);
             b.CreateRet(desc);
@@ -1555,8 +1501,7 @@ namespace lux::flowforge
         {
             if (!options.linker.empty())
                 return options.linker.string();
-            if (const char* env = std::getenv("LUX_FLOWFORGE_LINKER");
-                env && *env)
+            if (const char* env = std::getenv("LUX_FLOWFORGE_LINKER"); env && *env)
                 return env;
 #ifdef LUX_FLOWFORGE_LLD_LINK
             if (llvm::sys::fs::exists(LUX_FLOWFORGE_LLD_LINK))
@@ -1580,7 +1525,8 @@ namespace lux::flowforge
     )
     {
         const auto fail = [&](std::string msg) {
-            if (error_out) *error_out = std::move(msg);
+            if (error_out)
+                *error_out = std::move(msg);
             return false;
         };
 
@@ -1616,11 +1562,7 @@ namespace lux::flowforge
                 }
                 function.args.push_back(std::move(*projected));
             }
-            events.push_back(EventInfo{
-                event,
-                FlowScriptInstance::eventSymbol(event->name()),
-                exported.symbol
-            });
+            events.push_back(EventInfo{event, FlowScriptInstance::eventSymbol(event->name()), exported.symbol});
             artifact_out.exports.push_back(std::move(function));
         }
 
@@ -1636,9 +1578,9 @@ namespace lux::flowforge
         if (!lowered)
             return fail("compile failed: " + lowered.error().message);
 
-        artifact_out.state_size     = ir->impl().state_size;
-        artifact_out.state_hash     = ir->impl().state_hash;
-        artifact_out.state_align    = ir->impl().state_align;
+        artifact_out.state_size = ir->impl().state_size;
+        artifact_out.state_hash = ir->impl().state_hash;
+        artifact_out.state_align = ir->impl().state_align;
         artifact_out.state_defaults = ir->impl().state_defaults;
 
         mlir::ModuleOp module = ir->impl().top_module.get();
@@ -1647,8 +1589,7 @@ namespace lux::flowforge
         mlir::registerLLVMDialectTranslation(*mlir_ctx);
 
         llvm::LLVMContext llctx;
-        auto llmod = mlir::translateModuleToLLVMIR(module, llctx,
-                                                   options.module_name);
+        auto llmod = mlir::translateModuleToLLVMIR(module, llctx, options.module_name);
         if (!llmod)
             return fail("MLIR -> LLVM IR translation failed");
 
@@ -1658,13 +1599,12 @@ namespace lux::flowforge
         llvm::InitializeNativeTargetAsmPrinter();
         const std::string triple_str = llvm::sys::getDefaultTargetTriple();
         std::string lookup_err;
-        const llvm::Target* target =
-            llvm::TargetRegistry::lookupTarget(triple_str, lookup_err);
+        const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple_str, lookup_err);
         if (!target)
             return fail("no LLVM target for '" + triple_str + "': " + lookup_err);
-        std::unique_ptr<llvm::TargetMachine> tm(target->createTargetMachine(
-            triple_str, "generic", "", llvm::TargetOptions{},
-            llvm::Reloc::PIC_));
+        std::unique_ptr<llvm::TargetMachine> tm(
+            target->createTargetMachine(triple_str, "generic", "", llvm::TargetOptions{}, llvm::Reloc::PIC_)
+        );
         if (!tm)
             return fail("createTargetMachine failed");
         llmod->setTargetTriple(triple_str);
@@ -1690,29 +1630,38 @@ namespace lux::flowforge
             std::string err;
             if (!rewriteImportsToSlots(*llmod, artifact_out.imports, err))
                 return fail(std::move(err));
-            if (llvm::Function* bind =
-                    llmod->getFunction(LUX_SCRIPT_BIND_HOST_ENTRY))
+            if (llvm::Function* bind = llmod->getFunction(LUX_SCRIPT_BIND_HOST_ENTRY))
                 exportSymbol(bind, triple);
         }
 
         // 4. Event wrappers.
         std::vector<llvm::Function*> wrappers;
         wrappers.reserve(events.size());
-        for (const EventInfo& ev : events) {
+        for (const EventInfo& ev : events)
+        {
             std::string err;
             llvm::Function* w = emitEventWrapper(*llmod, ev, err);
-            if (!w) return fail(std::move(err));
+            if (!w)
+                return fail(std::move(err));
             wrappers.push_back(w);
         }
 
         // 5. Module descriptor + entry.
         {
             std::string err;
-            if (!emitModuleDesc(*llmod, options.module_name, events, ability_imports, steps,
-                                artifact_out.exports, wrappers,
-                                artifact_out.state_hash,
-                                static_cast<uint32_t>(artifact_out.state_size),
-                                artifact_out.state_align, err))
+            if (!emitModuleDesc(
+                    *llmod,
+                    options.module_name,
+                    events,
+                    ability_imports,
+                    steps,
+                    artifact_out.exports,
+                    wrappers,
+                    artifact_out.state_hash,
+                    static_cast<uint32_t>(artifact_out.state_size),
+                    artifact_out.state_align,
+                    err
+                ))
                 return fail(std::move(err));
             exportSymbol(llmod->getFunction(LUX_SCRIPT_MODULE_ENTRY), triple);
         }
@@ -1726,9 +1675,13 @@ namespace lux::flowforge
         {
             auto* i32 = llvm::Type::getInt32Ty(llctx);
             new llvm::GlobalVariable(
-                *llmod, i32, /*isConstant=*/true,
+                *llmod,
+                i32,
+                /*isConstant=*/true,
                 llvm::GlobalValue::ExternalLinkage,
-                llvm::ConstantInt::get(i32, 0), "_fltused");
+                llvm::ConstantInt::get(i32, 0),
+                "_fltused"
+            );
         }
 
         {
@@ -1743,14 +1696,14 @@ namespace lux::flowforge
         {
             llvm::raw_svector_ostream os(obj);
             llvm::legacy::PassManager pm;
-            if (tm->addPassesToEmitFile(pm, os, nullptr,
-                                        llvm::CodeGenFileType::ObjectFile))
+            if (tm->addPassesToEmitFile(pm, os, nullptr, llvm::CodeGenFileType::ObjectFile))
                 return fail("target cannot emit object files");
             pm.run(*llmod);
         }
         artifact_out.object.assign(
             reinterpret_cast<const std::byte*>(obj.data()),
-            reinterpret_cast<const std::byte*>(obj.data() + obj.size()));
+            reinterpret_cast<const std::byte*>(obj.data() + obj.size())
+        );
         if (artifact_out.object.empty())
             return fail("object emission produced no bytes");
         return true;
@@ -1764,7 +1717,8 @@ namespace lux::flowforge
     )
     {
         const auto fail = [&](std::string msg) {
-            if (error_out) *error_out = std::move(msg);
+            if (error_out)
+                *error_out = std::move(msg);
             return false;
         };
         if (artifact.object.empty())
@@ -1775,8 +1729,7 @@ namespace lux::flowforge
             return fail("no linker found (set LUX_FLOWFORGE_LINKER or put "
                         "lld-link / link on PATH)");
         const bool msvc_style =
-            linker.find("lld-link") != std::string::npos
-            || linker.find("link") != std::string::npos;
+            linker.find("lld-link") != std::string::npos || linker.find("link") != std::string::npos;
         if (!msvc_style)
             return fail("unsupported linker flavor: " + linker);
 
@@ -1788,8 +1741,10 @@ namespace lux::flowforge
             std::ofstream os(obj_path, std::ios::binary | std::ios::trunc);
             if (!os)
                 return fail("cannot write " + obj_path.string());
-            os.write(reinterpret_cast<const char*>(artifact.object.data()),
-                     static_cast<std::streamsize>(artifact.object.size()));
+            os.write(
+                reinterpret_cast<const char*>(artifact.object.data()),
+                static_cast<std::streamsize>(artifact.object.size())
+            );
         }
 
         // Generated code is freestanding (no CRT): imports come through
@@ -1797,23 +1752,21 @@ namespace lux::flowforge
         // default runtime library.
         const std::string out_arg = "/OUT:" + out_dll.string();
         const std::string obj_arg = obj_path.string();
-        llvm::SmallVector<llvm::StringRef, 8> args{
-            linker,
-            "/DLL",
-            "/NOENTRY",
-            "/NODEFAULTLIB",
-            "/Brepro",
-            out_arg,
-            obj_arg
-        };
+        llvm::SmallVector<llvm::StringRef, 8>
+            args{linker, "/DLL", "/NOENTRY", "/NODEFAULTLIB", "/Brepro", out_arg, obj_arg};
 
         std::string exec_err;
         const int rc = llvm::sys::ExecuteAndWait(
-            linker, args, /*Env=*/std::nullopt, /*Redirects=*/{},
-            /*SecondsToWait=*/120, /*MemoryLimit=*/0, &exec_err);
+            linker,
+            args,
+            /*Env=*/std::nullopt,
+            /*Redirects=*/{},
+            /*SecondsToWait=*/120,
+            /*MemoryLimit=*/0,
+            &exec_err
+        );
         if (rc != 0)
-            return fail("linker failed (rc=" + std::to_string(rc) + ") "
-                        + exec_err + " [" + linker + "]");
+            return fail("linker failed (rc=" + std::to_string(rc) + ") " + exec_err + " [" + linker + "]");
         if (!std::filesystem::exists(out_dll))
             return fail("linker reported success but produced no output");
         return true;
@@ -1858,10 +1811,7 @@ namespace lux::flowforge
                 {
                     code = EFlowForgeError::UNSUPPORTED_COROUTINE_CONTROL_FLOW;
                 }
-                return lux::cxx::unexpected(FlowForgeFailure{
-                    .code = code,
-                    .message = std::move(message)
-                });
+                return lux::cxx::unexpected(FlowForgeFailure{.code = code, .message = std::move(message)});
             }
             return artifact;
         }
@@ -1886,10 +1836,9 @@ namespace lux::flowforge
             std::string message;
             if (!linkSharedLibraryImpl(artifact, out_dll, options, &message))
             {
-                return lux::cxx::unexpected(FlowForgeFailure{
-                    .code = EFlowForgeError::LINK_FAILED,
-                    .message = std::move(message)
-                });
+                return lux::cxx::unexpected(
+                    FlowForgeFailure{.code = EFlowForgeError::LINK_FAILED, .message = std::move(message)}
+                );
             }
             return {};
         }

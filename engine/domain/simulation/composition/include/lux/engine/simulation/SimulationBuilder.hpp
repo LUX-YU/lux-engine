@@ -268,7 +268,10 @@ namespace lux::simulation
         ) noexcept;
 
         [[nodiscard]] void* findErased(lux::system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept;
-        [[nodiscard]] void* findInstalledErased(lux::system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept;
+        [[nodiscard]] void* findInstalledErased(
+            lux::system::SystemInstanceId instance,
+            lux::cxx::TypeToken type
+        ) noexcept;
 
         template <SimulationSystem Type>
         [[nodiscard]] Type* findInstalledExact(lux::system::SystemInstanceId instance) noexcept

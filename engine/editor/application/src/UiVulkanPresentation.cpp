@@ -104,7 +104,8 @@ namespace lux::editor::application::detail
             VkImageLayout final_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             if (binding.layout != nullptr)
             {
-                const auto& description = binding.layout->slots[static_cast<std::size_t>(render::TargetSlot::SCENE_COLOR)];
+                const auto& description =
+                    binding.layout->slots[static_cast<std::size_t>(render::TargetSlot::SCENE_COLOR)];
                 if (description)
                     final_layout = render::toVkImageLayout(description->final_state);
             }

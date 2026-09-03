@@ -283,7 +283,8 @@ namespace lux::simulation::script
                     const lux::script::ScriptAbilityErasedMethodBinding* method{};
                     for (const auto& candidate : capability->methods)
                     {
-                        if (candidate.method.hash() == import.method_id && candidate.method.name() == import.method_name)
+                        if (candidate.method.hash() == import.method_id &&
+                            candidate.method.name() == import.method_name)
                         {
                             method = std::addressof(candidate);
                             break;
@@ -372,7 +373,8 @@ namespace lux::simulation::script
                 return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
             }
             const auto& prepared = adapter.call->instance->abilities[ordinal];
-            if (prepared.method == nullptr || prepared.method->kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION ||
+            if (prepared.method == nullptr ||
+                prepared.method->kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION ||
                 prepared.method->start == nullptr || prepared.method->results.size() > 1U)
             {
                 return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
@@ -439,8 +441,8 @@ namespace lux::simulation::script
 
         static void destroyNativeContinuation(NativeContinuation& continuation) noexcept
         {
-            if (continuation.frame == nullptr || continuation.call == nullptr || continuation.call->function == nullptr ||
-                continuation.call->function->step == nullptr)
+            if (continuation.frame == nullptr || continuation.call == nullptr ||
+                continuation.call->function == nullptr || continuation.call->function->step == nullptr)
             {
                 return;
             }

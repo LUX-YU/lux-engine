@@ -36,7 +36,8 @@
 
 using namespace mlir;
 
-class A {
+class A
+{
 public:
     int a;
     std::string b;
@@ -45,13 +46,14 @@ public:
 static void printCurrentTime()
 {
     auto current_time = std::chrono::high_resolution_clock::now().time_since_epoch();
-    auto nano_second  = std::chrono::duration_cast<std::chrono::microseconds>(current_time).count();
+    auto nano_second = std::chrono::duration_cast<std::chrono::microseconds>(current_time).count();
 
     std::cout << nano_second << std::endl;
 }
 
 // Utility: create Module containing `@add` declaration and `@main` body.
-extern "C" A* create_A() {
+extern "C" A* create_A()
+{
     auto* p = new A;
     p->a = 777;
     p->b = "created in factory()";
@@ -59,18 +61,20 @@ extern "C" A* create_A() {
     return p;
 }
 
-extern "C" void destroy_A(A* p) {
+extern "C" void destroy_A(A* p)
+{
     std::cout << "[native destroy_A] delete A @" << p << '\n';
     delete p;
 }
 
-extern "C" void test_func_with_cpparg(A* arg) {
+extern "C" void test_func_with_cpparg(A* arg)
+{
     std::cout << "test_func_with_cpparg" << std::endl;
-    std::cout << "[native test] A.a = " << arg->a
-        << ", A.b = " << arg->b << '\n';
+    std::cout << "[native test] A.a = " << arg->a << ", A.b = " << arg->b << '\n';
 }
 
-extern "C" int add(int x, int y) {
+extern "C" int add(int x, int y)
+{
     printCurrentTime();
     std::cout << "[native add] " << x << " + " << y << " = " << (x + y) << '\n';
     return x + y;
@@ -79,7 +83,8 @@ extern "C" int add(int x, int y) {
 // ──────────────────────────────
 // Build the MLIR module
 // ──────────────────────────────
-static ModuleOp createTestModule(MLIRContext& ctx) {
+static ModuleOp createTestModule(MLIRContext& ctx)
+{
     ctx.getOrLoadDialect<func::FuncDialect>();
     ctx.getOrLoadDialect<arith::ArithDialect>();
     ctx.getOrLoadDialect<LLVM::LLVMDialect>();
@@ -93,21 +98,21 @@ static ModuleOp createTestModule(MLIRContext& ctx) {
     auto ptrA = LLVM::LLVMPointerType::get(&ctx);
 
     // --- External declarations --------------------------------------------------
-    auto addDecl = func::FuncOp::create(b.getUnknownLoc(), "add", b.getFunctionType({ i32,i32 }, { i32 }));
+    auto addDecl = func::FuncOp::create(b.getUnknownLoc(), "add", b.getFunctionType({i32, i32}, {i32}));
     module.push_back(addDecl);
 
-    auto testDecl = func::FuncOp::create(b.getUnknownLoc(), "test_func_with_cpparg", b.getFunctionType({ ptrA }, {}));
+    auto testDecl = func::FuncOp::create(b.getUnknownLoc(), "test_func_with_cpparg", b.getFunctionType({ptrA}, {}));
     module.push_back(testDecl);
 
-    auto createDecl = func::FuncOp::create(b.getUnknownLoc(), "create_A", b.getFunctionType({}, { ptrA }));
+    auto createDecl = func::FuncOp::create(b.getUnknownLoc(), "create_A", b.getFunctionType({}, {ptrA}));
     module.push_back(createDecl);
 
-    auto destroyDecl = func::FuncOp::create(b.getUnknownLoc(), "destroy_A", b.getFunctionType({ ptrA }, {}));
+    auto destroyDecl = func::FuncOp::create(b.getUnknownLoc(), "destroy_A", b.getFunctionType({ptrA}, {}));
     module.push_back(destroyDecl);
     // --------------------------------------------------------------
 
     // --- @main(): entry point -------------------------------------------
-    auto mainFunc = func::FuncOp::create(b.getUnknownLoc(), "main", b.getFunctionType({}, { i32 }));
+    auto mainFunc = func::FuncOp::create(b.getUnknownLoc(), "main", b.getFunctionType({}, {i32}));
     mainFunc->setAttr("llvm.emit_c_interface", UnitAttr::get(&ctx));
 
     {
@@ -117,21 +122,21 @@ static ModuleOp createTestModule(MLIRContext& ctx) {
         // add(5,7)
         auto c5 = b.create<arith::ConstantIntOp>(b.getUnknownLoc(), 5, 32);
         auto c7 = b.create<arith::ConstantIntOp>(b.getUnknownLoc(), 7, 32);
-        auto call = b.create<func::CallOp>(b.getUnknownLoc(), addDecl, ValueRange{ c5, c7 });
+        auto call = b.create<func::CallOp>(b.getUnknownLoc(), addDecl, ValueRange{c5, c7});
 
         // A* p = create_A()
         auto pA = b.create<func::CallOp>(b.getUnknownLoc(), createDecl, ValueRange{}).getResult(0);
 
         // test_func_with_cpparg(p)
-        b.create<func::CallOp>(b.getUnknownLoc(), testDecl, ValueRange{ pA });
+        b.create<func::CallOp>(b.getUnknownLoc(), testDecl, ValueRange{pA});
 
         // destroy_A(p)
-        b.create<func::CallOp>(b.getUnknownLoc(), destroyDecl, ValueRange{ pA });
-        
+        b.create<func::CallOp>(b.getUnknownLoc(), destroyDecl, ValueRange{pA});
+
         // return 0
         // auto c0 = b.create<arith::ConstantIntOp>(b.getUnknownLoc(), 0, 32);
         auto ret = b.create<arith::ConstantIntOp>(b.getUnknownLoc(), 7, 32);
-        b.create<func::ReturnOp>(b.getUnknownLoc(), ValueRange{ ret });
+        b.create<func::ReturnOp>(b.getUnknownLoc(), ValueRange{ret});
     }
     module.push_back(mainFunc);
     // --------------------------------------------------------------
@@ -139,22 +144,23 @@ static ModuleOp createTestModule(MLIRContext& ctx) {
     return module;
 }
 
-
-int main(int argc, char **argv) {
+int main(int argc, char** argv)
+{
     llvm::InitLLVM x(argc, argv);
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
 
     // 1. Build IR module.line
     mlir::MLIRContext ctx;
-    mlir::registerLLVMDialectTranslation(ctx);        // enable LLVM lowering
+    mlir::registerLLVMDialectTranslation(ctx); // enable LLVM lowering
     mlir::registerBuiltinDialectTranslation(ctx);
     auto module = createTestModule(ctx);
 
     // 2. Run lowering passes.
     mlir::PassManager pm(&ctx);
     pm.addPass(mlir::createConvertFuncToLLVMPass());
-    if (mlir::failed(pm.run(module))) {
+    if (mlir::failed(pm.run(module)))
+    {
         std::cerr << "PassManager failed\n";
         return 1;
     }
@@ -169,40 +175,37 @@ int main(int argc, char **argv) {
     llvm::Expected<std::unique_ptr<mlir::ExecutionEngine>> maybeEngine =
         mlir::ExecutionEngine::create(module); // Use simpler overload
 
-    if (!maybeEngine) {
+    if (!maybeEngine)
+    {
         module.dump();
-        llvm::errs() << "Failed to create ExecutionEngine: "
-                     << llvm::toString(maybeEngine.takeError()) << "\n";
+        llvm::errs() << "Failed to create ExecutionEngine: " << llvm::toString(maybeEngine.takeError()) << "\n";
         return 1;
     }
-    auto &engine = *maybeEngine;
+    auto& engine = *maybeEngine;
 
     // 4. Register native symbol `add` using registerSymbols
-    engine->registerSymbols(
-        [&](llvm::orc::MangleAndInterner mangle) {
-            using llvm::orc::ExecutorAddr;
-            using llvm::orc::ExecutorSymbolDef;
-            using llvm::JITSymbolFlags;
-            llvm::orc::SymbolMap map;
+    engine->registerSymbols([&](llvm::orc::MangleAndInterner mangle) {
+        using llvm::orc::ExecutorAddr;
+        using llvm::orc::ExecutorSymbolDef;
+        using llvm::JITSymbolFlags;
+        llvm::orc::SymbolMap map;
 
-            auto ins = [&](const char* name, void* addr) {
-                map[mangle(name)] =
-                    ExecutorSymbolDef{ ExecutorAddr::fromPtr(addr), JITSymbolFlags::Exported };
-                };
-            ins("add", (void*)&add);
-            ins("create_A", (void*)&create_A);
-            ins("destroy_A", (void*)&destroy_A);
-            ins("test_func_with_cpparg", (void*)&test_func_with_cpparg);
-            return map;
-        }
-    );
-
+        auto ins = [&](const char* name, void* addr) {
+            map[mangle(name)] = ExecutorSymbolDef{ExecutorAddr::fromPtr(addr), JITSymbolFlags::Exported};
+        };
+        ins("add", (void*)&add);
+        ins("create_A", (void*)&create_A);
+        ins("destroy_A", (void*)&destroy_A);
+        ins("test_func_with_cpparg", (void*)&test_func_with_cpparg);
+        return map;
+    });
 
     // 5. Invoke.
     int32_t result = 0;
     printCurrentTime();
     llvm::Error invocationResult = engine->invoke("main", result);
-    if (invocationResult) {
+    if (invocationResult)
+    {
         llvm::errs() << "JIT invocation failed: " << llvm::toString(std::move(invocationResult)) << "\n";
         return 1;
     }

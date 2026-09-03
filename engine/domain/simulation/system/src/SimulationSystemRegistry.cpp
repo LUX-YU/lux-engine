@@ -137,7 +137,8 @@ namespace lux::simulation
         }
     }
 
-    const SimulationSystemRegistration* SimulationSystemRegistry::find(const lux::system::SystemTypeId& type) const noexcept
+    const SimulationSystemRegistration* SimulationSystemRegistry::find(const lux::system::SystemTypeId& type
+    ) const noexcept
     {
         if (!impl_ || !type.valid())
             return nullptr;

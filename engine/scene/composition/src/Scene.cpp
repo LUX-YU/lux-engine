@@ -261,7 +261,8 @@ namespace lux::scene
                     {
                         for (const auto& provider : info.providers)
                         {
-                            if (provider.capability != requirement.capability || provider.type != requirement.expected_type)
+                            if (provider.capability != requirement.capability ||
+                                provider.type != requirement.expected_type)
                             {
                                 continue;
                             }
@@ -368,7 +369,8 @@ namespace lux::scene
                     };
                     const auto [sender, sender_class] = endpoint(connection.signal);
                     const auto [receiver, receiver_class] = endpoint(connection.method);
-                    if (sender == nullptr || receiver == nullptr || sender_class == nullptr || receiver_class == nullptr)
+                    if (sender == nullptr || receiver == nullptr || sender_class == nullptr ||
+                        receiver_class == nullptr)
                     {
                         return lux::cxx::unexpected(systemFailure({
                             ESceneSystemBuildError::CONNECTION_FAILURE,
@@ -449,17 +451,19 @@ namespace lux::scene
 
     void* Scene::findSceneSystemErased(lux::cxx::TypeToken type) noexcept
     {
-        const auto found = std::find_if(impl_->systems.begin(), impl_->systems.end(), [type](const auto& record) noexcept {
-            return record.type == type;
-        });
+        const auto found =
+            std::find_if(impl_->systems.begin(), impl_->systems.end(), [type](const auto& record) noexcept {
+                return record.type == type;
+            });
         return found != impl_->systems.end() ? found->object : nullptr;
     }
 
     const void* Scene::findSceneSystemErased(lux::cxx::TypeToken type) const noexcept
     {
-        const auto found = std::find_if(impl_->systems.begin(), impl_->systems.end(), [type](const auto& record) noexcept {
-            return record.type == type;
-        });
+        const auto found =
+            std::find_if(impl_->systems.begin(), impl_->systems.end(), [type](const auto& record) noexcept {
+                return record.type == type;
+            });
         return found != impl_->systems.end() ? found->object : nullptr;
     }
 

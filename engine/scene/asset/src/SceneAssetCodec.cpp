@@ -84,7 +84,12 @@ namespace lux::scene
             }
         }
 
-        [[nodiscard]] bool addCharge(std::size_t count, std::size_t item, std::size_t limit, std::size_t& total) noexcept
+        [[nodiscard]] bool addCharge(
+            std::size_t count,
+            std::size_t item,
+            std::size_t limit,
+            std::size_t& total
+        ) noexcept
         {
             if (count != 0U && item > std::numeric_limits<std::size_t>::max() / count)
             {

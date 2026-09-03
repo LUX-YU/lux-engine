@@ -168,7 +168,8 @@ namespace lux::scene
                 for (const auto live_name : order.order)
                 {
                     const auto* descriptor = runtime_lease->features().descriptor(live_name);
-                    const auto* meta = descriptor != nullptr ? builder.meta().getRenderFeatureMeta(descriptor->type) : nullptr;
+                    const auto* meta =
+                        descriptor != nullptr ? builder.meta().getRenderFeatureMeta(descriptor->type) : nullptr;
                     const bool invalid_meta = meta == nullptr || !meta->scene_configurable ||
                         meta->registration == nullptr || !meta->registration->configuration.valid();
                     if (invalid_meta)

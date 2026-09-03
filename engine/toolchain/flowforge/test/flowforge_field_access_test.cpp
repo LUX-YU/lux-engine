@@ -41,14 +41,15 @@ static int g_failed = 0;
 static void check(bool ok, const char* what)
 {
     std::printf("[%s] %s\n", ok ? " ok " : "FAIL", what);
-    if (!ok) ++g_failed;
+    if (!ok)
+        ++g_failed;
 }
 
 // ---- the host object type, reflected by hand --------------------------------
 struct TestActor
 {
-    float   x{ 0.0f };
-    int32_t hits{ 0 };
+    float x{0.0f};
+    int32_t hits{0};
 };
 
 static lux::meta::RefClass& testActorClass()
@@ -57,18 +58,24 @@ static lux::meta::RefClass& testActorClass()
     // points at the STATIC instance, never a dead local.
     static lux::meta::RefClass cls;
     static const bool init = [] {
-        cls.name      = "TestActor";
+        cls.name = "TestActor";
         cls.full_name = "TestActor";
-        cls.hash      = lux::cxx::type_hash<TestActor>();
-        cls.type      = lux::meta::ref_type_of_v<TestActor>;
+        cls.hash = lux::cxx::type_hash<TestActor>();
+        cls.type = lux::meta::ref_type_of_v<TestActor>;
         cls.fields.push_back(lux::meta::RefField{
-            "x", lux::meta::ref_type_of_v<float>,
-            lux::meta::EVisibility::Public, &cls,
-            static_cast<std::uint32_t>(offsetof(TestActor, x)) });
+            "x",
+            lux::meta::ref_type_of_v<float>,
+            lux::meta::EVisibility::Public,
+            &cls,
+            static_cast<std::uint32_t>(offsetof(TestActor, x))
+        });
         cls.fields.push_back(lux::meta::RefField{
-            "hits", lux::meta::ref_type_of_v<int32_t>,
-            lux::meta::EVisibility::Public, &cls,
-            static_cast<std::uint32_t>(offsetof(TestActor, hits)) });
+            "hits",
+            lux::meta::ref_type_of_v<int32_t>,
+            lux::meta::EVisibility::Public,
+            &cls,
+            static_cast<std::uint32_t>(offsetof(TestActor, hits))
+        });
         return true;
     }();
     (void)init;
@@ -77,28 +84,27 @@ static lux::meta::RefClass& testActorClass()
 
 int main(int argc, char** argv)
 {
-    llvm::InitLLVM init_llvm(argc, argv);   // stack traces on crash
-    lux::meta::meta_module_init();          // FlowScriptInstance walks the reflection registry
+    llvm::InitLLVM init_llvm(argc, argv); // stack traces on crash
+    lux::meta::meta_module_init();        // FlowScriptInstance walks the reflection registry
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     std::printf("FlowForge field access test\n===========================\n");
 
     auto& cls = testActorClass();
-    const auto& field_x    = cls.fields[0];
+    const auto& field_x = cls.fields[0];
     const auto& field_hits = cls.fields[1];
     const auto* f32 = &lux::meta::ref_type_of_v<float>;
     const auto* i32 = &lux::meta::ref_type_of_v<int32_t>;
 
     FlowGraph graph;
-    auto tick = std::make_unique<OnEventNode>(
-        "Tick", std::vector<FuncArgInfo>{ { &cls.type, "actor" } });
+    auto tick = std::make_unique<OnEventNode>("Tick", std::vector<FuncArgInfo>{{&cls.type, "actor"}});
 
-    auto get_x   = std::make_unique<GetFieldNode>(cls, field_x);
-    auto set_x   = std::make_unique<SetFieldNode>(cls, field_x);
-    auto add_x   = std::make_unique<BinaryOpNode>(ENodeOperation::ADD, f32);
-    auto get_h   = std::make_unique<GetFieldNode>(cls, field_hits);
-    auto set_h   = std::make_unique<SetFieldNode>(cls, field_hits);
-    auto add_h   = std::make_unique<BinaryOpNode>(ENodeOperation::ADD, i32);
+    auto get_x = std::make_unique<GetFieldNode>(cls, field_x);
+    auto set_x = std::make_unique<SetFieldNode>(cls, field_x);
+    auto add_x = std::make_unique<BinaryOpNode>(ENodeOperation::ADD, f32);
+    auto get_h = std::make_unique<GetFieldNode>(cls, field_hits);
+    auto set_h = std::make_unique<SetFieldNode>(cls, field_hits);
+    auto add_h = std::make_unique<BinaryOpNode>(ENodeOperation::ADD, i32);
 
     const_cast<DataInPin&>(add_x->rhs()).setConstantData(lux::meta::RuntimeObject(float{1.5f}));
     const_cast<DataInPin&>(add_h->rhs()).setConstantData(lux::meta::RuntimeObject(int32_t{1}));
@@ -132,26 +138,28 @@ int main(int argc, char** argv)
     std::string err;
     auto script = FlowScriptInstance::compile(*ctx, graph, {}, &err);
     check(script != nullptr, ("compile succeeded: " + err).c_str());
-    if (!script) return 1;
+    if (!script)
+        return 1;
 
-    check(script->hasEvent("Tick"),  "event table lists Tick");
+    check(script->hasEvent("Tick"), "event table lists Tick");
     check(!script->hasEvent("Nope"), "unknown event is not listed");
 
     TestActor actor{};
     TestActor* actor_ptr = &actor;
-    void* args[] = { &actor_ptr };
+    void* args[] = {&actor_ptr};
 
     for (int i = 0; i < 3; ++i)
         check(script->invoke("Tick", args, &err), ("Tick invoke: " + err).c_str());
 
     std::printf("  actor.x = %.2f, actor.hits = %d\n", actor.x, actor.hits);
     check(std::fabs(actor.x - 4.5f) < 1e-6f, "x advanced by 1.5 per tick (4.5)");
-    check(actor.hits == 3,                   "hits counted every invoke (3)");
+    check(actor.hits == 3, "hits counted every invoke (3)");
 
     // argument-count mismatch is rejected, not UB
     check(!script->invoke("Tick", {}, &err), "wrong arg count rejected");
 
-    if (g_failed != 0) {
+    if (g_failed != 0)
+    {
         std::printf("flowforge_field_access_test: %d check(s) FAILED\n", g_failed);
         return 1;
     }

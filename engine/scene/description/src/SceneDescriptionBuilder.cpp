@@ -228,9 +228,10 @@ namespace lux::scene
         std::string_view requirement
     ) noexcept
     {
-        const auto found = std::find_if(impl_->bindings.begin(), impl_->bindings.end(), [&](const auto& binding) noexcept {
-            return binding.system == system && binding.requirement == requirement;
-        });
+        const auto found =
+            std::find_if(impl_->bindings.begin(), impl_->bindings.end(), [&](const auto& binding) noexcept {
+                return binding.system == system && binding.requirement == requirement;
+            });
         if (found == impl_->bindings.end())
         {
             return lux::cxx::unexpected(failure(ESceneDescriptionError::INVALID_REQUIREMENT, system));

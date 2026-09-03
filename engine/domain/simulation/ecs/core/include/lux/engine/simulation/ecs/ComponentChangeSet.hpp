@@ -146,7 +146,8 @@ namespace lux::simulation::ecs
 
             registry.template on_destroy<Component>().template connect<&ComponentSetLeaveObserver::onLeft>(*this);
             (registry.template on_destroy<Required>().template connect<&ComponentSetLeaveObserver::onLeft>(*this), ...);
-            (registry.template on_construct<Excluded>().template connect<&ComponentSetLeaveObserver::onLeft>(*this), ...);
+            (registry.template on_construct<Excluded>().template connect<&ComponentSetLeaveObserver::onLeft>(*this),
+             ...);
         }
 
         void detach() noexcept
@@ -156,8 +157,11 @@ namespace lux::simulation::ecs
                 return;
             }
             registry_->template on_destroy<Component>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this);
-            (registry_->template on_destroy<Required>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this), ...);
-            (registry_->template on_construct<Excluded>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this), ...);
+            (registry_->template on_destroy<Required>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this),
+             ...);
+            (registry_->template on_construct<Excluded>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this
+             ),
+             ...);
             registry_ = nullptr;
             user_ = nullptr;
             callback_ = nullptr;

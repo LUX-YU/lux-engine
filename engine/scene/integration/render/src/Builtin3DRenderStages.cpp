@@ -97,7 +97,8 @@ namespace lux::scene
         ) noexcept
         {
             render::RenderLargePosition3D position{};
-            if (!encodePosition(world.value.translation(), page_size, origin, position) || !world.value.linear().allFinite())
+            if (!encodePosition(world.value.translation(), page_size, origin, position) ||
+                !world.value.linear().allFinite())
             {
                 return false;
             }
@@ -123,7 +124,11 @@ namespace lux::scene
             const render::RenderSpatialTransform3D& right
         ) noexcept
         {
-            return std::equal(std::begin(left.basis_local), std::end(left.basis_local), std::begin(right.basis_local)) &&
+            return std::equal(
+                       std::begin(left.basis_local),
+                       std::end(left.basis_local),
+                       std::begin(right.basis_local)
+                   ) &&
                 std::equal(std::begin(left.page_delta), std::end(left.page_delta), std::begin(right.page_delta)) &&
                 left.flags == right.flags;
         }

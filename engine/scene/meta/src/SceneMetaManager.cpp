@@ -133,7 +133,9 @@ namespace lux::scene
                     !validSimulationSystemDescription(*registration.description) ||
                     !sameType(registration.type, registration.description->type) || registration.install == nullptr)
                 {
-                    return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_SIMULATION_SYSTEM, registration.type.hash));
+                    return lux::cxx::unexpected(
+                        failure(ESceneMetaError::INVALID_SIMULATION_SYSTEM, registration.type.hash)
+                    );
                 }
                 const bool has_configuration = !registration.description->type.configuration_schema_name.empty();
                 const auto* reflection = configurationReflection(registration.configuration);
@@ -172,7 +174,8 @@ namespace lux::scene
             for (std::size_t index{}; index < impl->scene_systems.size(); ++index)
             {
                 const auto& registration = impl->scene_systems[index];
-                if (!registration.type.valid() || !registration.cpp_type.isValid() || registration.description == nullptr ||
+                if (!registration.type.valid() || !registration.cpp_type.isValid() ||
+                    registration.description == nullptr ||
                     !system::validSystemTypeDescription(*registration.description) ||
                     !sameType(registration.type, *registration.description) || registration.install == nullptr)
                 {
@@ -188,7 +191,9 @@ namespace lux::scene
                     );
                     if (value.name.empty() || value.capability.empty() || !value.expected_type.isValid() || duplicate)
                     {
-                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_REQUIREMENT, registration.type.hash));
+                        return lux::cxx::unexpected(
+                            failure(ESceneMetaError::INVALID_REQUIREMENT, registration.type.hash)
+                        );
                     }
                 }
                 const meta::RefClass* object_reflection{};
@@ -196,12 +201,14 @@ namespace lux::scene
                 {
                     if (registration.project_object == nullptr)
                     {
-                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash));
+                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash)
+                        );
                     }
                     object_reflection = meta::ReflectionRegistry::instance().findClass(registration.cpp_type.name());
                     if (object_reflection == nullptr)
                     {
-                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash));
+                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash)
+                        );
                     }
                 }
                 for (const auto& connection : registration.connections)
@@ -219,7 +226,8 @@ namespace lux::scene
                          !requirement_exists(connection.method.requirement));
                     if (invalid_member || invalid_requirement)
                     {
-                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash));
+                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash)
+                        );
                     }
                     if (connection.signal.owner == ESceneConnectionOwner::SELF &&
                         !object::reflection::findSignal(
@@ -227,17 +235,20 @@ namespace lux::scene
                             *object_reflection,
                             connection.signal.member))
                     {
-                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash));
+                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash)
+                        );
                     }
                     if (connection.method.owner == ESceneConnectionOwner::SELF)
                     {
-                        const bool method_found = std::ranges::any_of(
-                            object_reflection->methods,
-                            [&](const auto& method) noexcept { return method.invokable.name == connection.method.member; }
-                        );
+                        const bool method_found =
+                            std::ranges::any_of(object_reflection->methods, [&](const auto& method) noexcept {
+                                return method.invokable.name == connection.method.member;
+                            });
                         if (!method_found)
                         {
-                            return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash));
+                            return lux::cxx::unexpected(
+                                failure(ESceneMetaError::INVALID_CONNECTION, registration.type.hash)
+                            );
                         }
                     }
                 }
@@ -311,7 +322,8 @@ namespace lux::scene
                         : ESceneMetaError::RENDER_FEATURE_TYPE_COLLISION;
                     return lux::cxx::unexpected(failure(code, registration.descriptor->type));
                 }
-                if (std::ranges::find(render_display_names, registration.descriptor->name) != render_display_names.end())
+                if (std::ranges::find(render_display_names, registration.descriptor->name) !=
+                    render_display_names.end())
                 {
                     return lux::cxx::unexpected(failure(
                         ESceneMetaError::DUPLICATE_RENDER_FEATURE,
@@ -472,7 +484,9 @@ namespace lux::scene
                 {
                     if (!observation.component.isValid())
                     {
-                        return lux::cxx::unexpected(failure(ESceneMetaError::INVALID_SCENE_SYSTEM, registration.type.hash));
+                        return lux::cxx::unexpected(
+                            failure(ESceneMetaError::INVALID_SCENE_SYSTEM, registration.type.hash)
+                        );
                     }
                     if (impl->components.find(observation.component) == nullptr)
                     {

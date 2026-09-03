@@ -15,7 +15,7 @@
 //     bind_host fills via the host resolver (same by-name model the JIT
 //     path uses, bound at load instead of at materialization);
 //   * per-instance state and prepared Ability dispatch arrive through the
-//     explicit ABI v3 native-instance context;
+//     explicit ABI v4 native-instance/Event-wait context;
 //     its size / defaults / layout hash are captured in AotArtifact so the
 //     cook step can serialize them into the script manifest.
 //

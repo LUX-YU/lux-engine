@@ -12,7 +12,7 @@
 //      every slot via resolve(ctx, "<name>") and returning the number of
 //      unresolved imports (0 = success). Only emitted when imports exist.
 //   4. Per OnEvent entry `lux_event_X(state, abilities, a0..aN)`: a call_frame
-//      wrapper pulls the explicit native instance context from the v3 frame,
+//      wrapper pulls the explicit native instance context from the v4 frame,
 //      loads each argument from args[i].data, calls the event function and
 //      returns 0. Frame/slot field offsets
 //      come from offsetof() on the REAL C structs — both sides compile
@@ -626,7 +626,7 @@ namespace lux::flowforge
             {
                 auto* marker = llvm::cast<llvm::CallInst>(value_map[awaits[await_index].call]);
                 llvm::StoreInst* result_store{};
-                if (!marker->getType()->isVoidTy())
+                if (!marker->getType()->isVoidTy() && !marker->use_empty())
                 {
                     for (auto* user : marker->users())
                     {

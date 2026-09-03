@@ -230,6 +230,14 @@ namespace lux::flowforge
                     continue;
                 const auto& node = static_cast<const ScriptEventAwaitNode&>(*storage.node);
                 const auto& expected = node.source();
+                if (!expected.valid())
+                {
+                    return lux::cxx::unexpected(FlowForgeFailure{
+                        .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
+                        .message = "the Script Event source description is invalid",
+                        .node_id = node.id().value
+                    });
+                }
                 const auto found = std::ranges::find_if(sources, [&](const auto& candidate) noexcept {
                     return candidate.system_id == expected.system_id && candidate.event_id == expected.event_id &&
                         candidate.route == expected.route;

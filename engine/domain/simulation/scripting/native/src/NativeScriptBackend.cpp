@@ -62,12 +62,14 @@ namespace lux::simulation::script
             std::size_t frame_align{1U};
             bool over_aligned{};
             std::size_t slot{(std::numeric_limits<std::size_t>::max)()};
+            const lux_script_type_desc* waiting_event_payload{};
         };
 
         struct StepAdapter final
         {
             PreparedCall* call{};
             ScriptStepContext* context{};
+            NativeContinuation* continuation{};
         };
 
         State(
@@ -394,6 +396,8 @@ namespace lux::simulation::script
             );
             if (result.state == EScriptStepState::SUSPENDED && result.valid())
             {
+                if (adapter.continuation != nullptr)
+                    adapter.continuation->waiting_event_payload = nullptr;
                 waiting_on->slot = result.waiting_on.slot;
                 waiting_on->generation = result.waiting_on.generation;
                 return 0;
@@ -428,6 +432,8 @@ namespace lux::simulation::script
             });
             if (!result)
                 return -1000 - static_cast<std::int32_t>(result.error());
+            if (adapter.continuation != nullptr)
+                adapter.continuation->waiting_event_payload = std::addressof(source.payload);
             waiting_on->slot = result->slot;
             waiting_on->generation = result->generation;
             return 0;
@@ -504,6 +510,20 @@ namespace lux::simulation::script
             {
                 return ScriptStepResult::failed(-1);
             }
+            if (packet.state == EScriptAwaitableState::READY && continuation.waiting_event_payload != nullptr)
+            {
+                const auto* actual = packet.value != nullptr && packet.value->type
+                    ? std::addressof(*packet.value->type)
+                    : nullptr;
+                const auto& expected = *continuation.waiting_event_payload;
+                const bool is_mismatch = actual == nullptr || actual->type_id != expected.type_id ||
+                    actual->canonical_name != expected.name || actual->abi_kind != expected.kind ||
+                    actual->size != expected.size || actual->alignment != expected.align ||
+                    packet.value->bytes.size() != expected.size;
+                if (is_mismatch)
+                    return ScriptStepResult::failed(-1);
+            }
+            continuation.waiting_event_payload = nullptr;
             lux_script_step_resume_packet native_packet{};
             switch (packet.state)
             {
@@ -524,7 +544,7 @@ namespace lux::simulation::script
                     const_cast<std::byte*>(packet.value->bytes.data())
                 };
             }
-            StepAdapter adapter{continuation.call, std::addressof(context)};
+            StepAdapter adapter{continuation.call, std::addressof(context), std::addressof(continuation)};
             const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility, &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = continuation.call->function->step->resume(
@@ -561,7 +581,7 @@ namespace lux::simulation::script
             void* previous_user = frame.user_context;
             frame.native_instance = std::addressof(prepared.instance->native_context);
             frame.user_context = prepared.instance->state;
-            StepAdapter adapter{std::addressof(prepared), std::addressof(context)};
+            StepAdapter adapter{std::addressof(prepared), std::addressof(context), continuation};
             const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility, &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = prepared.function->step->start(

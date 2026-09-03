@@ -41,7 +41,8 @@ namespace lux::script
         [[nodiscard]] bool valid() const noexcept
         {
             return !system_name.empty() && !event_name.empty() && system_id != 0U && event_id != 0U &&
-                !payload.canonical_name.empty() && payload.type_id != 0U && payload.abi_kind != 0U &&
+                route <= EScriptEventRoute::ENTITY_TARGETED && !payload.canonical_name.empty() &&
+                payload.type_id == lux::semantic::typeId(payload.canonical_name) && payload.abi_kind != 0U &&
                 payload.size != 0U && payload.alignment != 0U &&
                 (payload.alignment & (payload.alignment - 1U)) == 0U && payload_schema_hash != 0U &&
                 payload_schema_version != 0U;

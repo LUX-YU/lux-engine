@@ -19,6 +19,7 @@ foreach(group IN ITEMS
     scene-object-churn
     scheduler-next-step
     scheduler-simulation-delay
+    integration-real-delay
 )
     execute_process(
         COMMAND

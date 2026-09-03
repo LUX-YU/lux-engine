@@ -73,6 +73,7 @@ namespace
         EAGER_AWAIT,
         NEXT_STEP,
         SIMULATION_DELAY,
+        REAL_DELAY,
         MIXED,
     };
 
@@ -165,7 +166,8 @@ namespace
             std::string_view{"scene-resume-storm"},
             std::string_view{"scene-object-churn"},
             std::string_view{"scheduler-next-step"},
-            std::string_view{"scheduler-simulation-delay"}
+            std::string_view{"scheduler-simulation-delay"},
+            std::string_view{"integration-real-delay"}
         };
         if (std::find(groups.begin(), groups.end(), result.group) == groups.end())
             return std::nullopt;
@@ -330,9 +332,30 @@ namespace
         std::size_t suspensions{};
         std::size_t resumes{};
         std::size_t continuation_destroys{};
+        std::size_t real_delay_starts{};
         std::uint64_t checksum{};
         std::vector<ScriptAwaitableCompletion> completions;
+        std::vector<lux::script::ScriptAbilityCompletion<void>> real_delay_completions;
     };
+
+    lux::script::ScriptAbilityStartResult startFakeRealDelay(
+        void* opaque,
+        std::chrono::nanoseconds,
+        lux::script::ScriptAbilityCompletion<void> completion
+    ) noexcept
+    {
+        auto& state = *static_cast<BackendState*>(opaque);
+        try
+        {
+            ++state.real_delay_starts;
+            state.real_delay_completions.push_back(std::move(completion));
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{5});
+        }
+    }
 
     int invokePrepared(lux_script_call_frame* frame) noexcept
     {
@@ -510,6 +533,18 @@ namespace
             );
             suspend = result.state == EScriptStepState::SUSPENDED;
         }
+        else if (state.mode == EScenarioMode::REAL_DELAY)
+        {
+            if (!object.delay)
+                return ScriptStepResult::failed(7);
+            result = invokeScriptAbilityAsync<void>(
+                step,
+                [&object](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                    return object.delay->realSeconds(1.0, std::move(completion));
+                }
+            );
+            suspend = result.state == EScriptStepState::SUSPENDED;
+        }
         else if (state.mode == EScenarioMode::MIXED)
         {
             const auto lane = object.serial % 20U;
@@ -626,6 +661,7 @@ namespace
             };
             description.lifecycle = {kBegin, kEnd};
             if (mode == EScenarioMode::NEXT_STEP || mode == EScenarioMode::SIMULATION_DELAY ||
+                mode == EScenarioMode::REAL_DELAY ||
                 mode == EScenarioMode::MIXED)
             {
                 const auto& delay = lux::script::ScriptAbilityTraits<DelayAbility>::Description;
@@ -649,6 +685,7 @@ namespace
             hook_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             hook_descriptor = hook_bridge->descriptor();
             backend_state.completions.reserve(count);
+            backend_state.real_delay_completions.reserve(count);
             backend = {
                 lux::rdesc::Script::Kind::CPP_STATIC,
                 &backend_state,
@@ -691,7 +728,11 @@ namespace
                 capability_span,
                 std::span{&backend, 1U},
                 std::span{&hook_descriptor, 1U},
-                {}
+                {},
+                {},
+                mode == EScenarioMode::REAL_DELAY
+                    ? ScriptRealDelayEndpoint{&backend_state, &startFakeRealDelay}
+                    : ScriptRealDelayEndpoint{}
             );
             if (!created)
                 throw std::runtime_error("benchmark ScriptSystem create failed");
@@ -1533,6 +1574,49 @@ namespace
         if (harness.backend_state.resumes != expected_resumes)
             throw std::runtime_error("delay scheduler expiry observation mismatch");
     }
+
+    void runRealDelay(const Options& options, std::vector<Row>& rows)
+    {
+        RuntimeHarness harness{options.size, EScenarioMode::REAL_DELAY, options.resume_budget};
+        rows.push_back(measureRow("integration-real-delay-start", "fake-monotonic-provider", options.size, 0U, [&] {
+            static_cast<void>(harness.hook.dispatch());
+            if (harness.backend_state.real_delay_starts != options.size)
+                throw std::runtime_error("real-delay benchmark start count mismatch");
+            Row row;
+            appendRuntimeStats(row, harness);
+            return row;
+        }));
+        rows.push_back(measureRow(
+            "integration-real-delay-complete",
+            "cross-thread-ingress",
+            options.size,
+            0U,
+            [&] {
+                std::atomic_bool failed{};
+                std::jthread worker([&] {
+                    for (auto& completion : harness.backend_state.real_delay_completions)
+                    {
+                        if (!completion.success())
+                            failed.store(true, std::memory_order_relaxed);
+                    }
+                });
+                worker.join();
+                if (failed.load(std::memory_order_relaxed) || harness.backend_state.resumes != 0U)
+                    throw std::runtime_error("real-delay completion bypassed stable point");
+                Row row;
+                appendRuntimeStats(row, harness);
+                return row;
+            }
+        ));
+        rows.push_back(measureRow("integration-real-delay-resume", "stable-point", options.size, 0U, [&] {
+            harness.stablePoint();
+            if (harness.backend_state.resumes != (std::min)(options.size, options.resume_budget))
+                throw std::runtime_error("real-delay benchmark resume budget mismatch");
+            Row row;
+            appendRuntimeStats(row, harness);
+            return row;
+        }));
+    }
 } // namespace
 
 int main(int argc, char** argv)
@@ -1561,8 +1645,10 @@ int main(int argc, char** argv)
             runChurn(*options, rows);
         else if (options->group == "scheduler-next-step")
             runScheduler(*options, rows, EScenarioMode::NEXT_STEP);
-        else
+        else if (options->group == "scheduler-simulation-delay")
             runScheduler(*options, rows, EScenarioMode::SIMULATION_DELAY);
+        else
+            runRealDelay(*options, rows);
         writeCsv(*options, rows);
         return 0;
     }

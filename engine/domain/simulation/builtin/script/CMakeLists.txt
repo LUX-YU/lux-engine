@@ -148,6 +148,30 @@ add_test(
 )
 
 add_executable(
+    simulation_script_event_wait_test
+    test/script_system_event_wait_test.cpp
+)
+target_link_libraries(
+    simulation_script_event_wait_test
+    PRIVATE lux::engine::simulation::simulation_script
+)
+if(MSVC)
+    target_compile_options(simulation_script_event_wait_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_event_wait_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_script_event_wait_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME simulation_script_event_wait_test
+    COMMAND simulation_script_event_wait_test
+)
+
+add_executable(
     simulation_script_lifecycle_test
     test/script_system_lifecycle_test.cpp
 )

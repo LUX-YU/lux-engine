@@ -2,6 +2,7 @@ local BenchmarkBehavior = {}
 
 ---@lux.requires lux.benchmark.value
 ---@lux.requires lux.simulation.delay
+---@lux.event Benchmark.event
 
 ---@lux.method
 ---@lux.lifecycle begin_play
@@ -45,6 +46,14 @@ function BenchmarkBehavior:update_async()
     self.value = self.value + 1
     lux.Delay.nextStep()
     self.value = self.value + 10
+end
+
+---@lux.method
+---@lux.coroutine
+---@return void
+function BenchmarkBehavior:wait_event()
+    local payload = lux.Event.Benchmark.event()
+    self.value = self.value + payload
 end
 
 return BenchmarkBehavior

@@ -1,13 +1,14 @@
 {
   "schema": "lux-script-symbol-ledger",
   "version": 1,
-  "next_symbol": 45065,
+  "next_symbol": 45066,
   "entries": [
     {"source_identity": "BenchmarkBehavior:admit", "symbol": 45059},
     {"source_identity": "BenchmarkBehavior:update", "symbol": 45060},
     {"source_identity": "BenchmarkBehavior:retire", "symbol": 45061},
     {"source_identity": "BenchmarkBehavior:update_async", "symbol": 45062},
     {"source_identity": "BenchmarkBehavior:update_plain", "symbol": 45063},
-    {"source_identity": "BenchmarkBehavior:query_only", "symbol": 45064}
+    {"source_identity": "BenchmarkBehavior:query_only", "symbol": 45064},
+    {"source_identity": "BenchmarkBehavior:wait_event", "symbol": 45065}
   ]
 }

@@ -8,6 +8,7 @@
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
+#include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
@@ -75,6 +76,7 @@ namespace
         NEXT_STEP,
         SIMULATION_DELAY,
         REAL_DELAY,
+        EVENT_WAIT,
         MIXED,
     };
 
@@ -187,14 +189,20 @@ namespace
             std::string_view{"scene-object-churn"},
             std::string_view{"scheduler-next-step"},
             std::string_view{"scheduler-simulation-delay"},
-            std::string_view{"integration-real-delay"}
+            std::string_view{"integration-real-delay"},
+            std::string_view{"micro-event-wait"},
+            std::string_view{"scene-event-idle"},
+            std::string_view{"scene-event-fanout"},
+            std::string_view{"scene-event-sparse"}
 #if LUX_BENCHMARK_HAS_LUA
             , std::string_view{"micro-lua-sync"}
             , std::string_view{"micro-lua-ability-query"}
             , std::string_view{"micro-lua-coroutine"}
+            , std::string_view{"micro-lua-event"}
             , std::string_view{"scene-lua-update-heavy"}
             , std::string_view{"scene-lua-ability"}
             , std::string_view{"scene-lua-coroutine"}
+            , std::string_view{"scene-lua-event"}
             , std::string_view{"scene-lua-suspended-idle"}
             , std::string_view{"scene-lua-resume-storm"}
             , std::string_view{"scene-lua-object-churn"}
@@ -221,10 +229,14 @@ namespace
         std::size_t active_instances{};
         std::size_t calls{};
         std::size_t ability_calls{};
+        std::size_t events{};
         std::size_t suspensions{};
         std::size_t resumes{};
         std::size_t continuations{};
         std::size_t awaitables{};
+        std::size_t event_waiters{};
+        std::size_t event_dispatch_visits{};
+        std::size_t payload_bytes{};
         std::size_t queue_depth{};
         std::size_t queue_high_water{};
         std::size_t lifecycle_begins{};
@@ -249,10 +261,11 @@ namespace
                   "lua_vm,lua_version,jit_available,jit_enabled,scenario,backend,"
                   "size,seed,sample,nanoseconds,"
                   "allocations,active_instances,calls,ability_calls,events,suspensions,resumes,continuations,"
-                  "awaitables,queue_depth,queue_high_water,lifecycle_begins,lifecycle_ends,checksum\n";
+                  "awaitables,event_waiters,event_dispatch_visits,payload_bytes,queue_depth,queue_high_water,"
+                  "lifecycle_begins,lifecycle_ends,checksum\n";
         for (const auto& row : rows)
         {
-            output << "2," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
+            output << "3," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
                    << LUX_BENCHMARK_COMPILER << ",windows," << std::thread::hardware_concurrency() << ','
 #if LUX_BENCHMARK_HAS_LUA
                    << g_lua_runtime_info.vm << ',' << g_lua_runtime_info.version << ','
@@ -264,8 +277,10 @@ namespace
                    << row.scenario << ',' << row.backend << ',' << row.size << ',' << options.seed << ','
                    << row.sample << ','
                    << row.nanoseconds << ',' << row.allocations << ',' << row.active_instances << ',' << row.calls
-                   << ',' << row.ability_calls << ",0," << row.suspensions << ',' << row.resumes << ','
-                   << row.continuations << ',' << row.awaitables << ',' << row.queue_depth << ','
+                   << ',' << row.ability_calls << ',' << row.events << ',' << row.suspensions << ',' << row.resumes
+                   << ','
+                   << row.continuations << ',' << row.awaitables << ',' << row.event_waiters << ','
+                   << row.event_dispatch_visits << ',' << row.payload_bytes << ',' << row.queue_depth << ','
                    << row.queue_high_water << ',' << row.lifecycle_begins << ',' << row.lifecycle_ends << ','
                    << row.checksum << '\n';
         }
@@ -299,13 +314,35 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kLuaAsync{0xB006U};
     inline constexpr lux::script::ScriptSymbolId kLuaPlain{0xB007U};
     inline constexpr lux::script::ScriptSymbolId kLuaQuery{0xB008U};
+    inline constexpr lux::script::ScriptSymbolId kLuaEventWait{0xB009U};
+    inline constexpr EventPointId kEvent{0xB009U};
+    inline constexpr EventPointId kTargetEvent{0xB00AU};
 
     [[nodiscard]] SimulationDescription scriptDescription()
     {
         constexpr std::array hooks{makeHookPointSpec<void()>(kHook, "benchmark-update")};
+        constexpr std::array events{
+            makeEventPointSpec<std::int32_t>(
+                kEvent,
+                "benchmark-event",
+                kHook,
+                EEventRoute::SIMULATION_BROADCAST,
+                "lux.i32",
+                1U
+            ),
+            makeEventPointSpec<std::int32_t>(
+                kTargetEvent,
+                "benchmark-target-event",
+                kHook,
+                EEventRoute::ENTITY_TARGETED,
+                "lux.i32",
+                1U
+            )
+        };
         const SimulationSystemDescription system{
             .type = {.canonical_name = "lux.benchmark.ScriptRuntime", .version = 1U},
-            .hooks = hooks
+            .hooks = hooks,
+            .events = events
         };
         SimulationDescriptionBuilder builder;
         if (!builder.addSystem(kSystem, "script-runtime-benchmark", system))
@@ -353,6 +390,7 @@ namespace
         BackendState* owner{};
         std::size_t serial{};
         std::uint64_t value{};
+        bool entity_scope{};
         std::optional<lux::script::ScriptAbilityCpp<benchmark::ValueAbility>> ability;
         std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
     };
@@ -438,7 +476,12 @@ namespace
     ) noexcept
     {
         auto& state = *static_cast<BackendState*>(opaque);
-        auto* object = new (std::nothrow) RuntimeObject{&state, state.creates++, 0U};
+        auto* object = new (std::nothrow) RuntimeObject{
+            &state,
+            state.creates++,
+            0U,
+            std::holds_alternative<EntityScriptScope>(context.scope)
+        };
         if (!object)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         for (const auto& capability : context.capabilities)
@@ -521,6 +564,14 @@ namespace
         auto& object = *continuation.object;
         ++object.owner->resumes;
         ++object.value;
+        if (packet.value != nullptr && packet.value->type &&
+            packet.value->type->type_id == lux::semantic::typeId("lux.i32") &&
+            packet.value->bytes.size() == sizeof(std::int32_t))
+        {
+            std::int32_t payload{};
+            std::memcpy(std::addressof(payload), packet.value->bytes.data(), sizeof(payload));
+            object.value += static_cast<std::uint32_t>(payload);
+        }
         object.owner->checksum += object.value + static_cast<std::uint8_t>(packet.state);
         return ScriptStepResult::completed();
     }
@@ -594,6 +645,21 @@ namespace
                 }
             );
             suspend = result.state == EScriptStepState::SUSPENDED;
+        }
+        else if (state.mode == EScenarioMode::EVENT_WAIT)
+        {
+            const auto route = object.entity_scope
+                ? EEventRoute::ENTITY_TARGETED
+                : EEventRoute::SIMULATION_BROADCAST;
+            const auto waiting = step.event_waits.wait({
+                kSystem,
+                route == EEventRoute::SIMULATION_BROADCAST ? kEvent : kTargetEvent,
+                route
+            });
+            if (!waiting)
+                return ScriptStepResult::failed(8);
+            result = ScriptStepResult::suspended(*waiting);
+            suspend = true;
         }
         else if (state.mode == EScenarioMode::MIXED)
         {
@@ -732,8 +798,25 @@ namespace
 
             if (hook.prepare(1U) != EEndpointMutationError::NONE)
                 throw std::runtime_error("benchmark HookPoint prepare failed");
+            if (event.prepare(1U, (std::max)(count, std::size_t{1U}), 1U) != EEndpointMutationError::NONE)
+                throw std::runtime_error("benchmark EventPoint prepare failed");
+            if (target_event.prepare(1U, (std::max)(count, std::size_t{1U}), 1U) != EEndpointMutationError::NONE)
+                throw std::runtime_error("benchmark targeted EventPoint prepare failed");
             hook_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             hook_descriptor = hook_bridge->descriptor();
+            event_bridge = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>(
+                kSystem,
+                kEvent,
+                event
+            );
+            event_descriptor = event_bridge->descriptor();
+            target_event_bridge = std::make_unique<
+                ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, std::int32_t>>(
+                    kSystem,
+                    kTargetEvent,
+                    target_event
+                );
+            event_descriptors = {event_descriptor, target_event_bridge->descriptor()};
             backend_state.completions.reserve(count);
             backend_state.real_delay_completions.reserve(count);
             backend = {
@@ -779,7 +862,7 @@ namespace
                 capability_span,
                 std::span{&backend, 1U},
                 std::span{&hook_descriptor, 1U},
-                {},
+                event_descriptors,
                 {},
                 mode == EScenarioMode::REAL_DELAY
                     ? ScriptRealDelayEndpoint{&backend_state, &startFakeRealDelay}
@@ -865,6 +948,45 @@ namespace
             );
         }
 
+        void deliverEvent(std::int32_t payload, std::optional<std::size_t> target = std::nullopt)
+        {
+            if (!target)
+            {
+                {
+                    auto writer = event.begin(0U);
+                    if (!writer.record(payload))
+                        throw std::runtime_error("benchmark Event record failed");
+                }
+                if (event.drain() == 0U)
+                    throw std::runtime_error("benchmark Event delivery failed");
+                return;
+            }
+            if (*target >= entities.size())
+                throw std::runtime_error("benchmark Event target is invalid");
+            {
+                auto writer = target_event.begin(0U);
+                if (!writer.record(entities[*target], payload))
+                    throw std::runtime_error("benchmark targeted Event record failed");
+            }
+            if (target_event.drain() == 0U)
+                throw std::runtime_error("benchmark targeted Event delivery failed");
+        }
+
+        void deliverTargetedBatch(std::size_t count, std::int32_t payload)
+        {
+            if (count > entities.size())
+                throw std::runtime_error("benchmark targeted Event batch is invalid");
+            auto writer = target_event.begin(0U);
+            for (std::size_t index{}; index < count; ++index)
+            {
+                if (!writer.record(entities[index], payload))
+                    throw std::runtime_error("benchmark targeted Event batch record failed");
+            }
+            writer = {};
+            if (target_event.drain() != count)
+                throw std::runtime_error("benchmark targeted Event batch delivery failed");
+        }
+
         void rematerialize(std::size_t first, std::size_t count)
         {
             if (!entity_scope || entities.empty())
@@ -885,8 +1007,14 @@ namespace
         std::optional<ScriptSystemDescription> system_description;
         std::optional<lux::script::ScriptArtifact> artifact;
         HookPoint<void()> hook;
+        EventPoint<SimulationBroadcastRoute, std::int32_t> event;
+        EventPoint<EntityTargetedRoute<ecs::Entity>, std::int32_t> target_event;
         std::unique_ptr<ScriptHookEndpoint<void()>> hook_bridge;
+        std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_bridge;
+        std::unique_ptr<ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, std::int32_t>> target_event_bridge;
         ScriptHookEndpointDescriptor hook_descriptor;
+        ScriptEventEndpointDescriptor event_descriptor;
+        std::array<ScriptEventEndpointDescriptor, 2U> event_descriptors;
         BackendState backend_state;
         ScriptBackendDescriptor backend;
         ValueProvider value_provider;
@@ -973,28 +1101,45 @@ namespace
                 throw std::runtime_error("Lua benchmark ScriptSystem description rejected");
             system_description.emplace(std::move(*built));
 
+            const std::size_t bounded_count = (std::max)(count, std::size_t{1U});
             if (hook.prepare(1U) != EEndpointMutationError::NONE)
                 throw std::runtime_error("Lua benchmark HookPoint prepare failed");
+            if (event.prepare(1U, bounded_count, 1U) != EEndpointMutationError::NONE)
+                throw std::runtime_error("Lua benchmark EventPoint prepare failed");
             hook_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             hook_descriptor = hook_bridge->descriptor();
+            event_bridge = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>(
+                kSystem,
+                kEvent,
+                event
+            );
+            event_descriptor = event_bridge->descriptor();
+            auto projected_event = projectScriptEventSource(
+                simulation_description.findEvent(kSystem, kEvent),
+                event_descriptor,
+                "Benchmark",
+                "event"
+            );
+            if (!projected_event)
+                throw std::runtime_error("Lua benchmark Event source projection failed");
+            event_source = std::move(*projected_event);
 
             contributions = {
                 lux::script::lua::makeScriptAbilityLuaContribution<benchmark::ValueAbility>(),
                 lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>()
             };
-            const std::size_t bounded_count = (std::max)(count, std::size_t{1U});
             if (bounded_count > (std::numeric_limits<std::size_t>::max)() / 4U)
                 throw std::runtime_error("Lua benchmark capacity overflow");
             auto created_backend = LuaScriptBackend::create({
-                bounded_count,
-                bounded_count * 4U,
-                bounded_count,
-                16U,
-                6U,
-                {},
-                {},
-                contributions,
-                execution_policy
+                .instance_capacity = bounded_count,
+                .prepared_call_capacity = bounded_count * 4U,
+                .continuation_capacity = bounded_count,
+                .execution_depth_capacity = 16U,
+                .ability_method_capacity = 6U,
+                .abilities = contributions,
+                .execution_policy = execution_policy,
+                .event_source_capacity = 1U,
+                .events = std::span{&event_source, 1U}
             });
             if (!created_backend)
                 throw std::runtime_error("Lua benchmark backend creation failed");
@@ -1019,6 +1164,7 @@ namespace
                     64U,
                     (std::max)(resume_budget, std::size_t{1U}),
                     bounded_count,
+                    bounded_count,
                     bounded_count
                 },
                 {this, &resolveArtifact},
@@ -1026,7 +1172,7 @@ namespace
                 publications,
                 std::span{&backend_descriptor, 1U},
                 std::span{&hook_descriptor, 1U},
-                {}
+                std::span{&event_descriptor, 1U}
             );
             if (!created)
                 throw std::runtime_error("Lua benchmark ScriptSystem creation failed");
@@ -1096,6 +1242,17 @@ namespace
                 throw std::runtime_error("Lua benchmark stable point failed");
         }
 
+        void deliverEvent(std::int32_t payload)
+        {
+            {
+                auto writer = event.begin(0U);
+                if (!writer.record(payload))
+                    throw std::runtime_error("Lua benchmark Event record failed");
+            }
+            if (event.drain() == 0U)
+                throw std::runtime_error("Lua benchmark Event delivery failed");
+        }
+
         void rematerialize(std::size_t first, std::size_t count)
         {
             for (std::size_t offset{}; offset < count; ++offset)
@@ -1116,8 +1273,12 @@ namespace
         std::optional<lux::task::TaskExecutor> executor;
         std::optional<ScriptSystemDescription> system_description;
         HookPoint<void()> hook;
+        EventPoint<SimulationBroadcastRoute, std::int32_t> event;
         std::unique_ptr<ScriptHookEndpoint<void()>> hook_bridge;
+        std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_bridge;
         ScriptHookEndpointDescriptor hook_descriptor;
+        ScriptEventEndpointDescriptor event_descriptor;
+        lux::script::ScriptEventSourceDescription event_source;
         std::array<lux::script::lua::ScriptAbilityLuaContribution, 2U> contributions;
         std::optional<LuaScriptBackend> backend;
         ScriptBackendDescriptor backend_descriptor;
@@ -1498,6 +1659,8 @@ namespace
         row.active_instances = stats.active_instances;
         row.continuations = stats.active_continuations;
         row.awaitables = stats.active_awaitables;
+        row.event_waiters = stats.active_event_waiters;
+        row.event_dispatch_visits = stats.event_waiter_dispatch_visits;
         row.queue_depth = stats.resume_queue_depth;
         row.queue_high_water = stats.resume_queue_high_water;
         row.calls = harness.backend_state.calls;
@@ -1808,6 +1971,117 @@ namespace
         }
     }
 
+    void runEventMicro(const Options& options, std::vector<Row>& rows)
+    {
+        RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.size};
+        rows.push_back(measureRow("micro-event-register", "script-event-waiter", options.size, 0U, [&] {
+            static_cast<void>(harness.hook.dispatch());
+            Row row;
+            appendRuntimeStats(row, harness);
+            return row;
+        }));
+        rows.push_back(measureRow("micro-event-deliver-copy", "script-event-waiter", options.size, 0U, [&] {
+            harness.deliverEvent(17);
+            Row row;
+            appendRuntimeStats(row, harness);
+            row.events = 1U;
+            row.payload_bytes = options.size * sizeof(std::int32_t);
+            return row;
+        }));
+        rows.push_back(measureRow("micro-event-resume", "stable-point", options.size, 0U, [&] {
+            harness.stablePoint();
+            Row row;
+            appendRuntimeStats(row, harness);
+            return row;
+        }));
+        if (harness.backend_state.resumes != options.size)
+            throw std::runtime_error("Event micro benchmark resume count mismatch");
+
+        RuntimeHarness cancellation{options.size, EScenarioMode::EVENT_WAIT, options.size};
+        static_cast<void>(cancellation.hook.dispatch());
+        rows.push_back(measureRow("micro-event-cancel", "instance-retirement", options.size, 0U, [&] {
+            if (!cancellation.system->shutdown())
+                throw std::runtime_error("Event cancellation benchmark shutdown failed");
+            Row row;
+            appendRuntimeStats(row, cancellation);
+            return row;
+        }));
+    }
+
+    void runEventIdle(const Options& options, std::vector<Row>& rows)
+    {
+        RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
+        static_cast<void>(harness.hook.dispatch());
+        const auto before = harness.system->stats();
+        for (std::size_t frame{}; frame < options.warmups; ++frame)
+            harness.stablePoint();
+        for (std::size_t frame{}; frame < options.frames; ++frame)
+        {
+            rows.push_back(measureRow("scene-event-idle", "script-event-waiter", options.size, frame, [&] {
+                harness.stablePoint();
+                Row row;
+                appendRuntimeStats(row, harness);
+                return row;
+            }));
+        }
+        const auto after = harness.system->stats();
+        if (after.active_event_waiters != options.size ||
+            after.event_waiter_dispatch_visits != before.event_waiter_dispatch_visits ||
+            harness.backend_state.resumes != 0U)
+        {
+            throw std::runtime_error("Event idle benchmark detected waiter scanning or resume");
+        }
+    }
+
+    void runEventFanout(const Options& options, std::vector<Row>& rows)
+    {
+        RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
+        static_cast<void>(harness.hook.dispatch());
+        rows.push_back(measureRow("scene-event-fanout-delivery", "script-event-waiter", options.size, 0U, [&] {
+            harness.deliverEvent(23);
+            Row row;
+            appendRuntimeStats(row, harness);
+            row.events = 1U;
+            row.payload_bytes = options.size * sizeof(std::int32_t);
+            return row;
+        }));
+        std::size_t frame{};
+        while (harness.system->stats().resume_queue_depth != 0U)
+        {
+            rows.push_back(measureRow("scene-event-fanout-resume", "stable-point", options.size, frame++, [&] {
+                harness.stablePoint();
+                Row row;
+                appendRuntimeStats(row, harness);
+                return row;
+            }));
+        }
+        const auto expected_frames = (options.size + options.resume_budget - 1U) / options.resume_budget;
+        if (frame != expected_frames || harness.backend_state.resumes != options.size)
+            throw std::runtime_error("Event fan-out benchmark violated the resume budget");
+    }
+
+    void runEventSparse(const Options& options, std::vector<Row>& rows)
+    {
+        RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget, true};
+        static_cast<void>(harness.hook.dispatch());
+        rows.push_back(measureRow("scene-event-sparse-delivery", "targeted-event-waiter", options.size, 0U, [&] {
+            harness.deliverTargetedBatch(options.ready_count, 29);
+            Row row;
+            appendRuntimeStats(row, harness);
+            row.events = options.ready_count;
+            row.payload_bytes = options.ready_count * sizeof(std::int32_t);
+            return row;
+        }));
+        const auto stats = harness.system->stats();
+        if (stats.event_waiter_dispatch_visits != options.ready_count ||
+            stats.active_event_waiters != options.size - options.ready_count)
+        {
+            throw std::runtime_error("sparse Event delivery was not output-sensitive");
+        }
+        while (harness.system->stats().resume_queue_depth != 0U)
+            harness.stablePoint();
+    }
+
     void runResumeStorm(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
@@ -2094,6 +2368,50 @@ namespace
             throw std::runtime_error("Lua resume storm did not respect the resume budget");
     }
 
+    void runLuaEvent(const Options& options, std::vector<Row>& rows, bool micro)
+    {
+        LuaRuntimeHarness harness{
+            options.lua_artifact,
+            options.size,
+            kLuaEventWait,
+            options.size,
+            options.lua_policy
+        };
+        const auto execute_cycle = [&](std::size_t frame, bool record) {
+            const auto operation = [&] {
+                harness.dispatch();
+                harness.deliverEvent(31);
+                harness.stablePoint();
+                Row row;
+                appendLuaStats(row, harness);
+                row.events = 1U;
+                row.payload_bytes = options.size * sizeof(std::int32_t);
+                return row;
+            };
+            if (record)
+            {
+                rows.push_back(measureRow(
+                    micro ? "micro-lua-event" : "scene-lua-event",
+                    "lua-event-coroutine",
+                    options.size,
+                    frame,
+                    operation
+                ));
+            }
+            else
+            {
+                static_cast<void>(operation());
+            }
+        };
+        for (std::size_t frame{}; frame < options.warmups; ++frame)
+            execute_cycle(frame, false);
+        const auto frames = micro ? std::size_t{1U} : options.frames;
+        for (std::size_t frame{}; frame < frames; ++frame)
+            execute_cycle(frame, true);
+        if (harness.system->activeContinuationCount() != 0U || harness.system->stats().active_event_waiters != 0U)
+            throw std::runtime_error("Lua Event benchmark left pending runtime state");
+    }
+
     void runLuaChurn(const Options& options, std::vector<Row>& rows)
     {
         LuaRuntimeHarness harness{
@@ -2156,6 +2474,14 @@ int main(int argc, char** argv)
             runScheduler(*options, rows, EScenarioMode::SIMULATION_DELAY);
         else if (options->group == "integration-real-delay")
             runRealDelay(*options, rows);
+        else if (options->group == "micro-event-wait")
+            runEventMicro(*options, rows);
+        else if (options->group == "scene-event-idle")
+            runEventIdle(*options, rows);
+        else if (options->group == "scene-event-fanout")
+            runEventFanout(*options, rows);
+        else if (options->group == "scene-event-sparse")
+            runEventSparse(*options, rows);
 #if LUX_BENCHMARK_HAS_LUA
         else if (options->group == "micro-lua-sync")
             runLuaSync(*options, rows, kLuaPlain, options->group);
@@ -2163,12 +2489,16 @@ int main(int argc, char** argv)
             runLuaSync(*options, rows, kLuaQuery, options->group);
         else if (options->group == "micro-lua-coroutine")
             runLuaCoroutineMicro(*options, rows);
+        else if (options->group == "micro-lua-event")
+            runLuaEvent(*options, rows, true);
         else if (options->group == "scene-lua-update-heavy")
             runLuaSync(*options, rows, kLuaPlain, options->group);
         else if (options->group == "scene-lua-ability")
             runLuaSync(*options, rows, kTick, options->group);
         else if (options->group == "scene-lua-coroutine")
             runLuaCoroutineFrames(*options, rows);
+        else if (options->group == "scene-lua-event")
+            runLuaEvent(*options, rows, false);
         else if (options->group == "scene-lua-suspended-idle")
             runLuaSuspendedIdle(*options, rows);
         else if (options->group == "scene-lua-resume-storm")

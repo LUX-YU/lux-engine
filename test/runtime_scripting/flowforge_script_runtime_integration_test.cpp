@@ -650,8 +650,13 @@ namespace
         };
         if (idle || storm)
         {
-            if (!simulation->execute(*executor, SimulationDuration{1}) || !system->executeStablePoint())
+            if (!simulation->execute(*executor, SimulationDuration{1}))
                 return 23;
+            while (system->stats().resume_queue_depth != 0U)
+            {
+                if (!system->executeStablePoint())
+                    return 23;
+            }
             if (storm && !simulation->execute(*executor, SimulationDuration{1}))
                 return 24;
         }

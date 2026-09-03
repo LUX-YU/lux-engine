@@ -54,6 +54,17 @@ namespace lux::simulation::script
         std::size_t simulation_delay_capacity{};
     };
 
+    struct ScriptRuntimeStats final
+    {
+        std::size_t active_instances{};
+        std::size_t active_continuations{};
+        std::size_t active_awaitables{};
+        std::size_t resume_queue_depth{};
+        std::size_t resume_queue_high_water{};
+        std::size_t next_step_waits{};
+        std::size_t simulation_delay_waits{};
+    };
+
     namespace detail
     {
         struct ScriptAttachment final
@@ -155,6 +166,8 @@ namespace lux::simulation::script
         [[nodiscard]] std::size_t activeContinuationCount() const noexcept;
 
         [[nodiscard]] std::size_t activeAwaitableCount() const noexcept;
+
+        [[nodiscard]] ScriptRuntimeStats stats() const noexcept;
 
         [[nodiscard]] std::span<const ScriptSystemFailure> failures() const noexcept;
 

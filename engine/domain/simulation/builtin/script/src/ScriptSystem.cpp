@@ -272,12 +272,14 @@ namespace lux::simulation::script
             std::vector<ResumeRecord> records;
             std::size_t head{};
             std::size_t count{};
+            std::size_t high_water{};
 
             void prepare(std::size_t capacity)
             {
                 records.resize(capacity);
                 head = 0U;
                 count = 0U;
+                high_water = 0U;
             }
 
             [[nodiscard]] bool push(ResumeRecord record) noexcept
@@ -286,6 +288,7 @@ namespace lux::simulation::script
                     return false;
                 records[(head + count) % records.size()] = record;
                 ++count;
+                high_water = (std::max)(high_water, count);
                 return true;
             }
 
@@ -2603,6 +2606,28 @@ namespace lux::simulation::script
             return 0U;
         std::lock_guard lock{state_->ingress->mutex};
         return state_->ingress->awaitables.size();
+    }
+
+    ScriptRuntimeStats ScriptSystem::stats() const noexcept
+    {
+        ScriptRuntimeStats result;
+        if (!state_)
+            return result;
+        result.active_instances = state_->active_mount_count;
+        result.active_continuations = state_->continuations.size();
+        if (state_->ingress)
+        {
+            std::lock_guard lock{state_->ingress->mutex};
+            result.active_awaitables = state_->ingress->awaitables.size();
+            result.resume_queue_depth = state_->ingress->resumes.count;
+            result.resume_queue_high_water = state_->ingress->resumes.high_water;
+        }
+        {
+            std::lock_guard lock{state_->delay_mutex};
+            result.next_step_waits = state_->next_step_waits.size();
+            result.simulation_delay_waits = state_->simulation_delays.size();
+        }
+        return result;
     }
 
     std::span<const ScriptSystemFailure> ScriptSystem::failures() const noexcept

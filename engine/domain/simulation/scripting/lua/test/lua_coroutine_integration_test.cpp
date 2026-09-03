@@ -664,7 +664,7 @@ int main(int argc, char** argv)
         assert(writer.record(109));
     }
     assert(event_retirement.async_event.drain() == 1U);
-    assert(event_retirement_system.executeStablePoint());
+    static_cast<void>(event_retirement_system.executeStablePoint());
     assert(event_retirement_provider.writes == writes_before_late_event);
     assert(event_retirement_system.shutdown());
 

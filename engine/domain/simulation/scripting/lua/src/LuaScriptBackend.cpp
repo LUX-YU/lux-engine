@@ -1291,6 +1291,35 @@ namespace lux::simulation::script
             return static_cast<int>(semantic.results.size());
         }
 
+        struct EventWaitAdmission final
+        {
+            ScriptAwaitableId waiting_on;
+            std::int32_t failure{};
+        };
+
+        [[nodiscard]] static EventWaitAdmission admitEventWait(
+            ScriptStepContext& step,
+            const lux::script::ScriptEventSourceDescription& source
+        ) noexcept
+        {
+            const auto route = source.route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
+                ? EEventRoute::SIMULATION_BROADCAST
+                : EEventRoute::ENTITY_TARGETED;
+            const auto waiting = step.event_waits.wait({
+                lux::system::SystemInstanceId{source.system_id},
+                EventPointId{source.event_id},
+                route
+            });
+            if (!waiting)
+            {
+                return {
+                    {},
+                    kEventWaitFailure - static_cast<std::int32_t>(waiting.error())
+                };
+            }
+            return {*waiting, 0};
+        }
+
         static int invokeEventWait(lua_State* state) noexcept
         {
             auto* self = static_cast<State*>(lua_touserdata(state, lua_upvalueindex(1)));
@@ -1326,30 +1355,17 @@ namespace lux::simulation::script
                 );
             }
             const auto& source = *prepared.source;
-            const auto route = source.route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
-                ? EEventRoute::SIMULATION_BROADCAST
-                : EEventRoute::ENTITY_TARGETED;
-            std::int32_t admission_failure{};
-            {
-                const auto waiting = execution->step->event_waits.wait({
-                    lux::system::SystemInstanceId{source.system_id},
-                    EventPointId{source.event_id},
-                    route
-                });
-                if (!waiting)
-                    admission_failure = kEventWaitFailure - static_cast<std::int32_t>(waiting.error());
-                else
-                    execution->continuation->waiting_on = *waiting;
-            }
-            if (admission_failure != 0)
+            const auto admission = admitEventWait(*execution->step, source);
+            if (admission.failure != 0)
             {
                 return abilityFailure(
                     state,
                     execution->continuation,
-                    admission_failure,
+                    admission.failure,
                     "Script Event wait admission failed"
                 );
             }
+            execution->continuation->waiting_on = admission.waiting_on;
             execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
             execution->continuation->pending_operation = EPendingOperation::EVENT;
             return lux::script::lua::detail::yieldLuaInvocation(state, 0);

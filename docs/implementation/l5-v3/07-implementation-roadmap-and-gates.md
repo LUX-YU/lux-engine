@@ -1,998 +1,681 @@
-# L5 Editor 实施路线、Dependency DAG、Architecture Gates 与 Stop Conditions
+# L5 / Runtime Script / Editor 实施路线、Dependency DAG、Architecture Gates 与 Stop Conditions
 
-Status: **Normative Implementation Roadmap (v3 — current repository continuation)**
+Status: **Normative Implementation Roadmap — v3 reconciled 2026-09-03**
 
-Reviewed checkpoint: `main@4593ce9b02ddbe35d81de2ded309666ede0bb8da`.
+Reviewed public repository checkpoint: `main@bc15a84252c5740e6e47f3e1094810d6dd4ab711`.
 
-> 本文定义唯一实际执行顺序。文件编号仅用于阅读组织，不代表 implementation order。Coding agent 必须同时遵守 `08-normative-execution-contract.md`；任何 UI work 必须同时遵守 `10-lux-ui-foundation-and-legacy-visual-parity.md`。
+> 本文定义当前唯一实施 DAG。旧版本中把 R0/S0/S1/S2 写成“下一步”的状态说明已过时；这些阶段的设计方向保留，但 implementation status 以本文为准。Coding agent 仍必须同时遵守 `08`；Script work 额外遵守 `11/12/13`；Plugin/package work 额外遵守 `14`；UI work 额外遵守 `10`。
 
 ---
 
-## 1. Current checkpoint 与唯一实施 DAG
+## 1. 已关闭 / preserved foundation
 
-当前 reviewed repository 已经把以下方向实现到 foundation level：
+以下方向已经进入可继续消费的 foundation，不允许因为后续 feature 需要而重新设计：
 
 ```text
-B   L2 Execution
-V1  AssetVfs read/control split
-V2  VFS-backed AssetRead + blocking IO isolation
-A   EditorApplication + non-owning EditorContext + Toolset
-F   Shared Graph Source
-G   Graph editing/render protocol separation
+R0   committed-source requalification / lifecycle hotfix
+B    L2 Execution / TaskScope / Timer / bounded scheduling
+V1   AssetVfs read/control split
+V2   VFS-backed AssetRead + blocking IO isolation
+A    EditorApplication + non-owning EditorContext + Toolset
+F    Shared Graph Source
+G    GraphEditingSession / GraphRenderProtocol separation
 ```
 
-这些 foundation **不得因为进入 v3 而重新设计**。当前问题是 exact committed HEAD 的 qualification/re-entrancy/lifecycle 仍有阻断，因此下一步是 R0，而不是回到 B/F。
-
-唯一继续 DAG：
+仍然持续作为 regression gate：
 
 ```text
-                  reviewed current foundation
-              B + V1 + V2 + A + F + G
-                         │
-                         ▼
-          R0 Foundation Requalification / Hotfix
-             ├─ committed-source reproducibility
-             ├─ EditorApplication installTool lifecycle
-             └─ TaskScope re-entrant admission/close
-                         │
-             ┌───────────┴─────────────┐
-             ▼                         ▼
-       U0/U1 Lux UI Core          S0 Async Script
-       + Editor primitives        contract/design gate
-             │                         │
-      ┌──────┼──────┐                  ▼
-      ▼      ▼      ▼              S1/S2 implementation
-      C      D      E
- Inspector Asset  Scene
-      │      │      │
-      └──────┴──────┘
-             │
-             ├─────────────┐
-             ▼             ▼
-       U2 NodeCanvas   feature stabilization
-       backend isolation
-             │
-       ┌─────┴─────┐
-       ▼           ▼
- H0 Material    I0 FlowForge
- in-memory UI   in-memory UI
-       │           │
- persistence    persistence + ScriptSymbol
- gate            identity gate
-       ▼           ▼
- H1 durable     I1 durable/package
-
-P Product Target Generation
-    = separate product track
-    = STOP until project-manifest / target-generation spec approved
+TaskScope re-entrant admission/close
+VFS immutable read snapshots
+AssetRead no owner-thread blocking
+Graph transaction atomicity / fail-closed rollback
+Toolset composition-only mutation + freeze
+PLAYER/EDITOR/TOOLCHAIN dependency cleanliness
+installed/relocated consumers
 ```
 
-允许并行：
+不要重新恢复：
 
 ```text
-R0 完成后：U0/U1 与 S0 design 可并行
-U1 完成后：C、D、E 可并行；推荐 C 先作为 first UI vertical slice
-U2 在 U0/U1 + existing G 上进行，可与 C/D/E 后半段并行
-H0/I0 在 U2 后可做 in-memory edit/compile integration
-H1/I1 durable workflow 必须等待各自 persistence/identity gate
-```
-
-禁止：
-
-```text
-在 R0 未通过时继续堆新 feature 并把 qualification debt 留到最后
-因为 U wave 而重新改写 Graph source/edit semantics
-因为 H/I UI 需要而自行发明 source codec/document identity
-因为 S 需要 async 而自行决定 continuation ABI
-因为 P 需要 executable 而自行发明 project manifest
+JobSystem / JobManager
+ServiceRegistry / EditorServices
+AssetManager replacement / AssetIndex merely for UI
+GenericGraphIR / universal graph property bag
+old Authoring/session architecture
 ```
 
 ---
 
-## 2. Historical Pre-L5 Closure — 保持已关闭，不重新展开
+## 2. 已完成的 Script 子 DAG
 
-Current review shows the previous Material/Graph blockers have substantive fixes in the reviewed direction. They remain regression gates：
+当前 public main checkpoint 已记录到 S4/PB2；S4-P 是进入 S5 前的 portability gate。
 
-### 2.1 Material fail-closed
-
-必须持续覆盖：
-
-- malformed enum/payload；
-- invalid pin identity/direction/type/arity；
-- non-finite values where invalid；
-- missing output/cycles/slot errors；
-- no UB；
-- no silent fallback miscompile。
-
-### 2.2 Installed Material relocatability
-
-Material compiler installed consumer MUST NOT depend on original source/build absolute paths. Generated/embedded shader support and compiler environment must remain relocatable.
-
-### 2.3 L4 package private boundary
-
-Material compiler MUST NOT cross sibling private source/include boundaries. Shared shader/SPIR-V support keeps a narrow correct owner.
-
-### 2.4 Graph transaction atomicity
-
-Must preserve：
+已完成方向：
 
 ```text
-replace-connect rollback
-node remove/detach rollback
-undo/redo rollback
-history/revision advances only on full success
-poison/fail-closed when inverse rollback itself fails
+S1
+Capability identity + requirements
+Provider publication/binding
+Continuation / Awaitable / bounded resume foundation
+        ↓
+S1.5
+Ability reflection
+receiver/provider binder
+explicit CMake codegen
+C++ / Lua / FlowForge projection proof
+        ↓
+S2.0
+production Script stable point + SimulationClock
+        ↓
+S2.1
+Delay.nextStep
+        ↓
+S2.2
+Delay.seconds / simulationSeconds
+        ↓
+S2.3
+Delay.realSeconds
+        ↓
+S2.5
+UE-style gameplay Script object lifecycle
+        ↓
+PB0
+runtime baseline
+        ↓
+S3
+FlowForge generated Ability nodes
+explicit resumable native state machine
+        ↓
+S3-H
+transitive suspension / BORROWED_STEP hardening
+        ↓
+PB1
+FlowForge end-to-end baseline
+        ↓
+S4
+production Lua authoring + per-instance prepared Ability
+Lua coroutine bridge
+        ↓
+PB2
+LuaJIT end-to-end baseline
 ```
 
-Before H/I, add fault-injection coverage for Nth canonical mutation failure and inverse rollback failure.
-
-### 2.5 Classification/docs
-
-- node graph target remains EDITOR；
-- retired Authoring/legacy normative docs remain superseded；
-- no compatibility aliases that resurrect the old architecture。
+`S2.4 AssetLoad` remains independent/conditional. Do not mark it complete until a script-visible stable/residency-backed Asset handle/value contract is approved.
 
 ---
 
-## 3. R0 — Foundation Requalification / Hotfix Gate
-
-R0 is the immediate blocker before new UI feature implementation.
-
-### R0.1 Committed-source reproducibility — P0 blocker
-
-Reviewed HEAD has CMake declaring：
+## 3. 当前 Script DAG
 
 ```text
-engine/editor/application/test/editor_application_test.cpp
+S4-P
+Portable Lua VM Closure
+        ↓
+S5.0
+Event.await runtime semantics
+        ↓
+S5.1
+FlowForge + portable Lua Event.await projection
+        ↓
+S5.2
+first production domain Ability: Physics
+        ↓
+S5.3
+Navigation when its real domain contract is ready
++ conditional S2.4 AssetLoad closure
+        ↓
+S5.4 / PB3
+realistic gameplay async/event/domain baseline
+        ↓
+S6
+C++ coroutine ergonomics
++ shipping static specialization
+        ↓
+SCRIPT FRAMEWORK FREEZE
 ```
 
-but the reviewed Git tree does not contain/track that source. Therefore the recorded test evidence cannot prove a clean clone of that exact HEAD is self-contained.
+There is no pre-authorized S7.
 
-MUST：
+---
+
+## 4. S4-P — Portable Lua VM Closure
+
+Goal:
 
 ```text
-recover the actual test source used by the qualified worktree
-commit it to the repository
-keep the test target unless coverage is intentionally removed by a reviewed decision
+same packaged LUA_SOURCE artifact
+same lifecycle / Ability / coroutine semantics
+        ↓
+LuaJIT JIT ON
+LuaJIT JIT OFF
+Lua 5.4
 ```
 
-MUST NOT simply delete the CMake test target to manufacture a green configure if the test was part of the claimed foundation qualification.
-
-### R0.2 `EditorApplication::installTool` lifecycle — P1 high priority
-
-Current public convenience API must not dereference disengaged Toolset storage after application shutdown.
-
-Required behavior：
+MUST:
 
 ```text
-COMPOSING     install allowed
-RUNNING       explicit FROZEN / invalid-phase result
-STOPPING      explicit STOPPING / invalid-state result
-JOINED        explicit STOPPING/INVALID_STATE result
+JIT is performance policy only
+Lua VM C-API differences stay behind a narrow private Lua compatibility seam
+ScriptSystem never knows VM kind
+canonical artifact stores source, never VM bytecode
+portable scalar semantics are explicit and lossless across supported VMs
+Ability code/source name is separate from display name
+same external/project Lua source works in every qualified VM configuration
 ```
 
-MUST NOT crash/UB after shutdown.
-
-Tests：
+MUST NOT:
 
 ```text
-install before start succeeds
-install after start fails explicitly
-install after shutdown fails explicitly
+LuaJitScriptBackend + Lua54ScriptBackend duplicate architectures
+LUAJIT_SOURCE / LUA54_SOURCE artifact kinds
+LuaJIT ffi as canonical value representation
+worker thread direct lua_resume
+VM plugin manager / dynamic VM registry
 ```
 
-### R0.3 `TaskScope` re-entrant admission — P1 high priority / concurrency correctness
-
-`start()` MUST assume eager Sender start/spawn can invoke user/completion callbacks synchronously before returning.
-
-MUST implement the contract in `06`/`08`：
+Gate S4-P:
 
 ```text
-no eager start while TaskScope owns its state/admission mutex
-no re-entrant stop callback while that mutex is held
-admitted-but-not-yet-registered start reservation
-close waits both reservations and owned operations
-```
-
-MUST NOT apply a naïve “unlock immediately before spawn” fix that allows `close()` to finish before the admitted operation registers.
-
-Tests：
-
-```text
-inline callback -> requestStop()
-inline callback -> nested start()
-start vs close
-start vs requestStop
-close vs admitted starter registration
-```
-
-### R0.4 Clean qualification — mandatory
-
-After R0.1–R0.3, qualify from a **brand-new clean checkout**, not the dirty/local worktree that produced previous evidence.
-
-Evidence MUST record at least：
-
-```text
-git rev-parse HEAD
-git status --porcelain          # empty
-git diff --exit-code
-git ls-files --error-unmatch engine/editor/application/test/editor_application_test.cpp
-```
-
-Then execute the repository-supported matrix：
-
-```text
-Default Developer
-PLAYER/runtime-clean profile
-EDITOR
-TOOLCHAIN
-Full Render / configured render closure
-install + relocated consumers where applicable
-second/no-op build after configuration changes
-```
-
-R0 is not complete until the evidence names the exact committed HEAD used for all results.
-
-### R0.5 Recommended hardening, not feature blockers unless target requires them
-
-- Linux ThreadSanitizer or equivalent race instrumentation for Execution/VFS/TaskScope where supported；
-- Graph fault-injection rollback tests before H/I；
-- actual Android configure/build before claiming Android target closure；header-prefix synchronization alone is not an Android build qualification。
-
-### Gate R0
-
-```text
-clean clone configures
-all referenced test sources tracked
-installTool lifecycle explicit/no UB
-TaskScope re-entry/races pass
-qualification evidence belongs to exact clean HEAD
-no foundation architecture redesign introduced
+same LXSA bytes execute on the qualified VM configurations
+lifecycle and coroutine parity pass
+installed consumers pass for LuaJIT and Lua54 prefixes
+JIT-off correctness passes
+portable numeric/value profile is explicit
 ```
 
 ---
 
-## 4. Foundation Waves B / V / A / F / G — implemented direction, preserve contracts
+## 5. S5 — Gameplay Async Integration Closure
 
-These sections remain normative because later work consumes them, but v3 coding agents should normally **not reimplement them**.
+S5 does not create a new coroutine runtime. It connects the existing one to real event/domain sources.
 
-### 4.1 Wave B — L2 Execution
+### S5.0 Event.await runtime
 
-Current foundation vocabulary：
-
-```text
-ExecutionRuntime
-CpuScheduler
-MainScheduler
-TaskScope
-TimerQueue/TimerSender
-PortSender
-```
-
-Preserve：
+Canonical topology:
 
 ```text
-bounded admission
-real CPU concurrency
-owner-thread Main drain
-structured lifetime
-stdexec stop vocabulary
-domain-blind process/execution
+EventPoint
+    ↓
+ScriptSystem EventBucket
+    ├─ normal bound handlers
+    └─ one-shot coroutine waiters
 ```
 
-Do not add `JobSystem/JobManager` or Material/Flow vocabulary to L2.
-
-### 4.2 Wave V1 — Product-wide VFS
-
-Preserve：
+MUST:
 
 ```text
-explicit mutable AssetVfs control plane
-copyable/read AssetVfsView
-immutable snapshot mount publication
-provider lifetime retained by snapshots
-read/read concurrency
+waiter is bounded + generational + one-shot
+no per-waiter EventPoint.connect/disconnect
+event payload crossing dispatch lifetime is copied/marshalled to owned resume storage
+event dispatch only marks READY/enqueues; it never directly resumes script
+idle waiters are event-driven; no per-frame full waiter scan
+callback and await consumption may coexist for one EventPoint
+nested dispatch and entity-retirement ordering deterministic/fail-closed
 ```
 
-Do not restore `AssetVfs::Get()`/lazy singleton/coarse unsafe mutable reader state.
+### S5.1 language/tool projection
 
-### 4.3 Wave V2 — production AssetRead / IO isolation
-
-Preserve VFS-backed `AssetReadPort` and shared bounded Blocking/IO isolation for synchronous storage. No feature-private IO pool.
-
-### 4.4 Wave A — EditorApplication + EditorContext + Toolset
-
-Preserve ownership：
+FlowForge:
 
 ```text
-EditorApplication owns:
-    ExecutionRuntime
-    root TaskScope
-    mutable AssetVfs
-    AssetRead endpoint/port
-    Toolset
-    EditorSelection
-    UISession
-    SceneMetaManager
-    configured RenderRuntime/platform state
-
-EditorContext carries/references:
-    Toolset&
-    AssetVfsView
-    AssetReadPort
-    ExecutionRuntime& / TaskScope&
-    EditorSelection& / UISession& / SceneMetaManager&
+Event-await node
+    -> existing explicit state machine
+    -> existing ScriptAwaitable
 ```
 
-### 4.5 Wave F — Shared Graph Source
-
-Preserve exact owner：
+Lua:
 
 ```text
-modules/function/graph
-GraphTopology
-GraphLayout
-NodeId / PinId
-opaque NodeTypeId / PinSemanticId
+portable Lua event await surface
+    -> existing Lua coroutine bridge
+    -> existing ScriptAwaitable
 ```
 
-No Material/Flow payload unification.
+Do not implement C++ `co_await Event` here; S6 owns C++ coroutine ergonomics.
 
-### 4.6 Wave G — Graph editing/render protocol
+### S5.2 Physics Ability
 
-Preserve separation：
+First real production domain family should be narrow, for example `PhysicsQuery3D`, based only on operations already owned/stable in the Physics package.
+
+Rules:
 
 ```text
-GraphEditingSession
-GraphIntent
-GraphRenderProtocol
-renderer/presentation
+Ability declaration follows Physics semantic owner
+Provider may be JoltPhysicsSystem but Script contract never names Jolt
+synchronous domain operation remains QUERY
+only genuinely time-spanning operation becomes ASYNC_OPERATION
+result/request types are backend-neutral semantic values
+no Jolt/Vulkan/third-party layout crosses the Script contract
 ```
 
-U2 changes only the concrete UI backend path; it MUST NOT alter the source/editing SSOT.
+### S5.3 Navigation + conditional AssetLoad
+
+Navigation follows exactly the same owner/provider rules. Do not create a universal Script collection merely to expose a path if no approved value representation exists.
+
+AssetLoad may close only if its return identity/residency contract is approved. Otherwise:
+
+```text
+S5 PASS
+while
+S2.4 AssetLoad remains BLOCKED
+```
+
+### S5.4 PB3
+
+Measure real Event/domain behavior, including:
+
+```text
+waiter register/cancel/delivery
+payload ownership/copy
+10k/50k/100k idle waiters
+fan-out storm + resume budget
+sparse realistic event workload
+Physics Ability boundary vs direct domain cost
+mixed C++ Static / FlowForge / Lua gameplay scene
+```
+
+PB3 is a baseline, not an invented absolute performance gate. Complexity violations such as full waiter scans or unbounded queues are blockers.
+
+Gate S5:
+
+```text
+Event.await semantics qualified
+FlowForge + Lua reuse existing continuation runtime
+first production Physics Ability qualified
+Navigation included only when real contract ready
+AssetLoad status explicit
+PB3 records scaling/complexity
+no Script/Event manager/service-locator architecture added
+```
 
 ---
 
-## 5. Wave U — Lux UI Foundation / Dear ImGui isolation
+## 6. S6 — C++ Coroutine Ergonomics + Shipping Specialization
 
-Detailed normative design: `10-lux-ui-foundation-and-legacy-visual-parity.md`.
+S6 is the final planned Script framework wave.
 
-### U0 — Public/private boundary + Frame + Theme
+### S6.0 C++ coroutine frontend
 
-Prerequisite: R0.
-
-MUST：
+Target user model may expose an ergonomic `co_await` surface, but:
 
 ```text
-modules/function/ui remains the public UI owner
-Dear ImGui private to UI backend source/target
-no ImGui types in public Lux UI headers
-ui::Frame or exact equivalent explicit per-frame capability
-Pane draws through Lux UI
-Theme/design token ownership
-Lux geometry/color/id/options types
+std::coroutine_handle remains private to C++ backend
+ScriptBackendContinuation remains Engine contract
+ScriptSystem never knows native coroutine representation
+BeginPlay/EndPlay remain synchronous
+BORROWED_STEP cannot cross co_await
 ```
 
-MUST NOT：
+### S6.1 C++ Ability ergonomics
+
+The same canonical Ability metadata remains the source of truth. C++ conveniences must not fork semantic schemas from Lua/FlowForge.
+
+### S6.2 Shipping static specialization
+
+When product composition knows:
 
 ```text
-retained widget tree
-WidgetManager
-IUiBackend virtual leaf interface
-public ImGui escape hatch
-one-to-one public clone of every ImGui flag/type
+Ability contract
+provider type
+selected composition
 ```
 
-### U1 — Editor primitives required by C/D/E
+it may generate/static-specialize the call path for LTO/devirtualization/inlining.
 
-Implement only proven primitives：
+Dynamic prepared binding remains the semantic/default contract. Performance strategy must not change `ContractId`, schema, provider ownership, or ScriptArtifact requirements.
+
+Gate S6:
 
 ```text
-window/child
-menu/context menu/popup where required
-toolbar
-table/property rows
-tree rows
-text/button/input/checkbox
-scalar/vector/enum editors
-search/filter helpers where shared
+C++ coroutine correctness/lifetime qualified
+same ScriptSystem continuation semantics reused
+shipping specialization demonstrates semantic equivalence
+cross-backend performance comparison recorded
+no new generic runtime manager/scheduler
+```
+
+After S6: **STOP Script framework expansion** and enter R1.
+
+---
+
+## 7. R1 — Whole-engine Requalification / Framework Gap Review
+
+R1 is not a redesign wave and should not add product features.
+
+Purpose:
+
+```text
+re-run current clean profile/install matrix
+map all post-S6 architecture owners
+confirm Script changes did not contaminate PLAYER/Toolchain/UI boundaries
+review unresolved STOP gates
+identify only concrete framework gaps exposed by current code
+```
+
+R1 MUST answer:
+
+```text
+Is Script framework frozen enough to be consumed by Editor/product work?
+Are U/C foundations still compatible with current runtime/codegen?
+Are there owner/lifetime regressions that must be fixed before UI expansion?
+What remains blocked by persistence/Product specs rather than implementation?
+```
+
+Gate R1:
+
+```text
+clean exact-HEAD qualification
+no unknown ownership/lifetime blockers
+no need for another speculative runtime framework wave
+```
+
+---
+
+## 8. Wave U — Lux UI Foundation
+
+`10-lux-ui-foundation-and-legacy-visual-parity.md` remains authoritative.
+
+### U0/U1
+
+Preserve/complete/qualify only real Editor-required primitives:
+
+```text
+modules/function/ui public boundary
+Dear ImGui private implementation
+ui::Frame / scopes
+Theme/design tokens
+window/child/menu/popup/toolbar/table/tree
+text/button/input/scalar/vector/enum
+search/filter helpers
 tooltip/focus/hover facts
-drag/drop stable payload
-edit gesture begin/change/commit facts
-ViewportElement integration
-opaque UI texture/presentation handle if required
+stable drag/drop payload
+edit gesture begin/change/commit
+ViewportElement
+opaque presentation/texture handle
 ```
 
-Central Theme must carry shared spacing/palette/row/tool/asset/tree/graph metrics. Feature code should not copy Legacy magic constants.
+Do not build a retained widget tree, WidgetManager, `IUiBackend`, or one-to-one ImGui wrapper universe.
 
-### U2 — Graph NodeCanvas backend isolation
-
-Prerequisites: U0/U1 + existing G.
-
-Target：
+### U2 NodeCanvas
 
 ```text
 GraphRenderProtocol
     -> DefaultNodeGraphRenderer
     -> ui::NodeCanvas
-    -> private imgui-node-editor / Dear ImGui backend
+    -> private imgui-node-editor / ImGui backend
 ```
 
-MUST remove direct node-editor/ImGui dependency from L5 graph renderer/domain presentation code.
-
-### Gate U
+Gate U:
 
 ```text
-public Lux UI package compiles without ImGui include path
-engine/editor/** compiles without direct ImGui/node-editor headers after migration
-plugin/generated UI code compiles without ImGui dependency
-only approved private UI backend links Dear ImGui/node-editor
-Theme centralizes shared visual language
-no retained-mode framework / speculative backend abstraction
+public Lux UI headers compile without ImGui includes
+Editor/generated/plugin code has no direct ImGui/node-editor dependency
+only private UI backend owns those dependencies
 ```
 
 ---
 
-## 6. Wave C — Generated EntityInspector
+## 9. Wave C — Generated EntityInspector
 
-Prerequisites: `R0 + A + U1`.
+C remains the first required Editor vertical slice because it validates UI + codegen + ECS + Selection + undo + AssetId interaction together.
 
-C is the recommended first real UI vertical slice because it validates Lux UI, codegen, Selection, typed ECS mutation, undo gesture and asset picker together.
-
-### C0 Codegen projection
-
-- annotation -> typed Lux UI editor binding；
-- no runtime `RefField` hot path；
-- no runtime fallback renderer；
-- generated source has no Dear ImGui include/type/call。
-
-### C1 Value binding
-
-First set：
+MUST:
 
 ```text
-bool
-integer
-float/double
-Eigen vector
-quaternion
-enum
-AssetId
-readonly
-nested explicitly supported value type
+generated typed Lux UI bindings
+no runtime reflection fallback hot path
+bool/integer/float/double/vector/quaternion/enum/AssetId supported as approved
+registry.patch<T>() / canonical typed mutation
+Parent relation never raw memory write
+edit gesture live preview -> one undo commit
+unknown editor binding fails visibly/read-only
 ```
 
-`double` remains double through Lux UI; backend precision handling is private.
-
-### C2 EntityInspector
-
-- component enumeration by schema/editor_visible；
-- generated binding lookup；
-- direct typed mutation；
-- `registry.patch<T>()`；
-- local search/expand state；
-- property row/theme follows Lux UI and may visually reference Legacy Inspector。
-
-### C3 Semantic fields / undo
-
-- Parent relation never raw write；
-- AssetId picker keeps stable identity, re-resolves on commit；
-- edit gesture gives live patch but creates one undo operation on commit。
-
-### Gate C
-
-```text
-No runtime reflection fallback
-No direct Dear ImGui dependency
-No per-component hand wiring
-Transform update reaches reactive system
-Unknown binding fails visibly/read-only; never silently generic-write
-Parent invariant preserved
-undo gesture requires no backend-specific item-state calls
-```
+No direct Dear ImGui in generated/editor binding code.
 
 ---
 
-## 7. Wave D — AssetBrowser + FileMonitor
+## 10. Wave D — AssetBrowser + FileMonitor
 
-Prerequisites: `R0 + A + U1`; background import uses existing B/V2.
-
-### D0 VFS-first
-
-MUST directly consume `context.vfs()` (`AssetVfsView`).
-
-MUST NOT create：
+MUST remain VFS-first:
 
 ```text
-AssetIndex
-AssetCatalog framework
-ContentBrowser source DB
-AssetManager singleton
+AssetVfsView snapshot enumeration
+virtual paths/breadcrumb/filter/grid/list
+stable AssetId drag payload
+thumbnail via Lux opaque presentation handle
+FileWatcher -> normalize/debounce/stabilize + project/root generation filtering
+Toolset importer/cooker + root TaskScope for async work
 ```
 
-### D1 AssetBrowser
-
-- virtual path/folder browse；
-- local search/filter over enumerate snapshot；
-- grid/list；
-- breadcrumb；
-- stable `AssetId` drag payload；
-- thumbnail through Lux opaque UI presentation handle；
-- local window state only；
-- visual/interaction language may intentionally match Legacy AssetBrowser through Theme。
-
-### D2 FileMonitor
-
-- Platform FileWatcher remains raw mechanism；
-- L5 wrapper normalize/debounce/stabilize；
-- absolute normalized path contract；
-- project/root generation filtering is mandatory correctness mechanism；
-- `clearPending()` is never a substitute for generation filtering。
-
-### D3 Toolchain integration
-
-- import/cook through concrete Toolset capability；
-- root TaskScope owns operation lifetime；
-- V2 shared Blocking/IO isolation for blocking stages；
-- completion re-resolves stable asset/project generation；
-- no UI pointer captured across worker completion。
-
-### Gate D
-
-```text
-closing AssetBrowser leaves VFS alive
-no recursive filesystem scan per frame
-stale project events rejected by generation
-no AssetIndex introduced
-no UI-owned worker thread
-no direct Dear ImGui dependency
-```
+MUST NOT introduce `AssetIndex` merely to implement v1 UI, a UI-owned worker thread, or per-frame recursive filesystem scan.
 
 ---
 
-## 8. Wave E — SceneEditor / SceneOutliner / Viewport
+## 11. Wave E — SceneEditor / Outliner / Viewport
 
-Prerequisites: `R0 + A + U1`.
-
-### E0 Selection
-
-v1 MUST use one EditorApplication-owned `EditorSelection`, referenced via `context.selection()`.
-
-Identity：
+Preserve:
 
 ```text
-EditorSceneHandle{slot,generation} + Entity
+one EditorApplication-owned EditorSelection
+EditorSceneHandle{slot,generation} + Entity live identity
+flat Outliner as first-class projection
+hierarchy only when real hierarchy semantics exist
+canonical reparent/detach
+Viewport consumes injected render presentation capability
+picking updates shared Selection
+gizmo uses direct typed Transform mutation/patch
 ```
 
-No Scene AssetId as live identity; no L3 SceneId created solely for Editor.
-
-### E1 Outliner
-
-- Flat projection is first-class；
-- hierarchy only when hierarchy semantics exist；
-- hierarchy mutation via canonical `reparent/detach`；
-- Inspector independent from projection；
-- Legacy row/highlight/context interaction may be a visual reference without reintroducing legacy ownership。
-
-### E2 Viewport
-
-- application composition supplies render presentation capability；
-- Lux `ViewportElement` exposes UI interaction facts only；
-- picking updates shared Selection；
-- gizmo direct typed Transform mutation/patch；
-- no RenderRuntime/device ownership in window；
-- no ImGui texture/ID types in viewport public seam。
-
-### E3 Scene Settings
-
-- generated Lux UI where static schema supports it；
-- lower-layer Scene/System builder remains authoritative validator。
-
-### Gate E
-
-```text
-Scene works without Parent
-Flat projection works
-Hierarchy optional
-No giant EditorScene
-No RenderRuntime/device creation in L5 window
-No direct Dear ImGui dependency
-```
+No giant `EditorScene`, no RenderRuntime/device ownership in a window, no ImGui texture/ID leakage.
 
 ---
 
-## 9. Wave H — MaterialEditor
+## 12. H0 / I0 — In-memory Tool Integration
 
-Base prerequisites for in-memory integration: `R0 + A + B + F + G + U2`.
-
-### H0 In-memory edit / compile integration — allowed
-
-`Toolset` installs long-lived `MaterialGraphCompiler`：
+After U2:
 
 ```text
-immutable environment
-shared scheduler capabilities
-compile(owned snapshot) -> domain Sender
+H0 MaterialEditor
+I0 FlowForgeEditor
 ```
 
-`MaterialEditor` is the window; no `MaterialEditorPane` + nested graph owner duplication.
+Both should consume existing Graph/Toolset/TaskScope/compiler foundations rather than add new framework layers.
 
-Async path：
+Common async pattern:
 
 ```text
-clone/freeze source
+clone/freeze source snapshot
 compiler.compile(snapshot)
 root TaskScope owns operation
-CPU/blocking stages as appropriate
-Main completion
-stable document/revision check
+main/stable completion
+validate document/revision
 apply diagnostics/preview
 ```
 
-Window close does not cancel root-scope work.
-
-### H1 Durable source workflow — STOP gate
-
-If MaterialGraph source codec/document identity is not approved：
-
-```text
-STOP durable open/save/reopen/project-source integration.
-```
-
-H0 may prototype in-memory editing/compilation, but MUST NOT invent a file format or claim complete MaterialEditor persistence.
-
-### Gate H
-
-- same compiler instance parallel compiles；
-- owned snapshot isolation；
-- relocated compiler environment；
-- stale revision discard；
-- window-close survival；
-- graph UI reaches backend only through Lux UI/NodeCanvas；
-- durable path only after source identity/codec approval。
+Window close does not cancel application-owned root work merely because the UI view vanished.
 
 ---
 
-## 10. Wave I — FlowForgeEditor
+## 13. H1 / I1 — Persistence STOP gates
 
-Base prerequisites for in-memory integration: `R0 + A + B + F + G + U2`.
+Durable source workflows remain blocked until approved contracts exist.
 
-Compiler remains immutable/reentrant; per invocation owns MLIRContext/temp state.
-
-### I0 In-memory edit / compile integration — allowed
-
-- reuse V2 BlockingScheduler for blocking linker/file stages；
-- no FlowForge-private blocking pool；
-- `ProcessSender` only when real subprocess lifecycle requirements justify it；
-- graph UI uses Lux UI/NodeCanvas only。
-
-### I1 Durable/package workflow — STOP gate
-
-If FlowGraph codec or stable `ScriptSymbol` source identity is not approved：
+Material:
 
 ```text
-STOP durable open/save/packaging integration.
+MaterialGraph codec + document/source identity
 ```
 
-MUST NOT restore retired Authoring to bypass this gate.
+FlowForge:
+
+```text
+FlowGraph codec + stable ScriptSymbol source identity/package contract
+```
+
+UI/compiler work MUST NOT invent persistence formats to bypass these gates.
 
 ---
 
-## 11. Wave S — Runtime Async Script Foundation
+## 14. FC — Engine Framework Closure
 
-Mechanical prerequisites B+V2 already exist, but the continuation ABI/state model is not yet sufficiently frozen for implementation. Therefore S is split into a design gate and implementation waves.
+FC formalizes the earlier “L5 Foundation/UI Ready” definition and adds Script/tool integration closure.
 
-### S0 — mandatory contract freeze
-
-Before code implementation, approve at minimum：
+FC requires:
 
 ```text
-script instance stable identity/generation
-continuation/state record
-resume token / program point representation
-locals/value storage across suspension
-result/error channel into resumed script
-cancellation / scene shutdown semantics
-explicit Simulation resume queue/stable point
-nested/repeated async operation behavior
-ordering/reentrancy rules
+Runtime
+    Execution / VFS / AssetRead stable
+    Simulation / Scene / Render foundation stable
+    Script S1–S6 frozen
+
+Editor foundation
+    EditorApplication ownership stable
+    Toolset freeze/lifetime stable
+    Lux UI private backend boundary stable
+    generated EntityInspector working
+    AssetBrowser/FileMonitor working
+    SceneEditor/Selection/Viewport working
+    NodeCanvas backend isolation working
+
+Tool integration
+    H0 Material in-memory edit/compile working
+    I0 FlowForge in-memory edit/compile working
+
+Architecture
+    PLAYER runtime-clean
+    EDITOR/TOOLCHAIN closure clean
+    installed/relocated consumers pass
+    no known architecture STOP condition outstanding
 ```
 
-Sender operation state is not the script continuation ABI.
+When FC passes:
 
-### S1 — core continuation/resume runtime
+> **Engine Framework v1 architecture is closed.**
 
-After S0：
-
-```text
-persist continuation/state
-return control to Simulation on suspend
-bounded resume queue
-validate stable instance/generation on resume
-resume only at explicit Simulation point
-```
-
-### S2 — first bridges
-
-```text
-Delay -> TimerSender
-AssetLoad -> AssetReadPort/loadAsset<T>()
-domain async completion -> resume record
-```
-
-MUST NOT：
-
-```text
-sleep game thread
-sync_wait async Sender on game/main thread
-busy wait GPU fence
-resume directly on worker/render callback
-retain native C++ stack frame across frames
-```
-
-### Gate S
-
-Delay and asset load samples suspend across frames while frame loop continues; shutdown invalidates/cancels outstanding continuations safely without use-after-free.
+Subsequent work should normally be feature production (animation/audio/world tools/more Abilities/debugger/etc.), not another root architecture rewrite.
 
 ---
 
-## 12. Product Track P — Project-specific executable generation
+## 15. Plugin/source-package track — cross-cutting, not a layer
 
-Target outcome remains frozen：final shipping product is a project-specific executable, not a generic fixed Player binary.
+Plugin v1 is source-distributed/build-time-composed packaging around ordinary modules.
 
-Implementation remains STOP until an approved project manifest / target-generation specification freezes exact inputs：
+It is not a serialized runtime activation framework and not a separate implementation wave that owns all extension points.
+
+A package may export independently classified targets:
 
 ```text
-module/system selection
-project native/generated code inputs
+domain/runtime
+render
+scene integration
+toolchain
+editor
+```
+
+Each target uses the owner-specific extension seam:
+
+```text
+Simulation -> SimulationSystemRegistration / component/codegen
+Script     -> Ability/Event declarations + generated metadata
+Render     -> RenderFeature/FeatureFactory/registration
+Scene      -> integration/sync binding
+Toolchain  -> concrete importer/cooker/compiler target
+Editor     -> Tool/window/command/Inspector/graph contribution
+```
+
+CMake target graph is the v1 composition truth until Product P freezes a project/package manifest.
+
+See `14-plugin-package-and-extension-composition.md`.
+
+---
+
+## 16. Product Track P
+
+Final shipping product remains project-specific, not a fixed generic Player architecture.
+
+P is STOP until an approved project target-generation specification freezes at least:
+
+```text
+selected runtime/domain modules
+selected Systems / Scene integrations
+selected Render backend/features
+project native/generated sources
+source Plugin Package dependencies/facets
 plugin/static linkage policy
 platform/backend selection
 cooked/pak inputs
 CMake/generator output contract
 ```
 
-Current `PLAYER` is only a runtime-clean qualification profile.
+Do not independently invent a Plugin manifest and a Project manifest. Plugin package selection belongs in the same Product composition model.
 
 ---
 
-## 13. Suggested Source Topology (v3)
+## 17. Qualification matrix
+
+Every cross-layer wave, as applicable:
 
 ```text
-modules/
-  function/
-    ui/                    # Lux public UI + private Dear ImGui backend
-    graph/                 # shared structural graph source
-    material/
-    flowforge/
-
-engine/
-  process/
-    execution/             # Runtime, CPU/Main/Blocking where authorized, TaskScope, Timer
-    asset_loading/         # AssetReadPort / VFS-backed endpoint / typed load sender
-
-  editor/
-    application/           # EditorApplication composition leaf
-    context/               # EditorContext / Toolset / Selection contracts
-    inspector/
-    asset/
-    scene/
-    graph/                 # editing/render protocol; no backend source ownership
-    material/
-    flowforge/
-
-  toolchain/
-    material/
-    flowforge/
-    asset/
+exact clean source SHA/status
+Default Developer
+PLAYER/runtime-clean
+EDITOR
+TOOLCHAIN
+Full Render when touched
+install + relocated consumers
+second build no-work after CMake/codegen changes
+architecture dependency/source validators
 ```
 
-Exact leaf names may follow repository conventions; semantic owner/dependency direction may not change without review.
-
----
-
-## 14. Product / Dependency Guards
-
-MUST maintain：
+Script additionally:
 
 ```text
-PLAYER/runtime-clean qualification: no Editor, no L4 compiler closure
-EDITOR: L5 + explicitly required L4/L3/L2/L1/L0
-TOOLCHAIN: L4 tools, no Editor UI
-FUNCTION: no Toolchain/Editor dependency
-PROCESS execution: no Material/FlowForge/Editor vocabulary
-modules/function/ui public: no Dear ImGui types
-engine/editor after Wave U: no direct Dear ImGui/imgui-node-editor dependency
+continuation/lifecycle race stress
+late completion/generation invalidation
+bounded queue/capacity tests
+performance complexity baseline
 ```
 
-Editor linking Toolchain must be explicit, not through an “all tools” aggregate.
+UI additionally:
+
+```text
+public UI headers without ImGui include path
+Editor/generated/plugin targets without direct ImGui/node-editor
+Legacy visual/interaction checklist where relevant
+```
+
+Graph additionally:
+
+```text
+fault-injection rollback
+inverse rollback failure -> poison/fail closed
+compile/artifact equivalence
+```
+
+Platform support claims require actual target configure/build where practical; copying installed headers is not a platform qualification.
 
 ---
 
-## 15. Codegen Guards
+## 18. Global STOP conditions
 
-- first-party/plugin Inspector binding = generated typed Lux UI code；
-- no runtime-reflection fallback；
-- plugin SDK uses the same public generator；
-- generated source does not include Dear ImGui；
-- Wave U does not invent a declarative UI DSL；
-- Graph F/G/U2 do not invent a universal graph annotation/payload system。
-
----
-
-## 16. Coding Agent Execution Protocol
-
-At the beginning of every wave：
-
-1. Read current HEAD and canonical architecture source.
-2. Verify the worktree/source snapshot is self-contained; for qualification work start from a clean clone.
-3. Inventory current package/target/public headers/tests.
-4. List only this wave's MUST changes.
-5. List MUST NOT touch / STOP gates.
-6. Add/update architecture guard/tests before or with production changes.
-7. Hard-cut migration; no compatibility shim/parallel architecture.
-8. One semantic commit per topic where practical.
-9. Run relevant product closure + installed/relocated consumer tests.
-10. Record exact HEAD and clean status in qualification evidence.
-11. If a STOP condition appears, report the smallest missing design decision; do not infer a framework/format/owner.
-
----
-
-## 17. Global Stop Conditions
-
-STOP and return to architecture review if implementation appears to require：
+STOP for architecture review if implementation appears to require:
 
 ```text
 new upward dependency
 new global Manager/Registry/Services root
 change of EditorApplication/EditorContext ownership
-change of Toolset typed lookup/freeze semantics
 shared graph owner move away from modules/function/graph
-Material/Flow payload rewrite merely to finish topology/UI work
-new source persistence/file format/document identity
-new project manifest/target format
-script continuation ABI invented during coding
-engine/authoring resurrection
-compatibility shim/parallel old-new architecture
-Dear ImGui/public backend type leaked outside private Lux UI backend
-retained-mode widget tree/framework
-IUiBackend or generic backend abstraction without a second real backend/approved need
+new Material/Flow persistence format from UI work
+new project/plugin manifest before Product P
+ScriptSystem learning backend-native coroutine types
+worker/domain direct Script resume
+borrowed data crossing await
+LuaJIT-specific canonical Script semantics
+Dear ImGui/node-editor leaking outside private UI backend
+retained-mode widget framework
+PluginManager/IPlugin used to bypass owner-specific registration
+RenderPlugin duplicating RenderFeature
+binary hot-unload architecture merely to support source plugins
 ```
 
----
-
-## 18. Anti-over-abstraction Rules
-
-Do not proactively create：
-
-```text
-EditorManager
-EditorServices
-ServiceRegistry
-ToolRegistry (Toolset is the bounded exception)
-JobSystem / JobManager
-CompilerManager / GenericCompiler
-GenericGraphIR / UniversalGraph
-GraphValue property bag
-AssetManager replacement
-AssetIndex during Wave D
-SelectionRegistry during v1
-WidgetManager / retained visual tree
-IUiBackend virtual leaf abstraction
-persistent object for every Button/Label/Input widget
-```
-
-A new abstraction needs at least two real consumers or an independently proven contract gap; theoretical future flexibility is not sufficient.
-
----
-
-## 19. Recommended Commit Sequence from current checkpoint
-
-```text
-R0.1 repo: recover/commit editor_application_test source; prove clean configure
-R0.2 editor/application: make installTool lifecycle fail closed after start/shutdown
-R0.3 process: make TaskScope admission/close re-entrant-safe + race tests
-R0.4 qualification: rerun clean-clone profile/install matrix and update evidence
-
-U0 ui: freeze public/private Lux UI boundary + Frame + Theme
-U1 ui: add property/table/tree/drag-drop/edit-gesture/viewport primitives needed by C/D/E
-
-C1 editor/codegen: generate Lux UI component editor bindings
-C2 editor: EntityInspector typed value/property UI
-C3 editor: semantic fields + undo gesture + AssetId picker
-
-D1 editor: VFS-first AssetBrowser using Lux UI
-D2 editor/platform: FileMonitor normalization + generation filtering
-D3 editor/toolchain: root-TaskScope import/cook integration
-
-E1 editor: Selection + flat SceneOutliner
-E2 editor: optional hierarchy projection + canonical reparent/detach
-E3 editor: Lux Viewport/picking/gizmo
-
-U2 ui/graph: NodeCanvas + move imgui-node-editor behind UI backend
-
-H0 material: in-memory MaterialEditor edit/compile after U2
-H1 material: durable source only after codec/document identity approval
-I0 flowforge: in-memory FlowForgeEditor after U2
-I1 flowforge: durable/package only after codec + ScriptSymbol identity approval
-
-S0 design: freeze continuation/resume ABI
-S1/S2 scripting: continuation runtime + Delay/AssetLoad bridges
-
-P* product: only after project-manifest / target-generation spec approval
-```
-
----
-
-## 20. Qualification Matrix
-
-Every cross-layer wave at minimum：
-
-```text
-clean source / exact HEAD evidence
-Default Developer
-PLAYER/runtime-clean profile
-EDITOR
-TOOLCHAIN
-Full Render where applicable
-install + relocated consumer where applicable
-no-op second build after build-system changes
-architecture dependency probe
-```
-
-R0/Execution additionally：
-
-```text
-stress/race/shutdown/queue-bound tests
-TaskScope synchronous re-entry tests
-ThreadSanitizer/race instrumentation where environment supports it
-```
-
-UI additionally：
-
-```text
-modules/function/ui public headers compile without ImGui include paths
-engine/editor migrated targets compile without direct ImGui/node-editor headers
-generated/plugin binding target compiles without ImGui include paths
-only private UI backend links Dear ImGui/node-editor
-Legacy visual/interaction checklist for major migrated surfaces
-```
-
-Graph additionally：
-
-```text
-Material artifact equivalence
-FlowForge compile/execute equivalence
-Nth mutation fault-injection rollback
-inverse rollback failure -> poisoned/fail-closed session
-```
-
-Platform closure：if Android is claimed as supported/qualified for the wave, run an actual Android configure/build rather than only synchronizing install include prefixes.
-
----
-
-## 21. L5 Foundation / UI Ready Definition
-
-Before calling the new Editor foundation ready for H/I feature expansion, all must hold：
-
-```text
-R0 clean-checkout qualification passes
-EditorApplication ownership + non-owning EditorContext stable
-installTool lifecycle fail-closed in every application state
-Toolset frozen typed capability lookup stable
-TaskScope re-entrant-safe admission/close stable
-AssetVfsView + immutable mount publication stable
-production AssetRead does not block owner thread
-Lux UI public/private backend boundary stable
-Dear ImGui hidden from Editor/plugin/generated code
-Theme and UI primitives sufficient for C/D/E
-generated EntityInspector hot path stable
-VFS-first AssetBrowser + FileMonitor generation filtering stable
-Scene flat/optional hierarchy + shared Selection stable
-Shared Graph Source + Graph editing/render protocol stable
-NodeCanvas hides imgui-node-editor before H/I graph UI expansion
-no known architecture STOP condition outstanding
-```
-
----
-
-> Coding implementation MUST also comply with `08-normative-execution-contract.md`.
+Hard-cut migrations are preferred while the architecture is still pre-product; do not leave permanent compatibility shims between retired and current designs.

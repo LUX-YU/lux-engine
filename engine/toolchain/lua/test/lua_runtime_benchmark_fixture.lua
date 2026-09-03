@@ -28,6 +28,12 @@ end
 
 ---@lux.method
 ---@return void
+function BenchmarkBehavior:query_only()
+    self.value = lux.BenchmarkValue.read(self.value)
+end
+
+---@lux.method
+---@return void
 function BenchmarkBehavior:update_plain()
     self.value = self.value + 1
 end

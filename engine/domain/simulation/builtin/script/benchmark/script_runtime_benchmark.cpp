@@ -270,6 +270,7 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kEnd{0xB005U};
     inline constexpr lux::script::ScriptSymbolId kLuaAsync{0xB006U};
     inline constexpr lux::script::ScriptSymbolId kLuaPlain{0xB007U};
+    inline constexpr lux::script::ScriptSymbolId kLuaQuery{0xB008U};
 
     [[nodiscard]] SimulationDescription scriptDescription()
     {
@@ -1922,7 +1923,7 @@ namespace
         }
         if (harness.system->activeInstanceCount() != options.size || harness.dispatches == 0U)
             throw std::runtime_error("Lua synchronous benchmark observation mismatch");
-        if (symbol == kTick && harness.value_provider.calls == 0U)
+        if ((symbol == kTick || symbol == kLuaQuery) && harness.value_provider.calls == 0U)
             throw std::runtime_error("Lua Ability benchmark did not call the prepared provider");
     }
 
@@ -2073,7 +2074,7 @@ int main(int argc, char** argv)
         else if (options->group == "micro-lua-sync")
             runLuaSync(*options, rows, kLuaPlain, options->group);
         else if (options->group == "micro-lua-ability-query")
-            runLuaSync(*options, rows, kTick, options->group);
+            runLuaSync(*options, rows, kLuaQuery, options->group);
         else if (options->group == "micro-lua-coroutine")
             runLuaCoroutineMicro(*options, rows);
         else if (options->group == "scene-lua-update-heavy")

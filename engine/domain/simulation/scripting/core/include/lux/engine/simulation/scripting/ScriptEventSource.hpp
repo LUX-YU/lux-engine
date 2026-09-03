@@ -83,7 +83,8 @@ namespace lux::simulation::script
         const bool is_payload_mismatch = endpoint.payload_projection.copy == nullptr ||
             endpoint.payload_type.type_id != event.payloadType() ||
             endpoint.payload_type.canonical_name != event.payloadSchemaName() ||
-            endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF || owned.type_id != event.payloadType() ||
+            endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
+            owned.type_id != event.payloadType() ||
             owned.canonical_name != event.payloadSchemaName() || owned.abi_kind == 0U || owned.size == 0U ||
             owned.size > std::numeric_limits<std::uint32_t>::max() || owned.alignment == 0U ||
             owned.alignment > std::numeric_limits<std::uint32_t>::max() ||

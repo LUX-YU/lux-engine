@@ -170,3 +170,79 @@ add_test(
     NAME simulation_script_lifecycle_test
     COMMAND simulation_script_lifecycle_test
 )
+
+add_executable(
+    script_runtime_benchmark
+    benchmark/script_runtime_benchmark.cpp
+)
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE LUX_SCRIPT_RUNTIME_BENCHMARK_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(LUX_SCRIPT_RUNTIME_BENCHMARK_GIT_COMMIT STREQUAL "")
+    set(LUX_SCRIPT_RUNTIME_BENCHMARK_GIT_COMMIT "unknown")
+endif()
+target_include_directories(
+    script_runtime_benchmark
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark
+)
+target_compile_definitions(
+    script_runtime_benchmark
+    PRIVATE
+        LUX_BENCHMARK_GIT_COMMIT="${LUX_SCRIPT_RUNTIME_BENCHMARK_GIT_COMMIT}"
+        LUX_BENCHMARK_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+        LUX_BENCHMARK_COMPILER="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}"
+)
+target_link_libraries(
+    script_runtime_benchmark
+    PRIVATE
+        lux::engine::simulation::simulation_script
+        lux::engine::simulation::composition
+        lux::engine::simulation::simulation_script_cpp_static
+)
+if(TARGET simulation_script_lua)
+    target_compile_definitions(script_runtime_benchmark PRIVATE LUX_BENCHMARK_HAS_LUA=1)
+    target_link_libraries(
+        script_runtime_benchmark
+        PRIVATE lux::engine::simulation::simulation_script_lua
+    )
+else()
+    target_compile_definitions(script_runtime_benchmark PRIVATE LUX_BENCHMARK_HAS_LUA=0)
+endif()
+if(TARGET simulation_script_native AND TARGET script_native_fixture)
+    target_compile_definitions(
+        script_runtime_benchmark
+        PRIVATE
+            LUX_BENCHMARK_HAS_NATIVE=1
+            LUX_BENCHMARK_NATIVE_FIXTURE="$<TARGET_FILE:script_native_fixture>"
+    )
+    target_link_libraries(
+        script_runtime_benchmark
+        PRIVATE lux::engine::simulation::simulation_script_native
+    )
+    add_dependencies(script_runtime_benchmark script_native_fixture)
+else()
+    target_compile_definitions(script_runtime_benchmark PRIVATE LUX_BENCHMARK_HAS_NATIVE=0)
+endif()
+lux_script_abilities(
+    TARGET script_runtime_benchmark
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/ScriptBenchmarkAbility.hpp
+    LOGICAL_PATHS ScriptBenchmarkAbility.hpp
+)
+lux_classify_target(
+    TARGET  script_runtime_benchmark
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME script_runtime_benchmark_smoke
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DEXECUTABLE=$<TARGET_FILE:script_runtime_benchmark>
+        -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/benchmark/smoke
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/run_smoke.cmake
+)

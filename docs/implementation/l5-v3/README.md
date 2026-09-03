@@ -1,134 +1,258 @@
-# Lux Engine Architecture / Implementation Docset — 2026-09-02 v3
+# Lux Engine Architecture / Implementation Docset — 2026-09-03 v3 reconciliation
 
 Status: **Normative architecture + current implementation roadmap**
 
-This revision supersedes `lux-engine-architecture-implementation-docset-2026-09-02 v2`.
+This revision reconciles the original 2026-09-02 v3 design with the runtime scripting work qualified on `main` through the Lua S4/PB2 checkpoint and with the currently approved post-S4 plan.
 
-Reviewed repository checkpoint for this revision: `main@2caaa6f7b35ad759d32e9f9763a67dcb559b8860` (`test(ui): match snapshot linkage contract`).
+Reviewed public repository checkpoint for this reconciliation: `main@bc15a84252c5740e6e47f3e1094810d6dd4ab711` (`docs(perf): record final Lua PB2 baseline`). Later implementation may move ahead of this checkpoint; when that happens, coding agents MUST remap physical paths/targets to current repository facts without silently changing the semantic contracts in this docset.
 
-> v3 keeps the ownership, VFS, execution, graph, product and Lux UI decisions, and now freezes the runtime scripting capability/coroutine model plus Script Ability reflection/provider binding/codegen. Dear ImGui remains private to `modules/function/ui`. `modules/` remains Engine-independent/reusable; Engine Script Ability declarations stay with their real Engine/domain owners.
+> The v3 direction is preserved: explicit ownership, reusable `modules/`, domain-owned contracts, product-clean dependency boundaries, Lux UI with private Dear ImGui backend, shared graph source/edit protocol, project-specific final products, backend-neutral script continuations, and no global service-locator architecture.
 
-## Major convergence changes
+---
 
-1. **Current foundation is preserved, not redesigned.** B/V1/V2/A/F/G/R0 are treated as the implemented foundation direction.
-2. **Lux UI remains an explicit implementation wave.** `modules/function/ui` is the public UI boundary; Editor, generated bindings and plugins consume Lux UI, not Dear ImGui.
-3. **Dear ImGui is a private backend detail.** Public Lux headers, L5 Editor packages, generated UI code and plugin SDK surfaces MUST NOT expose ImGui/imgui-node-editor headers or types.
-4. **UI remains immediate-mode internally.** Long-lived semantic objects such as `Pane`/`UISession` are object-oriented; frame/scope objects are ephemeral; leaf widgets remain immediate-mode functions.
-5. **Legacy is a visual/interaction reference, not an architectural source of truth.** Lux preserves selected workflows/panel composition/visual language while replacing Legacy ownership and monolithic Editor structure.
-6. **Generated Inspector UI targets Lux UI.** First-party and plugin UI codegen must not expose private ImGui types.
-7. **Graph rendering remains backend-isolated.** `GraphEditingSession`/`GraphRenderProtocol` remain canonical; default graph rendering consumes Lux UI NodeCanvas.
-8. **Product/runtime decisions remain unchanged.** Final game output is project-specific; `PLAYER` is only a runtime-clean qualification profile; VFS remains explicit/product-wide.
-9. **Persistence and Product STOP gates remain.** Material/Flow durable source persistence and project target-generation inputs still require dedicated approved contracts.
-10. **Script API is a callable contract; provider is a runtime capability implementation.** Scripts depend on stable contracts such as `PhysicsQuery3D`, not concrete providers such as Jolt.
-11. **System is a common provider form, not the only provider form.** Entity/ECS or AssetLoading abilities may be provided by appropriate runtime/integration objects rather than fake Systems.
-12. **`modules/` boundary is preserved.** Engine/Scene/Simulation/System capability ontology MUST NOT be moved into `modules/function/script` merely to centralize scripting. `modules/` only owns truly reusable Engine-independent script/ABI/codegen primitives.
-13. **Ability declaration follows semantic owner.** A physics ability is declared with the physics Engine package; ECS abilities with Simulation ECS owner; external projects may declare their own abilities in their own Engine/project packages.
-14. **Reflection is static; provider binding is runtime.** Codegen emits canonical Ability metadata plus typed binder/thunks. It does not construct/own provider objects.
-15. **Provider objects retain their existing owner.** Simulation/composition continues to own installed Systems; generated ability bindings only borrow already-owned provider instances.
-16. **Receiver v1 is intentionally small.** `NONE` or `PROVIDER_INSTANCE`. Receiver is binding metadata, not a script-visible parameter.
-17. **Default provider is unique in v1.** Multiple providers for one default contract fail with `SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER`; no registration-order selection or string service lookup.
-18. **Ability codegen is explicit CMake opt-in.** Selected sources/types are reflected; generated files live in the build generated tree; domain targets do not depend directly on Lua/FlowForge/Python implementations.
-19. **Codegen is two-stage.** Owner-side reflection produces canonical language-neutral Ability metadata + binder; language/tool projections consume it for C++, Lua, FlowForge and future Python.
-20. **Coroutine/await is the canonical cross-frame script control-flow model.** FlowForge uses explicit state machine; language-native coroutine mechanisms stay backend-private behind one continuation contract.
-21. **Event + await coexist.** Hook/Event remain engine-to-script contracts; `Event.next(...)` may be awaited without turning EventPoint into a per-coroutine connection framework.
-22. **Delay semantics are split.** `Delay.seconds()` means Simulation time; `Delay.realSeconds()` uses monotonic real time; all resume occurs only at explicit Simulation stable points.
-23. **Borrowed data cannot cross suspension.** Ability/schema projection distinguishes `OWNED_VALUE`, `STABLE_ID`, `BORROWED_STEP`, `AWAITABLE`; `BORROWED_STEP` values are invalid across await.
-24. **Script API contract does not mandate dispatch.** Dynamic boundaries may use prepared receiver + function table; project-specific C++/FlowForge shipping paths may statically specialize and inline known providers.
+## 1. Current convergence
 
-## Terminology
-
-- **DAG** — Directed Acyclic Graph，有向无环依赖图。
-- **ABI** — Application Binary Interface，应用二进制接口。
-- **SDK** — Software Development Kit，软件开发工具包/公开插件开发接口集合。
-- **UB** — Undefined Behavior，C++ 未定义行为。
-- **RAII** — Resource Acquisition Is Initialization，资源获取即初始化。
-- **VFS** — Virtual File System，虚拟文件系统。
-- **Ability** — reflected callable Script API contract declared with its semantic owner.
-- **Provider** — existing runtime instance that implements an Ability contract.
-- **Receiver** — hidden binding target (`NONE` or `PROVIDER_INSTANCE` in v1), not a script-visible parameter.
-
-## Current implementation checkpoint
+The following foundation directions are treated as **closed/preserved**, not as work to redesign:
 
 ```text
-Closed/preserved foundation:
-    R0  Foundation requalification/hotfix
-    B   L2 Execution
-    V1  AssetVfs read/control split
-    V2  VFS-backed AssetRead / blocking IO isolation
-    A   EditorApplication + non-owning EditorContext + Toolset
-    F   Shared Graph Source
-    G   Graph editing/render protocol split
-
-Editor/UI implementation now present:
-    U0/U1 direction  Lux UI backend isolation + real windowed UI presentation
-    C direction      generated EntityInspector mounted as a real visible slice
-
-Immediate Editor gate:
-    qualify/close the current visible U/C checkpoint before broadening Editor feature scope
-
-Runtime scripting design:
-    S0 design        FROZEN by `11` + `12`
-
-Runtime scripting implementation sub-DAG:
-    S1   capability identity/requirements/provider publication + continuation/awaitable/resume foundation
-      ↓
-    S1.5 Ability reflection + receiver/provider binder + explicit CMake codegen + projection proof
-      ↓
-    S2   NextStep / Simulation Delay / Real Delay / AssetLoad
-      ↓
-    S3   FlowForge generated API nodes + coroutine lowering
-      ↓
-    S4   Lua generated binding + coroutine bridge
-      ↓
-    S5   Event.await + real Physics/Navigation/etc. abilities
-      ↓
-    S6   C++ coroutine ergonomics + shipping static specialization
-
-Parallelism:
-    after visible U/C qualification, D/E/U2 Editor work and S1 scripting may proceed in parallel
-    S1.5 depends on S1 qualification; it does not wait for D/E/U2
-
-Product:
-    P project target generation remains STOP until manifest/target spec approval
+R0  foundation requalification / lifecycle hotfix
+B   L2 Execution / TaskScope / Timer / bounded async mechanisms
+V1  AssetVfs control/read split
+V2  VFS-backed AssetRead + blocking IO isolation
+A   EditorApplication + non-owning EditorContext + Toolset
+F   Shared Graph Source
+G   Graph editing/render protocol separation
 ```
 
-## Reading order
+The Script runtime has advanced substantially beyond the original v3 checkpoint:
 
-1. `00-L5-architecture-overview.md`
-2. `08-normative-execution-contract.md`
-3. `07-implementation-roadmap-and-gates.md`
-4. `10-lux-ui-foundation-and-legacy-visual-parity.md` for Editor UI work
-5. Current-wave functional document(s)
-6. `09-product-runtime-vfs-and-async-script.md` for product composition, VFS, asset IO and historical async integration context
-7. `11-script-api-capabilities-coroutines-and-await.md` for any runtime Script API/capability/coroutine/await work
-8. `12-script-ability-reflection-provider-binding-and-codegen.md` for Ability declaration, receiver/provider binding, CMake codegen or language projection work
+```text
+S1 / S1.5  capability + continuation foundation, Ability reflection/codegen
+S2.0–S2.3 stable point / NextStep / Simulation Delay / Real Delay
+S2.5       gameplay Script object lifecycle
+PB0        Script runtime baseline
+S3         FlowForge Ability nodes + explicit state-machine coroutine lowering
+S3-H       transitive suspension / borrowed-lifetime hardening
+PB1        FlowForge end-to-end baseline
+S4         production Lua object + prepared Ability + coroutine bridge
+PB2        LuaJIT end-to-end baseline
+```
+
+`S2.4 AssetLoad` is **not** considered complete merely because the coroutine bridge exists. It remains conditional on an approved script-visible stable/residency-backed Asset handle/value contract.
+
+The portability closure immediately before S5 is:
+
+```text
+S4-P  portable Lua VM closure
+      same LUA_SOURCE artifact semantics
+      LuaJIT JIT-on / LuaJIT interpreter / Lua 5.4 parity
+      JIT is an optimization, never a script semantic
+```
+
+The approved remaining Script roadmap is:
+
+```text
+S4-P
+  ↓
+S5   Event.await + first real domain Abilities (Physics, then Navigation when ready)
+     + conditional S2.4 AssetLoad closure
+  ↓
+PB3  realistic gameplay async/event/domain baseline
+  ↓
+S6   C++ coroutine ergonomics + shipping static specialization
+  ↓
+Script framework FREEZE
+```
+
+There is intentionally **no planned S7**. New Script/runtime work after S6 must be justified by a real product/editor/gameplay consumer.
+
+---
+
+## 2. Post-S6 mainline
+
+After S6 the main architecture track returns to Editor/UI and framework closure rather than continuing to expand Script infrastructure:
+
+```text
+S6
+ ↓
+R1  whole-engine requalification / framework-gap review
+ ↓
+U0/U1 Lux UI core + required Editor primitives qualification/completion
+ ↓
+C   generated EntityInspector vertical slice
+ ↓
+D + E
+AssetBrowser/FileMonitor + SceneEditor/Outliner/Viewport
+ ↓
+U2  NodeCanvas / imgui-node-editor private backend isolation
+ ↓
+H0 + I0
+MaterialEditor + FlowForgeEditor in-memory edit/compile integration
+ ↓
+FC  Engine Framework Closure
+ ↓
+H1 + I1
+approved durable source/document/package workflows only
+ ↓
+P   project-specific target/product closure after project manifest spec
+```
+
+`D`, `E`, and the later part of `U2` may proceed in parallel where their dependencies allow. The roadmap is a dependency DAG, not a requirement that every commit be serialized.
+
+`FC` is the point at which Lux may call the v1 engine framework architecture closed. Feature production after FC should normally consume the existing architecture rather than reopen root ownership/runtime boundaries.
+
+---
+
+## 3. Project modules, Plugin Packages, and extension points
+
+Normal game development does **not** require a Plugin abstraction.
+
+A project may directly define:
+
+```text
+Components / data contracts
+Simulation Systems / Providers
+Script Abilities / Events
+Scene integration
+render-facing data
+project code
+```
+
+A **Plugin Package** is an optional source-distribution/build-composition package around one or more such modules. Plugin is not a new architecture layer and does not replace Component/System/Ability/RenderFeature semantics.
+
+A package may contain multiple independently classified facets/targets:
+
+```text
+Domain/runtime facet      Components, System/Provider, Ability/Event
+Render facet              RenderFeature + render resources
+Scene/integration facet   bridges Domain facts to Render/Scene composition
+Toolchain facet           importer/cooker/compiler/codegen integration
+Editor facet              tools/windows/commands/Inspector/graph/UI integration
+```
+
+Every facet keeps its original owner and dependency rules.
+
+Important distinctions:
+
+```text
+Project Module   = normal game/engine extension unit
+Plugin Package   = optional source-distribution/composition packaging
+Editor Extension = Editor-only facet of a package
+RenderFeature    = Render subsystem's own low-level extension contract
+```
+
+`RenderFeature` is **not** a new `RenderPlugin` category. A Plugin Package may carry a RenderFeature target, but packaging must not move RenderFeature upward or allow it to depend on Simulation/System/Editor semantics.
+
+Source-shared/build-time-composed plugins are the v1 target. Binary ABI/hot-load/hot-unload plugins are a separate future architecture problem and MUST NOT distort the source-plugin model.
+
+Until Product Track P freezes a project/package manifest, the CMake target graph is the source-plugin composition truth. Do not invent `plugin.toml`, `luxplugin.json`, a universal PluginManager, or a second package manifest.
+
+See `14-plugin-package-and-extension-composition.md`.
+
+---
+
+## 4. Normative priority
+
+When documents conflict, use this order:
+
+1. **Current repository canonical topology facts**, unless an approved architecture document explicitly changes the semantic owner/contract.
+2. `13-script-gameplay-object-lifecycle.md` for ScriptInstance incarnation, BeginPlay/EndPlay, retirement/materialization semantics.
+3. `11-script-api-capabilities-coroutines-and-await.md` for Script Ability/capability/provider/coroutine/await/Event/Delay/backend portability semantics.
+4. `12-script-ability-reflection-provider-binding-and-codegen.md` for Ability declaration, identity/naming, receiver/provider binding, CMake codegen and language/tool projections.
+5. `14-plugin-package-and-extension-composition.md` for Project Module vs Plugin Package, multi-facet source-plugin composition and RenderFeature/Editor extension rules.
+6. `08-normative-execution-contract.md` for general ownership/execution/lifetime MUST/MUST NOT rules not superseded above.
+7. `07-implementation-roadmap-and-gates.md` for the **current implementation order/gates**.
+8. `10-lux-ui-foundation-and-legacy-visual-parity.md` for Lux UI/private backend/Legacy visual-parity rules.
+9. The remaining functional design documents.
+
+`09-product-runtime-vfs-and-async-script.md` remains normative for Product/VFS/AssetRead ownership but is **historical context** for old Script sequencing; detailed Script semantics and sequencing are superseded by `11/12/13` + `07`.
+
+`01-editor-context-toolset-and-plugins.md` remains normative for EditorApplication/EditorContext/Toolset and Editor contribution lifetime. Its older general “plugin” wording is interpreted through `14`; it does not define an all-engine plugin framework.
+
+---
+
+## 5. Reading order
+
+For general architecture work:
+
+1. `README.md`
+2. `00-L5-architecture-overview.md`
+3. `08-normative-execution-contract.md`
+4. `07-implementation-roadmap-and-gates.md`
+5. current-wave functional documents
+
+For Script work additionally read:
+
+6. `11-script-api-capabilities-coroutines-and-await.md`
+7. `12-script-ability-reflection-provider-binding-and-codegen.md`
+8. `13-script-gameplay-object-lifecycle.md`
+
+For Plugin/package/extension work read:
+
+9. `14-plugin-package-and-extension-composition.md`
+10. the owner-specific contract (Simulation, Render, Toolchain, Editor, etc.)
+
+For UI/Editor work read:
+
+11. `10-lux-ui-foundation-and-legacy-visual-parity.md`
+12. `01`–`05` as relevant
 
 File numbering is reading organization, **not implementation order**.
 
-## Documents
+---
 
-- `00-L5-architecture-overview.md` — L0–L5, current foundation checkpoint, EditorApplication/Context, UI/codegen, VFS, graph and async overview.
-- `01-editor-context-toolset-and-plugins.md` — exact EditorApplication ownership, Toolset/application lifecycle, non-owning EditorContext, plugin contribution lifetime.
+## 6. Documents
+
+- `00-L5-architecture-overview.md` — current L0–L5/Product overview, framework state and closure direction.
+- `01-editor-context-toolset-and-plugins.md` — EditorApplication ownership, non-owning EditorContext, Toolset, Editor contribution lifetime.
 - `02-entity-inspector-codegen-ui.md` — generated typed Inspector hot path targeting Lux UI.
-- `03-asset-vfs-filewatch.md` — product-wide VFS, AssetVfsView, async asset-loading seam, AssetBrowser/FileWatch.
+- `03-asset-vfs-filewatch.md` — product-wide VFS, AssetVfsView, AssetBrowser/FileWatch and asset-facing Editor integration.
 - `04-scene-editor-outliner-viewport.md` — SceneEditor/Outliner/Viewport and optional hierarchy projection.
-- `05-shared-graph-source-and-graphkit.md` — shared GraphTopology/GraphLayout and graph editing/render protocol, with Lux UI NodeCanvas backend isolation.
-- `06-toolchain-process-async-execution.md` — L2 execution, re-entrant-safe TaskScope contract, compiler Sender model, AssetRead endpoint and runtime async mechanisms.
-- `07-implementation-roadmap-and-gates.md` — general implementation DAG and gates; its older scripting sub-DAG is superseded where `11/12` explicitly differ.
-- `08-normative-execution-contract.md` — highest-priority general MUST/MUST NOT/STOP contract for coding agents except where later approved `11/12` explicitly supersede scripting clauses.
-- `09-product-runtime-vfs-and-async-script.md` — generated product target model, product-wide capabilities, VFS ownership/concurrency and historical async-script integration context; conflicting Delay/Ability details are superseded by `11/12`.
-- `10-lux-ui-foundation-and-legacy-visual-parity.md` — Lux UI public/private boundary, object/immediate-mode model, Theme, Legacy visual parity, plugin/codegen and graph UI rules.
-- `11-script-api-capabilities-coroutines-and-await.md` — runtime Script Ability/capability contracts, provider lifetime/binding, mount requirements, backend-neutral continuation/awaitable model, Event.await, Delay semantics and performance policy.
-- `12-script-ability-reflection-provider-binding-and-codegen.md` — S1.5 exact contract for owner-local Ability declarations, receiver semantics, CMake reflection/codegen, generated binder/thunks, provider ownership and C++/Lua/FlowForge projection.
+- `05-shared-graph-source-and-graphkit.md` — shared GraphTopology/GraphLayout and graph editing/render protocol.
+- `06-toolchain-process-async-execution.md` — L2 execution, TaskScope, compiler Sender model and AssetRead mechanisms.
+- `07-implementation-roadmap-and-gates.md` — **current unique execution DAG**, Script S4-P→S6, post-S6 Editor return, R1 and FC.
+- `08-normative-execution-contract.md` — general ownership/execution MUST/MUST NOT/STOP contract.
+- `09-product-runtime-vfs-and-async-script.md` — Product/VFS/AssetRead normative design; old Script sequencing retained only as historical context.
+- `10-lux-ui-foundation-and-legacy-visual-parity.md` — Lux UI public/private boundary, object/immediate model, Theme and backend isolation.
+- `11-script-api-capabilities-coroutines-and-await.md` — current Script capability/coroutine/Event/Delay/portable-backend runtime contract.
+- `12-script-ability-reflection-provider-binding-and-codegen.md` — current Ability reflection/binding/naming/codegen/projection contract.
+- `13-script-gameplay-object-lifecycle.md` — Script object incarnation, BeginPlay/EndPlay and materialization/retirement contract.
+- `14-plugin-package-and-extension-composition.md` — source-plugin packaging, multi-facet target composition, RenderFeature and Editor extension boundaries.
 
-## Normative priority
+---
 
-1. Current repository canonical topology facts that have not been explicitly superseded by an approved architecture decision.
-2. For Script Ability/capability/provider/coroutine/await semantics: `11-script-api-capabilities-coroutines-and-await.md`.
-3. For Ability reflection/receiver/provider binding/CMake codegen/language projection: `12-script-ability-reflection-provider-binding-and-codegen.md`.
-4. `08-normative-execution-contract.md` for general ownership/execution MUST/MUST NOT rules not superseded by 2–3.
-5. `07-implementation-roadmap-and-gates.md`, except its scripting sub-DAG where 2–3 are newer.
-6. `10-lux-ui-foundation-and-legacy-visual-parity.md` for UI/backend questions.
-7. Other functional design documents.
+## 7. Global architecture invariants
 
-If implementation requires changing an owner, introducing a global singleton/service locator, exposing ImGui outside the private UI backend, creating a retained-mode widget framework, putting Engine capability ontology into `modules/`, making generated code own runtime providers, adding a new architecture layer, or resolving a STOP condition, the coding agent MUST stop for architecture review rather than improvise.
+The following remain non-negotiable:
+
+```text
+no global EngineContext / ServiceRegistry / generic Manager root
+no hidden ownership through shared_ptr merely to survive bad teardown
+no lower layer depending on Editor/Toolchain
+no modules/ pollution with Engine-specific Scene/System ontology
+no per-call Script contract/provider string lookup
+no worker/domain callback directly resuming Script
+no native stack retained across Script suspension
+no borrowed step-local value across await
+no Dear ImGui/node-editor types outside the private Lux UI backend
+no retained WidgetManager/framework invented over immediate-mode leaves
+no Material/Flow persistence format invented from UI work
+no project/plugin manifest invented before Product Track P
+no PluginManager/IPlugin used to bypass normal owner-specific registration
+no RenderPlugin layer duplicating RenderFeature
+```
+
+Legacy remains a visual/interaction/behavior reference only, never an ownership or architecture source.
+
+---
+
+## 8. Evidence vs normative docs
+
+Exact benchmark numbers, machine-specific timings, CTest totals and qualification SHAs belong in repository evidence such as:
+
+```text
+.internal/*qualification-evidence*.md
+.internal/*performance-baseline*.md
+```
+
+Normative documents define semantic contracts, complexity invariants and qualification requirements. They MUST NOT turn one machine's PB0/PB1/PB2 timing into a universal architecture threshold.

@@ -782,7 +782,7 @@ namespace
                 if (g_probe->event.drain() == 0U)
                     return 23;
             }
-            while (system->stats().resume_queue_depth != 0U)
+            while (!event_storm && system->stats().resume_queue_depth != 0U)
             {
                 if (!system->executeStablePoint())
                     return 23;
@@ -839,6 +839,9 @@ namespace
                     return 28;
                 record(frame++, std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count());
             } while (system->activeContinuationCount() != 0U && frame < options.frames);
+            const auto expected_frames = (options.size + options.resume_budget - 1U) / options.resume_budget;
+            if (event_storm && frame != expected_frames)
+                return 31;
         }
         else
         {

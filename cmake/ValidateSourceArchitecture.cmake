@@ -1640,6 +1640,11 @@ if(NOT EXISTS "${source_root}/cmake/installed-consumers/script-ability-codegen/C
         "Architecture: missing installed Script Ability codegen consumer."
     )
 endif()
+if(NOT EXISTS "${source_root}/cmake/installed-consumers/lua-script-packager/CMakeLists.txt")
+    message(FATAL_ERROR
+        "Architecture: missing installed Lua Script Ability packager consumer."
+    )
+endif()
 
 if(EXISTS "${source_root}/engine/editor/material" AND
    EXISTS "${source_root}/engine/editor/flowforge" AND
@@ -2125,6 +2130,21 @@ string(FIND "${lua_backend_contract}" "delete call;" lua_call_delete)
 if(NOT lua_call_new EQUAL -1 OR NOT lua_call_delete EQUAL -1)
     message(FATAL_ERROR
         "Architecture: Lua restores per-prepared-call general heap allocation."
+    )
+endif()
+if(lua_backend_contract MATCHES
+   "thread_local|CurrentLua|LuaCoroutineManager|LuaScheduler|LuaAwaitable|ScriptApiManager|ServiceRegistry")
+    message(FATAL_ERROR
+        "Architecture: Lua backend acquired a global current-script or a second scheduler/runtime."
+    )
+endif()
+set(lua_ability_projection
+    "${source_root}/modules/function/script/lua/include/lux/engine/function/script/lua/ScriptAbilityLua.hpp"
+)
+file(READ "${lua_ability_projection}" lua_ability_projection_contract)
+if(lua_ability_projection_contract MATCHES "projectScriptAbility|ScriptAbilityBinding[ \t\r\n]+binding")
+    message(FATAL_ERROR
+        "Architecture: Lua Ability projection captures a bound provider instead of publishing metadata."
     )
 endif()
 

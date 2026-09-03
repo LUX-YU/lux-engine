@@ -1,6 +1,9 @@
 #pragma once
 
 #include <lux/engine/description/Script.hpp>
+#include <lux/engine/simulation/SimulationEndpointId.hpp>
+#include <lux/engine/simulation/SimulationEndpointSpec.hpp>
+#include <lux/engine/system/SystemInstanceId.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -260,15 +263,77 @@ namespace lux::simulation::script
         friend struct ScriptStepContext;
     };
 
+    struct ScriptEventWaitRequest final
+    {
+        lux::system::SystemInstanceId system;
+        EventPointId event;
+        EEventRoute route{EEventRoute::SIMULATION_BROADCAST};
+    };
+
+    enum class EScriptEventWaitError : std::uint8_t
+    {
+        INVALID_INSTANCE,
+        ENDPOINT_NOT_FOUND,
+        ROUTE_MISMATCH,
+        SCOPE_MISMATCH,
+        PAYLOAD_NOT_OWNABLE,
+        PAYLOAD_TOO_LARGE,
+        WAITER_CAPACITY_EXCEEDED,
+        AWAITABLE_CAPACITY_EXCEEDED,
+        SEQUENCE_EXHAUSTED,
+        ALLOCATION_FAILURE,
+        STOPPING,
+    };
+
+    class ScriptEventWaitFactory final
+    {
+    public:
+        ScriptEventWaitFactory() = default;
+        ScriptEventWaitFactory(const ScriptEventWaitFactory&) = delete;
+        ScriptEventWaitFactory& operator=(const ScriptEventWaitFactory&) = delete;
+        ScriptEventWaitFactory(ScriptEventWaitFactory&&) = delete;
+        ScriptEventWaitFactory& operator=(ScriptEventWaitFactory&&) = delete;
+
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> wait(
+            ScriptEventWaitRequest request
+        ) const noexcept
+        {
+            if (wait_ == nullptr)
+                return lux::cxx::unexpected(EScriptEventWaitError::STOPPING);
+            return wait_(context_, instance_, request);
+        }
+
+        using WaitFn = lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> (*)(
+            void*,
+            ScriptInstanceId,
+            ScriptEventWaitRequest
+        ) noexcept;
+
+    private:
+        ScriptEventWaitFactory(void* context, WaitFn wait, ScriptInstanceId instance) noexcept
+            : context_(context), wait_(wait), instance_(instance)
+        {
+        }
+
+        void* context_{};
+        WaitFn wait_{};
+        ScriptInstanceId instance_;
+
+        friend struct ScriptStepContext;
+    };
+
     struct ScriptStepContext final
     {
         ScriptStepContext(
             ScriptInstanceId instance,
             void* context,
             ScriptAwaitableFactory::CreateFn create,
-            ScriptAwaitableFactory::DiscardFn discard
+            ScriptAwaitableFactory::DiscardFn discard,
+            ScriptEventWaitFactory::WaitFn wait_event = nullptr
         ) noexcept
-            : instance(instance), awaitables(context, create, discard, instance)
+            : instance(instance),
+              awaitables(context, create, discard, instance),
+              event_waits(context, wait_event, instance)
         {}
 
         ScriptStepContext(const ScriptStepContext&) = delete;
@@ -278,6 +343,7 @@ namespace lux::simulation::script
 
         ScriptInstanceId instance;
         ScriptAwaitableFactory awaitables;
+        ScriptEventWaitFactory event_waits;
     };
 
     struct ScriptBackendContinuation final

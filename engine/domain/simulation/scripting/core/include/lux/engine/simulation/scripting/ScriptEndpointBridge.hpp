@@ -6,9 +6,11 @@
 #include <lux/engine/simulation/EventPoint.hpp>
 #include <lux/engine/simulation/SimulationEndpointSpec.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
+#include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <span>
 #include <type_traits>
@@ -17,6 +19,12 @@ namespace lux::simulation::script
 {
     using ScriptHookLane = void (*)(void *, lux_script_call_frame &) noexcept;
     using ScriptEventLane = void (*)(void *, ecs::Entity, lux_script_call_frame &) noexcept;
+
+    struct ScriptEventPayloadProjection final
+    {
+        lux::semantic::Layout owned_layout;
+        bool (*copy)(void*, const lux_script_value_slot&, std::span<std::byte>) noexcept{};
+    };
 
     struct ScriptHookEndpointDescriptor final
     {
@@ -34,6 +42,7 @@ namespace lux::simulation::script
         EventPointId event;
         EEventRoute route{EEventRoute::SIMULATION_BROADCAST};
         lux::semantic::Type payload_type;
+        ScriptEventPayloadProjection payload_projection;
         void *context{};
         EndpointConnectResult (*connect)(void *, void *, ScriptEventLane) noexcept {};
         EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
@@ -59,6 +68,45 @@ namespace lux::simulation::script
         {
             return std::array<lux_script_value_slot, sizeof...(Parameters)>{
                 argumentSlot(parameters)...};
+        }
+
+        template <class Payload>
+        using EventPayloadCopy = bool (*)(const Payload&, std::span<std::byte>) noexcept;
+
+        template <class Payload>
+        [[nodiscard]] bool copyScalarEventPayload(
+            const Payload& payload,
+            std::span<std::byte> output
+        ) noexcept
+        {
+            if (output.size() != sizeof(Payload))
+                return false;
+            std::memcpy(output.data(), std::addressof(payload), sizeof(Payload));
+            return true;
+        }
+
+        template <class Payload>
+        [[nodiscard]] constexpr EventPayloadCopy<Payload> defaultEventPayloadCopy() noexcept
+        {
+            constexpr auto kind = lux::semantic::TypeTraits<std::remove_cv_t<Payload>>::AbiKind;
+            constexpr bool is_scalar = kind >= static_cast<std::uint8_t>(lux::semantic::EAbiKind::BOOL) &&
+                kind <= static_cast<std::uint8_t>(lux::semantic::EAbiKind::F64);
+            if constexpr (is_scalar && std::is_trivially_copyable_v<Payload>)
+                return &copyScalarEventPayload<Payload>;
+            return nullptr;
+        }
+
+        template <class Payload>
+        [[nodiscard]] constexpr lux::semantic::Layout eventPayloadLayout() noexcept
+        {
+            using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Payload>>;
+            return {
+                lux::semantic::typeId(Traits::CanonicalName),
+                Traits::CanonicalName,
+                Traits::AbiKind,
+                Traits::Size,
+                Traits::Alignment
+            };
         }
     }
 
@@ -156,11 +204,14 @@ namespace lux::simulation::script
     class ScriptEventEndpoint<SimulationBroadcastRoute, Payload> final
     {
     public:
+        using PayloadCopy = detail::EventPayloadCopy<Payload>;
+
         ScriptEventEndpoint(
             lux::system::SystemInstanceId system,
             EventPointId id,
-            EventPoint<SimulationBroadcastRoute, Payload> &endpoint) noexcept
-            : system_(system), id_(id), endpoint_(&endpoint)
+            EventPoint<SimulationBroadcastRoute, Payload> &endpoint,
+            PayloadCopy payload_copy = detail::defaultEventPayloadCopy<Payload>()) noexcept
+            : system_(system), id_(id), endpoint_(&endpoint), payload_copy_(payload_copy)
         {
         }
 
@@ -177,6 +228,7 @@ namespace lux::simulation::script
                 EEventRoute::SIMULATION_BROADCAST,
                 lux::semantic::makeType<Payload>(
                     lux::semantic::EValuePass::CONST_REF),
+                {detail::eventPayloadLayout<Payload>(), payload_copy_ != nullptr ? &copyPayload : nullptr},
                 this,
                 &connect,
                 &disconnect};
@@ -218,9 +270,24 @@ namespace lux::simulation::script
             self.lane_(self.lane_context_, ecs::NullEntity, frame);
         }
 
+        static bool copyPayload(
+            void* context,
+            const lux_script_value_slot& input,
+            std::span<std::byte> output
+        ) noexcept
+        {
+            auto& self = *static_cast<ScriptEventEndpoint*>(context);
+            using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Payload>>;
+            const bool is_invalid = self.payload_copy_ == nullptr || input.data == nullptr ||
+                input.kind != Traits::AbiKind || input.size != Traits::Size ||
+                input.type_id != lux::semantic::typeId(Traits::CanonicalName);
+            return !is_invalid && self.payload_copy_(*static_cast<const Payload*>(input.data), output);
+        }
+
         lux::system::SystemInstanceId system_;
         EventPointId id_;
         EventPoint<SimulationBroadcastRoute, Payload> *endpoint_{};
+        PayloadCopy payload_copy_{};
         void *lane_context_{};
         ScriptEventLane lane_{};
     };
@@ -229,11 +296,14 @@ namespace lux::simulation::script
     class ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, Payload> final
     {
     public:
+        using PayloadCopy = detail::EventPayloadCopy<Payload>;
+
         ScriptEventEndpoint(
             lux::system::SystemInstanceId system,
             EventPointId id,
-            EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> &endpoint) noexcept
-            : system_(system), id_(id), endpoint_(&endpoint)
+            EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> &endpoint,
+            PayloadCopy payload_copy = detail::defaultEventPayloadCopy<Payload>()) noexcept
+            : system_(system), id_(id), endpoint_(&endpoint), payload_copy_(payload_copy)
         {
         }
 
@@ -250,6 +320,7 @@ namespace lux::simulation::script
                 EEventRoute::ENTITY_TARGETED,
                 lux::semantic::makeType<Payload>(
                     lux::semantic::EValuePass::CONST_REF),
+                {detail::eventPayloadLayout<Payload>(), payload_copy_ != nullptr ? &copyPayload : nullptr},
                 this,
                 &connect,
                 &disconnect};
@@ -294,9 +365,24 @@ namespace lux::simulation::script
             self.lane_(self.lane_context_, target, frame);
         }
 
+        static bool copyPayload(
+            void* context,
+            const lux_script_value_slot& input,
+            std::span<std::byte> output
+        ) noexcept
+        {
+            auto& self = *static_cast<ScriptEventEndpoint*>(context);
+            using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Payload>>;
+            const bool is_invalid = self.payload_copy_ == nullptr || input.data == nullptr ||
+                input.kind != Traits::AbiKind || input.size != Traits::Size ||
+                input.type_id != lux::semantic::typeId(Traits::CanonicalName);
+            return !is_invalid && self.payload_copy_(*static_cast<const Payload*>(input.data), output);
+        }
+
         lux::system::SystemInstanceId system_;
         EventPointId id_;
         EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> *endpoint_{};
+        PayloadCopy payload_copy_{};
         void *lane_context_{};
         ScriptEventLane lane_{};
     };

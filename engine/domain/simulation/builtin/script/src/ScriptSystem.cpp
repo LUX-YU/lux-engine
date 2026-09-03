@@ -7,6 +7,7 @@
 #include <lux/cxx/container/SlotMap.hpp>
 
 #include <entt/signal/sigh.hpp>
+#include <entt/container/dense_map.hpp>
 
 #include <algorithm>
 #include <array>
@@ -242,6 +243,20 @@ namespace lux::simulation::script
         struct InstanceTag;
         struct ContinuationTag;
         struct AwaitableTag;
+        struct EventWaiterTag;
+
+        struct EventWaiterId final
+        {
+            std::uint32_t slot{};
+            std::uint32_t generation{};
+
+            [[nodiscard]] constexpr bool valid() const noexcept
+            {
+                return slot != 0U && generation != 0U;
+            }
+
+            friend constexpr bool operator==(EventWaiterId, EventWaiterId) noexcept = default;
+        };
 
         struct InstanceRecord final
         {
@@ -250,6 +265,7 @@ namespace lux::simulation::script
             std::size_t active_continuations{};
             ScriptContinuationId first_continuation;
             ScriptAwaitableId first_awaitable;
+            EventWaiterId first_event_waiter;
         };
 
         struct ContinuationRecord final
@@ -325,6 +341,54 @@ namespace lux::simulation::script
             bool resume_enqueued{};
             ScriptAwaitableId instance_previous;
             ScriptAwaitableId instance_next;
+            EventWaiterId event_waiter;
+        };
+
+        enum class EEventWaiterState : std::uint8_t
+        {
+            ACTIVE,
+            CLAIMED,
+        };
+
+        struct EventRouteKey final
+        {
+            std::uint32_t bucket_slot{};
+            ecs::Entity target{ecs::NullEntity};
+
+            friend bool operator==(EventRouteKey, EventRouteKey) noexcept = default;
+        };
+
+        struct EventRouteKeyHash final
+        {
+            [[nodiscard]] std::size_t operator()(EventRouteKey key) const noexcept
+            {
+                const auto bucket_hash = std::hash<std::uint32_t>{}(key.bucket_slot);
+                const auto entity_hash = std::hash<std::uint64_t>{}(ecs::entityBits(key.target));
+                return bucket_hash ^ (entity_hash + 0x9e3779b9U + (bucket_hash << 6U) + (bucket_hash >> 2U));
+            }
+        };
+
+        struct EventRouteHead final
+        {
+            EventWaiterId first;
+            EventWaiterId last;
+        };
+
+        struct EventWaiterRecord final
+        {
+            EventWaiterId id;
+            ScriptInstanceId instance;
+            ScriptAwaitableId awaitable;
+            std::uint32_t bucket_slot{};
+            ecs::Entity target{ecs::NullEntity};
+            std::uint64_t sequence{};
+            EEventWaiterState state{EEventWaiterState::ACTIVE};
+            EventWaiterId route_previous;
+            EventWaiterId route_next;
+            EventWaiterId instance_previous;
+            EventWaiterId instance_next;
+            ScriptAwaitableCompletion completion;
+            ScriptOwnedResumeValue payload;
         };
 
         using InstanceStorage = lux::cxx::SlotMap<InstanceRecord, InstanceTag>;
@@ -333,6 +397,9 @@ namespace lux::simulation::script
         using ContinuationKey = typename ContinuationStorage::key_type;
         using AwaitableStorage = lux::cxx::SlotMap<AwaitableRecord, AwaitableTag>;
         using AwaitableKey = typename AwaitableStorage::key_type;
+        using EventWaiterStorage = lux::cxx::SlotMap<EventWaiterRecord, EventWaiterTag>;
+        using EventWaiterKey = typename EventWaiterStorage::key_type;
+        using EventRouteIndex = entt::dense_map<EventRouteKey, EventRouteHead, EventRouteKeyHash>;
 
         [[nodiscard]] static constexpr ScriptInstanceId instanceId(InstanceKey key) noexcept
         {
@@ -362,6 +429,16 @@ namespace lux::simulation::script
         [[nodiscard]] static constexpr AwaitableKey awaitableKey(ScriptAwaitableId id) noexcept
         {
             return id.valid() ? AwaitableKey{id.slot - 1U, id.generation} : AwaitableKey::invalid();
+        }
+
+        [[nodiscard]] static constexpr EventWaiterId eventWaiterId(EventWaiterKey key) noexcept
+        {
+            return {key.index + 1U, key.gen};
+        }
+
+        [[nodiscard]] static constexpr EventWaiterKey eventWaiterKey(EventWaiterId id) noexcept
+        {
+            return id.valid() ? EventWaiterKey{id.slot - 1U, id.generation} : EventWaiterKey::invalid();
         }
 
         struct AwaitableIngress final
@@ -476,6 +553,7 @@ namespace lux::simulation::script
         {
             State* owner{};
             const ScriptEventEndpointDescriptor* endpoint{};
+            std::uint32_t slot{};
             EndpointConnectionToken token;
             EventHandlerStorage handlers;
             std::size_t handler_capacity{};
@@ -538,6 +616,9 @@ namespace lux::simulation::script
         std::vector<ScriptSystemFailure> failures;
         InstanceStorage instances;
         ContinuationStorage continuations;
+        EventWaiterStorage event_waiters;
+        EventRouteIndex event_wait_routes;
+        std::vector<EventWaiterId> claimed_event_waiters;
         std::shared_ptr<AwaitableIngress> ingress;
         std::vector<std::uint32_t> retirement_queue;
         SparseMountQueue dirty_current;
@@ -550,6 +631,13 @@ namespace lux::simulation::script
         std::vector<NextStepWait> next_step_waits;
         std::vector<SimulationDelayWait> simulation_delays;
         std::uint64_t delay_sequence{};
+        std::uint64_t event_wait_sequence{};
+        std::size_t event_waiter_high_water{};
+        std::size_t event_waiter_dispatch_visits{};
+        std::size_t instance_cleanup_event_waiter_visits{};
+        std::size_t instance_cleanup_awaitable_visits{};
+        std::size_t instance_cleanup_continuation_visits{};
+        std::size_t event_dispatch_depth{};
         entt::connection constructed;
         entt::connection updated;
         entt::connection destroyed;
@@ -899,6 +987,244 @@ namespace lux::simulation::script
             return static_cast<State*>(context)->createAwaitable(instance, std::move(result_type));
         }
 
+        [[nodiscard]] static EScriptEventWaitError eventWaitError(EScriptAwaitableCreateError error) noexcept
+        {
+            switch (error)
+            {
+            case EScriptAwaitableCreateError::INVALID_INSTANCE:
+                return EScriptEventWaitError::INVALID_INSTANCE;
+            case EScriptAwaitableCreateError::INVALID_RESULT_TYPE:
+                return EScriptEventWaitError::PAYLOAD_NOT_OWNABLE;
+            case EScriptAwaitableCreateError::CAPACITY_EXCEEDED:
+                return EScriptEventWaitError::AWAITABLE_CAPACITY_EXCEEDED;
+            case EScriptAwaitableCreateError::ALLOCATION_FAILURE:
+                return EScriptEventWaitError::ALLOCATION_FAILURE;
+            case EScriptAwaitableCreateError::STOPPING:
+                return EScriptEventWaitError::STOPPING;
+            }
+            return EScriptEventWaitError::ALLOCATION_FAILURE;
+        }
+
+        void unlinkEventWaiterRoute(EventWaiterRecord& waiter) noexcept
+        {
+            if (waiter.state != EEventWaiterState::ACTIVE)
+                return;
+            const EventRouteKey key{waiter.bucket_slot, waiter.target};
+            auto route = event_wait_routes.find(key);
+            if (route == event_wait_routes.end())
+                std::terminate();
+            if (waiter.route_previous.valid())
+            {
+                auto* previous = event_waiters.find(eventWaiterKey(waiter.route_previous));
+                if (previous == nullptr)
+                    std::terminate();
+                previous->route_next = waiter.route_next;
+            }
+            else
+            {
+                route->second.first = waiter.route_next;
+            }
+            if (waiter.route_next.valid())
+            {
+                auto* next = event_waiters.find(eventWaiterKey(waiter.route_next));
+                if (next == nullptr)
+                    std::terminate();
+                next->route_previous = waiter.route_previous;
+            }
+            else
+            {
+                route->second.last = waiter.route_previous;
+            }
+            waiter.route_previous = {};
+            waiter.route_next = {};
+            if (!route->second.first.valid())
+                event_wait_routes.erase(key);
+        }
+
+        void unlinkEventWaiterOwnership(EventWaiterRecord& waiter) noexcept
+        {
+            auto* owner = instances.find(instanceKey(waiter.instance));
+            if (waiter.instance_previous.valid())
+            {
+                auto* previous = event_waiters.find(eventWaiterKey(waiter.instance_previous));
+                if (previous != nullptr)
+                    previous->instance_next = waiter.instance_next;
+            }
+            else if (owner != nullptr && owner->first_event_waiter == waiter.id)
+            {
+                owner->first_event_waiter = waiter.instance_next;
+            }
+            if (waiter.instance_next.valid())
+            {
+                auto* next = event_waiters.find(eventWaiterKey(waiter.instance_next));
+                if (next != nullptr)
+                    next->instance_previous = waiter.instance_previous;
+            }
+            waiter.instance_previous = {};
+            waiter.instance_next = {};
+        }
+
+        void clearAwaitableEventWaiter(ScriptInstanceId instance,
+                                       ScriptAwaitableId awaitable,
+                                       EventWaiterId waiter) noexcept
+        {
+            std::lock_guard lock{ingress->mutex};
+            auto* record = ingress->awaitables.find(awaitableKey(awaitable));
+            if (record != nullptr && record->instance == instance && record->event_waiter == waiter)
+                record->event_waiter = {};
+        }
+
+        void eraseEventWaiter(EventWaiterId id, bool clear_awaitable = true) noexcept
+        {
+            auto* waiter = event_waiters.find(eventWaiterKey(id));
+            if (waiter == nullptr)
+                return;
+            if (waiter->state == EEventWaiterState::ACTIVE)
+                unlinkEventWaiterRoute(*waiter);
+            unlinkEventWaiterOwnership(*waiter);
+            if (clear_awaitable)
+                clearAwaitableEventWaiter(waiter->instance, waiter->awaitable, waiter->id);
+            static_cast<void>(event_waiters.erase(eventWaiterKey(id)));
+        }
+
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEvent(
+            ScriptInstanceId instance,
+            ScriptEventWaitRequest request
+        ) noexcept
+        {
+            if (stopping || prepare_state != EPrepareState::PREPARED)
+                return lux::cxx::unexpected(EScriptEventWaitError::STOPPING);
+            auto* owner = instances.find(instanceKey(instance));
+            if (owner == nullptr || owner->mount_slot >= mounts.size())
+                return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
+            auto& mount = mounts[owner->mount_slot];
+            if (mount.state != EMountState::ACTIVE || mount.instance != instance)
+                return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
+
+            const auto endpoint_slot = findEventEndpoint({request.system, request.event});
+            if (!endpoint_slot)
+                return lux::cxx::unexpected(EScriptEventWaitError::ENDPOINT_NOT_FOUND);
+            auto& bucket = events[*endpoint_slot];
+            if (bucket.endpoint->route != request.route)
+                return lux::cxx::unexpected(EScriptEventWaitError::ROUTE_MISMATCH);
+
+            ecs::Entity target{ecs::NullEntity};
+            if (request.route == EEventRoute::ENTITY_TARGETED)
+            {
+                const auto* entity_scope = std::get_if<EntityScriptScope>(&mount.scope);
+                if (entity_scope == nullptr || entity_scope->self == ecs::NullEntity ||
+                    !registry->valid(entity_scope->self))
+                {
+                    return lux::cxx::unexpected(EScriptEventWaitError::SCOPE_MISMATCH);
+                }
+                target = entity_scope->self;
+            }
+
+            const auto& projection = bucket.endpoint->payload_projection;
+            if (projection.copy == nullptr)
+                return lux::cxx::unexpected(EScriptEventWaitError::PAYLOAD_NOT_OWNABLE);
+            if (projection.owned_layout.size > limits.max_resume_payload_bytes)
+                return lux::cxx::unexpected(EScriptEventWaitError::PAYLOAD_TOO_LARGE);
+            if (event_waiters.size() >= limits.event_wait_capacity)
+                return lux::cxx::unexpected(EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
+            if (event_wait_sequence == std::numeric_limits<std::uint64_t>::max())
+                return lux::cxx::unexpected(EScriptEventWaitError::SEQUENCE_EXHAUSTED);
+
+            ScriptOwnedResumeValue payload;
+            try
+            {
+                payload.type.emplace(lux::rdesc::ScriptValueType{
+                    std::string(projection.owned_layout.canonical_name),
+                    projection.owned_layout.type_id,
+                    lux::semantic::EValuePass::VALUE,
+                    projection.owned_layout.abi_kind,
+                    projection.owned_layout.size,
+                    projection.owned_layout.alignment
+                });
+                payload.bytes.resize(projection.owned_layout.size);
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
+            }
+
+            auto awaitable = createAwaitable(instance, payload.type);
+            if (!awaitable)
+                return lux::cxx::unexpected(eventWaitError(awaitable.error()));
+
+            const EventRouteKey route_key{*endpoint_slot, target};
+            bool inserted_route{};
+            try
+            {
+                const auto route = event_wait_routes.try_emplace(route_key, EventRouteHead{});
+                inserted_route = route.second;
+            }
+            catch (const std::bad_alloc&)
+            {
+                discardAwaitable(instance, awaitable->id);
+                return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
+            }
+
+            auto inserted = event_waiters.tryEmplace(EventWaiterRecord{
+                {},
+                instance,
+                awaitable->id,
+                *endpoint_slot,
+                target,
+                ++event_wait_sequence,
+                EEventWaiterState::ACTIVE,
+                {},
+                {},
+                {},
+                {},
+                std::move(awaitable->completion),
+                std::move(payload)
+            });
+            if (!inserted)
+            {
+                if (inserted_route)
+                    event_wait_routes.erase(route_key);
+                discardAwaitable(instance, awaitable->id);
+                return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
+            }
+
+            const auto id = eventWaiterId(*inserted);
+            auto& waiter = event_waiters[*inserted];
+            waiter.id = id;
+            auto route = event_wait_routes.find(route_key);
+            if (route == event_wait_routes.end())
+                std::terminate();
+            waiter.route_previous = route->second.last;
+            if (waiter.route_previous.valid())
+                event_waiters[eventWaiterKey(waiter.route_previous)].route_next = id;
+            else
+                route->second.first = id;
+            route->second.last = id;
+
+            waiter.instance_next = owner->first_event_waiter;
+            if (waiter.instance_next.valid())
+                event_waiters[eventWaiterKey(waiter.instance_next)].instance_previous = id;
+            owner->first_event_waiter = id;
+            {
+                std::lock_guard lock{ingress->mutex};
+                auto* record = ingress->awaitables.find(awaitableKey(awaitable->id));
+                if (record == nullptr || record->instance != instance)
+                    std::terminate();
+                record->event_waiter = id;
+            }
+            event_waiter_high_water = (std::max)(event_waiter_high_water, event_waiters.size());
+            return awaitable->id;
+        }
+
+        [[nodiscard]] static lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEventErased(
+            void* context,
+            ScriptInstanceId instance,
+            ScriptEventWaitRequest request
+        ) noexcept
+        {
+            return static_cast<State*>(context)->waitEvent(instance, request);
+        }
+
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> attachWaiter(
             ScriptAwaitableId awaitable,
             ScriptInstanceId instance,
@@ -987,6 +1313,22 @@ namespace lux::simulation::script
                     std::terminate();
                 const auto next = record->instance_next;
                 static_cast<void>(eraseAwaitableLocked(current));
+                ++instance_cleanup_awaitable_visits;
+                current = next;
+            }
+        }
+
+        void cancelEventWaiters(ScriptInstanceId instance, EventWaiterId first) noexcept
+        {
+            auto current = first;
+            while (current.valid())
+            {
+                const auto* waiter = event_waiters.find(eventWaiterKey(current));
+                if (waiter == nullptr || waiter->instance != instance)
+                    std::terminate();
+                const auto next = waiter->instance_next;
+                eraseEventWaiter(current);
+                ++instance_cleanup_event_waiter_visits;
                 current = next;
             }
         }
@@ -995,10 +1337,18 @@ namespace lux::simulation::script
         {
             if (!awaitable.valid())
                 return;
-            std::lock_guard lock{ingress->mutex};
-            auto* record = ingress->awaitables.find(awaitableKey(awaitable));
-            if (record != nullptr && record->instance == instance)
+            EventWaiterId event_waiter;
+            {
+                std::lock_guard lock{ingress->mutex};
+                auto* record = ingress->awaitables.find(awaitableKey(awaitable));
+                if (record == nullptr || record->instance != instance)
+                    return;
+                event_waiter = record->event_waiter;
+                record->event_waiter = {};
                 static_cast<void>(eraseAwaitableLocked(awaitable));
+            }
+            if (event_waiter.valid())
+                eraseEventWaiter(event_waiter, false);
         }
 
         static void discardAwaitableErased(
@@ -1066,6 +1416,7 @@ namespace lux::simulation::script
                     std::terminate();
                 const auto next = record->instance_next;
                 destroyContinuation(current);
+                ++instance_cleanup_continuation_visits;
                 current = next;
             }
         }
@@ -1080,7 +1431,9 @@ namespace lux::simulation::script
                 std::terminate();
             const auto first_awaitable = record->first_awaitable;
             const auto first_continuation = record->first_continuation;
+            const auto first_event_waiter = record->first_event_waiter;
             static_cast<void>(instances.erase(instanceKey(instance)));
+            cancelEventWaiters(instance, first_event_waiter);
             cancelAwaitables(instance, first_awaitable);
             destroyContinuations(instance, first_continuation);
             mount.instance = {};
@@ -1094,7 +1447,8 @@ namespace lux::simulation::script
             mount.state = EMountState::FAULTED;
             mount.pending_end_reason = EScriptEndPlayReason::FAULTED;
             deactivate(mount);
-            removeMountBindings(mount);
+            if (event_dispatch_depth == 0U)
+                removeMountBindings(mount);
             queueRetirement(static_cast<std::uint32_t>(std::addressof(mount) - mounts.data()));
             recordFailure(error, mount, symbol, status);
         }
@@ -1222,6 +1576,7 @@ namespace lux::simulation::script
                 {
                     events[index].owner = this;
                     events[index].endpoint = std::addressof(event_endpoints[index]);
+                    events[index].slot = static_cast<std::uint32_t>(index);
                 }
 
                 for (std::size_t mount_slot{}; mount_slot < authored_mounts.size(); ++mount_slot)
@@ -1358,7 +1713,8 @@ namespace lux::simulation::script
                     mount.instance,
                     this,
                     &State::createAwaitableErased,
-                    &State::discardAwaitableErased
+                    &State::discardAwaitableErased,
+                    &State::waitEventErased
                 };
                 const auto result = method.step.invoke(method.step.context, frame, context, continuation);
                 if (result.state == EScriptStepState::COMPLETED && result.valid())
@@ -1395,18 +1751,123 @@ namespace lux::simulation::script
                 bucket.owner->invoke(handler, frame, true);
         }
 
+        void claimEventWaiters(EventBucket& bucket, ecs::Entity target, std::uint64_t cutoff) noexcept
+        {
+            auto route = event_wait_routes.find(EventRouteKey{bucket.slot, target});
+            if (route == event_wait_routes.end())
+                return;
+
+            auto current = route->second.first;
+            while (current.valid())
+            {
+                auto* waiter = event_waiters.find(eventWaiterKey(current));
+                if (waiter == nullptr || waiter->state != EEventWaiterState::ACTIVE)
+                    std::terminate();
+                ++event_waiter_dispatch_visits;
+                if (waiter->sequence > cutoff)
+                    break;
+                const auto next = waiter->route_next;
+                unlinkEventWaiterRoute(*waiter);
+                waiter->state = EEventWaiterState::CLAIMED;
+                if (claimed_event_waiters.size() >= claimed_event_waiters.capacity())
+                    std::terminate();
+                claimed_event_waiters.push_back(current);
+                current = next;
+            }
+        }
+
+        void failEventWaiter(ScriptInstanceId instance, EScriptSystemError error) noexcept
+        {
+            auto* owner = instances.find(instanceKey(instance));
+            if (owner == nullptr || owner->mount_slot >= mounts.size())
+                return;
+            auto& mount = mounts[owner->mount_slot];
+            if (mount.instance != instance || mount.state != EMountState::ACTIVE)
+                return;
+            faultInvocation(mount, lux::script::InvalidScriptSymbolId, error);
+        }
+
+        void completeClaimedEventWaiter(EventWaiterId id, lux_script_call_frame& frame) noexcept
+        {
+            auto* waiter = event_waiters.find(eventWaiterKey(id));
+            if (waiter == nullptr || waiter->state != EEventWaiterState::CLAIMED)
+                return;
+
+            const auto instance = waiter->instance;
+            const auto awaitable = waiter->awaitable;
+            const auto* owner = instances.find(instanceKey(instance));
+            const bool is_live = owner != nullptr && owner->mount_slot < mounts.size() &&
+                mounts[owner->mount_slot].instance == instance &&
+                mounts[owner->mount_slot].state == EMountState::ACTIVE;
+            if (!is_live)
+            {
+                eraseEventWaiter(id);
+                discardAwaitable(instance, awaitable);
+                return;
+            }
+
+            auto& bucket = events[waiter->bucket_slot];
+            const bool is_invalid_frame = frame.arg_count != 1U || frame.args == nullptr;
+            const bool copied = !is_invalid_frame && bucket.endpoint->payload_projection.copy(
+                bucket.endpoint->context,
+                frame.args[0],
+                waiter->payload.bytes
+            );
+            if (!copied)
+            {
+                eraseEventWaiter(id);
+                discardAwaitable(instance, awaitable);
+                failEventWaiter(instance, EScriptSystemError::INVOCATION_FAILURE);
+                return;
+            }
+
+            auto completion = std::move(waiter->completion);
+            auto payload = std::move(waiter->payload);
+            eraseEventWaiter(id);
+            const auto completed = completion.ready(std::move(payload));
+            if (completed)
+                return;
+
+            discardAwaitable(instance, awaitable);
+            switch (completed.error())
+            {
+            case EScriptAwaitableCompletionError::INVALID_ID:
+            case EScriptAwaitableCompletionError::ALREADY_TERMINAL:
+            case EScriptAwaitableCompletionError::STOPPING:
+                return;
+            case EScriptAwaitableCompletionError::RESUME_QUEUE_FULL:
+                failEventWaiter(instance, EScriptSystemError::RESUME_QUEUE_FULL);
+                return;
+            case EScriptAwaitableCompletionError::INVALID_VALUE:
+                failEventWaiter(instance, EScriptSystemError::INVOCATION_FAILURE);
+                return;
+            }
+        }
+
         static void dispatchEvent(void* context, ecs::Entity entity, lux_script_call_frame& frame) noexcept
         {
             auto& bucket = *static_cast<EventBucket*>(context);
+            auto& owner = *bucket.owner;
+            const auto claimed_begin = owner.claimed_event_waiters.size();
+            const auto cutoff = owner.event_wait_sequence;
+            ++owner.event_dispatch_depth;
+            const auto target = bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST
+                ? ecs::NullEntity
+                : entity;
+            owner.claimEventWaiters(bucket, target, cutoff);
+            const auto claimed_end = owner.claimed_event_waiters.size();
             const auto invoke = [&bucket, &frame](Handler& handler) noexcept {
                 bucket.owner->invoke(handler, frame, false);
             };
             if (bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST)
-            {
                 bucket.handlers.forEachAll(invoke);
-                return;
-            }
-            bucket.handlers.forEachTarget(entity, invoke);
+            else
+                bucket.handlers.forEachTarget(entity, invoke);
+
+            for (std::size_t index{claimed_begin}; index < claimed_end; ++index)
+                owner.completeClaimedEventWaiter(owner.claimed_event_waiters[index], frame);
+            owner.claimed_event_waiters.resize(claimed_begin);
+            --owner.event_dispatch_depth;
         }
 
         [[nodiscard]] lux::cxx::expected<EndpointConnectionToken, EScriptSystemError> addEventHandler(
@@ -1949,7 +2410,8 @@ namespace lux::simulation::script
                 mount.state = EMountState::RETIRING;
                 mount.pending_end_reason = EScriptEndPlayReason::ENTITY_DESTROYED;
                 deactivate(mount);
-                removeMountBindings(mount);
+                if (event_dispatch_depth == 0U)
+                    removeMountBindings(mount);
             }
             queueDirty(mount_slot);
         }
@@ -1983,7 +2445,10 @@ namespace lux::simulation::script
             }
             for (auto& bucket : events)
             {
-                if (bucket.handler_capacity == 0U)
+                const auto& projection = bucket.endpoint->payload_projection;
+                const bool supports_wait = projection.copy != nullptr &&
+                    projection.owned_layout.size <= limits.max_resume_payload_bytes;
+                if (bucket.handler_capacity == 0U && !supports_wait)
                     continue;
                 const auto connected =
                     bucket.endpoint->connect(bucket.endpoint->context, std::addressof(bucket), &State::dispatchEvent);
@@ -2067,7 +2532,8 @@ namespace lux::simulation::script
                 resume.instance,
                 this,
                 &State::createAwaitableErased,
-                &State::discardAwaitableErased
+                &State::discardAwaitableErased,
+                &State::waitEventErased
             };
             const auto result = continuation->backend.resume(continuation->backend.state, context, packet);
 
@@ -2203,7 +2669,7 @@ namespace lux::simulation::script
                                     limits.awaitable_capacity == 0U ||
                                     limits.resume_queue_capacity == 0U || limits.max_resume_payload_bytes == 0U ||
                                     limits.resumes_per_stable_point == 0U || limits.next_step_wait_capacity == 0U ||
-                                    limits.simulation_delay_capacity == 0U;
+                                    limits.simulation_delay_capacity == 0U || limits.event_wait_capacity == 0U;
         if (invalid_limits || artifacts.resolve == nullptr)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
@@ -2326,6 +2792,7 @@ namespace lux::simulation::script
                     return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
 
                 const auto described = simulation.findEvent(events[index].system, events[index].event);
+                const auto& owned = events[index].payload_projection.owned_layout;
                 const bool is_invalid_identity = !events[index].system.valid() || !events[index].event.valid();
                 const bool is_invalid_functions =
                     events[index].connect == nullptr || events[index].disconnect == nullptr;
@@ -2333,7 +2800,11 @@ namespace lux::simulation::script
                     !described || described.route() != events[index].route ||
                     described.payloadType() != events[index].payload_type.type_id ||
                     described.payloadSchemaName() != events[index].payload_type.canonical_name ||
-                    events[index].payload_type.pass != lux::semantic::EValuePass::CONST_REF;
+                    events[index].payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
+                    owned.type_id != events[index].payload_type.type_id ||
+                    owned.canonical_name != events[index].payload_type.canonical_name || owned.abi_kind == 0U ||
+                    owned.size == 0U || owned.alignment == 0U ||
+                    (owned.alignment & (owned.alignment - 1U)) != 0U;
                 if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
                     return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
@@ -2357,6 +2828,9 @@ namespace lux::simulation::script
             state->failures.reserve(limits.failure_capacity);
             state->instances.reserve(limits.instance_capacity);
             state->continuations.reserve(limits.continuation_capacity);
+            state->event_waiters.reserve(limits.event_wait_capacity);
+            state->event_wait_routes.reserve(limits.event_wait_capacity);
+            state->claimed_event_waiters.reserve(limits.event_wait_capacity);
             state->ingress = std::make_shared<State::AwaitableIngress>();
             state->ingress->awaitable_capacity = limits.awaitable_capacity;
             state->ingress->max_payload_bytes = limits.max_resume_payload_bytes;
@@ -2482,6 +2956,8 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         if (state_->stopping)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        if (state_->event_dispatch_depth != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->prepare_state == EPrepareState::ROLLBACK_PENDING)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
@@ -2659,6 +3135,9 @@ namespace lux::simulation::script
         state_->dirty_processing.clear();
         state_->retirement_queue.clear();
         state_->continuations.clear();
+        state_->event_waiters.clear();
+        state_->event_wait_routes.clear();
+        state_->claimed_event_waiters.clear();
         state_->instances.clear();
         state_->published_capabilities.clear();
         {
@@ -2695,6 +3174,12 @@ namespace lux::simulation::script
             return result;
         result.active_instances = state_->active_mount_count;
         result.active_continuations = state_->continuations.size();
+        result.active_event_waiters = state_->event_waiters.size();
+        result.event_waiter_high_water = state_->event_waiter_high_water;
+        result.event_waiter_dispatch_visits = state_->event_waiter_dispatch_visits;
+        result.instance_cleanup_event_waiter_visits = state_->instance_cleanup_event_waiter_visits;
+        result.instance_cleanup_awaitable_visits = state_->instance_cleanup_awaitable_visits;
+        result.instance_cleanup_continuation_visits = state_->instance_cleanup_continuation_visits;
         if (state_->ingress)
         {
             std::lock_guard lock{state_->ingress->mutex};

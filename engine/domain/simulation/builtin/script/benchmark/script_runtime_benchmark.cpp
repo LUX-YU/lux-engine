@@ -771,6 +771,7 @@ namespace
                     64U,
                     (std::max)(resume_budget, std::size_t{1U}),
                     bounded_count,
+                    bounded_count,
                     bounded_count
                 },
                 {this, &resolveArtifact},

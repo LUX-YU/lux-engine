@@ -363,7 +363,7 @@ namespace
                 description,
                 registry,
                 clock,
-                {16U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U},
+                {16U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U, 4U},
                 {this, &resolveArtifact},
                 {this, &resolveWorld},
                 capabilities,

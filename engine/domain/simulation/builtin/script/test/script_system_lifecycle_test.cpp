@@ -336,7 +336,7 @@ namespace
                 description,
                 registry,
                 clock,
-                ScriptRuntimeLimits{32U, 16U, 16U, 8U, 16U, 16U, 64U, 16U, 16U, 16U},
+                ScriptRuntimeLimits{32U, 16U, 16U, 8U, 16U, 16U, 64U, 16U, 16U, 16U, 16U},
                 {this, &resolveArtifact},
                 entity_scope ? WorldObjectResolver{this, &resolveWorld} : WorldObjectResolver{},
                 {},

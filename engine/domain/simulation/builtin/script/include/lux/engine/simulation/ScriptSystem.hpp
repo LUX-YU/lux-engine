@@ -52,6 +52,7 @@ namespace lux::simulation::script
         std::size_t resumes_per_stable_point{};
         std::size_t next_step_wait_capacity{};
         std::size_t simulation_delay_capacity{};
+        std::size_t event_wait_capacity{};
     };
 
     struct ScriptRuntimeStats final
@@ -59,6 +60,12 @@ namespace lux::simulation::script
         std::size_t active_instances{};
         std::size_t active_continuations{};
         std::size_t active_awaitables{};
+        std::size_t active_event_waiters{};
+        std::size_t event_waiter_high_water{};
+        std::size_t event_waiter_dispatch_visits{};
+        std::size_t instance_cleanup_event_waiter_visits{};
+        std::size_t instance_cleanup_awaitable_visits{};
+        std::size_t instance_cleanup_continuation_visits{};
         std::size_t resume_queue_depth{};
         std::size_t resume_queue_high_water{};
         std::size_t next_step_waits{};

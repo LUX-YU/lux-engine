@@ -59,7 +59,17 @@ lux_classify_target(
 add_test(NAME scene_script_runtime_test COMMAND scene_script_runtime_test)
 
 if(TARGET lux::engine::simulation::simulation_script_lua)
+    set(
+        LUX_LUA_PORTABILITY_ARTIFACT
+        ""
+        CACHE FILEPATH
+        "Optional package-once Lua portability LXSA used by the Scene runtime test"
+    )
     add_executable(scene_script_lua_runtime_test test/scene_script_lua_runtime_test.cpp)
+    target_include_directories(
+        scene_script_lua_runtime_test
+        PRIVATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/lua/test
+    )
     target_link_libraries(
         scene_script_lua_runtime_test
         PRIVATE
@@ -68,6 +78,23 @@ if(TARGET lux::engine::simulation::simulation_script_lua)
             lux::engine::core::meta
             lux::engine::world::description
     )
+    include_component_cmake_scripts(script_core)
+    lux_script_abilities(
+        TARGET scene_script_lua_runtime_test
+        SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/lua/test/LuaRuntimeTestAbility.hpp
+        LOGICAL_PATHS LuaRuntimeTestAbility.hpp
+    )
+    if(LUX_LUA_PORTABILITY_ARTIFACT)
+        if(NOT EXISTS "${LUX_LUA_PORTABILITY_ARTIFACT}")
+            message(FATAL_ERROR
+                "LUX_LUA_PORTABILITY_ARTIFACT does not exist: ${LUX_LUA_PORTABILITY_ARTIFACT}"
+            )
+        endif()
+        target_compile_definitions(
+            scene_script_lua_runtime_test
+            PRIVATE LUX_LUA_PORTABILITY_ARTIFACT="${LUX_LUA_PORTABILITY_ARTIFACT}"
+        )
+    endif()
     if(MSVC)
         target_compile_options(scene_script_lua_runtime_test PRIVATE /UNDEBUG)
     else()
@@ -80,6 +107,10 @@ if(TARGET lux::engine::simulation::simulation_script_lua)
         ROLE    INTEGRATION
     )
     add_test(NAME scene_script_lua_runtime_test COMMAND scene_script_lua_runtime_test)
+    add_test(
+        NAME scene_script_lua_runtime_interpreter_test
+        COMMAND scene_script_lua_runtime_test --interpreter-only
+    )
 endif()
 
 install_components(

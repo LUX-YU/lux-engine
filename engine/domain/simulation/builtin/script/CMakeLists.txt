@@ -195,6 +195,30 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+add_library(
+    script_lua_portability_ability_contract
+    STATIC benchmark/LuaPortabilityTestAbility.cpp
+)
+target_include_directories(
+    script_lua_portability_ability_contract
+    PUBLIC ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/lua/test
+)
+target_link_libraries(
+    script_lua_portability_ability_contract
+    PUBLIC lux::engine::function::script_core
+)
+lux_script_abilities(
+    TARGET script_lua_portability_ability_contract
+    SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/lua/test/LuaRuntimeTestAbility.hpp
+    LOGICAL_PATHS LuaRuntimeTestAbility.hpp
+)
+lux_classify_target(
+    TARGET  script_lua_portability_ability_contract
+    LAYER   SIMULATION
+    PRODUCT RUNTIME
+    ROLE    DOMAIN
+)
+
 add_executable(
     script_runtime_benchmark
     benchmark/script_runtime_benchmark.cpp

@@ -1,3 +1,6 @@
+#include "LuaRuntimeTestAbility.hpp"
+#include "LuaRuntimeTestAbility.ability.generated.hpp"
+
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/scene/Scene.hpp>
@@ -17,13 +20,19 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace
 {
+    lux::script::lua::ELuaExecutionPolicy g_execution_policy{
+        lux::script::lua::ELuaExecutionPolicy::DEFAULT
+    };
     using namespace lux;
     using namespace lux::scene;
     using namespace lux::simulation;
@@ -35,6 +44,13 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kTickSymbol{0x4C5304U};
     using DelayAbility = lux::simulation::script::DelayAbility;
     using DelayTraits = lux::script::ScriptAbilityTraits<DelayAbility>;
+    using TestAbility = lux::simulation::script::test::LuaRuntimeTestAbility;
+    using TestAbilityTraits = lux::script::ScriptAbilityTraits<TestAbility>;
+
+    struct ProbeSystem;
+    ProbeSystem* g_probe_system{};
+    std::int32_t g_last_written{};
+    std::size_t g_total_writes{};
 
     [[nodiscard]] asset::AssetId assetId(std::uint8_t value)
     {
@@ -70,8 +86,68 @@ namespace
             static_cast<void>(hook.dispatch());
         }
 
+        std::int32_t readValue(std::int32_t input) noexcept
+        {
+            ++reads;
+            return value + input;
+        }
+
+        void writeValue(std::int32_t next) noexcept
+        {
+            ++writes;
+            value = next;
+            g_last_written = next;
+            ++g_total_writes;
+        }
+
+        const std::int32_t& borrowValue() noexcept
+        {
+            return value;
+        }
+
+        bool echoBool(bool input) noexcept
+        {
+            return input;
+        }
+
+        std::int32_t echoI32(std::int32_t input) noexcept
+        {
+            return input;
+        }
+
+        std::uint32_t echoU32(std::uint32_t input) noexcept
+        {
+            return input;
+        }
+
+        float echoF32(float input) noexcept
+        {
+            return input;
+        }
+
+        double echoF64(double input) noexcept
+        {
+            return input;
+        }
+
+        lux::script::ScriptAbilityStartResult beginOperation(
+            std::int32_t input,
+            lux::script::ScriptAbilityCompletion<std::int32_t> completion
+        ) noexcept
+        {
+            ++async_starts;
+            const auto completed = completion.success(input + 1);
+            return completed
+                ? lux::script::ScriptAbilityStartResult{}
+                : lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{91});
+        }
+
         HookPoint<void()> hook;
         ScriptHookEndpoint<void()> endpoint;
+        std::int32_t value{7};
+        std::size_t reads{};
+        std::size_t writes{};
+        std::size_t async_starts{};
         bool ready{};
     };
 
@@ -90,6 +166,11 @@ namespace
                 description.instanceId()
             });
         }
+        g_probe_system = *probe;
+        const auto ability = lux::script::bindScriptAbility<TestAbility>(**probe);
+        auto published_ability = builder.publishScriptAbility(description.instanceId(), ability);
+        if (!published_ability)
+            return published_ability;
         auto published = builder.publishScriptHook(description.instanceId(), (*probe)->endpoint.descriptor());
         if (!published)
             return published;
@@ -110,12 +191,15 @@ namespace
         };
     }
 
-    [[nodiscard]] ScriptSystemDescription makeScriptDescription(const SimulationDescription& simulation)
+    [[nodiscard]] ScriptSystemDescription makeScriptDescription(
+        const SimulationDescription& simulation,
+        asset::AssetId script_asset
+    )
     {
         ScriptSystemDescriptionBuilder builder;
         assert(builder.addMount({
             ScriptMountId{1U},
-            assetId(0x4CU),
+            script_asset,
             SimulationScriptMount{},
             true,
             {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
@@ -126,14 +210,15 @@ namespace
     }
 
     [[nodiscard]] std::shared_ptr<const SimulationDescription> makeSimulationDescription(
-        const ScriptSystemCodecLimits& limits
+        const ScriptSystemCodecLimits& limits,
+        asset::AssetId script_asset
     )
     {
         SimulationDescriptionBuilder base_builder;
         assert(base_builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
         auto base = std::move(base_builder).build();
         assert(base);
-        auto script = makeScriptDescription(*base);
+        auto script = makeScriptDescription(*base, script_asset);
 
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
@@ -170,6 +255,43 @@ namespace
         return std::move(*artifact);
     }
 
+    [[nodiscard]] std::shared_ptr<const lux::script::ScriptArtifactAsset> makeArtifactAsset()
+    {
+#if defined(LUX_LUA_PORTABILITY_ARTIFACT)
+        std::ifstream input(LUX_LUA_PORTABILITY_ARTIFACT, std::ios::binary);
+        assert(input);
+        input.seekg(0, std::ios::end);
+        const auto encoded_size = input.tellg();
+        assert(encoded_size >= std::streamoff{56});
+        input.seekg(0, std::ios::beg);
+        std::vector<std::byte> bytes(static_cast<std::size_t>(encoded_size));
+        input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        assert(input);
+        std::array<std::uint8_t, 16U> id_bytes{};
+        for (std::size_t index{}; index < id_bytes.size(); ++index)
+            id_bytes[index] = std::to_integer<std::uint8_t>(bytes[40U + index]);
+        const auto decoded = asset::TAssetSerDeser<lux::script::ScriptArtifactAsset>::decode(
+            asset::AssetId{id_bytes},
+            cxx::SharedBytes<>::copyOf(bytes),
+            {bytes.size(), (std::numeric_limits<std::size_t>::max)(), 0U}
+        );
+        assert(decoded);
+        return *decoded;
+#else
+        auto artifact = std::make_shared<const lux::script::ScriptArtifact>(makeArtifact());
+        auto created = lux::script::ScriptArtifactAsset::create(
+            asset::AssetInfo{
+                assetId(0x4CU),
+                lux::script::ScriptArtifactAsset::asset_type,
+                0U
+            },
+            std::move(artifact)
+        );
+        assert(created);
+        return *created;
+#endif
+    }
+
     [[nodiscard]] std::shared_ptr<const world::WorldDescription> makeWorld()
     {
         world::WorldDescriptionBuilder builder;
@@ -186,12 +308,27 @@ namespace
 
     struct Fixture final
     {
-        Fixture() : artifact(makeArtifact())
+        Fixture() : artifact(makeArtifactAsset())
         {
-            contribution = lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>();
-            auto created = LuaScriptBackend::create({1U, 2U, 1U, 4U, 4U, {}, {}, {&contribution, 1U}});
+            contributions = {
+                lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>(),
+                lux::script::lua::makeScriptAbilityLuaContribution<TestAbility>()
+            };
+            auto created = LuaScriptBackend::create({
+                4U,
+                8U,
+                8U,
+                8U,
+                DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size(),
+                {},
+                {},
+                contributions,
+                g_execution_policy
+            });
             assert(created);
             backend.emplace(std::move(*created));
+            assert(g_execution_policy != lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY ||
+                !backend->runtimeInfo().jit_enabled);
             descriptor = backend->descriptor();
         }
 
@@ -202,23 +339,26 @@ namespace
         ) noexcept
         {
             auto& self = *static_cast<Fixture*>(context);
-            if (requested != assetId(0x4CU))
+            if (requested != self.artifact->id())
                 return false;
-            result.artifact = std::addressof(self.artifact);
+            result.artifact = std::addressof(self.artifact->data());
             return true;
         }
 
-        lux::script::ScriptArtifact artifact;
-        lux::script::lua::ScriptAbilityLuaContribution contribution;
+        std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact;
+        std::array<lux::script::lua::ScriptAbilityLuaContribution, 2U> contributions;
         std::optional<LuaScriptBackend> backend;
         ScriptBackendDescriptor descriptor;
     };
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
+        g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     const ScriptSystemCodecLimits codec_limits{4096U, 4096U, 4096U};
-    auto simulation = makeSimulationDescription(codec_limits);
+    Fixture fixture;
+    auto simulation = makeSimulationDescription(codec_limits, fixture.artifact->id());
     SceneDescriptionBuilder description_builder;
     description_builder.setWorld(assetId(1U));
     description_builder.setSimulation(assetId(2U));
@@ -247,10 +387,9 @@ int main()
     });
     assert(meta);
 
-    Fixture fixture;
     const std::array backends{fixture.descriptor};
     ScriptRuntimeHost host{
-        {8U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U},
+        {16U, 4U, 16U, 8U, 16U, 16U, 64U, 8U, 16U, 16U},
         codec_limits,
         2U,
         {&fixture, &Fixture::resolve},
@@ -285,13 +424,33 @@ int main()
     assert(runtime->scriptSystem().activeContinuationCount() == 1U);
     assert(runtime->scriptSystem().failures().empty());
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+#if defined(LUX_LUA_PORTABILITY_ARTIFACT)
+    assert((*scene)->executeStablePoint());
+    assert(runtime->scriptSystem().activeContinuationCount() == 1U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert((*scene)->executeStablePoint());
+    assert(runtime->scriptSystem().activeContinuationCount() == 1U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert((*scene)->executeStablePoint());
+    assert(runtime->scriptSystem().activeContinuationCount() == 0U);
+    assert(runtime->scriptSystem().failures().empty());
+    assert(g_probe_system != nullptr);
+    assert(g_probe_system->reads == 0U);
+    assert(g_probe_system->async_starts == 1U);
+    assert(g_probe_system->value == 1234);
+#else
     const auto stable = (*scene)->executeStablePoint();
     assert(!stable);
     assert(runtime->scriptSystem().activeContinuationCount() == 0U);
     assert(!runtime->scriptSystem().failures().empty());
     assert(runtime->scriptSystem().failures().back().error == EScriptSystemError::INVOCATION_FAILURE);
+#endif
 
     scene->reset();
+#if defined(LUX_LUA_PORTABILITY_ARTIFACT)
+    assert(g_last_written == -1);
+    assert(g_total_writes == 3U);
+#endif
     execution->requestStop();
     assert(execution->join());
     meta::ReflectionRegistry::destroyRegistry();

@@ -17,6 +17,19 @@ component_add_cmake_scripts(
 )
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux_package_lua_script.cmake)
 
+set(_lua_portability_lxsa ${CMAKE_CURRENT_BINARY_DIR}/lua_portability_fixture.lxsa)
+lux_package_lua_script(
+    NAME lua_portability_fixture
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_portability_fixture.lua
+    OUTPUT ${_lua_portability_lxsa}
+    VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
+    ABILITY_TARGETS simulation_script script_lua_portability_ability_contract
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_portability_fixture.symbols.json
+    MODULE lux.test.lua-portability
+    ENTRY LuaPortabilityFixture
+    SCOPE SIMULATION
+)
+
 set(_lua_fixture_lxsa ${CMAKE_CURRENT_BINARY_DIR}/lua_behavior_fixture.lxsa)
 lux_package_lua_script(
     NAME lua_packager_fixture

@@ -1,0 +1,19 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 5001991,
+  "entries": [
+    {
+      "source_identity": "lux.test.lua-portability:initialize_portable",
+      "symbol": 5001989
+    },
+    {
+      "source_identity": "lux.test.lua-portability:retire_portable",
+      "symbol": 5001990
+    },
+    {
+      "source_identity": "lux.test.lua-portability:tick_portable",
+      "symbol": 5001988
+    }
+  ]
+}

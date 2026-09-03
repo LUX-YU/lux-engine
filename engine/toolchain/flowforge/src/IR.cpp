@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <queue>
 #include <memory>
@@ -30,6 +31,7 @@
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
 #include "lux/engine/flowforge/graph/ObjectNode.hpp"
 #include "lux/engine/flowforge/graph/ArithmeticNode.hpp"
+#include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
 
 namespace lux::flowforge {
     // ============================================================================
@@ -92,6 +94,8 @@ namespace lux::flowforge {
         // (set by lowerFunction): the instance-state base pointer. Valid
         // inside nested regions too — they are not isolated from above.
         mlir::Value        state_ptr;
+        mlir::Value        ability_runtime;
+        std::unordered_map<std::uint64_t, std::uint32_t> ability_ordinals;
 
         const Node* current_node = nullptr;
         const Pin*  current_pin  = nullptr;
@@ -373,6 +377,9 @@ namespace lux::flowforge {
         FlowForgeResult<void> lowerNativeCallImpl(
             const Node&, mlir::Value in_tok, ValueMaps&, BuilderContext&
         );
+        FlowForgeResult<void> lowerScriptAbilityCallImpl(
+            const ScriptAbilityNode&, mlir::Value in_tok, ValueMaps&, BuilderContext&
+        );
 
         // Per-region recursive lowering driver.
         //
@@ -458,8 +465,20 @@ namespace lux::flowforge {
         llvm::SmallVector<const Node*, 4> entries;
         const Node* start = nullptr;
         std::unordered_set<std::string> func_names;
+        struct AbilityKey final
+        {
+            std::string_view contract;
+            std::string_view method;
+            std::uint64_t node{};
+        };
+        std::vector<AbilityKey> ability_keys;
         for (auto& storage : g.nodes()) {
             const Node* n = storage.node.get();
+            if (n->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
+            {
+                const auto& ability = static_cast<const ScriptAbilityNode&>(*n);
+                ability_keys.push_back({ability.contract().name(), ability.method().name(), n->id().value});
+            }
             switch (n->operation()) {
                 case ENodeOperation::START:
                     if (start)
@@ -502,6 +521,24 @@ namespace lux::flowforge {
                 }
                 default: break;
             }
+        }
+        std::ranges::sort(ability_keys, [](const auto& left, const auto& right) {
+            return left.contract < right.contract || (left.contract == right.contract && left.method < right.method);
+        });
+        std::uint32_t next_ordinal{};
+        std::string_view previous_contract;
+        std::string_view previous_method;
+        bool has_previous{};
+        for (const auto& key : ability_keys)
+        {
+            if (!has_previous || key.contract != previous_contract || key.method != previous_method)
+            {
+                previous_contract = key.contract;
+                previous_method = key.method;
+                has_previous = true;
+                ++next_ordinal;
+            }
+            bc.ability_ordinals.emplace(key.node, next_ordinal - 1U);
         }
         if (entries.empty())
         {
@@ -563,6 +600,7 @@ namespace lux::flowforge {
         // payload arguments follow it.
         llvm::SmallVector<mlir::Type, 4> arg_tys;
         arg_tys.push_back(mlir::LLVM::LLVMPointerType::get(bc.ctx));
+        arg_tys.push_back(mlir::LLVM::LLVMPointerType::get(bc.ctx));
         llvm::SmallVector<mlir::Type, 2> ret_tys;
         const FuncDefNode* def = nullptr;
         const OnEventNode* event = nullptr;
@@ -623,18 +661,19 @@ namespace lux::flowforge {
             bc.loc, bc.token).getResult();
         vm.exec_tok[entry_pin->id().value] = entry_tok;
         bc.state_ptr = entry_block->getArgument(0);
+        bc.ability_runtime = entry_block->getArgument(1);
         if (def) {
             const auto& arg_pins = def->argPins();
             for (size_t i = 0; i < arg_pins.size(); ++i)
             {
-                vm.exec_data[arg_pins[i]->id().value] = entry_block->getArgument(i + 1);
+                vm.exec_data[arg_pins[i]->id().value] = entry_block->getArgument(i + 2);
             }
         }
         if (event) {
             const auto& param_pins = event->paramPins();
             for (size_t i = 0; i < param_pins.size(); ++i)
             {
-                vm.exec_data[param_pins[i]->id().value] = entry_block->getArgument(i + 1);
+                vm.exec_data[param_pins[i]->id().value] = entry_block->getArgument(i + 2);
             }
         }
 
@@ -865,6 +904,15 @@ namespace lux::flowforge {
                     break;
                 }
 
+                case ENodeOperation::SCRIPT_ABILITY_CALL: {
+                    const auto& call = static_cast<const ScriptAbilityNode&>(*node);
+                    LUX_FF_TRY(lowerScriptAbilityCallImpl(call, in_tok, vm, bc));
+                    LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(call.execOutPin().id().value, bc));
+                    cur_tok = next_token;
+                    cur_pin = &call.execOutPin();
+                    break;
+                }
+
                 // -------------------- GRAPH_FUNC_CALL -------------------------
                 // A call to a FuncDef in the same graph: plain func.call to
                 // the callee's symbol in the same module. The callee's
@@ -882,6 +930,7 @@ namespace lux::flowforge {
                     // Callee shares THIS instance's variables: forward the
                     // state pointer as the hidden leading argument.
                     operands.push_back(bc.state_ptr);
+                    operands.push_back(bc.ability_runtime);
                     for (const auto& pin : call.argPins()) {
                         LUX_FF_TRY_VALUE(v, getOperand(*pin, vm, bc));
                         if (pin->info().type
@@ -1990,6 +2039,80 @@ namespace lux::flowforge {
             bc.builder.getI32IntegerAttr(static_cast<int32_t>(count)));
         return bc.builder.create<mlir::LLVM::AllocaOp>(
             bc.loc, ptr_ty, elem_ty, n);
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::lowerScriptAbilityCallImpl(
+        const ScriptAbilityNode& call,
+        mlir::Value in_tok,
+        ValueMaps& vm,
+        BuilderContext& bc
+    )
+    {
+        const auto ordinal = bc.ability_ordinals.find(call.id().value);
+        if (ordinal == bc.ability_ordinals.end() || call.results().size() > 1U)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{
+                .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
+                .message = "Script Ability node has an unsupported result shape",
+                .node_id = call.id().value
+            });
+        }
+
+        llvm::SmallVector<mlir::Value, 6> operands;
+        llvm::SmallVector<mlir::Type, 6> argument_types;
+        operands.push_back(bc.ability_runtime);
+        argument_types.push_back(bc.ability_runtime.getType());
+        for (const auto& pin : call.parameterPins())
+        {
+            bc.current_pin = pin.get();
+            if (pin->info().type == nullptr)
+                LUX_FF_FAIL_AT_PIN(bc, "Script Ability parameter has no semantic type");
+            auto type = refTypeToMLIR(bc, *pin->info().type);
+            if (mlir::isa<mlir::LLVM::LLVMPointerType>(type))
+            {
+                return lux::cxx::unexpected(FlowForgeFailure{
+                    .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
+                    .message = "record Script Ability parameters are not supported by FlowForge S3",
+                    .node_id = call.id().value,
+                    .pin_id = pin->id().value
+                });
+            }
+            LUX_FF_TRY_VALUE(value, getOperand(*pin, vm, bc));
+            if (mlir::isa<mlir::LLVM::LLVMPointerType>(value.getType()))
+                LUX_FF_FAIL_AT_PIN(bc, "Script Ability parameter cannot be coerced to its semantic type");
+            LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, value, *pin->info().type));
+            operands.push_back(coerced);
+            argument_types.push_back(type);
+        }
+
+        llvm::SmallVector<mlir::Type, 1> result_types;
+        if (!call.resultPins().empty())
+        {
+            const auto* type = call.resultPins().front()->info().type;
+            if (type == nullptr || mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc, *type)))
+            {
+                return lux::cxx::unexpected(FlowForgeFailure{
+                    .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
+                    .message = "record Script Ability results are not supported by FlowForge S3",
+                    .node_id = call.id().value,
+                    .pin_id = call.resultPins().front()->id().value
+                });
+            }
+            result_types.push_back(refTypeToMLIR(bc, *type));
+        }
+
+        const auto name = call.methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION
+            ? "lux_ff_ability_async_" + std::to_string(ordinal->second) + "_node_" +
+                std::to_string(call.id().value)
+            : "lux_ff_ability_sync_" + std::to_string(ordinal->second);
+        const auto function_type = bc.builder.getFunctionType(argument_types, result_types);
+        const auto function = getOrDeclareExternFunc(bc, name, function_type);
+        auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, operands);
+        if (!call.resultPins().empty())
+            vm.exec_data[call.resultPins().front()->id().value] = invoked.getResult(0);
+        vm.exec_tok[call.execOutPin().id().value] = in_tok;
+        bc.current_pin = nullptr;
+        return {};
     }
 
     FlowForgeResult<void> MLIRBuilderImpl::lowerNativeCallImpl(

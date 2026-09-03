@@ -14,7 +14,8 @@
 //     to an indirect call through an internal import-slot table that
 //     bind_host fills via the host resolver (same by-name model the JIT
 //     path uses, bound at load instead of at materialization);
-//   * the per-instance state block arrives through call_frame.user_context;
+//   * per-instance state and prepared Ability dispatch arrive through the
+//     explicit ABI v3 native-instance context;
 //     its size / defaults / layout hash are captured in AotArtifact so the
 //     cook step can serialize them into the script manifest.
 //
@@ -45,7 +46,7 @@ namespace lux::flowforge
 
         // Instance-state recipe (mirrors the JIT path's StateLayout): the
         // host allocates state_size bytes per instance, copies the defaults
-        // in, and passes the base pointer as call_frame.user_context.
+        // in, and passes the base pointer through native-instance context.
         uint64_t                  state_size = 0;
         uint64_t                  state_hash = 0;
         uint32_t                  state_align = 1;

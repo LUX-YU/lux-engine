@@ -4,13 +4,17 @@
 #include <lux/engine/flowforge/compiler/IR.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
+#include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 
 #include <atomic>
+#include <algorithm>
 #include <fstream>
 #include <limits>
 #include <new>
 #include <system_error>
+#include <queue>
+#include <unordered_set>
 
 namespace lux::flowforge
 {
@@ -129,6 +133,239 @@ namespace lux::flowforge
                 return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
             }
         }
+
+        [[nodiscard]] FlowForgeResult<std::vector<lux::rdesc::ScriptApiRequirement>> deriveAbilityRequirements(
+            const FlowGraph& graph,
+            ScriptAbilityNodeCatalogView catalog
+        ) noexcept
+        {
+            try
+            {
+                std::vector<lux::rdesc::ScriptApiRequirement> requirements;
+                for (const auto& storage : graph.nodes())
+                {
+                    const auto* node = dynamic_cast<const ScriptAbilityNode*>(storage.node.get());
+                    if (node == nullptr)
+                        continue;
+
+                    for (const auto& requirement : requirements)
+                    {
+                        if (requirement.contract.name() == node->contract().name() &&
+                            requirement.expected_schema_hash != node->expectedSchemaHash())
+                        {
+                            return lux::cxx::unexpected(FlowForgeFailure{
+                                .code = EFlowForgeError::SCRIPT_ABILITY_REQUIREMENT_CONFLICT,
+                                .message = "the graph uses conflicting schemas for one Script Ability contract",
+                                .node_id = node->id().value
+                            });
+                        }
+                    }
+
+                    const auto* catalog_node = catalog.find(node->contract(), node->method());
+                    if (catalog_node == nullptr)
+                    {
+                        bool contract_exists{};
+                        for (const auto& candidate : catalog.nodes())
+                        {
+                            if (candidate.contract == node->contract())
+                            {
+                                contract_exists = true;
+                                break;
+                            }
+                        }
+                        return lux::cxx::unexpected(FlowForgeFailure{
+                            .code = contract_exists
+                                ? EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_METHOD
+                                : EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT,
+                            .message = contract_exists
+                                ? "the Script Ability method is not present in the supplied catalog"
+                                : "the Script Ability contract is not present in the supplied catalog",
+                            .node_id = node->id().value
+                        });
+                    }
+                    const bool is_schema_mismatch = catalog_node->schema_version != node->expectedSchemaVersion() ||
+                        catalog_node->schema_hash != node->expectedSchemaHash() || catalog_node->kind != node->methodKind();
+                    if (is_schema_mismatch)
+                    {
+                        return lux::cxx::unexpected(FlowForgeFailure{
+                            .code = EFlowForgeError::SCRIPT_ABILITY_SCHEMA_MISMATCH,
+                            .message = "the Script Ability node schema does not match the supplied catalog",
+                            .node_id = node->id().value
+                        });
+                    }
+
+                    const auto exists = std::ranges::any_of(requirements, [&](const auto& requirement) {
+                        return requirement.contract.name() == node->contract().name();
+                    });
+                    if (!exists)
+                    {
+                        requirements.push_back({
+                            lux::script::ScriptApiContractId{node->contract().name()},
+                            node->expectedSchemaHash()
+                        });
+                    }
+                }
+                std::ranges::sort(requirements, {}, [](const auto& requirement) {
+                    return requirement.contract.name();
+                });
+                return requirements;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            }
+        }
+
+        [[nodiscard]] std::vector<const Node*> executableConsumers(const DataOutPin& output)
+        {
+            std::vector<const Node*> consumers;
+            std::queue<const DataOutPin*> pending;
+            std::unordered_set<std::uint64_t> visited_pins;
+            pending.push(std::addressof(output));
+            while (!pending.empty())
+            {
+                const auto* current = pending.front();
+                pending.pop();
+                if (!visited_pins.insert(current->id().value).second)
+                    continue;
+                for (const auto* input : current->linkPins())
+                {
+                    const auto* node = input->node();
+                    if (!isPureDataOp(node->operation()))
+                    {
+                        consumers.push_back(node);
+                        continue;
+                    }
+                    for (const auto* pin : node->outPins())
+                    {
+                        if (pin->kind() == EPinKind::DATA_OUT)
+                            pending.push(static_cast<const DataOutPin*>(pin));
+                    }
+                }
+            }
+            return consumers;
+        }
+
+        [[nodiscard]] const ScriptAbilityNode* suspensionBetween(
+            const ExecOutPin& start,
+            const Node& target
+        )
+        {
+            struct Visit final
+            {
+                const Node* node{};
+                const ScriptAbilityNode* suspension{};
+            };
+            std::queue<Visit> pending;
+            if (const auto* next = start.nextPin())
+                pending.push({next->node(), nullptr});
+            std::unordered_set<std::uint64_t> visited_without_suspension;
+            std::unordered_set<std::uint64_t> visited_with_suspension;
+            while (!pending.empty())
+            {
+                auto visit = pending.front();
+                pending.pop();
+                if (visit.node->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
+                {
+                    const auto* ability = static_cast<const ScriptAbilityNode*>(visit.node);
+                    if (ability->methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
+                        visit.suspension = ability;
+                }
+                auto& visited = visit.suspension != nullptr ? visited_with_suspension : visited_without_suspension;
+                if (!visited.insert(visit.node->id().value).second)
+                    continue;
+                if (visit.node == std::addressof(target))
+                    return visit.suspension;
+                for (const auto* pin : visit.node->outPins())
+                {
+                    if (pin->kind() != EPinKind::EXEC_OUT)
+                        continue;
+                    if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
+                        pending.push({next->node(), visit.suspension});
+                }
+            }
+            return nullptr;
+        }
+
+        [[nodiscard]] FlowForgeResult<void> validateAbilityLifetimes(
+            const FlowGraph& graph,
+            const FlowForgeCompileOptions& options
+        )
+        {
+            for (const auto& storage : graph.nodes())
+            {
+                const auto* producer = dynamic_cast<const ScriptAbilityNode*>(storage.node.get());
+                if (producer == nullptr)
+                    continue;
+                for (std::size_t index{}; index < producer->results().size(); ++index)
+                {
+                    if (producer->results()[index].lifetime !=
+                        lux::script::EScriptAbilityValueLifetime::BORROWED_STEP)
+                    {
+                        continue;
+                    }
+                    for (const auto* consumer : executableConsumers(*producer->resultPins()[index]))
+                    {
+                        if (const auto* suspension = suspensionBetween(producer->execOutPin(), *consumer))
+                        {
+                            return lux::cxx::unexpected(FlowForgeFailure{
+                                .code = EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION,
+                                .message = "BORROWED_STEP value crosses a Script Ability suspension",
+                                .node_id = suspension->id().value,
+                                .pin_id = producer->resultPins()[index]->id().value
+                            });
+                        }
+                    }
+                }
+            }
+
+            for (const auto& exported : graph.exports())
+            {
+                const bool is_lifecycle = exported.symbol == options.lifecycle.begin_play ||
+                    exported.symbol == options.lifecycle.end_play;
+                if (!is_lifecycle)
+                    continue;
+                const auto* entry = graph.findNodeById(exported.entry_node_id);
+                if (entry == nullptr)
+                    continue;
+                std::queue<const Node*> pending;
+                std::unordered_set<std::uint64_t> visited;
+                for (const auto* pin : entry->outPins())
+                {
+                    if (pin->kind() == EPinKind::EXEC_OUT)
+                    {
+                        if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
+                            pending.push(next->node());
+                    }
+                }
+                while (!pending.empty())
+                {
+                    const auto* node = pending.front();
+                    pending.pop();
+                    if (!visited.insert(node->id().value).second)
+                        continue;
+                    const auto* ability = dynamic_cast<const ScriptAbilityNode*>(node);
+                    if (ability != nullptr &&
+                        ability->methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
+                    {
+                        return lux::cxx::unexpected(FlowForgeFailure{
+                            .code = EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED,
+                            .message = "BeginPlay and EndPlay FlowForge exports must remain synchronous",
+                            .node_id = node->id().value
+                        });
+                    }
+                    for (const auto* pin : node->outPins())
+                    {
+                        if (pin->kind() == EPinKind::EXEC_OUT)
+                        {
+                            if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
+                                pending.push(next->node());
+                        }
+                    }
+                }
+            }
+            return {};
+        }
     }
 
     FlowForgeResult<lux::script::ScriptArtifact> compileFlowForgeScript(
@@ -146,6 +383,13 @@ namespace lux::flowforge
             {
                 return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::GRAPH_INVALID});
             }
+
+            auto requirements = deriveAbilityRequirements(graph, options.script_abilities);
+            if (!requirements)
+                return lux::cxx::unexpected(std::move(requirements.error()));
+            auto lifetime = validateAbilityLifetimes(graph, options);
+            if (!lifetime)
+                return lux::cxx::unexpected(std::move(lifetime.error()));
 
             auto context = IRContext::create();
             if (!context)
@@ -186,6 +430,7 @@ namespace lux::flowforge
             description.module_name = options.module_name;
             description.exports = std::move(object->exports);
             description.lifecycle = options.lifecycle;
+            description.api_requirements = std::move(*requirements);
             description.body = lux::rdesc::NativeModuleScript{
                 LUX_SCRIPT_ABI_VERSION,
                 object->state_hash,

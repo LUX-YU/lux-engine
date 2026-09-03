@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/flowforge/compiler/visibility.h>
+#include <lux/engine/flowforge/script/ScriptAbilityCatalog.hpp>
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -29,6 +30,15 @@ namespace lux::flowforge
         AOT_CODEGEN_FAILED,
         LINK_FAILED,
         IO_FAILED,
+        UNKNOWN_SCRIPT_ABILITY_CONTRACT,
+        UNKNOWN_SCRIPT_ABILITY_METHOD,
+        SCRIPT_ABILITY_SCHEMA_MISMATCH,
+        SCRIPT_ABILITY_REQUIREMENT_CONFLICT,
+        UNSUPPORTED_SCRIPT_ABILITY_TYPE,
+        BORROWED_VALUE_CROSSES_SUSPENSION,
+        ASYNC_LIFECYCLE_NOT_SUPPORTED,
+        INVALID_CONTINUATION_FRAME_LAYOUT,
+        UNSUPPORTED_COROUTINE_CONTROL_FLOW,
     };
 
     struct FlowForgeFailure final
@@ -47,6 +57,7 @@ namespace lux::flowforge
         std::string module_name;
         std::filesystem::path linker;
         lux::rdesc::ScriptLifecycleRoles lifecycle;
+        ScriptAbilityNodeCatalogView script_abilities;
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC

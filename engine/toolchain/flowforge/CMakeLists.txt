@@ -85,6 +85,10 @@ add_test(
     NAME flowforge_script_artifact_test
     COMMAND flowforge_script_artifact_test
 )
+set_tests_properties(
+    flowforge_script_artifact_test
+    PROPERTIES ENVIRONMENT "LUX_FLOWFORGE_LINKER=${CMAKE_LINKER}"
+)
 
 install_components(
     PROJECT_NAME lux-engine-flowforge-compiler

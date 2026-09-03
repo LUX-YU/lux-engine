@@ -1,0 +1,54 @@
+include_guard(GLOBAL)
+
+set(_lux_lua_vm_kind "@LUX_LUA_VM@")
+set(_lux_lua_vm_target lux::engine::function::script_lua_vm)
+
+if(TARGET ${_lux_lua_vm_target})
+    get_target_property(_lux_existing_lua_vm ${_lux_lua_vm_target} LUX_LUA_VM_KIND)
+    if(NOT _lux_existing_lua_vm STREQUAL _lux_lua_vm_kind)
+        message(FATAL_ERROR
+            "Lux Lua VM selection mismatch: existing '${_lux_existing_lua_vm}', requested '${_lux_lua_vm_kind}'"
+        )
+    endif()
+    unset(_lux_existing_lua_vm)
+    unset(_lux_lua_vm_kind)
+    unset(_lux_lua_vm_target)
+    return()
+endif()
+
+if(_lux_lua_vm_kind STREQUAL "LUAJIT")
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+    find_package(LuaJIT REQUIRED)
+    set(_lux_lua_provider LuaJIT::LuaJIT)
+elseif(_lux_lua_vm_kind STREQUAL "LUA54")
+    find_package(Lua 5.4 REQUIRED)
+    if(NOT LUA_VERSION_MAJOR EQUAL 5 OR NOT LUA_VERSION_MINOR EQUAL 4)
+        message(FATAL_ERROR
+            "LUX_LUA_VM=LUA54 requires Lua 5.4.x; found '${LUA_VERSION_STRING}'"
+        )
+    endif()
+    if(NOT TARGET Lua::Lua)
+        add_library(Lua::Lua INTERFACE IMPORTED GLOBAL)
+        set_target_properties(
+            Lua::Lua
+            PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
+                INTERFACE_LINK_LIBRARIES "${LUA_LIBRARIES}"
+        )
+    endif()
+    set(_lux_lua_provider Lua::Lua)
+else()
+    message(FATAL_ERROR "Unsupported installed Lux Lua VM '${_lux_lua_vm_kind}'")
+endif()
+
+add_library(${_lux_lua_vm_target} INTERFACE IMPORTED GLOBAL)
+set_target_properties(
+    ${_lux_lua_vm_target}
+    PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${_lux_lua_provider}"
+        LUX_LUA_VM_KIND "${_lux_lua_vm_kind}"
+)
+
+unset(_lux_lua_provider)
+unset(_lux_lua_vm_kind)
+unset(_lux_lua_vm_target)

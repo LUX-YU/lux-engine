@@ -1,5 +1,3 @@
-find_package(LuaJIT REQUIRED)
-
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_SIMULATION_SCRIPT_LUA_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC
@@ -17,19 +15,20 @@ component_include_directories(
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
-    BUILD_TIME_SHARED ${LUAJIT_INCLUDE_DIRS}
     INSTALL_TIME include
 )
 target_compile_definitions(
     simulation_script_lua
-    PRIVATE LUX_ENGINE_SIMULATION_SCRIPT_LUA_LIBRARY
+    PRIVATE
+        LUX_ENGINE_SIMULATION_SCRIPT_LUA_LIBRARY
+        LUX_SCRIPT_LUA_VM_${LUX_LUA_VM}=1
 )
 target_link_libraries(
     simulation_script_lua
     PUBLIC
         lux::engine::simulation::simulation_script
         lux::engine::function::script_lua
-    PRIVATE LuaJIT::LuaJIT
+    PRIVATE lux::engine::function::script_lua_vm
 )
 component_add_transitive_commands(
     simulation_script_lua
@@ -51,7 +50,7 @@ target_link_libraries(
     simulation_script_lua_test
     PRIVATE
         lux::engine::simulation::simulation_script_lua
-        LuaJIT::LuaJIT
+        lux::engine::function::script_lua_vm
 )
 if(MSVC)
     target_compile_options(simulation_script_lua_test PRIVATE /UNDEBUG)
@@ -70,27 +69,43 @@ add_test(
 )
 
 add_executable(
-    simulation_script_luajit_coroutine_contract_test
-    test/luajit_coroutine_contract_test.cpp
+    simulation_script_lua_vm_coroutine_contract_test
+    test/lua_vm_coroutine_contract_test.cpp
 )
 target_link_libraries(
-    simulation_script_luajit_coroutine_contract_test
-    PRIVATE LuaJIT::LuaJIT
+    simulation_script_lua_vm_coroutine_contract_test
+    PRIVATE
+        lux::engine::function::script_lua
+        lux::engine::function::script_lua_vm
+)
+target_include_directories(
+    simulation_script_lua_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+)
+include_component_cmake_scripts(script_core)
+lux_script_abilities(
+    TARGET simulation_script_lua_test
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaUnsupportedIntegerAbility.hpp
+    LOGICAL_PATHS LuaUnsupportedIntegerAbility.hpp
 )
 if(MSVC)
-    target_compile_options(simulation_script_luajit_coroutine_contract_test PRIVATE /UNDEBUG)
+    target_compile_options(simulation_script_lua_vm_coroutine_contract_test PRIVATE /UNDEBUG)
 else()
-    target_compile_options(simulation_script_luajit_coroutine_contract_test PRIVATE -UNDEBUG)
+    target_compile_options(simulation_script_lua_vm_coroutine_contract_test PRIVATE -UNDEBUG)
 endif()
 lux_classify_target(
-    TARGET  simulation_script_luajit_coroutine_contract_test
+    TARGET  simulation_script_lua_vm_coroutine_contract_test
     LAYER   SIMULATION
     PRODUCT TEST
     ROLE    DOMAIN
 )
 add_test(
-    NAME simulation_script_luajit_coroutine_contract_test
-    COMMAND simulation_script_luajit_coroutine_contract_test
+    NAME simulation_script_lua_vm_coroutine_contract_test
+    COMMAND simulation_script_lua_vm_coroutine_contract_test
+)
+add_test(
+    NAME simulation_script_lua_vm_interpreter_contract_test
+    COMMAND simulation_script_lua_vm_coroutine_contract_test --interpreter-only
 )
 
 add_executable(
@@ -105,7 +120,6 @@ target_include_directories(
     simulation_script_lua_coroutine_integration_test
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
 )
-include_component_cmake_scripts(script_core)
 lux_script_abilities(
     TARGET simulation_script_lua_coroutine_integration_test
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaRuntimeTestAbility.hpp
@@ -126,6 +140,10 @@ add_test(
     NAME simulation_script_lua_coroutine_integration_test
     COMMAND simulation_script_lua_coroutine_integration_test
 )
+add_test(
+    NAME simulation_script_lua_coroutine_interpreter_integration_test
+    COMMAND simulation_script_lua_coroutine_integration_test --interpreter-only
+)
 
 if(TARGET script_native_collision_fixture)
     add_executable(
@@ -137,7 +155,7 @@ if(TARGET script_native_collision_fixture)
         PRIVATE
             lux::engine::simulation::simulation_script_lua
             lux::engine::simulation::simulation_script_native
-            LuaJIT::LuaJIT
+            lux::engine::function::script_lua_vm
     )
     target_compile_definitions(
         simulation_script_collision_event_test

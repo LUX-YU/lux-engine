@@ -52,8 +52,6 @@ def make_semantics(
         ("lux.bool", 1, 1, 1),
         ("lux.i32", 2, 4, 4),
         ("lux.u32", 3, 4, 4),
-        ("lux.i64", 4, 8, 8),
-        ("lux.u64", 5, 8, 8),
         ("lux.f32", 6, 4, 4),
         ("lux.f64", 7, 8, 8),
     )
@@ -112,6 +110,7 @@ def make_semantics(
             or canonical in result
             or abi_kind < 1
             or abi_kind > 7
+            or abi_kind in (4, 5)
             or size <= 0
             or size > 0xFFFFFFFF
             or alignment <= 0
@@ -171,6 +170,8 @@ class Export:
 class AbilitySchema:
     contract: str
     contract_id: int
+    name: str
+    display_name: str
     schema_version: int
     schema_hash: int
 
@@ -198,11 +199,15 @@ LIFECYCLE = re.compile(r"^\s*---@lux\.lifecycle\s+(begin_play|end_play)\s*$")
 COROUTINE = re.compile(r"^\s*---@lux\.coroutine\s*$")
 
 
+def code_identifier(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value))
+
+
 def load_ability_schemas(paths: list[pathlib.Path]) -> dict[str, AbilitySchema]:
     result: dict[str, AbilitySchema] = {}
     for path in paths:
         document = json.loads(path.read_text(encoding="utf-8"))
-        if document.get("schema") != "lux-script-ability" or document.get("version") != 1:
+        if document.get("schema") != "lux-script-ability" or document.get("version") != 2:
             raise ValueError(f"unsupported Ability schema manifest '{path}'")
         abilities = document.get("abilities")
         if not isinstance(abilities, list):
@@ -210,19 +215,29 @@ def load_ability_schemas(paths: list[pathlib.Path]) -> dict[str, AbilitySchema]:
         for value in abilities:
             contract = value.get("contract")
             contract_id = int(value.get("contract_id", 0))
+            name = value.get("name")
+            display_name = value.get("display_name")
             schema_version = int(value.get("schema_version", 0))
             schema_hash = int(value.get("schema_hash", 0))
             if (
                 not isinstance(contract, str)
                 or not contract
                 or contract_id != fnv1a(contract)
+                or not isinstance(name, str)
+                or not code_identifier(name)
+                or not isinstance(display_name, str)
                 or schema_version <= 0
                 or schema_hash <= 0
                 or schema_hash > 0xFFFFFFFFFFFFFFFF
             ):
                 raise ValueError(f"invalid Ability schema in '{path}'")
             schema = AbilitySchema(
-                contract, contract_id, schema_version, schema_hash
+                contract,
+                contract_id,
+                name,
+                display_name,
+                schema_version,
+                schema_hash,
             )
             previous = result.get(contract)
             if previous is not None and previous != schema:

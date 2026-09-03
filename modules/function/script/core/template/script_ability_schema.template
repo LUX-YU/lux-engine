@@ -55,7 +55,9 @@ namespace
     {
         output << "{\"contract\":";
         writeString(output, description.id.name());
-        output << ",\"contract_id\":" << description.id.hash() << ",\"display_name\":";
+        output << ",\"contract_id\":" << description.id.hash() << ",\"name\":";
+        writeString(output, description.name);
+        output << ",\"display_name\":";
         writeString(output, description.display_name);
         output << ",\"schema_version\":" << description.schema_version
                << ",\"schema_hash\":" << description.schema_hash
@@ -118,6 +120,7 @@ namespace
         };
         inline static constexpr lux::script::ScriptAbilityDescription Description{
             lux::script::ScriptApiContractIdView{"{{ cxx_str(annotation_get(rec, "id")) }}"},
+            "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "name", rec.name)) }}",
             "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "display", rec.name)) }}",
             {{ annotation_get_for_or(rec, "luxability::contract", "version", 1) }}U,
             lux::script::scriptAbilitySchemaHash(
@@ -128,6 +131,10 @@ namespace
             lux::script::EScriptAbilityReceiverKind::{% if receiver == "provider_instance" %}PROVIDER_INSTANCE{% else %}NONE{% endif %},
             Methods
         };
+        static_assert(
+            lux::script::scriptAbilityCodeNameValid(Description.name),
+            "Script Ability code name must be an identifier"
+        );
     };
 {% endfor %}
     inline constexpr std::array AbilityDescriptions{
@@ -142,7 +149,7 @@ int main(int argc, char** argv)
     std::ofstream output(argv[1], std::ios::binary | std::ios::trunc);
     if (!output)
         return 3;
-    output << "{\"schema\":\"lux-script-ability\",\"version\":1,\"abilities\":[";
+    output << "{\"schema\":\"lux-script-ability\",\"version\":2,\"abilities\":[";
     for (std::size_t index{}; index < AbilityDescriptions.size(); ++index)
     {
         if (index != 0U)

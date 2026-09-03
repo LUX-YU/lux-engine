@@ -12,7 +12,8 @@ namespace lux::script::lua
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {
-            return description != nullptr && description->id.isValid() && description->schema_version != 0U &&
+            return description != nullptr && description->id.isValid() &&
+                scriptAbilityCodeNameValid(description->name) && description->schema_version != 0U &&
                 description->schema_hash != 0U;
         }
     };

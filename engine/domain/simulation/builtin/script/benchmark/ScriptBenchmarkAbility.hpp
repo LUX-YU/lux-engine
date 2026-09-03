@@ -8,6 +8,7 @@ namespace lux::simulation::script::benchmark
 {
     struct LUX_SCRIPT_ABILITY(
         id = lux.benchmark.value,
+        name = BenchmarkValue,
         display = BenchmarkValue,
         version = 1,
         receiver = provider_instance

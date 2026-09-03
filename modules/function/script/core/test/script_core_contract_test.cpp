@@ -18,6 +18,9 @@ int main()
     constexpr lux::script::ScriptApiMethodIdView method{"lux.test.Ability.read"};
     static_assert(contract.isValid() && method.isValid());
     static_assert(contract.hash() == lux::cxx::Fnv1a64::hash(contract.name()));
+    static_assert(lux::script::scriptAbilityCodeNameValid("PhysicsQuery"));
+    static_assert(!lux::script::scriptAbilityCodeNameValid("Physics Query"));
+    static_assert(!lux::script::scriptAbilityCodeNameValid("3DPhysics"));
     static_assert(lux::script::EScriptApiMethodKind::ASYNC_OPERATION != lux::script::EScriptApiMethodKind::QUERY);
     static_assert(lux::script::ScriptAbilityValueShapeSupported<std::int32_t>);
     static_assert(lux::script::ScriptAbilityValueShapeSupported<const std::int32_t&>);

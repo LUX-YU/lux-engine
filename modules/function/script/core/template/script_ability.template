@@ -51,12 +51,14 @@ namespace lux::script
         static_assert(scriptAbilityMethodIdsUnique(Methods), "Script Ability MethodId values must be unique");
         inline static constexpr ScriptAbilityDescription Description{
             Contract,
+            "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "name", rec.name)) }}",
             "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "display", rec.name)) }}",
             {{ annotation_get_for_or(rec, "luxability::contract", "version", 1) }}U,
             scriptAbilitySchemaHash(Contract, Receiver, Methods),
             Receiver,
             Methods
         };
+        static_assert(scriptAbilityCodeNameValid(Description.name), "Script Ability code name must be an identifier");
 
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}        static {% if kind == "async_operation" %}ScriptAbilityStartResult{% else %}ScriptAbilityErasedCallResult{% endif %} {{ method.spelling }}Erased(
             void* context,

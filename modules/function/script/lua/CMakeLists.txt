@@ -1,6 +1,66 @@
-find_package(LuaJIT REQUIRED)
-find_package(sol2 CONFIG REQUIRED)
 find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/LuxLuaVmSelection.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/LuxLuaVmSelection.cmake
+    @ONLY
+)
+include(${CMAKE_CURRENT_BINARY_DIR}/LuxLuaVmSelection.cmake)
+
+include(CheckCXXSourceCompiles)
+if(LUX_LUA_VM STREQUAL "LUAJIT")
+    set(CMAKE_REQUIRED_LIBRARIES ${LUAJIT_LIBRARIES})
+    set(CMAKE_REQUIRED_INCLUDES ${LUAJIT_INCLUDE_DIRS})
+    set(_lux_lua_vm_probe [[
+        #include <lua.hpp>
+        #include <type_traits>
+        int main()
+        {
+            static_assert(std::is_same_v<lua_Number, double>);
+            lua_State* state = luaL_newstate();
+            if (!state)
+                return 1;
+            luaL_openlibs(state);
+            lua_State* thread = lua_newthread(state);
+            const int status = lua_resume(thread, 0);
+            (void)status;
+            lua_close(state);
+            return 0;
+        }
+    ]])
+else()
+    set(CMAKE_REQUIRED_LIBRARIES ${LUA_LIBRARIES})
+    set(CMAKE_REQUIRED_INCLUDES ${LUA_INCLUDE_DIR})
+    set(_lux_lua_vm_probe [[
+        #include <lua.hpp>
+        #include <type_traits>
+        int main()
+        {
+            static_assert(std::is_same_v<lua_Number, double>);
+            lua_State* state = luaL_newstate();
+            if (!state)
+                return 1;
+            luaL_openlibs(state);
+            lua_State* thread = lua_newthread(state);
+            int results = 0;
+            const int status = lua_resume(thread, state, 0, &results);
+            (void)status;
+            (void)results;
+            lua_close(state);
+            return 0;
+        }
+    ]])
+endif()
+unset(LUX_SELECTED_LUA_VM_CAPABLE CACHE)
+check_cxx_source_compiles("${_lux_lua_vm_probe}" LUX_SELECTED_LUA_VM_CAPABLE)
+unset(CMAKE_REQUIRED_LIBRARIES)
+unset(CMAKE_REQUIRED_INCLUDES)
+unset(_lux_lua_vm_probe)
+if(NOT LUX_SELECTED_LUA_VM_CAPABLE)
+    message(FATAL_ERROR
+        "Selected Lua VM '${LUX_LUA_VM}' does not provide the required Lux C API or double lua_Number contract"
+    )
+endif()
 
 add_component(
     COMPONENT_NAME  script_lua
@@ -8,6 +68,7 @@ add_component(
     OUTPUT_NAME     lux_engine_function_script_lua
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Lua.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaVm.cpp
 )
 
 component_include_directories(
@@ -16,7 +77,7 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     BUILD_TIME_SHARED
-        ${LUAJIT_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
     INSTALL_TIME
         include
     PRIVATE
@@ -27,6 +88,7 @@ target_compile_definitions(
     script_lua
     PRIVATE
         LUX_FUNCTION_LIBRARY
+        LUX_SCRIPT_LUA_VM_${LUX_LUA_VM}=1
 )
 
 target_link_libraries(
@@ -34,15 +96,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::function::script_core
         lux::cxx::compile_time
-        sol2::sol2
-        LuaJIT::LuaJIT
+    PRIVATE
+        lux::engine::function::script_lua_vm
 )
 
 component_add_transitive_commands(
     script_lua
-    [[list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")]]
-    "find_package(LuaJIT REQUIRED)"
-    "find_package(sol2 CONFIG REQUIRED)"
+    [[include("${CMAKE_CURRENT_LIST_DIR}/LuxLuaVmSelection.cmake")]]
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
 )
@@ -58,7 +118,9 @@ install(
 )
 
 install(
-    FILES ${CMAKE_SOURCE_DIR}/cmake/FindLuaJIT.cmake
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/LuxLuaVmSelection.cmake
+        ${CMAKE_SOURCE_DIR}/cmake/FindLuaJIT.cmake
     DESTINATION share/lux-engine-function/script_lua
 )
 

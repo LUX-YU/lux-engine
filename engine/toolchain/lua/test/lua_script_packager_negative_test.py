@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import pathlib
 import sys
+import tempfile
 
 
 def load_packager(path: pathlib.Path):
@@ -28,8 +30,45 @@ def expect_failure(action, text: str) -> None:
 def main() -> int:
     package = load_packager(pathlib.Path(sys.argv[1]))
     semantics = package.make_semantics([], ["lux.simulation.ScriptEndPlayReason,3,4,4"])
-    delay = package.AbilitySchema("lux.simulation.delay", package.fnv1a("lux.simulation.delay"), 1, 17)
+    assert "lux.i64" not in semantics and "lux.u64" not in semantics
+    expect_failure(
+        lambda: package.make_semantics([], ["lux.test.WideInteger,4,8,8"]),
+        "invalid --value-type",
+    )
+    delay = package.AbilitySchema(
+        "lux.simulation.delay",
+        package.fnv1a("lux.simulation.delay"),
+        "Delay",
+        "Simulation Delay",
+        1,
+        17,
+    )
     abilities = {delay.contract: delay}
+
+    with tempfile.TemporaryDirectory() as directory:
+        manifest = pathlib.Path(directory) / "ability.json"
+        document = {
+            "schema": "lux-script-ability",
+            "version": 2,
+            "abilities": [
+                {
+                    "contract": delay.contract,
+                    "contract_id": delay.contract_id,
+                    "name": delay.name,
+                    "display_name": delay.display_name,
+                    "schema_version": delay.schema_version,
+                    "schema_hash": delay.schema_hash,
+                }
+            ],
+        }
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+        assert package.load_ability_schemas([manifest])[delay.contract] == delay
+        document["abilities"][0]["name"] = "invalid-name"
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+        expect_failure(
+            lambda: package.load_ability_schemas([manifest]),
+            "invalid Ability schema",
+        )
 
     def parse(source: str, symbols: dict[str, int], schemas=abilities):
         return package.collect_exports(source, "ENTITY", "Enemy", "lux.test.lua", semantics, symbols, schemas)

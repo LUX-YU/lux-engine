@@ -81,6 +81,14 @@ if(LUX_TARGET_OS STREQUAL "ANDROID")
 else()
     option(LUX_SCRIPT_HAS_LUA "Build Lua backend" ON)
 endif()
+set(LUX_LUA_VM "LUAJIT" CACHE STRING "Lua VM implementation used by the Lua script backend")
+set_property(CACHE LUX_LUA_VM PROPERTY STRINGS LUAJIT LUA54)
+string(TOUPPER "${LUX_LUA_VM}" LUX_LUA_VM)
+set(_lux_supported_lua_vms LUAJIT LUA54)
+if(LUX_SCRIPT_HAS_LUA AND NOT LUX_LUA_VM IN_LIST _lux_supported_lua_vms)
+    message(FATAL_ERROR "Unknown LUX_LUA_VM='${LUX_LUA_VM}'. Expected LUAJIT or LUA54")
+endif()
+unset(_lux_supported_lua_vms)
 
 # Asset and shader cooking is an explicit build-tool path. Default runtime
 # profiles do not invoke a host packer; qualification/toolchain builds opt in.

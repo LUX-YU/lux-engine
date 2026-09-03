@@ -2138,6 +2138,40 @@ if(lua_backend_contract MATCHES
         "Architecture: Lua backend acquired a global current-script or a second scheduler/runtime."
     )
 endif()
+if(lua_backend_contract MATCHES
+   "LUAJIT_VERSION|LUA_VERSION_NUM|luaJIT_setmode|lua_resume|lua_yield")
+    message(FATAL_ERROR
+        "Architecture: Simulation Lua backend bypasses the portable modules/function/script/lua VM seam."
+    )
+endif()
+file(GLOB_RECURSE lua_architecture_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/script/lua/*.hpp"
+    "${source_root}/modules/function/script/lua/*.cpp"
+    "${source_root}/engine/domain/simulation/scripting/lua/*.hpp"
+    "${source_root}/engine/domain/simulation/scripting/lua/*.cpp"
+)
+foreach(source IN LISTS lua_architecture_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "LuaJitScriptBackend|Lua54ScriptBackend|LuaVmManager|LuaRuntimeRegistry|LuaPluginManager")
+        message(FATAL_ERROR
+            "Architecture: Lua portability introduced a second backend, manager or VM registry: ${source}"
+        )
+    endif()
+endforeach()
+foreach(portable_lua_fixture IN ITEMS
+    "${source_root}/engine/toolchain/lua/test/lua_behavior_fixture.lua"
+    "${source_root}/engine/toolchain/lua/test/lua_runtime_benchmark_fixture.lua"
+    "${source_root}/engine/toolchain/lua/test/lua_portability_fixture.lua"
+    "${source_root}/cmake/installed-consumers/lua-script-packager/inventory.lua"
+)
+    file(READ "${portable_lua_fixture}" portable_lua_source)
+    if(portable_lua_source MATCHES "require.*(ffi|jit)|(^|[^A-Za-z0-9_])(ffi|jit)[.]")
+        message(FATAL_ERROR
+            "Architecture: portable production Lua fixture uses a VM-specific module: ${portable_lua_fixture}"
+        )
+    endif()
+endforeach()
 set(lua_ability_projection
     "${source_root}/modules/function/script/lua/include/lux/engine/function/script/lua/ScriptAbilityLua.hpp"
 )

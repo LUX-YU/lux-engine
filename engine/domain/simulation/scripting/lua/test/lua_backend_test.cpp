@@ -1,3 +1,6 @@
+#include "LuaUnsupportedIntegerAbility.hpp"
+#include "LuaUnsupportedIntegerAbility.ability.generated.hpp"
+
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
@@ -8,6 +11,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -16,6 +20,41 @@
 
 namespace
 {
+    inline constexpr std::array<lux::script::ScriptAbilityParameterDescription, 0U> kNoParameters{};
+    inline constexpr std::array<lux::script::ScriptAbilityValueDescription, 0U> kNoResults{};
+    inline constexpr std::array kNameMethods{
+        lux::script::ScriptAbilityMethodDescription{
+            lux::script::ScriptApiMethodIdView{"lux.test.lua_name.call"},
+            "call",
+            "Call",
+            lux::script::EScriptApiMethodKind::QUERY,
+            kNoParameters,
+            kNoResults
+        }
+    };
+
+    [[nodiscard]] constexpr lux::script::ScriptAbilityDescription nameDescription(
+        std::string_view contract,
+        std::string_view name,
+        std::string_view display
+    ) noexcept
+    {
+        const lux::script::ScriptApiContractIdView id{contract};
+        return {
+            id,
+            name,
+            display,
+            1U,
+            lux::script::scriptAbilitySchemaHash(
+                id,
+                lux::script::EScriptAbilityReceiverKind::NONE,
+                kNameMethods
+            ),
+            lux::script::EScriptAbilityReceiverKind::NONE,
+            kNameMethods
+        };
+    }
+
     struct CollisionEvent final
     {
         std::int32_t body{};
@@ -83,6 +122,104 @@ int main()
     const auto missing_capacity = LuaScriptBackend::create({});
     assert(!missing_capacity);
     assert(missing_capacity.error() == ELuaScriptBindingBackendError::INVALID_CAPACITY);
+    const auto invalid_policy = LuaScriptBackend::create({
+        1U,
+        1U,
+        1U,
+        1U,
+        1U,
+        {},
+        {},
+        {},
+        static_cast<lux::script::lua::ELuaExecutionPolicy>(0xFFU)
+    });
+    assert(!invalid_policy);
+    assert(invalid_policy.error() == ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
+
+    constexpr auto physics_name = nameDescription(
+        "lux.test.lua_name.physics",
+        "PhysicsQuery",
+        "Shared Display"
+    );
+    constexpr auto inventory_name = nameDescription(
+        "lux.test.lua_name.inventory",
+        "Inventory",
+        "Shared Display"
+    );
+    constexpr auto physics_display_changed = nameDescription(
+        "lux.test.lua_name.physics",
+        "PhysicsQuery",
+        "3D Physics Query"
+    );
+    static_assert(physics_display_changed.schema_hash == physics_name.schema_hash);
+    const std::array display_duplicates{
+        lux::script::lua::ScriptAbilityLuaContribution{&physics_name},
+        lux::script::lua::ScriptAbilityLuaContribution{&inventory_name}
+    };
+    const auto display_backend = LuaScriptBackend::create({
+        1U,
+        1U,
+        1U,
+        4U,
+        2U,
+        {},
+        {},
+        display_duplicates
+    });
+    assert(display_backend);
+
+    constexpr auto duplicate_name = nameDescription(
+        "lux.test.lua_name.duplicate",
+        "PhysicsQuery",
+        "Different Display"
+    );
+    const std::array duplicate_names{
+        lux::script::lua::ScriptAbilityLuaContribution{&physics_name},
+        lux::script::lua::ScriptAbilityLuaContribution{&duplicate_name}
+    };
+    const auto duplicate_name_backend = LuaScriptBackend::create({
+        1U,
+        1U,
+        1U,
+        4U,
+        2U,
+        {},
+        {},
+        duplicate_names
+    });
+    assert(!duplicate_name_backend);
+    assert(duplicate_name_backend.error() == ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
+
+    constexpr auto reserved_name = nameDescription("lux.test.lua_name.reserved", "end", "End");
+    const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{&reserved_name};
+    const auto reserved_name_backend = LuaScriptBackend::create({
+        1U,
+        1U,
+        1U,
+        4U,
+        1U,
+        {},
+        {},
+        {&reserved_contribution, 1U}
+    });
+    assert(!reserved_name_backend);
+    assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
+
+    const auto unsupported_integer = lux::script::lua::makeScriptAbilityLuaContribution<
+        test::LuaUnsupportedIntegerAbility
+    >();
+    const auto unsupported_integer_backend = LuaScriptBackend::create({
+        1U,
+        1U,
+        1U,
+        4U,
+        1U,
+        {},
+        {},
+        {&unsupported_integer, 1U}
+    });
+    assert(!unsupported_integer_backend);
+    assert(unsupported_integer_backend.error() == ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
 
     const auto* i32_layout = lux::semantic::builtinLayout(
         lux::semantic::typeId("lux.i32")
@@ -117,6 +254,22 @@ int main()
         invalid_backend.error() ==
         ELuaScriptBindingBackendError::INVALID_COMPONENT_CONTRACT
     );
+    const auto* i64_layout = lux::semantic::builtinLayout(lux::semantic::typeId("lux.i64"));
+    assert(i64_layout);
+    const LuaComponentBinding i64_binding{
+        "wide_integer",
+        0x57494445494E54ULL,
+        i64_layout->type_id,
+        std::string{i64_layout->canonical_name},
+        i64_layout->abi_kind,
+        i64_layout->size,
+        i64_layout->alignment
+    };
+    const auto i64_component_backend = LuaScriptBackend::create(
+        {1U, 1U, 1U, 4U, 1U, std::span{&i64_binding, 1U}}
+    );
+    assert(!i64_component_backend);
+    assert(i64_component_backend.error() == ELuaScriptBindingBackendError::INVALID_COMPONENT_CONTRACT);
     auto contract_backend_result = LuaScriptBackend::create(
         {1U, 1U, 1U, 4U, 1U, std::span{&health_binding, 1U}}
     );
@@ -133,7 +286,7 @@ int main()
         nullptr,
         &pushCollisionEvent};
     auto created_backend = LuaScriptBackend::create(
-        {4U, 11U, 4U, 8U, 1U, {}, std::span{&collision_marshaller, 1U}}
+        {4U, 12U, 4U, 8U, 1U, {}, std::span{&collision_marshaller, 1U}}
     );
     assert(created_backend);
     auto backend = std::move(*created_backend);
@@ -143,6 +296,9 @@ int main()
     description.module_name = "lua.binding.fixture";
     description.body = lux::rdesc::LuaSourceScript{"fixture"};
     const auto i32 = lux::rdesc::makeScriptValueType<std::int32_t>();
+    const auto u32 = lux::rdesc::makeScriptValueType<std::uint32_t>();
+    const auto f32 = lux::rdesc::makeScriptValueType<float>();
+    const auto f64 = lux::rdesc::makeScriptValueType<double>();
     const auto boolean = lux::rdesc::makeScriptValueType<bool>();
     const lux::rdesc::ScriptFunction function{
         "tick",
@@ -192,6 +348,11 @@ int main()
         20U,
         {lux::rdesc::makeScriptValueType<EScriptEndPlayReason>()},
         {}};
+    const lux::rdesc::ScriptFunction portable_scalars{
+        "portable_scalars",
+        21U,
+        {boolean, i32, u32, f32, f64},
+        {boolean, i32, u32, f32, f64}};
     description.exports.push_back(function);
     description.exports.push_back(bad_return);
     description.exports.push_back(escape_host);
@@ -200,6 +361,7 @@ int main()
     description.exports.push_back(collision_count);
     description.exports.push_back(begin_lifecycle);
     description.exports.push_back(end_lifecycle);
+    description.exports.push_back(portable_scalars);
     description.lifecycle = {begin_lifecycle.symbol_id, end_lifecycle.symbol_id};
     constexpr std::string_view source = R"lua(
         local escaped_get = nil
@@ -241,6 +403,13 @@ int main()
                     error("lifecycle state mismatch")
                 end
                 self.ended = true
+            end,
+            portable_scalars = function(self, boolean_value, i32_value, u32_value, f32_value, f64_value)
+                if boolean_value ~= false or i32_value ~= -2147483648 or u32_value ~= 4294967295 or
+                    f32_value ~= -12.5 or f64_value ~= 1234.125 then
+                    error("portable scalar input mismatch")
+                end
+                return boolean_value, i32_value, u32_value, f32_value, f64_value
             end
         }
     )lua";
@@ -324,6 +493,52 @@ int main()
         nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, second_begin.context};
     assert(first_begin.invoke(&first_begin_frame) == 0);
     assert(second_begin.invoke(&second_begin_frame) == 0);
+
+    lux::script::BoundScriptCall scalar_call;
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        portable_scalars,
+        scalar_call
+    ) == EScriptBackendResult::SUCCESS);
+    bool bool_input{};
+    std::int32_t i32_input{(std::numeric_limits<std::int32_t>::min)()};
+    std::uint32_t u32_input{(std::numeric_limits<std::uint32_t>::max)()};
+    float f32_input{-12.5F};
+    double f64_input{1234.125};
+    std::array<lux_script_value_slot, 5U> scalar_arguments{
+        lux_script_value_slot{LUX_SCRIPT_VK_BOOL, {}, sizeof(bool_input), boolean.type_id, &bool_input},
+        lux_script_value_slot{LUX_SCRIPT_VK_INT32, {}, sizeof(i32_input), i32.type_id, &i32_input},
+        lux_script_value_slot{LUX_SCRIPT_VK_UINT32, {}, sizeof(u32_input), u32.type_id, &u32_input},
+        lux_script_value_slot{LUX_SCRIPT_VK_FLOAT, {}, sizeof(f32_input), f32.type_id, &f32_input},
+        lux_script_value_slot{LUX_SCRIPT_VK_DOUBLE, {}, sizeof(f64_input), f64.type_id, &f64_input}
+    };
+    bool bool_output{true};
+    std::int32_t i32_output{};
+    std::uint32_t u32_output{};
+    float f32_output{};
+    double f64_output{};
+    std::array<lux_script_value_slot, 5U> scalar_results{
+        lux_script_value_slot{LUX_SCRIPT_VK_BOOL, {}, sizeof(bool_output), boolean.type_id, &bool_output},
+        lux_script_value_slot{LUX_SCRIPT_VK_INT32, {}, sizeof(i32_output), i32.type_id, &i32_output},
+        lux_script_value_slot{LUX_SCRIPT_VK_UINT32, {}, sizeof(u32_output), u32.type_id, &u32_output},
+        lux_script_value_slot{LUX_SCRIPT_VK_FLOAT, {}, sizeof(f32_output), f32.type_id, &f32_output},
+        lux_script_value_slot{LUX_SCRIPT_VK_DOUBLE, {}, sizeof(f64_output), f64.type_id, &f64_output}
+    };
+    lux_script_call_frame scalar_frame{
+        scalar_arguments.data(),
+        static_cast<std::uint32_t>(scalar_arguments.size()),
+        0U,
+        scalar_results.data(),
+        static_cast<std::uint32_t>(scalar_results.size()),
+        0U,
+        nullptr,
+        scalar_call.context
+    };
+    assert(scalar_call.invoke(&scalar_frame) == 0);
+    assert(!bool_output);
+    assert(i32_output == i32_input && u32_output == u32_input);
+    assert(f32_output == f32_input && f64_output == f64_input);
 
     lux::script::BoundScriptCall first;
     lux::script::BoundScriptCall second;
@@ -489,15 +704,22 @@ int main()
 
     auto u64 = function;
     u64.symbol_id = 14U;
-    u64.args = {{
-        "lux.u64",
-        lux::semantic::typeId("lux.u64"),
-        lux::semantic::EValuePass::VALUE}};
+    u64.args = {lux::rdesc::makeScriptValueType<std::uint64_t>()};
     u64.returns.clear();
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
         u64,
+        rejected
+    ) == EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE);
+    auto i64 = function;
+    i64.symbol_id = 22U;
+    i64.args = {lux::rdesc::makeScriptValueType<std::int64_t>()};
+    i64.returns.clear();
+    assert(descriptor.prepareMethod(
+        descriptor.context,
+        first_instance,
+        i64,
         rejected
     ) == EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE);
 
@@ -543,6 +765,7 @@ int main()
     descriptor.releaseMethod(descriptor.context, first_instance, first_end);
     descriptor.releaseMethod(descriptor.context, first_instance, first_begin);
     descriptor.releaseMethod(descriptor.context, first_instance, first);
+    descriptor.releaseMethod(descriptor.context, first_instance, scalar_call);
     descriptor.releaseMethod(descriptor.context, first_instance, escape_call);
     descriptor.destroyInstance(descriptor.context, first_instance);
 

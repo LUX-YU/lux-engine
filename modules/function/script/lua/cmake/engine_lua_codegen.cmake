@@ -135,6 +135,19 @@ function(engine_target_add_lua_binding)
         message(FATAL_ERROR "[engine_target_add_lua_binding] OUT_DIR is required")
     endif()
 
+    find_package(sol2 CONFIG REQUIRED)
+    if(NOT TARGET lux::engine::function::script_lua_vm)
+        message(FATAL_ERROR
+            "[engine_target_add_lua_binding] selected Lux Lua VM target is unavailable"
+        )
+    endif()
+    target_link_libraries(
+        ${ARGS_TARGET}
+        PRIVATE
+            sol2::sol2
+            lux::engine::function::script_lua_vm
+    )
+
     foreach(binding ${ARGS_LUA_BINDINGS})
         lux_target_add_codegen(
             TARGET ${ARGS_TARGET}

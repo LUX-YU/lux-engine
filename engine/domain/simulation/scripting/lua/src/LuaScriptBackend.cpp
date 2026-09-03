@@ -1,6 +1,7 @@
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 
 #include <lux/engine/function/script/lua/Lua.hpp>
+#include <lux/engine/function/script/lua/detail/LuaVmCompatibility.hpp>
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 
 #include <lua.hpp>
@@ -129,6 +130,15 @@ namespace lux::simulation::script
               execution_depth_capacity(config.execution_depth_capacity),
               ability_method_capacity(config.ability_method_capacity)
         {
+            if (!lux::script::lua::detail::configureLuaVm(
+                    state,
+                    config.execution_policy,
+                    runtime_info
+                ))
+            {
+                return;
+            }
+            vm_configured = true;
             prototypes.reserve(config.instance_capacity);
             components.assign(
                 config.components.begin(),
@@ -209,9 +219,22 @@ namespace lux::simulation::script
             };
             if (!alpha(value.front()))
                 return false;
-            return std::all_of(value.begin() + 1, value.end(), [&](char character) noexcept {
+            const bool valid_characters = std::all_of(value.begin() + 1, value.end(), [&](char character) noexcept {
                 return alpha(character) || digit(character);
             });
+            if (!valid_characters)
+                return false;
+            constexpr std::array keywords{
+                std::string_view{"and"}, std::string_view{"break"}, std::string_view{"do"},
+                std::string_view{"else"}, std::string_view{"elseif"}, std::string_view{"end"},
+                std::string_view{"false"}, std::string_view{"for"}, std::string_view{"function"},
+                std::string_view{"goto"}, std::string_view{"if"}, std::string_view{"in"},
+                std::string_view{"local"}, std::string_view{"nil"}, std::string_view{"not"},
+                std::string_view{"or"}, std::string_view{"repeat"}, std::string_view{"return"},
+                std::string_view{"then"}, std::string_view{"true"}, std::string_view{"until"},
+                std::string_view{"while"}
+            };
+            return std::find(keywords.begin(), keywords.end(), value) == keywords.end();
         }
 
         [[nodiscard]] bool initializeAbilities() noexcept
@@ -245,7 +268,7 @@ namespace lux::simulation::script
                     lua_settable(state, ability_index);
                     ++ordinal;
                 }
-                lua_pushlstring(state, ability->display_name.data(), ability->display_name.size());
+                lua_pushlstring(state, ability->name.data(), ability->name.size());
                 lua_pushvalue(state, ability_index);
                 lua_settable(state, lux_index);
                 lua_pop(state, 1);
@@ -329,8 +352,6 @@ namespace lux::simulation::script
                 return type.size == sizeof(std::int32_t) && type.alignment == alignof(std::int32_t);
             case LUX_SCRIPT_VK_UINT32:
                 return type.size == sizeof(std::uint32_t) && type.alignment == alignof(std::uint32_t);
-            case LUX_SCRIPT_VK_INT64:
-                return type.size == sizeof(std::int64_t) && type.alignment == alignof(std::int64_t);
             case LUX_SCRIPT_VK_FLOAT:
                 return type.size == sizeof(float) && type.alignment == alignof(float);
             case LUX_SCRIPT_VK_DOUBLE:
@@ -352,8 +373,6 @@ namespace lux::simulation::script
                 return type.size == sizeof(std::int32_t) && type.alignment == alignof(std::int32_t);
             case LUX_SCRIPT_VK_UINT32:
                 return type.size == sizeof(std::uint32_t) && type.alignment == alignof(std::uint32_t);
-            case LUX_SCRIPT_VK_INT64:
-                return type.size == sizeof(std::int64_t) && type.alignment == alignof(std::int64_t);
             case LUX_SCRIPT_VK_FLOAT:
                 return type.size == sizeof(float) && type.alignment == alignof(float);
             case LUX_SCRIPT_VK_DOUBLE:
@@ -512,13 +531,10 @@ namespace lux::simulation::script
                 lua_pushboolean(state, *static_cast<const bool*>(value));
                 return true;
             case LUX_SCRIPT_VK_INT32:
-                lua_pushinteger(state, *static_cast<const std::int32_t*>(value));
+                lua_pushnumber(state, static_cast<lua_Number>(*static_cast<const std::int32_t*>(value)));
                 return true;
             case LUX_SCRIPT_VK_UINT32:
-                lua_pushinteger(state, *static_cast<const std::uint32_t*>(value));
-                return true;
-            case LUX_SCRIPT_VK_INT64:
-                lua_pushinteger(state, *static_cast<const std::int64_t*>(value));
+                lua_pushnumber(state, static_cast<lua_Number>(*static_cast<const std::uint32_t*>(value)));
                 return true;
             case LUX_SCRIPT_VK_FLOAT:
                 lua_pushnumber(state, *static_cast<const float*>(value));
@@ -616,12 +632,6 @@ namespace lux::simulation::script
                     state,
                     3,
                     *reinterpret_cast<std::uint32_t*>(storage));
-                break;
-            case LUX_SCRIPT_VK_INT64:
-                valid = readStrictNumber(
-                    state,
-                    3,
-                    *reinterpret_cast<std::int64_t*>(storage));
                 break;
             case LUX_SCRIPT_VK_FLOAT:
                 valid = readStrictNumber(
@@ -873,20 +883,14 @@ namespace lux::simulation::script
                 lua_pushboolean(state, *static_cast<const bool*>(value.data));
                 return true;
             case LUX_SCRIPT_VK_INT32:
-                lua_pushinteger(
+                lua_pushnumber(
                     state,
-                    *static_cast<const std::int32_t*>(value.data));
+                    static_cast<lua_Number>(*static_cast<const std::int32_t*>(value.data)));
                 return true;
             case LUX_SCRIPT_VK_UINT32:
-                lua_pushinteger(
+                lua_pushnumber(
                     state,
-                    *static_cast<const std::uint32_t*>(value.data));
-                return true;
-            case LUX_SCRIPT_VK_INT64:
-                lua_pushinteger(
-                    state,
-                    static_cast<lua_Integer>(
-                        *static_cast<const std::int64_t*>(value.data)));
+                    static_cast<lua_Number>(*static_cast<const std::uint32_t*>(value.data)));
                 return true;
             case LUX_SCRIPT_VK_FLOAT:
                 lua_pushnumber(state, *static_cast<const float*>(value.data));
@@ -937,12 +941,6 @@ namespace lux::simulation::script
                 return readStrictNumber(state, index, value) &&
                     writeNumber(slot, value);
             }
-            case LUX_SCRIPT_VK_INT64:
-            {
-                std::int64_t value{};
-                return readStrictNumber(state, index, value) &&
-                    writeNumber(slot, value);
-            }
             case LUX_SCRIPT_VK_FLOAT:
             {
                 float value{};
@@ -990,7 +988,6 @@ namespace lux::simulation::script
                 break;
             case LUX_SCRIPT_VK_INT32: valid = readStrictNumber(state, index, storage.i32); break;
             case LUX_SCRIPT_VK_UINT32: valid = readStrictNumber(state, index, storage.u32); break;
-            case LUX_SCRIPT_VK_INT64: valid = readStrictNumber(state, index, storage.i64); break;
             case LUX_SCRIPT_VK_FLOAT: valid = readStrictNumber(state, index, storage.f32); break;
             case LUX_SCRIPT_VK_DOUBLE: valid = readStrictNumber(state, index, storage.f64); break;
             default: break;
@@ -1153,7 +1150,7 @@ namespace lux::simulation::script
                 }
                 execution->continuation->waiting_on = started.waiting_on;
                 execution->continuation->pending_method = static_cast<std::uint32_t>(ordinal);
-                return lua_yield(state, 0);
+                return lux::script::lua::detail::yieldLuaInvocation(state, 0);
             }
 
             std::array<ScalarStorage, kMaxAbilityResults> result_storage{};
@@ -1364,13 +1361,13 @@ namespace lux::simulation::script
 
         [[nodiscard]] static ScriptStepResult finishLuaStep(
             LuaContinuation& continuation,
-            int status,
+            lux::script::lua::detail::LuaResumeResult resume,
             bool release_terminal
         ) noexcept
         {
-            if (status == LUA_YIELD)
+            if (resume.status == LUA_YIELD)
             {
-                if (continuation.waiting_on.valid() && lua_gettop(continuation.thread) == 0)
+                if (continuation.waiting_on.valid() && resume.result_count == 0)
                     return ScriptStepResult::suspended(continuation.waiting_on);
                 const auto failure = continuation.failure_status != 0
                     ? continuation.failure_status
@@ -1379,7 +1376,7 @@ namespace lux::simulation::script
                     destroyLuaContinuation(continuation);
                 return ScriptStepResult::failed(failure);
             }
-            if (status != LUA_OK)
+            if (resume.status != LUA_OK)
             {
                 const auto failure = continuation.failure_status != 0
                     ? continuation.failure_status
@@ -1388,7 +1385,7 @@ namespace lux::simulation::script
                     destroyLuaContinuation(continuation);
                 return ScriptStepResult::failed(failure);
             }
-            if (lua_gettop(continuation.thread) != 0)
+            if (resume.result_count != 0)
             {
                 if (release_terminal)
                     destroyLuaContinuation(continuation);
@@ -1438,9 +1435,13 @@ namespace lux::simulation::script
             {
                 return ScriptStepResult::failed(kExecutionDepthCapacity);
             }
-            const auto status = lua_resume(continuation.thread, argument_count);
+            const auto resume = lux::script::lua::detail::resumeLuaVm(
+                continuation.thread,
+                nullptr,
+                argument_count
+            );
             continuation.owner->popExecution(continuation.thread);
-            return finishLuaStep(continuation, status, false);
+            return finishLuaStep(continuation, resume, false);
         }
 
         static ScriptStepResult invokePreparedStep(
@@ -1483,9 +1484,13 @@ namespace lux::simulation::script
                 destroyLuaContinuation(*continuation);
                 return ScriptStepResult::failed(kExecutionDepthCapacity);
             }
-            const auto status = lua_resume(continuation->thread, static_cast<int>(argument_count));
+            const auto resume = lux::script::lua::detail::resumeLuaVm(
+                continuation->thread,
+                nullptr,
+                static_cast<int>(argument_count)
+            );
             self.popExecution(continuation->thread);
-            const auto step_result = finishLuaStep(*continuation, status, true);
+            const auto step_result = finishLuaStep(*continuation, resume, true);
             if (step_result.state == EScriptStepState::SUSPENDED && step_result.valid())
             {
                 result = {continuation, &resumeLuaContinuation, &destroyLuaContinuationErased};
@@ -1586,6 +1591,8 @@ namespace lux::simulation::script
 
         lux::script::lua::ScriptEngine engine;
         lua_State* state{};
+        lux::script::lua::LuaRuntimeInfo runtime_info;
+        bool vm_configured{};
         std::recursive_mutex mutex;
         int traceback_ref{LUA_NOREF};
         std::size_t instance_capacity{};
@@ -1633,7 +1640,6 @@ namespace lux::simulation::script
                     LUX_SCRIPT_VK_BOOL ||
                 component.abi_kind == LUX_SCRIPT_VK_INT32 ||
                 component.abi_kind == LUX_SCRIPT_VK_UINT32 ||
-                component.abi_kind == LUX_SCRIPT_VK_INT64 ||
                 component.abi_kind == LUX_SCRIPT_VK_FLOAT ||
                 component.abi_kind == LUX_SCRIPT_VK_DOUBLE;
             if (component.name.empty() || component.component_type == 0U ||
@@ -1704,7 +1710,7 @@ namespace lux::simulation::script
         {
             const auto& contribution = config.abilities[ability_index];
             if (!contribution.valid() || contribution.description->methods.empty() ||
-                !State::identifier(contribution.description->display_name) ||
+                !State::identifier(contribution.description->name) ||
                 !lux::script::scriptAbilityMethodIdsUnique(contribution.description->methods))
             {
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
@@ -1714,7 +1720,7 @@ namespace lux::simulation::script
                 const auto* candidate = config.abilities[previous].description;
                 if (candidate->id == contribution.description->id)
                     return lux::cxx::unexpected(ELuaScriptBindingBackendError::DUPLICATE_ABILITY_CONTRACT);
-                if (candidate->display_name == contribution.description->display_name)
+                if (candidate->name == contribution.description->name)
                     return lux::cxx::unexpected(ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
             }
             for (std::size_t method_index{}; method_index < contribution.description->methods.size(); ++method_index)
@@ -1756,6 +1762,12 @@ namespace lux::simulation::script
         try
         {
             auto state = std::make_unique<State>(config);
+            if (!state->vm_configured)
+            {
+                return lux::cxx::unexpected(
+                    ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE
+                );
+            }
             if (!state->initializeAbilities())
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::ABILITY_REGISTRATION_FAILURE);
             return LuaScriptBackend{std::move(state)};
@@ -1785,6 +1797,11 @@ namespace lux::simulation::script
     LuaScriptBackend::operator bool() const noexcept
     {
         return state_ && state_->state && state_->traceback_ref != LUA_NOREF;
+    }
+
+    lux::script::lua::LuaRuntimeInfo LuaScriptBackend::runtimeInfo() const noexcept
+    {
+        return state_ ? state_->runtime_info : lux::script::lua::LuaRuntimeInfo{};
     }
 
     ScriptBackendDescriptor LuaScriptBackend::descriptor() noexcept

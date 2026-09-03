@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/function/script/lua/LuaVm.hpp>
 #include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/lua/visibility.h>
@@ -51,6 +52,7 @@ namespace lux::simulation::script
         DUPLICATE_ABILITY_METHOD,
         UNSUPPORTED_ABILITY_TYPE,
         ABILITY_REGISTRATION_FAILURE,
+        VM_CONFIGURATION_FAILURE,
         ALLOCATION_FAILURE,
     };
 
@@ -64,6 +66,9 @@ namespace lux::simulation::script
         std::span<const LuaComponentBinding> components;
         std::span<const LuaRecordMarshaller> record_marshallers;
         std::span<const lux::script::lua::ScriptAbilityLuaContribution> abilities;
+        lux::script::lua::ELuaExecutionPolicy execution_policy{
+            lux::script::lua::ELuaExecutionPolicy::DEFAULT
+        };
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final
@@ -82,6 +87,7 @@ namespace lux::simulation::script
         LuaScriptBackend& operator=(const LuaScriptBackend&) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept;
+        [[nodiscard]] lux::script::lua::LuaRuntimeInfo runtimeInfo() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
       private:
         struct State;

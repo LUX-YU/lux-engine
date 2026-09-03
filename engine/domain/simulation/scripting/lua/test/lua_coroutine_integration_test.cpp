@@ -9,6 +9,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -16,6 +17,9 @@
 
 namespace
 {
+    lux::script::lua::ELuaExecutionPolicy g_execution_policy{
+        lux::script::lua::ELuaExecutionPolicy::DEFAULT
+    };
     using namespace lux::simulation;
     using namespace lux::simulation::script;
     using Ability = test::LuaRuntimeTestAbility;
@@ -24,12 +28,14 @@ namespace
     inline constexpr lux::system::SystemInstanceId kSystem{0x4C554101U};
     inline constexpr HookPointId kSyncHook{0x4C554102U};
     inline constexpr HookPointId kAsyncHook{0x4C554103U};
+    inline constexpr HookPointId kScalarHook{0x4C55410AU};
     inline constexpr EventPointId kAsyncEvent{0x4C554108U};
     inline constexpr lux::script::ScriptSymbolId kSyncSymbol{0x4C554104U};
     inline constexpr lux::script::ScriptSymbolId kAsyncSymbol{0x4C554105U};
     inline constexpr lux::script::ScriptSymbolId kBeginSymbol{0x4C554106U};
     inline constexpr lux::script::ScriptSymbolId kEndSymbol{0x4C554107U};
     inline constexpr lux::script::ScriptSymbolId kEventSymbol{0x4C554109U};
+    inline constexpr lux::script::ScriptSymbolId kScalarSymbol{0x4C55410BU};
 
     struct Provider final
     {
@@ -41,6 +47,11 @@ namespace
         std::optional<lux::script::ScriptAbilityCompletion<std::int32_t>> pending;
         std::array<lux::script::ScriptAbilityCompletion<std::int32_t>, 8U> completions;
         std::size_t completion_count{};
+        bool bool_value{};
+        std::int32_t i32_value{};
+        std::uint32_t u32_value{};
+        float f32_value{};
+        double f64_value{};
         std::optional<lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>> eager_result;
 
         std::int32_t readValue(std::int32_t input) noexcept
@@ -58,6 +69,36 @@ namespace
         const std::int32_t& borrowValue() noexcept
         {
             return value;
+        }
+
+        bool echoBool(bool input) noexcept
+        {
+            bool_value = input;
+            return input;
+        }
+
+        std::int32_t echoI32(std::int32_t input) noexcept
+        {
+            i32_value = input;
+            return input;
+        }
+
+        std::uint32_t echoU32(std::uint32_t input) noexcept
+        {
+            u32_value = input;
+            return input;
+        }
+
+        float echoF32(float input) noexcept
+        {
+            f32_value = input;
+            return input;
+        }
+
+        double echoF64(double input) noexcept
+        {
+            f64_value = input;
+            return input;
         }
 
         lux::script::ScriptAbilityStartResult beginOperation(
@@ -96,7 +137,8 @@ namespace
     {
         constexpr std::array hooks{
             makeHookPointSpec<void()>(kSyncHook, "lua-sync"),
-            makeHookPointSpec<void()>(kAsyncHook, "lua-async")
+            makeHookPointSpec<void()>(kAsyncHook, "lua-async"),
+            makeHookPointSpec<void()>(kScalarHook, "lua-scalars")
         };
         constexpr std::array events{
             makeEventPointSpec<std::int32_t>(
@@ -139,6 +181,16 @@ namespace
                     lux.LuaRuntimeTest.writeValue(value)
                     self.sync_count = (self.sync_count or 0) + 1
                 end,
+                scalar_round_trip = function(self)
+                    if lux.LuaRuntimeTest.echoBool(false) ~= false then error("bool mismatch") end
+                    if lux.LuaRuntimeTest.echoBool(true) ~= true then error("bool mismatch") end
+                    if lux.LuaRuntimeTest.echoI32(-2147483648) ~= -2147483648 then error("i32 min mismatch") end
+                    if lux.LuaRuntimeTest.echoI32(2147483647) ~= 2147483647 then error("i32 max mismatch") end
+                    if lux.LuaRuntimeTest.echoU32(0) ~= 0 then error("u32 zero mismatch") end
+                    if lux.LuaRuntimeTest.echoU32(4294967295) ~= 4294967295 then error("u32 max mismatch") end
+                    if lux.LuaRuntimeTest.echoF32(-12.5) ~= -12.5 then error("f32 mismatch") end
+                    if lux.LuaRuntimeTest.echoF64(1234.125) ~= 1234.125 then error("f64 mismatch") end
+                end,
                 async_tick = function(self)
                     self.async_count = (self.async_count or 0) + 1
                     local value = lux.LuaRuntimeTest.readValue(5)
@@ -162,6 +214,7 @@ namespace
         lux::rdesc::Script description;
         description.module_name = "lux.test.lua-runtime.fixture";
         description.exports.push_back({"sync_tick", kSyncSymbol, {}, {}});
+        description.exports.push_back({"scalar_round_trip", kScalarSymbol, {}, {}});
         description.exports.push_back({"async_tick", kAsyncSymbol, {}, {}});
         description.exports.push_back({
             "async_event",
@@ -204,6 +257,7 @@ namespace
                 begin_life = function(self) self.begun = true end,
                 end_life = function(self, reason) self.ended = reason end,
                 sync_tick = function(self) self.sync_count = (self.sync_count or 0) + 1 end,
+                scalar_round_trip = function(self) end,
                 async_tick = function(self) coroutine.yield() end,
                 async_event = function(self, input) self.event_value = input end
             }
@@ -211,6 +265,7 @@ namespace
         lux::rdesc::Script description;
         description.module_name = "lux.test.lua-runtime.raw-yield";
         description.exports.push_back({"sync_tick", kSyncSymbol, {}, {}});
+        description.exports.push_back({"scalar_round_trip", kScalarSymbol, {}, {}});
         description.exports.push_back({"async_tick", kAsyncSymbol, {}, {}});
         description.exports.push_back({
             "async_event",
@@ -257,6 +312,7 @@ namespace
                 {
                     {kSyncSymbol, HookScriptTarget{kSystem, kSyncHook}},
                     {kAsyncSymbol, HookScriptTarget{kSystem, kAsyncHook}},
+                    {kScalarSymbol, HookScriptTarget{kSystem, kScalarHook}},
                     {kEventSymbol, EventScriptTarget{kSystem, kAsyncEvent}}
                 }
             }));
@@ -265,11 +321,17 @@ namespace
             description = std::move(*built);
             assert(sync_hook.prepare(1U) == EEndpointMutationError::NONE);
             assert(async_hook.prepare(1U) == EEndpointMutationError::NONE);
+            assert(scalar_hook.prepare(1U) == EEndpointMutationError::NONE);
             assert(async_event.prepare(1U, 4U, 4U) == EEndpointMutationError::NONE);
             sync_endpoint.emplace(kSystem, kSyncHook, sync_hook);
             async_endpoint.emplace(kSystem, kAsyncHook, async_hook);
+            scalar_endpoint.emplace(kSystem, kScalarHook, scalar_hook);
             event_endpoint.emplace(kSystem, kAsyncEvent, async_event);
-            endpoints = {sync_endpoint->descriptor(), async_endpoint->descriptor()};
+            endpoints = {
+                sync_endpoint->descriptor(),
+                async_endpoint->descriptor(),
+                scalar_endpoint->descriptor()
+            };
             event_endpoints = {event_endpoint->descriptor()};
             contribution = lux::script::lua::makeScriptAbilityLuaContribution<Ability>();
             auto created_backend = LuaScriptBackend::create({
@@ -280,10 +342,15 @@ namespace
                 AbilityTraits::Description.methods.size(),
                 {},
                 {},
-                std::span{&contribution, 1U}
+                std::span{&contribution, 1U},
+                g_execution_policy
             });
             assert(created_backend);
             backend.emplace(std::move(*created_backend));
+            const auto runtime = backend->runtimeInfo();
+            assert(!runtime.vm.empty() && !runtime.version.empty());
+            assert(g_execution_policy != lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY ||
+                !runtime.jit_enabled);
             descriptor = backend->descriptor();
         }
 
@@ -342,11 +409,13 @@ namespace
         ScriptSystemDescription description;
         HookPoint<void()> sync_hook;
         HookPoint<void()> async_hook;
+        HookPoint<void()> scalar_hook;
         EventPoint<SimulationBroadcastRoute, std::int32_t> async_event;
         std::optional<ScriptHookEndpoint<void()>> sync_endpoint;
         std::optional<ScriptHookEndpoint<void()>> async_endpoint;
+        std::optional<ScriptHookEndpoint<void()>> scalar_endpoint;
         std::optional<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_endpoint;
-        std::array<ScriptHookEndpointDescriptor, 2U> endpoints;
+        std::array<ScriptHookEndpointDescriptor, 3U> endpoints;
         std::array<ScriptEventEndpointDescriptor, 1U> event_endpoints;
         lux::script::lua::ScriptAbilityLuaContribution contribution;
         std::optional<LuaScriptBackend> backend;
@@ -354,9 +423,13 @@ namespace
     };
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
+        g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     Provider provider;
+    static_assert(AbilityTraits::Description.name == "LuaRuntimeTest");
+    static_assert(AbilityTraits::Description.display_name == "Lua Runtime Test");
     const auto binding = lux::script::bindScriptAbility<Ability>(provider);
     const std::array capabilities{publishScriptAbility(binding)};
     Harness harness;
@@ -369,6 +442,12 @@ int main()
     assert(provider.reads == 1U && provider.writes == 1U && provider.value == 12);
     assert(system.activeContinuationCount() == 0U);
     assert(system.activeAwaitableCount() == 0U);
+    assert(harness.scalar_hook.dispatch() == 1U);
+    assert(provider.bool_value);
+    assert(provider.i32_value == (std::numeric_limits<std::int32_t>::max)());
+    assert(provider.u32_value == (std::numeric_limits<std::uint32_t>::max)());
+    assert(provider.f32_value == -12.5F);
+    assert(provider.f64_value == 1234.125);
 
     provider.value = 7;
     assert(harness.async_hook.dispatch() == 1U);

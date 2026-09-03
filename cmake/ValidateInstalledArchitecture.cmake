@@ -186,6 +186,12 @@ foreach(entry IN LISTS installed_text)
             "Installed Script Ability contract exposes Engine ontology or service lookup: ${entry}"
         )
     endif()
+    if(normalized MATCHES "[/]share[/]lux-engine-function[/]script_lua[/].*config-targets[.]cmake$" AND
+       content MATCHES "LuaJIT::LuaJIT|Lua::Lua")
+        message(FATAL_ERROR
+            "Installed script_lua semantic target publicly propagates a concrete Lua VM target: ${entry}"
+        )
+    endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]function[/]render[/]client[/]" AND
        content MATCHES "SubmitImGuiDrawDataPayload|ImGuiDrawData|ImGuiCommConfig")
         message(FATAL_ERROR

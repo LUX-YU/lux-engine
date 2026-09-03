@@ -8,6 +8,7 @@ namespace installed_consumer
 {
     struct LUX_SCRIPT_ABILITY(
         id = consumer.inventory,
+        name = Inventory,
         display = Inventory,
         version = 1,
         receiver = provider_instance

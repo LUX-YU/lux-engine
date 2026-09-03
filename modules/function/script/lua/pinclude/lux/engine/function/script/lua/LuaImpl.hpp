@@ -12,7 +12,8 @@ namespace lux::script::lua
         ScriptEngineImpl()
         {
             L_ = luaL_newstate();
-            luaL_openlibs(L_);
+            if (L_)
+                luaL_openlibs(L_);
         }
 
         ~ScriptEngineImpl()
@@ -36,6 +37,8 @@ namespace lux::script::lua
         /// Parses the source code and returns a registry ref
         std::optional<int> parseScript(std::string_view code)
         {
+            if (!L_)
+                return std::nullopt;
             if (luaL_loadbufferx(L_, code.data(), code.size(), "blueprint", "t") != LUA_OK)
             {
                 reportAndPopError();
@@ -47,6 +50,8 @@ namespace lux::script::lua
         /// Runs a registry ref
         bool runScript(const ScriptRef& program)
         {
+            if (!L_)
+                return false;
             // push traceback(err) closure
             lua_pushlightuserdata(L_, this);
             lua_pushcclosure(L_, &luaTraceback, 1);

@@ -179,6 +179,27 @@ namespace lux::script
         ScriptAbilityValueDescription value;
     };
 
+    [[nodiscard]] constexpr bool scriptAbilityCodeNameValid(std::string_view value) noexcept
+    {
+        if (value.empty())
+            return false;
+        const auto is_alpha = [](char character) noexcept {
+            return (character >= 'a' && character <= 'z') ||
+                (character >= 'A' && character <= 'Z') || character == '_';
+        };
+        const auto is_digit = [](char character) noexcept {
+            return character >= '0' && character <= '9';
+        };
+        if (!is_alpha(value.front()))
+            return false;
+        for (const char character : value.substr(1U))
+        {
+            if (!is_alpha(character) && !is_digit(character))
+                return false;
+        }
+        return true;
+    }
+
     struct ScriptAbilityMethodDescription final
     {
         ScriptApiMethodIdView id;
@@ -192,6 +213,7 @@ namespace lux::script
     struct ScriptAbilityDescription final
     {
         ScriptApiContractIdView id;
+        std::string_view name;
         std::string_view display_name;
         std::uint32_t schema_version{1U};
         std::uint64_t schema_hash{};
@@ -208,8 +230,8 @@ namespace lux::script
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {
-            if (description == nullptr || !description->id.isValid() || description->schema_hash == 0U ||
-                dispatch == nullptr)
+            if (description == nullptr || !description->id.isValid() ||
+                !scriptAbilityCodeNameValid(description->name) || description->schema_hash == 0U || dispatch == nullptr)
                 return false;
             return description->receiver == EScriptAbilityReceiverKind::NONE ? context == nullptr : context != nullptr;
         }

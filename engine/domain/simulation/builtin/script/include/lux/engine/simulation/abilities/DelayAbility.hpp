@@ -18,6 +18,7 @@ namespace lux::simulation::script
 
     struct LUX_SCRIPT_ABILITY(
         id = lux.simulation.delay,
+        name = Delay,
         display = Delay,
         version = 1,
         receiver = provider_instance

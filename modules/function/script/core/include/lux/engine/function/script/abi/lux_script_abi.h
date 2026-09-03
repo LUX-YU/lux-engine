@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 /** Increment whenever the layout below changes in a non-additive way. */
-#define LUX_SCRIPT_ABI_VERSION 2u
+#define LUX_SCRIPT_ABI_VERSION 3u
 
 /** Symbol name compiled modules must export. */
 #define LUX_SCRIPT_MODULE_ENTRY "lux_script_get_module"
@@ -68,6 +68,43 @@ typedef struct lux_script_value_slot {
     void*    data;       /**< Mutable for returns, read-only for args. */
 } lux_script_value_slot;
 
+/** Stable Script Ability import owned by a compiled module. */
+typedef struct lux_script_ability_import_desc {
+    const char* contract_name;
+    uint64_t    contract_id;
+    const char* method_name;
+    uint64_t    method_id;
+    uint64_t    schema_hash;
+    uint32_t    schema_version;
+    uint8_t     method_kind;
+    uint8_t     reserved[3];
+
+    const lux_script_type_desc* args;
+    uint32_t                    arg_count;
+    const lux_script_type_desc* results;
+    uint32_t                    result_count;
+} lux_script_ability_import_desc;
+
+typedef int (*lux_script_ability_invoke_fn)(
+    void* context,
+    uint32_t ordinal,
+    const lux_script_value_slot* args,
+    uint32_t arg_count,
+    lux_script_value_slot* results,
+    uint32_t result_count);
+
+/** Per-instance prepared Ability table. Provider receivers remain host-owned. */
+typedef struct lux_script_ability_runtime {
+    void* context;
+    lux_script_ability_invoke_fn invoke;
+} lux_script_ability_runtime;
+
+/** Explicit native instance context; separate from generic per-call user_context. */
+typedef struct lux_script_native_instance_context {
+    void* state;
+    const lux_script_ability_runtime* abilities;
+} lux_script_native_instance_context;
+
 /** Per-call frame passed to compiled script functions. */
 typedef struct lux_script_call_frame {
     const lux_script_value_slot* args;
@@ -80,7 +117,76 @@ typedef struct lux_script_call_frame {
 
     void*                        world_context; /**< Opaque engine ptr. */
     void*                        user_context;  /**< Opaque per-call ptr. */
+    const lux_script_native_instance_context* native_instance;
 } lux_script_call_frame;
+
+typedef struct lux_script_async_token {
+    uint32_t slot;
+    uint32_t generation;
+} lux_script_async_token;
+
+typedef enum lux_script_step_state {
+    LUX_SCRIPT_STEP_COMPLETED = 0,
+    LUX_SCRIPT_STEP_SUSPENDED = 1,
+    LUX_SCRIPT_STEP_FAILED = 2
+} lux_script_step_state;
+
+typedef enum lux_script_resume_state {
+    LUX_SCRIPT_RESUME_READY = 0,
+    LUX_SCRIPT_RESUME_FAILED = 1,
+    LUX_SCRIPT_RESUME_CANCELLED = 2
+} lux_script_resume_state;
+
+typedef struct lux_script_step_outcome {
+    uint8_t state;
+    uint8_t reserved[3];
+    lux_script_async_token waiting_on;
+    int32_t status;
+} lux_script_step_outcome;
+
+typedef struct lux_script_step_resume_packet {
+    uint8_t state;
+    uint8_t has_value;
+    uint8_t reserved[2];
+    lux_script_value_slot value;
+    int32_t status;
+} lux_script_step_resume_packet;
+
+typedef int (*lux_script_start_async_fn)(
+    void* context,
+    uint32_t ordinal,
+    const lux_script_value_slot* args,
+    uint32_t arg_count,
+    lux_script_async_token* waiting_on);
+
+/** Invocation-local host seam. Completion never resumes script directly. */
+typedef struct lux_script_step_host {
+    void* context;
+    lux_script_start_async_fn start_async;
+} lux_script_step_host;
+
+typedef int (*lux_script_step_start_fn)(
+    lux_script_call_frame* frame,
+    const lux_script_step_host* host,
+    void* continuation_frame,
+    lux_script_step_outcome* outcome);
+
+typedef int (*lux_script_step_resume_fn)(
+    const lux_script_step_host* host,
+    void* continuation_frame,
+    const lux_script_step_resume_packet* packet,
+    lux_script_step_outcome* outcome);
+
+typedef void (*lux_script_step_destroy_fn)(void* continuation_frame);
+
+typedef struct lux_script_step_desc {
+    uint32_t frame_size;
+    uint32_t frame_align;
+    uint64_t frame_layout_hash;
+    lux_script_step_start_fn start;
+    lux_script_step_resume_fn resume;
+    lux_script_step_destroy_fn destroy;
+} lux_script_step_desc;
 
 /** Function pointer signature for compiled script entries. */
 typedef int (*lux_script_invoke_fn)(lux_script_call_frame* frame);
@@ -97,6 +203,7 @@ typedef struct lux_script_function_desc {
     uint32_t                    return_count;
 
     lux_script_invoke_fn        invoke;
+    const lux_script_step_desc* step;
 } lux_script_function_desc;
 
 /** Description of a compiled module returned by @ref LUX_SCRIPT_MODULE_ENTRY. */
@@ -112,6 +219,10 @@ typedef struct lux_script_module_desc {
     const lux_script_function_desc* functions;
     uint32_t                        function_count;
     uint32_t                        reserved1;
+
+    const lux_script_ability_import_desc* ability_imports;
+    uint32_t                              ability_import_count;
+    uint32_t                              reserved2;
 } lux_script_module_desc;
 
 /*---------------------------------------------------------------------------

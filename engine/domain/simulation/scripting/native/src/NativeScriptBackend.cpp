@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -28,24 +29,56 @@ namespace lux::simulation::script
 
         struct Instance final
         {
+            struct PreparedAbility final
+            {
+                void* context{};
+                const void* dispatch{};
+                const lux::script::ScriptAbilityErasedMethodBinding* method{};
+            };
+
             ModuleEntry* module{};
             void* state{};
             std::size_t state_size{};
             std::size_t state_align{1U};
             bool over_aligned{};
             std::size_t state_slot{(std::numeric_limits<std::size_t>::max)()};
+            std::vector<PreparedAbility> abilities;
+            lux_script_ability_runtime ability_runtime{};
+            lux_script_native_instance_context native_context{};
+        };
+
+        struct PreparedCall final
+        {
+            State* owner{};
+            Instance* instance{};
+            const lux_script_function_desc* function{};
+        };
+
+        struct NativeContinuation final
+        {
+            State* owner{};
+            PreparedCall* call{};
+            void* frame{};
+            std::size_t frame_align{1U};
+            bool over_aligned{};
+            std::size_t slot{(std::numeric_limits<std::size_t>::max)()};
+        };
+
+        struct StepAdapter final
+        {
+            PreparedCall* call{};
+            ScriptStepContext* context{};
         };
 
         State(
             NativeModuleResolver source_resolver,
-            std::size_t source_module_capacity,
-            std::size_t source_instance_capacity,
-            NativeScriptRecordLayoutResolver layouts
+            NativeScriptBackendConfig source_config
         )
             : resolver(source_resolver),
-              module_capacity(source_module_capacity),
-              instance_capacity(source_instance_capacity),
-              record_layouts(layouts)
+              config(source_config),
+              module_capacity(source_config.module_capacity),
+              instance_capacity(source_config.instance_capacity),
+              record_layouts(source_config.record_layouts)
         {
             modules.reserve(module_capacity);
             module_index.reserve(module_capacity);
@@ -53,10 +86,23 @@ namespace lux::simulation::script
             free_instances.reserve(instance_capacity);
             for (std::size_t index = instance_capacity; index > 0U; --index)
                 free_instances.push_back(index - 1U);
+            prepared_calls.resize(config.prepared_call_capacity);
+            free_prepared_calls.reserve(config.prepared_call_capacity);
+            for (std::size_t index = config.prepared_call_capacity; index > 0U; --index)
+                free_prepared_calls.push_back(index - 1U);
+            continuations.resize(config.continuation_capacity);
+            free_continuations.reserve(config.continuation_capacity);
+            for (std::size_t index = config.continuation_capacity; index > 0U; --index)
+                free_continuations.push_back(index - 1U);
         }
 
         ~State()
         {
+            for (auto& continuation : continuations)
+            {
+                if (continuation.frame != nullptr)
+                    destroyNativeContinuation(continuation);
+            }
             for (auto entry = modules.rbegin(); entry != modules.rend(); ++entry)
             {
                 if (entry->state_slab)
@@ -191,6 +237,322 @@ namespace lux::simulation::script
                 native_type.pass == static_cast<std::uint8_t>(semantic.pass) &&
                 native_type.size == expected.size &&
                 native_type.align == expected.align;
+        }
+
+        [[nodiscard]] bool sameType(
+            const lux_script_type_desc& native_type,
+            const lux::script::ScriptAbilityValueDescription& semantic
+        ) const noexcept
+        {
+            return native_type.name != nullptr && native_type.type_id == semantic.type_id &&
+                semantic.canonical_name == native_type.name && native_type.kind == semantic.abi_kind &&
+                native_type.pass == static_cast<std::uint8_t>(semantic.pass) && native_type.size == semantic.size &&
+                native_type.align == semantic.alignment;
+        }
+
+        [[nodiscard]] EScriptBackendResult bindAbilities(
+            Instance& instance,
+            const ScriptInstanceCreateContext& context
+        ) noexcept
+        {
+            const auto imports = instance.module->module->abilityImports();
+            if (imports.size() > config.max_ability_imports_per_module)
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            try
+            {
+                instance.abilities.clear();
+                instance.abilities.reserve(imports.size());
+                for (const auto& import : imports)
+                {
+                    const PreparedScriptApiCapability* capability{};
+                    for (const auto& candidate : context.capabilities)
+                    {
+                        if (candidate.contract.hash() == import.contract_id &&
+                            candidate.contract.name() == import.contract_name)
+                        {
+                            capability = std::addressof(candidate);
+                            break;
+                        }
+                    }
+                    if (capability == nullptr || capability->schema_hash != import.schema_hash ||
+                        capability->schema_version != import.schema_version)
+                    {
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                    }
+
+                    const lux::script::ScriptAbilityErasedMethodBinding* method{};
+                    for (const auto& candidate : capability->methods)
+                    {
+                        if (candidate.method.hash() == import.method_id && candidate.method.name() == import.method_name)
+                        {
+                            method = std::addressof(candidate);
+                            break;
+                        }
+                    }
+                    const bool is_invalid_method = method == nullptr ||
+                        static_cast<std::uint8_t>(method->kind) != import.method_kind ||
+                        method->parameters.size() != import.arg_count || method->results.size() != import.result_count;
+                    if (is_invalid_method)
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                    for (std::size_t index{}; index < method->parameters.size(); ++index)
+                    {
+                        if (!sameType(import.args[index], method->parameters[index].value))
+                            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                    }
+                    for (std::size_t index{}; index < method->results.size(); ++index)
+                    {
+                        if (!sameType(import.results[index], method->results[index]))
+                            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                    }
+                    instance.abilities.push_back({capability->context, capability->dispatch, method});
+                }
+            }
+            catch (const std::bad_alloc&)
+            {
+                return EScriptBackendResult::ALLOCATION_FAILURE;
+            }
+            instance.ability_runtime = {std::addressof(instance), &invokeAbility};
+            instance.native_context = {instance.state, std::addressof(instance.ability_runtime)};
+            return EScriptBackendResult::SUCCESS;
+        }
+
+        static int invokeAbility(
+            void* opaque,
+            std::uint32_t ordinal,
+            const lux_script_value_slot* arguments,
+            std::uint32_t argument_count,
+            lux_script_value_slot* results,
+            std::uint32_t result_count
+        ) noexcept
+        {
+            auto& instance = *static_cast<Instance*>(opaque);
+            if (ordinal >= instance.abilities.size())
+                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
+            const auto& prepared = instance.abilities[ordinal];
+            if (prepared.method == nullptr || prepared.method->invoke == nullptr)
+                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
+            const auto invoked = prepared.method->invoke(
+                prepared.context,
+                prepared.dispatch,
+                {arguments, argument_count},
+                {results, result_count}
+            );
+            return invoked ? 0 : invoked.error().status;
+        }
+
+        static int invokePrepared(lux_script_call_frame* frame) noexcept
+        {
+            if (frame == nullptr || frame->user_context == nullptr)
+                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
+            auto& prepared = *static_cast<PreparedCall*>(frame->user_context);
+            if (prepared.instance == nullptr || prepared.function == nullptr || prepared.function->invoke == nullptr)
+                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
+            const auto* previous_native = frame->native_instance;
+            void* previous_user = frame->user_context;
+            frame->native_instance = std::addressof(prepared.instance->native_context);
+            frame->user_context = prepared.instance->state;
+            const auto status = prepared.function->invoke(frame);
+            frame->user_context = previous_user;
+            frame->native_instance = previous_native;
+            return status;
+        }
+
+        static int startAsyncAbility(
+            void* opaque,
+            std::uint32_t ordinal,
+            const lux_script_value_slot* arguments,
+            std::uint32_t argument_count,
+            lux_script_async_token* waiting_on
+        ) noexcept
+        {
+            auto& adapter = *static_cast<StepAdapter*>(opaque);
+            if (adapter.call == nullptr || adapter.call->instance == nullptr || adapter.context == nullptr ||
+                waiting_on == nullptr || ordinal >= adapter.call->instance->abilities.size())
+            {
+                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
+            }
+            const auto& prepared = adapter.call->instance->abilities[ordinal];
+            if (prepared.method == nullptr || prepared.method->kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION ||
+                prepared.method->start == nullptr || prepared.method->results.size() > 1U)
+            {
+                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
+            }
+            const auto* result_description = prepared.method->results.empty()
+                ? nullptr
+                : std::addressof(prepared.method->results.front());
+            const auto result = invokeScriptAbilityAsyncErased(
+                *adapter.context,
+                prepared.context,
+                prepared.dispatch,
+                prepared.method->start,
+                {arguments, argument_count},
+                result_description
+            );
+            if (result.state == EScriptStepState::SUSPENDED && result.valid())
+            {
+                waiting_on->slot = result.waiting_on.slot;
+                waiting_on->generation = result.waiting_on.generation;
+                return 0;
+            }
+            return result.state == EScriptStepState::FAILED && result.error.valid() ? result.error.status : -1;
+        }
+
+        [[nodiscard]] static ScriptStepResult stepResult(lux_script_step_outcome outcome) noexcept
+        {
+            switch (outcome.state)
+            {
+            case LUX_SCRIPT_STEP_COMPLETED:
+                return ScriptStepResult::completed();
+            case LUX_SCRIPT_STEP_SUSPENDED:
+                return ScriptStepResult::suspended({outcome.waiting_on.slot, outcome.waiting_on.generation});
+            case LUX_SCRIPT_STEP_FAILED:
+                return ScriptStepResult::failed(outcome.status == 0 ? -1 : outcome.status);
+            default:
+                return ScriptStepResult::failed(-1);
+            }
+        }
+
+        [[nodiscard]] NativeContinuation* createNativeContinuation(PreparedCall& call) noexcept
+        {
+            if (free_continuations.empty() || call.function == nullptr || call.function->step == nullptr)
+                return nullptr;
+            const auto& step = *call.function->step;
+            if (step.frame_size == 0U || step.frame_size > config.max_continuation_frame_bytes ||
+                step.frame_align == 0U || (step.frame_align & (step.frame_align - 1U)) != 0U)
+            {
+                return nullptr;
+            }
+            const auto alignment = static_cast<std::size_t>(step.frame_align);
+            const bool over_aligned = alignment > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+            auto* frame = over_aligned
+                ? ::operator new(step.frame_size, std::align_val_t{alignment}, std::nothrow)
+                : ::operator new(step.frame_size, std::nothrow);
+            if (frame == nullptr)
+                return nullptr;
+            std::memset(frame, 0, step.frame_size);
+            const auto slot = free_continuations.back();
+            free_continuations.pop_back();
+            auto& continuation = continuations[slot];
+            continuation = {this, std::addressof(call), frame, alignment, over_aligned, slot};
+            return std::addressof(continuation);
+        }
+
+        static void destroyNativeContinuation(NativeContinuation& continuation) noexcept
+        {
+            if (continuation.frame == nullptr || continuation.call == nullptr || continuation.call->function == nullptr ||
+                continuation.call->function->step == nullptr)
+            {
+                return;
+            }
+            continuation.call->function->step->destroy(continuation.frame);
+            if (continuation.over_aligned)
+                ::operator delete(continuation.frame, std::align_val_t{continuation.frame_align});
+            else
+                ::operator delete(continuation.frame);
+            auto* owner = continuation.owner;
+            const auto slot = continuation.slot;
+            continuation = {};
+            if (owner != nullptr && slot < owner->continuations.size())
+                owner->free_continuations.push_back(slot);
+        }
+
+        static ScriptStepResult resumeNativeContinuation(
+            void* opaque,
+            ScriptStepContext& context,
+            const ScriptResumePacket& packet
+        ) noexcept
+        {
+            auto& continuation = *static_cast<NativeContinuation*>(opaque);
+            if (continuation.call == nullptr || continuation.call->instance == nullptr ||
+                continuation.call->function == nullptr || continuation.call->function->step == nullptr)
+            {
+                return ScriptStepResult::failed(-1);
+            }
+            lux_script_step_resume_packet native_packet{};
+            switch (packet.state)
+            {
+            case EScriptAwaitableState::READY: native_packet.state = LUX_SCRIPT_RESUME_READY; break;
+            case EScriptAwaitableState::FAILED: native_packet.state = LUX_SCRIPT_RESUME_FAILED; break;
+            case EScriptAwaitableState::CANCELLED:
+            case EScriptAwaitableState::PENDING: native_packet.state = LUX_SCRIPT_RESUME_CANCELLED; break;
+            }
+            native_packet.status = packet.error.status;
+            if (packet.value != nullptr && packet.value->type && !packet.value->bytes.empty())
+            {
+                native_packet.has_value = 1U;
+                native_packet.value = {
+                    packet.value->type->abi_kind,
+                    {},
+                    static_cast<std::uint32_t>(packet.value->bytes.size()),
+                    packet.value->type->type_id,
+                    const_cast<std::byte*>(packet.value->bytes.data())
+                };
+            }
+            StepAdapter adapter{continuation.call, std::addressof(context)};
+            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility};
+            lux_script_step_outcome outcome{};
+            const auto status = continuation.call->function->step->resume(
+                std::addressof(host),
+                continuation.frame,
+                std::addressof(native_packet),
+                std::addressof(outcome)
+            );
+            return status == 0 ? stepResult(outcome) : ScriptStepResult::failed(status);
+        }
+
+        static void destroyNativeContinuationErased(void* opaque) noexcept
+        {
+            if (opaque != nullptr)
+                destroyNativeContinuation(*static_cast<NativeContinuation*>(opaque));
+        }
+
+        static ScriptStepResult invokePreparedStep(
+            void* opaque,
+            lux_script_call_frame& frame,
+            ScriptStepContext& context,
+            ScriptBackendContinuation& result
+        ) noexcept
+        {
+            auto& prepared = *static_cast<PreparedCall*>(opaque);
+            if (prepared.owner == nullptr || prepared.instance == nullptr || prepared.function == nullptr ||
+                prepared.function->step == nullptr)
+                return ScriptStepResult::failed(-1);
+            auto* continuation = prepared.owner->createNativeContinuation(prepared);
+            if (continuation == nullptr)
+                return ScriptStepResult::failed(-1);
+
+            const auto* previous_native = frame.native_instance;
+            void* previous_user = frame.user_context;
+            frame.native_instance = std::addressof(prepared.instance->native_context);
+            frame.user_context = prepared.instance->state;
+            StepAdapter adapter{std::addressof(prepared), std::addressof(context)};
+            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility};
+            lux_script_step_outcome outcome{};
+            const auto status = prepared.function->step->start(
+                std::addressof(frame),
+                std::addressof(host),
+                continuation->frame,
+                std::addressof(outcome)
+            );
+            frame.user_context = previous_user;
+            frame.native_instance = previous_native;
+            if (status != 0)
+            {
+                destroyNativeContinuation(*continuation);
+                return ScriptStepResult::failed(status);
+            }
+            const auto step_result = stepResult(outcome);
+            if (step_result.state != EScriptStepState::SUSPENDED || !step_result.valid())
+            {
+                destroyNativeContinuation(*continuation);
+                return step_result.valid() ? step_result : ScriptStepResult::failed(-1);
+            }
+            result = {
+                continuation,
+                &resumeNativeContinuation,
+                &destroyNativeContinuationErased
+            };
+            return step_result;
         }
 
         [[nodiscard]] bool executableContractMatches(
@@ -407,6 +769,15 @@ namespace lux::simulation::script
                     );
                 }
             }
+            const auto abilities = self.bindAbilities(*instance, context);
+            if (abilities != EScriptBackendResult::SUCCESS)
+            {
+                if (instance->state)
+                    module->free_state_slots.push_back(instance->state_slot);
+                *instance = {};
+                self.free_instances.push_back(instance_slot);
+                return abilities;
+            }
             ++self.live_instances;
             result.value = instance;
             return EScriptBackendResult::SUCCESS;
@@ -445,18 +816,75 @@ namespace lux::simulation::script
                     return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
                 }
             }
-            result = lux::script::BoundScriptCall{
-                function->invoke,
-                instance->state};
+            if (self.free_prepared_calls.empty())
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            const auto slot = self.free_prepared_calls.back();
+            self.free_prepared_calls.pop_back();
+            auto& prepared = self.prepared_calls[slot];
+            prepared = {std::addressof(self), instance, function};
+            result = lux::script::BoundScriptCall{&invokePrepared, std::addressof(prepared)};
             return EScriptBackendResult::SUCCESS;
         }
 
         static void releaseMethod(
-            void*,
+            void* opaque,
             ScriptBackendInstance,
-            lux::script::BoundScriptCall
+            lux::script::BoundScriptCall call
         ) noexcept
         {
+            auto& self = *static_cast<State*>(opaque);
+            auto* prepared = static_cast<PreparedCall*>(call.context);
+            const auto address = reinterpret_cast<std::uintptr_t>(prepared);
+            const auto begin = reinterpret_cast<std::uintptr_t>(self.prepared_calls.data());
+            const auto end = begin + self.prepared_calls.size() * sizeof(PreparedCall);
+            if (prepared == nullptr || address < begin || address >= end ||
+                (address - begin) % sizeof(PreparedCall) != 0U)
+            {
+                return;
+            }
+            const auto slot = static_cast<std::size_t>(prepared - self.prepared_calls.data());
+            if (prepared->instance == nullptr)
+                return;
+            *prepared = {};
+            self.free_prepared_calls.push_back(slot);
+        }
+
+        static EScriptBackendResult prepareStepMethod(
+            void* opaque,
+            ScriptBackendInstance instance_value,
+            const lux::rdesc::ScriptFunction& description,
+            BoundScriptStepCall& result
+        ) noexcept
+        {
+            auto& self = *static_cast<State*>(opaque);
+            auto* instance = static_cast<Instance*>(instance_value.value);
+            if (instance == nullptr || instance->module == nullptr || instance->module->module == nullptr)
+                return EScriptBackendResult::CONSTRUCTION_FAILURE;
+            const auto* function = instance->module->module->findFunction(description.symbol_id);
+            if (function == nullptr)
+                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+            if (function->step == nullptr)
+            {
+                result = {};
+                return EScriptBackendResult::SUCCESS;
+            }
+            if (self.free_prepared_calls.empty())
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            const auto slot = self.free_prepared_calls.back();
+            self.free_prepared_calls.pop_back();
+            auto& prepared = self.prepared_calls[slot];
+            prepared = {std::addressof(self), instance, function};
+            result = {std::addressof(prepared), &invokePreparedStep};
+            return EScriptBackendResult::SUCCESS;
+        }
+
+        static void releaseStepMethod(
+            void* opaque,
+            ScriptBackendInstance instance,
+            BoundScriptStepCall call
+        ) noexcept
+        {
+            releaseMethod(opaque, instance, lux::script::BoundScriptCall{nullptr, call.context});
         }
 
         static void destroyInstance(
@@ -468,6 +896,7 @@ namespace lux::simulation::script
             auto* instance = static_cast<Instance*>(instance_value.value);
             if (!instance)
                 return;
+            instance->abilities.clear();
             if (instance->state)
             {
                 std::memset(instance->state, 0, instance->state_size);
@@ -485,6 +914,7 @@ namespace lux::simulation::script
         }
 
         NativeModuleResolver resolver;
+        NativeScriptBackendConfig config;
         std::size_t module_capacity{};
         std::size_t instance_capacity{};
         std::size_t live_instances{};
@@ -493,17 +923,21 @@ namespace lux::simulation::script
         std::unordered_map<lux::asset::AssetId, std::size_t> module_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
+        std::vector<PreparedCall> prepared_calls;
+        std::vector<std::size_t> free_prepared_calls;
+        std::vector<NativeContinuation> continuations;
+        std::vector<std::size_t> free_continuations;
     };
 
     NativeScriptBackend::NativeScriptBackend(
         NativeModuleResolver resolver,
-        std::size_t module_capacity,
-        std::size_t instance_capacity,
-        NativeScriptRecordLayoutResolver record_layouts
+        NativeScriptBackendConfig config
     ) noexcept
     {
-        if (!resolver.resolve || module_capacity == 0U ||
-            instance_capacity == 0U)
+        const bool is_invalid_config = config.module_capacity == 0U || config.instance_capacity == 0U ||
+            config.prepared_call_capacity == 0U || config.continuation_capacity == 0U ||
+            config.max_ability_imports_per_module == 0U || config.max_continuation_frame_bytes == 0U;
+        if (!resolver.resolve || is_invalid_config)
         {
             return;
         }
@@ -511,9 +945,7 @@ namespace lux::simulation::script
         {
             state_ = std::make_unique<State>(
                 resolver,
-                module_capacity,
-                instance_capacity,
-                record_layouts
+                config
             );
         }
         catch (const std::bad_alloc&)
@@ -543,7 +975,9 @@ namespace lux::simulation::script
                 &State::createInstance,
                 &State::prepareMethod,
                 &State::releaseMethod,
-                &State::destroyInstance}
+                &State::destroyInstance,
+                &State::prepareStepMethod,
+                &State::releaseStepMethod}
             : ScriptBackendDescriptor{};
     }
 }

@@ -377,6 +377,31 @@ int main()
     assert(provider.calls == 2U);
     assert(api->identity(0x51U) == 0x51U);
     assert(&api->borrowedValue() == &provider.value);
+    assert(binding.erased_methods.size() == ScriptAbilityTraits<TestAbility>::Methods.size());
+    std::int32_t erased_input{3};
+    std::int32_t erased_output{};
+    const std::array erased_arguments{lux::script::ScriptAbilityInputSlot{
+        LUX_SCRIPT_VK_INT32,
+        {},
+        sizeof(erased_input),
+        lux::semantic::typeId(lux::semantic::TypeTraits<std::int32_t>::CanonicalName),
+        &erased_input
+    }};
+    std::array erased_results{lux::script::ScriptAbilityOutputSlot{
+        LUX_SCRIPT_VK_INT32,
+        {},
+        sizeof(erased_output),
+        lux::semantic::typeId(lux::semantic::TypeTraits<std::int32_t>::CanonicalName),
+        &erased_output
+    }};
+    const auto erased_read = binding.erased_methods.front().invoke(
+        binding.context,
+        binding.dispatch,
+        erased_arguments,
+        erased_results
+    );
+    assert(erased_read);
+    assert(erased_output == 44);
     auto starter = lux::script::ScriptAbilityStarter<TestAbility>::create(binding);
     assert(starter);
     auto rejected_start = starter->beginOperation(0x52U, {});
@@ -425,10 +450,12 @@ int main()
             assert(lifetime.destroyed == 0U);
             const auto capabilities = simulation->scriptApiCapabilities();
             assert(capabilities.size() == 1U);
+            assert(capabilities.front().methods.size() == ScriptAbilityTraits<TestAbility>::Methods.size());
             const lux::script::ScriptAbilityBinding owned_binding{
                 &ScriptAbilityTraits<TestAbility>::Description,
                 capabilities.front().context,
-                capabilities.front().dispatch
+                capabilities.front().dispatch,
+                capabilities.front().methods
             };
             auto owned_api = ScriptAbilityCpp<TestAbility>::create(owned_binding);
             assert(owned_api);

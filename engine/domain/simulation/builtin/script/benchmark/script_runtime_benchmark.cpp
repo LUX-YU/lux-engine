@@ -1133,8 +1133,14 @@ namespace
             artifact.emplace(std::move(*created_artifact));
             backend = std::make_unique<NativeScriptBackend>(
                 NativeModuleResolver{this, &resolve},
-                1U,
-                capacity
+                NativeScriptBackendConfig{
+                    .module_capacity = 1U,
+                    .instance_capacity = capacity,
+                    .prepared_call_capacity = capacity * 5U,
+                    .continuation_capacity = capacity,
+                    .max_ability_imports_per_module = 8U,
+                    .max_continuation_frame_bytes = 4096U
+                }
             );
             if (!*backend)
                 throw std::runtime_error("Native lifecycle backend creation failed");

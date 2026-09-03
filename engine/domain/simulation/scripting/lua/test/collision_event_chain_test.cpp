@@ -199,9 +199,15 @@ int main()
     ModuleProvider provider{std::addressof(*loaded)};
     NativeScriptBackend native_backend{
         {std::addressof(provider), &ModuleProvider::resolve},
-        1U,
-        1U,
-        {nullptr, &resolveRecord}};
+        NativeScriptBackendConfig{
+            .module_capacity = 1U,
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 4U,
+            .continuation_capacity = 2U,
+            .max_ability_imports_per_module = 4U,
+            .max_continuation_frame_bytes = 4096U,
+            .record_layouts = {nullptr, &resolveRecord}
+        }};
     assert(native_backend);
 
     const LuaRecordMarshaller marshaller{

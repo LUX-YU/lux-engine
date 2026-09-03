@@ -8,6 +8,8 @@
 #include <memory>
 #include <new>
 #include <optional>
+#include <span>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -152,6 +154,77 @@ namespace lux::simulation::script
                 return static_cast<AbilityCompletionAdapter*>(state)->completion.active();
             }
         };
+
+        struct ErasedAbilityCompletionAdapter final
+        {
+            ErasedAbilityCompletionAdapter(
+                ScriptAwaitableCompletion completion_value,
+                std::optional<lux::rdesc::ScriptValueType> expected_value
+            ) noexcept
+                : completion(std::move(completion_value)), expected(std::move(expected_value))
+            {
+            }
+
+            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> success(
+                void* state,
+                lux::semantic::TypeId type,
+                const void* value,
+                std::uint32_t size
+            ) noexcept
+            {
+                auto& self = *static_cast<ErasedAbilityCompletionAdapter*>(state);
+                if (!self.expected)
+                {
+                    if (type != lux::semantic::InvalidTypeId || value != nullptr || size != 0U)
+                        return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+                    const auto completed = self.completion.ready();
+                    return completed
+                        ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                        : lux::cxx::unexpected(mapCompletionError(completed.error()));
+                }
+                const bool is_invalid_value = value == nullptr || type != self.expected->type_id ||
+                    size != self.expected->size;
+                if (is_invalid_value)
+                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+
+                ScriptOwnedResumeValue owned;
+                try
+                {
+                    owned.type = self.expected;
+                    owned.bytes.resize(size);
+                }
+                catch (const std::bad_alloc&)
+                {
+                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE);
+                }
+                std::memcpy(owned.bytes.data(), value, size);
+                const auto completed = self.completion.ready(std::move(owned));
+                return completed
+                    ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                    : lux::cxx::unexpected(mapCompletionError(completed.error()));
+            }
+
+            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> failure(
+                void* state,
+                lux::script::ScriptAbilityOperationError error
+            ) noexcept
+            {
+                const auto completed = static_cast<ErasedAbilityCompletionAdapter*>(state)->completion.fail(
+                    {error.status}
+                );
+                return completed
+                    ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                    : lux::cxx::unexpected(mapCompletionError(completed.error()));
+            }
+
+            [[nodiscard]] static bool active(void* state) noexcept
+            {
+                return static_cast<ErasedAbilityCompletionAdapter*>(state)->completion.active();
+            }
+
+            ScriptAwaitableCompletion completion;
+            std::optional<lux::rdesc::ScriptValueType> expected;
+        };
     } // namespace detail
 
     template <class Result, class Starter>
@@ -205,6 +278,80 @@ namespace lux::simulation::script
             &Adapter::active
         );
         auto started = std::invoke(std::forward<Starter>(starter), std::move(completion));
+        if (started)
+            return ScriptStepResult::suspended(awaiting->id);
+
+        context.awaitables.discard(awaiting->id);
+        if (!started.error().valid())
+        {
+            return ScriptStepResult::failed(
+                detail::invocationStatus(EScriptAbilityInvocationStatus::INVALID_START_RESULT)
+            );
+        }
+        return ScriptStepResult::failed(started.error().status);
+    }
+
+    [[nodiscard]] inline ScriptStepResult invokeScriptAbilityAsyncErased(
+        ScriptStepContext& context,
+        void* provider_context,
+        const void* typed_dispatch,
+        lux::script::ScriptAbilityErasedStartFn start,
+        std::span<const lux::script::ScriptAbilityInputSlot> arguments,
+        const lux::script::ScriptAbilityValueDescription* result
+    ) noexcept
+    {
+        if (typed_dispatch == nullptr || start == nullptr)
+            return ScriptStepResult::failed(detail::invocationStatus(EScriptAbilityInvocationStatus::INVALID_CONTEXT));
+
+        std::optional<lux::rdesc::ScriptValueType> result_type;
+        if (result != nullptr)
+        {
+            try
+            {
+                result_type = lux::rdesc::ScriptValueType{
+                    std::string(result->canonical_name),
+                    result->type_id,
+                    lux::semantic::EValuePass::VALUE,
+                    result->abi_kind,
+                    result->size,
+                    result->alignment
+                };
+            }
+            catch (const std::bad_alloc&)
+            {
+                return ScriptStepResult::failed(
+                    detail::invocationStatus(EScriptAbilityInvocationStatus::AWAITABLE_ALLOCATION_FAILURE)
+                );
+            }
+        }
+
+        auto awaiting = context.awaitables.create(result_type);
+        if (!awaiting)
+            return ScriptStepResult::failed(detail::awaitableCreateStatus(awaiting.error()));
+
+        std::shared_ptr<detail::ErasedAbilityCompletionAdapter> adapter;
+        try
+        {
+            adapter = std::make_shared<detail::ErasedAbilityCompletionAdapter>(
+                std::move(awaiting->completion),
+                std::move(result_type)
+            );
+        }
+        catch (const std::bad_alloc&)
+        {
+            context.awaitables.discard(awaiting->id);
+            return ScriptStepResult::failed(
+                detail::invocationStatus(EScriptAbilityInvocationStatus::COMPLETION_ADAPTER_ALLOCATION_FAILURE)
+            );
+        }
+
+        auto completion = lux::script::ScriptAbilityErasedCompletion::bind(
+            std::static_pointer_cast<void>(adapter),
+            &detail::ErasedAbilityCompletionAdapter::success,
+            &detail::ErasedAbilityCompletionAdapter::failure,
+            &detail::ErasedAbilityCompletionAdapter::active
+        );
+        auto started = start(provider_context, typed_dispatch, arguments, std::move(completion));
         if (started)
             return ScriptStepResult::suspended(awaiting->id);
 

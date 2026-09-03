@@ -37,14 +37,23 @@ namespace lux::simulation::script
         ) noexcept{};
     };
 
+    struct NativeScriptBackendConfig final
+    {
+        std::size_t module_capacity{};
+        std::size_t instance_capacity{};
+        std::size_t prepared_call_capacity{};
+        std::size_t continuation_capacity{};
+        std::size_t max_ability_imports_per_module{};
+        std::size_t max_continuation_frame_bytes{};
+        NativeScriptRecordLayoutResolver record_layouts;
+    };
+
     class LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_PUBLIC NativeScriptBackend final
     {
       public:
         NativeScriptBackend(
             NativeModuleResolver resolver,
-            std::size_t module_capacity,
-            std::size_t instance_capacity,
-            NativeScriptRecordLayoutResolver record_layouts = {}
+            NativeScriptBackendConfig config
         ) noexcept;
         ~NativeScriptBackend();
 

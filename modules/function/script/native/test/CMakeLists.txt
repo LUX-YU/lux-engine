@@ -15,6 +15,22 @@ add_library(
     SHARED
     native_collision_fixture.cpp
 )
+
+add_library(
+    script_native_step_fixture
+    SHARED
+    native_step_fixture.cpp
+)
+target_include_directories(
+    script_native_step_fixture
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
+)
+lux_classify_target(
+    TARGET  script_native_step_fixture
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
 target_include_directories(
     script_native_collision_fixture
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include

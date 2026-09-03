@@ -78,6 +78,12 @@ namespace lux::script
                     scriptFailure(EScriptError::INVALID_MODULE, "native script function table is null")
                 );
             }
+            if (descriptor->ability_import_count != 0U && descriptor->ability_imports == nullptr)
+            {
+                return lux::cxx::unexpected(
+                    scriptFailure(EScriptError::INVALID_MODULE, "native script Ability import table is null")
+                );
+            }
             if (descriptor->state_align == 0U || (descriptor->state_align & (descriptor->state_align - 1U)) != 0U)
             {
                 return lux::cxx::unexpected(
@@ -97,7 +103,7 @@ namespace lux::script
                 const bool is_missing_name = function.name == nullptr;
                 const bool is_empty_name = !is_missing_name && function.name[0] == '\0';
                 const bool is_invalid_symbol = function.symbol_id == InvalidScriptSymbolId;
-                const bool is_missing_invoke = function.invoke == nullptr;
+                const bool is_missing_invoke = function.invoke == nullptr && function.step == nullptr;
                 const bool is_invalid_function = is_missing_name || is_empty_name || is_invalid_symbol ||
                     is_missing_invoke;
                 if (is_invalid_function)
@@ -105,6 +111,20 @@ namespace lux::script
                     return lux::cxx::unexpected(
                         scriptFailure(EScriptError::INVALID_MODULE, "native script function entry is incomplete")
                     );
+                }
+                if (function.step != nullptr)
+                {
+                    const auto& step = *function.step;
+                    const bool is_invalid_frame = step.frame_size == 0U || step.frame_align == 0U ||
+                        (step.frame_align & (step.frame_align - 1U)) != 0U || step.frame_layout_hash == 0U;
+                    const bool is_missing_step_function = step.start == nullptr || step.resume == nullptr ||
+                        step.destroy == nullptr;
+                    if (is_invalid_frame || is_missing_step_function)
+                    {
+                        return lux::cxx::unexpected(
+                            scriptFailure(EScriptError::INVALID_MODULE, "native script step entry is invalid")
+                        );
+                    }
                 }
                 const bool is_missing_arguments = function.arg_count != 0 && function.args == nullptr;
                 const bool is_missing_returns = function.return_count != 0 && function.returns == nullptr;
@@ -176,6 +196,56 @@ namespace lux::script
                 }
             }
 
+            std::unordered_set<std::uint64_t> import_methods;
+            import_methods.reserve(descriptor->ability_import_count);
+            for (std::uint32_t index{}; index < descriptor->ability_import_count; ++index)
+            {
+                const auto& import = descriptor->ability_imports[index];
+                const bool is_invalid_identity = import.contract_name == nullptr || import.method_name == nullptr ||
+                    import.contract_name[0] == '\0' || import.method_name[0] == '\0' || import.contract_id == 0U ||
+                    import.method_id == 0U || import.contract_id != lux::semantic::typeId(import.contract_name) ||
+                    import.method_id != lux::semantic::typeId(import.method_name);
+                const bool is_invalid_schema = import.schema_hash == 0U || import.schema_version == 0U ||
+                    import.method_kind > 2U;
+                const bool is_missing_signature = (import.arg_count != 0U && import.args == nullptr) ||
+                    (import.result_count != 0U && import.results == nullptr);
+                if (is_invalid_identity || is_invalid_schema || is_missing_signature ||
+                    !import_methods.insert(import.method_id).second)
+                {
+                    return lux::cxx::unexpected(
+                        scriptFailure(EScriptError::INVALID_MODULE, "native script Ability import is invalid")
+                    );
+                }
+                const auto valid_import_type = [](const lux_script_type_desc& type) noexcept {
+                    const bool is_invalid_identity = type.name == nullptr || type.name[0] == '\0' ||
+                        type.type_id == 0U || type.type_id != lux::semantic::typeId(type.name);
+                    const bool is_invalid_layout = type.size == 0U || type.align == 0U ||
+                        (type.align & (type.align - 1U)) != 0U;
+                    const bool is_invalid_abi = type.kind < LUX_SCRIPT_VK_BOOL ||
+                        type.kind > LUX_SCRIPT_VK_STRUCT_REF || type.pass > LUX_SCRIPT_PASS_CONST_REF;
+                    return !is_invalid_identity && !is_invalid_layout && !is_invalid_abi;
+                };
+                for (std::uint32_t argument{}; argument < import.arg_count; ++argument)
+                {
+                    if (!valid_import_type(import.args[argument]))
+                    {
+                        return lux::cxx::unexpected(
+                            scriptFailure(EScriptError::INVALID_MODULE, "native Script Ability argument is invalid")
+                        );
+                    }
+                }
+                for (std::uint32_t output{}; output < import.result_count; ++output)
+                {
+                    if (!valid_import_type(import.results[output]) ||
+                        import.results[output].pass != LUX_SCRIPT_PASS_VALUE)
+                    {
+                        return lux::cxx::unexpected(
+                            scriptFailure(EScriptError::INVALID_MODULE, "native Script Ability result is invalid")
+                        );
+                    }
+                }
+            }
+
             if (const auto bind =
                     reinterpret_cast<lux_script_bind_host_fn>(state->library.get_symbol(LUX_SCRIPT_BIND_HOST_ENTRY)))
             {
@@ -210,6 +280,13 @@ namespace lux::script
         if (!state_ || !state_->descriptor || state_->descriptor->function_count == 0)
             return {};
         return {state_->descriptor->functions, state_->descriptor->function_count};
+    }
+
+    std::span<const lux_script_ability_import_desc> NativeModule::abilityImports() const noexcept
+    {
+        if (!state_ || !state_->descriptor || state_->descriptor->ability_import_count == 0U)
+            return {};
+        return {state_->descriptor->ability_imports, state_->descriptor->ability_import_count};
     }
 
     const lux_script_function_desc* NativeModule::findFunction(std::string_view name) const noexcept

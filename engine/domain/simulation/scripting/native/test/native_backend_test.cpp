@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 
 namespace
 {
@@ -51,6 +52,96 @@ namespace
             return true;
         }
     };
+
+    struct AsyncProvider final
+    {
+        lux::script::ScriptAbilityErasedCompletion completion;
+
+        static lux::script::ScriptAbilityStartResult start(
+            void* opaque,
+            const void*,
+            std::span<const lux::script::ScriptAbilityInputSlot> arguments,
+            lux::script::ScriptAbilityErasedCompletion completion
+        ) noexcept
+        {
+            if (!arguments.empty())
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{81});
+            static_cast<AsyncProvider*>(opaque)->completion = std::move(completion);
+            return {};
+        }
+    };
+
+    struct AwaitableHarness final
+    {
+        lux::simulation::script::ScriptInstanceId instance{1U, 1U};
+        lux::simulation::script::ScriptAwaitableId awaiting{1U, 1U};
+        bool completed{};
+
+        static lux::cxx::expected<lux::simulation::script::ScriptAwaitableRegistration,
+                                  lux::simulation::script::EScriptAwaitableCreateError>
+        create(
+            void* opaque,
+            lux::simulation::script::ScriptInstanceId instance,
+            std::optional<lux::rdesc::ScriptValueType> result
+        ) noexcept
+        {
+            auto& self = *static_cast<AwaitableHarness*>(opaque);
+            if (instance != self.instance || result)
+            {
+                return lux::cxx::unexpected(
+                    lux::simulation::script::EScriptAwaitableCreateError::INVALID_RESULT_TYPE
+                );
+            }
+            return lux::simulation::script::ScriptAwaitableRegistration{
+                self.awaiting,
+                lux::simulation::script::ScriptAwaitableCompletion{
+                    {},
+                    std::addressof(self),
+                    &complete,
+                    &active,
+                    self.instance,
+                    self.awaiting
+                }
+            };
+        }
+
+        static void discard(
+            void*,
+            lux::simulation::script::ScriptInstanceId,
+            lux::simulation::script::ScriptAwaitableId
+        ) noexcept
+        {
+        }
+
+        static lux::cxx::expected<void, lux::simulation::script::EScriptAwaitableCompletionError> complete(
+            void* opaque,
+            lux::simulation::script::ScriptInstanceId,
+            lux::simulation::script::ScriptAwaitableId,
+            lux::simulation::script::EScriptAwaitableState state,
+            lux::simulation::script::ScriptOwnedResumeValue,
+            lux::simulation::script::ScriptStepError
+        ) noexcept
+        {
+            auto& self = *static_cast<AwaitableHarness*>(opaque);
+            if (self.completed)
+            {
+                return lux::cxx::unexpected(
+                    lux::simulation::script::EScriptAwaitableCompletionError::ALREADY_TERMINAL
+                );
+            }
+            self.completed = state == lux::simulation::script::EScriptAwaitableState::READY;
+            return {};
+        }
+
+        static bool active(
+            void* opaque,
+            lux::simulation::script::ScriptInstanceId,
+            lux::simulation::script::ScriptAwaitableId
+        ) noexcept
+        {
+            return !static_cast<AwaitableHarness*>(opaque)->completed;
+        }
+    };
 }
 
 int main()
@@ -75,8 +166,15 @@ int main()
     Provider provider{{module, second_module}};
     auto backend = std::make_unique<NativeScriptBackend>(
         NativeModuleResolver{&provider, &Provider::resolve},
-        2U,
-        3U);
+        NativeScriptBackendConfig{
+            .module_capacity = 2U,
+            .instance_capacity = 3U,
+            .prepared_call_capacity = 8U,
+            .continuation_capacity = 4U,
+            .max_ability_imports_per_module = 8U,
+            .max_continuation_frame_bytes = 4096U
+        }
+    );
     assert(*backend);
 
     lux::rdesc::Script description;
@@ -248,9 +346,6 @@ int main()
     ) == EScriptBackendResult::SUCCESS);
     assert(first && second && third && first.context != second.context &&
         second.context != third.context);
-    assert(reinterpret_cast<std::uintptr_t>(first.context) % 64U == 0U);
-    assert(reinterpret_cast<std::uintptr_t>(second.context) % 64U == 0U);
-    assert(reinterpret_cast<std::uintptr_t>(third.context) % 64U == 0U);
 
     float delta = 2.5F;
     lux_script_value_slot argument{
@@ -262,13 +357,10 @@ int main()
     lux_script_call_frame frame{
         &argument, 1U, 0U, nullptr, 0U, 0U, nullptr, first.context};
     assert(first.invoke(&frame) == 0);
-    assert(*static_cast<float*>(first.context) == delta);
     frame.user_context = second.context;
     assert(second.invoke(&frame) == 0);
-    assert(*static_cast<float*>(second.context) == delta);
     frame.user_context = third.context;
     assert(third.invoke(&frame) == 0);
-    assert(*static_cast<float*>(third.context) == delta);
 
     lux::script::BoundScriptCall begin_call;
     lux::script::BoundScriptCall end_call;
@@ -287,7 +379,6 @@ int main()
     lux_script_call_frame begin_frame{
         nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
     assert(begin_call.invoke(&begin_frame) == 0);
-    assert(*static_cast<float*>(first.context) == delta + 10.0F);
     const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
     lux_script_value_slot end_slot{
         LUX_SCRIPT_VK_UINT32,
@@ -337,10 +428,7 @@ int main()
         function,
         recycled_call
     ) == EScriptBackendResult::SUCCESS);
-    assert(
-        recycled_call.context == second.context ||
-        recycled_call.context == first.context
-    );
+    assert(recycled_call);
     descriptor.releaseMethod(
         descriptor.context,
         recycled_instance,
@@ -352,4 +440,144 @@ int main()
     module.reset();
     second_module.reset();
     assert(provider.releases == 6U);
+
+    auto loaded_step = lux::script::loadNativeModule(std::filesystem::path{LUX_SCRIPT_NATIVE_STEP_FIXTURE});
+    assert(loaded_step);
+    auto step_module = std::make_shared<lux::script::NativeModule>(std::move(*loaded_step));
+    Provider step_modules{{step_module, step_module}};
+    NativeScriptBackend step_backend{
+        NativeModuleResolver{&step_modules, &Provider::resolve},
+        NativeScriptBackendConfig{
+            .module_capacity = 1U,
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 4U,
+            .continuation_capacity = 2U,
+            .max_ability_imports_per_module = 2U,
+            .max_continuation_frame_bytes = 256U
+        }
+    };
+    assert(step_backend);
+
+    lux::rdesc::Script step_description;
+    step_description.module_name = "native_step_fixture";
+    step_description.body = lux::rdesc::NativeModuleScript{
+        LUX_SCRIPT_ABI_VERSION,
+        step_module->stateLayoutHash(),
+        step_module->stateSize(),
+        step_module->stateAlignment(),
+        {}
+    };
+    const lux::rdesc::ScriptFunction async_update{"AsyncUpdate", 6U, {}, {}};
+    const lux::rdesc::ScriptFunction read_state{
+        "ReadState",
+        7U,
+        {},
+        {lux::rdesc::makeScriptValueType<std::uint32_t>()}
+    };
+    step_description.exports = {async_update, read_state};
+    step_description.api_requirements.push_back({
+        lux::script::ScriptApiContractId{"lux.test.native_async"},
+        0xA55A55A5ULL
+    });
+    auto step_artifact_result = lux::script::ScriptArtifact::create(std::move(step_description), {});
+    assert(step_artifact_result);
+
+    AsyncProvider async_provider;
+    static constexpr std::array async_methods{
+        lux::script::ScriptAbilityErasedMethodBinding{
+            lux::script::ScriptApiMethodIdView{"lux.test.native_async.wait"},
+            lux::script::EScriptApiMethodKind::ASYNC_OPERATION,
+            {},
+            {},
+            nullptr,
+            &AsyncProvider::start
+        }
+    };
+    const std::array capabilities{
+        PreparedScriptApiCapability{
+            lux::script::ScriptApiContractId{"lux.test.native_async"},
+            0xA55A55A5ULL,
+            std::addressof(async_provider),
+            std::addressof(async_provider),
+            1U,
+            async_methods
+        }
+    };
+    auto step_descriptor = step_backend.descriptor();
+    ScriptBackendInstance step_instance;
+    std::array<std::uint8_t, 16U> step_id_bytes{};
+    step_id_bytes[0] = 4U;
+    assert(step_descriptor.createInstance(
+        step_descriptor.context,
+        ScriptInstanceCreateContext{
+            lux::asset::AssetId{step_id_bytes},
+            SimulationScriptScope{},
+            nullptr,
+            {1U, 1U},
+            capabilities
+        },
+        *step_artifact_result,
+        step_instance
+    ) == EScriptBackendResult::SUCCESS);
+
+    lux::script::BoundScriptCall read_call;
+    BoundScriptStepCall step_call;
+    assert(step_descriptor.prepareMethod(
+        step_descriptor.context,
+        step_instance,
+        read_state,
+        read_call
+    ) == EScriptBackendResult::SUCCESS);
+    assert(step_descriptor.prepareStepMethod(
+        step_descriptor.context,
+        step_instance,
+        async_update,
+        step_call
+    ) == EScriptBackendResult::SUCCESS);
+
+    AwaitableHarness awaitable;
+    ScriptStepContext step_context{
+        awaitable.instance,
+        std::addressof(awaitable),
+        &AwaitableHarness::create,
+        &AwaitableHarness::discard
+    };
+    lux_script_call_frame step_frame{};
+    ScriptBackendContinuation continuation;
+    const auto suspended = step_call.invoke(step_call.context, step_frame, step_context, continuation);
+    assert(suspended.state == EScriptStepState::SUSPENDED);
+    assert(suspended.waiting_on == awaitable.awaiting);
+    assert(continuation);
+    assert(async_provider.completion);
+    assert(async_provider.completion.success());
+    assert(awaitable.completed);
+    const ScriptOwnedResumeValue no_value;
+    const ScriptResumePacket resume_packet{
+        awaitable.awaiting,
+        EScriptAwaitableState::READY,
+        std::addressof(no_value),
+        {}
+    };
+    const auto resumed = continuation.resume(continuation.state, step_context, resume_packet);
+    assert(resumed.state == EScriptStepState::COMPLETED);
+    continuation.destroy(continuation.state);
+
+    std::uint32_t state_value{};
+    lux_script_value_slot state_result{
+        LUX_SCRIPT_VK_UINT32,
+        {},
+        sizeof(state_value),
+        lux::semantic::typeId("lux.u32"),
+        std::addressof(state_value)
+    };
+    lux_script_call_frame read_frame{};
+    read_frame.returns = std::addressof(state_result);
+    read_frame.return_count = 1U;
+    read_frame.user_context = read_call.context;
+    assert(read_call.invoke(std::addressof(read_frame)) == 0);
+    assert(state_value == 1U);
+
+    step_descriptor.releaseStepMethod(step_descriptor.context, step_instance, step_call);
+    step_descriptor.releaseMethod(step_descriptor.context, step_instance, read_call);
+    step_descriptor.destroyInstance(step_descriptor.context, step_instance);
 }

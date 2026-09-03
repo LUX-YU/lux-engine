@@ -12,6 +12,8 @@ namespace lux::simulation::script
         std::uint64_t schema_hash{};
         void* context{};
         const void* dispatch{};
+        std::uint32_t schema_version{1U};
+        std::span<const lux::script::ScriptAbilityErasedMethodBinding> methods;
     };
 
     struct PreparedScriptApiCapability final
@@ -20,6 +22,8 @@ namespace lux::simulation::script
         std::uint64_t schema_hash{};
         void* context{};
         const void* dispatch{};
+        std::uint32_t schema_version{1U};
+        std::span<const lux::script::ScriptAbilityErasedMethodBinding> methods;
     };
 
     [[nodiscard]] inline ScriptApiCapabilityPublication publishScriptAbility(
@@ -32,7 +36,9 @@ namespace lux::simulation::script
             binding.description->id,
             binding.description->schema_hash,
             binding.context,
-            binding.dispatch
+            binding.dispatch,
+            binding.description->schema_version,
+            binding.erased_methods
         };
     }
 } // namespace lux::simulation::script

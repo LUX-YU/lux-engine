@@ -2,6 +2,7 @@
 // Generated canonical Script Ability descriptor, provider binder and C++ projection.
 #include <lux/engine/function/script/ScriptAbility.hpp>
 #include <lux/engine/function/script/ScriptAbilityAsync.hpp>
+#include <lux/engine/function/script/ScriptAbilityCompletionAdapter.hpp>
 #include <array>
 #include <concepts>
 #include <memory>
@@ -57,6 +58,44 @@ namespace lux::script
             Methods
         };
 
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}        static {% if kind == "async_operation" %}ScriptAbilityStartResult{% else %}ScriptAbilityErasedCallResult{% endif %} {{ method.spelling }}Erased(
+            void* context,
+            const void* dispatch_value,
+            std::span<const ScriptAbilityInputSlot> arguments{% if kind != "async_operation" %},
+            std::span<ScriptAbilityOutputSlot> results{% else %},
+            ScriptAbilityErasedCompletion completion{% endif %}
+        ) noexcept
+        {
+            if (dispatch_value == nullptr || arguments.size() != {{ length(method.params) }}U)
+                return lux::cxx::unexpected(ScriptAbilityOperationError{static_cast<std::int32_t>(EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS)});
+{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}            if (!scriptAbilityInputMatches<{{ type.id }}>(arguments[{{ loop.index }}]))
+                return lux::cxx::unexpected(ScriptAbilityOperationError{static_cast<std::int32_t>(EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS)});
+{% endfor %}            const auto& dispatch = *static_cast<const Dispatch*>(dispatch_value);
+{% if kind == "async_operation" %}            auto typed_completion = adaptScriptAbilityCompletion<{{ method.result_type_id }}>(std::move(completion));
+            if (!typed_completion)
+                return lux::cxx::unexpected(typed_completion.error());
+            return dispatch.{{ method.spelling }}(context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, *static_cast<const std::remove_cvref_t<{{ type.id }}>*>(arguments[{{ loop.index }}].data){% endfor %}, std::move(*typed_completion));
+{% else %}            if (results.size() != {% if method.result_type_id == "void" %}0{% else %}1{% endif %}U)
+                return lux::cxx::unexpected(ScriptAbilityOperationError{static_cast<std::int32_t>(EScriptAbilityErasedCallStatus::INVALID_RESULTS)});
+{% if method.result_type_id != "void" %}            if (!scriptAbilityOutputMatches<{{ method.result_type_id }}>(results[0]))
+                return lux::cxx::unexpected(ScriptAbilityOperationError{static_cast<std::int32_t>(EScriptAbilityErasedCallStatus::INVALID_RESULTS)});
+            auto&& value = dispatch.{{ method.spelling }}(context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, *static_cast<const std::remove_cvref_t<{{ type.id }}>*>(arguments[{{ loop.index }}].data){% endfor %});
+            *static_cast<std::remove_cvref_t<{{ method.result_type_id }}>*>(results[0].data) = value;
+{% else %}            dispatch.{{ method.spelling }}(context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, *static_cast<const std::remove_cvref_t<{{ type.id }}>*>(arguments[{{ loop.index }}].data){% endfor %});
+{% endif %}            return {};
+{% endif %}        }
+{% endif %}{% endfor %}        inline static constexpr std::array<ScriptAbilityErasedMethodBinding, Methods.size()> ErasedMethods{
+{% set emitted = false %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}{% if emitted %},
+{% endif %}            ScriptAbilityErasedMethodBinding{
+                ScriptApiMethodIdView{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"},
+                EScriptApiMethodKind::{% if kind == "command" %}COMMAND{% else if kind == "async_operation" %}ASYNC_OPERATION{% else %}QUERY{% endif %},
+                {{ method.spelling }}Parameters,
+                {{ method.spelling }}Results,
+                {% if kind == "async_operation" %}nullptr{% else %}&{{ method.spelling }}Erased{% endif %},
+                {% if kind == "async_operation" %}&{{ method.spelling }}Erased{% else %}nullptr{% endif %}
+            }{% set emitted = true %}{% endif %}{% endfor %}
+        };
+
 {% if receiver == "provider_instance" %}        template <class Provider>
         inline static constexpr bool ProviderConforms = requires(
             Provider& provider{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ method.spelling }}_{{ loop.index }}{% endfor %}{% endif %}{% endfor %}
@@ -82,7 +121,7 @@ namespace lux::script
             requires ProviderConforms<Provider>
         [[nodiscard]] static ScriptAbilityBinding bind(Provider& provider) noexcept
         {
-            return {&Description, std::addressof(provider), &ProviderDispatch<Provider>};
+            return {&Description, std::addressof(provider), &ProviderDispatch<Provider>, ErasedMethods};
         }
 {% else %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}        static {% if kind == "async_operation" %}ScriptAbilityStartResult{% else %}{{ method.result_type_id }}{% endif %} {{ method.spelling }}Thunk(void*{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} arg_{{ loop.index }}{% endfor %}{% if kind == "async_operation" %}, ScriptAbilityCompletion<{{ method.result_type_id }}> completion{% endif %}) noexcept
         {
@@ -95,7 +134,7 @@ namespace lux::script
 {% endif %}{% endfor %}        };
         [[nodiscard]] static ScriptAbilityBinding bind() noexcept
         {
-            return {&Description, nullptr, &StatelessDispatch};
+            return {&Description, nullptr, &StatelessDispatch, ErasedMethods};
         }
 {% endif %}    };
 

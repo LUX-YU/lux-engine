@@ -2175,7 +2175,9 @@ namespace lux::simulation::script
                 published_capabilities.push_back({lux::script::ScriptApiContractId{capability.contract.name()},
                                                   capability.schema_hash,
                                                   capability.context,
-                                                  capability.dispatch});
+                                                  capability.dispatch,
+                                                  capability.schema_version,
+                                                  capability.methods});
             }
             const auto delay_binding = lux::script::bindScriptAbility<DelayAbility>(state->delay_provider);
             const auto delay_publication = publishScriptAbility(delay_binding);
@@ -2188,7 +2190,9 @@ namespace lux::simulation::script
                 lux::script::ScriptApiContractId{delay_publication.contract.name()},
                 delay_publication.schema_hash,
                 delay_publication.context,
-                delay_publication.dispatch
+                delay_publication.dispatch,
+                delay_publication.schema_version,
+                delay_publication.methods
             });
             std::sort(published_capabilities.begin(),
                       published_capabilities.end(),

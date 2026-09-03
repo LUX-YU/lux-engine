@@ -2,6 +2,8 @@
 
 #include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/function/script/ScriptApi.hpp>
+#include <lux/engine/function/script/ScriptAbilityOperation.hpp>
+#include <lux/engine/function/script/abi/lux_script_abi.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -13,9 +15,139 @@
 #include <span>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace lux::script
 {
+    struct ScriptAbilityValueDescription;
+    struct ScriptAbilityParameterDescription;
+
+    using ScriptAbilityInputSlot = lux_script_value_slot;
+    using ScriptAbilityOutputSlot = lux_script_value_slot;
+
+    enum class EScriptAbilityErasedCallStatus : std::int32_t
+    {
+        INVALID_ARGUMENTS = 1001,
+        INVALID_RESULTS = 1002,
+        COMPLETION_ALLOCATION_FAILURE = 1003,
+    };
+
+    class ScriptAbilityErasedCompletion final
+    {
+    public:
+        using CompletionResult = lux::cxx::expected<void, EScriptAbilityCompletionError>;
+        using SuccessFn = CompletionResult (*)(void*, lux::semantic::TypeId, const void*, std::uint32_t) noexcept;
+        using FailureFn = CompletionResult (*)(void*, ScriptAbilityOperationError) noexcept;
+        using ActiveFn = bool (*)(void*) noexcept;
+
+        ScriptAbilityErasedCompletion() = default;
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return state_ != nullptr && success_ != nullptr && failure_ != nullptr;
+        }
+
+        [[nodiscard]] CompletionResult success(
+            lux::semantic::TypeId type,
+            const void* value,
+            std::uint32_t size
+        ) const noexcept
+        {
+            if (!*this)
+                return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
+            return success_(state_.get(), type, value, size);
+        }
+
+        [[nodiscard]] CompletionResult success() const noexcept
+        {
+            return success(lux::semantic::InvalidTypeId, nullptr, 0U);
+        }
+
+        [[nodiscard]] CompletionResult fail(ScriptAbilityOperationError error) const noexcept
+        {
+            if (!*this)
+                return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
+            return failure_(state_.get(), error);
+        }
+
+        [[nodiscard]] bool active() const noexcept
+        {
+            return *this && (active_ == nullptr || active_(state_.get()));
+        }
+
+        [[nodiscard]] static ScriptAbilityErasedCompletion bind(
+            std::shared_ptr<void> state,
+            SuccessFn success,
+            FailureFn failure,
+            ActiveFn active = nullptr
+        ) noexcept
+        {
+            return ScriptAbilityErasedCompletion(std::move(state), success, failure, active);
+        }
+
+    private:
+        ScriptAbilityErasedCompletion(
+            std::shared_ptr<void> state,
+            SuccessFn success,
+            FailureFn failure,
+            ActiveFn active
+        ) noexcept
+            : state_(std::move(state)), success_(success), failure_(failure), active_(active)
+        {
+        }
+
+        std::shared_ptr<void> state_;
+        SuccessFn success_{};
+        FailureFn failure_{};
+        ActiveFn active_{};
+    };
+
+    using ScriptAbilityErasedCallResult = lux::cxx::expected<void, ScriptAbilityOperationError>;
+    using ScriptAbilityErasedInvokeFn = ScriptAbilityErasedCallResult (*)(
+        void*,
+        const void*,
+        std::span<const ScriptAbilityInputSlot>,
+        std::span<ScriptAbilityOutputSlot>
+    ) noexcept;
+    using ScriptAbilityErasedStartFn = ScriptAbilityStartResult (*)(
+        void*,
+        const void*,
+        std::span<const ScriptAbilityInputSlot>,
+        ScriptAbilityErasedCompletion
+    ) noexcept;
+
+    struct ScriptAbilityErasedMethodBinding final
+    {
+        ScriptApiMethodIdView method;
+        EScriptApiMethodKind kind{EScriptApiMethodKind::QUERY};
+        std::span<const ScriptAbilityParameterDescription> parameters;
+        std::span<const ScriptAbilityValueDescription> results;
+        ScriptAbilityErasedInvokeFn invoke{};
+        ScriptAbilityErasedStartFn start{};
+    };
+
+    template <class Value>
+    [[nodiscard]] constexpr bool scriptAbilityInputMatches(
+        const ScriptAbilityInputSlot& slot
+    ) noexcept
+    {
+        using Type = std::remove_cvref_t<Value>;
+        return slot.data != nullptr && slot.type_id == lux::semantic::typeId(
+            lux::semantic::TypeTraits<Type>::CanonicalName
+        ) && slot.size == sizeof(Type);
+    }
+
+    template <class Value>
+    [[nodiscard]] constexpr bool scriptAbilityOutputMatches(
+        const ScriptAbilityOutputSlot& slot
+    ) noexcept
+    {
+        using Type = std::remove_cvref_t<Value>;
+        return slot.data != nullptr && slot.type_id == lux::semantic::typeId(
+            lux::semantic::TypeTraits<Type>::CanonicalName
+        ) && slot.size == sizeof(Type);
+    }
+
     enum class EScriptAbilityReceiverKind : std::uint8_t
     {
         NONE,
@@ -72,6 +204,7 @@ namespace lux::script
         const ScriptAbilityDescription* description{};
         void* context{};
         const void* dispatch{};
+        std::span<const ScriptAbilityErasedMethodBinding> erased_methods;
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {

@@ -299,7 +299,7 @@ namespace lux::simulation::script
         ) const noexcept
         {
             if (wait_ == nullptr)
-                return lux::cxx::unexpected(EScriptEventWaitError::STOPPING);
+                return lux::cxx::unexpected<EScriptEventWaitError>(EScriptEventWaitError::STOPPING);
             return wait_(context_, instance_, request);
         }
 

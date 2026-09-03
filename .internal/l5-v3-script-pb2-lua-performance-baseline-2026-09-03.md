@@ -3,6 +3,8 @@
 ## Reproducibility
 
 - Production revision: `b3ddc0af0b6b393d40b925860db961f5f8b8fede`.
+- Benchmark query-isolation closure: `658004517267e2712d95cc91e167282727a44fed`; this test-only commit separates
+  the QUERY micro from the mixed QUERY + COMMAND scene method and does not change production runtime code.
 - Clean detached source: `E:/SyncForder/CodeRepos/lux-engine-s4-qualification`.
 - Raw CSV: `E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-s4q-pb2/final/{run1,run2}`.
 - OS: Windows 11 Pro 10.0.26200.
@@ -22,15 +24,15 @@ allocations must not be read as zero Lua VM allocation.
 | Path/phase | Run 1 | Run 2 | Approximate cost |
 |---|---:|---:|---:|
 | Lua prepared synchronous object call, 10k | 0.34 ms median | 0.34 ms median | 34 ns/call |
-| Lua state + prepared QUERY + COMMAND, 10k | 1.15 ms median | 1.15 ms median | 115 ns/object |
+| Lua prepared QUERY only, 10k | 0.814 ms median | 0.818 ms median | 81–82 ns/query |
 | Lua coroutine start + NextStep suspend, 10k | 6.94 ms | 6.83 ms | 683–694 ns/suspension |
 | Lua coroutine stable-point resume + destroy, 10k | 3.83 ms | 3.39 ms | 339–383 ns/resume |
 
 PB0's equivalent tiny C++ Static steady call was about 4 ns/object, and PB1's FlowForge AOT update with two prepared
 Ability calls was about 10–12 ns/object. Lua's plain prepared call is therefore roughly 8x the C++ Static method and
-about 3x the complete FlowForge update fixture. The Lua Ability workload adds about 81 ns/object over the plain Lua
-update for one QUERY plus one COMMAND, including Lua table/C-call/marshalling overhead; the generated C++ thunk alone
-remains the roughly 1.4 ns PB0 path.
+about 3x the complete FlowForge update fixture. The isolated Lua QUERY adds about 47–48 ns/call over the plain Lua
+update, including Lua table/C-call/marshalling overhead. The scene Ability workload adds about 81 ns/object over the
+plain update for one QUERY plus one COMMAND; the generated C++ thunk alone remains the roughly 1.4 ns PB0 path.
 
 ## Scene scaling
 

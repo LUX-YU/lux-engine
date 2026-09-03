@@ -39,6 +39,8 @@ int main()
     assert(decoded);
     const auto& description = (*decoded)->data().description();
     assert(description.kind() == lux::rdesc::Script::Kind::LUA_SOURCE);
+    assert(description.lifecycle.begin_play == lux::script::InvalidScriptSymbolId);
+    assert(description.lifecycle.end_play == lux::script::InvalidScriptSymbolId);
     assert(description.exports.size() == 1U);
     assert(description.exports[0].name == "tick");
     assert(description.exports[0].args.size() == 3U);

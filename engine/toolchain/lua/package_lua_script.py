@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package statically described Lua ---@lux.method exports as canonical LXSA v4."""
+"""Package statically described Lua ---@lux.method exports as canonical LXSA v5."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 
 MAGIC = 0x4153584C
-WIRE_VERSION = 4
-SCHEMA_VERSION = 6
+WIRE_VERSION = 5
+SCHEMA_VERSION = 7
 LUA_SOURCE_KIND = 1
 SIMULATION_SCOPE = "SIMULATION"
 ENTITY_SCOPE = "ENTITY"
@@ -264,6 +264,8 @@ def encode(
     writer.u32(SCHEMA_VERSION)
     writer.u32(LUA_SOURCE_KIND)
     writer.string(module_name)
+    writer.u64(0)
+    writer.u64(0)
     writer.u32(len(exports))
     for function in exports:
         writer.string(function.name)

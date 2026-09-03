@@ -135,6 +135,19 @@ add_custom_command(
 )
 add_custom_target(lux_architecture_check ALL DEPENDS "${lux_architecture_stamp}")
 
+set(lux_source_style_stamp "${CMAKE_BINARY_DIR}/lux-source-style-check.stamp")
+add_custom_command(
+    OUTPUT "${lux_source_style_stamp}"
+    COMMAND ${CMAKE_COMMAND}
+        "-DLUX_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/ValidateSourceStyle.cmake"
+    COMMAND ${CMAKE_COMMAND} -E touch "${lux_source_style_stamp}"
+    DEPENDS ${lux_architecture_inputs}
+    COMMENT "Validate engine source style"
+    VERBATIM
+)
+add_custom_target(lux_source_style_check ALL DEPENDS "${lux_source_style_stamp}")
+
 cmake_language(DEFER CALL lux_validate_foundation_targets)
 cmake_language(DEFER CALL lux_validate_target_dag)
 cmake_language(DEFER CALL lux_validate_all_production_targets)

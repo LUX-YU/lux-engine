@@ -2082,7 +2082,7 @@ file(GLOB_RECURSE flowforge_function_sources LIST_DIRECTORIES false
 foreach(source IN LISTS flowforge_function_sources)
     file(READ "${source}" content)
     if(content MATCHES
-       "FlowForgeRuntime|FlowForgeVM|FlowForgeScheduler|FlowForgeAwaitManager|lux/engine/simulation/|ScriptSystem|SystemInstanceId|ServiceRegistry")
+       "FlowForgeRuntime|FlowForgeVM|FlowForgeScheduler|FlowForgeAwaitManager|FlowForgeEventRuntime|lux/engine/simulation/|ScriptSystem|SystemInstanceId|ServiceRegistry")
         message(FATAL_ERROR
             "Architecture: generic FlowForge source '${source}' acquired runtime ownership or Simulation ontology."
         )
@@ -2138,7 +2138,7 @@ if(NOT lua_call_new EQUAL -1 OR NOT lua_call_delete EQUAL -1)
     )
 endif()
 if(lua_backend_contract MATCHES
-   "thread_local|CurrentLua|LuaCoroutineManager|LuaScheduler|LuaAwaitable|ScriptApiManager|ServiceRegistry")
+   "thread_local|CurrentLua|LuaCoroutineManager|LuaScheduler|LuaAwaitable|LuaEventManager|ScriptApiManager|ServiceRegistry")
     message(FATAL_ERROR
         "Architecture: Lua backend acquired a global current-script or a second scheduler/runtime."
     )

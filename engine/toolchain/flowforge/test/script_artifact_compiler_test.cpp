@@ -3,6 +3,7 @@
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
+#include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
 
 #include <algorithm>
@@ -90,10 +91,27 @@ namespace
             std::span{&kAwaitI32, 1U}
         }
     };
+    const lux::script::ScriptEventSourceDescription kEventSource{
+        "Gameplay",
+        "damage",
+        0x5101U,
+        0x5102U,
+        lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+        {
+            "lux.i32",
+            lux::semantic::typeId("lux.i32"),
+            LUX_SCRIPT_VK_INT32,
+            sizeof(std::int32_t),
+            alignof(std::int32_t)
+        },
+        lux::semantic::typeId("lux.i32"),
+        1U
+    };
 
     struct AsyncHost final
     {
         std::uint32_t starts{};
+        std::uint32_t event_starts{};
         std::uint32_t expected_ordinal{};
         std::int32_t failure_status{};
 
@@ -112,6 +130,20 @@ namespace
                 return 7;
             ++self.starts;
             *waiting = {self.starts, 1U};
+            return 0;
+        }
+
+        static int waitEvent(
+            void* opaque,
+            std::uint32_t ordinal,
+            lux_script_async_token* waiting
+        ) noexcept
+        {
+            auto& self = *static_cast<AsyncHost*>(opaque);
+            if (ordinal != 0U || waiting == nullptr)
+                return 8;
+            ++self.event_starts;
+            *waiting = {self.event_starts, 2U};
             return 0;
         }
     };
@@ -134,7 +166,7 @@ namespace
             if (argument_count != 1U || arguments == nullptr || arguments[0].data == nullptr)
                 return 1;
             ++self.calls;
-            if (ordinal == 0U)
+            if (ordinal == 0U && result_count == 1U)
             {
                 if (result_count != 1U || results == nullptr || results[0].data == nullptr)
                     return 2;
@@ -142,7 +174,7 @@ namespace
                     self.value + *static_cast<const std::int32_t*>(arguments[0].data);
                 return 0;
             }
-            if (ordinal == 1U && result_count == 0U)
+            if ((ordinal == 1U || ordinal == 0U) && result_count == 0U)
             {
                 self.value = *static_cast<const std::int32_t*>(arguments[0].data);
                 return 0;
@@ -292,6 +324,61 @@ namespace
             graph.getNode(event_index).node->id(),
             symbol
         }));
+        return graph;
+    }
+
+    lux::flowforge::FlowGraph makeBorrowedAcrossEventWaitGraph(lux::script::ScriptSymbolId symbol)
+    {
+        using namespace lux::flowforge;
+        FlowGraph graph;
+        auto event = std::make_unique<OnEventNode>("borrowed_event_wait");
+        auto borrow = std::make_unique<ScriptAbilityNode>(kAbilityNodes[3]);
+        auto wait = std::make_unique<ScriptEventAwaitNode>(kEventSource);
+        auto write = std::make_unique<ScriptAbilityNode>(kAbilityNodes[1]);
+        auto* event_pointer = event.get();
+        auto* borrow_pointer = borrow.get();
+        auto* wait_pointer = wait.get();
+        auto* write_pointer = write.get();
+        const auto event_index = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(borrow));
+        graph.addNodes(std::move(wait));
+        graph.addNodes(std::move(write));
+        LastLink previous;
+        assert(event_pointer->execOutPin().linkTo(&borrow_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(borrow_pointer->execOutPin().linkTo(&wait_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(wait_pointer->execOutPin().linkTo(&write_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(borrow_pointer->resultPins().front()->linkTo(
+            write_pointer->parameterPins().front().get(),
+            previous
+        ) == ELinkError::SUCCESS);
+        assert(graph.addExport({FlowForgeExportNodeId{41U}, graph.getNode(event_index).node->id(), symbol}));
+        return graph;
+    }
+
+    lux::flowforge::FlowGraph makeEventWaitGraph(
+        lux::script::ScriptSymbolId symbol,
+        const lux::script::ScriptEventSourceDescription& source = kEventSource
+    )
+    {
+        using namespace lux::flowforge;
+        FlowGraph graph;
+        auto event = std::make_unique<OnEventNode>("event_wait");
+        auto wait = std::make_unique<ScriptEventAwaitNode>(source);
+        auto write = std::make_unique<ScriptAbilityNode>(kAbilityNodes[1]);
+        auto* event_pointer = event.get();
+        auto* wait_pointer = wait.get();
+        auto* write_pointer = write.get();
+        const auto event_index = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(wait));
+        graph.addNodes(std::move(write));
+        LastLink previous;
+        assert(event_pointer->execOutPin().linkTo(&wait_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(wait_pointer->execOutPin().linkTo(&write_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(const_cast<DataOutPin&>(wait_pointer->payloadPin()).linkTo(
+            write_pointer->parameterPins().front().get(),
+            previous
+        ) == ELinkError::SUCCESS);
+        assert(graph.addExport({FlowForgeExportNodeId{42U}, graph.getNode(event_index).node->id(), symbol}));
         return graph;
     }
 
@@ -521,6 +608,42 @@ namespace
         }));
         return graph;
     }
+
+    lux::flowforge::FlowGraph makeEventWaitFunctionGraph(lux::script::ScriptSymbolId symbol)
+    {
+        using namespace lux::flowforge;
+        FlowGraph graph;
+        auto event = std::make_unique<OnEventNode>("event_wait_function");
+        auto function = std::make_unique<FuncDefNode>(
+            "wait_event_once",
+            std::vector<FuncArgInfo>{},
+            std::vector<FuncArgInfo>{}
+        );
+        auto call = std::make_unique<GraphFuncCallNode>(*function);
+        auto wait = std::make_unique<ScriptEventAwaitNode>(kEventSource);
+        auto function_return = std::make_unique<FuncReturnNode>(*function);
+        auto write = std::make_unique<ScriptAbilityNode>(kAbilityNodes[1]);
+        assert(write->parameterPins().front()->setConstantData(lux::meta::RuntimeObject(std::int32_t{61})));
+        auto* event_pointer = event.get();
+        auto* function_pointer = function.get();
+        auto* call_pointer = call.get();
+        auto* wait_pointer = wait.get();
+        auto* return_pointer = function_return.get();
+        auto* write_pointer = write.get();
+        const auto event_index = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(function));
+        graph.addNodes(std::move(call));
+        graph.addNodes(std::move(wait));
+        graph.addNodes(std::move(function_return));
+        graph.addNodes(std::move(write));
+        LastLink previous;
+        assert(event_pointer->execOutPin().linkTo(&call_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(call_pointer->execOutPin().linkTo(&write_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(function_pointer->execOutPin().linkTo(&wait_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(wait_pointer->execOutPin().linkTo(&return_pointer->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(graph.addExport({FlowForgeExportNodeId{43U}, graph.getNode(event_index).node->id(), symbol}));
+        return graph;
+    }
 }
 
 int main()
@@ -587,6 +710,147 @@ int main()
     assert(ability_module->findFunction(AbilitySymbol)->invoke(std::addressof(ability_frame)) == 0);
     assert(ability_provider.value == 41);
     assert(ability_provider.calls == 2U);
+
+    constexpr lux::script::ScriptSymbolId EventWaitSymbol = 0x2A34U;
+    auto event_wait_graph = makeEventWaitGraph(EventWaitSymbol);
+    const auto missing_event = lux::flowforge::compileFlowForgeScript(
+        event_wait_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.event_wait_missing",
+            .script_abilities = ability_catalog.view()
+        }
+    );
+    assert(!missing_event &&
+        missing_event.error().code == lux::flowforge::EFlowForgeError::UNKNOWN_SCRIPT_EVENT_SOURCE);
+    auto mismatched_event_source = kEventSource;
+    ++mismatched_event_source.payload_schema_version;
+    const auto mismatched_event = lux::flowforge::compileFlowForgeScript(
+        event_wait_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.event_wait_mismatch",
+            .script_abilities = ability_catalog.view(),
+            .script_events = std::span{&mismatched_event_source, 1U}
+        }
+    );
+    assert(!mismatched_event &&
+        mismatched_event.error().code == lux::flowforge::EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH);
+    auto event_wait_artifact = lux::flowforge::compileFlowForgeScript(
+        event_wait_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.event_wait",
+            .script_abilities = ability_catalog.view(),
+            .script_events = std::span{&kEventSource, 1U}
+        }
+    );
+    assert(event_wait_artifact);
+    auto event_wait_module = lux::script::loadNativeModule(event_wait_artifact->payload(), "gameplay.event_wait");
+    assert(event_wait_module && event_wait_module->eventWaitImports().size() == 1U);
+    auto targeted_source = kEventSource;
+    targeted_source.event_name = "targeted";
+    ++targeted_source.event_id;
+    targeted_source.route = lux::script::EScriptEventRoute::ENTITY_TARGETED;
+    auto targeted_graph = makeEventWaitGraph(0x2C34U, targeted_source);
+    auto targeted_artifact = lux::flowforge::compileFlowForgeScript(
+        targeted_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.targeted_event_wait",
+            .script_abilities = ability_catalog.view(),
+            .script_events = std::span{&targeted_source, 1U}
+        }
+    );
+    assert(targeted_artifact);
+    auto targeted_module = lux::script::loadNativeModule(
+        targeted_artifact->payload(),
+        "gameplay.targeted_event_wait"
+    );
+    assert(targeted_module && targeted_module->eventWaitImports().size() == 1U);
+    assert(targeted_module->eventWaitImports().front().route == 1U);
+    const auto* event_wait_function = event_wait_module->findFunction(EventWaitSymbol);
+    assert(event_wait_function != nullptr && event_wait_function->step != nullptr);
+    AbilityProvider event_wait_provider;
+    const lux_script_ability_runtime event_wait_runtime{
+        std::addressof(event_wait_provider),
+        &AbilityProvider::invoke
+    };
+    const lux_script_native_instance_context event_wait_instance{nullptr, std::addressof(event_wait_runtime)};
+    lux_script_call_frame event_wait_frame{};
+    event_wait_frame.native_instance = std::addressof(event_wait_instance);
+    AsyncHost event_wait_host;
+    const lux_script_step_host event_wait_step_host{
+        std::addressof(event_wait_host),
+        &AsyncHost::start,
+        &AsyncHost::waitEvent
+    };
+    const auto& event_wait_step = *event_wait_function->step;
+    void* event_wait_continuation = ::operator new(event_wait_step.frame_size);
+    std::memset(event_wait_continuation, 0, event_wait_step.frame_size);
+    lux_script_step_outcome event_wait_outcome{};
+    assert(event_wait_step.start(
+        &event_wait_frame,
+        &event_wait_step_host,
+        event_wait_continuation,
+        &event_wait_outcome
+    ) == 0);
+    assert(event_wait_outcome.state == LUX_SCRIPT_STEP_SUSPENDED && event_wait_host.event_starts == 1U);
+    std::int32_t event_value{37};
+    const lux_script_step_resume_packet event_ready{
+        LUX_SCRIPT_RESUME_READY,
+        1U,
+        {},
+        {
+            LUX_SCRIPT_VK_INT32,
+            {},
+            sizeof(event_value),
+            lux::semantic::typeId("lux.i32"),
+            std::addressof(event_value)
+        },
+        0
+    };
+    assert(event_wait_step.resume(
+        &event_wait_step_host,
+        event_wait_continuation,
+        &event_ready,
+        &event_wait_outcome
+    ) == 0);
+    assert(event_wait_outcome.state == LUX_SCRIPT_STEP_COMPLETED && event_wait_provider.value == event_value);
+    event_wait_step.destroy(event_wait_continuation);
+    ::operator delete(event_wait_continuation);
+
+    auto borrowed_event_graph = makeBorrowedAcrossEventWaitGraph(0x2B34U);
+    const auto borrowed_event = lux::flowforge::compileFlowForgeScript(
+        borrowed_event_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.borrowed_event_wait_invalid",
+            .script_abilities = ability_catalog.view(),
+            .script_events = std::span{&kEventSource, 1U}
+        }
+    );
+    assert(!borrowed_event &&
+        borrowed_event.error().code == lux::flowforge::EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION);
+    const auto lifecycle_event = lux::flowforge::compileFlowForgeScript(
+        event_wait_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.event_wait_lifecycle_invalid",
+            .lifecycle = {.begin_play = EventWaitSymbol},
+            .script_abilities = ability_catalog.view(),
+            .script_events = std::span{&kEventSource, 1U}
+        }
+    );
+    assert(!lifecycle_event &&
+        lifecycle_event.error().code == lux::flowforge::EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED);
+    constexpr lux::script::ScriptSymbolId EventFunctionSymbol = 0x2D34U;
+    auto event_function_graph = makeEventWaitFunctionGraph(EventFunctionSymbol);
+    const auto lifecycle_event_function = lux::flowforge::compileFlowForgeScript(
+        event_function_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.event_wait_function_lifecycle_invalid",
+            .lifecycle = {.end_play = EventFunctionSymbol},
+            .script_abilities = ability_catalog.view(),
+            .script_events = std::span{&kEventSource, 1U}
+        }
+    );
+    assert(!lifecycle_event_function &&
+        lifecycle_event_function.error().code == lux::flowforge::EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED);
 
     constexpr lux::script::ScriptSymbolId AsyncSymbol = 0x3234U;
     auto async_graph = makeAsyncAbilityGraph(AsyncSymbol);

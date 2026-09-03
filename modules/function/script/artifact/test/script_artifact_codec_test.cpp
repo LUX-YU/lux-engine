@@ -21,7 +21,7 @@ int main()
         script::ScriptApiContractId{"lux.test.Ability"},
         0x11223344U
     });
-    description.body = rdesc::LuaSourceScript{"module", {11U}};
+    description.body = rdesc::LuaSourceScript{"module", {11U}, {{"Gameplay", "damage"}}};
     auto source_result = script::ScriptArtifact::create(
         std::move(description),
         {std::byte{1U}, std::byte{2U}, std::byte{3U}}
@@ -48,7 +48,7 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(*encoded),
         decode_limits
     );
-    assert(image && image->data().view()[4] == std::byte{6U});
+    assert(image && image->data().view()[4] == std::byte{7U});
 
     auto decoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
         (*typed)->id(),
@@ -57,7 +57,7 @@ int main()
     );
     assert(decoded);
     const auto& artifact = (*decoded)->data();
-    assert(artifact.description().schema_version == 8U);
+    assert(artifact.description().schema_version == 9U);
     assert(artifact.description().lifecycle.begin_play == 10U);
     assert(artifact.description().lifecycle.end_play == 12U);
     assert(artifact.description().api_requirements.size() == 1U);
@@ -66,6 +66,9 @@ int main()
     assert(artifact.description().exports[1].symbol_id == 11U);
     assert(std::get<rdesc::LuaSourceScript>(artifact.description().body).suspension_capable_exports ==
         std::vector<script::ScriptSymbolId>{11U});
+    const auto& event_sources = std::get<rdesc::LuaSourceScript>(artifact.description().body).event_sources;
+    assert(event_sources.size() == 1U && event_sources.front().system_name == "Gameplay" &&
+        event_sources.front().event_name == "damage");
     assert(artifact.payload().size() == 3U);
     assert(artifact.findExport(11U) == std::addressof(artifact.description().exports[1]));
     assert(artifact.findExport(12U) == std::addressof(artifact.description().exports[2]));

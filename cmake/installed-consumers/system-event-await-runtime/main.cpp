@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 
 #include <array>
 #include <cassert>
@@ -213,6 +214,14 @@ int main()
     ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> start_bridge{kSystem, kStart, start};
     ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> ready_bridge{kSystem, kReady, ready};
     const std::array endpoints{start_bridge.descriptor(), ready_bridge.descriptor()};
+    const auto projected_event = projectScriptEventSource(
+        simulation->findEvent(kSystem, kReady),
+        endpoints[1],
+        "Gameplay",
+        "ready"
+    );
+    assert(projected_event && projected_event->system_id == kSystem.value &&
+        projected_event->event_id == kReady.value && projected_event->payload.canonical_name == "lux.i32");
 
     BackendState backend_state;
     const std::array backends{ScriptBackendDescriptor{

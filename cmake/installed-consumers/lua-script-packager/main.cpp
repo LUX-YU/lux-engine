@@ -42,18 +42,32 @@ int main()
     assert(description.lifecycle.end_play == 2U);
     const auto& lua = std::get<lux::rdesc::LuaSourceScript>(description.body);
     assert(lua.suspension_capable_exports == std::vector<lux::script::ScriptSymbolId>{3U});
+    const std::vector<lux::rdesc::LuaSourceScript::EventSource> expected_event_sources{
+        {"Inventory", "changed"}
+    };
+    assert(lua.event_sources == expected_event_sources);
     const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<
         installed_consumer::InventoryAbility
     >();
+    const lux::script::ScriptEventSourceDescription event_source{
+        "Inventory",
+        "changed",
+        51U,
+        52U,
+        lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+        {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
+        lux::semantic::typeId("lux.i32"),
+        1U
+    };
     const auto backend = lux::simulation::script::LuaScriptBackend::create({
-        1U,
-        4U,
-        1U,
-        4U,
-        Traits::Description.methods.size(),
-        {},
-        {},
-        {&contribution, 1U}
+        .instance_capacity = 1U,
+        .prepared_call_capacity = 4U,
+        .continuation_capacity = 1U,
+        .execution_depth_capacity = 4U,
+        .ability_method_capacity = Traits::Description.methods.size(),
+        .abilities = {&contribution, 1U},
+        .event_source_capacity = 1U,
+        .events = {&event_source, 1U}
     });
     assert(backend);
     return 0;

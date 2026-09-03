@@ -100,6 +100,16 @@ namespace
         LUX_SCRIPT_VK_UINT32,
         {}};
 
+    const lux_script_event_wait_import_desc kBadEventImport{
+        0U,
+        91U,
+        17U,
+        1U,
+        0U,
+        {},
+        kUint32Type
+    };
+
     const lux_script_type_desc kUpdateArgs[]{kFloatType};
     const lux_script_type_desc kPairArgs[]{kFloatType, kUint32Type};
 
@@ -147,7 +157,18 @@ namespace
         64,
         kFunctions,
         5,
-        0};
+        0,
+        nullptr,
+        0U,
+        0U,
+#if defined(LUX_SCRIPT_FIXTURE_BAD_EVENT_IMPORT)
+        &kBadEventImport,
+        1U,
+#else
+        nullptr,
+        0U,
+#endif
+        0U};
 }
 
 #if defined(LUX_SCRIPT_FIXTURE_BIND_FAILURE)

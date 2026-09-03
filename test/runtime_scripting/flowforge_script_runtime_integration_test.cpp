@@ -4,6 +4,7 @@
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
+#include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
@@ -45,6 +46,8 @@ namespace
     inline constexpr system::SystemInstanceId kProbeSystem{0x8301U};
     inline constexpr HookPointId kTickHook{0x8302U};
     inline constexpr lux::script::ScriptSymbolId kTickSymbol{0x8303U};
+    inline constexpr EventPointId kPayloadEvent{0x8304U};
+    inline constexpr lux::script::ScriptSymbolId kEventWaitSymbol{0x8305U};
     inline constexpr auto kTestContract = lux::script::ScriptApiContractIdView{"lux.test.flowforge.runtime"};
     inline constexpr auto kTestMethod = lux::script::ScriptApiMethodIdView{"lux.test.flowforge.runtime.write"};
     inline constexpr auto kReadMethod = lux::script::ScriptApiMethodIdView{"lux.test.flowforge.runtime.read"};
@@ -63,14 +66,27 @@ namespace
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
         inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "tick")};
+        inline static constexpr std::array Events{
+            makeEventPointSpec<std::int32_t>(
+                kPayloadEvent,
+                "payload",
+                kTickHook,
+                EEventRoute::SIMULATION_BROADCAST,
+                "lux.i32",
+                1U
+            )
+        };
         inline static constexpr SimulationSystemDescription Description{
             .type = {.canonical_name = "lux.test.flowforge.runtime.probe", .version = 1U},
-            .hooks = Hooks
+            .hooks = Hooks,
+            .events = Events
         };
 
-        ProbeSystem() noexcept : endpoint(kProbeSystem, kTickHook, hook)
+        ProbeSystem() noexcept
+            : endpoint(kProbeSystem, kTickHook, hook), event_endpoint(kProbeSystem, kPayloadEvent, event)
         {
-            ready = hook.prepare(g_hook_capacity) == EEndpointMutationError::NONE;
+            ready = hook.prepare(g_hook_capacity) == EEndpointMutationError::NONE &&
+                event.prepare(1U, 8U, 1U) == EEndpointMutationError::NONE;
         }
 
         void execute() noexcept
@@ -80,8 +96,12 @@ namespace
 
         HookPoint<void()> hook;
         ScriptHookEndpoint<void()> endpoint;
+        EventPoint<SimulationBroadcastRoute, std::int32_t> event;
+        ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> event_endpoint;
         bool ready{};
     };
+
+    ProbeSystem* g_probe{};
 
     [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> installProbe(
         SimulationBuilder& builder,
@@ -98,7 +118,11 @@ namespace
                 description.instanceId()
             });
         }
+        g_probe = *probe;
         auto published = builder.publishScriptHook(description.instanceId(), (*probe)->endpoint.descriptor());
+        if (!published)
+            return published;
+        published = builder.publishScriptEvent(description.instanceId(), (*probe)->event_endpoint.descriptor());
         if (!published)
             return published;
         return builder.addSystemTask<ProbeSystem>(
@@ -378,6 +402,57 @@ namespace
         return graph;
     }
 
+    [[nodiscard]] lux::script::ScriptEventSourceDescription eventSource()
+    {
+        return {
+            "Probe",
+            "payload",
+            kProbeSystem.value,
+            kPayloadEvent.value,
+            lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+            {
+                "lux.i32",
+                lux::semantic::typeId("lux.i32"),
+                LUX_SCRIPT_VK_INT32,
+                sizeof(std::int32_t),
+                alignof(std::int32_t)
+            },
+            lux::semantic::typeId("lux.i32"),
+            1U
+        };
+    }
+
+    [[nodiscard]] flowforge::FlowGraph makeEventWaitGraph(
+        const lux::script::ScriptEventSourceDescription& source
+    )
+    {
+        flowforge::FlowGraph graph;
+        auto event = std::make_unique<flowforge::OnEventNode>("wait_event");
+        auto wait = std::make_unique<flowforge::ScriptEventAwaitNode>(source);
+        auto write = std::make_unique<flowforge::ScriptAbilityNode>(kTestNodes.front());
+        auto* event_pointer = event.get();
+        auto* wait_pointer = wait.get();
+        auto* write_pointer = write.get();
+        const auto event_slot = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(wait));
+        graph.addNodes(std::move(write));
+        flowforge::LastLink previous;
+        assert(event_pointer->execOutPin().linkTo(&wait_pointer->execInPin(), previous) ==
+            flowforge::ELinkError::SUCCESS);
+        assert(wait_pointer->execOutPin().linkTo(&write_pointer->execInPin(), previous) ==
+            flowforge::ELinkError::SUCCESS);
+        assert(const_cast<flowforge::DataOutPin&>(wait_pointer->payloadPin()).linkTo(
+            write_pointer->parameterPins().front().get(),
+            previous
+        ) == flowforge::ELinkError::SUCCESS);
+        assert(graph.addExport({
+            flowforge::FlowForgeExportNodeId{4U},
+            graph.getNode(event_slot).node->id(),
+            kEventWaitSymbol
+        }));
+        return graph;
+    }
+
     [[nodiscard]] flowforge::FlowGraph makeQueryGraph()
     {
         flowforge::FlowGraph graph;
@@ -510,7 +585,11 @@ namespace
             std::string_view{"scene-flowforge-update-heavy"},
             std::string_view{"scene-flowforge-gameplay-mixed"},
             std::string_view{"scene-flowforge-suspended-idle"},
-            std::string_view{"scene-flowforge-resume-storm"}
+            std::string_view{"scene-flowforge-resume-storm"},
+            std::string_view{"micro-flowforge-event"},
+            std::string_view{"scene-flowforge-event"},
+            std::string_view{"scene-flowforge-event-idle"},
+            std::string_view{"scene-flowforge-event-storm"}
         };
         return std::ranges::find(groups, result.group) == groups.end()
             ? std::nullopt
@@ -533,6 +612,9 @@ namespace
         const bool storm = options.group == "scene-flowforge-resume-storm" ||
             options.group == "micro-flowforge-resume";
         const bool suspend_only = options.group == "micro-flowforge-suspend";
+        const bool event_mode = options.group.find("flowforge-event") != std::string::npos;
+        const bool event_idle = options.group == "scene-flowforge-event-idle";
+        const bool event_storm = options.group == "scene-flowforge-event-storm";
         g_hook_capacity = options.size;
 
         flowforge::ScriptAbilityNodeCatalog catalog;
@@ -547,12 +629,18 @@ namespace
         );
         if (next_step == nullptr)
             return 11;
-        auto graph = query_only ? makeQueryGraph() : sync ? makeSyncGraph() : makeGraph(*next_step);
+        const auto event_source = eventSource();
+        auto graph = event_mode ? makeEventWaitGraph(event_source) :
+            query_only ? makeQueryGraph() : sync ? makeSyncGraph() : makeGraph(*next_step);
+        const auto module_name = event_mode ? "lux.benchmark.flowforge.event" :
+            sync ? "lux.benchmark.flowforge.sync" : "lux.benchmark.flowforge.async";
         auto artifact = flowforge::compileFlowForgeScript(
             graph,
             flowforge::FlowForgeCompileOptions{
-                .module_name = sync ? "lux.benchmark.flowforge.sync" : "lux.benchmark.flowforge.async",
-                .script_abilities = catalog.view()
+                .module_name = module_name,
+                .script_abilities = catalog.view(),
+                .script_events = event_mode ? std::span{&event_source, 1U} :
+                    std::span<const lux::script::ScriptEventSourceDescription>{}
             }
         );
         if (!artifact)
@@ -567,7 +655,7 @@ namespace
         }
         auto native_module = lux::script::loadNativeModule(
             artifact->payload(),
-            sync ? "lux.benchmark.flowforge.sync" : "lux.benchmark.flowforge.async"
+            module_name
         );
         if (!native_module)
             return 13;
@@ -598,7 +686,7 @@ namespace
                 assetId(),
                 SimulationScriptMount{},
                 true,
-                {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
+                {{event_mode ? kEventWaitSymbol : kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
             }))
             {
                 return 18;
@@ -668,12 +756,32 @@ namespace
         if (!executor)
             return 22;
         const auto normal_frame = [&] {
-            return simulation->execute(*executor, SimulationDuration{1}) && system->executeStablePoint();
+            if (!simulation->execute(*executor, SimulationDuration{1}))
+                return false;
+            if (event_mode)
+            {
+                auto writer = g_probe->event.begin(0U);
+                if (!writer.record(31))
+                    return false;
+                writer = {};
+                if (g_probe->event.drain() == 0U)
+                    return false;
+            }
+            return system->executeStablePoint().has_value();
         };
-        if (idle || storm)
+        if (idle || storm || event_idle || event_storm)
         {
             if (!simulation->execute(*executor, SimulationDuration{1}))
                 return 23;
+            if (event_storm)
+            {
+                auto writer = g_probe->event.begin(0U);
+                if (!writer.record(37))
+                    return 23;
+                writer = {};
+                if (g_probe->event.drain() == 0U)
+                    return 23;
+            }
             while (system->stats().resume_queue_depth != 0U)
             {
                 if (!system->executeStablePoint())
@@ -698,15 +806,18 @@ namespace
         if (!output)
             return 26;
         output << "git_commit,build_type,scenario,backend,size,seed,frame,nanoseconds,active_instances,calls,"
-                  "continuations,awaitables,queue_depth,queue_high_water,continuation_frame_bytes,artifact_bytes,checksum\n";
-        const auto* exported = native_module->findFunction(kTickSymbol);
+                  "continuations,awaitables,event_waiters,event_dispatch_visits,queue_depth,queue_high_water,"
+                  "continuation_frame_bytes,artifact_bytes,checksum\n";
+        const auto* exported = native_module->findFunction(event_mode ? kEventWaitSymbol : kTickSymbol);
         const auto frame_bytes = exported != nullptr && exported->step != nullptr ? exported->step->frame_size : 0U;
         const auto record = [&](std::size_t frame, std::uint64_t nanoseconds) {
             const auto stats = system->stats();
             output << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group
                    << ",flowforge-aot," << options.size << ',' << options.seed << ',' << frame << ',' << nanoseconds
                    << ',' << stats.active_instances << ',' << provider.calls << ',' << stats.active_continuations << ','
-                   << stats.active_awaitables << ',' << stats.resume_queue_depth << ',' << stats.resume_queue_high_water
+                   << stats.active_awaitables << ',' << stats.active_event_waiters << ','
+                   << stats.event_waiter_dispatch_visits << ',' << stats.resume_queue_depth << ','
+                   << stats.resume_queue_high_water
                    << ',' << frame_bytes << ',' << artifact->payload().size() << ','
                    << (provider.checksum ^ provider.calls) << '\n';
         };
@@ -718,7 +829,7 @@ namespace
                 return 27;
             record(0U, std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count());
         }
-        else if (storm)
+        else if (storm || event_storm)
         {
             std::size_t frame{};
             do
@@ -734,7 +845,8 @@ namespace
             for (std::size_t frame{}; frame < options.frames; ++frame)
             {
                 const auto begin = Clock::now();
-                const bool success = idle ? static_cast<bool>(system->executeStablePoint()) : normal_frame();
+                const bool success = idle || event_idle ? static_cast<bool>(system->executeStablePoint()) :
+                    normal_frame();
                 const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
                 if (!success)
                     return 29;
@@ -902,6 +1014,127 @@ int main(int argc, char** argv)
     assert(system->activeAwaitableCount() == 0U);
     assert(provider.calls == 1U && provider.value == 111);
     assert(system->shutdown());
+
+    const auto event_source = eventSource();
+    auto event_graph = makeEventWaitGraph(event_source);
+    auto event_artifact = flowforge::compileFlowForgeScript(
+        event_graph,
+        flowforge::FlowForgeCompileOptions{
+            .module_name = "lux.test.flowforge.event-wait",
+            .script_abilities = catalog.view(),
+            .script_events = std::span{&event_source, 1U}
+        }
+    );
+    assert(event_artifact);
+    auto event_module = lux::script::loadNativeModule(
+        event_artifact->payload(),
+        "lux.test.flowforge.event-wait"
+    );
+    if (!event_module)
+    {
+        std::fprintf(
+            stderr,
+            "FlowForge Event module load failed: %u %s\n",
+            static_cast<unsigned>(event_module.error().code),
+            event_module.error().detail.c_str()
+        );
+    }
+    assert(event_module);
+    ScriptSystemDescriptionBuilder event_script_builder;
+    assert(event_script_builder.addMount({
+        ScriptMountId{2U},
+        assetId(),
+        SimulationScriptMount{},
+        true,
+        {{kEventWaitSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
+    }));
+    auto event_script_description = std::move(event_script_builder).build(simulation->description());
+    assert(event_script_description);
+    ArtifactSource event_artifact_source{
+        std::addressof(*event_artifact),
+        std::addressof(*event_module)
+    };
+    NativeScriptBackend event_backend{
+        {std::addressof(event_artifact_source), &ArtifactSource::resolveModule},
+        NativeScriptBackendConfig{
+            .module_capacity = 1U,
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 2U,
+            .continuation_capacity = 2U,
+            .max_ability_imports_per_module = 2U,
+            .max_continuation_frame_bytes = 8192U,
+            .max_event_wait_imports_per_module = 2U
+        }
+    };
+    assert(event_backend);
+    TestProvider event_wait_provider;
+    const lux::script::ScriptAbilityBinding event_wait_binding{
+        &kTestAbility,
+        std::addressof(event_wait_provider),
+        std::addressof(event_wait_provider),
+        kTestErasedMethods
+    };
+    const std::array event_wait_capabilities{publishScriptAbility(event_wait_binding)};
+    const auto event_backend_descriptor = event_backend.descriptor();
+    auto event_wait_system = ScriptSystem::create(
+        simulation->description(),
+        *event_script_description,
+        registry,
+        simulation->clock(),
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        {std::addressof(event_artifact_source), &ArtifactSource::resolveArtifact},
+        {},
+        event_wait_capabilities,
+        std::span{&event_backend_descriptor, 1U},
+        simulation->scriptHookEndpoints(),
+        simulation->scriptEventEndpoints()
+    );
+    assert(event_wait_system);
+    assert(event_wait_system->prepare());
+    assert(g_probe != nullptr);
+    assert(g_probe->hook.dispatch() == 1U);
+    assert(event_wait_system->activeContinuationCount() == 1U);
+    assert(event_wait_system->stats().active_event_waiters == 1U);
+    std::int32_t event_payload{73};
+    {
+        auto writer = g_probe->event.begin(0U);
+        assert(writer.record(event_payload));
+    }
+    event_payload = 99;
+    assert(g_probe->event.drain() == 1U);
+    assert(event_wait_provider.value == 0);
+    assert(event_wait_system->stats().active_event_waiters == 0U);
+    assert(event_wait_system->executeStablePoint());
+    assert(event_wait_provider.value == 73);
+    assert(event_wait_system->activeContinuationCount() == 0U);
+    assert(event_wait_system->activeAwaitableCount() == 0U);
+    assert(event_wait_system->shutdown());
+
+    auto retiring_event_wait = ScriptSystem::create(
+        simulation->description(),
+        *event_script_description,
+        registry,
+        simulation->clock(),
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        {std::addressof(event_artifact_source), &ArtifactSource::resolveArtifact},
+        {},
+        event_wait_capabilities,
+        std::span{&event_backend_descriptor, 1U},
+        simulation->scriptHookEndpoints(),
+        simulation->scriptEventEndpoints()
+    );
+    assert(retiring_event_wait);
+    assert(retiring_event_wait->prepare());
+    assert(g_probe->hook.dispatch() == 1U);
+    assert(retiring_event_wait->stats().active_event_waiters == 1U);
+    const auto writes_before_event_retirement = event_wait_provider.calls;
+    assert(retiring_event_wait->shutdown());
+    {
+        auto writer = g_probe->event.begin(0U);
+        assert(writer.record(101));
+    }
+    assert(g_probe->event.drain() == 0U);
+    assert(event_wait_provider.calls == writes_before_event_retirement);
 
     auto retiring = ScriptSystem::create(
         simulation->description(),

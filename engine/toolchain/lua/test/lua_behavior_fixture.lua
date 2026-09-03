@@ -1,6 +1,7 @@
 local EnemyBehavior = {}
 
 ---@lux.requires lux.simulation.delay
+---@lux.event Gameplay.damage
 
 ---@lux.method
 ---@lux.lifecycle begin_play

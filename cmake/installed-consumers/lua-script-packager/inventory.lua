@@ -1,6 +1,7 @@
 local InventoryBehavior = {}
 
 ---@lux.requires consumer.inventory.lua
+---@lux.event Inventory.changed
 
 ---@lux.method
 ---@lux.lifecycle begin_play

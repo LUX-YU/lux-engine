@@ -51,6 +51,9 @@ int main()
         lux::script::ScriptAbilityTraits<lux::simulation::script::DelayAbility>::Description.schema_hash);
     const auto& lua = std::get<lux::rdesc::LuaSourceScript>(description.body);
     assert(lua.suspension_capable_exports == std::vector<lux::script::ScriptSymbolId>{4U});
+    assert(lua.event_sources.size() == 1U);
+    assert(lua.event_sources.front().system_name == "Gameplay");
+    assert(lua.event_sources.front().event_name == "damage");
     assert(description.exports.size() == 4U);
     const auto tick = std::ranges::find_if(description.exports, [](const auto& function) {
         return function.name == "tick";

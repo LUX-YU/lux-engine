@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
+#include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 
 #include <array>
@@ -29,13 +30,18 @@ namespace
     inline constexpr HookPointId kSyncHook{0x4C554102U};
     inline constexpr HookPointId kAsyncHook{0x4C554103U};
     inline constexpr HookPointId kScalarHook{0x4C55410AU};
+    inline constexpr HookPointId kEventWaitHook{0x4C55410CU};
+    inline constexpr HookPointId kTargetWaitHook{0x4C55410EU};
     inline constexpr EventPointId kAsyncEvent{0x4C554108U};
+    inline constexpr EventPointId kTargetEvent{0x4C55410FU};
     inline constexpr lux::script::ScriptSymbolId kSyncSymbol{0x4C554104U};
     inline constexpr lux::script::ScriptSymbolId kAsyncSymbol{0x4C554105U};
     inline constexpr lux::script::ScriptSymbolId kBeginSymbol{0x4C554106U};
     inline constexpr lux::script::ScriptSymbolId kEndSymbol{0x4C554107U};
     inline constexpr lux::script::ScriptSymbolId kEventSymbol{0x4C554109U};
     inline constexpr lux::script::ScriptSymbolId kScalarSymbol{0x4C55410BU};
+    inline constexpr lux::script::ScriptSymbolId kEventWaitSymbol{0x4C55410DU};
+    inline constexpr lux::script::ScriptSymbolId kTargetWaitSymbol{0x4C554110U};
 
     struct Provider final
     {
@@ -138,7 +144,9 @@ namespace
         constexpr std::array hooks{
             makeHookPointSpec<void()>(kSyncHook, "lua-sync"),
             makeHookPointSpec<void()>(kAsyncHook, "lua-async"),
-            makeHookPointSpec<void()>(kScalarHook, "lua-scalars")
+            makeHookPointSpec<void()>(kScalarHook, "lua-scalars"),
+            makeHookPointSpec<void()>(kEventWaitHook, "lua-event-wait"),
+            makeHookPointSpec<void()>(kTargetWaitHook, "lua-target-wait")
         };
         constexpr std::array events{
             makeEventPointSpec<std::int32_t>(
@@ -146,6 +154,14 @@ namespace
                 "lua-event",
                 kAsyncHook,
                 EEventRoute::SIMULATION_BROADCAST,
+                "lux.i32",
+                1U
+            ),
+            makeEventPointSpec<std::int32_t>(
+                kTargetEvent,
+                "lua-targeted-event",
+                kTargetWaitHook,
+                EEventRoute::ENTITY_TARGETED,
                 "lux.i32",
                 1U
             )
@@ -162,7 +178,10 @@ namespace
         return std::move(*description);
     }
 
-    [[nodiscard]] lux::script::ScriptArtifact makeArtifact(bool require_ability = true)
+    [[nodiscard]] lux::script::ScriptArtifact makeArtifact(
+        bool require_ability = true,
+        bool declare_event = true
+    )
     {
         constexpr std::string_view source = R"lua(
             return {
@@ -208,6 +227,16 @@ namespace
                     local result = lux.LuaRuntimeTest.beginOperation(input)
                     self.event_count = self.event_count + result
                     lux.LuaRuntimeTest.writeValue(self.event_count)
+                end,
+                wait_event = function(self)
+                    local payload = lux.Event.Gameplay.damage()
+                    self.waited_payload = payload
+                    lux.LuaRuntimeTest.writeValue(payload)
+                end,
+                wait_targeted = function(self)
+                    local payload = lux.Event.Gameplay.targeted()
+                    self.targeted_payload = payload
+                    lux.LuaRuntimeTest.writeValue(payload)
                 end
             }
         )lua";
@@ -223,6 +252,8 @@ namespace
             {}
         });
         description.exports.push_back({"begin_life", kBeginSymbol, {}, {}});
+        description.exports.push_back({"wait_event", kEventWaitSymbol, {}, {}});
+        description.exports.push_back({"wait_targeted", kTargetWaitSymbol, {}, {}});
         description.exports.push_back({
             "end_life",
             kEndSymbol,
@@ -237,10 +268,16 @@ namespace
                 AbilityTraits::Description.schema_hash
             });
         }
-        description.body = lux::rdesc::LuaSourceScript{
+        lux::rdesc::LuaSourceScript lua{
             "LuaRuntimeFixture",
-            {kAsyncSymbol, kEventSymbol}
+            {kAsyncSymbol, kEventSymbol, kEventWaitSymbol, kTargetWaitSymbol}
         };
+        if (declare_event)
+        {
+            lua.event_sources.push_back({"Gameplay", "damage"});
+            lua.event_sources.push_back({"Gameplay", "targeted"});
+        }
+        description.body = std::move(lua);
         std::vector<std::byte> payload;
         payload.reserve(source.size());
         for (const auto value : source)
@@ -259,7 +296,9 @@ namespace
                 sync_tick = function(self) self.sync_count = (self.sync_count or 0) + 1 end,
                 scalar_round_trip = function(self) end,
                 async_tick = function(self) coroutine.yield() end,
-                async_event = function(self, input) self.event_value = input end
+                async_event = function(self, input) self.event_value = input end,
+                wait_event = function(self) end,
+                wait_targeted = function(self) end
             }
         )lua";
         lux::rdesc::Script description;
@@ -274,6 +313,8 @@ namespace
             {}
         });
         description.exports.push_back({"begin_life", kBeginSymbol, {}, {}});
+        description.exports.push_back({"wait_event", kEventWaitSymbol, {}, {}});
+        description.exports.push_back({"wait_targeted", kTargetWaitSymbol, {}, {}});
         description.exports.push_back({
             "end_life",
             kEndSymbol,
@@ -295,10 +336,11 @@ namespace
     {
         explicit Harness(
             bool require_ability = true,
-            std::size_t lua_continuation_capacity = 4U
+            std::size_t lua_continuation_capacity = 4U,
+            bool declare_event = true
         )
             : simulation(makeSimulation()),
-              artifact(makeArtifact(require_ability)),
+              artifact(makeArtifact(require_ability, declare_event)),
               asset(assetId()),
               object(objectId())
         {
@@ -313,6 +355,8 @@ namespace
                     {kSyncSymbol, HookScriptTarget{kSystem, kSyncHook}},
                     {kAsyncSymbol, HookScriptTarget{kSystem, kAsyncHook}},
                     {kScalarSymbol, HookScriptTarget{kSystem, kScalarHook}},
+                    {kEventWaitSymbol, HookScriptTarget{kSystem, kEventWaitHook}},
+                    {kTargetWaitSymbol, HookScriptTarget{kSystem, kTargetWaitHook}},
                     {kEventSymbol, EventScriptTarget{kSystem, kAsyncEvent}}
                 }
             }));
@@ -322,28 +366,52 @@ namespace
             assert(sync_hook.prepare(1U) == EEndpointMutationError::NONE);
             assert(async_hook.prepare(1U) == EEndpointMutationError::NONE);
             assert(scalar_hook.prepare(1U) == EEndpointMutationError::NONE);
+            assert(event_wait_hook.prepare(1U) == EEndpointMutationError::NONE);
+            assert(target_wait_hook.prepare(1U) == EEndpointMutationError::NONE);
             assert(async_event.prepare(1U, 4U, 4U) == EEndpointMutationError::NONE);
+            assert(target_event.prepare(1U, 4U, 1U) == EEndpointMutationError::NONE);
             sync_endpoint.emplace(kSystem, kSyncHook, sync_hook);
             async_endpoint.emplace(kSystem, kAsyncHook, async_hook);
             scalar_endpoint.emplace(kSystem, kScalarHook, scalar_hook);
+            event_wait_endpoint.emplace(kSystem, kEventWaitHook, event_wait_hook);
+            target_wait_endpoint.emplace(kSystem, kTargetWaitHook, target_wait_hook);
             event_endpoint.emplace(kSystem, kAsyncEvent, async_event);
+            target_event_endpoint.emplace(kSystem, kTargetEvent, target_event);
             endpoints = {
                 sync_endpoint->descriptor(),
                 async_endpoint->descriptor(),
-                scalar_endpoint->descriptor()
+                scalar_endpoint->descriptor(),
+                event_wait_endpoint->descriptor(),
+                target_wait_endpoint->descriptor()
             };
-            event_endpoints = {event_endpoint->descriptor()};
+            event_endpoints = {event_endpoint->descriptor(), target_event_endpoint->descriptor()};
+            auto projected = projectScriptEventSource(
+                simulation.findEvent(kSystem, kAsyncEvent),
+                event_endpoints.front(),
+                "Gameplay",
+                "damage"
+            );
+            assert(projected);
+            event_sources[0] = std::move(*projected);
+            projected = projectScriptEventSource(
+                simulation.findEvent(kSystem, kTargetEvent),
+                event_endpoints[1],
+                "Gameplay",
+                "targeted"
+            );
+            assert(projected);
+            event_sources[1] = std::move(*projected);
             contribution = lux::script::lua::makeScriptAbilityLuaContribution<Ability>();
             auto created_backend = LuaScriptBackend::create({
-                1U,
-                8U,
-                lua_continuation_capacity,
-                8U,
-                AbilityTraits::Description.methods.size(),
-                {},
-                {},
-                std::span{&contribution, 1U},
-                g_execution_policy
+                .instance_capacity = 1U,
+                .prepared_call_capacity = 16U,
+                .continuation_capacity = lua_continuation_capacity,
+                .execution_depth_capacity = 8U,
+                .ability_method_capacity = AbilityTraits::Description.methods.size(),
+                .abilities = std::span{&contribution, 1U},
+                .execution_policy = g_execution_policy,
+                .event_source_capacity = event_sources.size(),
+                .events = event_sources
             });
             assert(created_backend);
             backend.emplace(std::move(*created_backend));
@@ -410,14 +478,21 @@ namespace
         HookPoint<void()> sync_hook;
         HookPoint<void()> async_hook;
         HookPoint<void()> scalar_hook;
+        HookPoint<void()> event_wait_hook;
+        HookPoint<void()> target_wait_hook;
         EventPoint<SimulationBroadcastRoute, std::int32_t> async_event;
+        EventPoint<EntityTargetedRoute<ecs::Entity>, std::int32_t> target_event;
         std::optional<ScriptHookEndpoint<void()>> sync_endpoint;
         std::optional<ScriptHookEndpoint<void()>> async_endpoint;
         std::optional<ScriptHookEndpoint<void()>> scalar_endpoint;
+        std::optional<ScriptHookEndpoint<void()>> event_wait_endpoint;
+        std::optional<ScriptHookEndpoint<void()>> target_wait_endpoint;
         std::optional<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_endpoint;
-        std::array<ScriptHookEndpointDescriptor, 3U> endpoints;
-        std::array<ScriptEventEndpointDescriptor, 1U> event_endpoints;
+        std::optional<ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, std::int32_t>> target_event_endpoint;
+        std::array<ScriptHookEndpointDescriptor, 5U> endpoints;
+        std::array<ScriptEventEndpointDescriptor, 2U> event_endpoints;
         lux::script::lua::ScriptAbilityLuaContribution contribution;
+        std::array<lux::script::ScriptEventSourceDescription, 2U> event_sources;
         std::optional<LuaScriptBackend> backend;
         ScriptBackendDescriptor descriptor;
     };
@@ -512,6 +587,86 @@ int main(int argc, char** argv)
     assert(event_provider.value == 32);
     assert(event_system.activeContinuationCount() == 0U);
     assert(event_system.shutdown());
+
+    Provider waiter_provider;
+    const auto waiter_binding = lux::script::bindScriptAbility<Ability>(waiter_provider);
+    const std::array waiter_capabilities{publishScriptAbility(waiter_binding)};
+    Harness waiter;
+    auto waiter_created = waiter.create(waiter_capabilities);
+    assert(waiter_created);
+    auto waiter_system = std::move(*waiter_created);
+    assert(waiter_system.prepare());
+    assert(waiter.event_wait_hook.dispatch() == 1U);
+    assert(waiter_system.activeContinuationCount() == 1U);
+    assert(waiter_system.stats().active_event_waiters == 1U);
+    std::int32_t payload{41};
+    {
+        auto writer = waiter.async_event.begin(0U);
+        assert(writer.record(payload));
+    }
+    payload = 99;
+    assert(waiter.async_event.drain() == 1U);
+    assert(waiter_provider.value == 7);
+    assert(waiter_system.stats().active_event_waiters == 0U);
+    assert(waiter_system.activeContinuationCount() == 2U);
+    assert(waiter_system.executeStablePoint());
+    assert(waiter_provider.value == 41);
+    assert(waiter_system.activeContinuationCount() == 1U);
+    assert(waiter_system.shutdown());
+
+    Provider targeted_provider;
+    const auto targeted_binding = lux::script::bindScriptAbility<Ability>(targeted_provider);
+    const std::array targeted_capabilities{publishScriptAbility(targeted_binding)};
+    Harness targeted;
+    auto targeted_created = targeted.create(targeted_capabilities);
+    assert(targeted_created);
+    auto targeted_system = std::move(*targeted_created);
+    assert(targeted_system.prepare());
+    assert(targeted.target_wait_hook.dispatch() == 1U);
+    assert(targeted_system.stats().active_event_waiters == 1U);
+    const auto other = targeted.registry.create();
+    {
+        auto writer = targeted.target_event.begin(0U);
+        assert(writer.record(other, 71));
+    }
+    assert(targeted.target_event.drain() == 1U);
+    assert(targeted_system.stats().active_event_waiters == 1U);
+    assert(targeted_system.executeStablePoint());
+    assert(targeted_provider.value == 7);
+    {
+        auto writer = targeted.target_event.begin(0U);
+        assert(writer.record(targeted.entity, 88));
+    }
+    assert(targeted.target_event.drain() == 1U);
+    assert(targeted_provider.value == 7);
+    assert(targeted_system.executeStablePoint());
+    assert(targeted_provider.value == 88);
+    assert(targeted_system.stats().active_event_waiters == 0U);
+    assert(targeted_system.shutdown());
+
+    Provider event_retirement_provider;
+    const auto event_retirement_binding = lux::script::bindScriptAbility<Ability>(event_retirement_provider);
+    const std::array event_retirement_capabilities{publishScriptAbility(event_retirement_binding)};
+    Harness event_retirement;
+    auto event_retirement_created = event_retirement.create(event_retirement_capabilities);
+    assert(event_retirement_created);
+    auto event_retirement_system = std::move(*event_retirement_created);
+    assert(event_retirement_system.prepare());
+    assert(event_retirement.event_wait_hook.dispatch() == 1U);
+    assert(event_retirement_system.stats().active_event_waiters == 1U);
+    event_retirement.registry.destroy(event_retirement.entity);
+    const auto event_retired = event_retirement_system.executeStablePoint();
+    assert(!event_retired && event_retired.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
+    assert(event_retirement_system.stats().active_event_waiters == 0U);
+    const auto writes_before_late_event = event_retirement_provider.writes;
+    {
+        auto writer = event_retirement.async_event.begin(0U);
+        assert(writer.record(109));
+    }
+    assert(event_retirement.async_event.drain() == 1U);
+    assert(event_retirement_system.executeStablePoint());
+    assert(event_retirement_provider.writes == writes_before_late_event);
+    assert(event_retirement_system.shutdown());
 
     Provider limited_provider;
     const auto limited_binding = lux::script::bindScriptAbility<Ability>(limited_provider);

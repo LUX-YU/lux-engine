@@ -158,6 +158,43 @@ function Enemy:update() end
         ),
         "duplicate Ability requirement",
     )
+    expect_failure(
+        lambda: parse(
+            """---@lux.event Gameplay.damage
+---@lux.event Gameplay.damage
+---@lux.method
+---@return void
+function Enemy:update() end
+""",
+            {"Enemy:update": 1},
+        ),
+        "duplicate Event source",
+    )
+    expect_failure(
+        lambda: parse(
+            """---@lux.method
+---@return void
+function Enemy:update() end
+---@lux.event Gameplay.damage
+""",
+            {"Enemy:update": 1},
+        ),
+        "@lux.event must precede all exports",
+    )
+
+    event_sources = parse(
+        """---@lux.event Gameplay.spawned
+---@lux.event Gameplay.damage
+---@lux.method
+---@return void
+function Enemy:update() end
+""",
+        {"Enemy:update": 1},
+    )
+    assert event_sources.event_sources == [
+        package.EventSource("Gameplay", "damage"),
+        package.EventSource("Gameplay", "spawned"),
+    ]
 
     old = parse(
         """---@lux.method

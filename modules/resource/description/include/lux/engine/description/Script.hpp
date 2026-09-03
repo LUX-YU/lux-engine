@@ -5,6 +5,7 @@
 #include <lux/engine/function/script/ScriptSymbol.hpp>
 
 #include <algorithm>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <new>
@@ -96,8 +97,18 @@ namespace lux::rdesc
 
     struct LuaSourceScript final
     {
+        struct EventSource final
+        {
+            std::string system_name;
+            std::string event_name;
+
+            friend bool operator==(const EventSource&, const EventSource&) noexcept = default;
+            friend auto operator<=>(const EventSource&, const EventSource&) noexcept = default;
+        };
+
         std::string entry;
         std::vector<lux::script::ScriptSymbolId> suspension_capable_exports;
+        std::vector<EventSource> event_sources;
 
         friend bool operator==(const LuaSourceScript&, const LuaSourceScript&)
             noexcept = default;
@@ -130,7 +141,7 @@ namespace lux::rdesc
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 8U;
+        static constexpr std::uint32_t kSchemaVersion = 9U;
 
         enum class Kind : std::uint8_t
         {
@@ -229,9 +240,20 @@ namespace lux::rdesc
                     lua->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
                     !std::ranges::is_sorted(lua->suspension_capable_exports) ||
                     std::ranges::adjacent_find(lua->suspension_capable_exports) !=
-                        lua->suspension_capable_exports.end()))
+                        lua->suspension_capable_exports.end() ||
+                    lua->event_sources.size() > std::numeric_limits<std::uint32_t>::max() ||
+                    !std::ranges::is_sorted(lua->event_sources) ||
+                    std::ranges::adjacent_find(lua->event_sources) != lua->event_sources.end()))
             {
                 return false;
+            }
+            if (const auto* lua = std::get_if<LuaSourceScript>(&description.body))
+            {
+                for (const auto& source : lua->event_sources)
+                {
+                    if (source.system_name.empty() || source.event_name.empty())
+                        return false;
+                }
             }
             return true;
         }

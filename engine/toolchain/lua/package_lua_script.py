@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package statically described Lua exports as canonical LXSA v6."""
+"""Package statically described Lua exports as canonical LXSA v7."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 
 MAGIC = 0x4153584C
-WIRE_VERSION = 6
-SCHEMA_VERSION = 8
+WIRE_VERSION = 7
+SCHEMA_VERSION = 9
 LUA_SOURCE_KIND = 1
 SIMULATION_SCOPE = "SIMULATION"
 ENTITY_SCOPE = "ENTITY"
@@ -176,6 +176,12 @@ class AbilitySchema:
     schema_hash: int
 
 
+@dataclass(frozen=True, order=True)
+class EventSource:
+    system_name: str
+    event_name: str
+
+
 @dataclass(frozen=True)
 class PackageDescription:
     exports: list[Export]
@@ -183,6 +189,7 @@ class PackageDescription:
     end_play: int
     suspension_capable_exports: list[int]
     requirements: list[AbilitySchema]
+    event_sources: list[EventSource]
 
 
 FUNCTION = re.compile(
@@ -195,6 +202,10 @@ PARAM = re.compile(
 )
 RETURN = re.compile(r"^\s*---@return\s+(\S+)\s*$")
 REQUIRE = re.compile(r"^\s*---@lux\.requires\s+(\S+)\s*$")
+EVENT = re.compile(
+    r"^\s*---@lux\.event\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*$"
+)
 LIFECYCLE = re.compile(r"^\s*---@lux\.lifecycle\s+(begin_play|end_play)\s*$")
 COROUTINE = re.compile(r"^\s*---@lux\.coroutine\s*$")
 
@@ -264,6 +275,8 @@ def collect_exports(
     symbols: set[int] = set()
     requirement_names: list[str] = []
     seen_requirements: set[str] = set()
+    event_sources: list[EventSource] = []
+    seen_event_sources: set[EventSource] = set()
     for line_number, line in enumerate(source.splitlines(), 1):
         stripped = line.strip()
         if match := REQUIRE.match(line):
@@ -280,6 +293,17 @@ def collect_exports(
                 )
             seen_requirements.add(contract)
             requirement_names.append(contract)
+            continue
+        if match := EVENT.match(line):
+            if marked or exports:
+                raise ValueError(
+                    f"line {line_number}: @lux.event must precede all exports"
+                )
+            source = EventSource(match.group(1), match.group(2))
+            if source in seen_event_sources:
+                raise ValueError(f"line {line_number}: duplicate Event source")
+            seen_event_sources.add(source)
+            event_sources.append(source)
             continue
         if stripped == "---@lux.method":
             if marked:
@@ -412,12 +436,14 @@ def collect_exports(
         (ability_schemas[name] for name in requirement_names),
         key=lambda value: value.contract,
     )
+    event_sources.sort()
     return PackageDescription(
         exports,
         begin_play,
         end_play,
         suspension_capable_exports,
         requirements,
+        event_sources,
     )
 
 
@@ -490,6 +516,10 @@ def encode(
     writer.u32(len(package.suspension_capable_exports))
     for symbol in package.suspension_capable_exports:
         writer.u64(symbol)
+    writer.u32(len(package.event_sources))
+    for source in package.event_sources:
+        writer.string(source.system_name)
+        writer.string(source.event_name)
     writer.u64(len(payload))
     writer.data += payload
     return bytes(writer.data)

@@ -17,7 +17,7 @@ namespace lux::script
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion = 6U;
+        constexpr std::uint32_t kWireVersion = 7U;
 
         class Writer final
         {
@@ -267,6 +267,12 @@ namespace lux::script
                     writer.u32(static_cast<std::uint32_t>(lua->suspension_capable_exports.size()));
                     for (const auto symbol : lua->suspension_capable_exports)
                         writer.u64(symbol);
+                    writer.u32(static_cast<std::uint32_t>(lua->event_sources.size()));
+                    for (const auto& source : lua->event_sources)
+                    {
+                        writer.string(source.system_name);
+                        writer.string(source.event_name);
+                    }
                 }
                 else if (const auto* native =
                     std::get_if<lux::rdesc::NativeModuleScript>(
@@ -455,6 +461,26 @@ namespace lux::script
                         if (!reader.u64(symbol))
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         lua.suspension_capable_exports.push_back(symbol);
+                    }
+                    if (!reader.u32(count) || !reserveRecords(
+                            lua.event_sources,
+                            count,
+                            decoded,
+                            limit,
+                            reader.remaining()
+                        ))
+                    {
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    }
+                    for (std::uint32_t index{}; index < count; ++index)
+                    {
+                        lux::rdesc::LuaSourceScript::EventSource source;
+                        if (!reader.string(source.system_name, decoded, limit) ||
+                            !reader.string(source.event_name, decoded, limit))
+                        {
+                            return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                        }
+                        lua.event_sources.push_back(std::move(source));
                     }
                     description.body = std::move(lua);
                 }

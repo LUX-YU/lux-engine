@@ -2,6 +2,7 @@
 
 #include <lux/engine/function/script/lua/LuaVm.hpp>
 #include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
+#include <lux/engine/function/script/ScriptEvent.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/lua/visibility.h>
 
@@ -52,6 +53,10 @@ namespace lux::simulation::script
         DUPLICATE_ABILITY_METHOD,
         UNSUPPORTED_ABILITY_TYPE,
         ABILITY_REGISTRATION_FAILURE,
+        INVALID_EVENT_SOURCE,
+        DUPLICATE_EVENT_SOURCE,
+        UNSUPPORTED_EVENT_PAYLOAD,
+        EVENT_REGISTRATION_FAILURE,
         VM_CONFIGURATION_FAILURE,
         ALLOCATION_FAILURE,
     };
@@ -69,6 +74,8 @@ namespace lux::simulation::script
         lux::script::lua::ELuaExecutionPolicy execution_policy{
             lux::script::lua::ELuaExecutionPolicy::DEFAULT
         };
+        std::size_t event_source_capacity{1U};
+        std::span<const lux::script::ScriptEventSourceDescription> events;
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final

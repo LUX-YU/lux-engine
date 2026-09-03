@@ -18,6 +18,7 @@
 #include <optional>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace lux::simulation::script
@@ -33,6 +34,14 @@ namespace lux::simulation::script
         static constexpr std::int32_t kInvalidResume = -6;
         static constexpr std::int32_t kContinuationCapacity = -7;
         static constexpr std::int32_t kExecutionDepthCapacity = -8;
+        static constexpr std::int32_t kEventWaitFailure = -9;
+
+        enum class EPendingOperation : std::uint8_t
+        {
+            NONE,
+            ABILITY,
+            EVENT,
+        };
 
         struct HostHandle final
         {
@@ -99,6 +108,11 @@ namespace lux::simulation::script
             const lux::script::ScriptAbilityErasedMethodBinding* method{};
         };
 
+        struct PreparedEventSource final
+        {
+            const lux::script::ScriptEventSourceDescription* source{};
+        };
+
         struct LuaContinuation final
         {
             State* owner{};
@@ -107,7 +121,8 @@ namespace lux::simulation::script
             lua_State* thread{};
             int thread_ref{LUA_NOREF};
             ScriptAwaitableId waiting_on;
-            std::uint32_t pending_method{};
+            std::uint32_t pending_ordinal{};
+            EPendingOperation pending_operation{EPendingOperation::NONE};
             std::int32_t failure_status{};
             bool active{};
         };
@@ -128,7 +143,8 @@ namespace lux::simulation::script
               prepared_call_capacity(config.prepared_call_capacity),
               continuation_capacity(config.continuation_capacity),
               execution_depth_capacity(config.execution_depth_capacity),
-              ability_method_capacity(config.ability_method_capacity)
+              ability_method_capacity(config.ability_method_capacity),
+              event_source_capacity(config.event_source_capacity)
         {
             if (!lux::script::lua::detail::configureLuaVm(
                     state,
@@ -164,7 +180,12 @@ namespace lux::simulation::script
                 for (const auto& method : contribution.description->methods)
                     ability_methods.push_back({contribution.description, std::addressof(method)});
             }
+            event_sources.assign(config.events.begin(), config.events.end());
+            std::ranges::sort(event_sources, {}, [](const auto& source) noexcept {
+                return std::pair{std::string_view(source.system_name), std::string_view(source.event_name)};
+            });
             prepared_abilities.resize(instance_capacity * ability_method_capacity);
+            prepared_events.resize(instance_capacity * event_source_capacity);
             execution_stack.reserve(execution_depth_capacity);
             instances.resize(instance_capacity);
             free_instances.reserve(instance_capacity);
@@ -275,6 +296,46 @@ namespace lux::simulation::script
                 first_method = ordinal;
             }
             lua_setglobal(state, "lux");
+            return true;
+        }
+
+        [[nodiscard]] bool initializeEvents() noexcept
+        {
+            lua_getglobal(state, "lux");
+            if (!lua_istable(state, -1))
+            {
+                lua_pop(state, 1);
+                return false;
+            }
+            const auto lux_index = lua_gettop(state);
+            lua_newtable(state);
+            const auto event_index = lua_gettop(state);
+            std::size_t first_source{};
+            while (first_source < event_sources.size())
+            {
+                const auto system_name = event_sources[first_source].system_name;
+                lua_newtable(state);
+                const auto system_index = lua_gettop(state);
+                std::size_t ordinal = first_source;
+                while (ordinal < event_sources.size() && event_sources[ordinal].system_name == system_name)
+                {
+                    const auto& source = event_sources[ordinal];
+                    lua_pushlstring(state, source.event_name.data(), source.event_name.size());
+                    lua_pushlightuserdata(state, this);
+                    lua_pushinteger(state, static_cast<lua_Integer>(ordinal));
+                    lua_pushcclosure(state, &State::invokeEventWait, 2);
+                    lua_settable(state, system_index);
+                    ++ordinal;
+                }
+                lua_pushlstring(state, system_name.data(), system_name.size());
+                lua_pushvalue(state, system_index);
+                lua_settable(state, event_index);
+                lua_pop(state, 1);
+                first_source = ordinal;
+            }
+            lua_pushvalue(state, event_index);
+            lua_setfield(state, lux_index, "Event");
+            lua_pop(state, 2);
             return true;
         }
 
@@ -465,6 +526,32 @@ namespace lux::simulation::script
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                     prepared[ordinal] = {capability.context, capability.dispatch, method};
                 }
+            }
+            return EScriptBackendResult::SUCCESS;
+        }
+
+        [[nodiscard]] EScriptBackendResult prepareEvents(
+            std::size_t instance_slot,
+            const lux::rdesc::LuaSourceScript& body
+        ) noexcept
+        {
+            auto prepared = std::span{
+                prepared_events.data() + instance_slot * event_source_capacity,
+                event_source_capacity
+            };
+            std::fill(prepared.begin(), prepared.end(), PreparedEventSource{});
+            for (const auto& requirement : body.event_sources)
+            {
+                const auto found = std::ranges::find_if(event_sources, [&](const auto& candidate) noexcept {
+                    return candidate.system_name == requirement.system_name &&
+                        candidate.event_name == requirement.event_name;
+                });
+                if (found == event_sources.end())
+                    return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                const auto ordinal = static_cast<std::size_t>(found - event_sources.begin());
+                if (ordinal >= prepared.size())
+                    return EScriptBackendResult::CAPACITY_EXCEEDED;
+                prepared[ordinal].source = std::addressof(*found);
             }
             return EScriptBackendResult::SUCCESS;
         }
@@ -698,6 +785,9 @@ namespace lux::simulation::script
             const auto ability_result = self.prepareAbilities(instance_slot, context);
             if (ability_result != EScriptBackendResult::SUCCESS)
                 return ability_result;
+            const auto event_result = self.prepareEvents(instance_slot, *body);
+            if (event_result != EScriptBackendResult::SUCCESS)
+                return event_result;
             self.free_instances.pop_back();
             auto* instance = std::addressof(self.instances[instance_slot]);
             *instance = Instance{
@@ -1149,7 +1239,8 @@ namespace lux::simulation::script
                     );
                 }
                 execution->continuation->waiting_on = started.waiting_on;
-                execution->continuation->pending_method = static_cast<std::uint32_t>(ordinal);
+                execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
+                execution->continuation->pending_operation = EPendingOperation::ABILITY;
                 return lux::script::lua::detail::yieldLuaInvocation(state, 0);
             }
 
@@ -1198,6 +1289,64 @@ namespace lux::simulation::script
                 }
             }
             return static_cast<int>(semantic.results.size());
+        }
+
+        static int invokeEventWait(lua_State* state) noexcept
+        {
+            auto* self = static_cast<State*>(lua_touserdata(state, lua_upvalueindex(1)));
+            const auto raw_ordinal = lua_tointeger(state, lua_upvalueindex(2));
+            const bool is_invalid_ordinal = self == nullptr || raw_ordinal < 0 ||
+                static_cast<std::size_t>(raw_ordinal) >= self->event_sources.size();
+            if (is_invalid_ordinal)
+                return abilityFailure(state, nullptr, kInvalidCall, "invalid Lux Script Event source");
+            auto* execution = self->currentExecution(state);
+            const auto ordinal = static_cast<std::size_t>(raw_ordinal);
+            const bool is_invalid_context = execution == nullptr || execution->instance == nullptr ||
+                execution->continuation == nullptr || execution->step == nullptr || lua_gettop(state) != 0 ||
+                ordinal >= self->event_source_capacity;
+            if (is_invalid_context)
+            {
+                return abilityFailure(
+                    state,
+                    execution != nullptr ? execution->continuation : nullptr,
+                    kInvalidCall,
+                    "Script Event wait requires a coroutine-capable export"
+                );
+            }
+            auto& prepared = self->prepared_events[
+                execution->instance->slot * self->event_source_capacity + ordinal
+            ];
+            if (prepared.source == nullptr)
+            {
+                return abilityFailure(
+                    state,
+                    execution->continuation,
+                    kInvalidCall,
+                    "Script did not declare this Event source"
+                );
+            }
+            const auto& source = *prepared.source;
+            const auto route = source.route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
+                ? EEventRoute::SIMULATION_BROADCAST
+                : EEventRoute::ENTITY_TARGETED;
+            const auto waiting = execution->step->event_waits.wait({
+                lux::system::SystemInstanceId{source.system_id},
+                EventPointId{source.event_id},
+                route
+            });
+            if (!waiting)
+            {
+                return abilityFailure(
+                    state,
+                    execution->continuation,
+                    kEventWaitFailure - static_cast<std::int32_t>(waiting.error()),
+                    "Script Event wait admission failed"
+                );
+            }
+            execution->continuation->waiting_on = *waiting;
+            execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
+            execution->continuation->pending_operation = EPendingOperation::EVENT;
+            return lux::script::lua::detail::yieldLuaInvocation(state, 0);
         }
 
         static int invoke(lux_script_call_frame* frame) noexcept
@@ -1290,6 +1439,7 @@ namespace lux::simulation::script
                 thread_ref,
                 {},
                 0U,
+                EPendingOperation::NONE,
                 0,
                 true
             };
@@ -1334,9 +1484,51 @@ namespace lux::simulation::script
         ) noexcept
         {
             argument_count = 0;
-            if (continuation.pending_method >= continuation.owner->ability_methods.size())
+            if (continuation.pending_operation == EPendingOperation::EVENT)
+            {
+                if (continuation.pending_ordinal >= continuation.owner->event_sources.size() ||
+                    packet.value == nullptr || !packet.value->type)
+                {
+                    return false;
+                }
+                const auto& expected = continuation.owner->event_sources[continuation.pending_ordinal].payload;
+                const auto& actual = *packet.value->type;
+                const bool is_mismatch = actual.type_id != expected.type_id ||
+                    actual.canonical_name != expected.canonical_name || actual.abi_kind != expected.abi_kind ||
+                    actual.size != expected.size || actual.alignment != expected.alignment ||
+                    packet.value->bytes.size() != expected.size;
+                if (is_mismatch)
+                    return false;
+                if (expected.abi_kind == LUX_SCRIPT_VK_STRUCT_REF)
+                {
+                    const auto found = continuation.owner->record_marshaller_index.find(expected.type_id);
+                    if (found == continuation.owner->record_marshaller_index.end())
+                        return false;
+                    const auto& marshaller = continuation.owner->record_marshallers[found->second];
+                    if (!marshaller.push(
+                            marshaller.context,
+                            continuation.thread,
+                            packet.value->bytes.data()
+                        ))
+                    {
+                        return false;
+                    }
+                }
+                else if (!pushComponentValue(
+                             continuation.thread,
+                             expected.abi_kind,
+                             packet.value->bytes.data()
+                         ))
+                {
+                    return false;
+                }
+                argument_count = 1;
+                return true;
+            }
+            if (continuation.pending_operation != EPendingOperation::ABILITY ||
+                continuation.pending_ordinal >= continuation.owner->ability_methods.size())
                 return false;
-            const auto& method = *continuation.owner->ability_methods[continuation.pending_method].method;
+            const auto& method = *continuation.owner->ability_methods[continuation.pending_ordinal].method;
             if (method.results.empty())
             {
                 const bool has_value = packet.value != nullptr &&
@@ -1425,6 +1617,7 @@ namespace lux::simulation::script
             if (!pushResumeValue(continuation, packet, argument_count))
                 return ScriptStepResult::failed(kInvalidResume);
             continuation.waiting_on = {};
+            continuation.pending_operation = EPendingOperation::NONE;
             continuation.failure_status = 0;
             if (!continuation.owner->pushExecution({
                     continuation.thread,
@@ -1585,6 +1778,11 @@ namespace lux::simulation::script
                 self.ability_method_capacity
             };
             std::fill(abilities.begin(), abilities.end(), PreparedAbility{});
+            auto events = std::span{
+                self.prepared_events.data() + instance_slot * self.event_source_capacity,
+                self.event_source_capacity
+            };
+            std::fill(events.begin(), events.end(), PreparedEventSource{});
             *instance = {};
             self.free_instances.push_back(instance_slot);
         }
@@ -1600,6 +1798,7 @@ namespace lux::simulation::script
         std::size_t continuation_capacity{};
         std::size_t execution_depth_capacity{};
         std::size_t ability_method_capacity{};
+        std::size_t event_source_capacity{};
         std::unordered_map<lux::asset::AssetId, int> prototypes;
         std::vector<LuaComponentBinding> components;
         std::unordered_map<std::string_view, std::size_t> component_index;
@@ -1614,6 +1813,8 @@ namespace lux::simulation::script
         std::vector<std::size_t> free_prepared_calls;
         std::vector<AbilityMethod> ability_methods;
         std::vector<PreparedAbility> prepared_abilities;
+        std::vector<lux::script::ScriptEventSourceDescription> event_sources;
+        std::vector<PreparedEventSource> prepared_events;
         std::vector<LuaContinuation> continuations;
         std::vector<std::size_t> free_continuations;
         std::vector<ExecutionFrame> execution_stack;
@@ -1628,7 +1829,9 @@ namespace lux::simulation::script
         const bool has_invalid_capacity = config.instance_capacity == 0U ||
             config.prepared_call_capacity == 0U || config.continuation_capacity == 0U ||
             config.execution_depth_capacity == 0U || config.ability_method_capacity == 0U ||
-            config.instance_capacity > std::numeric_limits<std::size_t>::max() / config.ability_method_capacity;
+            config.event_source_capacity == 0U ||
+            config.instance_capacity > std::numeric_limits<std::size_t>::max() / config.ability_method_capacity ||
+            config.instance_capacity > std::numeric_limits<std::size_t>::max() / config.event_source_capacity;
         if (has_invalid_capacity)
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         for (std::size_t index{}; index < config.components.size(); ++index)
@@ -1759,6 +1962,54 @@ namespace lux::simulation::script
         }
         if (ability_method_count > config.ability_method_capacity)
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
+        if (config.events.size() > config.event_source_capacity)
+            return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
+        for (std::size_t index{}; index < config.events.size(); ++index)
+        {
+            const auto& source = config.events[index];
+            const bool is_supported_scalar = [&]() noexcept {
+                switch (source.payload.abi_kind)
+                {
+                case LUX_SCRIPT_VK_BOOL:
+                    return source.payload.size == sizeof(bool) && source.payload.alignment == alignof(bool);
+                case LUX_SCRIPT_VK_INT32:
+                    return source.payload.size == sizeof(std::int32_t) &&
+                        source.payload.alignment == alignof(std::int32_t);
+                case LUX_SCRIPT_VK_UINT32:
+                    return source.payload.size == sizeof(std::uint32_t) &&
+                        source.payload.alignment == alignof(std::uint32_t);
+                case LUX_SCRIPT_VK_FLOAT:
+                    return source.payload.size == sizeof(float) && source.payload.alignment == alignof(float);
+                case LUX_SCRIPT_VK_DOUBLE:
+                    return source.payload.size == sizeof(double) && source.payload.alignment == alignof(double);
+                default: return false;
+                }
+            }();
+            const bool is_invalid_source = !source.valid() || !State::identifier(source.system_name) ||
+                !State::identifier(source.event_name) ||
+                source.payload.type_id != lux::semantic::typeId(source.payload.canonical_name) ||
+                (source.payload.abi_kind != LUX_SCRIPT_VK_STRUCT_REF && !is_supported_scalar);
+            if (is_invalid_source)
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_EVENT_SOURCE);
+            if (source.payload.abi_kind == LUX_SCRIPT_VK_STRUCT_REF &&
+                std::ranges::none_of(config.record_marshallers, [&](const auto& marshaller) noexcept {
+                    return marshaller.semantic_type == source.payload.type_id &&
+                        marshaller.canonical_name == source.payload.canonical_name &&
+                        marshaller.size == source.payload.size && marshaller.alignment == source.payload.alignment;
+                }))
+            {
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_EVENT_PAYLOAD);
+            }
+            for (std::size_t previous{}; previous < index; ++previous)
+            {
+                const auto& candidate = config.events[previous];
+                if ((candidate.system_name == source.system_name && candidate.event_name == source.event_name) ||
+                    (candidate.system_id == source.system_id && candidate.event_id == source.event_id))
+                {
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::DUPLICATE_EVENT_SOURCE);
+                }
+            }
+        }
         try
         {
             auto state = std::make_unique<State>(config);
@@ -1770,6 +2021,8 @@ namespace lux::simulation::script
             }
             if (!state->initializeAbilities())
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::ABILITY_REGISTRATION_FAILURE);
+            if (!state->initializeEvents())
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::EVENT_REGISTRATION_FAILURE);
             return LuaScriptBackend{std::move(state)};
         }
         catch (const std::bad_alloc&)

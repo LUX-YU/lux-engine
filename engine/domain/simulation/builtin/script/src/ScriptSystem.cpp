@@ -637,7 +637,7 @@ namespace lux::simulation::script
         std::size_t instance_cleanup_event_waiter_visits{};
         std::size_t instance_cleanup_awaitable_visits{};
         std::size_t instance_cleanup_continuation_visits{};
-        std::size_t event_dispatch_depth{};
+        std::size_t endpoint_dispatch_depth{};
         entt::connection constructed;
         entt::connection updated;
         entt::connection destroyed;
@@ -1447,7 +1447,7 @@ namespace lux::simulation::script
             mount.state = EMountState::FAULTED;
             mount.pending_end_reason = EScriptEndPlayReason::FAULTED;
             deactivate(mount);
-            if (event_dispatch_depth == 0U)
+            if (endpoint_dispatch_depth == 0U)
                 removeMountBindings(mount);
             queueRetirement(static_cast<std::uint32_t>(std::addressof(mount) - mounts.data()));
             recordFailure(error, mount, symbol, status);
@@ -1747,8 +1747,10 @@ namespace lux::simulation::script
         static void invokeHookLane(void* context, lux_script_call_frame& frame) noexcept
         {
             auto& bucket = *static_cast<HookBucket*>(context);
+            ++bucket.owner->endpoint_dispatch_depth;
             for (auto& handler : bucket.handlers.values())
                 bucket.owner->invoke(handler, frame, true);
+            --bucket.owner->endpoint_dispatch_depth;
         }
 
         void claimEventWaiters(EventBucket& bucket, ecs::Entity target, std::uint64_t cutoff) noexcept
@@ -1850,7 +1852,7 @@ namespace lux::simulation::script
             auto& owner = *bucket.owner;
             const auto claimed_begin = owner.claimed_event_waiters.size();
             const auto cutoff = owner.event_wait_sequence;
-            ++owner.event_dispatch_depth;
+            ++owner.endpoint_dispatch_depth;
             const auto target = bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST
                 ? ecs::NullEntity
                 : entity;
@@ -1867,7 +1869,7 @@ namespace lux::simulation::script
             for (std::size_t index{claimed_begin}; index < claimed_end; ++index)
                 owner.completeClaimedEventWaiter(owner.claimed_event_waiters[index], frame);
             owner.claimed_event_waiters.resize(claimed_begin);
-            --owner.event_dispatch_depth;
+            --owner.endpoint_dispatch_depth;
         }
 
         [[nodiscard]] lux::cxx::expected<EndpointConnectionToken, EScriptSystemError> addEventHandler(
@@ -2410,7 +2412,7 @@ namespace lux::simulation::script
                 mount.state = EMountState::RETIRING;
                 mount.pending_end_reason = EScriptEndPlayReason::ENTITY_DESTROYED;
                 deactivate(mount);
-                if (event_dispatch_depth == 0U)
+                if (endpoint_dispatch_depth == 0U)
                     removeMountBindings(mount);
             }
             queueDirty(mount_slot);
@@ -2961,7 +2963,7 @@ namespace lux::simulation::script
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         if (state_->stopping)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-        if (state_->event_dispatch_depth != 0U)
+        if (state_->endpoint_dispatch_depth != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->prepare_state == EPrepareState::ROLLBACK_PENDING)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);

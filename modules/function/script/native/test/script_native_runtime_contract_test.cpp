@@ -32,6 +32,7 @@ main()
     const std::filesystem::path fixture = LUX_SCRIPT_NATIVE_FIXTURE;
     const std::filesystem::path bad_abi_fixture = LUX_SCRIPT_NATIVE_BAD_ABI_FIXTURE;
     const std::filesystem::path bad_entry_fixture = LUX_SCRIPT_NATIVE_BAD_ENTRY_FIXTURE;
+    const std::filesystem::path bad_return_fixture = LUX_SCRIPT_NATIVE_BAD_RETURN_FIXTURE;
     const std::filesystem::path missing_entry_fixture = LUX_SCRIPT_NATIVE_MISSING_ENTRY_FIXTURE;
     const std::filesystem::path bind_failure_fixture = LUX_SCRIPT_NATIVE_BIND_FAILURE_FIXTURE;
 
@@ -67,6 +68,10 @@ main()
     auto bad_entry = lux::script::loadNativeModule(bad_entry_fixture);
     assert(!bad_entry);
     assert(bad_entry.error().code == EScriptError::INVALID_MODULE);
+
+    auto bad_return = lux::script::loadNativeModule(bad_return_fixture);
+    assert(!bad_return);
+    assert(bad_return.error().code == EScriptError::INVALID_MODULE);
 
     auto missing_entry = lux::script::loadNativeModule(missing_entry_fixture);
     assert(!missing_entry);

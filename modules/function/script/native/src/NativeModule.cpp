@@ -1,6 +1,7 @@
 #include <lux/engine/function/script/native/NativeModule.hpp>
 
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
+#include <lux/engine/function/script/ScriptApi.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -207,9 +208,12 @@ namespace lux::script
                     import.method_id != lux::semantic::typeId(import.method_name);
                 const bool is_invalid_schema = import.schema_hash == 0U || import.schema_version == 0U ||
                     import.method_kind > 2U;
+                const bool is_command_with_results =
+                    import.method_kind == static_cast<std::uint8_t>(EScriptApiMethodKind::COMMAND) &&
+                    import.result_count != 0U;
                 const bool is_missing_signature = (import.arg_count != 0U && import.args == nullptr) ||
                     (import.result_count != 0U && import.results == nullptr);
-                if (is_invalid_identity || is_invalid_schema || is_missing_signature ||
+                if (is_invalid_identity || is_invalid_schema || is_command_with_results || is_missing_signature ||
                     !import_methods.insert(import.method_id).second)
                 {
                     return lux::cxx::unexpected(
@@ -236,8 +240,11 @@ namespace lux::script
                 }
                 for (std::uint32_t output{}; output < import.result_count; ++output)
                 {
-                    if (!valid_import_type(import.results[output]) ||
-                        import.results[output].pass != LUX_SCRIPT_PASS_VALUE)
+                    const bool is_value = import.results[output].pass == LUX_SCRIPT_PASS_VALUE;
+                    const bool is_borrowed_query =
+                        import.method_kind == static_cast<std::uint8_t>(EScriptApiMethodKind::QUERY) &&
+                        import.results[output].pass == LUX_SCRIPT_PASS_CONST_REF;
+                    if (!valid_import_type(import.results[output]) || (!is_value && !is_borrowed_query))
                     {
                         return lux::cxx::unexpected(
                             scriptFailure(EScriptError::INVALID_MODULE, "native Script Ability result is invalid")

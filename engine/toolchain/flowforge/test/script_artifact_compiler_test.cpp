@@ -94,6 +94,7 @@ namespace
     struct AsyncHost final
     {
         std::uint32_t starts{};
+        std::uint32_t expected_ordinal{};
         std::int32_t failure_status{};
 
         static int start(
@@ -107,7 +108,7 @@ namespace
             auto& self = *static_cast<AsyncHost*>(opaque);
             if (self.failure_status != 0)
                 return self.failure_status;
-            if (ordinal != 0U || argument_count != 0U || waiting == nullptr)
+            if (ordinal != self.expected_ordinal || argument_count != 0U || waiting == nullptr)
                 return 7;
             ++self.starts;
             *waiting = {self.starts, 1U};
@@ -147,6 +148,39 @@ namespace
                 return 0;
             }
             return 3;
+        }
+    };
+
+    struct BorrowProvider final
+    {
+        std::int32_t value{47};
+        std::int32_t observed{};
+        std::size_t calls{};
+
+        static int invoke(
+            void* opaque,
+            std::uint32_t ordinal,
+            const lux_script_value_slot* arguments,
+            std::uint32_t argument_count,
+            lux_script_value_slot* results,
+            std::uint32_t result_count
+        ) noexcept
+        {
+            auto& self = *static_cast<BorrowProvider*>(opaque);
+            ++self.calls;
+            if (ordinal == 0U && argument_count == 0U && result_count == 1U && results != nullptr &&
+                results[0].data != nullptr)
+            {
+                *static_cast<std::int32_t*>(results[0].data) = self.value;
+                return 0;
+            }
+            if (ordinal == 2U && argument_count == 1U && arguments != nullptr && arguments[0].data != nullptr &&
+                result_count == 0U)
+            {
+                self.observed = *static_cast<const std::int32_t*>(arguments[0].data);
+                return 0;
+            }
+            return 4;
         }
     };
 
@@ -246,6 +280,124 @@ namespace
             graph.getNode(event_index).node->id(),
             symbol
         }));
+        return graph;
+    }
+
+    lux::flowforge::FlowGraph makeBorrowedAcrossAsyncFunctionGraph(lux::script::ScriptSymbolId symbol)
+    {
+        using namespace lux::flowforge;
+        FlowGraph graph;
+        auto event = std::make_unique<OnEventNode>(800U, "borrowed_function_tick");
+        auto borrow = std::make_unique<ScriptAbilityNode>(801U, kAbilityNodes[3]);
+        auto function = std::make_unique<FuncDefNode>(
+            802U,
+            "wait_for_borrowed",
+            std::vector<FuncArgInfo>{},
+            std::vector<FuncArgInfo>{}
+        );
+        auto call = std::make_unique<GraphFuncCallNode>(803U, *function);
+        auto wait = std::make_unique<ScriptAbilityNode>(804U, kAbilityNodes[2]);
+        auto function_return = std::make_unique<FuncReturnNode>(805U, *function);
+        auto write = std::make_unique<ScriptAbilityNode>(806U, kAbilityNodes[1]);
+        auto* event_ptr = event.get();
+        auto* borrow_ptr = borrow.get();
+        auto* function_ptr = function.get();
+        auto* call_ptr = call.get();
+        auto* wait_ptr = wait.get();
+        auto* return_ptr = function_return.get();
+        auto* write_ptr = write.get();
+        const auto event_index = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(borrow));
+        graph.addNodes(std::move(function));
+        graph.addNodes(std::move(call));
+        graph.addNodes(std::move(wait));
+        graph.addNodes(std::move(function_return));
+        graph.addNodes(std::move(write));
+        LastLink previous;
+        assert(event_ptr->execOutPin().linkTo(&borrow_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(borrow_ptr->execOutPin().linkTo(&call_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(call_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(function_ptr->execOutPin().linkTo(&wait_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(wait_ptr->execOutPin().linkTo(&return_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(borrow_ptr->resultPins().front()->linkTo(write_ptr->parameterPins().front().get(), previous) ==
+            ELinkError::SUCCESS);
+        assert(graph.addExport({FlowForgeExportNodeId{8U}, graph.getNode(event_index).node->id(), symbol}));
+        return graph;
+    }
+
+    lux::flowforge::FlowGraph makeBorrowedFanInGraph(
+        lux::script::ScriptSymbolId symbol,
+        bool delayed_path_first
+    )
+    {
+        using namespace lux::flowforge;
+        FlowGraph graph;
+        auto event = std::make_unique<OnEventNode>(900U, "borrowed_fan_in_tick");
+        auto borrow = std::make_unique<ScriptAbilityNode>(901U, kAbilityNodes[3]);
+        auto branch = std::make_unique<BranchNode>(902U);
+        auto wait = std::make_unique<ScriptAbilityNode>(903U, kAbilityNodes[2]);
+        auto write = std::make_unique<ScriptAbilityNode>(904U, kAbilityNodes[1]);
+        assert(const_cast<DataInPin&>(branch->dataInPin()).setConstantData(lux::meta::RuntimeObject(true)));
+        auto* event_ptr = event.get();
+        auto* borrow_ptr = borrow.get();
+        auto* branch_ptr = branch.get();
+        auto* wait_ptr = wait.get();
+        auto* write_ptr = write.get();
+        const auto event_index = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(borrow));
+        graph.addNodes(std::move(branch));
+        graph.addNodes(std::move(wait));
+        graph.addNodes(std::move(write));
+        LastLink previous;
+        assert(event_ptr->execOutPin().linkTo(&borrow_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(borrow_ptr->execOutPin().linkTo(&branch_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(const_cast<ExecOutPin&>(branch_ptr->execOutPinDown()).linkTo(&wait_ptr->execInPin(), previous) ==
+            ELinkError::SUCCESS);
+        const auto link_direct = [&] {
+            return const_cast<ExecOutPin&>(branch_ptr->execOutPinUp()).linkTo(&write_ptr->execInPin(), previous);
+        };
+        const auto link_delayed = [&] {
+            return wait_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous);
+        };
+        if (delayed_path_first)
+        {
+            assert(link_delayed() == ELinkError::SUCCESS);
+            assert(link_direct() == ELinkError::SUCCESS);
+        }
+        else
+        {
+            assert(link_direct() == ELinkError::SUCCESS);
+            assert(link_delayed() == ELinkError::SUCCESS);
+        }
+        assert(borrow_ptr->resultPins().front()->linkTo(write_ptr->parameterPins().front().get(), previous) ==
+            ELinkError::SUCCESS);
+        assert(graph.addExport({FlowForgeExportNodeId{9U}, graph.getNode(event_index).node->id(), symbol}));
+        return graph;
+    }
+
+    lux::flowforge::FlowGraph makeBorrowedSameStepGraph(lux::script::ScriptSymbolId symbol)
+    {
+        using namespace lux::flowforge;
+        FlowGraph graph;
+        auto event = std::make_unique<OnEventNode>(1000U, "borrowed_same_step_tick");
+        auto borrow = std::make_unique<ScriptAbilityNode>(1001U, kAbilityNodes[3]);
+        auto write = std::make_unique<ScriptAbilityNode>(1002U, kAbilityNodes[1]);
+        auto wait = std::make_unique<ScriptAbilityNode>(1003U, kAbilityNodes[2]);
+        auto* event_ptr = event.get();
+        auto* borrow_ptr = borrow.get();
+        auto* write_ptr = write.get();
+        auto* wait_ptr = wait.get();
+        const auto event_index = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(borrow));
+        graph.addNodes(std::move(write));
+        graph.addNodes(std::move(wait));
+        LastLink previous;
+        assert(event_ptr->execOutPin().linkTo(&borrow_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(borrow_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(write_ptr->execOutPin().linkTo(&wait_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(borrow_ptr->resultPins().front()->linkTo(write_ptr->parameterPins().front().get(), previous) ==
+            ELinkError::SUCCESS);
+        assert(graph.addExport({FlowForgeExportNodeId{10U}, graph.getNode(event_index).node->id(), symbol}));
         return graph;
     }
 
@@ -514,6 +666,38 @@ int main()
     assert(borrowed.error().node_id != 0U);
     assert(borrowed.error().pin_id != 0U);
 
+    auto borrowed_function_graph = makeBorrowedAcrossAsyncFunctionGraph(0x4334U);
+    const auto borrowed_function = lux::flowforge::compileFlowForgeScript(
+        borrowed_function_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.borrowed_function_invalid",
+            .script_abilities = ability_catalog.view()
+        }
+    );
+    assert(!borrowed_function);
+    assert(borrowed_function.error().code ==
+        lux::flowforge::EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION);
+    assert(borrowed_function.error().node_id != 0U);
+    assert(borrowed_function.error().pin_id != 0U);
+
+    for (const bool delayed_path_first : {false, true})
+    {
+        auto fan_in_graph = makeBorrowedFanInGraph(delayed_path_first ? 0x4434U : 0x4534U, delayed_path_first);
+        const auto fan_in = lux::flowforge::compileFlowForgeScript(
+            fan_in_graph,
+            lux::flowforge::FlowForgeCompileOptions{
+                .module_name = delayed_path_first
+                    ? "gameplay.borrowed_fan_in_delayed_first"
+                    : "gameplay.borrowed_fan_in_direct_first",
+                .script_abilities = ability_catalog.view()
+            }
+        );
+        assert(!fan_in);
+        assert(fan_in.error().code == lux::flowforge::EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION);
+        assert(fan_in.error().node_id != 0U);
+        assert(fan_in.error().pin_id != 0U);
+    }
+
     const auto async_lifecycle = lux::flowforge::compileFlowForgeScript(
         async_graph,
         lux::flowforge::FlowForgeCompileOptions{
@@ -700,6 +884,84 @@ int main()
         ::operator delete(function_continuation, std::align_val_t{function_step.frame_align});
     else
         ::operator delete(function_continuation);
+
+    for (const bool is_end_play : {false, true})
+    {
+        const auto lifecycle_function = lux::flowforge::compileFlowForgeScript(
+            function_graph,
+            lux::flowforge::FlowForgeCompileOptions{
+                .module_name = is_end_play
+                    ? "gameplay.async_function_end_play_invalid"
+                    : "gameplay.async_function_begin_play_invalid",
+                .lifecycle = is_end_play
+                    ? lux::rdesc::ScriptLifecycleRoles{.end_play = FunctionSymbol}
+                    : lux::rdesc::ScriptLifecycleRoles{.begin_play = FunctionSymbol},
+                .script_abilities = ability_catalog.view()
+            }
+        );
+        assert(!lifecycle_function);
+        assert(lifecycle_function.error().code == lux::flowforge::EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED);
+        assert(lifecycle_function.error().node_id != 0U);
+    }
+
+    constexpr lux::script::ScriptSymbolId BorrowedSameStepSymbol = 0x8234U;
+    auto borrowed_same_step_graph = makeBorrowedSameStepGraph(BorrowedSameStepSymbol);
+    auto borrowed_same_step_artifact = lux::flowforge::compileFlowForgeScript(
+        borrowed_same_step_graph,
+        lux::flowforge::FlowForgeCompileOptions{
+            .module_name = "gameplay.borrowed_same_step",
+            .script_abilities = ability_catalog.view()
+        }
+    );
+    assert(borrowed_same_step_artifact);
+    auto borrowed_same_step_module = lux::script::loadNativeModule(
+        borrowed_same_step_artifact->payload(),
+        "gameplay.borrowed_same_step"
+    );
+    assert(borrowed_same_step_module);
+    const auto borrowed_import = std::ranges::find_if(
+        borrowed_same_step_module->abilityImports(),
+        [](const auto& value) {
+            return std::string_view{value.method_name} == "lux.test.flowforge.value.borrow";
+        }
+    );
+    assert(borrowed_import != borrowed_same_step_module->abilityImports().end());
+    assert(borrowed_import->result_count == 1U);
+    assert(borrowed_import->results[0].pass == LUX_SCRIPT_PASS_CONST_REF);
+    const auto* borrowed_same_step_function =
+        borrowed_same_step_module->findFunction(BorrowedSameStepSymbol);
+    assert(borrowed_same_step_function != nullptr && borrowed_same_step_function->step != nullptr);
+    BorrowProvider borrow_provider;
+    const lux_script_ability_runtime borrow_runtime{std::addressof(borrow_provider), &BorrowProvider::invoke};
+    const lux_script_native_instance_context borrow_instance{nullptr, std::addressof(borrow_runtime)};
+    lux_script_call_frame borrow_frame{};
+    borrow_frame.native_instance = std::addressof(borrow_instance);
+    AsyncHost borrow_host;
+    borrow_host.expected_ordinal = 1U;
+    const lux_script_step_host borrow_step_host{std::addressof(borrow_host), &AsyncHost::start};
+    const auto& borrow_step = *borrowed_same_step_function->step;
+    const bool borrow_over_aligned = borrow_step.frame_align > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+    void* borrow_continuation = borrow_over_aligned
+        ? ::operator new(borrow_step.frame_size, std::align_val_t{borrow_step.frame_align})
+        : ::operator new(borrow_step.frame_size);
+    std::memset(borrow_continuation, 0, borrow_step.frame_size);
+    lux_script_step_outcome borrow_outcome{};
+    assert(borrow_step.start(&borrow_frame, &borrow_step_host, borrow_continuation, &borrow_outcome) == 0);
+    assert(borrow_outcome.state == LUX_SCRIPT_STEP_SUSPENDED);
+    assert(borrow_provider.calls == 2U);
+    assert(borrow_provider.observed == borrow_provider.value);
+    assert(borrow_step.resume(
+        &borrow_step_host,
+        borrow_continuation,
+        &ready,
+        &borrow_outcome
+    ) == 0);
+    assert(borrow_outcome.state == LUX_SCRIPT_STEP_COMPLETED);
+    borrow_step.destroy(borrow_continuation);
+    if (borrow_over_aligned)
+        ::operator delete(borrow_continuation, std::align_val_t{borrow_step.frame_align});
+    else
+        ::operator delete(borrow_continuation);
 
     auto compiled_again = lux::flowforge::compileFlowForgeScript(
         graph,

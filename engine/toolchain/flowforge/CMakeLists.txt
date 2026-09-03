@@ -15,6 +15,7 @@ add_component(
         src/IRContext.cpp
         src/Passes.cpp
         src/ScriptInstance.cpp
+        src/SuspensionAnalysis.cpp
         src/AOT.cpp
 )
 component_include_directories(

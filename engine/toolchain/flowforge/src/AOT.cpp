@@ -28,6 +28,7 @@
 #include "lux/engine/flowforge/compiler/IRImpl.hpp"
 #include "lux/engine/flowforge/compiler/Passes.hpp"
 #include "lux/engine/flowforge/compiler/ScriptInstance.hpp"
+#include "lux/engine/flowforge/compiler/SuspensionAnalysis.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
 #include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
@@ -1105,6 +1106,7 @@ namespace lux::flowforge
             llvm::Module& module,
             const std::vector<EventInfo>& events,
             const std::vector<AbilityImportInfo>& imports,
+            const SuspensionAnalysis& suspension_analysis,
             std::vector<NativeStepInfo>& steps,
             std::string& error
         )
@@ -1116,6 +1118,14 @@ namespace lux::flowforge
             {
                 if (!lowerEventToStateMachine(module, events[index], imports, steps[index], error))
                     return false;
+                const bool expected_suspension =
+                    suspension_analysis.firstSuspensionFrom(events[index].node->execOutPin()) != nullptr;
+                const bool lowered_suspension = steps[index].start != nullptr;
+                if (expected_suspension != lowered_suspension)
+                {
+                    error = "FlowForge suspension analysis does not match the lowered async markers";
+                    return false;
+                }
             }
             std::unordered_set<std::string> exported_symbols;
             for (const auto& event : events)
@@ -1564,6 +1574,7 @@ namespace lux::flowforge
         IRContext& ctx,
         const FlowGraph& graph,
         const FlowForgeCompileOptions& options,
+        const SuspensionAnalysis& suspension_analysis,
         AotArtifact& artifact_out,
         std::string* error_out
     )
@@ -1663,7 +1674,7 @@ namespace lux::flowforge
         std::vector<NativeStepInfo> steps;
         {
             std::string err;
-            if (!lowerAsyncEvents(*llmod, events, ability_imports, steps, err))
+            if (!lowerAsyncEvents(*llmod, events, ability_imports, suspension_analysis, steps, err))
                 return fail(std::move(err));
         }
 
@@ -1814,11 +1825,24 @@ namespace lux::flowforge
         const FlowForgeCompileOptions& options
     ) noexcept
     {
+        auto suspension_analysis = SuspensionAnalysis::create(graph);
+        if (!suspension_analysis)
+            return lux::cxx::unexpected(std::move(suspension_analysis.error()));
+        return compileToObject(context, graph, options, *suspension_analysis);
+    }
+
+    FlowForgeResult<AotArtifact> compileToObject(
+        IRContext& context,
+        const FlowGraph& graph,
+        const FlowForgeCompileOptions& options,
+        const SuspensionAnalysis& suspension_analysis
+    ) noexcept
+    {
         try
         {
             AotArtifact artifact;
             std::string message;
-            if (!compileToObjectImpl(context, graph, options, artifact, &message))
+            if (!compileToObjectImpl(context, graph, options, suspension_analysis, artifact, &message))
             {
                 auto code = EFlowForgeError::AOT_CODEGEN_FAILED;
                 if (message.find("continuation frame") != std::string::npos ||
@@ -1827,6 +1851,10 @@ namespace lux::flowforge
                     code = EFlowForgeError::INVALID_CONTINUATION_FRAME_LAYOUT;
                 }
                 else if (message.find("async graph function") != std::string::npos)
+                {
+                    code = EFlowForgeError::UNSUPPORTED_COROUTINE_CONTROL_FLOW;
+                }
+                else if (message.find("suspension analysis") != std::string::npos)
                 {
                     code = EFlowForgeError::UNSUPPORTED_COROUTINE_CONTROL_FLOW;
                 }

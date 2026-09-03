@@ -36,6 +36,7 @@ namespace lux::flowforge
 {
     class FlowGraph;
     class IRContext;
+    class SuspensionAnalysis;
 
     struct AotArtifact
     {
@@ -58,6 +59,13 @@ namespace lux::flowforge
         IRContext& context,
         const FlowGraph& graph,
         const FlowForgeCompileOptions& options
+    ) noexcept;
+
+    [[nodiscard]] FlowForgeResult<AotArtifact> compileToObject(
+        IRContext& context,
+        const FlowGraph& graph,
+        const FlowForgeCompileOptions& options,
+        const SuspensionAnalysis& suspension_analysis
     ) noexcept;
 
     /// Writes artifact.object next to out_dll (same stem, ".obj") and links

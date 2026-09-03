@@ -75,6 +75,15 @@ namespace
         LUX_SCRIPT_VK_FLOAT,
         {}};
 
+    const lux_script_type_desc kConstRefFloatType{
+        "lux.f32",
+        lux::semantic::typeId("lux.f32"),
+        sizeof(float),
+        alignof(float),
+        LUX_SCRIPT_VK_FLOAT,
+        LUX_SCRIPT_PASS_CONST_REF,
+        {}};
+
     const lux_script_type_desc kUint32Type{
         "lux.u32",
         lux::semantic::typeId("lux.u32"),
@@ -104,8 +113,13 @@ namespace
             1,
             nullptr,
             0,
+#if defined(LUX_SCRIPT_FIXTURE_BAD_RETURN)
+            &kConstRefFloatType,
+            1,
+#else
             nullptr,
             0,
+#endif
             &increment},
         {"OnUpdate", 2, kUpdateArgs, 1, nullptr, 0, &onUpdate},
         {"OnUpdate", 3, kPairArgs, 2, nullptr, 0, &onPair},

@@ -42,7 +42,10 @@ typedef enum lux_script_value_kind {
     LUX_SCRIPT_VK_STRUCT_REF  = 10  /**< Pointer + size + type_id            */
 } lux_script_value_kind;
 
-/** Semantic parameter passing mode. Returns must use VALUE. */
+/**
+ * Semantic parameter passing mode. Exported function returns and async Ability
+ * results use VALUE; synchronous Ability QUERY imports may use CONST_REF.
+ */
 typedef enum lux_script_pass_mode {
     LUX_SCRIPT_PASS_VALUE     = 0,
     LUX_SCRIPT_PASS_CONST_REF = 1

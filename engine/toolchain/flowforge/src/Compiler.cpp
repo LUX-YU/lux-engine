@@ -2,6 +2,7 @@
 
 #include <lux/engine/flowforge/compiler/AOT.hpp>
 #include <lux/engine/flowforge/compiler/IR.hpp>
+#include <lux/engine/flowforge/compiler/SuspensionAnalysis.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
@@ -246,50 +247,10 @@ namespace lux::flowforge
             return consumers;
         }
 
-        [[nodiscard]] const ScriptAbilityNode* suspensionBetween(
-            const ExecOutPin& start,
-            const Node& target
-        )
-        {
-            struct Visit final
-            {
-                const Node* node{};
-                const ScriptAbilityNode* suspension{};
-            };
-            std::queue<Visit> pending;
-            if (const auto* next = start.nextPin())
-                pending.push({next->node(), nullptr});
-            std::unordered_set<std::uint64_t> visited_without_suspension;
-            std::unordered_set<std::uint64_t> visited_with_suspension;
-            while (!pending.empty())
-            {
-                auto visit = pending.front();
-                pending.pop();
-                if (visit.node->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
-                {
-                    const auto* ability = static_cast<const ScriptAbilityNode*>(visit.node);
-                    if (ability->methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
-                        visit.suspension = ability;
-                }
-                auto& visited = visit.suspension != nullptr ? visited_with_suspension : visited_without_suspension;
-                if (!visited.insert(visit.node->id().value).second)
-                    continue;
-                if (visit.node == std::addressof(target))
-                    return visit.suspension;
-                for (const auto* pin : visit.node->outPins())
-                {
-                    if (pin->kind() != EPinKind::EXEC_OUT)
-                        continue;
-                    if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
-                        pending.push({next->node(), visit.suspension});
-                }
-            }
-            return nullptr;
-        }
-
         [[nodiscard]] FlowForgeResult<void> validateAbilityLifetimes(
             const FlowGraph& graph,
-            const FlowForgeCompileOptions& options
+            const FlowForgeCompileOptions& options,
+            const SuspensionAnalysis& suspension_analysis
         )
         {
             for (const auto& storage : graph.nodes())
@@ -306,7 +267,8 @@ namespace lux::flowforge
                     }
                     for (const auto* consumer : executableConsumers(*producer->resultPins()[index]))
                     {
-                        if (const auto* suspension = suspensionBetween(producer->execOutPin(), *consumer))
+                        if (const auto* suspension =
+                                suspension_analysis.suspensionBetween(producer->execOutPin(), *consumer))
                         {
                             return lux::cxx::unexpected(FlowForgeFailure{
                                 .code = EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION,
@@ -328,40 +290,21 @@ namespace lux::flowforge
                 const auto* entry = graph.findNodeById(exported.entry_node_id);
                 if (entry == nullptr)
                     continue;
-                std::queue<const Node*> pending;
-                std::unordered_set<std::uint64_t> visited;
+                const ScriptAbilityNode* suspension{};
                 for (const auto* pin : entry->outPins())
                 {
                     if (pin->kind() == EPinKind::EXEC_OUT)
-                    {
-                        if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
-                            pending.push(next->node());
-                    }
+                        suspension = suspension_analysis.firstSuspensionFrom(*static_cast<const ExecOutPin*>(pin));
+                    if (suspension != nullptr)
+                        break;
                 }
-                while (!pending.empty())
+                if (suspension != nullptr)
                 {
-                    const auto* node = pending.front();
-                    pending.pop();
-                    if (!visited.insert(node->id().value).second)
-                        continue;
-                    const auto* ability = dynamic_cast<const ScriptAbilityNode*>(node);
-                    if (ability != nullptr &&
-                        ability->methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
-                    {
-                        return lux::cxx::unexpected(FlowForgeFailure{
-                            .code = EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED,
-                            .message = "BeginPlay and EndPlay FlowForge exports must remain synchronous",
-                            .node_id = node->id().value
-                        });
-                    }
-                    for (const auto* pin : node->outPins())
-                    {
-                        if (pin->kind() == EPinKind::EXEC_OUT)
-                        {
-                            if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
-                                pending.push(next->node());
-                        }
-                    }
+                    return lux::cxx::unexpected(FlowForgeFailure{
+                        .code = EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED,
+                        .message = "BeginPlay and EndPlay FlowForge exports must remain synchronous",
+                        .node_id = suspension->id().value
+                    });
                 }
             }
             return {};
@@ -387,7 +330,10 @@ namespace lux::flowforge
             auto requirements = deriveAbilityRequirements(graph, options.script_abilities);
             if (!requirements)
                 return lux::cxx::unexpected(std::move(requirements.error()));
-            auto lifetime = validateAbilityLifetimes(graph, options);
+            auto suspension_analysis = SuspensionAnalysis::create(graph);
+            if (!suspension_analysis)
+                return lux::cxx::unexpected(std::move(suspension_analysis.error()));
+            auto lifetime = validateAbilityLifetimes(graph, options, *suspension_analysis);
             if (!lifetime)
                 return lux::cxx::unexpected(std::move(lifetime.error()));
 
@@ -396,7 +342,7 @@ namespace lux::flowforge
             {
                 return lux::cxx::unexpected(std::move(context.error()));
             }
-            auto object = compileToObject(*context, graph, options);
+            auto object = compileToObject(*context, graph, options, *suspension_analysis);
             if (!object)
             {
                 return lux::cxx::unexpected(std::move(object.error()));

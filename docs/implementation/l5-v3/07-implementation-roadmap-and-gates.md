@@ -1,10 +1,10 @@
-# L5 / Runtime Script / Editor 实施路线、Dependency DAG、Architecture Gates 与 Stop Conditions
+# L5 / Runtime Script / Editor / Product Storage 实施路线、Dependency DAG、Architecture Gates 与 Stop Conditions
 
 Status: **Normative Implementation Roadmap — v3 reconciled 2026-09-03**
 
 Reviewed public repository checkpoint: `main@bc15a84252c5740e6e47f3e1094810d6dd4ab711`.
 
-> 本文定义当前唯一实施 DAG。旧版本中把 R0/S0/S1/S2 写成“下一步”的状态说明已过时；这些阶段的设计方向保留，但 implementation status 以本文为准。Coding agent 仍必须同时遵守 `08`；Script work 额外遵守 `11/12/13`；Plugin/package work 额外遵守 `14`；UI work 额外遵守 `10`。
+> 本文定义当前唯一实施 DAG。旧版本中把 R0/S0/S1/S2 写成“下一步”的状态说明已过时；这些阶段的设计方向保留，但 implementation status 以本文为准。Coding agent 仍必须同时遵守 `08`；Script work 额外遵守 `11/12/13`；Plugin/package work 额外遵守 `14`；Pak/Product storage work 额外遵守 `15`；UI work 额外遵守 `10`。
 
 ---
 
@@ -251,7 +251,9 @@ no Jolt/Vulkan/third-party layout crosses the Script contract
 
 Navigation follows exactly the same owner/provider rules. Do not create a universal Script collection merely to expose a path if no approved value representation exists.
 
-AssetLoad may close only if its return identity/residency contract is approved. Otherwise:
+AssetLoad may close only if its return identity/residency contract is approved. LuxPak/Chunk identities do not substitute for this Script residency/value contract.
+
+Otherwise:
 
 ```text
 S5 PASS
@@ -357,7 +359,7 @@ R1 MUST answer:
 Is Script framework frozen enough to be consumed by Editor/product work?
 Are U/C foundations still compatible with current runtime/codegen?
 Are there owner/lifetime regressions that must be fixed before UI expansion?
-What remains blocked by persistence/Product specs rather than implementation?
+What remains blocked by persistence/Product/Pak specs rather than implementation?
 ```
 
 Gate R1:
@@ -448,6 +450,8 @@ Toolset importer/cooker + root TaskScope for async work
 ```
 
 MUST NOT introduce `AssetIndex` merely to implement v1 UI, a UI-owned worker thread, or per-frame recursive filesystem scan.
+
+PakProvider's persisted AssetId hash/path radix index is an authoritative provider storage index defined by `15`; it is not the forbidden Editor AssetIndex/Catalog.
 
 ---
 
@@ -552,6 +556,8 @@ When FC passes:
 
 > **Engine Framework v1 architecture is closed.**
 
+PAK-0/PAK-1 are Product storage closure gates and need not block FC if no Editor/runtime framework ownership gap remains; final shipping Product P still depends on PAK-1.
+
 Subsequent work should normally be feature production (animation/audio/world tools/more Abilities/debugger/etc.), not another root architecture rewrite.
 
 ---
@@ -583,13 +589,104 @@ Toolchain  -> concrete importer/cooker/compiler target
 Editor     -> Tool/window/command/Inspector/graph contribution
 ```
 
+Plugin runtime assets use the same LuxPak/VFS storage path when selected into a product; no PluginPak/VFS is created.
+
 CMake target graph is the v1 composition truth until Product P freezes a project/package manifest.
 
 See `14-plugin-package-and-extension-composition.md`.
 
 ---
 
-## 16. Product Track P
+## 16. PAK-0 — LuxPak Format Prototype / Benchmark Gate
+
+PAK-0 is a Product/VFS/Toolchain storage experiment, not a new runtime architecture layer.
+
+Normative logical design is in `15`:
+
+```text
+AssetId -> persisted flat hash -> ContentEntry
+canonical VFS path -> persisted compact prefix index -> ContentEntry
+ContentEntry -> Segment -> Chunk
+payload first + read-ready TOC + fixed footer logically
+immutable package model
+```
+
+PAK-0 must prototype and measure rather than guess the remaining physical parameters.
+
+MUST benchmark/freeze at least:
+
+```text
+AssetId hash slot/probe/hash/load-factor policy
+compact radix vs double-array/static-trie VFS layout
+canonical path exact/miss/prefix enumeration
+ContentHash algorithm/width
+embedded vs sidecar TOC
+chunk-size policies
+compression policy
+TOC/mount memory and latency
+random read / sequential locality
+small Base+Patch overlay
+content-hash update diff
+```
+
+MUST use large synthetic entry counts plus representative cooked assets.
+
+MUST NOT implement encryption/DRM during this wave.
+
+Gate PAK-0:
+
+```text
+no runtime payload scan
+no runtime index rebuild
+cross-platform deterministic/readable wire prototype
+persisted AssetId and VFS prefix indexes qualified
+Asset -> Segment -> Chunk read path works
+patch/tombstone model validated
+performance/complexity evidence recorded
+exact physical parameters selected for PAK-1
+```
+
+---
+
+## 17. PAK-1 — Shipping Pak / Incremental Update Closure
+
+PAK-1 turns the qualified prototype into the shipping cooked-content provider/update contract.
+
+MUST close:
+
+```text
+canonical VFS path byte contract
+fixed v1 wire structs/validation
+PakProvider + AssetRead async integration
+immutable Base/Patch containers
+ADD / REPLACE / TOMBSTONE
+strong ContentHash diff
+Release Manifest/update inventory relation
+atomic patch install/publication/rollback policy
+bounded patch chain + rebase/compaction policy
+path rename without unchanged payload retransmission
+```
+
+Minimum v1 client may download a complete Patch Pak containing only changed/new content.
+
+Later chunk-aware CDN distribution may download only missing strong-hash chunks and materialize a self-contained Patch Pak, but normal `loadAsset()` must remain an installed-storage operation rather than implicit network I/O.
+
+Encryption remains NOT DONE unless a separate security requirement approves it. The format may reserve `SecurityMode::NONE`/future flags and must fail closed on unsupported modes.
+
+Gate PAK-1:
+
+```text
+shipping PakProvider qualified
+incremental update avoids full Base replacement
+patch tombstones prevent fallback resurrection
+bounded overlay lookup/rebase policy qualified
+no runtime index reconstruction
+release/update tooling reproducible from exact source/cooked inputs
+```
+
+---
+
+## 18. Product Track P
 
 Final shipping product remains project-specific, not a fixed generic Player architecture.
 
@@ -603,15 +700,19 @@ project native/generated sources
 source Plugin Package dependencies/facets
 plugin/static linkage policy
 platform/backend selection
-cooked/pak inputs
+cooked LuxPak/container inputs
+Base/Patch/release-variant selection
+host-tool requirements
 CMake/generator output contract
 ```
 
 Do not independently invent a Plugin manifest and a Project manifest. Plugin package selection belongs in the same Product composition model.
 
+PAK-1 owns **how cooked content is stored and incrementally updated**. Product P owns **which selected project/plugin content belongs to which product/container/release variant**.
+
 ---
 
-## 17. Qualification matrix
+## 19. Qualification matrix
 
 Every cross-layer wave, as applicable:
 
@@ -652,11 +753,24 @@ inverse rollback failure -> poison/fail closed
 compile/artifact equivalence
 ```
 
+Pak additionally:
+
+```text
+large TOC/index stress
+malformed/corrupt TOC bounds validation
+exact/miss/prefix path workloads
+random/sequential/chunk amplification benchmark
+Base/Patch/tombstone overlay
+incremental release diff
+cross-platform wire reproducibility
+no runtime index rebuild
+```
+
 Platform support claims require actual target configure/build where practical; copying installed headers is not a platform qualification.
 
 ---
 
-## 18. Global STOP conditions
+## 20. Global STOP conditions
 
 STOP for architecture review if implementation appears to require:
 
@@ -676,6 +790,12 @@ retained-mode widget framework
 PluginManager/IPlugin used to bypass owner-specific registration
 RenderPlugin duplicating RenderFeature
 binary hot-unload architecture merely to support source plugins
+runtime Pak payload scan or per-mount Asset/path index reconstruction
+full-path hash used as the only VFS storage index while prefix/enumeration semantics require a second ad-hoc directory SSOT
+in-place mutation of installed Base Pak for normal update
+network/CDN I/O hidden inside normal loadAsset()
+unbounded patch chain without a compaction policy
+encryption/DRM framework introduced in PAK-0 without separate approval
 ```
 
 Hard-cut migrations are preferred while the architecture is still pre-product; do not leave permanent compatibility shims between retired and current designs.

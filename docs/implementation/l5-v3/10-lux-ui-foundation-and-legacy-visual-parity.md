@@ -1,7 +1,12 @@
 # Lux UI Foundation、Dear ImGui Isolation 与 Legacy Visual / Interaction Parity
 
-Status: **Normative L0 UI / L5 Editor Integration Design (v3 docset)**  
+Status: **Normative L0 UI / L5 Editor Integration Design — v3 reconciled 2026-09-03**
+
 Parent documents: `00-L5-architecture-overview.md`, `07-implementation-roadmap-and-gates.md`, `08-normative-execution-contract.md`
+
+Related extension contracts: `01-editor-context-toolset-and-plugins.md`, `14-plugin-package-and-extension-composition.md`.
+
+> 本文件只定义 Lux UI 与 Editor-facing UI extension surface。Project Module / Plugin Package 本身不是 UI 概念；只有它们的 Editor Extension facet 进入这里定义的 Lux UI contract。
 
 ---
 
@@ -14,7 +19,7 @@ Lux 需要尽快进入真实 Editor UI 开发，但不能让每个 L5 feature �
 ```text
 1. modules/function/ui 是 Lux 公共 UI 边界。
 2. Dear ImGui / imgui-node-editor 只存在于该 module 的 private backend implementation。
-3. Editor、generated binding、plugin SDK 只看见 Lux UI 类型与 API。
+3. Editor、generated binding、project/source-plugin Editor Extension 只看见 Lux UI 类型与 API。
 4. 长生命周期语义对象采用 object-oriented 组织；leaf widget 保持 immediate-mode。
 5. Legacy 可作为 selected visual / interaction / behavior reference，但不是 ownership/architecture source of truth。
 6. UI styling 通过 Theme/design tokens 收敛，不在各个窗口复制 magic colors/spacing。
@@ -43,7 +48,7 @@ modules/function/ui/
 依赖方向：
 
 ```text
-L5 Editor / generated UI / plugin contribution
+L5 Editor / generated UI / Editor Extension
                 ↓
          Lux UI public API
                 ↓
@@ -60,7 +65,7 @@ AssetBrowser    -> imgui.h
 SceneEditor     -> imgui.h
 MaterialEditor  -> imgui.h
 FlowForgeEditor -> imgui.h
-plugin SDK      -> imgui.h
+Editor Extension SDK -> imgui.h
 generated code  -> imgui.h
 engine/editor/* -> imgui-node-editor.h
 ```
@@ -574,24 +579,28 @@ MUST NOT move Graph undo/topology mutation into `NodeCanvas`.
 
 ---
 
-## 16. Plugin UI contract
+## 16. Editor Extension UI contract
 
-Third-party Editor plugins use the same Lux UI/codegen path as first-party Editor code.
+Project-owned Editor code and a source Plugin Package's **Editor Extension facet** use the same Lux UI/codegen path as first-party Editor code.
 
-Public plugin SDK MUST provide/allow：
+This section does not define Plugin Package/runtime composition; that is owned by `14`.
+
+The public Editor extension SDK MUST provide/allow：
 
 ```text
 ui::Pane / approved Lux UI API
 annotation/codegen toolchain
 generated ComponentEditorBinding
 generated Graph presentation binding
-command contribution
-window factory/contribution
+Editor-owned command contribution
+Editor-owned window factory/contribution
 ```
 
-It MUST NOT require plugin authors to include Dear ImGui or imgui-node-editor.
+It MUST NOT require Editor extension authors to include Dear ImGui or imgui-node-editor.
 
-Plugin code that intentionally bypasses this and directly links ImGui is outside the supported Editor UI ABI/SDK contract and MUST NOT be required for normal plugin functionality.
+An Editor target that intentionally bypasses this and directly links ImGui is outside the supported Lux Editor UI contract and MUST NOT be required for normal project/source-plugin Editor functionality.
+
+Runtime/Render/Simulation facets of a Plugin Package are not governed by this UI section simply because they share a distribution package.
 
 ---
 
@@ -688,7 +697,7 @@ At minimum：
 ```text
 1. modules/function/ui public headers compile without imgui include paths.
 2. engine/editor/** has no direct include of imgui.h/imgui_internal.h/imgui-node-editor headers.
-3. generated Inspector/plugin bindings compile without imgui include paths.
+3. generated first-party/project/source-plugin Editor bindings compile without imgui include paths.
 4. only approved private UI backend target directly links Dear ImGui/node-editor.
 5. public installed Lux UI package contains no ImGui types in signatures.
 6. Editor closure still builds in supported profiles.
@@ -743,7 +752,7 @@ a reason to expose ImGui escape hatches
 No ImGui types in public Lux UI API.
 No direct ImGui calls in L5 feature code after U migration.
 No direct imgui-node-editor calls outside UI backend after U2.
-No generated/plugin ImGui dependency.
+No generated/project/source-plugin Editor Extension ImGui dependency.
 No persistent object for every leaf widget.
 No retained widget tree framework.
 No IUiBackend before a second real backend/approved requirement.
@@ -761,7 +770,7 @@ No Legacy ownership architecture copied for visual parity.
 Lux UI Foundation is ready when：
 
 ```text
-public Editor/plugin/generated UI code compiles without Dear ImGui headers
+public Editor/project/source-plugin Editor Extension/generated UI code compiles without Dear ImGui headers
 Editor panes render through Lux UI frame/scope/widget APIs
 Theme centralizes shared visual language
 EntityInspector can implement typed field editing + undo gesture without backend calls
@@ -774,4 +783,4 @@ no retained-mode widget framework or speculative backend abstraction was introdu
 
 ---
 
-> Coding implementation MUST also comply with `08-normative-execution-contract.md` and the execution order in `07-implementation-roadmap-and-gates.md`.
+> Coding implementation MUST also comply with `08-normative-execution-contract.md`, `14-plugin-package-and-extension-composition.md` when an Editor Extension comes from a Plugin Package, and the execution order in `07-implementation-roadmap-and-gates.md`.

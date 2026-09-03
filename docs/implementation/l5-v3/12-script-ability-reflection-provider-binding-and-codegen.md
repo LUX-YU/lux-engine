@@ -1,507 +1,186 @@
-# Script Ability Reflection、Provider Binding 与 Multi-language Codegen
+# Script Ability Reflection、Provider Binding、Naming 与 Multi-language Codegen
 
-Status: **Normative Implementation Contract (S1.5)**  
-Date: **2026-09-02**  
+Status: **Normative Implementation Contract — v3 reconciled 2026-09-03**
+
 Parent: `11-script-api-capabilities-coroutines-and-await.md`
 
-> 本文件冻结 Script Ability reflection/codegen 的 physical ownership、receiver/provider instance binding、CMake opt-in、generated artifacts 与 multi-language projection。它 supersede 任何把 Engine Script SDK schema 集中放进 `modules/function/script/sdk` 的旧建议，也 supersede `07` 中与 S1.5 次序冲突的 scripting 子 DAG 表述。
+> 本文件冻结 Script Ability 的 physical ownership、stable identity、code/display naming、receiver/provider binding、CMake opt-in、generated artifacts 与 C++/Lua/FlowForge projection。Project-owned code and source Plugin Packages use the same public contract; there is no separate Plugin Script API registry.
 
 ---
 
 ## 1. Goal
 
-S1.5 的目标不是实现 Physics、Navigation、Python 或完整 FlowForge coroutine。
-
-目标是建立唯一通路：
+One canonical declaration must drive every language/tool projection:
 
 ```text
-Engine/domain owner declares callable Ability
+Ability declaration with semantic owner
         ↓
-CMake explicitly opts source/types into reflection/codegen
+canonical generated descriptor/schema
         ↓
-canonical generated Ability descriptor/schema
+generated provider binder/thunks
         ↓
-generated provider conformance + binder/thunk
-        ↓
-composition binds existing provider instance
-        ↓
-prepared Script capability
-        ↓
-C++ / Lua / FlowForge / future Python projection consume same schema
+C++ projection
+Lua contribution/projection
+FlowForge node/catalog projection
+future language projections
 ```
 
-必须证明：
-
-```text
-static contract declaration
-!= runtime provider instance ownership
-!= language-specific wrapper
-```
+No language/backend owns a second hand-written semantic schema.
 
 ---
 
-## 2. Physical ownership
+## 2. Declaration follows semantic owner
 
-### 2.1 `modules/`
+Ability declarations live with the package/project that owns the concept.
 
-`modules/` 保持 Engine-independent/reusable。
-
-允许：
+Examples:
 
 ```text
-portable reflection/parser/codegen primitives
-Script ABI/value primitives
-ScriptArtifact-neutral reusable data structures
-language-generic template utilities
+PhysicsQuery3D
+    -> Physics domain package
+
+NavigationQuery
+    -> Navigation domain package
+
+Delay
+    -> Simulation scripting/time owner
+
+InventoryAbility
+    -> external project/game package
 ```
 
-禁止：
+Do not create a central Engine Script SDK package containing every domain contract merely for convenience.
 
-```text
-SimulationSystem
-Scene capability
-PhysicsQuery3D Engine declaration
-Entity/Component Script API owned by Simulation
-AssetLoading Engine integration ability
-SystemInstanceId-based provider registry
-```
-
-不要创建：
-
-```text
-modules/function/script/sdk/
-    EntityApi
-    PhysicsApi
-    AssetApi
-    SceneCapability...
-```
-
-作为 Engine API source of truth。
-
-### 2.2 Engine/domain package
-
-Ability declaration 跟随真实 semantic owner。
-
-示例，不强制 exact folder name：
-
-```text
-engine/domain/simulation/builtin/physics/
-├─ abilities/
-│  ├─ PhysicsQuery3D.hpp
-│  └─ PhysicsBody3D.hpp
-└─ ...
-
-engine/domain/simulation/ecs/
-└─ abilities/
-   ├─ Entity.hpp
-   ├─ Component.hpp
-   └─ Query.hpp
-```
-
-Asset ability 应放在真实 Engine-facing asset-loading/integration owner，而不是为目录整齐硬塞到 Simulation 或 Script package。
-
-原则：
-
-> declaration follows semantic owner; generated projection follows build graph.
+`modules/function/script` owns reusable reflection/codegen/ABI vocabulary, not Engine domain ontology.
 
 ---
 
-## 3. Ability declaration model
+## 3. Contract identity, source name, display name
 
-第一版推荐 contract-first declaration，而不是 concrete provider-first reflection。
-
-概念：
-
-```cpp
-LUX_SCRIPT_ABILITY(PhysicsQuery3D)
-struct PhysicsQuery3D
-{
-    LUX_SCRIPT_QUERY
-    RaycastHit raycast(const RaycastRequest& request);
-
-    LUX_SCRIPT_ASYNC
-    RaycastHit raycastAsync(const RaycastRequest& request);
-};
-```
-
-宏/attribute 的 exact spelling **尚由实施结合现有 meta parser 风格决定**；语义必须固定：
+These are separate concepts.
 
 ```text
-Ability identity
-method identity/name
-method kind: QUERY / COMMAND / ASYNC_OPERATION
-parameter/result type schema
+ContractId
+    stable semantic/runtime identity
+
+code/source name
+    stable language/tool-facing identifier
+
+DisplayName
+    human/editor presentation text
+```
+
+The same distinction applies to methods:
+
+```text
+MethodId
+method source/code name
+method display name
+```
+
+Changing display text MUST NOT change:
+
+```text
+ContractId
+MethodId
+Lua source API name
+FlowForge semantic node identity
+provider resolution
+schema identity except where the declaration intentionally changes semantic metadata
+```
+
+A display name such as:
+
+```text
+"Physics Query 3D"
+```
+
+is valid and must not be forced to be a language identifier.
+
+If a declaration does not explicitly provide a code name, the reflected declaration/source identifier may be the deterministic default. Do not invent string heuristics such as removing `Ability` suffixes or converting display text.
+
+---
+
+## 4. Stable contract and method identity
+
+Canonical metadata includes stable typed identities:
+
+```text
+ScriptApiContractId
+ScriptApiMethodId
+schema version/hash
+```
+
+The schema must cover the semantic call contract, including at least:
+
+```text
 receiver kind
-lifetime category
-optional documentation/display metadata
+method kind
+parameter/result types
+pass mode
+value lifetime category
 ```
 
-不得把 concrete provider type 写进 script-visible signature。
-
-错误：
-
-```cpp
-raycast(JoltPhysicsSystem&, RaycastRequest);
-```
-
-正确 contract：
-
-```text
-PhysicsQuery3D.raycast(RaycastRequest) -> RaycastHit
-receiver = PROVIDER_INSTANCE
-```
+Names are diagnostics/source/UI metadata, not the hot runtime lookup identity.
 
 ---
 
-## 4. Receiver model
+## 5. Receiver model
 
-v1 只允许：
+v1 receiver kinds:
 
 ```text
 NONE
 PROVIDER_INSTANCE
 ```
 
-### 4.1 NONE
+`PROVIDER_INSTANCE` means a generated binder borrows one already-existing runtime provider object.
 
-适用于 truly stateless/pure callable。
-
-Generated dynamic thunk 可以：
+Generated code MUST NOT:
 
 ```text
-context = nullptr
-```
-
-### 4.2 PROVIDER_INSTANCE
-
-适用于需要 runtime object/state 的能力。
-
-例如：
-
-```text
-PhysicsQuery3D -> PhysicsSystem instance
-EntityApi      -> ECS endpoint instance
-AssetLoading   -> Asset loading endpoint instance
-```
-
-Receiver 不出现在语言 signature 中。
-
-Lua 可以看到：
-
-```text
-Physics.raycast(request)
-```
-
-实际 dynamic binding：
-
-```text
-context = provider instance
-invoke  = generated thunk
+construct provider
+own provider
+shared-own provider
+perform service discovery
+persist provider pointer in ScriptArtifact
 ```
 
 ---
 
-## 5. Generated provider conformance
+## 6. Provider binder / erased method binding
 
-Contract 不强迫 concrete provider 继承 virtual base。
+Owner-side codegen produces typed validation/binding capable of adapting a compatible concrete provider to the canonical Ability description.
 
-推荐 codegen 产生 compile-time conformance check / concept / static assertion。
-
-概念：
-
-```cpp
-template<class Provider>
-concept PhysicsQuery3DProvider = requires(
-    Provider& provider,
-    const RaycastRequest& request)
-{
-    { provider.raycast(request) } -> std::same_as<RaycastHit>;
-};
-```
-
-Exact generated form 可不同，但 MUST：
+Conceptually:
 
 ```text
-provider mismatch detected at build/composition boundary where possible
-no required virtual inheritance
-no RTTI/dynamic_cast requirement
-no concrete backend name embedded into contract identity
+Provider&
+    ↓ generated binder
+ScriptAbilityBinding
+    contract/schema
+    owner identity when useful for diagnostics
+    receiver/context
+    generated method dispatch/thunks
 ```
 
-如果 provider 方法名/shape 需要 adapter，允许 package 自己提供显式 typed adapter；不得靠 string-based runtime mapping。
+Async methods expose a starter/admission thunk rather than pretending to return an immediate eventual result.
+
+The binder only borrows the provider; real lifetime remains with its composition owner.
 
 ---
 
-## 6. Generated binder/thunk
+## 7. Method kinds and lifetime metadata
 
-对于 `PROVIDER_INSTANCE`，codegen 产生 typed binder：
-
-```cpp
-bindPhysicsQuery3D(Provider& provider)
-    -> BoundScriptCapability
-```
-
-Binder 的职责：
+Canonical metadata carries:
 
 ```text
-validate/encode contract identity + schema
-capture non-owning receiver pointer
-populate method thunk/table
-attach diagnostics metadata
-optionally record owner identity supplied by composition
+QUERY
+COMMAND
+ASYNC_OPERATION
 ```
 
-Generated thunk 概念：
-
-```cpp
-RaycastHit raycastThunk(
-    void* context,
-    const RaycastRequest& request) noexcept
-{
-    auto& provider = *static_cast<Provider*>(context);
-    return provider.raycast(request);
-}
-```
-
-Codegen MUST NOT：
-
-```text
-new Provider
-make_shared<Provider>
-static Provider instance
-lookup provider from global registry
-own or destroy provider
-```
-
----
-
-## 7. Runtime owner and composition binding
-
-Provider object 由真实 composition owner 创建。
-
-对于 SimulationSystem，当前模型已经是：
-
-```text
-SimulationBuilder / Simulation
-    creates and owns System instance
-```
-
-Ability binding 发生在 provider 已成功安装以后：
-
-```text
-emplace/install provider
-        ↓
-bind generated Ability(provider)
-        ↓
-publish frozen capability
-```
-
-概念：
-
-```cpp
-auto physics = builder.emplaceSystem<JoltPhysicsSystem>(id, ...);
-if (!physics)
-    return unexpected(...);
-
-// exact API TBD; semantics frozen
-builder.publishScriptAbility(
-    id,
-    generated::bindPhysicsQuery3D(**physics)
-);
-```
-
-这里：
-
-```text
-Simulation owns JoltPhysicsSystem
-Bound Ability borrows JoltPhysicsSystem
-ScriptSystem never owns JoltPhysicsSystem
-```
-
----
-
-## 8. Provider owner identity
-
-Bound capability 可以记录 runtime owner identity 用于 diagnostics/lifetime validation。
-
-对于 SimulationSystem provider：
-
-```text
-owner = SystemInstanceId
-```
-
-对于非-System provider，可使用其真实 composition-level stable identity/owner record；不要为了统一而强行给所有 provider 发 `SystemInstanceId`。
-
-ScriptArtifact requirement 不保存 owner identity，只保存：
-
-```text
-ContractId
-SchemaHash/ABI version
-```
-
----
-
-## 9. Default provider uniqueness
-
-v1 一个 composition scope 内，每个 Script API contract 最多一个 default active provider。
-
-若出现：
-
-```text
-PhysicsQuery3D <- Provider A
-PhysicsQuery3D <- Provider B
-```
-
-必须：
-
-```text
-SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER
-```
-
-并 fail closed。
-
-禁止：
-
-```text
-first registered wins
-last registered wins
-string name lookup to select provider
-implicit priority number
-```
-
-未来若真实需求要求 multiple physics worlds/providers，再单独设计 explicit provider selection contract。
-
----
-
-## 10. CMake codegen opt-in
-
-Ability reflection 必须是 target/package 显式 opt-in，不扫描整个 repository。
-
-概念 API：
-
-```cmake
-lux_script_abilities(
-    TARGET lux_engine_simulation_builtin_physics
-    SOURCES
-        abilities/PhysicsQuery3D.hpp
-        abilities/PhysicsBody3D.hpp
-)
-```
-
-Exact CMake function name 可以按现有 Lux codegen convention 调整，但 MUST：
-
-```text
-input sources/types explicit
-outputs declared to build system
-generated files live under build/generated or equivalent
-incremental dependency tracking works
-second build with no source changes does no unnecessary regeneration
-installed/public closure does not reference source-tree absolute paths
-```
-
-MUST NOT：
-
-```text
-glob all headers and reflect implicitly
-write generated output into checked-in source directories
-make domain package depend on Lua/FlowForge/Python implementation
-```
-
----
-
-## 11. Two-stage codegen
-
-Codegen 分两阶段。
-
-### Stage A — owner-side canonical reflection
-
-Domain package input：
-
-```text
-abilities/*.hpp
-component/meta declarations where applicable
-```
-
-输出 language-neutral generated data/code：
-
-```text
-Ability descriptor/schema
-stable contract/method identity
-method kind
-parameter/result schema
-receiver kind
-lifetime metadata
-generated typed provider binder/thunks
-```
-
-### Stage B — language/tool projection
-
-消费者读取 canonical schema：
-
-```text
-C++ projection
-Lua registration/stubs
-FlowForge node/catalog contribution
-future Python registration/.pyi
-```
-
-Domain package不直接知道这些 consumer implementation。
-
-依赖方向应是：
-
-```text
-canonical reflected metadata
-        ↑
-owner package
-
-language/tool projection target
-        ↓ consumes
-canonical metadata
-```
-
-而不是 Physics -> Lua / Physics -> FlowForge。
-
----
-
-## 12. Component/ECS API projection
-
-Entity/Component/Query 是重要公共 Script ability，但 declaration owner 仍在 Simulation/ECS engine package。
-
-现有 Component metadata/codegen 可以作为输入：
-
-```text
-Component declaration/meta
-        ↓
-canonical component schema
-        ↓
-script projection
-```
-
-第一版 semantic operations 建议：
-
-```text
-Entity.valid
-Entity.create
-Entity.destroy
-
-Component.has<T>
-Component.get<T>
-Component.patch<T>
-Component.add<T>
-Component.remove<T>
-
-Query<T...>
-```
-
-不要实现 string query language。
-
-动态语言 `get<T>` 不得长期暴露 raw ECS storage pointer。
-
----
-
-## 13. Lifetime metadata
-
-Canonical schema 必须能表达：
+and value lifetime categories:
 
 ```text
 OWNED_VALUE
@@ -510,330 +189,323 @@ BORROWED_STEP
 AWAITABLE
 ```
 
-示例：
+Do not infer these from C++ method spelling.
+
+Examples:
 
 ```text
-EntityId             -> STABLE_ID
-AssetId              -> STABLE_ID
-RaycastHit           -> OWNED_VALUE
-Component reference  -> BORROWED_STEP
-Query iterator/view  -> BORROWED_STEP
-Async AssetLoad      -> AWAITABLE<OWNED_VALUE/...>
+RaycastHit owned result      -> OWNED_VALUE
+EntityId                     -> STABLE_ID
+component/query temporary    -> BORROWED_STEP
+async result                 -> AWAITABLE<...>
 ```
 
-任何 `BORROWED_STEP` 值不得跨 coroutine suspension。
-
-FlowForge projection必须能用该 metadata 做 static validation。
-
-Lua/Python projection不得把它包装成可无限持有且看似安全的对象。
+Detailed cross-await rule is owned by `11`.
 
 ---
 
-## 14. Method kind projection
+## 8. Explicit CMake opt-in
 
-Canonical schema中的：
+Ability reflection/codegen is target/package explicit.
 
-```text
-QUERY
-COMMAND
-ASYNC_OPERATION
+Conceptually:
+
+```cmake
+lux_script_abilities(
+    TARGET some_target
+    SOURCES
+        AbilityA.hpp
+        AbilityB.hpp
+    LOGICAL_PATHS
+        ...
+)
 ```
 
-决定语言/tool projection 行为。
-
-例如：
+MUST:
 
 ```text
-QUERY
-    C++       -> immediate value
-    Lua       -> immediate value
-    FlowForge -> normal node
-
-ASYNC_OPERATION
-    C++       -> ScriptAwaitable<T> / later co_await surface
-    Lua       -> awaitable/yield bridge surface
-    FlowForge -> suspension-capable node
+explicit source/type inputs
+outputs declared to build system
+generated files under build/generated or equivalent
+incremental dependency tracking
+second build no unnecessary regeneration
+installed external project support
+no source-tree absolute path baked into installed generated closure
 ```
 
-不得通过 method name suffix 猜 asyncness。
+MUST NOT glob the whole repository for Ability declarations.
 
 ---
 
-## 15. Lua projection
+## 9. Two-stage codegen
 
-现有 `modules/function/script/lua` 已有 reusable Lua codegen/registration machinery；S1.5 应复用其真正 Engine-independent 部分，而不是把 Engine ability declaration 移入 modules。
+### Stage A — canonical owner-side reflection
 
-S1.5 最小 Lua proof：
+Produces language-neutral metadata/code:
 
 ```text
-one test Ability
-canonical schema
-        ↓
-generated/derived Lua registration wrapper
-        ↓
-call reaches bound provider instance
+Ability description
+stable IDs
+code/display names
+schema hash/version
+method kinds
+value lifetime metadata
+typed provider binder/thunks
+machine-readable schema/projection data where needed
 ```
 
-本阶段不实现 Lua coroutine S4。
+### Stage B — consumer projection
+
+Consumes Stage A:
+
+```text
+C++
+Lua
+FlowForge
+future Python/other language
+```
+
+Domain package must not depend directly on those language runtime implementations.
 
 ---
 
-## 16. FlowForge projection
+## 10. ScriptArtifact requirements
 
-S1.5 只需要证明 canonical Ability 可以贡献/生成一个最小 FlowForge API node/catalog entry。
+Language/tool authoring derives or explicitly selects semantic Ability requirements from canonical Stage-A schema.
 
-FlowForge source node identity必须基于：
+Script source/build metadata must not hand-author a schema hash independently.
+
+Requirements store:
 
 ```text
-ScriptApiContractId
-ScriptApiMethodId
+ContractId
+expected schema hash/version as defined by the ScriptArtifact contract
 ```
 
-禁止保存：
+No provider identity.
+
+---
+
+## 11. C++ projection
+
+C++ dynamic/development projection may provide a typed facade over prepared binding:
 
 ```text
-Provider class name
+ScriptAbilityCpp<Ability>
+prepared receiver + generated thunk/table
+```
+
+S6 may add `co_await` ergonomics for ASYNC_OPERATION.
+
+Future shipping specialization may use known provider/composition information to generate a direct typed path for LTO, but semantic metadata stays identical.
+
+---
+
+## 12. Lua production projection
+
+The old S1.5 proof that directly captured one provider into a Lua VM-global function is not the production authority model.
+
+Production Lua projection is provider-independent at VM registration time.
+
+Conceptual contribution:
+
+```text
+ScriptAbilityLuaContribution
+    -> canonical Ability description only
+```
+
+Backend startup may materialize syntax:
+
+```lua
+lux.<AbilityCodeName>.<MethodCodeName>(...)
+```
+
+The closure stores only backend/catalog identity sufficient to locate the current executing ScriptInstance's prepared method entry.
+
+Call topology:
+
+```text
+Lua language surface
+    ↓ small catalog/method ordinal
+current executing ScriptInstance
+    ↓
+per-instance prepared capability entry
+    ↓
+generated erased method binding
+    ↓
+composition-owned provider
+```
+
+MUST NOT capture a concrete provider as VM-global authority.
+
+An undeclared Ability remains unavailable to a ScriptInstance even if another ScriptInstance in the same VM uses it.
+
+For `BORROWED_STEP`, Lua may receive an owned copied scalar/value only when the bridge can safely copy/marshal at the same step. No raw borrowed pointer exposure.
+
+Lua VM portability requirements are owned by `11`/`07`; Ability codegen must not generate LuaJIT-only canonical semantics.
+
+---
+
+## 13. FlowForge projection
+
+FlowForge Ability nodes are generated/contributed from canonical metadata.
+
+Persistent/semantic node identity uses:
+
+```text
+ContractId
+MethodId
+expected schema
+```
+
+Do not persist:
+
+```text
+provider class name
 Jolt method symbol
 raw function pointer
+registration ordinal
 ```
 
-本阶段不实现 coroutine lowering；ASYNC_OPERATION 可以生成/描述 suspension capability metadata，但真正 state-machine lowering 属于 S3。
+Node pin shape and suspension behavior derive from canonical method kind/value metadata.
+
+Compiler derives ScriptArtifact requirements from actually used Ability nodes, deduplicated by ContractId/schema.
+
+FlowForge async lowering remains an explicit compiler-generated state machine; no FlowForge runtime/scheduler is introduced.
 
 ---
 
-## 17. C++ projection
+## 14. External project support
 
-S1.5 证明同一 canonical Ability 可得到 typed C++ facade/binding。
+External projects use the same source of truth and CMake codegen contract.
 
-Dynamic/development path允许：
-
-```text
-prepared context + thunk/table
-```
-
-未来 shipping specialization必须仍有空间：
-
-```text
-known provider type
-        ↓
-generated typed direct adapter
-        ↓
-LTO/devirtualization/inlining
-```
-
-不要把 function-pointer layout 写进 semantic contract schema。
-
----
-
-## 18. External project support
-
-外部项目也可以声明自己的 Engine-owned abilities，例如：
+Example:
 
 ```text
 MyGame/
-└─ simulation/
-   └─ abilities/
-      └─ InventoryAbility.hpp
+  simulation/
+    InventoryAbility.hpp
+    InventorySystem.cpp
 ```
 
-只要该 project target能调用同一 Lux CMake reflection/codegen function。
+Project code can:
 
-因此 codegen tool本身应具有可复用安装/SDK surface，但 **project-specific Ability declaration仍属于项目/Engine domain，不属于 `modules/`**。
+```text
+declare Ability
+reflect/generate canonical metadata
+bind its own provider
+publish it in Simulation composition
+package Lua requiring it
+generate FlowForge catalog entries
+consume C++ projection
+```
+
+No engine repository central registry edit is required.
 
 ---
 
-## 19. Generated artifact placement
+## 15. Source Plugin Package support
 
-推荐：
+A source Plugin Package is only a distribution/build boundary around ordinary targets.
 
-```text
-<build>/generated/<target>/script_abilities/...
-```
-
-或项目现有等价 generated-tree convention。
-
-生成内容可包括：
+If a package contains a gameplay Ability/System pair:
 
 ```text
-*.ability.generated.hpp
-*.ability.generated.cpp
-canonical descriptor tables
-language/tool contribution metadata
+plugin domain target
+    owns declaration + System/Provider
+    uses normal lux_script_abilities() codegen
 ```
 
-不要将 generated 文件提交为手写 source truth，除非项目已有经过批准的 generated-source policy。
+If it also contains Editor/Lua/FlowForge support, those are separate higher/consumer targets that consume the canonical metadata.
+
+There is no:
+
+```text
+PluginAbilityId
+PluginAbilityRegistry
+Plugin-owned provider locator
+```
+
+Original Ability identities remain canonical.
+
+See `14-plugin-package-and-extension-composition.md`.
 
 ---
 
-## 20. ABI and install boundary
+## 16. Component/ECS projection
 
-需要区分：
+Component/meta codegen may feed Script projection, but Component semantics remain with the ECS/Simulation owner.
 
-```text
-canonical semantic schema
-runtime dynamic binding ABI
-language-specific binding ABI
-```
+Dynamic-language `get` must return an owned value or validated step-local representation. It must not make raw ECS storage look indefinitely durable.
 
-S1.5 不应该因为 codegen 引入第二套平行 Script ABI。
-
-现有 Script ABI/Artifact 方向继续保留；如果 canonical ability schema 无法映射到现有 ABI 而必须破坏持久/installed contract，STOP 做专门 architecture review。
-
-安装后 codegen consumer不得依赖 repo source absolute path。
+Do not create a string query language merely to simplify language binding.
 
 ---
 
-## 21. Teardown/lifetime tests
+## 17. Generated artifact placement / installed SDK
 
-必须有真实 lifetime proof：
+Generated source belongs in build/generated or equivalent project convention.
+
+Installed SDK must expose enough reusable pieces for an external project/plugin source package to:
 
 ```text
-provider constructed once by owner
-ability binder does not construct provider
-ability binding does not own provider
-script/capability binding cleared before provider destruction
-provider destroyed exactly once
-late script continuation cannot invoke destroyed provider
+run Ability reflection/codegen
+compile generated binder/projection code
+materialize machine-readable Ability schema used by Lua packaging/tooling
+consume FlowForge/C++ projection helpers
 ```
 
-禁止以 `shared_ptr` reference count 作为 correctness proof。
+No generated installed consumer may require the original Lux source/build tree.
 
 ---
 
-## 22. S1.5 minimum implementation scope
+## 18. Diagnostics / fail-closed behavior
 
-只实现：
-
-```text
-1. one canonical Ability declaration representation
-2. receiver NONE / PROVIDER_INSTANCE metadata
-3. explicit CMake opt-in
-4. generated descriptor/schema
-5. generated typed provider binder/thunk
-6. composition publication of a test provider
-7. mount requirement resolution against generated capability
-8. one C++ projection proof
-9. one Lua projection proof
-10. one FlowForge catalog/node projection proof
-11. lifetime metadata representation
-```
-
-推荐使用：
+Codegen/reflection/projection should fail explicitly for:
 
 ```text
-TestAbility / TestProvider
+invalid/duplicate ContractId or MethodId
+invalid code/source identifier
+unsupported receiver
+invalid method-kind/result combination
+unsupported value/pass/lifetime shape
+conflicting schema
+ambiguous provider publication
+language projection cannot represent a required value safely
 ```
 
-不要以 Physics 作为第一 proof，否则会把 reflection/codegen 风险和 physics integration 风险混在一起。
+Do not silently omit an Ability method that the artifact/schema claims is available unless the projection contract explicitly marks that method unsupported and causes the consuming asset/build to fail early.
 
 ---
 
-## 23. Explicitly NOT in S1.5
+## 19. Performance contract
+
+Generated dynamic binding must allow:
 
 ```text
-real Physics API
-real Navigation API
-AssetLoad await execution
-Delay implementation
-Event.await
-FlowForge coroutine lowering
-Lua coroutine bridge
-C++ co_await ergonomics
-Python runtime
-provider hot swap
-multiple provider selection
-semantic version negotiation
-universal reflection registry
+composition/mount preparation once
+small immutable call-time receiver/thunk path
 ```
+
+Do not mandate `std::function`, virtual provider inheritance, or per-call reflection/string lookup.
+
+Known shipping specialization remains optional and downstream of the semantic contract.
 
 ---
 
-## 24. Tests
+## 20. STOP conditions
 
-至少覆盖：
-
-```text
-contract descriptor is deterministic
-method identity/schema stable across rebuild
-CMake only regenerates when relevant input changes
-PROVIDER_INSTANCE binder calls exact existing provider object
-NONE receiver works without object
-binder does not allocate/own provider
-provider compile-time mismatch fails at build where practical
-missing provider -> SCRIPT_CAPABILITY_NOT_FOUND
-schema mismatch -> SCRIPT_CAPABILITY_SCHEMA_MISMATCH
-duplicate default provider -> SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER
-prepared call has no runtime string lookup
-Lua proof reaches same provider
-FlowForge generated/contributed node uses contract+method ID
-C++ proof uses same canonical contract
-BORROWED_STEP metadata survives projection
-```
-
----
-
-## 25. Qualification
-
-至少运行：
+STOP for architecture review if implementation appears to require:
 
 ```text
-Default Developer
-PLAYER
-TOOLCHAIN
+central Engine Script SDK containing all domain abilities
+codegen constructing/owning providers
+provider-specific identity in ScriptArtifact
+provider global singleton/service lookup
+language-specific semantic schema forks
+Lua VM-global concrete provider authority
+FlowForge node storing provider identity
+runtime string lookup as canonical Script Ability dispatch
+source Plugin Package requiring a new Plugin Script registry
+language display text used as semantic/runtime identity
 ```
-
-如果 generated public headers/installed codegen SDK 进入 Editor closure，同时运行 EDITOR。
-
-如果安装 surface/CMake package 被修改：
-
-```text
-install
-relocated consumer
-second build -> no work to do
-```
-
-检查 generated output 不包含 source/build absolute path leakage（除非明确允许的 debug-only metadata）。
-
----
-
-## 26. STOP conditions
-
-出现以下任一情况必须停止：
-
-```text
-必须把 Engine ability declaration 放进 modules 才能 codegen
-必须建立全局 runtime reflection registry
-必须让 codegen own/create provider
-必须让 ScriptSystem shared-own provider
-必须把 concrete provider type写进 ScriptArtifact requirement
-必须让 Physics/domain target link Lua/FlowForge/Python implementation
-CMake 必须扫描整个 repo 才能发现 Ability
-需要 provider hot swap/multiple provider routing 才能完成最小 proof
-需要修改 project target-generation manifest contract
-需要并行维护 legacy/new 两套 Ability ABI compatibility shim
-```
-
----
-
-## 27. S1.5 completion gate
-
-只有以下全部成立才允许进入 S2：
-
-```text
-[ ] Engine/module ownership boundary preserved
-[ ] Ability declaration follows semantic owner
-[ ] explicit CMake codegen opt-in exists
-[ ] canonical schema generated deterministically
-[ ] receiver NONE / PROVIDER_INSTANCE frozen
-[ ] generated binder borrows existing provider
-[ ] provider lifetime remains with original owner
-[ ] missing/schema/ambiguous diagnostics work
-[ ] one C++ projection proof
-[ ] one Lua projection proof
-[ ] one FlowForge projection proof
-[ ] lifetime metadata represented
-[ ] no per-call string/service lookup
-[ ] clean qualification passes
-```
-
-Then and only then proceed to S2 `NextStep / Delay / AssetLoad`.

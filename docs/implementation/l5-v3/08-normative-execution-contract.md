@@ -1,8 +1,19 @@
 # Lux Architecture Normative Execution Contract for Coding Agents
 
-Status: **Normative — MUST / MUST NOT / STOP (v3)**
+Status: **Normative — MUST / MUST NOT / STOP (v3 reconciled 2026-09-03)**
 
-本文不是设计讨论，而是实现约束。若与本 docset 其他“建议/示例”措辞冲突，以本文为准；若与 repository canonical L0–L4/L5 architecture 真源冲突，必须 STOP 并重新 review，而不是自行折中。
+本文不是设计讨论，而是实现约束。若与 repository canonical L0–L4/L5 architecture 真源冲突，必须 STOP 并重新 review，而不是自行折中。
+
+Specialized normative contracts supersede this general contract only in their explicit semantic domains:
+
+```text
+11  Script Ability / capability / coroutine / Event / Delay / portable backend semantics
+12  Script Ability reflection / naming / provider binding / codegen / projection
+13  gameplay Script object incarnation / BeginPlay / EndPlay / retirement
+14  Project Module / source Plugin Package / Editor Extension / RenderFeature composition
+```
+
+Outside those specialized domains, this file remains the highest-priority general execution/ownership contract. A coding agent MUST NOT use a specialized document as permission to violate unrelated lower-layer ownership, product classification, reproducibility or lifecycle rules.
 
 ---
 
@@ -18,6 +29,8 @@ Status: **Normative — MUST / MUST NOT / STOP (v3)**
 - MUST 让 window lifetime 与 tool/task/resource lifetime 分离。
 - MUST make qualification evidence reproducible from the exact committed source snapshot it names。
 - MUST keep Dear ImGui/imgui-node-editor private to the approved Lux UI backend after Wave U migration。
+- MUST treat Project Module as the normal game-extension unit and Plugin Package only as optional source distribution/build composition; every plugin facet keeps its original owner, dependency direction and product classification。
+- MUST use owner-specific extension/composition seams (System registration, Script Ability/Event codegen, RenderFeature registration, Toolset/Editor contribution, etc.) rather than routing all extensions through one universal Plugin runtime。
 
 ### MUST NOT
 
@@ -38,6 +51,11 @@ Graph payload property bag
 engine/authoring resurrection
 retained-mode WidgetManager / persistent visual tree
 IUiBackend leaf-virtual abstraction before a second real backend/approved need
+IPlugin startup/shutdown god interface
+PluginManager / PluginServices / generic PluginContext
+all-engine ContributionRegistry
+RenderPlugin parallel to RenderFeature
+Plugin-specific Component/System/Ability identity wrappers
 ```
 
 ---
@@ -123,6 +141,8 @@ Exception：`Toolset` itself MAY expose typed `get<T>/find<T>` because its seman
 
 `vfs()` MUST return/read an `AssetVfsView`, not mutable `AssetVfs&`.
 
+Project/plugin-specific Systems, Providers or services MUST NOT be added to EditorContext merely because one Editor Extension needs them. Such extensions use explicit current Scene/Simulation/session/domain capabilities as defined by `01/14`.
+
 ---
 
 ## 5. Toolset / EditorApplication Tool Lifecycle Contract
@@ -159,13 +179,15 @@ JOINED     -> explicit STOPPING/invalid-state failure
 
 STOPPING/JOINED MUST NOT dereference an already-reset/disengaged Toolset owner.
 
+Source Plugin Editor facets may install Tools only during the same composition phase and remain subject to the same freeze/lifetime rules. Toolset does not become a general Plugin registry.
+
 ---
 
 ## 6. Lux UI / Backend Isolation Contract
 
 `modules/function/ui` is the public UI owner.
 
-After the corresponding Wave U migration, Editor/generated/plugin public or feature code MUST NOT include/expose：
+After the corresponding Wave U migration, Editor/generated/Editor-extension public or feature code MUST NOT include/expose：
 
 ```text
 imgui.h
@@ -208,6 +230,8 @@ Concurrent read vs mount publication MUST have an explicit race-free contract；
 Script/runtime code MUST NOT receive mutable AssetVfs control plane and MUST NOT perform synchronous potentially-blocking VFS open on game/main thread。Editor frame/UI hot path MUST also use `AssetReadPort` for content reads that may touch storage；`AssetVfsView` is primarily path/mount visibility/query capability。
 
 Current `process/asset_loading::loadAsset<T>()` MUST remain the typed async decode workflow；product composition MUST provide a non-owner-thread-blocking production `AssetReadPort` endpoint before exposing async asset loading to scripts。
+
+Project/Plugin package assets use the same product-wide VFS/pak mechanisms. MUST NOT create PluginVfs, per-plugin AssetManager or per-plugin resource database merely for package ownership.
 
 ---
 
@@ -512,11 +536,11 @@ MUST NOT introduce SelectionManager/SelectionRegistry/per-pane competing selecti
 
 ## 22. Generated Inspector Contract
 
-Known first-party/plugin component UI MUST be generated typed C++.
+Known first-party/project/source-plugin component UI MUST be generated typed C++.
 
 Generated code MUST call Lux UI public `EditorValueBinding<T>`/approved typed UI surface and MUST NOT include Dear ImGui.
 
-No runtime-reflection fallback for normal editing.
+No runtime-reflection fallback for normal editing merely because a Component originates outside the Engine repository.
 
 Plain fields may direct-write + `registry.patch<T>()`; semantic fields such as Parent MUST use canonical domain mutation (`reparent/detach`) or be readonly/hidden.
 
@@ -598,47 +622,80 @@ Final shipped game MUST be modeled as a project-specific generated executable ta
 
 Coding agent MUST STOP before implementing target generation if project manifest / target input contract is not approved；MUST NOT invent a generic Player/Host framework or manifest format。
 
+Source Plugin Package identity/dependencies/selectable facets belong to this same future Product Track P target-generation contract. Until P is approved, the CMake target graph is the source-plugin composition truth; MUST NOT invent a second `plugin.toml`/`luxplugin.json` manifest universe.
+
 ---
 
 ## 27. Async Script / Cross-frame Operation Contract
 
-MUST distinguish：
+Detailed current Script rules are specialized by `11/12/13`.
+
+General execution MUST still distinguish：
 
 ```text
 Sender/domain async operation = external time-spanning work
 script continuation           = language/runtime suspension state
 ```
 
-Before implementation, the script continuation contract MUST explicitly freeze at least：
-
-```text
-script instance identity/generation
-continuation/program point
-locals/value state across suspension
-resume result/error channel
-cancellation/scene shutdown
-resume queue/stable point
-nested/repeated async behavior
-ordering/reentrancy
-```
-
-Delay MUST use Timer semantics；asset loading MUST use AssetReadPort/typed AssetLoad Sender；GPU/physics queries MUST be domain-owned async operations。
-
-Script invocation MUST return control to Simulation when suspended。MUST NOT：
+MUST NOT:
 
 ```text
 sleep game thread
 sync_wait asynchronous Sender on game/main thread
-Wait GPU fence/readback on normal gameplay path
+wait GPU fence/readback on normal gameplay path
 retain native stack frame across frames
 resume script directly from arbitrary worker/render callback
 ```
 
-Completion MUST enqueue a stable resume record and continue at an explicit Simulation/script resume point。Scene/script shutdown MUST invalidate/cancel continuations safely。
+Completion MUST enter the backend-neutral bounded Script resume path at the explicit Simulation stable point. Scene/script shutdown MUST invalidate/cancel stale continuations safely.
 
 ---
 
-## 28. Architecture Change Stop Conditions
+## 28. Source Plugin / Extension Composition Contract
+
+Detailed package semantics are owned by `14` and Editor-specific contribution/freeze rules by `01`.
+
+The general execution invariants are:
+
+```text
+Project Module
+    normal gameplay/engine extension unit
+
+Source Plugin Package
+    optional distribution/build grouping of classified targets
+
+Editor Extension
+    Editor-only target/facet
+
+RenderFeature
+    Render-owned low-level extension contract
+```
+
+MUST:
+
+```text
+preserve each facet's native layer/product classification
+keep System/Component/Ability/Feature identities canonical
+keep contributed code loaded while static registrations/function pointers/objects reference it
+use owner-specific registration/composition surfaces
+exclude Editor/Toolchain facets from runtime-clean PLAYER/server closure
+```
+
+MUST NOT:
+
+```text
+route all extension points through IPlugin/PluginManager
+make RenderFeature depend upward on Simulation/System/Editor
+make EditorContext an arbitrary plugin System locator
+create per-plugin VFS/AssetManager
+require binary hot-unload semantics for source sharing
+```
+
+A package spanning Domain + Render uses a higher Scene/integration facet to bridge them; package co-location is never permission for a low-level Render target to depend upward.
+
+---
+
+## 29. Architecture Change Stop Conditions
 
 STOP immediately if implementation appears to require：
 
@@ -650,19 +707,23 @@ change of Toolset semantics
 shared graph owner move
 payload representation rewrite during UI/topology work
 new source file format/document identity
-new project manifest/target input format
+new project/plugin manifest/target input format
 script continuation ABI invented by coding agent
 compatibility shim for retired architecture
 Dear ImGui/public backend type outside private Lux UI backend
 retained-mode widget framework
 IUiBackend abstraction without a second real backend/approved need
+IPlugin / PluginManager / PluginServices / all-engine ContributionRegistry
+RenderPlugin parallel to RenderFeature
+RenderFeature depending upward on Simulation/System/Editor
+binary hot-unload architecture introduced merely for source Plugin sharing
 ```
 
 The agent must report the blocking fact and smallest missing design decision, not invent missing architecture。
 
 ---
 
-## 29. Test Obligations
+## 30. Test Obligations
 
 Every new/fixed P0 execution primitive MUST have：
 
@@ -703,15 +764,28 @@ Every UI migration MUST have：
 ```text
 Lux UI public headers compile without ImGui include paths
 migrated Editor target compiles without direct ImGui/node-editor headers
-generated/plugin binding compiles without ImGui dependency
+generated/project/source-plugin binding compiles without ImGui dependency
 only approved private UI backend links backend libraries
+```
+
+Every source Plugin/package extension closure, where relevant, MUST prove owner-specific public seams rather than a universal Plugin runtime. Qualification SHOULD cover the applicable subset:
+
+```text
+external System registration/install
+external Script Ability codegen/provider publication
+external RenderFeature using installed/public Render SDK
+Editor facet excluded from PLAYER/server closure
+Editor generated binding contains no ImGui
+Toolchain facet excluded from runtime closure
+second/no-op build after generated/CMake work
+installed/relocated consumer without private repository paths
 ```
 
 Every architecture migration MUST run relevant product closure and install/relocated consumer tests from a reproducible committed source snapshot。
 
 ---
 
-## 30. Agent Completion Report Format
+## 31. Agent Completion Report Format
 
 每个 Wave 完成时必须报告：
 
@@ -723,6 +797,7 @@ Tests/gates executed
 Product closure impact
 Install/public API impact
 UI/backend dependency impact when relevant
+Plugin/package facet impact when relevant
 Remaining STOP conditions
 No out-of-wave abstractions introduced
 ```

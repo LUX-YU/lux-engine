@@ -49,6 +49,7 @@ namespace lux::simulation::script
             HostHandle* host_handle{};
             std::span<const lux::script::ScriptSymbolId> suspension_capable_exports;
             std::size_t slot{};
+            std::size_t active_continuations{};
             bool active{};
         };
 
@@ -697,6 +698,7 @@ namespace lux::simulation::script
                 nullptr,
                 body->suspension_capable_exports,
                 instance_slot,
+                0U,
                 true};
 
             lua_newtable(self.state);
@@ -1294,6 +1296,7 @@ namespace lux::simulation::script
                 0,
                 true
             };
+            ++instance.active_continuations;
             return std::addressof(continuation);
         }
 
@@ -1309,6 +1312,9 @@ namespace lux::simulation::script
                 lua_settop(continuation.thread, 0);
             if (continuation.thread_ref != LUA_NOREF)
                 luaL_unref(owner->state, LUA_REGISTRYINDEX, continuation.thread_ref);
+            if (continuation.instance == nullptr || continuation.instance->active_continuations == 0U)
+                std::terminate();
+            --continuation.instance->active_continuations;
             continuation = {};
             owner->free_continuations.push_back(slot);
         }
@@ -1555,11 +1561,8 @@ namespace lux::simulation::script
             std::lock_guard lock{self.mutex};
             if (!instance)
                 return;
-            for (auto& continuation : self.continuations)
-            {
-                if (continuation.active && continuation.instance == instance)
-                    destroyLuaContinuation(continuation);
-            }
+            if (instance->active_continuations != 0U)
+                std::terminate();
             if (instance->host_handle)
             {
                 instance->host_handle->alive = false;

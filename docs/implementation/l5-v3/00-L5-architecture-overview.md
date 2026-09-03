@@ -1,4 +1,4 @@
-# Lux Engine L5 Editor、Runtime Capability、Plugin Packaging 与 Product Composition 架构总览
+# Lux Engine L5 Editor、Runtime Capability、Plugin Packaging、Pak Storage 与 Product Composition 架构总览
 
 Status: **Normative Architecture Baseline — v3 reconciled 2026-09-03**
 
@@ -23,13 +23,14 @@ offline Toolchain products
 multiple Script frontends/backends
 third-party RenderFeatures
 project-specific shipping executables
+incrementally updatable cooked-content packages
 ```
 
 The key rule is:
 
 > **Packaging does not redefine semantics.**
 
-A Component remains a data/state contract whether it is first-party, project-owned, or distributed inside a Plugin Package. A System/Provider remains an implementation. A Script Ability/Event remains a contract. A RenderFeature remains a Render extension. Editor code remains Editor-only.
+A Component remains a data/state contract whether it is first-party, project-owned, or distributed inside a Plugin Package. A System/Provider remains an implementation. A Script Ability/Event remains a contract. A RenderFeature remains a Render extension. Editor code remains Editor-only. LuxPak remains a storage/provider format rather than a new Asset/VFS semantic layer.
 
 ---
 
@@ -68,6 +69,7 @@ L4 Toolchain
     Material compiler/cooker
     FlowForge compiler
     asset import/cook
+    LuxPak cooker/update tools
     build/package/codegen tools
 
 L5 Editor
@@ -79,6 +81,8 @@ L5 Editor
 Product/Application composition (not L6)
     Editor executable
     project-specific game/server/tool targets
+    cooked LuxPak/Base/Patch selection
+    release/update composition
 ```
 
 Allowed dependency direction follows the above layering and explicit product classification. Lower runtime layers do not depend on Editor or Toolchain implementation.
@@ -432,7 +436,7 @@ Project configuration
     + project native/generated code
     + source Plugin Package selections
     + selected Render backend/features
-    + cooked content
+    + cooked LuxPak/Base/Patch content
         ↓
 project-specific executable/server/tool target
 ```
@@ -443,7 +447,58 @@ Do not create a separate Plugin manifest first; plugin/package selections belong
 
 ---
 
-## 15. Current implementation direction
+## 15. LuxPak / shipping content storage
+
+LuxPak is the approved logical direction for cooked shipping storage.
+
+It is:
+
+> **an immutable, cook-time indexed, chunked content container backing an ordinary VFS provider.**
+
+It is not AssetVfs, not AssetManager, and not a network updater.
+
+Frozen logical relation:
+
+```text
+AssetId
+    -> cook-time persisted flat hash
+    -> ContentEntry
+
+canonical VFS path
+    -> cook-time persisted compact prefix-search index
+       (radix/static trie family; exact layout selected by PAK-0)
+    -> ContentEntry
+
+ContentEntry
+    -> Segment[]
+    -> Chunk[]
+    -> physical payload
+```
+
+Neither AssetId nor path indexes are rebuilt at runtime.
+
+VFS path uses a prefix-search structure because VFS also owns `enumerate`/folder-prefix semantics. Normal typed Asset hot paths use AssetId and bypass path traversal.
+
+Shipping update model:
+
+```text
+immutable Base Pak(s)
+    +
+immutable higher-priority Patch Pak(s)
+    ADD / REPLACE / TOMBSTONE
+    +
+content-hash release diff
+```
+
+A Release Manifest/Updater decides acquisition/install; normal runtime Asset loading remains installed-storage I/O.
+
+Encryption/key-management is intentionally deferred. The v1 format may reserve fail-closed security flags but initially supports only `NONE`.
+
+See `15-luxpak-indexed-content-container-and-incremental-update.md`.
+
+---
+
+## 16. Current implementation direction
 
 The unique current execution DAG is maintained in `07`.
 
@@ -463,17 +518,25 @@ U/C/D/E/U2
 H0/I0
  ↓
 FC Engine Framework Closure
- ↓
+
+cross-cutting Product storage:
+    PAK-0 prototype/benchmark
+        ↓
+    PAK-1 shipping Pak/update closure
+
+then:
 H1/I1 persistence
  ↓
 P product closure
 ```
 
+PAK-0 may proceed independently when runtime priorities allow. PAK-1 is required before final shipping Product P claims incremental cooked-content packaging; it does not need to block unrelated Editor FC work.
+
 No speculative S7 is planned.
 
 ---
 
-## 16. Framework closure
+## 17. Framework closure
 
 Engine Framework v1 may be called closed only when FC in `07` passes:
 
@@ -492,7 +555,7 @@ After FC, new systems/features should normally be ordinary feature production, n
 
 ---
 
-## 17. Global prohibitions
+## 18. Global prohibitions
 
 ```text
 no generic global ServiceRegistry/Manager root
@@ -510,4 +573,9 @@ no PluginManager/IPlugin replacing owner-specific registration
 no RenderPlugin duplicating RenderFeature
 no plugin hot-unload ABI designed merely to support source sharing
 no separate plugin manifest before Product P
+no runtime Pak payload scan/index rebuild
+no full-path hash forced as the only VFS Pak index while prefix enumeration needs another directory SSOT
+no in-place Base Pak mutation for normal shipping updates
+no CDN/network access hidden inside normal loadAsset()
+no encryption/DRM framework introduced before a separately approved security requirement
 ```

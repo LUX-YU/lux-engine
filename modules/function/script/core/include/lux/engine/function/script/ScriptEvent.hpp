@@ -1,0 +1,55 @@
+#pragma once
+
+#include <lux/engine/core/semantic/SemanticType.hpp>
+
+#include <cstdint>
+#include <string>
+
+namespace lux::script
+{
+    enum class EScriptEventRoute : std::uint8_t
+    {
+        SIMULATION_BROADCAST,
+        ENTITY_TARGETED,
+    };
+
+    struct ScriptEventPayloadDescription final
+    {
+        std::string canonical_name;
+        lux::semantic::TypeId type_id{};
+        std::uint8_t abi_kind{};
+        std::uint32_t size{};
+        std::uint32_t alignment{};
+
+        friend bool operator==(
+            const ScriptEventPayloadDescription&,
+            const ScriptEventPayloadDescription&
+        ) noexcept = default;
+    };
+
+    struct ScriptEventSourceDescription final
+    {
+        std::string system_name;
+        std::string event_name;
+        std::uint64_t system_id{};
+        std::uint64_t event_id{};
+        EScriptEventRoute route{EScriptEventRoute::SIMULATION_BROADCAST};
+        ScriptEventPayloadDescription payload;
+        std::uint64_t payload_schema_hash{};
+        std::uint32_t payload_schema_version{};
+
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return !system_name.empty() && !event_name.empty() && system_id != 0U && event_id != 0U &&
+                !payload.canonical_name.empty() && payload.type_id != 0U && payload.abi_kind != 0U &&
+                payload.size != 0U && payload.alignment != 0U &&
+                (payload.alignment & (payload.alignment - 1U)) == 0U && payload_schema_hash != 0U &&
+                payload_schema_version != 0U;
+        }
+
+        friend bool operator==(
+            const ScriptEventSourceDescription&,
+            const ScriptEventSourceDescription&
+        ) noexcept = default;
+    };
+}

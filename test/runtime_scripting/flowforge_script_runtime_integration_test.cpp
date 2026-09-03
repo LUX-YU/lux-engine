@@ -377,6 +377,26 @@ namespace
         return graph;
     }
 
+    [[nodiscard]] flowforge::FlowGraph makeQueryGraph()
+    {
+        flowforge::FlowGraph graph;
+        auto event = std::make_unique<flowforge::OnEventNode>("tick");
+        auto read = std::make_unique<flowforge::ScriptAbilityNode>(kTestNodes[1]);
+        assert(read->parameterPins().front()->setConstantData(meta::RuntimeObject(std::int32_t{1})));
+        auto* event_ptr = event.get();
+        auto* read_ptr = read.get();
+        const auto event_slot = graph.addNodes(std::move(event));
+        graph.addNodes(std::move(read));
+        flowforge::LastLink previous;
+        assert(event_ptr->execOutPin().linkTo(&read_ptr->execInPin(), previous) == flowforge::ELinkError::SUCCESS);
+        assert(graph.addExport({
+            flowforge::FlowForgeExportNodeId{3U},
+            graph.getNode(event_slot).node->id(),
+            kTickSymbol
+        }));
+        return graph;
+    }
+
     struct ArtifactSource final
     {
         const lux::script::ScriptArtifact* artifact{};
@@ -505,8 +525,8 @@ namespace
         using namespace lux;
         using namespace lux::simulation;
         using namespace lux::simulation::script;
-        const bool sync = options.group == "micro-flowforge-sync" ||
-            options.group == "micro-flowforge-ability-query" ||
+        const bool query_only = options.group == "micro-flowforge-ability-query";
+        const bool sync = options.group == "micro-flowforge-sync" || query_only ||
             options.group == "scene-flowforge-update-heavy";
         const bool idle = options.group == "scene-flowforge-suspended-idle";
         const bool storm = options.group == "scene-flowforge-resume-storm" ||
@@ -526,7 +546,7 @@ namespace
         );
         if (next_step == nullptr)
             return 11;
-        auto graph = sync ? makeSyncGraph() : makeGraph(*next_step);
+        auto graph = query_only ? makeQueryGraph() : sync ? makeSyncGraph() : makeGraph(*next_step);
         auto artifact = flowforge::compileFlowForgeScript(
             graph,
             flowforge::FlowForgeCompileOptions{

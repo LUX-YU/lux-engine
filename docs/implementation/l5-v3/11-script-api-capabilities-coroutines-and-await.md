@@ -1,237 +1,156 @@
-# Script API Capability Contracts、Coroutine / Await 与 Provider Binding
+# Script API Capability Contracts、Coroutine / Await、Event 与 Portable Backend Contract
 
-Status: **Normative Runtime Scripting Design (v2, v3 docset)**  
-Date: **2026-09-02**  
-Parent documents: `00-L5-architecture-overview.md`, `07-implementation-roadmap-and-gates.md`, `08-normative-execution-contract.md`, `09-product-runtime-vfs-and-async-script.md`  
-Companion implementation document: `12-script-ability-reflection-provider-binding-and-codegen.md`
+Status: **Normative Runtime Scripting Design — v3 reconciled 2026-09-03**
 
-> Normative scripting priority: 对 Script API capability、provider binding、coroutine/await、Event.await 和 Delay 时间语义，本文件 supersede `06/07/08/09` 中任何冲突的旧 scripting 条款。Ability reflection、CMake codegen、receiver/provider instance 绑定和多语言 projection 的精确实施规则以 `12` 为准。`08` 在未被 `11/12` 明确 supersede 的 general execution/ownership 规则上仍保持最高优先级。
+Parent documents: `00-L5-architecture-overview.md`, `08-normative-execution-contract.md`, `07-implementation-roadmap-and-gates.md`
+
+Companions:
+
+- `12-script-ability-reflection-provider-binding-and-codegen.md`
+- `13-script-gameplay-object-lifecycle.md`
+
+> Priority: this document owns Script Ability/capability/provider/coroutine/await/Event/Delay/backend portability semantics. `13` owns gameplay Script object incarnation/lifecycle. `12` owns reflection/codegen/naming/language projection details. General execution/ownership rules from `08` remain in force where not explicitly specialized here.
 
 ---
 
-## 1. 统一 ontology
-
-Lux runtime scripting 冻结为：
+## 1. Unified ontology
 
 ```text
 Component
-    = state/data contract
+    state/data contract
 
 System / integration object
-    = behavior/runtime owner
+    behavior/runtime owner
 
 Script Ability / Script API
-    = callable contract
+    script-to-engine callable contract
 
 Capability Provider
-    = runtime object that implements a callable contract
+    existing runtime object implementing an Ability
 
 HookPoint / EventPoint
-    = engine-to-script execution/event contract
+    engine-to-script execution/event contract
 
 Coroutine / Awaitable
-    = time-spanning script control-flow contract
+    time-spanning script control-flow contract
 ```
 
-关键修正：
+Key distinction:
 
 ```text
 System is often a Provider
 but Provider is not necessarily a System.
 ```
 
-例如：
+Examples:
 
 ```text
-PhysicsQuery3D       <- JoltPhysicsSystem
-NavigationQuery      <- NavigationSystem
-Entity/Component API <- Simulation ECS host endpoint
-AssetLoading         <- Scene/Application/Process integration endpoint
+PhysicsQuery3D       <- Physics System/provider
+NavigationQuery      <- Navigation owner/provider
+Entity/Component API <- Simulation/ECS integration endpoint
+AssetLoading         <- Asset/Scene/Process integration endpoint
+Delay                <- Simulation ScriptSystem/time owner
 ```
-
-Script API 描述语义，不规定底层一定使用 function pointer、virtual interface 或某一种 ABI dispatch。
 
 ---
 
 ## 2. `modules/` boundary
 
-`modules/` 是可被 Lux Engine 之外项目复用的通用 function/resource 基础设施。
+Reusable `modules/` may own generic Script vocabulary and ABI/codegen primitives, but Engine ontology stays with the real Engine/domain owner.
 
-因此 MUST NOT 因为 scripting capability/codegen 把以下 Engine ontology 下沉到 `modules/`：
-
-```text
-Scene
-Simulation
-SimulationSystem
-SystemInstanceId semantics
-Scene capability registry
-PhysicsSystem ownership
-Engine-specific AssetLoading ownership
-```
-
-`modules/function/script` 可以继续拥有真正通用的：
+Allowed reusable concepts:
 
 ```text
 ScriptSymbol / ScriptArtifact vocabulary
-portable Script ABI/value representation
-language-generic callable/result vocabulary
-reusable parser/codegen primitives that do not know Engine ownership
-Lua/native reusable support where already valid
+portable Script value/ABI representation
+Ability contract metadata primitives
+backend-neutral call/continuation vocabulary
+language-generic codegen/projection helpers
+Lua/native reusable support
 ```
 
-但 Engine Script Ability 的声明源必须跟随真实 semantic owner 位于 `engine/...` 或外部项目自己的 package 中。
+Do not push into `modules/function/script` merely to centralize scripting:
 
-禁止新增一个 `modules/function/script/sdk` 并把 Engine 的 Entity/Physics/Scene/Asset API schema 集中塞进去。
+```text
+Scene
+SimulationSystem ownership
+SystemInstanceId semantics
+Physics/Navigation owner topology
+Engine AssetLoading ownership
+Scene capability registry
+```
+
+External projects may declare their own Abilities in project-owned packages using the same public codegen contract.
 
 ---
 
-## 3. Ability contract 与 concrete provider 分离
+## 3. Ability contract vs provider implementation
 
-脚本依赖 callable contract，不依赖 concrete provider identity。
+Scripts depend on stable callable semantics, not concrete provider type identity.
 
 ```text
-PhysicsQuery3D contract
-├─ raycast
-├─ raycastAsync
-├─ sweep
-└─ overlap
+PhysicsQuery3D
+    raycast(...)
+    overlap(...)
+        ↓ implemented by
+JoltPhysicsSystem or another compatible provider
+```
 
+Script source/artifact MUST NOT persist:
+
+```text
 JoltPhysicsSystem
-    provides PhysicsQuery3D
-
-AlternativePhysicsSystem
-    provides PhysicsQuery3D
+provider C++ class name
+raw provider pointer
+SystemInstanceId as contract identity
+registration order
 ```
 
-只要两个 provider 真正满足同一语义 contract，Script/FlowForge source 不应知道 Jolt、PhysX 或其他 backend 名称。
-
-MUST NOT 为了“可替换”强行统一语义并不相同的接口。例如 2D/3D physics 如果语义不同，应分别形成真实 contract，而不是伪造 universal Physics API。
-
-Ability declaration 跟随 domain owner。例如 future physics package 可采用：
-
-```text
-engine/domain/simulation/builtin/physics/
-├─ abilities/
-│  ├─ PhysicsQuery3D.hpp
-│  └─ PhysicsBody3D.hpp
-├─ ... provider implementation ...
-└─ CMakeLists.txt
-```
-
-这不是强制所有 package 使用完全相同目录名；规范要求的是 **declaration follows semantic owner**，而不是 central Script API registry。
+Provider binding may keep owner identity for diagnostics/lifetime validation, but Script requirements remain contract/schema based.
 
 ---
 
-## 4. Static contract declaration vs runtime provider instance
+## 4. Receiver model and ownership
 
-必须严格区分：
-
-```text
-Ability declaration
-    = static/type-level contract
-
-Provider instance
-    = runtime object with state/lifetime
-
-Generated binder
-    = binds one contract to one existing provider instance
-```
-
-Codegen MUST NOT：
-
-```text
-construct provider objects
-own provider objects
-introduce static singleton provider
-extend provider lifetime with shared ownership
-perform runtime service lookup per method call
-```
-
-Provider object 继续由其真实 owner 创建和销毁。
-
-对于 SimulationSystem，当前 Simulation composition 已经负责创建/持有 System instance；generated ability binding 只能 non-owning borrow 该 instance。
-
----
-
-## 5. Receiver model
-
-v1 receiver kind 只冻结两个：
+v1 receiver kinds remain intentionally small:
 
 ```text
 NONE
 PROVIDER_INSTANCE
 ```
 
-### 5.1 NONE
-
-真正无 runtime state 的 pure/static callable 可以没有 receiver。
-
-### 5.2 PROVIDER_INSTANCE
-
-绝大多数 Engine ability 绑定到一个 runtime provider object：
+Generated binders:
 
 ```text
-PhysicsQuery3D -> PhysicsSystem instance
-EntityApi      -> ECS host endpoint instance
-AssetLoading   -> asset-loading integration instance
+borrow existing provider
+prepare immutable dispatch/thunk information
+never construct provider
+never own/destroy provider
+never shared-own provider merely for Script lifetime
 ```
 
-Receiver 是 binding metadata，不属于 script-visible parameter list。
+Real owner creates and destroys the provider.
 
-禁止把 concrete provider 写成 script signature，例如：
-
-```cpp
-raycast(JoltPhysicsSystem&, RaycastRequest); // wrong public contract shape
-```
-
-contract 应只表达：
+Teardown invariant:
 
 ```text
-PhysicsQuery3D.raycast(RaycastRequest) -> RaycastHit
-receiver = PROVIDER_INSTANCE
-```
-
-具体 provider conformance/binding 由 generated code 负责。
-
----
-
-## 6. Provider ownership and lifetime
-
-推荐 runtime relation：
-
-```text
-Simulation / real owner
-    OWNS provider object
-
-Generated Bound Ability
-    BORROWS provider object
-
-ScriptSystem prepared capability binding
-    BORROWS/copies immutable call table + owner identity
-```
-
-不得使用 `shared_ptr<System>` 让 Script capability 延长 System 生命周期。
-
-必须满足 teardown invariant：
-
-```text
-stop new script invocations
-invalidate script instances/generations
+stop new Script invocations
+invalidate ScriptInstances/generations
 cancel/destroy continuations
-clear prepared ability bindings
+clear prepared capability bindings
 then destroy provider objects
 ```
 
-如果当前 Simulation teardown 无法保证上述关系，实施必须 STOP 做 architecture review，而不是用 shared ownership 掩盖问题。
+If this cannot be guaranteed, STOP for ownership review. Do not hide the problem with `shared_ptr<System>`.
 
 ---
 
-## 7. Capability publication and ambiguity
+## 5. Capability publication and ambiguity
 
-Composition 阶段把 generated binder 应用于已经存在的 provider instance：
+Composition publishes bound capabilities before Script mount/admission.
 
 ```text
-create/install provider
+construct/install provider
         ↓
 generated bind Ability(provider)
         ↓
@@ -240,203 +159,121 @@ publish frozen capability
 Script mount resolves requirement once
 ```
 
-v1 一个 composition scope 中，一个 required `ScriptApiContractId` 只能有一个默认 active provider。
+v1 default provider rule:
 
-如果两个 provider 同时发布相同 contract 且没有更高层明确 selection：
+```text
+one composition scope
++ one required ContractId
+= at most one default active provider
+```
+
+Ambiguity fails closed:
 
 ```text
 SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER
 ```
 
-必须 fail composition/mount；不得选择“第一个”、按注册顺序随机绑定，也不得因此发明 named service locator。
-
-Provider publication 可记录 owner identity（例如 `SystemInstanceId`）用于 diagnostics/lifetime validation，但 ScriptArtifact requirement 仍只引用 contract identity/schema，不引用 concrete owner/provider。
+Never resolve by first/last registration, string priority, or generic service lookup.
 
 ---
 
-## 8. Stable contract identity
+## 6. Stable identity / schema
 
-运行时 identity 必须稳定、typed/structured，不使用字符串作为 hot-path identity。
-
-概念类型：
-
-```cpp
-struct ScriptApiContractId;
-struct ScriptApiMethodId;
-```
-
-name 只用于 Editor、diagnostic、debugger、codegen。
-
-v1 compatibility 使用简单的：
+Canonical runtime identity is typed/structured:
 
 ```text
-ContractId + SchemaHash / ABI version
+ScriptApiContractId
+ScriptApiMethodId
+schema version/hash
 ```
 
-Script requirement 与 provider publication 必须 exact-compatible；不一致返回：
+Names are for source/codegen/Editor/diagnostics, not the hot-path provider identity.
+
+v1 compatibility is exact schema compatibility. No semantic-version negotiation framework is pre-authorized.
+
+Mount errors must distinguish at least:
 
 ```text
+SCRIPT_CAPABILITY_NOT_FOUND
 SCRIPT_CAPABILITY_SCHEMA_MISMATCH
+SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER
+SCRIPT_ENDPOINT_NOT_FOUND / invalid endpoint as appropriate
 ```
-
-第一版不建立 semantic-version negotiation framework。
 
 ---
 
-## 9. Script API method kinds
-
-第一版 semantic kind：
+## 7. Method kinds
 
 ```text
 QUERY
-    guaranteed synchronous result at a legal semantic point
+    synchronous result at a legal semantic point
 
 COMMAND
-    submit/apply action; caller does not await result
+    synchronous admission/action with no eventual result
 
 ASYNC_OPERATION
-    returns ScriptAwaitable<T>; may complete later
+    operation may complete later and is projected through ScriptAwaitable
 ```
 
-Event 继续由 EventPoint 表达，不塞进 generic method table。
+Asyncness belongs to canonical metadata. Do not infer it from method names.
 
-Asyncness belongs to contract metadata；不得仅依赖方法名中的 `Async` 推断。
+A domain operation that is naturally synchronous remains QUERY even if Script supports coroutines.
 
 ---
 
-## 10. ScriptArtifact requirements 与 fail-early mount
+## 8. ScriptArtifact requirements and fail-early mount
 
-ScriptArtifact 除 exports 外必须能够声明/携带 Script API requirements：
+ScriptArtifact declares only contracts it actually uses/requires.
 
 ```text
 Requires:
-    PhysicsQuery3D / schema X
-    AssetLoading / schema Y
+    lux.simulation.delay / schema X
+    physics.query3d      / schema Y
 ```
 
-requirement 指向 contract，不指向：
+Requirement points to semantic contract, never a provider instance/class.
+
+Before Script execution, mount/admission verifies:
 
 ```text
-JoltPhysicsSystem
-specific SystemInstanceId
-provider class name
+artifact/export exists
+Hook/Event target exists and is compatible
+required Ability contract exists
+schema compatible
+provider unambiguous
+backend executable contract compatible
 ```
 
-Script mount/bind MUST 在执行前验证：
-
-```text
-asset/export exists
-Hook/Event target exists
-signature/scope compatible
-all required Script API contracts exist
-contract schema compatible
-provider is unambiguous
-```
-
-错误必须区分：
-
-```text
-SCRIPT_ENDPOINT_NOT_FOUND
-    engine -> script Hook/Event target missing
-
-SCRIPT_CAPABILITY_NOT_FOUND
-    script -> engine callable contract missing
-
-SCRIPT_CAPABILITY_SCHEMA_MISMATCH
-    contract exists but incompatible
-
-SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER
-    multiple default providers for one contract
-```
-
-Scene/Simulation 没有 Physics capability 时，使用 PhysicsQuery3D 的 script 必须在 mount/bind 阶段 fail early，而不是执行 `raycast()` 时得到 null service。
+Do not defer a missing Physics/Navigation capability until the first Lua/FlowForge call.
 
 ---
 
-## 11. Dispatch strategy 与 contract 分离
+## 9. Dispatch strategy is not the contract
 
-动态边界允许 prepared binding：
+Dynamic/development path may use:
 
 ```text
-context/receiver pointer
+prepared receiver/context pointer
 +
-generated function pointer/table
+small ordinal / generated thunk or table
 ```
 
-这是 dynamic binding strategy，不是 contract 本身。
-
-MUST：
+MUST:
 
 ```text
-resolve once at composition/mount
+resolve at composition/mount/instance preparation
 immutable prepared binding
-no per-call string lookup
+no per-call contract/method string search
 no dynamic_cast/service lookup hot path
 ```
 
-MUST NOT 把 `std::function` 或 mandatory virtual inheritance 作为 canonical Script Ability binding。
-
-对于 project-specific shipping target，允许同一 semantic contract 使用 generated/static specialization：
-
-```text
-Project selects PhysicsQuery3D -> JoltPhysicsSystem
-        ↓
-generated C++ / FlowForge lowering
-        ↓
-direct typed call / direct IR callee
-        ↓
-LTO / whole-program optimization
-```
-
-Contract 与 dispatch strategy 分离；dynamic language/plugin boundary 可间接调用，已知 shipping hot path 可静态特化/内联。
+Project-specific shipping paths may statically specialize known provider mappings for LTO/devirtualization/inlining, but specialization does not change Ability identity/schema/ownership.
 
 ---
 
-## 12. Ability reflection / codegen source of truth
+## 10. Value lifetime categories
 
-Ability reflection/codegen 的精确规则见 `12-script-ability-reflection-provider-binding-and-codegen.md`。
-
-本文件只冻结这些边界：
-
-```text
-reflection declaration lives with semantic owner
-CMake explicitly opts selected source/types into codegen
-codegen produces canonical contract metadata + binder/thunks
-language projection consumes canonical metadata
-provider package does not depend on Lua/FlowForge/Python
-```
-
-不要让 Physics CMake target 自己直接手写/拥有 Lua、FlowForge、Python binding implementation。
-
----
-
-## 13. Core/common APIs
-
-通用脚本能力仍然遵循真实 owner，而不是集中塞进 Script module：
-
-```text
-Entity / Component / Query
-    declared near Simulation ECS-facing owner
-
-Simulation Time / Delay
-    declared near Simulation scripting/time owner
-
-Asset Loading
-    declared at the Engine-facing asset-loading/integration owner
-
-Diagnostics
-    declared at its real low-level/application-facing owner if exposed
-```
-
-Component-specific projection可以利用现有 component/meta codegen，但 Script API 的 Engine ownership 不得因此下沉到 `modules/`。
-
-动态语言的 Component `get` 第一版应优先返回 owned value 或 validated step-local proxy；不得让 VM 长期持有裸 ECS component pointer。
-
----
-
-## 14. Lifetime category across await
-
-Coroutine 引入后，generated API/schema 必须能够表达至少这些结果 lifetime：
+Canonical Ability/schema projection must express at least:
 
 ```text
 OWNED_VALUE
@@ -445,45 +282,48 @@ BORROWED_STEP
 AWAITABLE
 ```
 
-硬规则：
+Hard rule:
 
 ```text
-BORROWED_STEP value / component reference / query iterator
-MUST NOT cross a suspension point.
+BORROWED_STEP
+MUST NOT survive a suspension point.
 ```
 
-FlowForge compiler 应在可静态证明时拒绝 borrowed value crossing `await`。
+FlowForge statically rejects any path where a borrowed value is live across suspension, including transitive async graph-function calls and fan-in where any path suspends.
 
-C++/Lua/Python projection 也不得把 step-local ECS pointer 包装成可无限保存的安全对象。
+Lua/Python must not wrap a borrowed ECS/provider pointer as an apparently durable object.
+
+A synchronous Lua BORROWED_STEP result may be copied into an owned Lua value if the bridge can prove a safe copy/marshal at the same step.
 
 ---
 
-## 15. Coroutine 是用户模型；continuation 是 Engine 模型
+## 11. Backend-neutral continuation
 
-用户层跨帧控制流采用 coroutine/await：
-
-```text
-Lua        coroutine/yield-resume
-C++        co_await
-FlowForge  visible sequential graph + suspension node
-Python     future await
-```
-
-Engine 核心采用 backend-neutral continuation，不将任何语言 coroutine representation 作为通用 ABI。
-
-必须支持：
+User models differ:
 
 ```text
-RUNNING
-   ↓ await
-SUSPENDED
-   ↓ resume
-RUNNING
-   ↓
-COMPLETED / FAILED
+FlowForge  sequential graph + compiler-generated explicit state machine
+Lua        Lua coroutine/thread
+C++        co_await / std::coroutine_handle inside C++ backend
+future Python  task/future coroutine
 ```
 
-明确执行结果：
+Engine model is one backend-neutral continuation contract.
+
+Conceptually:
+
+```cpp
+struct ScriptBackendContinuation
+{
+    void* state;
+    ScriptStepResult (*resume)(void*, const ScriptResumePacket&) noexcept;
+    void (*destroy)(void*) noexcept;
+};
+```
+
+`ScriptSystem` MUST NOT know `lua_State`, FlowForge frame layout, or `std::coroutine_handle`.
+
+Explicit invocation results:
 
 ```text
 COMPLETED
@@ -491,13 +331,13 @@ SUSPENDED
 FAILED
 ```
 
-不得把 `SUSPENDED` 偷塞进旧 success/error integer 的 magic value。
+Do not encode SUSPENDED as a magic success/error integer.
 
 ---
 
-## 16. Stable generational identity
+## 12. Stable generational identity
 
-至少需要：
+Cross-time runtime uses stable/generational identities, at least:
 
 ```text
 ScriptInstanceId
@@ -505,62 +345,23 @@ ScriptContinuationId
 ScriptAwaitableId
 ```
 
-跨线程/跨帧 completion 不传：
+Cross-thread completion never carries as lifetime authority:
 
 ```text
 ScriptInstance*
-coroutine_handle*
 lua_State*
-provider raw lifetime token
+coroutine_handle*
 raw continuation pointer
+raw provider lifetime token
 ```
 
-completion 只携带稳定 ID + owned result/error；Simulation resume 时重新 resolve 并校验 generation。
+Completion carries stable identity + owned result/error. Stable-point adoption re-resolves and validates generation.
 
 ---
 
-## 17. Backend-neutral continuation
+## 13. Awaitable model
 
-概念边界：
-
-```cpp
-struct ScriptBackendContinuation
-{
-    void* state{};
-    ScriptStepResult (*resume)(void*, const ScriptResumePacket&) noexcept {};
-    void (*destroy)(void*) noexcept {};
-};
-```
-
-实际 representation 私有：
-
-```text
-FlowForge -> compiler-generated state machine + locals
-Lua       -> Lua coroutine/thread reference
-C++       -> std::coroutine_handle<> inside C++ backend only
-Python    -> future coroutine/task reference
-```
-
-`ScriptSystem` MUST NOT know backend-native coroutine representation。
-
----
-
-## 18. Awaitable model
-
-所有 time-spanning wait 统一投影为 `ScriptAwaitableId`：
-
-```text
-Delay.nextStep()
-Delay.seconds()
-Delay.realSeconds()
-Asset.load()
-Physics async query
-GPU query
-Navigation async operation
-Event.next()
-```
-
-Awaitable 至少有：
+All Script-visible time-spanning waits adapt to the same bounded awaitable store:
 
 ```text
 PENDING
@@ -569,267 +370,416 @@ CANCELLED
 FAILED
 ```
 
-storage 必须 bounded + generational，并正确处理 operation 在 waiter registration 之前已经 READY 的 eager-completion race。
+Examples:
+
+```text
+Delay.nextStep
+Delay.seconds / simulationSeconds
+Delay.realSeconds
+Event next/wait
+Asset.load when its value contract is approved
+real async Physics/Navigation/GPU operations
+```
+
+Storage is bounded + generational.
+
+The eager-completion race is mandatory:
+
+```text
+create Awaitable
+start provider
+provider completes immediately
+attach Script continuation afterwards
+        ↓
+READY waiter tail-enqueued for legal stable-point resume
+```
+
+No recursive/inline continuation chain.
 
 ---
 
-## 19. Stable resume point
+## 14. Stable resume point
 
-任何 external completion/event 都只能：
+External completion/event may only:
 
 ```text
-mark Awaitable READY
+mark Awaitable READY/FAILED/CANCELLED
         ↓
-enqueue ScriptResume
+enqueue bounded resume work
 ```
 
-禁止：
+Script code executes at an explicit Simulation Script stable point.
+
+At resume:
 
 ```text
-worker -> coroutine.resume()
-timer thread -> lua_resume()
-physics callback -> FlowForge continue()
-GPU callback -> coroutine_handle.resume()
-```
-
-Simulation 在明确 stable resume point：
-
-```text
-drain bounded resume queue
+drain up to configured budget
 validate ScriptInstance generation
-resolve Continuation
+resolve continuation
 provide owned result/error
 resume backend
 ```
 
-resume queue 必须 bounded，并有 per-step resume budget。
+Never:
 
-已 READY awaitable 的后续 resume 使用 tail enqueue，禁止递归 resume chain。
+```text
+worker -> lua_resume
+Timer callback -> Script method
+physics callback -> FlowForge continue
+GPU callback -> coroutine_handle.resume
+```
 
 ---
 
-## 20. Event + await
+## 15. Delay semantics
 
-Hook/Event callback 模式继续存在，同时允许：
+First version:
 
 ```text
-await Event.next(...)
+Delay.nextStep()
+    next eligible Simulation step
+
+Delay.seconds(x)
+    == Delay.simulationSeconds(x)
+
+Delay.realSeconds(x)
+    monotonic real time
 ```
 
-共享现有 EventPoint source：
+Simulation-time delay uses Simulation clock/deadline scheduling. Do not create one process timer per gameplay simulation delay and do not scan every suspended delay every frame.
+
+Principle:
+
+```text
+never early
+resume at first eligible Script stable point at/after deadline
+```
+
+Real-time timer integration reports readiness only; Script still resumes at the Simulation stable point.
+
+---
+
+## 16. Event callback + Event.await
+
+Normal Event callback mode remains valid.
+
+S5 additionally allows a running Script invocation to wait for the next event from the same canonical EventPoint source.
+
+Canonical topology:
 
 ```text
 EventPoint
     ↓
 ScriptSystem EventBucket
     ├─ normal bound handlers
-    └─ coroutine waiters
+    └─ one-shot coroutine waiters
 ```
 
-MUST NOT 为每一个 waiter 临时 `EventPoint.connect()`/disconnect。
+MUST:
 
-跨 dispatch 生命周期消费的 Event payload 必须 marshal/copy 到 owned resume storage；不得保存当前 call-frame/payload pointer。
+```text
+waiter bounded + generational
+waiter one-shot
+normal callback and waiters may coexist
+no per-waiter EventPoint.connect/disconnect
+dispatch may complete many waiters but never directly executes resumed Script
+resume obeys normal stable-point budget
+```
+
+Event payload crossing the dispatch lifetime MUST be copied/marshalled into owned resume storage. Never keep the current event call-frame pointer or borrowed payload pointer.
+
+Nested event/retirement correctness:
+
+```text
+same waiter cannot complete twice
+waiter created during dispatch must not accidentally consume an already-dispatched event
+entity/script retirement invalidates waiter before stale resume
+nested dispatch ordering must be deterministic under the chosen EventBucket iteration contract
+```
+
+Performance invariant:
+
+```text
+N idle Event waiters + zero events this frame
+must not imply a per-frame O(N) waiter scan.
+```
 
 ---
 
-## 21. Delay 时间语义
+## 17. Event fan-out and invocation policy
 
-第一版冻结：
-
-```text
-Delay.seconds(x)
-    == Delay.simulationSeconds(x)
-
-Delay.realSeconds(x)
-    = monotonic real time
-
-Delay.nextStep()
-    = next eligible Simulation step
-```
-
-Simulation-time Delay 使用 Simulation clock/deadline queue；不得一条 gameplay Delay 对应一个 Process TimerSender，也不得每帧扫描所有 suspended Delay。
-
-原则：
+Recurring Hook invocation remains v1 single-flight:
 
 ```text
-never early
-resume at first eligible Simulation stable point at/after deadline
+previous Hook invocation SUSPENDED
+    -> next recurring trigger does not start another copy
 ```
 
-`Delay.realSeconds()` 可桥接 monotonic TimerClient/TimerSender，但 ready 只 enqueue；真正脚本执行仍在 Simulation stable point。
+Event invocation may be multi-flight subject to:
+
+```text
+per-instance continuation capacity
+global continuation capacity
+bounded resume queue
+per-stable-point resume budget
+```
+
+Event.await fan-out may promote many READY awaitables for one Event dispatch. That promotion cost is output-sensitive work and must be measured; resume execution remains budgeted.
 
 ---
 
-## 22. Actual async operation ownership
+## 18. Actual async operation ownership
 
-`ScriptSystem` owns：
+`ScriptSystem` owns:
 
 ```text
-script instance state
+ScriptInstance runtime state
 continuation storage
 awaitable storage
 resume queue
 Event waiter semantics
-Simulation-time delay scheduling semantics
+Simulation-time Delay semantics
 ```
 
-真正 time-spanning work 由真实 owner 提供：
+Real work remains with the real owner:
 
 ```text
-real timer    -> Process execution integration
-AssetLoad     -> AssetReadPort/loadAsset<T>()
-Physics query -> Physics/Scene integration
+real timer    -> Process integration
+Asset IO      -> AssetRead/asset-loading owner
+Physics       -> Physics/Scene integration
+Navigation    -> Navigation owner
 GPU query     -> Render/Scene integration
-Navigation    -> corresponding domain/integration
 ```
 
-L1 Simulation 不应仅因为支持 await 就直接拥有 worker pool、Process TaskScope、VFS blocking IO 或 GPU fence。
+Simulation scripting support does not justify a private worker pool, VFS blocking IO, GPU fence ownership, or domain manager inside ScriptSystem.
 
 ---
 
-## 23. Cancellation / shutdown
+## 19. AssetLoad status
 
-Scene stop、script unmount/reload、entity/script-instance invalidation 必须：
+The suspension path is not the blocker.
+
+S2.4 remains conditional until Lux freezes a script-visible result contract answering:
 
 ```text
-invalidate ScriptInstance generation first
-mark/cancel pending Awaitables
-request stop on external operations where supported
-destroy backend continuation at safe point
-clear prepared capability bindings before provider destruction
+stable Asset identity
+residency semantics
+lifetime/lease semantics if any
+cross-language representation
 ```
 
-迟到 completion resolve 到旧 generation：discard。
+Do not expose:
 
-绝不能 resume stale backend state 或访问已销毁 provider。
+```text
+std::shared_ptr<const Asset>
+raw Asset*
+void*
+uintptr_t
+unqualified uint64_t pretending to be AssetHandle
+```
+
+When the Asset handle/value contract is ready, `Asset.load` should adapt the real AssetRead owner to the existing Awaitable/Continuation path. No new async framework is needed.
 
 ---
 
-## 24. Fan-out policy
+## 20. Production Physics / Navigation Ability rules
 
-v1 recurring Hook invocation 为 single-flight：
+S5 real domain Abilities follow the same contract/provider model.
+
+Ability declaration follows the real domain owner.
+
+Example:
 
 ```text
-previous Hook invocation is SUSPENDED
-        ↓
-next recurring Hook trigger does not start another copy
+PhysicsQuery3D declaration
+    lives with Physics domain
+
+JoltPhysicsSystem
+    may provide it
 ```
 
-Event invocation 可以 multi-flight，但必须有 per-instance/global continuation capacity、bounded resume queue 和 per-step resume budget。
+Do not put Jolt types into the public Ability signature.
+
+Do not force an operation async merely because Script supports await.
+
+If a result needs an owned collection/path representation and no approved Script value exists, STOP that method or expose a narrower stable semantic value. Do not invent a universal ScriptArray/Variant container for one feature.
 
 ---
 
-## 25. FlowForge / Lua / C++ / future Python projection
+## 21. Portable Lua backend requirements
 
-所有语言/FlowForge consuming 的 source of truth 是 canonical reflected Ability metadata + Component/meta information，不是各 backend 手写第二份语义定义。
+Canonical Lua Script artifact remains:
 
 ```text
-Ability declaration / Component metadata
-        ↓
-canonical generated schema/descriptor
-        ↓
-C++ projection
-Lua projection
-FlowForge node/catalog projection
-future Python projection
+Script::Kind::LUA_SOURCE
+UTF-8 source payload
 ```
 
-FlowForge API node 保存 stable contract/method identity，不保存 concrete provider method name。
+No VM-specific canonical bytecode.
 
-ASYNC_OPERATION lowering 形成 explicit state-machine suspension。
+Approved portability target:
 
-Lua coroutine、C++ coroutine、future Python coroutine 都适配同一 Engine continuation contract。
+```text
+same Lua source / same ScriptArtifact semantics
+        ↓
+LuaJIT 2.1 JIT ON
+LuaJIT 2.1 JIT OFF
+PUC Lua 5.4
+```
+
+JIT is an optimization only.
+
+MUST:
+
+```text
+VM-specific C API differences isolated in private Lua support
+ScriptSystem never knows VM kind
+same lifecycle/Ability/coroutine/failure semantics across qualified VMs
+portable source profile avoids VM-specific gameplay semantics
+portable scalar/value conversion is explicit and lossless
+```
+
+Gameplay source must not require as portable semantics:
+
+```text
+ffi.*
+jit.*
+VM-specific bytecode
+LuaJIT-only syntax/extensions
+Lua-5.4-only source semantics not accepted by the supported LuaJIT parser
+```
+
+Do not solve 64-bit identity/value portability through LuaJIT FFI. A stable 64-bit identity should use an approved typed representation rather than an imprecise plain Lua number when exactness matters.
 
 ---
 
-## 26. Performance contract
+## 22. Lua Ability authority
 
-MUST 保持：
+A global Lua language surface such as:
 
-```text
-ordinary synchronous BoundScriptCall path does not allocate continuation
-Ability/provider resolution happens once, not per call
-prepared dynamic call uses narrow immutable binding
-continuation/awaitable/resume storage is bounded
+```lua
+lux.Delay.nextStep()
+lux.PhysicsQuery.raycast(...)
 ```
 
-高频已知 shipping path允许 generated/static specialization + LTO。
+may be registered per VM/backend, but the closure must not capture a globally authoritative concrete provider.
 
-真正高频 data-parallel API 应优先考虑 batch contract，而不是只优化一次 indirect-call 的纳秒级成本。
+Production call topology:
+
+```text
+Lua method closure
+    -> backend + small canonical/catalog ordinal
+    -> current executing ScriptInstance
+    -> that instance's prepared capability entry
+    -> generated erased thunk
+    -> composition-owned provider
+```
+
+A Script that did not declare/resolve the Ability cannot use it merely because the VM exposes the syntax and another ScriptInstance has the provider.
 
 ---
 
-## 27. Implementation sequence
+## 23. C++ coroutine target
 
-Runtime scripting 子 DAG：
+S6 may add ergonomic `co_await`, but:
 
 ```text
-S1
-Capability identity + requirements
-Provider publication/binding foundation
-Continuation/Awaitable/Resume foundation
-        ↓
-S1.5
-Ability reflection declaration
-Provider receiver/binder generation
-CMake codegen opt-in
-Canonical schema + minimal multi-language projection proof
-        ↓
-S2
-NextStep / Simulation Delay / Real Delay / AssetLoad
-        ↓
-S3
-FlowForge generated API nodes + coroutine lowering
-        ↓
-S4
-Lua generated bindings + coroutine bridge
-        ↓
-S5
-Event.await + Physics/Navigation/etc. real domain abilities
-        ↓
-S6
-C++ coroutine ergonomics + shipping static specialization
-        ↓
-future Python
+std::coroutine_handle remains C++ backend-private
+ScriptBackendContinuation remains Engine boundary
+BORROWED_STEP cannot cross co_await
+BeginPlay/EndPlay remain synchronous
+same Ability metadata remains source of truth
 ```
 
-S1.5 不等待 D/E/U2 Editor feature 完成；只依赖 S1 qualification。
+Shipping specialization may optimize known provider mappings without changing semantics.
 
 ---
 
-## 28. STOP conditions
+## 24. Cancellation / shutdown
 
-实现若需要以下任一项，必须 STOP：
+Scene stop, Script unmount/reload, entity retirement, and ScriptInstance invalidation must preserve:
 
 ```text
-put Engine/Scene/System capability ontology into modules/
-generic ServiceRegistry / SceneServices / ScriptApiManager
-global provider singleton
-shared_ptr ownership to keep System alive for scripts
+invalidate generation first
+stop normal dispatch/new invocation admission
+cancel/retire Awaitables
+request stop on external operation when supported
+destroy backend continuations safely
+clear prepared capability bindings
+only then allow provider destruction
+```
+
+Late completion resolving to an old generation is discarded.
+
+Detailed gameplay object ordering: `13`.
+
+---
+
+## 25. Performance / complexity contract
+
+MUST preserve:
+
+```text
+ordinary synchronous BoundScriptCall path creates no continuation
+sync Ability provider resolution is prepared, not per-call discovered
+continuation/awaitable/resume stores are bounded
+suspended-idle stable point does not scan every continuation
+Delay idle does not scan every pending timer
+Event waiter idle does not scan every waiter
+object churn follows changed objects rather than total population where the semantic workload is sparse
+resume execution obeys configured budget
+```
+
+Output-sensitive promotion of K ready deadlines/events is O(K) and may be expensive for extreme bursts; measure before introducing a new scheduling layer.
+
+PB0/PB1/PB2/PB3 exact numbers are evidence, not universal thresholds.
+
+---
+
+## 26. Current implementation sequence
+
+The current Script roadmap is:
+
+```text
+S1/S1.5        CLOSED direction
+S2.0–S2.3      CLOSED direction
+S2.4 AssetLoad CONDITIONAL / blocked by Asset result contract
+S2.5 lifecycle CLOSED direction
+PB0            recorded
+S3             CLOSED direction
+S3-H           CLOSED direction
+PB1            recorded
+S4             CLOSED direction
+PB2            recorded
+S4-P           portability gate immediately before S5
+S5             Event.await + Physics + Navigation when ready + conditional AssetLoad
+PB3            gameplay async/domain baseline
+S6             C++ coroutine + shipping specialization
+then           Script framework FREEZE / R1
+```
+
+Exact gate detail is owned by `07`.
+
+---
+
+## 27. STOP conditions
+
+STOP for architecture review if implementation appears to require:
+
+```text
+Engine/Scene/System ontology moved into reusable script modules
+ScriptApiManager / CoroutineManager / AsyncManager / EventAwaitManager
+ServiceRegistry / provider singleton
+shared_ptr ownership to keep Systems alive for Script
 provider-specific identity persisted in ScriptArtifact
-per-call string lookup
-mandatory virtual provider hierarchy
-codegen constructs runtime provider
-Physics package directly depends on Lua/FlowForge/Python runtime
-multiple default providers silently resolved by registration order
-borrowed ECS value allowed across await
-worker/domain callback directly resumes script
+per-call contract/method/provider string lookup
+mandatory virtual provider hierarchy as semantic contract
+codegen constructing provider objects
+borrowed ECS/provider value crossing await
+worker/domain callback directly resuming Script
+ScriptSystem knowing lua_State / coroutine_handle / FlowForge frame internals
+one Lua backend architecture per VM
+VM-specific canonical Lua bytecode
+AssetLoad returning raw/shared concrete Asset ownership
+Physics package depending directly on Lua/FlowForge runtime
 ```
-
----
-
-## 29. Qualification focus
-
-至少证明：
-
-```text
-required contract present -> mount success
-missing/schema mismatch/ambiguous provider -> distinct fail-early diagnostics
-provider object remains owned by its original owner
-binding does not extend provider lifetime
-sync call path has no continuation allocation
-suspend/resume/re-suspend/cancel/generation races are covered
-late completion cannot touch stale continuation/provider
-```
-
-Ability codegen/receiver/provider-specific qualification继续见 `12`。

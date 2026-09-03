@@ -1,632 +1,513 @@
-# Lux Engine L5 Editor、Runtime Capability 与 Product Composition 架构总览
+# Lux Engine L5 Editor、Runtime Capability、Plugin Packaging 与 Product Composition 架构总览
 
-Status: **Normative Architecture / Implementation Baseline (v3)**  
-Date: **2026-09-02**  
-Reviewed repository checkpoint: `main@4593ce9b02ddbe35d81de2ded309666ede0bb8da` (`docs(qualification): record l5 v2 foundation closure`).  
-Canonical topology source checked on `main`: `.internal/directory-target-product-architecture.md`.
+Status: **Normative Architecture Baseline — v3 reconciled 2026-09-03**
 
-> 本文是当前 L5 架构基线。B/V1/V2/A/F/G 的方向已经进入当前实现；v3 不重新设计这些 foundation，而是先通过 `07` 定义的 R0 Foundation Requalification gate 修复可复现性与两个生命周期/并发缺陷，再进入 Lux UI 与 C/D/E。当前 HEAD 若移动，只允许重新映射物理路径/target；不得自行重新解释本文已冻结的层级语义。精确执行规则见 `08-normative-execution-contract.md`。
+Reviewed public repository checkpoint: `main@bc15a84252c5740e6e47f3e1094810d6dd4ab711`.
 
----
-
-## 1. 设计目标
-
-L5 Editor 的目标不是简单恢复 legacy Editor，也不是重新制造一套 retained-mode GUI framework。当前 Lux 已经具备：
-
-- `LuxObject / Object<T>`：对象身份、thread affinity、typed signal、direct/queued/auto delivery；
-- Runtime/Static Reflection 与 code generation；
-- `ui::Pane / UISession / CommandRouter / ViewportElement`，并将在 Wave U 收敛为 backend-isolated Lux UI public API；
-- L1 authoritative ECS/Simulation；
-- L3 Scene composition；
-- L4 Material / FlowForge / Asset Toolchain；
-- L0 AssetVfs；
-- Platform FileWatcher。
-
-L5 应把这些能力组合成一个高性能、插件友好、生命周期清楚的 Editor 应用体系；同一批低层 runtime capability 也必须能被项目专用的最终游戏二进制复用，而不是被 Editor 私有化。
-
-核心目标：
-
-```text
-1. UI 热路径尽量由 typed codegen 完成，而不是 runtime reflection 解释；generated/Editor/plugin code 只调用 Lux UI，不直接调用 Dear ImGui。
-2. LuxObject / Signal 用于 control plane，不侵入 ECS component 数据热路径。
-3. EditorContext 作为显式传递的 Editor-wide capability root。
-4. Toolset 维护长期 L4 tool 实例；Pane/Editor window 不拥有工具生命周期。
-5. MaterialEditor / FlowForgeEditor / SceneEditor 等名称本身就是窗口级 Editor，不再追加 Pane。
-6. L2 Process 负责异步执行机制；L4 Tool 负责具体编译/转换语义。
-7. AssetVfs 是 product/application-wide Resource capability，不属于 EditorContext；EditorContext 只借用只读 VFS view / asset-loading capability。
-8. 最终游戏不是固定 `Player` 程序，而是由项目配置、选定模块/System 与 generated code 组合出的项目专用 executable target。
-9. Scene Outliner 不预设实体一定构成层级树；Hierarchy 是一种可选 projection。
-10. GraphKit 的共享价值进一步下沉为纯 Graph Source Topology；Renderer 与 Compiler 都消费同一 source。
-11. 共享 Graph topology，不共享 Material 与 FlowForge 的语言语义。
-12. Delay、资产加载、GPU/physics query 等跨时间操作必须挂起脚本逻辑而不是阻塞 game/main thread。
-13. `modules/function/ui` 是公共 UI 边界；Dear ImGui/imgui-node-editor 只允许存在于其 private backend。
-14. Legacy 可作为 selected visual/interaction/behavior reference，但绝不是 ownership/architecture source of truth。
-```
+Canonical physical topology remains repository-owned; this document freezes semantic ownership and dependency direction. When current HEAD moves, coding agents may remap paths/targets but MUST NOT reinterpret an owner merely to finish a feature.
 
 ---
 
-## 2. L0–L5 与 Product Composition（Product 不是架构层）
+## 1. Architecture objective
+
+Lux is organized around explicit owners and narrow capabilities rather than global managers.
+
+The engine must support all of these without changing the underlying semantic model:
 
 ```text
-L0  Reusable Modules / Foundations
-    ├─ core/object              LuxObject / Signal / Dispatcher
-    ├─ core/meta/type_info      reflection + code generation projections
-    ├─ resource/asset           AssetId / AssetVfs / provider contracts
-    ├─ function/ui              Lux UI public API / Pane / UISession / Theme / ViewportElement / private ImGui backend
-    ├─ function/material        Material source language
-    ├─ function/flowforge       FlowForge source language
-    └─ function/graph           shared pure source topology (Wave F frozen owner)
-
-L1  Domain
-    ├─ ECS Registry / ComponentSchema / Component operations
-    ├─ Transform / Hierarchy / Visual components
-    └─ Simulation systems and authoritative synchronous behavior
-
-L2  Process
-    ├─ execution                Sender scheduling / timers / structured lifetime
-    ├─ asset_loading            time-spanning typed asset-load workflow
-    └─ world_loading            explicit world-loading workflow
-
-L3  Scene
-    ├─ SceneMetaManager
-    ├─ SceneDescription
-    ├─ Scene composition + authoritative Registry
-    └─ optional Render SceneSystem integration
-
-L4  Toolchain
-    ├─ Material compiler/cooker
-    ├─ FlowForge compiler
-    ├─ Shader/Texture/Model cooker
-    └─ pack/export/build tools
-
-L5  Editor
-    ├─ EditorApplication composition leaf
-    ├─ EditorContext (non-owning capability aggregate)
-    ├─ Toolset
-    ├─ EntityInspector / AssetBrowser / SceneEditor
-    ├─ MaterialEditor / FlowForgeEditor
-    └─ graph editing/render protocol + editor file monitoring
-
-Product / Application Composition（不是 L6）
-    ├─ EditorApplication executable
-    └─ generated project-specific game executable target
+normal project gameplay modules
+reusable source Plugin Packages
+headless/runtime-clean products
+full Editor products
+offline Toolchain products
+multiple Script frontends/backends
+third-party RenderFeatures
+project-specific shipping executables
 ```
 
-`Product` 是 build/product closure 维度，不再定义 `Product/Application composition/Product` 架构层。`EditorApplication` 可以位于 L5 的 application leaf；最终游戏由项目 target generation 直接组合 L0–L4/runtime 能力与项目代码。不得为了数字层级整齐创建 `HostManager/ProductHost/ApplicationServices`。
+The key rule is:
 
-### 2.1 依赖方向
+> **Packaging does not redefine semantics.**
 
-允许：
-
-```text
-EditorApplication -> L5 feature packages -> L4/L3/L2/L1/L0
-GeneratedGameTarget -> L3/L2/L1/L0 + project selected runtime modules
-L5 -> L4/L3/L2/L1/L0
-L4 -> L2/L1/L0 (only when semantically needed)
-L3 -> L2/L1/L0
-L2 domain workflow -> lower-layer contracts; execution leaf remains domain-blind
-```
-
-禁止：
-
-```text
-L0/L1/L2/L3 -> L5
-L0/L1/L2/L3 runtime -> L4 compiler
-L4 Toolchain -> L5 Editor
-L2 execution -> Material / FlowForge / Editor vocabulary
-runtime system -> EditorContext
-```
-
-### 2.2 Product target model
-
-`PLAYER` 只能继续作为 runtime-clean **qualification profile** 使用；它不是最终交付产品的固定 executable contract。
-
-最终目标：
-
-```text
-Project configuration
-    + selected engine modules/backends
-    + selected SimulationSystems / SceneSystems
-    + project native/generated code
-    + reflection/codegen products
-    + cooked assets / pak configuration
-            ↓
-      project-specific target
-            ↓
-         MyGame executable
-```
-
-Shipping target SHOULD 支持 monolithic/LTO/dead stripping 等 whole-program 优化；精确 target generator/project manifest 由独立 Product Target 规格冻结，L5 coding wave 不得自行发明固定 `LuxPlayer` 架构。
-
-## 3. EditorApplication 与 EditorContext：owner 和 capability view 分离
-
-`EditorContext` 仍然是所有 Editor window 构造时显式传入的统一访问路径，且 **当前 contract 不拥有 process/application-wide resource**。它是一个非 owning capability aggregate。
-
-物理 ownership 冻结为：
-
-```text
-L5 EditorApplication
-├─ owns process-lifetime L2 ExecutionRuntime
-├─ owns mutable AssetVfs control plane
-├─ owns/installs production/editor AssetRead endpoint/port
-├─ owns RenderRuntime / platform-window state when configured
-├─ owns immutable SceneMetaManager
-├─ owns Toolset
-├─ owns EditorSelection
-├─ owns UISession
-├─ owns Editor root TaskScope
-│
-└─ constructs EditorContext
-      ├─ references Toolset
-      ├─ carries AssetVfsView (read capability)
-      ├─ carries AssetReadPort / typed asset-loading capability
-      ├─ references ExecutionRuntime + root TaskScope
-      ├─ references EditorSelection / UISession / SceneMetaManager
-      └─ never owns the above lifetimes
-```
-
-推荐 public 形态：
-
-```cpp
-struct EditorContextCreateInfo final
-{
-    Toolset& toolset;
-    asset::AssetVfsView vfs;
-    process::asset_loading::AssetReadPort asset_read;
-    process::ExecutionRuntime& execution;
-    process::TaskScope& tasks;
-    EditorSelection& selection;
-    ui::UISession& ui;
-    const scene::SceneMetaManager& scene_meta;
-};
-
-class EditorContext final
-{
-public:
-    explicit EditorContext(EditorContextCreateInfo) noexcept;
-
-    [[nodiscard]] Toolset& toolchain() noexcept;
-    [[nodiscard]] asset::AssetVfsView vfs() const noexcept;
-    [[nodiscard]] process::asset_loading::AssetReadPort assetRead() const noexcept;
-    [[nodiscard]] process::ExecutionRuntime& execution() noexcept;
-    [[nodiscard]] process::TaskScope& tasks() noexcept;
-    [[nodiscard]] EditorSelection& selection() noexcept;
-    [[nodiscard]] ui::UISession& ui() noexcept;
-    [[nodiscard]] const scene::SceneMetaManager& sceneMeta() const noexcept;
-};
-```
-
-硬约束：
-
-- MUST 显式传入 `EditorContext&`；禁止 `EditorContext::instance()`、TLS global、静态 service locator。
-- `EditorContext` MUST NOT value-own `AssetVfs`、`ExecutionRuntime`、`TaskScope`、`Toolset` 或 `EditorSelection`；这些 owner 都是 `EditorApplication`。
-- UI window MUST NOT 获得 VFS `mount/unmount` control plane；常规 UI 只拿 `AssetVfsView`。Project/application composition 负责 mount table 变更。
-- `EditorContext` MUST NOT 提供无限制 `get<T>()`；typed dynamic lookup 只允许存在于语义明确的 `Toolset`。
-- feature-local graph/document/camera/popup 数据不得进入 Context。
-- v1 Selection 仍是一个 EditorApplication-owned `EditorSelection`，使用 L5 `EditorSceneHandle` 代际身份；Context 只引用它。
-
-所有主要 Editor UI surface：
-
-```cpp
-MaterialEditor(EditorContext& context, ...);
-FlowForgeEditor(EditorContext& context, ...);
-EntityInspector(EditorContext& context);
-AssetBrowser(EditorContext& context);
-SceneEditor(EditorContext& context, ...);
-```
-
-## 4. Toolset：长期 L4 工具实例容器
-
-Editor 中需要长期存在的 L4 capability 由 `Toolset` 统一拥有：
-
-```cpp
-context.toolchain().get<MaterialGraphCompiler>();
-context.toolchain().get<FlowForgeCompiler>();
-```
-
-`Toolset` 的 v1 语义：
-
-```text
-Toolset
-├─ install<T>(...): composition phase only
-├─ get<T>(): required capability; missing = fail-closed programmer/composition error
-├─ find<T>(): optional capability probing only
-└─ freeze(): after composition no install/remove mutation
-```
-
-Key MUST 使用稳定 typed identity/type token，不得使用用户字符串。
-
-Toolset 中的 Compiler MUST 是：
-
-```text
-long-lived capability
-+ immutable environment/configuration
-+ copyable scheduler handle
-- current graph
-- current IR
-- current diagnostics
-- in-flight job collection
-- cancellation source
-```
-
-也就是说 `MaterialGraphCompiler`/`FlowForgeCompiler` 是 **logically stateless, reentrant Sender factory**。同一个实例必须允许多个 compile invocation 并发执行。
-
-一次 compile 的 mutable state 不进入 Toolset，而进入 Sender operation state：
-
-```text
-Compiler.compile(owned snapshot)
-          ↓
-       Sender
-          ↓ connect/start
-OperationState
-├─ owned immutable source snapshot
-├─ request options
-├─ stop token/callback
-├─ temporary IR/context/files
-├─ diagnostics under construction
-└─ receiver/result
-```
-
-关闭 `MaterialEditor`/`FlowForgeEditor` 不影响 Toolset，也不隐式取消已经由 EditorApplication root `TaskScope` 接管的 task。
-
-## 5. UI 数据热路径 vs Control Plane
-
-L5 明确采用“双通道”设计。
-
-### 5.1 数据热路径
-
-以 Inspector 修改 Transform3D 为例：
-
-```text
-Generated Component Inspector Binding
-        ↓ typed access
-Registry.try_get<Transform3D>()
-        ↓
-Lux UI typed widget
-        ↓ direct write
-registry.patch<Transform3D>()
-        ↓ EnTT on_update
-TransformSystem marks dirty entity
-        ↓ next stable point
-WorldTransform3D update
-        ↓
-Render/Physics/Nav consumers
-```
-
-禁止把它改成：
-
-```text
-Lux UI / backend-specific escape
- -> runtime RefField
- -> generic mutation request
- -> LuxObject signal
- -> EditorModel
- -> Scene adapter
- -> Registry
-```
-
-### 5.2 Control Plane
-
-LuxObject / Signal 用在语义边沿：
-
-```text
-selection changed
-active document changed
-compile job completed
-asset catalog changed
-file change stabilized
-pane focus/visibility changed
-project opened/closed
-```
-
-它们不是每个 component 字段变更的 transport。
+A Component remains a data/state contract whether it is first-party, project-owned, or distributed inside a Plugin Package. A System/Provider remains an implementation. A Script Ability/Event remains a contract. A RenderFeature remains a Render extension. Editor code remains Editor-only.
 
 ---
 
-## 6. Codegen-first Editor UI
-
-第一方和第三方插件都使用公开的 Lux reflection/codegen SDK 生成 UI binding。
-
-原则：
+## 2. L0–L5 and Product composition
 
 ```text
-Known at compile/codegen time
-    -> generate typed C++
+L0 Reusable modules / foundations
+    core/object/meta/math/serialization
+    resource identity/VFS/descriptions
+    function/ui
+    function/graph
+    function/script
+    function/render foundations
+    function/material / function/flowforge source vocabulary
 
-Truly dynamic runtime metadata
-    -> not required for standard Editor UI path
+L1 Domain
+    ECS Registry / Components
+    Simulation Systems
+    authoritative synchronous gameplay/domain behavior
+    ScriptSystem as Simulation scripting runtime owner
+
+L2 Process
+    ExecutionRuntime
+    Cpu/Main/Blocking scheduling where authorized
+    TaskScope
+    Timer
+    AssetRead / time-spanning process workflows
+
+L3 Scene / integration
+    Scene composition
+    WorldObject/materialization integration
+    render/simulation bridge
+    Scene metadata
+
+L4 Toolchain
+    Material compiler/cooker
+    FlowForge compiler
+    asset import/cook
+    build/package/codegen tools
+
+L5 Editor
+    EditorApplication composition leaf
+    EditorContext / Toolset / Selection
+    Inspector / AssetBrowser / SceneEditor
+    MaterialEditor / FlowForgeEditor
+
+Product/Application composition (not L6)
+    Editor executable
+    project-specific game/server/tool targets
 ```
 
-因此不规划 runtime reflection fallback 作为 Inspector 正常工作方式。
+Allowed dependency direction follows the above layering and explicit product classification. Lower runtime layers do not depend on Editor or Toolchain implementation.
 
-生成 projection 可以并列：
+---
+
+## 3. Preserved foundation
+
+The following are already foundation directions and are not redesign targets:
 
 ```text
-Annotated Source
-     │
-     ├─ ECS schema projection       (L1)
-     ├─ serialization projection    (where applicable)
-     ├─ Editor UI binding           (L5 build product)
-     └─ Graph node presentation     (for graph-based languages)
+B   L2 Execution
+V1  AssetVfs read/control split
+V2  VFS-backed AssetRead + blocking IO isolation
+A   EditorApplication + non-owning EditorContext + Toolset
+F   Shared Graph Source
+G   Graph editing/render protocol separation
+R0  foundation qualification/lifetime hardening
 ```
 
-同一 annotation source 描述语义，但不同层的 projection 互不依赖。
-
-Generated Editor binding 的 public path 冻结为：
+Preserve:
 
 ```text
-Generated Component/Graph Presentation Binding
+bounded admission
+structured task lifetime
+explicit mutable VFS control plane + read snapshots
+no VFS singleton
+EditorApplication owns application lifetimes
+EditorContext borrows/carries capabilities
+Toolset mutates only during composition then freezes
+GraphTopology/GraphLayout owned by modules/function/graph
+GraphEditingSession separate from rendering/backend
+```
+
+---
+
+## 4. Runtime Script architecture
+
+The Script architecture is now a first-class runtime framework, not an Editor feature.
+
+Unified ontology:
+
+```text
+Component
+    state/data contract
+
+System / integration object
+    behavior/runtime owner
+
+Script Ability
+    script-to-engine callable contract
+
+Capability Provider
+    concrete runtime implementation of an Ability
+
+HookPoint / EventPoint
+    engine-to-script execution/event contract
+
+Coroutine / Awaitable
+    script control flow spanning time
+```
+
+The backend-neutral runtime relation is:
+
+```text
+ScriptArtifact
+    ↓
+ScriptInstance incarnation
+    ↓
+backend long-lived object state
+    ↓
+BoundScriptCall / BoundScriptStepCall
+    ↓
+ScriptSystem continuation / awaitable / stable-point runtime
+```
+
+FlowForge generated state machines, Lua coroutines, and future C++ coroutine handles remain backend-private representations.
+
+See `11`, `12`, and `13`.
+
+---
+
+## 5. Gameplay Script object model
+
+Runtime Script lifecycle follows ScriptInstance incarnation, not scene-global time and not persistent WorldObject identity.
+
+```text
+persistent WorldObject identity
+    != runtime ECS Entity incarnation
+    != ScriptInstance incarnation
+```
+
+Canonical gameplay lifetime:
+
+```text
+create backend object
+    ↓
+initialize instance/context/capabilities/methods
+    ↓
+BeginPlay
+    ↓
+ACTIVE gameplay
+    ↓
+RETIRING
+    ↓
+cancel/destroy gameplay continuations
+    ↓
+EndPlay(reason)
+    ↓
+release prepared methods / destroy backend object
+```
+
+Runtime spawn/materialization receives BeginPlay when admitted. Unmaterialization/retirement receives EndPlay. Rematerialization creates a new incarnation and therefore a new BeginPlay/EndPlay lifetime.
+
+Temporary disable/throttling is activity policy, not object lifetime.
+
+See `13-script-gameplay-object-lifecycle.md`.
+
+---
+
+## 6. Script Ability / Provider ownership
+
+Scripts depend on contracts, never on concrete provider class identity.
+
+Example:
+
+```text
+PhysicsQuery3D contract
+        ↓ implemented by
+JoltPhysicsSystem runtime object
+```
+
+The declaration belongs with the Physics semantic owner. Generated binder/thunks borrow an already-owned provider object; codegen never constructs or shared-owns the provider.
+
+Dynamic path:
+
+```text
+composition publishes bound Ability
         ↓
-EditorValueBinding<T> / Lux presentation adapter
+Script mount resolves requirement once
         ↓
-modules/function/ui public API
-        ↓ private backend only
+immutable prepared receiver/thunk
+        ↓
+call without string/service lookup
+```
+
+Shipping-known paths may later specialize the dispatch, but semantic identity remains `ContractId + schema`.
+
+---
+
+## 7. Async / stable-point model
+
+All time-spanning Script work returns control to Simulation.
+
+```text
+start operation
+    ↓
+ScriptAwaitable PENDING/READY/FAILED/CANCELLED
+    ↓
+Script invocation SUSPENDED
+    ↓
+completion only marks readiness/enqueues
+    ↓
+explicit Simulation stable point
+    ↓
+validate ScriptInstance generation
+    ↓
+resume backend continuation
+```
+
+Never:
+
+```text
+worker -> lua_resume
+physics callback -> FlowForge continue
+Timer callback -> coroutine_handle.resume
+GPU callback -> Script execution
+```
+
+Event.await shares the existing EventPoint source and ScriptSystem EventBucket; it is not a separate Event bus.
+
+---
+
+## 8. Lua portability
+
+`LUA_SOURCE` is the canonical ScriptArtifact kind. The canonical asset stores source, not LuaJIT or Lua 5.4 bytecode.
+
+Approved direction:
+
+```text
+same source / same ScriptArtifact semantics
+        ↓
+LuaJIT JIT ON
+LuaJIT JIT OFF
+Lua 5.4
+```
+
+JIT is optimization only. VM-specific C API differences remain in a narrow private Lua implementation seam. ScriptSystem and ScriptArtifact do not learn the VM kind.
+
+The portable Lua profile must reject/avoid semantics that cannot be represented losslessly and consistently across the supported VMs.
+
+---
+
+## 9. Lux UI / Editor boundary
+
+`modules/function/ui` is the public UI owner.
+
+```text
+Editor / generated UI / plugin Editor facet
+        ↓
+Lux UI public API
+        ↓
+private backend
+        ↓
 Dear ImGui / imgui-node-editor
 ```
 
-MUST NOT 生成 `#include <imgui.h>` 的 Editor/plugin code。UI backend isolation、Theme、Frame/scope/leaf-widget 模型见 `10-lux-ui-foundation-and-legacy-visual-parity.md`。
+Long-lived semantic objects may be object-oriented (`Pane`, `UISession`, `ViewportElement`, Editor windows), while leaf controls remain immediate-mode.
+
+Do not create a retained WidgetManager/tree or speculative `IUiBackend` abstraction.
+
+Legacy is only a selected visual/interaction reference.
 
 ---
 
-## 7. Editor window 命名与职责
+## 10. EditorApplication / EditorContext / Toolset
 
-统一采用功能名：
+Physical ownership remains:
 
 ```text
-EntityInspector
-AssetBrowser
-SceneEditor
-SceneOutliner
-MaterialEditor
-FlowForgeEditor
+EditorApplication owns
+    ExecutionRuntime
+    root TaskScope
+    mutable AssetVfs
+    production AssetRead endpoint/port
+    Toolset
+    EditorSelection
+    UISession
+    SceneMetaManager
+    configured RenderRuntime/platform state
 ```
 
-这些对象本身可以继承 `ui::Pane`，无需 `XxxPane` 二次命名。
+`EditorContext` is non-owning and only carries/references the corresponding capabilities.
 
-窗口负责：
+Toolset is a bounded exception to the “no registry” rule because it has one specific semantic purpose: long-lived L4 Editor tool capabilities.
 
-- UI drawing；
-- 局部交互状态；
-- 从 EditorContext 获取长期共享工具/资源；
-- 对 domain/source data 发出直接或 canonical mutation；
-- 命令上下文和 focus。
+```text
+composition phase: install built-ins and Editor plugin tools
+freeze
+runtime: get/find only
+shutdown: requestStop/destroy after users are gone
+```
 
-窗口不负责：
-
-- Toolchain tool 生命周期；
-- VFS 生命周期；
-- process executor 生命周期；
-- unrelated feature service；
-- 关闭窗口时自动取消所有后台业务任务。
+It is not a generic DI container.
 
 ---
 
-## 8. Product-wide VFS 与 Editor 只读资源访问
+## 11. Project Module vs Plugin Package
 
-`AssetVfs` 属于低层 Resource/product runtime 能力，不属于 Editor 语义。Editor 与最终项目游戏必须共享同样的 `/Game`、`/Engine`、patch/plugin mount 解析规则。
+A project developer normally extends Lux directly with project modules. That does not require a plugin abstraction.
 
 ```text
-EditorApplication / GeneratedGame composition
-                 │ owns mutable AssetVfs
-                 ├─ mount / unmount control plane
-                 └─ publishes AssetVfsView
-                          │
-          ┌───────────────┼──────────────────┐
-          ▼               ▼                  ▼
-   EditorContext       AssetRead endpoint   runtime systems
-     vfs() view            / Sender          narrow capability
+Project Module
+    normal gameplay/domain/render/tool/editor code owned by a project
+
+Plugin Package
+    optional reusable/source-distributed packaging around one or more modules
 ```
 
-Editor windows 通过 `EditorContext.vfs()` 做 mounted-view 查询，但不拥有 VFS，也不改变 mount table；可能触盘的 asset image/content 读取同样应走 `assetRead()`。脚本/运行时异步资产读取不得直接调用同步 `AssetVfs::open()`，而通过 L2 `asset_loading` / `AssetReadPort`。
+A Plugin Package may contain several targets/facets:
 
-禁止把 VFS 改成 static 方法、`AssetVfs::Get()` lazy singleton 或隐藏静态 state；初始化顺序和 shutdown 仍由 product/application composition root 显式控制。
+```text
+domain/runtime
+render
+scene integration
+toolchain
+editor
+```
+
+These facets remain independently classified and only depend in legal directions.
+
+Plugin is therefore orthogonal to architecture layers.
+
+See `14-plugin-package-and-extension-composition.md`.
 
 ---
 
-## 9. Scene 不是必然 hierarchy
+## 12. RenderFeature is already the Render extension contract
 
-Scene 的“有哪些对象”与“这些对象如何组织展示”必须分开。
+Do not introduce `RenderPlugin` as a second semantic layer.
+
+`RenderFeature` already owns a RenderScene-installed renderer capability with:
 
 ```text
-SceneOutliner
-    ├─ Flat projection
-    ├─ Parent/Hierarchy projection
-    ├─ Spatial/partition projection
-    └─ future domain-specific projection
+FeatureTypeId / descriptor
+attach/detach lifecycle
+per-view state
+frame/render-graph contribution
+configuration/registration
+external-facing Render context/scene facades
 ```
 
-如果 Scene/Simulation 使用 `Parent`，Outliner 可以展示树；如果没有 Parent，就显示 flat entity/object list。
+A package may contain a RenderFeature target, but that target remains low-level Render code. If the same package also has `TerrainSystem` or Components, a higher Scene/integration target bridges Domain data to the RenderFeature.
 
-Inspector 只关心当前 selection 对应对象及其 editor-visible components，不关心 Outliner 的 projection。
+Wrong:
+
+```text
+TerrainRenderFeature -> TerrainSystem / ECS / Editor
+```
+
+Correct:
+
+```text
+terrain_domain       terrain_render
+       \               /
+        \             /
+         terrain_scene_integration
+```
+
+The packaging boundary never grants upward dependencies.
 
 ---
 
-## 10. Shared Graph Source
+## 13. Toolchain and durable authoring
 
-新的长期目标：把 GraphKit 中真正通用的 topology 下沉为纯 source-data foundation。
+Material/FlowForge compiler instances remain long-lived immutable/reentrant tools; each invocation owns mutable compilation state and snapshots.
 
-```text
-Shared Graph Source
-├─ GraphTopology
-├─ GraphLayout
-├─ NodeId / PinId / Link
-└─ structural invariants
-       │
-       ├─ MaterialGraph + typed Material payload
-       └─ FlowGraph     + typed Flow payload
-```
+In-memory Editor integration is allowed after UI/NodeCanvas prerequisites.
 
-然后产生两条消费路径：
+Durable workflows remain STOP gates until approved source identity/codecs exist:
 
 ```text
-Source -> L4 lowering -> domain IR -> final artifact
-Source -> L5 render protocol -> editor rendering / interaction intents
+MaterialGraph codec/document identity
+FlowGraph codec + ScriptSymbol source identity/package contract
 ```
 
-共享 topology，不共享 language semantics；禁止 `GenericGraphIR`、万能 property bag、字符串 payload。
+Do not invent a file format merely because a Save button needs one.
 
 ---
 
+## 14. Product model
 
-## 11. L2 Process、异步资产与耗时 Toolchain
+`PLAYER` is a runtime-clean qualification profile, not the final shipping architecture.
 
-L2 `process/execution` 负责时间与执行，不负责 Material/FlowForge 语义。
-
-当前 reviewed foundation 的 L2 vocabulary 包含：
-
-```text
-PortSender     OperationPort -> stdexec Sender adapter
-TimerQueue     bounded timer owner
-TimerSender    cancellable timer Sender
-AssetLoadSender<T>  ReadAssetImage -> typed decode Sender
-```
-当前 active L2 还已有 `engine/process/asset_loading::loadAsset<T>()` Sender：它把 `ReadAssetImage` OperationPort 与 typed decode 组合起来。current contract 将其视为 runtime async-asset 主干，而不是 Editor 专用机制。生产 endpoint MUST 保证实际阻塞 storage read 不在 game/main thread inline 执行。
-
-
-L5/L4 异步 Toolchain 复用的 P0 foundation 冻结为：
+Final target:
 
 ```text
-ExecutionRuntime
-├─ CpuScheduler
-├─ MainScheduler
-├─ TimerQueue/TimerClient (existing)
-└─ runtime stop/join + bounded admission
-
-TaskScope
-└─ structured ownership of arbitrary Sender operations
+Project configuration
+    + selected engine modules
+    + selected Systems / Scene integrations
+    + project native/generated code
+    + source Plugin Package selections
+    + selected Render backend/features
+    + cooked content
+        ↓
+project-specific executable/server/tool target
 ```
 
-Wave B 之外的扩展：
+Product Track P remains STOP until a project target-generation/manifest contract is approved.
 
-```text
-BlockingScheduler  # authorized/required by Wave V2 when blocking storage needs IO isolation
-ProcessSender       # still P1; only for real subprocess lifecycle needs
-```
-
-依赖方向：
-
-```text
-L5 MaterialEditor
-       ↓
-L4 MaterialGraphCompiler  -- immutable/reentrant
-       ↓ returns domain Sender
-L2 CpuScheduler
-       ↓ executes
-L4 deterministic compile core
-       ↓
-L2 MainScheduler
-       ↓
-L5 applies result by stable document/revision identity
-```
-
-关键约束：
-
-1. L2 MUST NOT 定义 `MaterialCompileOperation`/`FlowForgeCompileOperation` 等 domain vocabulary。
-2. Compiler async API MUST consume an **owned source snapshot**；禁止 worker 借用 UI 正在修改的 graph reference/pointer。
-3. Compiler instance MUST NOT 保存 invocation mutable state；per-call MLIRContext、shaderc compiler/options、temporary directory、IR 等都属于调用状态。
-4. Compile failure（invalid graph/type mismatch/shader diagnostics）是 domain result；Execution stop/rejection 是 execution channel，二者不得混为同一个错误概念。
-5. `TaskScope` 负责 operation lifetime/cancellation；Compiler 不提供模糊的 `compiler.cancel()`。
-6. `MainScheduler` 是 host-drained mailbox，不创建第二个“main thread”。
-7. Wave B 只实现 CPU/Main/TaskScope；不得因 FlowForge 未来会等待 linker 而提前扩展 Blocking/Process framework。
-
-## 12. 与 legacy 的关系
-
-Legacy 是 **selected visual / interaction / behavior reference + algorithm/code mine**，不是 architecture source of truth。
-
-当当前 Lux Editor 明确希望延续旧 UX 时，可以参考/尽量保留：
-
-- panel composition、toolbar placement、spacing rhythm、icons、selection/highlight visual language；
-- Inspector 的 property grouping、vector/value editing、asset picker 用户交互；
-- AssetBrowser 的 grid/list/search/breadcrumb；
-- Scene Outliner 的 rename/delete/create/context-menu UX，以及 hierarchy mode 的视觉语言；
-- Graph 的 node chrome、pin/link readability、undo、stable ID、drag-connect 经验；
-- FileWatcher debounce/stable write 经验；
-- AsyncRuntime 的 background CPU/main-thread completion 概念。
-
-目标是 recognizable visual/interaction parity，而不是像素级复制。Theme/design tokens 必须集中在 Lux UI；feature code 不复制 Legacy magic colors/spacing。
-
-禁止为了视觉一致恢复：
-
-```text
-巨大 EditorScene
-raw pointer retarget web
-callback injection web
-AssetManager/Authoring manager ownership
-panel-owned compiler pipeline
-universal EditorContext service locator
-runtime reflection-driven hot path
-raw ImGui call-site structure
-retained widget tree copied from another GUI model
-GenericGraph/UniversalGraph language
-```
-
-详细 UI/Legacy parity contract 见 `10-lux-ui-foundation-and-legacy-visual-parity.md`。
+Do not create a separate Plugin manifest first; plugin/package selections belong to the same Product composition model.
 
 ---
 
-## 13. 当前实现 checkpoint 与 Foundation Requalification
+## 15. Current implementation direction
 
-前一轮 review 已确认历史 Pre-L5 Material/Graph 风险在当前代码方向上基本关闭：Material malformed source preflight、installed relocatability、shared shader include boundary 与 Graph transaction rollback 都已有实质实现。B/V1/V2/A/F/G 也已经进入当前 `main`。
+The unique current execution DAG is maintained in `07`.
 
-但 reviewed HEAD 仍不能直接视为“可继续 feature development 的 clean qualified foundation”，因为存在三个当前阻断项：
+High level:
 
 ```text
-R0.1 committed-source reproducibility
-    CMake references engine/editor/application/test/editor_application_test.cpp
-    but the reviewed Git tree does not track that file.
-
-R0.2 EditorApplication public lifecycle
-    installTool<T>() must not dereference a disengaged Toolset after shutdown;
-    COMPOSING/RUNNING/STOPPING/JOINED behavior must be explicit.
-
-R0.3 TaskScope re-entrant admission
-    eager Sender start/spawn and stop callbacks must not run while TaskScope
-    holds its own state/admission mutex; close must account for in-flight starts.
+S4-P
+ ↓
+S5 Event.await + real domain Abilities
+ ↓
+S6 C++ coroutine/static specialization
+ ↓
+R1 whole-engine requalification
+ ↓
+U/C/D/E/U2
+ ↓
+H0/I0
+ ↓
+FC Engine Framework Closure
+ ↓
+H1/I1 persistence
+ ↓
+P product closure
 ```
 
-因此下一步不是回滚 foundation，而是完成 `07` 的 R0 gate，从一个全新 clean checkout 重新执行 profile/build/test/install-consumer qualification，然后进入 Wave U/C/D/E。
+No speculative S7 is planned.
 
 ---
 
-## 14. 脚本跨时间操作
+## 16. Framework closure
 
-Delay、资产加载、GPU/physics query 等不得通过 `sleep`、`sync_wait`、GPU `Wait()` 阻塞 game/main thread。
+Engine Framework v1 may be called closed only when FC in `07` passes:
 
 ```text
-script invoke
-  -> run until async node
-  -> start Sender/domain async operation
-  -> persist continuation/state
-  -> return control to Simulation
-  -> operation completion enqueues resume fact
-  -> resume at an explicit Simulation stable/resume point
+Runtime foundations stable
+Script S1–S6 frozen
+Lux UI boundary stable
+Inspector / AssetBrowser / SceneEditor / Viewport working
+NodeCanvas backend isolation complete
+Material/FlowForge in-memory Editor integrations working
+product/profile/install boundaries clean
+no known architecture STOP condition outstanding
 ```
 
-Sender 是异步 operation protocol；FlowForge continuation/state machine 是脚本 suspension protocol。GPU query 的具体语义留在 Render/Scene domain，L2 只提供 scheduling/cancellation mechanism。精确约束见 `09-product-runtime-vfs-and-async-script.md`。
+After FC, new systems/features should normally be ordinary feature production, not a root architecture migration.
 
 ---
 
-## 15. 文档集
-
-本设计集包含：
+## 17. Global prohibitions
 
 ```text
-README.md
-00-L5-architecture-overview.md
-01-editor-context-toolset-and-plugins.md
-02-entity-inspector-codegen-ui.md
-03-asset-vfs-filewatch.md
-04-scene-editor-outliner-viewport.md
-05-shared-graph-source-and-graphkit.md
-06-toolchain-process-async-execution.md
-07-implementation-roadmap-and-gates.md
-08-normative-execution-contract.md
-09-product-runtime-vfs-and-async-script.md
-10-lux-ui-foundation-and-legacy-visual-parity.md
+no generic global ServiceRegistry/Manager root
+no hidden lifetime extension used to mask invalid ownership
+no lower runtime layer depending on Editor/Toolchain
+no Engine-specific Scene/System ontology pushed into reusable modules merely for convenience
+no runtime provider identity persisted in ScriptArtifact
+no per-call service/string lookup for Script Ability
+no worker direct Script resume
+no borrowed value across suspension
+no public ImGui/node-editor dependency outside Lux UI backend
+no universal graph/value/property framework
+no persistence format invented from UI feature work
+no PluginManager/IPlugin replacing owner-specific registration
+no RenderPlugin duplicating RenderFeature
+no plugin hot-unload ABI designed merely to support source sharing
+no separate plugin manifest before Product P
 ```
-
-实现时优先读取 `00` 与 `08`，再读取唯一 implementation DAG `07`。任何 Editor UI work 必须同时读取 `10`；涉及 product runtime/VFS/脚本异步时必须同时读取 `09`。
-
----
-
-> Coding implementation MUST also comply with `08-normative-execution-contract.md`.

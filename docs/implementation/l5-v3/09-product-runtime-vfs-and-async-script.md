@@ -1,425 +1,282 @@
-# Product Runtime Composition、AssetVfs 与 Async Script / Cross-frame Operation
+# Product Runtime Composition、AssetVfs 与 Cross-time Operation
 
-Status: **Normative Runtime/Product Design (v3)**  
-Date: **2026-09-02**
+Status: **Normative Product/VFS Design + historical Script integration context — v3 reconciled 2026-09-03**
 
----
-
-## 1. 目标
-
-本文冻结三件此前分散在 Editor/L2 讨论中的全局语义：
-
-1. 最终交付游戏是项目配置驱动的专用 executable target，而不是固定 Player。
-2. `AssetVfs`、Execution、Render 等共享基础设施由 product/application composition 显式拥有；不使用万能 Context/global singleton。
-3. Delay、资产 IO、GPU/physics query 等跨时间操作通过 Sender/domain async operation + script continuation 实现，不阻塞 game/main thread。
-
-Current reviewed foundation has B+V1+V2 mechanical execution/asset-read capability in place；script continuation/state ABI itself is still a design gate and MUST be frozen before Wave S implementation。
+> Product/VFS/AssetRead ownership in this document remains normative. Detailed Script Ability/coroutine/Event/Delay semantics are owned by `11`; Script object lifecycle by `13`; implementation order by `07`. Older S0/S1/S2 sequencing previously written here is historical context only.
 
 ---
 
-## 2. Product 不是新的架构层
+## 1. Product composition objective
 
-Lux architecture numbering 到 L5 Editor 为止。Product 是 build/composition dimension：
+Lux final shipping games are project-specific products, not a fixed generic Player architecture.
 
 ```text
-Editor product
-    L5 EditorApplication executable
-
-Game product
-    Project configuration
-      + selected engine runtime modules
-      + selected Simulation/Scene systems
-      + project native/generated code
-      + platform/backend selection
-      + cooked asset/pak config
-        -> generated project-specific executable target
+Project configuration
+    + selected runtime/domain modules
+    + selected Systems / Scene integrations
+    + project code/generated code
+    + selected source Plugin Package facets
+    + selected Render backend/features
+    + cooked/pak content
+        ↓
+project-specific executable/server/tool target
 ```
 
-不得创建一个仅为了装配而存在的 `Product/Application compositionManager/ProductHost/ApplicationServices` framework。
+`PLAYER` remains a runtime-clean qualification profile until Product Track P freezes target generation.
 
-`PLAYER` 可继续作为 runtime-clean architecture qualification profile，验证 Runtime closure 不链接 Editor/L4 compiler；它不是最终产品身份。
+Do not invent a universal ProductHost, EngineContext, runtime ServiceRegistry, or fixed Player contract to bypass P.
 
 ---
 
-## 3. Application composition root
+## 2. Product-wide ownership
 
-Editor：
+Shared infrastructure is explicitly owned by product/application composition.
 
-```text
-EditorApplication
-├─ ExecutionRuntime
-├─ root TaskScope
-├─ mutable AssetVfs
-├─ AssetRead endpoint / AssetReadPort
-├─ RenderRuntime (configured builds)
-├─ SceneMetaManager
-├─ Toolset
-├─ UISession
-├─ EditorSelection
-└─ EditorContext (references/capabilities only)
-```
-
-Generated game：
+Typical relation:
 
 ```text
-MyGame application composition
-├─ ExecutionRuntime
-├─ root TaskScope
-├─ mutable AssetVfs
-├─ AssetRead endpoint / AssetReadPort
-├─ RenderRuntime if selected
-├─ SceneMetaManager
-└─ project-selected runtime/system composition
+Application/Product composition owns
+    ExecutionRuntime
+    mutable AssetVfs control plane
+    AssetRead endpoint/port
+    RenderRuntime/backend when selected
+    Scene/application lifetime roots
 ```
 
-两者共享低层 capability contracts，而不是共享 `EditorContext`。
+Consumers receive narrow capabilities/views.
+
+Do not hide these owners behind static singleton facades.
 
 ---
 
-## 4. 三类共享依赖
+## 3. AssetVfs
 
-### 4.1 Process-global facade：极少数
-
-可以接受静态/global facade 的候选仅限：
+Preserve:
 
 ```text
-logging
-assert/crash handling
-low-level diagnostics/profiling sink
+mutable explicit AssetVfs control plane
+copyable/read AssetVfsView
+immutable published mount snapshots
+provider lifetime retained by snapshots
+concurrent reads without UI-owned scanning databases
 ```
 
-它们接近 process infrastructure，且不代表业务资源 ownership。
+The Editor may mount/unmount project/plugin roots at application composition level and hand `AssetVfsView` to windows.
 
-### 4.2 Application-owned shared infrastructure
-
-必须显式 owner：
+Do not restore:
 
 ```text
-ExecutionRuntime
-AssetVfs
-AssetRead endpoint
-RenderRuntime
-SceneMetaManager
-```
-
-消费者获得窄 capability，不通过 global Get() 查找。
-
-### 4.3 Scope-owned state
-
-```text
-Scene / Simulation
-script instance/continuation
-EditorSelection
-MaterialEditor / FlowForgeEditor
-feature-local graph/document state
-```
-
-绝不能 process-global。
-
----
-
-## 5. AssetVfs：explicit instance，不 static、不 lazy singleton
-
-`AssetVfs` 的语义状态包括 mount order、provider、patch shadow/tombstone，因此需要显式初始化。
-
-MUST NOT：
-
-```cpp
-AssetVfs::Get();
-AssetVfs::resolve(...); // static business API
-static AssetVfs instance; // lazy hidden owner
-```
-
-MUST：
-
-```text
-application creates AssetVfs
- -> mount /Engine
- -> mount /Game
- -> mount base pak / patch / plugin as configured
- -> publish read view
- -> start runtime/editor work
-```
-
-shutdown 顺序同样显式。
-
----
-
-## 6. VFS read/control plane 与 concurrency
-
-当前业务需要允许 main/game/worker 多方读取，而 mount 变化是低频控制操作。current contract：
-
-```text
-AssetVfs
-    mutable control plane
-    mount / unmount
-       |
-       -> build immutable MountTable
-       -> atomically publish
-
-AssetVfsView
-    read capability
-    resolve / open / enumerate / pathOf
-    holds/loads safe immutable snapshot
-```
-
-推荐实现是 `shared_ptr<const MountTable>` snapshot + atomic publication；等价无锁/read-safe 方案可在不改变 public semantics 的前提下实现。
-
-MUST prove：
-
-- reader 不因 mount table republish UAF；
-- read/read 并发安全；
-- mount/unmount 与 read 的可见性规则确定；
-- provider lifetime 至少覆盖所有引用它的 published snapshot。
-
-`AssetVfsView::open()` 仍可能调用同步 provider，因此“线程安全”不等于“不会阻塞”。
-
----
-
-## 7. Asset loading：VFS 不是脚本 IO API
-
-已有 L2 contract：
-
-```text
-ReadAssetImage { AssetId }
-AssetReadPort
-loadAsset<T>(AssetReadPort, AssetId, limits) -> Sender
-```
-
-Product composition MUST 建立 production VFS-backed `AssetReadPort` endpoint：
-
-```text
-script/runtime request
-  -> resolve path to AssetId (cheap read view)
-  -> submit ReadAssetImage
-  -> IO/backend thread or native async IO
-  -> AssetBlob
-  -> typed decode
-  -> completion
-```
-
-如果 provider `open()` 是 blocking，MUST 使用 BlockingScheduler/IO executor/native async API；不得在 game/main thread inline 读取磁盘。
-
-脚本不得获得 mutable VFS，也不得把 `open()` 暴露成同步 gameplay API。
-
----
-
-## 8. L2 与 runtime async operation
-
-L2 `execution` 负责机制：
-
-```text
-CpuScheduler
-Main/owner scheduler
-Timer
-TaskScope / stop propagation
-Blocking/IO isolation when required
-```
-
-L2 不拥有 GPU ray query、physics trace、Material compile 等语义。
-
-Domain package 可以返回 Sender/OperationPort：
-
-```text
-asset_loading       -> AssetLoad Sender
-render/scene query  -> RayQuery Sender/Port
-physics domain      -> AsyncTrace Sender/Port
-toolchain           -> Compile Sender
+AssetVfs::Get()
+lazy global mount state
+per-window VFS
+AssetManager replacement
+AssetIndex merely to implement AssetBrowser v1
 ```
 
 ---
 
-## 9. Script suspension：不能阻塞线程
+## 4. AssetRead / blocking IO isolation
 
-FlowForge/Script runtime 最终必须支持 suspend/resume。
-
-错误模型：
+Time-spanning storage reads use the production AssetRead workflow and shared authorized blocking/IO isolation.
 
 ```text
-Script native call
- -> Delay(2s)
- -> sleep(2s)             # forbidden
+stable Asset identity/address
+    ↓
+AssetVfsView resolution
+    ↓
+AssetReadPort / typed load operation
+    ↓
+blocking decode/read stages off owner thread
+    ↓
+owned completion result
 ```
 
-正确模型：
+A feature must not create its own private thread pool merely because one importer/read blocks.
 
-```text
-Invoke continuation K0
- -> execute nodes
- -> encounter async node
- -> start Sender/domain operation
- -> save continuation state K1
- -> return to Simulation/frame loop
-
-operation completes later
- -> enqueue ScriptResume{instance, continuation, result}
- -> explicit Simulation/script resume point
- -> validate instance/generation
- -> execute K1
-```
-
-不得持有 native C++ call stack 跨帧。Compiler 应将可挂起 graph lowering 成 explicit state machine/continuation representation。
+Do not `sync_wait` a storage Sender on the gameplay/main thread.
 
 ---
 
-## 10. Delay
+## 5. General cross-time ownership
 
-Delay / next-frame operation 使用 L2 Timer/frame scheduling capability：
+The semantic owner of an operation remains the domain that knows the operation.
 
 ```text
-Delay N
- -> TimerSender
- -> suspend script
- -> Timer completion
- -> enqueue resume
+real-time timer       -> Process execution integration
+asset IO/decode       -> AssetRead/asset-loading owner
+physics async query   -> Physics/Scene integration
+GPU query/readback    -> Render/Scene integration
+navigation async work -> Navigation owner/integration
 ```
 
-`DelayUntilNextFrame` 可以使用明确的 frame-resume queue，不需要 sleep 0/1ms。
+L2 execution supplies scheduling/cancellation mechanisms, not domain semantics.
+
+A domain callback must not directly mutate/resume unrelated upper-layer state unless the domain contract explicitly owns that mutation point.
 
 ---
 
-## 11. Asset load in script
+## 6. Script suspension relation
+
+When a domain operation is used by Script, Script owns suspension/resume state while the real domain continues owning the work.
 
 ```text
-LoadAsset("/Game/Foo")
- -> AssetVfsView.resolve()
- -> AssetReadPort/loadAsset<T>()
- -> suspend
- -> load/decode off owner thread
- -> result completion
- -> resume at Simulation point
+Script starts domain operation
+    ↓
+ScriptSystem creates/owns Awaitable + Continuation relation
+    ↓
+domain work proceeds
+    ↓
+domain completion only reports owned result/error/readiness
+    ↓
+ScriptSystem stable point
+    ↓
+validate ScriptInstance generation
+    ↓
+resume backend continuation
 ```
 
-路径是 soft address；真正异步 operation 应尽早转成 stable `AssetId`。
+The domain does not own Lua/FlowForge/C++ continuation representation.
 
-Scene/script instance 被销毁时，completion 只能通过 generation/instance validation 被丢弃或 stopped，不能回调悬空脚本对象。
+Detailed contract: `11-script-api-capabilities-coroutines-and-await.md`.
 
 ---
 
-## 12. GPU / physics cross-frame query
+## 7. AssetLoad current gate
 
-跨帧语义不因为“耗时”就归 L2 domain。
+The async mechanism required by Script AssetLoad exists in principle, but AssetLoad is not complete until the script-visible result contract is approved.
+
+The missing decision is not “how to suspend”. It is:
 
 ```text
-Render/RHI or Physics
-    owns query semantics, GPU fence/readback/resource lifetime
-       |
-       -> returns domain Sender/operation capability
-
-Scripting
-    owns suspension/resume
-
-L2
-    supplies scheduling/cancellation primitives only
+what stable value does Script receive?
+what identity does it represent?
+what does residency mean?
+what lifetime/lease, if any, is guaranteed?
 ```
 
-GPU ray/readback 正常 gameplay path：
+MUST NOT expose as canonical Script result:
+
+```text
+std::shared_ptr<const ConcreteAsset>
+raw asset pointer
+void*
+uintptr_t
+an invented uint64_t handle with unspecified residency semantics
+```
+
+Therefore:
+
+```text
+S2.4 AssetLoad
+    = CONDITIONAL / BLOCKED until Asset handle/value contract
+```
+
+S5 may still pass Event/Physics/Navigation closure while this blocker remains explicit.
+
+---
+
+## 8. GPU / Physics cross-frame operations
+
+A render/physics operation that genuinely spans frames may be projected as Script `ASYNC_OPERATION`, but asyncness must come from the domain semantics, not from a desire to demonstrate coroutine support.
+
+Synchronous Physics queries remain synchronous `QUERY` methods.
+
+For GPU work:
 
 ```text
 Frame N submit
- -> GPU work/fence
- -> script suspended
- -> CPU frame continues
-Frame N+1 or later readiness
- -> collect result
- -> enqueue resume
+    ↓
+GPU/fence/readback owner tracks lifetime
+    ↓
+readiness later
+    ↓
+owned completion/adoption
+    ↓
+Script stable-point resume if a Script is waiting
 ```
 
-MUST NOT promise exactly next frame unless backend contract can prove it；use “earliest next frame / asynchronously when ready”。
-
-MUST NOT call blocking GPU wait on the main gameplay path。
+No blocking GPU wait on the normal gameplay path.
 
 ---
 
-## 13. Resume affinity and stable point
+## 9. Scene / Script cancellation
 
-Async completion may arrive on IO/CPU/render thread, but script execution MUST NOT resume there。
-
-Completion records must contain stable identity/generation, not raw script/entity pointers：
+Script lifetime semantics are defined in `13`, but Product/Scene teardown must preserve these invariants:
 
 ```text
-ScriptInstanceId/generation
-continuation id/state
-operation result
+stop admitting new Script/domain operations
+invalidate ScriptInstance generation before stale completion can apply
+cancel/destroy Script continuations under ScriptSystem ownership
+clear prepared provider bindings before provider destruction
+stop/cancel domain operations where supported
+late completion resolves to stale identity and is discarded
 ```
 
-Simulation owns an explicit bounded resume/adoption point。This avoids arbitrary worker mutation of ECS/script state and makes ordering deterministic。
+Do not extend provider/System lifetime with shared ownership merely to avoid fixing teardown order.
 
 ---
 
-## 14. Cancellation / shutdown
+## 10. Source Plugin Packages and resource/product composition
 
-Scope semantics：
+Plugin v1 is source/build composition, not a runtime plugin manager.
+
+A source Plugin Package may contribute, through ordinary classified targets:
 
 ```text
-application shutdown -> stop application tasks/read endpoint
-Scene stop           -> stop Scene/script async scope
-script instance kill -> invalidate instance generation / stop owned continuations
+Domain/System/Ability code
+RenderFeature code/resources
+Scene integration
+Toolchain importer/cooker
+Editor tools
+cooked assets / VFS mount inputs
 ```
 
-Cooperative cancellation is acceptable for non-preemptible third-party calls；after completion, stale identity MUST be rejected before applying result。
+The package does not gain global resource authority. Runtime content is mounted/read through the same product-owned VFS/AssetRead model.
+
+Until Product Track P approves a manifest, CMake target selection is the source-package composition truth. Do not create a second Plugin manifest format.
+
+See `14-plugin-package-and-extension-composition.md`.
 
 ---
 
-## 15. Product target generation gate
+## 11. Product Track P gate
 
-Target outcome is frozen：
+P must eventually freeze at least:
 
 ```text
-Project config -> project-specific executable + cooked content
+project identity/configuration
+module/System selection
+source Plugin Package dependencies/facet selection
+native/generated source inputs
+static/shared linkage policy
+platform/render/backend selection
+cooked/pak inputs
+host-tool requirements
+CMake/generator output contract
 ```
 
-Exact project manifest、target generator、plugin/static module selection、platform packaging 尚需独立 normative spec。Until then coding agents MUST NOT invent：
+Before that specification exists, coding agents MUST NOT invent:
 
 ```text
-Generic Player executable architecture
-Universal Host framework
-Runtime service locator
-Project manifest format
+Generic Player as final architecture
+universal host framework
+project manifest syntax
+plugin manifest syntax
+runtime package/service locator
 ```
 
 ---
 
-## 16. Implementation order relevant to this document
-
-Current checkpoint treats B/V1/A/V2 as implemented foundation direction, subject to the R0 requalification in `07`。For this document the remaining order is：
+## 12. Normative prohibitions
 
 ```text
-R0  Foundation requalification/hotfix
-S0  freeze script continuation/resume contract
-S1  continuation state + explicit Simulation resume queue
-S2  Delay/Timer + AssetLoad/AssetRead bridges
-Q   domain async GPU/physics query adapters (when first real consumer exists)
-P   project target generation (after manifest/target spec)
-```
-
-S0 MUST freeze：
-
-```text
-script instance identity/generation
-continuation/program point representation
-locals/value state across suspension
-resume result/error channel
-cancellation and Scene shutdown
-bounded resume queue / stable point
-nested/repeated async behavior
-ordering/reentrancy rules
-```
-
-Sender operation state MUST NOT be treated as a substitute for this language/runtime continuation contract。Q remains demand-driven but must follow the same suspension/resume rules。
-
----
-
-## 17. Normative prohibitions
-
-```text
-No AssetVfs lazy singleton/static hidden state.
+No AssetVfs singleton/static hidden state.
 No global EngineContext/service locator.
-No ExecutionRuntime or RenderRuntime singleton.
-No synchronous script-facing disk IO.
-No sleep/sync_wait on game/main thread for cross-time work.
-No GPU blocking wait in normal gameplay path.
-No worker-thread direct script/ECS resume.
-No fixed Player as final product architecture.
-No script continuation ABI invented ad hoc inside a Delay/AssetLoad implementation.
+No synchronous Script-facing disk IO.
+No sleep/sync_wait on the game/main thread for cross-time work.
+No normal-path GPU blocking wait.
+No worker/domain callback directly resuming Script.
+No raw/shared concrete Asset pointer as Script AssetLoad result.
+No fixed Player as final project-product architecture.
+No independent Plugin manifest before Product P.
 ```

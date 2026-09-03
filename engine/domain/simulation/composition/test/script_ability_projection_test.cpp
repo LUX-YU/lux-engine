@@ -1,9 +1,7 @@
 #include "TestAbility.hpp"
 #include "TestAbility.ability.generated.hpp"
-#include "TestAbility.ability_lua.generated.hpp"
 
 #include <lux/engine/flowforge/script/ScriptAbilityCatalog.hpp>
-#include <lux/engine/function/script/lua/Lua.hpp>
 #include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
 
 #include <cassert>
@@ -64,18 +62,9 @@ int main()
         assert(nodes[index].kind == Traits::Description.methods[index].kind);
     }
 
-    TestProvider provider;
-    const auto binding = lux::script::bindScriptAbility<Ability>(provider);
-    lux::script::lua::ScriptEngine engine;
-    auto projected = lux::script::lua::projectScriptAbility<Ability>(*engine.state(), binding);
-    assert(projected);
-    auto program = engine.parseScript(
-        "assert(lux.TestValue.readValue(5) == 12); lux.TestValue.setValue(31); "
-        "assert(lux.TestValue.readValue(1) == 32)"
-    );
-    assert(program);
-    assert(engine.runScript(*program));
-    assert(provider.value == 31);
-    assert(provider.calls == 3U);
+    const auto lua = lux::script::lua::makeScriptAbilityLuaContribution<Ability>();
+    assert(lua.valid());
+    assert(lua.description == std::addressof(Traits::Description));
+    assert(lua.description->schema_hash == nodes.front().schema_hash);
     return 0;
 }

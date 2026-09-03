@@ -33,8 +33,6 @@ target_link_libraries(
 )
 component_add_transitive_commands(
     simulation_script_lua
-    [[list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")]]
-    "find_package(LuaJIT REQUIRED)"
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_lua)"
 )
@@ -69,6 +67,64 @@ lux_classify_target(
 add_test(
     NAME simulation_script_lua_test
     COMMAND simulation_script_lua_test
+)
+
+add_executable(
+    simulation_script_luajit_coroutine_contract_test
+    test/luajit_coroutine_contract_test.cpp
+)
+target_link_libraries(
+    simulation_script_luajit_coroutine_contract_test
+    PRIVATE LuaJIT::LuaJIT
+)
+if(MSVC)
+    target_compile_options(simulation_script_luajit_coroutine_contract_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_luajit_coroutine_contract_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_script_luajit_coroutine_contract_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME simulation_script_luajit_coroutine_contract_test
+    COMMAND simulation_script_luajit_coroutine_contract_test
+)
+
+add_executable(
+    simulation_script_lua_coroutine_integration_test
+    test/lua_coroutine_integration_test.cpp
+)
+target_link_libraries(
+    simulation_script_lua_coroutine_integration_test
+    PRIVATE lux::engine::simulation::simulation_script_lua
+)
+target_include_directories(
+    simulation_script_lua_coroutine_integration_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+)
+include_component_cmake_scripts(script_core)
+lux_script_abilities(
+    TARGET simulation_script_lua_coroutine_integration_test
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaRuntimeTestAbility.hpp
+    LOGICAL_PATHS LuaRuntimeTestAbility.hpp
+)
+if(MSVC)
+    target_compile_options(simulation_script_lua_coroutine_integration_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_lua_coroutine_integration_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_script_lua_coroutine_integration_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME simulation_script_lua_coroutine_integration_test
+    COMMAND simulation_script_lua_coroutine_integration_test
 )
 
 if(TARGET script_native_collision_fixture)

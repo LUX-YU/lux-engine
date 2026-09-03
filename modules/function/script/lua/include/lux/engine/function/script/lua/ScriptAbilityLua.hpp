@@ -2,29 +2,24 @@
 
 #include <lux/engine/function/script/ScriptAbility.hpp>
 
-#include <lux/cxx/compile_time/expected.hpp>
-
-#include <cstdint>
-
-struct lua_State;
+#include <memory>
 
 namespace lux::script::lua
 {
-    enum class EScriptAbilityLuaError : std::uint8_t
+    struct ScriptAbilityLuaContribution final
     {
-        INVALID_BINDING,
-        REGISTRATION_FAILURE,
+        const ScriptAbilityDescription* description{};
+
+        [[nodiscard]] constexpr bool valid() const noexcept
+        {
+            return description != nullptr && description->id.isValid() && description->schema_version != 0U &&
+                description->schema_hash != 0U;
+        }
     };
 
     template <class Ability>
-    struct ScriptAbilityLuaProjection;
-
-    template <class Ability>
-    [[nodiscard]] lux::cxx::expected<void, EScriptAbilityLuaError> projectScriptAbility(
-        lua_State& state,
-        ScriptAbilityBinding binding
-    ) noexcept
+    [[nodiscard]] constexpr ScriptAbilityLuaContribution makeScriptAbilityLuaContribution() noexcept
     {
-        return ScriptAbilityLuaProjection<Ability>::bind(state, binding);
+        return {std::addressof(ScriptAbilityTraits<Ability>::Description)};
     }
 } // namespace lux::script::lua

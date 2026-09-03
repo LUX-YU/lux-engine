@@ -58,6 +58,30 @@ lux_classify_target(
 )
 add_test(NAME scene_script_runtime_test COMMAND scene_script_runtime_test)
 
+if(TARGET lux::engine::simulation::simulation_script_lua)
+    add_executable(scene_script_lua_runtime_test test/scene_script_lua_runtime_test.cpp)
+    target_link_libraries(
+        scene_script_lua_runtime_test
+        PRIVATE
+            lux::engine::scene::scene_script_runtime
+            lux::engine::simulation::simulation_script_lua
+            lux::engine::core::meta
+            lux::engine::world::description
+    )
+    if(MSVC)
+        target_compile_options(scene_script_lua_runtime_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(scene_script_lua_runtime_test PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(
+        TARGET  scene_script_lua_runtime_test
+        LAYER   SCENE
+        PRODUCT TEST
+        ROLE    INTEGRATION
+    )
+    add_test(NAME scene_script_lua_runtime_test COMMAND scene_script_lua_runtime_test)
+endif()
+
 install_components(
     PROJECT_NAME lux-engine-scene-script-runtime
     VERSION      ${PROJECT_VERSION}

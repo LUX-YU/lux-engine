@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/lua/visibility.h>
 
@@ -44,7 +45,25 @@ namespace lux::simulation::script
         DUPLICATE_COMPONENT_NAME,
         INVALID_RECORD_MARSHALLER,
         DUPLICATE_RECORD_MARSHALLER,
+        INVALID_ABILITY_CONTRIBUTION,
+        DUPLICATE_ABILITY_CONTRACT,
+        DUPLICATE_ABILITY_NAME,
+        DUPLICATE_ABILITY_METHOD,
+        UNSUPPORTED_ABILITY_TYPE,
+        ABILITY_REGISTRATION_FAILURE,
         ALLOCATION_FAILURE,
+    };
+
+    struct LuaScriptBackendConfig final
+    {
+        std::size_t instance_capacity{};
+        std::size_t prepared_call_capacity{};
+        std::size_t continuation_capacity{};
+        std::size_t execution_depth_capacity{};
+        std::size_t ability_method_capacity{};
+        std::span<const LuaComponentBinding> components;
+        std::span<const LuaRecordMarshaller> record_marshallers;
+        std::span<const lux::script::lua::ScriptAbilityLuaContribution> abilities;
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final
@@ -53,10 +72,7 @@ namespace lux::simulation::script
         [[nodiscard]] static lux::cxx::expected<
             LuaScriptBackend,
             ELuaScriptBindingBackendError> create(
-                std::size_t instance_capacity,
-                std::size_t prepared_call_capacity,
-                std::span<const LuaComponentBinding> components = {},
-                std::span<const LuaRecordMarshaller> record_marshallers = {}
+                LuaScriptBackendConfig config
             ) noexcept;
         ~LuaScriptBackend();
 

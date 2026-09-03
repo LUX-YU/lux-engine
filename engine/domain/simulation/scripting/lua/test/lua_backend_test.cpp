@@ -80,6 +80,10 @@ int main()
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
+    const auto missing_capacity = LuaScriptBackend::create({});
+    assert(!missing_capacity);
+    assert(missing_capacity.error() == ELuaScriptBindingBackendError::INVALID_CAPACITY);
+
     const auto* i32_layout = lux::semantic::builtinLayout(
         lux::semantic::typeId("lux.i32")
     );
@@ -96,9 +100,7 @@ int main()
         health_binding,
         health_binding};
     const auto duplicate_backend = LuaScriptBackend::create(
-        1U,
-        1U,
-        duplicate_components
+        {1U, 1U, 1U, 4U, 1U, duplicate_components}
     );
     assert(!duplicate_backend);
     assert(
@@ -108,9 +110,7 @@ int main()
     auto invalid_binding = health_binding;
     ++invalid_binding.size;
     const auto invalid_backend = LuaScriptBackend::create(
-        1U,
-        1U,
-        std::span{&invalid_binding, 1U}
+        {1U, 1U, 1U, 4U, 1U, std::span{&invalid_binding, 1U}}
     );
     assert(!invalid_backend);
     assert(
@@ -118,9 +118,7 @@ int main()
         ELuaScriptBindingBackendError::INVALID_COMPONENT_CONTRACT
     );
     auto contract_backend_result = LuaScriptBackend::create(
-        1U,
-        1U,
-        std::span{&health_binding, 1U}
+        {1U, 1U, 1U, 4U, 1U, std::span{&health_binding, 1U}}
     );
     assert(contract_backend_result);
     auto contract_backend = std::move(*contract_backend_result);
@@ -135,10 +133,7 @@ int main()
         nullptr,
         &pushCollisionEvent};
     auto created_backend = LuaScriptBackend::create(
-        4U,
-        11U,
-        {},
-        std::span{&collision_marshaller, 1U}
+        {4U, 11U, 4U, 8U, 1U, {}, std::span{&collision_marshaller, 1U}}
     );
     assert(created_backend);
     auto backend = std::move(*created_backend);

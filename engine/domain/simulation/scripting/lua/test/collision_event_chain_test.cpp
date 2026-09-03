@@ -218,10 +218,7 @@ int main()
         nullptr,
         &pushCollision};
     auto lua_created = LuaScriptBackend::create(
-        1U,
-        2U,
-        {},
-        std::span{&marshaller, 1U}
+        {1U, 2U, 1U, 4U, 1U, {}, std::span{&marshaller, 1U}}
     );
     assert(lua_created);
     auto lua_backend = std::move(*lua_created);

@@ -246,11 +246,6 @@ if(TARGET script_lua AND TARGET flowforge)
         SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp
         LOGICAL_PATHS TestAbility.hpp
     )
-    lux_script_ability_lua_projection(
-        TARGET simulation_script_ability_projection_test
-        SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp
-        LOGICAL_PATHS TestAbility.hpp
-    )
     if(MSVC)
         target_compile_options(simulation_script_ability_projection_test PRIVATE /UNDEBUG)
     else()

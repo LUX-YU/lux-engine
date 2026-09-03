@@ -108,12 +108,15 @@ int main()
     assert(provider.last_item == 18U);
 
     lux::flowforge::ScriptAbilityNodeCatalog catalog;
-    assert(catalog.add(lux::flowforge::makeScriptAbilityCatalogContribution<Ability>()));
+    const auto contributed = catalog.add(lux::flowforge::makeScriptAbilityCatalogContribution<Ability>());
+    if (!contributed)
+        return 1;
     const auto* count_node = catalog.view().find(
         Traits::Description.id,
         lux::script::ScriptApiMethodIdView{"consumer.inventory.count"}
     );
-    assert(count_node != nullptr);
+    if (count_node == nullptr)
+        return 2;
     lux::flowforge::ScriptAbilityNode graph_node{*count_node};
     assert(graph_node.contract() == Traits::Description.id);
     assert(graph_node.method() == count_node->method);

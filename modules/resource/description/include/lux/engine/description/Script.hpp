@@ -97,6 +97,7 @@ namespace lux::rdesc
     struct LuaSourceScript final
     {
         std::string entry;
+        std::vector<lux::script::ScriptSymbolId> suspension_capable_exports;
 
         friend bool operator==(const LuaSourceScript&, const LuaSourceScript&)
             noexcept = default;
@@ -129,7 +130,7 @@ namespace lux::rdesc
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 7U;
+        static constexpr std::uint32_t kSchemaVersion = 8U;
 
         enum class Kind : std::uint8_t
         {
@@ -224,7 +225,11 @@ namespace lux::rdesc
                 return false;
             }
             if (const auto* lua = std::get_if<LuaSourceScript>(&description.body);
-                lua != nullptr && lua->entry.empty())
+                lua != nullptr && (lua->entry.empty() ||
+                    lua->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
+                    !std::ranges::is_sorted(lua->suspension_capable_exports) ||
+                    std::ranges::adjacent_find(lua->suspension_capable_exports) !=
+                        lua->suspension_capable_exports.end()))
             {
                 return false;
             }
@@ -254,6 +259,17 @@ namespace lux::rdesc
             const bool is_missing_end = has_end && !symbols.contains(description.lifecycle.end_play);
             if (is_duplicate_role || is_missing_begin || is_missing_end)
                 return false;
+            if (const auto* lua = std::get_if<LuaSourceScript>(&description.body))
+            {
+                for (const auto symbol : lua->suspension_capable_exports)
+                {
+                    const bool is_missing_export = !symbols.contains(symbol);
+                    const bool is_lifecycle = symbol == description.lifecycle.begin_play ||
+                        symbol == description.lifecycle.end_play;
+                    if (is_missing_export || is_lifecycle)
+                        return false;
+                }
+            }
             std::unordered_set<std::uint64_t> contracts;
             contracts.reserve(description.api_requirements.size());
             for (const auto& requirement : description.api_requirements)

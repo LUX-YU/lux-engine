@@ -17,7 +17,7 @@ namespace lux::script
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion = 5U;
+        constexpr std::uint32_t kWireVersion = 6U;
 
         class Writer final
         {
@@ -264,6 +264,9 @@ namespace lux::script
                         &description.body))
                 {
                     writer.string(lua->entry);
+                    writer.u32(static_cast<std::uint32_t>(lua->suspension_capable_exports.size()));
+                    for (const auto symbol : lua->suspension_capable_exports)
+                        writer.u64(symbol);
                 }
                 else if (const auto* native =
                     std::get_if<lux::rdesc::NativeModuleScript>(
@@ -435,8 +438,24 @@ namespace lux::script
                 if (script_kind == lux::rdesc::Script::Kind::LUA_SOURCE)
                 {
                     lux::rdesc::LuaSourceScript lua;
-                    if (!reader.string(lua.entry, decoded, limit))
+                    if (!reader.string(lua.entry, decoded, limit) || !reader.u32(count) ||
+                        !reserveRecords(
+                            lua.suspension_capable_exports,
+                            count,
+                            decoded,
+                            limit,
+                            reader.remaining()
+                        ))
+                    {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    }
+                    for (std::uint32_t index{}; index < count; ++index)
+                    {
+                        lux::script::ScriptSymbolId symbol{};
+                        if (!reader.u64(symbol))
+                            return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                        lua.suspension_capable_exports.push_back(symbol);
+                    }
                     description.body = std::move(lua);
                 }
                 else if (script_kind == lux::rdesc::Script::Kind::NATIVE_MODULE)

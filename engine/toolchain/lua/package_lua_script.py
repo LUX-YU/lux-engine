@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package statically described Lua ---@lux.method exports as canonical LXSA v5."""
+"""Package statically described Lua exports as canonical LXSA v6."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 
 MAGIC = 0x4153584C
-WIRE_VERSION = 5
-SCHEMA_VERSION = 7
+WIRE_VERSION = 6
+SCHEMA_VERSION = 8
 LUA_SOURCE_KIND = 1
 SIMULATION_SCOPE = "SIMULATION"
 ENTITY_SCOPE = "ENTITY"
@@ -45,7 +45,9 @@ class Semantic:
     alignment: int
 
 
-def make_semantics(record_specs: list[str]) -> dict[str, Semantic]:
+def make_semantics(
+    record_specs: list[str], value_specs: list[str]
+) -> dict[str, Semantic]:
     layouts = (
         ("lux.bool", 1, 1, 1),
         ("lux.i32", 2, 4, 4),
@@ -95,6 +97,37 @@ def make_semantics(record_specs: list[str]) -> dict[str, Semantic]:
             size,
             alignment,
         )
+    for specification in value_specs:
+        parts = specification.split(",")
+        if len(parts) != 4:
+            raise ValueError(
+                "--value-type must be canonical-name,abi-kind,size,alignment"
+            )
+        canonical, abi_kind_text, size_text, alignment_text = parts
+        abi_kind = int(abi_kind_text, 0)
+        size = int(size_text, 0)
+        alignment = int(alignment_text, 0)
+        if (
+            not canonical
+            or canonical in result
+            or abi_kind < 1
+            or abi_kind > 7
+            or size <= 0
+            or size > 0xFFFFFFFF
+            or alignment <= 0
+            or alignment > 0xFFFFFFFF
+            or alignment & (alignment - 1)
+        ):
+            raise ValueError("invalid --value-type")
+        result[canonical] = Semantic(
+            canonical,
+            fnv1a(canonical),
+            VALUE_PASS,
+            True,
+            abi_kind,
+            size,
+            alignment,
+        )
     return result
 
 
@@ -130,6 +163,25 @@ class Export:
     symbol: int
     args: list[Semantic]
     returns: list[Semantic]
+    lifecycle: str | None
+    coroutine: bool
+
+
+@dataclass(frozen=True)
+class AbilitySchema:
+    contract: str
+    contract_id: int
+    schema_version: int
+    schema_hash: int
+
+
+@dataclass(frozen=True)
+class PackageDescription:
+    exports: list[Export]
+    begin_play: int
+    end_play: int
+    suspension_capable_exports: list[int]
+    requirements: list[AbilitySchema]
 
 
 FUNCTION = re.compile(
@@ -141,6 +193,42 @@ PARAM = re.compile(
     r"^\s*---@param\s+([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)\s*$"
 )
 RETURN = re.compile(r"^\s*---@return\s+(\S+)\s*$")
+REQUIRE = re.compile(r"^\s*---@lux\.requires\s+(\S+)\s*$")
+LIFECYCLE = re.compile(r"^\s*---@lux\.lifecycle\s+(begin_play|end_play)\s*$")
+COROUTINE = re.compile(r"^\s*---@lux\.coroutine\s*$")
+
+
+def load_ability_schemas(paths: list[pathlib.Path]) -> dict[str, AbilitySchema]:
+    result: dict[str, AbilitySchema] = {}
+    for path in paths:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if document.get("schema") != "lux-script-ability" or document.get("version") != 1:
+            raise ValueError(f"unsupported Ability schema manifest '{path}'")
+        abilities = document.get("abilities")
+        if not isinstance(abilities, list):
+            raise ValueError(f"Ability schema manifest '{path}' has no abilities")
+        for value in abilities:
+            contract = value.get("contract")
+            contract_id = int(value.get("contract_id", 0))
+            schema_version = int(value.get("schema_version", 0))
+            schema_hash = int(value.get("schema_hash", 0))
+            if (
+                not isinstance(contract, str)
+                or not contract
+                or contract_id != fnv1a(contract)
+                or schema_version <= 0
+                or schema_hash <= 0
+                or schema_hash > 0xFFFFFFFFFFFFFFFF
+            ):
+                raise ValueError(f"invalid Ability schema in '{path}'")
+            schema = AbilitySchema(
+                contract, contract_id, schema_version, schema_hash
+            )
+            previous = result.get(contract)
+            if previous is not None and previous != schema:
+                raise ValueError(f"conflicting Ability schema for '{contract}'")
+            result[contract] = schema
+    return result
 
 
 def collect_exports(
@@ -150,18 +238,52 @@ def collect_exports(
     module_name: str,
     semantics: dict[str, Semantic],
     symbols_by_source: dict[str, int],
-) -> list[Export]:
+    ability_schemas: dict[str, AbilitySchema],
+) -> PackageDescription:
     marked = False
     parameters: list[tuple[str, str]] = []
     return_name: str | None = None
+    lifecycle: str | None = None
+    coroutine = False
     exports: list[Export] = []
     symbols: set[int] = set()
+    requirement_names: list[str] = []
+    seen_requirements: set[str] = set()
     for line_number, line in enumerate(source.splitlines(), 1):
         stripped = line.strip()
+        if match := REQUIRE.match(line):
+            contract = match.group(1)
+            if marked or exports:
+                raise ValueError(
+                    f"line {line_number}: @lux.requires must precede all exports"
+                )
+            if contract in seen_requirements:
+                raise ValueError(f"line {line_number}: duplicate Ability requirement")
+            if contract not in ability_schemas:
+                raise ValueError(
+                    f"line {line_number}: unknown Ability requirement '{contract}'"
+                )
+            seen_requirements.add(contract)
+            requirement_names.append(contract)
+            continue
         if stripped == "---@lux.method":
+            if marked:
+                raise ValueError(f"line {line_number}: nested @lux.method annotation")
             marked = True
             parameters = []
             return_name = None
+            lifecycle = None
+            coroutine = False
+            continue
+        if match := LIFECYCLE.match(line):
+            if not marked or lifecycle is not None:
+                raise ValueError(f"line {line_number}: invalid lifecycle annotation")
+            lifecycle = match.group(1)
+            continue
+        if COROUTINE.match(line):
+            if not marked or coroutine:
+                raise ValueError(f"line {line_number}: invalid coroutine annotation")
+            coroutine = True
             continue
         if marked and (match := PARAM.match(line)):
             parameters.append((match.group(1), match.group(2)))
@@ -221,15 +343,67 @@ def collect_exports(
         if symbol in symbols:
             raise ValueError(f"{name}: duplicate semantic symbol")
         symbols.add(symbol)
-        exports.append(Export(name, symbol, argument_types, return_types))
+        exports.append(
+            Export(
+                name,
+                symbol,
+                argument_types,
+                return_types,
+                lifecycle,
+                coroutine,
+            )
+        )
         marked = False
         parameters = []
         return_name = None
+        lifecycle = None
+        coroutine = False
     if marked:
         raise ValueError("unterminated @lux.method annotation")
     if not exports:
         raise ValueError("no ---@lux.method exports found")
-    return exports
+    begin_play = 0
+    end_play = 0
+    suspension_capable_exports: list[int] = []
+    for export in exports:
+        if export.coroutine and export.returns:
+            raise ValueError(f"{export.name}: coroutine export must return void")
+        if export.lifecycle is not None and export.coroutine:
+            raise ValueError(f"{export.name}: lifecycle export cannot be coroutine-capable")
+        if export.lifecycle == "begin_play":
+            if begin_play != 0:
+                raise ValueError("duplicate BeginPlay lifecycle role")
+            if export.args or export.returns:
+                raise ValueError("BeginPlay lifecycle signature must be void()")
+            begin_play = export.symbol
+        elif export.lifecycle == "end_play":
+            if end_play != 0:
+                raise ValueError("duplicate EndPlay lifecycle role")
+            has_reason = len(export.args) == 1 and (
+                export.args[0].canonical == "lux.simulation.ScriptEndPlayReason"
+                and export.args[0].default_pass == VALUE_PASS
+            )
+            if not has_reason or export.returns:
+                raise ValueError(
+                    "EndPlay lifecycle signature must be void(lux.simulation.ScriptEndPlayReason)"
+                )
+            end_play = export.symbol
+        if export.coroutine:
+            suspension_capable_exports.append(export.symbol)
+    if begin_play != 0 and begin_play == end_play:
+        raise ValueError("one Script symbol cannot own both lifecycle roles")
+    suspension_capable_exports.sort()
+    requirements = sorted(
+        (ability_schemas[name] for name in requirement_names),
+        key=lambda value: value.contract,
+    )
+    return PackageDescription(
+        exports,
+        begin_play,
+        end_play,
+        suspension_capable_exports,
+        requirements,
+    )
 
 
 class Writer:
@@ -254,7 +428,7 @@ class Writer:
 def encode(
     module_name: str,
     entry: str,
-    exports: list[Export],
+    package: PackageDescription,
     payload: bytes,
     source_id: str,
 ) -> bytes:
@@ -264,10 +438,10 @@ def encode(
     writer.u32(SCHEMA_VERSION)
     writer.u32(LUA_SOURCE_KIND)
     writer.string(module_name)
-    writer.u64(0)
-    writer.u64(0)
-    writer.u32(len(exports))
-    for function in exports:
+    writer.u64(package.begin_play)
+    writer.u64(package.end_play)
+    writer.u32(len(package.exports))
+    for function in package.exports:
         writer.string(function.name)
         writer.u64(function.symbol)
         writer.u32(len(function.args))
@@ -287,13 +461,20 @@ def encode(
             writer.u32(semantic.size)
             writer.u32(semantic.alignment)
     writer.u32(0)
-    writer.u32(0)
+    writer.u32(len(package.requirements))
+    for requirement in package.requirements:
+        writer.string(requirement.contract)
+        writer.u64(requirement.contract_id)
+        writer.u64(requirement.schema_hash)
     writer.string("lux-lua-static")
-    writer.string("1")
+    writer.string("2")
     writer.string(source_id)
     writer.string("")
     writer.string("")
     writer.string(entry)
+    writer.u32(len(package.suspension_capable_exports))
+    for symbol in package.suspension_capable_exports:
+        writer.u64(symbol)
     writer.u64(len(payload))
     writer.data += payload
     return bytes(writer.data)
@@ -329,6 +510,8 @@ def main() -> int:
     parser.add_argument("--source", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
     parser.add_argument("--record-type", action="append", default=[])
+    parser.add_argument("--value-type", action="append", default=[])
+    parser.add_argument("--ability-schema", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--symbol-ledger", required=True, type=pathlib.Path)
     parser.add_argument("--module", required=True)
     parser.add_argument("--entry", required=True)
@@ -339,20 +522,22 @@ def main() -> int:
     try:
         payload = arguments.source.read_bytes()
         source = payload.decode("utf-8")
-        semantics = make_semantics(arguments.record_type)
+        semantics = make_semantics(arguments.record_type, arguments.value_type)
+        ability_schemas = load_ability_schemas(arguments.ability_schema)
         symbols_by_source = load_symbol_ledger(arguments.symbol_ledger)
-        exports = collect_exports(
+        package = collect_exports(
             source,
             arguments.scope,
             arguments.entry,
             arguments.module,
             semantics,
             symbols_by_source,
+            ability_schemas,
         )
         inner = encode(
             arguments.module,
             arguments.entry,
-            exports,
+            package,
             payload,
             arguments.source.name,
         )

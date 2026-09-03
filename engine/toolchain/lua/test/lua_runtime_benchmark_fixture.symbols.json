@@ -1,0 +1,12 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 45064,
+  "entries": [
+    {"source_identity": "BenchmarkBehavior:admit", "symbol": 45059},
+    {"source_identity": "BenchmarkBehavior:update", "symbol": 45060},
+    {"source_identity": "BenchmarkBehavior:retire", "symbol": 45061},
+    {"source_identity": "BenchmarkBehavior:update_async", "symbol": 45062},
+    {"source_identity": "BenchmarkBehavior:update_plain", "symbol": 45063}
+  ]
+}

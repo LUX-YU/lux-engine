@@ -1,4 +1,8 @@
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
+#include <lux/engine/function/script/abi/lux_script_abi.h>
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
+
+#include "DelayAbility.ability.generated.hpp"
 
 #include <cassert>
 #include <array>
@@ -39,27 +43,42 @@ int main()
     assert(decoded);
     const auto& description = (*decoded)->data().description();
     assert(description.kind() == lux::rdesc::Script::Kind::LUA_SOURCE);
-    assert(description.lifecycle.begin_play == lux::script::InvalidScriptSymbolId);
-    assert(description.lifecycle.end_play == lux::script::InvalidScriptSymbolId);
-    assert(description.exports.size() == 1U);
-    assert(description.exports[0].name == "tick");
-    assert(description.exports[0].args.size() == 3U);
-    assert(description.exports[0].args[0].canonical_name ==
+    assert(description.lifecycle.begin_play == 2U);
+    assert(description.lifecycle.end_play == 3U);
+    assert(description.api_requirements.size() == 1U);
+    assert(description.api_requirements[0].contract.name() == "lux.simulation.delay");
+    assert(description.api_requirements[0].expected_schema_hash ==
+        lux::script::ScriptAbilityTraits<lux::simulation::script::DelayAbility>::Description.schema_hash);
+    const auto& lua = std::get<lux::rdesc::LuaSourceScript>(description.body);
+    assert(lua.suspension_capable_exports == std::vector<lux::script::ScriptSymbolId>{4U});
+    assert(description.exports.size() == 4U);
+    const auto tick = std::ranges::find_if(description.exports, [](const auto& function) {
+        return function.name == "tick";
+    });
+    assert(tick != description.exports.end());
+    assert(tick->args.size() == 3U);
+    assert(tick->args[0].canonical_name ==
         "lux.simulation.SimulationStepInfo");
-    assert(description.exports[0].args[0].pass ==
+    assert(tick->args[0].pass ==
         lux::semantic::EValuePass::CONST_REF);
-    assert(description.exports[0].args[0].abi_kind == 10U);
-    assert(description.exports[0].args[0].size == 16U);
-    assert(description.exports[0].args[0].alignment == 8U);
-    assert(description.exports[0].args[1].canonical_name ==
+    assert(tick->args[0].abi_kind == 10U);
+    assert(tick->args[0].size == 16U);
+    assert(tick->args[0].alignment == 8U);
+    assert(tick->args[1].canonical_name ==
         "lux.test.CollisionEvent");
-    assert(description.exports[0].args[1].pass ==
+    assert(tick->args[1].pass ==
         lux::semantic::EValuePass::CONST_REF);
-    assert(description.exports[0].args[1].abi_kind == 10U);
-    assert(description.exports[0].args[1].size == 8U);
-    assert(description.exports[0].args[1].alignment == 4U);
-    assert(description.exports[0].args[2].canonical_name == "lux.f32");
-    assert(description.exports[0].returns[0].canonical_name == "lux.i32");
+    assert(tick->args[1].abi_kind == 10U);
+    assert(tick->args[1].size == 8U);
+    assert(tick->args[1].alignment == 4U);
+    assert(tick->args[2].canonical_name == "lux.f32");
+    assert(tick->returns[0].canonical_name == "lux.i32");
+    const auto end = std::ranges::find_if(description.exports, [&](const auto& function) {
+        return function.symbol_id == description.lifecycle.end_play;
+    });
+    assert(end != description.exports.end() && end->args.size() == 1U);
+    assert(end->args[0].canonical_name == "lux.simulation.ScriptEndPlayReason");
+    assert(end->args[0].abi_kind == LUX_SCRIPT_VK_UINT32);
     const auto encoded = lux::asset::TAssetSerDeser<
         lux::script::ScriptArtifactAsset>::encode(
         **decoded,

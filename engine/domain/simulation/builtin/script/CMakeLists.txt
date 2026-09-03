@@ -171,6 +171,30 @@ add_test(
     COMMAND simulation_script_lifecycle_test
 )
 
+add_library(
+    script_benchmark_ability_contract STATIC
+    benchmark/ScriptBenchmarkAbility.cpp
+)
+target_include_directories(
+    script_benchmark_ability_contract
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark
+)
+target_link_libraries(
+    script_benchmark_ability_contract
+    PUBLIC lux::engine::function::script_core
+)
+lux_script_abilities(
+    TARGET script_benchmark_ability_contract
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/ScriptBenchmarkAbility.hpp
+    LOGICAL_PATHS ScriptBenchmarkAbility.hpp
+)
+lux_classify_target(
+    TARGET  script_benchmark_ability_contract
+    LAYER   SIMULATION
+    PRODUCT RUNTIME
+    ROLE    DOMAIN
+)
+
 add_executable(
     script_runtime_benchmark
     benchmark/script_runtime_benchmark.cpp
@@ -202,6 +226,7 @@ target_link_libraries(
         lux::engine::simulation::simulation_script
         lux::engine::simulation::composition
         lux::engine::simulation::simulation_script_cpp_static
+        script_benchmark_ability_contract
 )
 if(TARGET simulation_script_lua)
     target_compile_definitions(script_runtime_benchmark PRIVATE LUX_BENCHMARK_HAS_LUA=1)
@@ -227,11 +252,6 @@ if(TARGET simulation_script_native AND TARGET script_native_fixture)
 else()
     target_compile_definitions(script_runtime_benchmark PRIVATE LUX_BENCHMARK_HAS_NATIVE=0)
 endif()
-lux_script_abilities(
-    TARGET script_runtime_benchmark
-    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/ScriptBenchmarkAbility.hpp
-    LOGICAL_PATHS ScriptBenchmarkAbility.hpp
-)
 lux_classify_target(
     TARGET  script_runtime_benchmark
     LAYER   SIMULATION

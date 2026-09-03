@@ -108,7 +108,7 @@ int main()
         {symbols[2], symbols[3]}
     );
     assert(projected);
-    assert(projected->description().schema_version == 7U);
+    assert(projected->description().schema_version == 8U);
     assert(projected->description().exports.size() == 4U);
     assert(projected->description().lifecycle.begin_play == symbols[2]);
     assert(projected->description().lifecycle.end_play == symbols[3]);

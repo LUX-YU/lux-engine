@@ -1,0 +1,154 @@
+// Generated executable source that materializes canonical Script Ability metadata as JSON.
+#include <lux/engine/function/script/ScriptAbility.hpp>
+#include <array>
+#include <cstdint>
+#include <fstream>
+#include <ostream>
+#include <string_view>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+
+namespace
+{
+    void writeString(std::ostream& output, std::string_view value)
+    {
+        output.put('"');
+        for (const unsigned char character : value)
+        {
+            switch (character)
+            {
+            case '"': output << "\\\""; break;
+            case '\\': output << "\\\\"; break;
+            case '\b': output << "\\b"; break;
+            case '\f': output << "\\f"; break;
+            case '\n': output << "\\n"; break;
+            case '\r': output << "\\r"; break;
+            case '\t': output << "\\t"; break;
+            default:
+                if (character < 0x20U)
+                {
+                    static constexpr char Hex[] = "0123456789abcdef";
+                    output << "\\u00" << Hex[character >> 4U] << Hex[character & 0x0FU];
+                }
+                else
+                {
+                    output.put(static_cast<char>(character));
+                }
+                break;
+            }
+        }
+        output.put('"');
+    }
+
+    void writeValue(std::ostream& output, const lux::script::ScriptAbilityValueDescription& value)
+    {
+        output << "{\"canonical_name\":";
+        writeString(output, value.canonical_name);
+        output << ",\"type_id\":" << value.type_id
+               << ",\"pass\":" << static_cast<unsigned>(value.pass)
+               << ",\"abi_kind\":" << static_cast<unsigned>(value.abi_kind)
+               << ",\"size\":" << value.size
+               << ",\"alignment\":" << value.alignment
+               << ",\"lifetime\":" << static_cast<unsigned>(value.lifetime) << '}';
+    }
+
+    void writeDescription(std::ostream& output, const lux::script::ScriptAbilityDescription& description)
+    {
+        output << "{\"contract\":";
+        writeString(output, description.id.name());
+        output << ",\"contract_id\":" << description.id.hash() << ",\"display_name\":";
+        writeString(output, description.display_name);
+        output << ",\"schema_version\":" << description.schema_version
+               << ",\"schema_hash\":" << description.schema_hash
+               << ",\"receiver\":" << static_cast<unsigned>(description.receiver)
+               << ",\"methods\":[";
+        for (std::size_t method_index{}; method_index < description.methods.size(); ++method_index)
+        {
+            if (method_index != 0U)
+                output.put(',');
+            const auto& method = description.methods[method_index];
+            output << "{\"method\":";
+            writeString(output, method.id.name());
+            output << ",\"method_id\":" << method.id.hash() << ",\"name\":";
+            writeString(output, method.name);
+            output << ",\"display_name\":";
+            writeString(output, method.display_name);
+            output << ",\"kind\":" << static_cast<unsigned>(method.kind) << ",\"parameters\":[";
+            for (std::size_t parameter_index{}; parameter_index < method.parameters.size(); ++parameter_index)
+            {
+                if (parameter_index != 0U)
+                    output.put(',');
+                const auto& parameter = method.parameters[parameter_index];
+                output << "{\"name\":";
+                writeString(output, parameter.name);
+                output << ",\"value\":";
+                writeValue(output, parameter.value);
+                output.put('}');
+            }
+            output << "],\"results\":[";
+            for (std::size_t result_index{}; result_index < method.results.size(); ++result_index)
+            {
+                if (result_index != 0U)
+                    output.put(',');
+                writeValue(output, method.results[result_index]);
+            }
+            output << "]}";
+        }
+        output << "]}";
+    }
+
+{% for rec_index in marked_record_decls %}{% set rec = decl_from_index(rec_index) %}{% set receiver = annotation_get_for_or(rec, "luxability::contract", "receiver", "none") %}{% if receiver == "none" %}{% set ability_methods = rec.static_method_decls %}{% else %}{% set ability_methods = rec.method_decls %}{% endif %}
+    struct AbilitySchema{{ rec_index }} final
+    {
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}        inline static constexpr std::array<lux::script::ScriptAbilityParameterDescription, {{ length(method.params) }}> {{ method.spelling }}Parameters{
+{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{% set lifetime = annotation_get_for_or(param, "luxability::param", "lifetime", "owned_value") %}            lux::script::ScriptAbilityParameterDescription{"{{ cxx_str(param.name) }}", lux::script::makeScriptAbilityValue<{{ type.id }}>(lux::script::EScriptAbilityValueLifetime::{% if lifetime == "stable_id" %}STABLE_ID{% else if lifetime == "borrowed_step" %}BORROWED_STEP{% else %}OWNED_VALUE{% endif %})}{% if not loop.is_last %},{% endif %}
+{% endfor %}        };
+        inline static constexpr std::array<lux::script::ScriptAbilityValueDescription, {% if method.result_type_id == "void" %}0{% else %}1{% endif %}> {{ method.spelling }}Results{
+{% if method.result_type_id != "void" %}{% set result_lifetime = annotation_get_for_or(method, "luxability::method", "result_lifetime", "owned_value") %}            lux::script::makeScriptAbilityValue<{{ method.result_type_id }}>(lux::script::EScriptAbilityValueLifetime::{% if result_lifetime == "stable_id" %}STABLE_ID{% else if result_lifetime == "borrowed_step" %}BORROWED_STEP{% else if result_lifetime == "awaitable" %}AWAITABLE{% else %}OWNED_VALUE{% endif %})
+{% endif %}        };
+{% endif %}{% endfor %}        inline static constexpr std::array<lux::script::ScriptAbilityMethodDescription, {% set count = 0 %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set count = count + 1 %}{% endif %}{% endfor %}{{ count }}> Methods{
+{% set emitted = false %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}{% if emitted %},
+{% endif %}            lux::script::ScriptAbilityMethodDescription{
+                lux::script::ScriptApiMethodIdView{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"},
+                "{{ cxx_str(method.spelling) }}",
+                "{{ cxx_str(annotation_get_for_or(method, "luxability::method", "display", method.spelling)) }}",
+                lux::script::EScriptApiMethodKind::{% if kind == "command" %}COMMAND{% else if kind == "async_operation" %}ASYNC_OPERATION{% else %}QUERY{% endif %},
+                {{ method.spelling }}Parameters,
+                {{ method.spelling }}Results
+            }{% set emitted = true %}{% endif %}{% endfor %}
+        };
+        inline static constexpr lux::script::ScriptAbilityDescription Description{
+            lux::script::ScriptApiContractIdView{"{{ cxx_str(annotation_get(rec, "id")) }}"},
+            "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "display", rec.name)) }}",
+            {{ annotation_get_for_or(rec, "luxability::contract", "version", 1) }}U,
+            lux::script::scriptAbilitySchemaHash(
+                lux::script::ScriptApiContractIdView{"{{ cxx_str(annotation_get(rec, "id")) }}"},
+                lux::script::EScriptAbilityReceiverKind::{% if receiver == "provider_instance" %}PROVIDER_INSTANCE{% else %}NONE{% endif %},
+                Methods
+            ),
+            lux::script::EScriptAbilityReceiverKind::{% if receiver == "provider_instance" %}PROVIDER_INSTANCE{% else %}NONE{% endif %},
+            Methods
+        };
+    };
+{% endfor %}
+    inline constexpr std::array AbilityDescriptions{
+{% for rec_index in marked_record_decls %}        &AbilitySchema{{ rec_index }}::Description{% if not loop.is_last %},{% endif %}
+{% endfor %}    };
+}
+
+int main(int argc, char** argv)
+{
+    if (argc != 2 || argv[1] == nullptr)
+        return 2;
+    std::ofstream output(argv[1], std::ios::binary | std::ios::trunc);
+    if (!output)
+        return 3;
+    output << "{\"schema\":\"lux-script-ability\",\"version\":1,\"abilities\":[";
+    for (std::size_t index{}; index < AbilityDescriptions.size(); ++index)
+    {
+        if (index != 0U)
+            output.put(',');
+        writeDescription(output, *AbilityDescriptions[index]);
+    }
+    output << "]}\n";
+    return output ? 0 : 4;
+}

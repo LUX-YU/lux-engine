@@ -22,6 +22,8 @@ add_component(
         src/FlowGraph.cpp
         src/StateLayout.cpp
         src/script/ScriptGraph.cpp
+        src/script/ScriptAbilityCatalog.cpp
+        src/script/ScriptAbilityNode.cpp
 )
 
 component_include_directories(

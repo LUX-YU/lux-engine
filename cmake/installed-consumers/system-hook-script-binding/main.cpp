@@ -140,21 +140,28 @@ int main()
     assert(value_method && event_method);
     const std::array methods{value_method, event_method};
     const std::array symbols{ValueSymbol, EventSymbol};
+    const std::array ability_requirements{
+        lux::rdesc::ScriptApiRequirement{
+            lux::script::ScriptApiContractId{AbilityContract.name()},
+            AbilitySchema
+        }
+    };
     auto projected = projectCppStaticEntityScript(
         "consumer.behavior",
         "consumer-behavior-v1",
         *reflected,
         methods,
         symbols,
-        {nullptr, &resolveRecord});
+        {nullptr, &resolveRecord},
+        nullptr,
+        {},
+        {},
+        ability_requirements
+    );
     assert(projected);
 
     Fixture fixture;
     auto projected_description = projected->description();
-    projected_description.api_requirements.push_back({
-        lux::script::ScriptApiContractId{AbilityContract.name()},
-        AbilitySchema
-    });
     auto artifact = lux::script::ScriptArtifact::create(std::move(projected_description), {});
     assert(artifact);
     fixture.artifact = std::make_shared<lux::script::ScriptArtifact>(std::move(*artifact));

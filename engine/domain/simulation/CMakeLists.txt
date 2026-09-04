@@ -12,6 +12,9 @@ add_subdirectory(ecs/hierarchy)
 add_subdirectory(ecs/transform)
 add_subdirectory(ecs/visual)
 add_subdirectory(builtin/transform)
+if(LUX_BUILD_PHYSICS2D)
+    add_subdirectory(builtin/physics2d)
+endif()
 add_subdirectory(ecs)
 
 set(LUX_SIMULATION_COMPONENTS

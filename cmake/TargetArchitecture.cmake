@@ -293,8 +293,8 @@ function(lux_validate_target_dag)
                     )
                 endif()
 
-                # Concrete extensions are leaves. Application composition may load them from a
-                # manifest but no engine domain links their implementation.
+                # External source packages are leaves. No Engine-owned optional
+                # implementation uses EXTENSION to bypass its semantic owner.
                 if(dependency_role STREQUAL "EXTENSION" AND
                    NOT consumer_role STREQUAL "EXTENSION")
                     message(FATAL_ERROR

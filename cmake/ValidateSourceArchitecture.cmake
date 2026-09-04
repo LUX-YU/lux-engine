@@ -2213,22 +2213,21 @@ foreach(source IN LISTS ui_sources)
     endif()
 endforeach()
 
-# Canonical Physics2D is a source-composed Simulation package. The retired V5
-# binary extension and legacy ECS implementation must not become its provider
-# or composition authority again.
-if(EXISTS "${source_root}/extensions/runtime/physics2d/CMakeLists.txt")
+# Engine-owned optional implementations follow their semantic owner. A
+# repository-level extensions root would bypass the architecture DAG.
+if(EXISTS "${source_root}/extensions")
     message(FATAL_ERROR
-        "Architecture: retired Physics2D V5 binary extension must remain removed."
+        "Architecture: repository-level extensions/ must not exist; place optional builtins under their owner."
     )
 endif()
-set(physics2d_source_package "${source_root}/extensions/physics2d/simulation")
+set(physics2d_source_package "${source_root}/engine/domain/simulation/builtin/physics2d")
 foreach(required IN ITEMS
     "${physics2d_source_package}/include/lux/engine/physics2d/Physics2DSystem.hpp"
     "${physics2d_source_package}/include/lux/engine/physics2d/abilities/PhysicsQuery2D.hpp"
     "${physics2d_source_package}/src/Physics2DSystem.cpp"
 )
     if(NOT EXISTS "${required}")
-        message(FATAL_ERROR "Architecture: canonical Physics2D source package is incomplete: ${required}")
+        message(FATAL_ERROR "Architecture: canonical Physics2D builtin is incomplete: ${required}")
     endif()
 endforeach()
 file(GLOB_RECURSE physics2d_sources LIST_DIRECTORIES false
@@ -2240,7 +2239,7 @@ foreach(source IN LISTS physics2d_sources)
     if(content MATCHES
        "lux/engine/ecs/physics2d|SceneServices|luxInstallWorldSystemsV5|PhysicsManager|ServiceRegistry")
         message(FATAL_ERROR
-            "Architecture: canonical Physics2D source package depends on retired ownership in ${source}."
+            "Architecture: canonical Physics2D builtin depends on retired ownership in ${source}."
         )
     endif()
 endforeach()

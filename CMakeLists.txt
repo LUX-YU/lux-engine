@@ -90,8 +90,8 @@ if(LUX_SCRIPT_HAS_LUA AND NOT LUX_LUA_VM IN_LIST _lux_supported_lua_vms)
 endif()
 unset(_lux_supported_lua_vms)
 option(
-    LUX_BUILD_PHYSICS2D_SOURCE_PACKAGE
-    "Build the source-composed canonical Physics2D Simulation package"
+    LUX_BUILD_PHYSICS2D
+    "Build the canonical Physics2D Simulation builtin"
     OFF
 )
 
@@ -122,9 +122,6 @@ file(GLOB_RECURSE lux_architecture_inputs CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/engine/toolchain/*.hpp"
     "${CMAKE_SOURCE_DIR}/engine/toolchain/*.cpp"
     "${CMAKE_SOURCE_DIR}/engine/toolchain/CMakeLists.txt"
-    "${CMAKE_SOURCE_DIR}/extensions/*.hpp"
-    "${CMAKE_SOURCE_DIR}/extensions/*.cpp"
-    "${CMAKE_SOURCE_DIR}/extensions/CMakeLists.txt"
     "${CMAKE_SOURCE_DIR}/test/architecture_probes/*.cpp"
     "${CMAKE_SOURCE_DIR}/test/architecture_probes/CMakeLists.txt"
 )
@@ -164,9 +161,6 @@ cmake_language(DEFER CALL lux_write_unclassified_target_report)
 
 add_subdirectory(modules)
 add_subdirectory(engine)
-if(LUX_BUILD_PHYSICS2D_SOURCE_PACKAGE)
-    add_subdirectory(extensions)
-endif()
 if(BUILD_TESTING)
     add_subdirectory(test/architecture_probes)
     if(TARGET flowforge_compiler AND TARGET simulation_script_native)

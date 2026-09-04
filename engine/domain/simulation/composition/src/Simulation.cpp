@@ -215,6 +215,11 @@ namespace lux::simulation
         return *impl_->owner->registry;
     }
 
+    const SimulationClock& SimulationBuilder::clock() const noexcept
+    {
+        return impl_->owner->clock;
+    }
+
     lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::publishScriptAbility(
         lux::system::SystemInstanceId provider,
         const lux::script::ScriptAbilityBinding& binding

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/simulation/SimulationClock.hpp>
 #include <lux/engine/simulation/SimulationSystem.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/composition/visibility.h>
@@ -26,6 +27,8 @@ namespace lux::simulation
     {
     public:
         [[nodiscard]] ecs::Registry& registry() noexcept;
+
+        [[nodiscard]] const SimulationClock& clock() const noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> publishScriptAbility(
             lux::system::SystemInstanceId provider,

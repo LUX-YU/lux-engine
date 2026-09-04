@@ -1,0 +1,10 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "entries": [
+    {
+      "source_identity": "lux.physics2d.lua-test:tick",
+      "symbol": 1345130500
+    }
+  ]
+}

@@ -38,15 +38,9 @@ function(lux_classify_target)
     _lux_arch_require_value("ROLE" "${ARG_ROLE}" _LUX_ARCH_ROLES)
 
     if(ARG_LAYER STREQUAL "RUNTIME")
-        set(_lux_retained_runtime_targets
-            physics2d_extension
-            physics2d_extension_v5_test
+        message(FATAL_ERROR
+            "lux_classify_target: new RUNTIME target '${ARG_TARGET}' is forbidden; use PROCESS or SCENE"
         )
-        if(NOT ARG_TARGET IN_LIST _lux_retained_runtime_targets)
-            message(FATAL_ERROR
-                "lux_classify_target: new RUNTIME target '${ARG_TARGET}' is forbidden; use PROCESS or SCENE"
-            )
-        endif()
     endif()
 
     get_target_property(alias_target ${ARG_TARGET} ALIASED_TARGET)

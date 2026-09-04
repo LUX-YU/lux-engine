@@ -21,6 +21,10 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+target_include_directories(
+    simulation_script
+    PUBLIC $<INSTALL_INTERFACE:include/lux/engine/simulation/abilities>
+)
 target_compile_definitions(
     simulation_script
     PRIVATE

@@ -5,6 +5,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 find_package(lux-engine-core REQUIRED COMPONENTS meta)
 find_package(lux-engine-function REQUIRED COMPONENTS script_artifact script_core)
+find_package(lux-engine-core REQUIRED COMPONENTS task)
+find_package(lux-engine-physics2d REQUIRED COMPONENTS physics2d_simulation)
+find_package(lux-engine-simulation-composition REQUIRED COMPONENTS simulation_composition)
 find_package(
     lux-engine-simulation
     REQUIRED COMPONENTS
@@ -37,7 +40,10 @@ target_link_libraries(
     PRIVATE
         lux::engine::core::meta
         lux::engine::function::script_artifact
+        lux::engine::physics2d::physics2d_simulation
+        lux::engine::simulation::simulation_composition
         lux::engine::simulation::simulation_script_cpp_static
+        lux::engine::core::task
 )
 engine_target_add_type_runtime_info(
     TARGET lux_cpp_coroutine_script_consumer

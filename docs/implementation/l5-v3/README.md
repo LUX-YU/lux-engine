@@ -4,7 +4,7 @@ Status: **Normative architecture + current implementation roadmap**
 
 This revision records the qualified completion of Script S1–S6 and freezes the Script framework for product/editor consumption.
 
-Qualified implementation checkpoint: production `e9870c05d31467f2a5f4bc9ae3426855038942ad`; evidence follows in the implementation branch. Later implementation may move ahead of this checkpoint; coding agents MUST remap physical paths/targets to current repository facts without silently changing the semantic contracts in this docset.
+Qualified implementation checkpoint: production `718425883a695c26008fa600ae196b60d8738644`; evidence follows in the implementation branch. Later implementation may move ahead of this checkpoint; coding agents MUST remap physical paths/targets to current repository facts without silently changing the semantic contracts in this docset.
 
 > The v3 direction is preserved: explicit ownership, reusable `modules/`, domain-owned contracts, product-clean dependency boundaries, Lux UI with private Dear ImGui backend, shared graph source/edit protocol, project-specific final products, backend-neutral script continuations, and no global service-locator architecture.
 

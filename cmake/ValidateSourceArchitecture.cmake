@@ -2220,13 +2220,44 @@ if(EXISTS "${source_root}/extensions")
         "Architecture: repository-level extensions/ must not exist; place optional builtins under their owner."
     )
 endif()
-foreach(script_consumer IN ITEMS cpp-coroutine-script script-static-ability-specialization)
+foreach(script_consumer IN ITEMS cpp-coroutine-script script-static-ability-specialization script-ability-ipo)
     if(NOT EXISTS "${source_root}/cmake/installed-consumers/${script_consumer}/CMakeLists.txt")
         message(FATAL_ERROR
             "Architecture: missing installed Script consumer '${script_consumer}'."
         )
     endif()
 endforeach()
+
+set(script_native_backend_source
+    "${source_root}/engine/domain/simulation/scripting/native/src/NativeScriptBackend.cpp"
+)
+set(flowforge_aot_source "${source_root}/engine/toolchain/flowforge/src/AOT.cpp")
+file(READ "${script_native_backend_source}" script_native_backend_contract)
+file(READ "${flowforge_aot_source}" flowforge_aot_contract)
+if(script_native_backend_contract MATCHES "invokeAbility|lux_script_ability_runtime")
+    message(FATAL_ERROR
+        "Architecture: Native Script backend restored the erased per-call Ability hot path."
+    )
+endif()
+if(flowforge_aot_contract MATCHES "lux_script_ability_runtime|storeValueSlot")
+    message(FATAL_ERROR
+        "Architecture: FlowForge AOT restored erased Ability slot marshalling."
+    )
+endif()
+if(lua_backend_contract MATCHES "PreparedOrdinalTable|recursive_mutex|execution_stack")
+    message(FATAL_ERROR
+        "Architecture: Lua backend restored dense prepared tables, locking, or execution-stack scans."
+    )
+endif()
+set(script_system_source
+    "${source_root}/engine/domain/simulation/builtin/script/src/ScriptSystem.cpp"
+)
+file(READ "${script_system_source}" script_system_hot_contract)
+if(script_system_hot_contract MATCHES "NextStepLater|push_heap\\(next_step|pop_heap\\(next_step")
+    message(FATAL_ERROR
+        "Architecture: NextStep restored heap scheduling instead of its bounded FIFO."
+    )
+endif()
 set(physics2d_source_package "${source_root}/engine/domain/simulation/builtin/physics2d")
 foreach(required IN ITEMS
     "${physics2d_source_package}/include/lux/engine/physics2d/Physics2DSystem.hpp"

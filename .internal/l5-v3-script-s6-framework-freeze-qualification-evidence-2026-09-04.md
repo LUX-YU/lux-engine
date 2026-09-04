@@ -1,5 +1,9 @@
 # L5 v3 Script S6 / Framework Freeze qualification evidence — 2026-09-04
 
+> Superseded for current qualification. This file remains the immutable evidence for `718425883a695c26008fa600ae196b60d8738644`.
+> The final hot-plane closure candidate is recorded separately and is awaiting independent review; this historical
+> revision must not be used to claim that the current Script framework is frozen.
+
 ## Qualified revision
 
 - Baseline: `48a14af5e88d722435458a5b2d29d2c55043bcf3`.

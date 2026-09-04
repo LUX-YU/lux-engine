@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <tuple>
 
 namespace lux::script
 {
@@ -52,5 +53,17 @@ namespace lux::script
             const ScriptEventSourceDescription&,
             const ScriptEventSourceDescription&
         ) noexcept = default;
+    };
+
+    struct ScriptEventSourceLess final
+    {
+        [[nodiscard]] bool operator()(
+            const ScriptEventSourceDescription& left,
+            const ScriptEventSourceDescription& right
+        ) const noexcept
+        {
+            return std::tie(left.system_id, left.event_id, left.system_name, left.event_name) <
+                std::tie(right.system_id, right.event_id, right.system_name, right.event_name);
+        }
     };
 }

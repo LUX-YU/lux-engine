@@ -1,10 +1,12 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 
 #include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -28,6 +30,17 @@ namespace
     inline constexpr EventPointId kBroadcastFaultSecond{0x5507U};
     inline constexpr lux::script::ScriptSymbolId kStartSymbol{0x5510U};
     inline constexpr lux::script::ScriptSymbolId kCallbackSymbol{0x5511U};
+
+    enum class ERequirementMutation : std::uint8_t
+    {
+        NONE,
+        EVENT_ID,
+        SYSTEM_ID,
+        ROUTE,
+        PAYLOAD_LAYOUT,
+        SCHEMA_HASH,
+        SCHEMA_VERSION,
+    };
 
     [[nodiscard]] lux::asset::AssetId assetId()
     {
@@ -108,7 +121,10 @@ namespace
         return std::move(*result);
     }
 
-    [[nodiscard]] lux::script::ScriptArtifact makeArtifact()
+    [[nodiscard]] lux::script::ScriptArtifact makeArtifact(
+        EEventRoute wait_route,
+        ERequirementMutation mutation
+    )
     {
         const auto payload = lux::rdesc::makeScriptValueType<std::int32_t>(lux::semantic::EValuePass::CONST_REF);
         lux::rdesc::Script description;
@@ -117,6 +133,32 @@ namespace
             {"start", kStartSymbol, {payload}, {}},
             {"callback", kCallbackSymbol, {payload}, {}}
         };
+        const bool targeted = wait_route == EEventRoute::ENTITY_TARGETED;
+        lux::script::ScriptEventSourceDescription requirement{
+            "EventWait",
+            targeted ? "targeted" : "broadcast",
+            kSystem.value,
+            targeted ? kTargetedWait.value : kBroadcastWait.value,
+            targeted ? lux::script::EScriptEventRoute::ENTITY_TARGETED
+                     : lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
+            lux::semantic::typeId("lux.i32"),
+            1U
+        };
+        switch (mutation)
+        {
+        case ERequirementMutation::EVENT_ID: requirement.event_id += 0x1000U; break;
+        case ERequirementMutation::SYSTEM_ID: requirement.system_id += 0x1000U; break;
+        case ERequirementMutation::ROUTE:
+            requirement.route = targeted ? lux::script::EScriptEventRoute::SIMULATION_BROADCAST
+                                         : lux::script::EScriptEventRoute::ENTITY_TARGETED;
+            break;
+        case ERequirementMutation::PAYLOAD_LAYOUT: requirement.payload.size *= 2U; break;
+        case ERequirementMutation::SCHEMA_HASH: ++requirement.payload_schema_hash; break;
+        case ERequirementMutation::SCHEMA_VERSION: ++requirement.payload_schema_version; break;
+        case ERequirementMutation::NONE: break;
+        }
+        description.event_requirements.push_back(std::move(requirement));
         description.body = lux::rdesc::CppStaticScript{"event-wait-fixture"};
         auto result = lux::script::ScriptArtifact::create(std::move(description), {});
         assert(result);
@@ -158,6 +200,7 @@ namespace
         ecs::Registry* registry{};
         std::size_t callback_calls{};
         std::size_t step_calls{};
+        std::size_t instance_creates{};
         std::size_t resumes{};
         std::size_t continuation_destroys{};
         std::size_t wait_once_count{};
@@ -268,6 +311,7 @@ namespace
         if (instance == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         instance->owner = static_cast<BackendState*>(context);
+        ++instance->owner->instance_creates;
         if (const auto* entity = std::get_if<EntityScriptScope>(&create.scope))
             instance->self = entity->self;
         output.value = instance;
@@ -327,6 +371,8 @@ namespace
         bool immediate_wait_endpoint{};
         bool disable_wait_copy{};
         bool fail_wait_copy{};
+        ERequirementMutation requirement_mutation{ERequirementMutation::NONE};
+        std::optional<EScriptSystemError> expected_prepare_error;
         std::size_t occurrence_capacity{8U};
         ScriptRuntimeLimits limits{32U, 1U, 16U, 16U, 16U, 16U, 64U, 16U, 16U, 16U, 16U};
     };
@@ -418,7 +464,10 @@ namespace
         }
 
         explicit Harness(HarnessOptions options)
-            : simulation(makeSimulation()), artifact(makeArtifact()), asset(assetId()), object(objectId())
+            : simulation(makeSimulation()),
+              artifact(makeArtifact(options.wait_route, options.requirement_mutation)),
+              asset(assetId()),
+              object(objectId())
         {
             if (options.entity_scope)
                 entity = registry.create();
@@ -486,14 +535,25 @@ namespace
                 broadcast_start_second_bridge->descriptor(),
                 broadcast_fault_second_bridge->descriptor()
             };
+            const auto wait_endpoint = options.wait_route == EEventRoute::ENTITY_TARGETED ? 3U : 1U;
+            const auto wait_event = options.wait_route == EEventRoute::ENTITY_TARGETED
+                ? kTargetedWait
+                : kBroadcastWait;
+            const auto projected = projectScriptEventSource(
+                simulation.findEvent(kSystem, wait_event),
+                endpoints[wait_endpoint],
+                "EventWait",
+                options.wait_route == EEventRoute::ENTITY_TARGETED ? "targeted" : "broadcast"
+            );
+            assert(projected);
+            if (options.requirement_mutation == ERequirementMutation::NONE)
+                assert(*projected == artifact.description().event_requirements.front());
             if (options.disable_wait_copy)
             {
-                endpoints[options.wait_route == EEventRoute::ENTITY_TARGETED ? 3U : 1U]
-                    .payload_projection.copy = nullptr;
+                endpoints[wait_endpoint].payload_projection.copy = nullptr;
             }
             if (options.fail_wait_copy)
-                endpoints[options.wait_route == EEventRoute::ENTITY_TARGETED ? 3U : 1U].payload_projection.copy =
-                    &rejectPayload;
+                endpoints[wait_endpoint].payload_projection.copy = &rejectPayload;
 
             backend_state.wait_request = {
                 kSystem,
@@ -533,7 +593,25 @@ namespace
             );
             assert(created);
             system = std::make_unique<ScriptSystem>(std::move(*created));
-            assert(system->prepare());
+            const auto prepared = system->prepare();
+            if (options.expected_prepare_error)
+            {
+                if (prepared || prepared.error() != *options.expected_prepare_error)
+                {
+                    std::fprintf(
+                        stderr,
+                        "Expected prepare error %u for mutation %u, got %u\n",
+                        static_cast<unsigned>(*options.expected_prepare_error),
+                        static_cast<unsigned>(options.requirement_mutation),
+                        prepared ? 255U : static_cast<unsigned>(prepared.error())
+                    );
+                }
+                assert(!prepared && prepared.error() == *options.expected_prepare_error);
+                return;
+            }
+            if (!prepared)
+                std::fprintf(stderr, "Event waiter harness prepare failed: %u\n", static_cast<unsigned>(prepared.error()));
+            assert(prepared);
         }
 
         ~Harness()
@@ -849,20 +927,16 @@ namespace
     void testPayloadFailures()
     {
         {
-            Harness harness{{.disable_wait_copy = true}};
-            harness.recordBroadcastStart(1);
-            assert(harness.broadcast_start.drain() == 1U);
-            assert(harness.backend_state.wait_error == EScriptEventWaitError::PAYLOAD_NOT_OWNABLE);
-            assert(harness.system->executeStablePoint());
+            Harness harness{{
+                .disable_wait_copy = true,
+                .expected_prepare_error = EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH
+            }};
         }
         {
             HarnessOptions options;
             options.limits = {8U, 1U, 2U, 2U, 2U, 2U, 1U, 2U, 2U, 2U, 2U};
+            options.expected_prepare_error = EScriptSystemError::CAPACITY_EXCEEDED;
             Harness harness{options};
-            harness.recordBroadcastStart(1);
-            assert(harness.broadcast_start.drain() == 1U);
-            assert(harness.backend_state.wait_error == EScriptEventWaitError::PAYLOAD_TOO_LARGE);
-            assert(harness.system->executeStablePoint());
         }
         {
             Harness harness{{.fail_wait_copy = true}};
@@ -874,6 +948,27 @@ namespace
             assert(harness.system->executeStablePoint());
             assert(harness.backend_state.resumes == 0U);
             assert(harness.system->activeInstanceCount() == 0U);
+        }
+    }
+
+    void testArtifactSchemaDriftFailsBeforeInstanceCreation()
+    {
+        constexpr std::array cases{
+            std::pair{ERequirementMutation::EVENT_ID, EScriptSystemError::SCRIPT_EVENT_NOT_FOUND},
+            std::pair{ERequirementMutation::SYSTEM_ID, EScriptSystemError::SCRIPT_EVENT_NOT_FOUND},
+            std::pair{ERequirementMutation::ROUTE, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
+            std::pair{ERequirementMutation::PAYLOAD_LAYOUT, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
+            std::pair{ERequirementMutation::SCHEMA_HASH, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
+            std::pair{ERequirementMutation::SCHEMA_VERSION, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH}
+        };
+        for (const auto& [mutation, expected] : cases)
+        {
+            HarnessOptions options;
+            options.requirement_mutation = mutation;
+            options.expected_prepare_error = expected;
+            Harness harness{options};
+            assert(harness.backend_state.instance_creates == 0U);
+            assert(harness.backend_state.step_calls == 0U);
         }
     }
 
@@ -985,6 +1080,7 @@ int main()
     testResumeQueueFailure();
     testResumeBudget();
     testPayloadFailures();
+    testArtifactSchemaDriftFailsBeforeInstanceCreation();
     testNestedDispatch();
     testShutdownWithPendingWaiter();
     testIdleWaiterComplexity(10'000U);

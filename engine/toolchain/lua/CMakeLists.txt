@@ -5,6 +5,19 @@ add_interface_component(
     COMPONENT_NAME lua_script_packager
     NAMESPACE      lux::engine::toolchain
 )
+component_include_directories(
+    lua_script_packager
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
+    INSTALL_TIME include
+)
+target_link_libraries(
+    lua_script_packager
+    INTERFACE lux::engine::function::script_core
+)
+component_add_transitive_commands(
+    lua_script_packager
+    "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
+)
 lux_classify_target(
     TARGET  lua_script_packager
     LAYER   TOOLCHAIN
@@ -16,6 +29,45 @@ component_add_cmake_scripts(
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux_package_lua_script.cmake
 )
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux_package_lua_script.cmake)
+
+add_executable(lua_event_schema_writer test/lua_event_schema_writer.cpp)
+target_link_libraries(lua_event_schema_writer PRIVATE lua_script_packager)
+lux_classify_target(
+    TARGET  lua_event_schema_writer
+    LAYER   TOOLCHAIN
+    PRODUCT BUILD_TOOL
+    ROLE    DOMAIN
+)
+
+set(_lua_gameplay_event_schema ${CMAKE_CURRENT_BINARY_DIR}/lua_gameplay.events.schema.json)
+add_custom_command(
+    OUTPUT ${_lua_gameplay_event_schema}
+    COMMAND $<TARGET_FILE:lua_event_schema_writer> ${_lua_gameplay_event_schema} gameplay
+    DEPENDS lua_event_schema_writer
+    VERBATIM
+)
+add_custom_target(lua_gameplay_event_schema DEPENDS ${_lua_gameplay_event_schema})
+lux_classify_target(
+    TARGET  lua_gameplay_event_schema
+    LAYER   TOOLCHAIN
+    PRODUCT BUILD_TOOL
+    ROLE    DOMAIN
+)
+
+set(_lua_benchmark_event_schema ${CMAKE_CURRENT_BINARY_DIR}/lua_benchmark.events.schema.json)
+add_custom_command(
+    OUTPUT ${_lua_benchmark_event_schema}
+    COMMAND $<TARGET_FILE:lua_event_schema_writer> ${_lua_benchmark_event_schema} benchmark
+    DEPENDS lua_event_schema_writer
+    VERBATIM
+)
+add_custom_target(lua_benchmark_event_schema DEPENDS ${_lua_benchmark_event_schema})
+lux_classify_target(
+    TARGET  lua_benchmark_event_schema
+    LAYER   TOOLCHAIN
+    PRODUCT BUILD_TOOL
+    ROLE    DOMAIN
+)
 
 set(_lua_portability_lxsa ${CMAKE_CURRENT_BINARY_DIR}/lua_portability_fixture.lxsa)
 lux_package_lua_script(
@@ -40,6 +92,8 @@ lux_package_lua_script(
         lux.test.CollisionEvent,8,4
     VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
     ABILITY_TARGETS simulation_script
+    EVENT_SCHEMAS ${_lua_gameplay_event_schema}
+    EVENT_SCHEMA_TARGETS lua_gameplay_event_schema
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_behavior_fixture.symbols.json
     MODULE lux.test.lua
     ENTRY EnemyBehavior
@@ -53,6 +107,8 @@ lux_package_lua_script(
     OUTPUT ${_lua_benchmark_lxsa}
     VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
     ABILITY_TARGETS simulation_script script_benchmark_ability_contract
+    EVENT_SCHEMAS ${_lua_benchmark_event_schema}
+    EVENT_SCHEMA_TARGETS lua_benchmark_event_schema
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_runtime_benchmark_fixture.symbols.json
     MODULE lux.benchmark.lua-runtime
     ENTRY BenchmarkBehavior

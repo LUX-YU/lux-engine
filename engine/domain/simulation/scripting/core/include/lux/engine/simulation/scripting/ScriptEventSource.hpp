@@ -13,6 +13,7 @@
 #include <new>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 namespace lux::simulation::script
 {
@@ -46,9 +47,9 @@ namespace lux::simulation::script
 
     [[nodiscard]] inline lux::cxx::expected<lux::script::ScriptEventSourceDescription,
                                             EScriptEventSourceProjectionError>
-    projectScriptEventSource(
+    describeScriptEventSource(
         SimulationEventView event,
-        const ScriptEventEndpointDescriptor& endpoint,
+        const lux::semantic::Layout& owned,
         std::string_view system_name = {},
         std::string_view event_name = {}
     ) noexcept
@@ -70,21 +71,7 @@ namespace lux::simulation::script
             );
         }
 
-        const bool is_endpoint_mismatch = endpoint.system != system.instanceId() || endpoint.event != event.id() ||
-            endpoint.route != event.route();
-        if (is_endpoint_mismatch)
-        {
-            return lux::cxx::unexpected<EScriptEventSourceProjectionError>(
-                EScriptEventSourceProjectionError::ENDPOINT_MISMATCH
-            );
-        }
-
-        const auto& owned = endpoint.payload_projection.owned_layout;
-        const bool is_payload_mismatch = endpoint.payload_projection.copy == nullptr ||
-            endpoint.payload_type.type_id != event.payloadType() ||
-            endpoint.payload_type.canonical_name != event.payloadSchemaName() ||
-            endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
-            owned.type_id != event.payloadType() ||
+        const bool is_payload_mismatch = owned.type_id != event.payloadType() ||
             owned.canonical_name != event.payloadSchemaName() || owned.abi_kind == 0U || owned.size == 0U ||
             owned.size > std::numeric_limits<std::uint32_t>::max() || owned.alignment == 0U ||
             owned.alignment > std::numeric_limits<std::uint32_t>::max() ||
@@ -102,9 +89,9 @@ namespace lux::simulation::script
             return lux::script::ScriptEventSourceDescription{
                 std::string(projected_system_name),
                 std::string(projected_event_name),
-                endpoint.system.value,
-                endpoint.event.value,
-                endpoint.route == EEventRoute::SIMULATION_BROADCAST
+                system.instanceId().value,
+                event.id().value,
+                event.route() == EEventRoute::SIMULATION_BROADCAST
                     ? lux::script::EScriptEventRoute::SIMULATION_BROADCAST
                     : lux::script::EScriptEventRoute::ENTITY_TARGETED,
                 {
@@ -124,5 +111,65 @@ namespace lux::simulation::script
                 EScriptEventSourceProjectionError::ALLOCATION_FAILURE
             );
         }
+    }
+
+    template <class Payload>
+        requires lux::semantic::TypeDeclared<std::remove_cv_t<Payload>>
+    [[nodiscard]] inline lux::cxx::expected<lux::script::ScriptEventSourceDescription,
+                                            EScriptEventSourceProjectionError>
+    describeScriptEventSource(
+        SimulationEventView event,
+        std::string_view system_name = {},
+        std::string_view event_name = {}
+    ) noexcept
+    {
+        return describeScriptEventSource(
+            event,
+            detail::eventPayloadLayout<std::remove_cv_t<Payload>>(),
+            system_name,
+            event_name
+        );
+    }
+
+    [[nodiscard]] inline lux::cxx::expected<lux::script::ScriptEventSourceDescription,
+                                            EScriptEventSourceProjectionError>
+    projectScriptEventSource(
+        SimulationEventView event,
+        const ScriptEventEndpointDescriptor& endpoint,
+        std::string_view system_name = {},
+        std::string_view event_name = {}
+    ) noexcept
+    {
+        if (!event)
+        {
+            return lux::cxx::unexpected<EScriptEventSourceProjectionError>(
+                EScriptEventSourceProjectionError::INVALID_SOURCE
+            );
+        }
+        const auto described = describeScriptEventSource(
+            event,
+            endpoint.payload_projection.owned_layout,
+            system_name,
+            event_name
+        );
+        if (!described)
+            return lux::cxx::unexpected(described.error());
+
+        const bool is_endpoint_mismatch = endpoint.system != event.system().instanceId() ||
+            endpoint.event != event.id() || endpoint.route != event.route();
+        if (is_endpoint_mismatch)
+        {
+            return lux::cxx::unexpected<EScriptEventSourceProjectionError>(
+                EScriptEventSourceProjectionError::ENDPOINT_MISMATCH
+            );
+        }
+        const auto& payload = described->payload;
+        const bool is_payload_mismatch = endpoint.payload_projection.copy == nullptr ||
+            endpoint.payload_type.type_id != payload.type_id ||
+            endpoint.payload_type.canonical_name != payload.canonical_name ||
+            endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF;
+        return is_payload_mismatch
+            ? lux::cxx::unexpected(EScriptEventSourceProjectionError::PAYLOAD_MISMATCH)
+            : described;
     }
 }

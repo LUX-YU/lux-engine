@@ -790,6 +790,20 @@ namespace
                 description.api_requirements.push_back({lux::script::ScriptApiContractId{value.id.name()},
                                                         value.schema_hash});
             }
+            if (mode == EScenarioMode::EVENT_WAIT)
+            {
+                description.event_requirements.push_back({
+                    "Benchmark",
+                    entity_scope ? "target_event" : "event",
+                    kSystem.value,
+                    entity_scope ? kTargetEvent.value : kEvent.value,
+                    entity_scope ? lux::script::EScriptEventRoute::ENTITY_TARGETED
+                                 : lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+                    {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
+                    lux::semantic::typeId("lux.i32"),
+                    1U
+                });
+            }
             description.body = lux::rdesc::CppStaticScript{"benchmark-synthetic"};
             auto created_artifact = lux::script::ScriptArtifact::create(std::move(description), {});
             if (!created_artifact)

@@ -44,6 +44,31 @@ def main() -> int:
         17,
     )
     abilities = {delay.contract: delay}
+    payload = package.Semantic("lux.i32", package.fnv1a("lux.i32"), 0, True, 2, 4, 4)
+    damage = package.EventSource(
+        "Gameplay",
+        "damage",
+        11,
+        12,
+        0,
+        payload,
+        package.fnv1a("lux.i32"),
+        1,
+    )
+    spawned = package.EventSource(
+        "Gameplay",
+        "spawned",
+        11,
+        13,
+        0,
+        payload,
+        package.fnv1a("lux.i32"),
+        1,
+    )
+    events = {
+        (damage.system_name, damage.event_name): damage,
+        (spawned.system_name, spawned.event_name): spawned,
+    }
 
     with tempfile.TemporaryDirectory() as directory:
         manifest = pathlib.Path(directory) / "ability.json"
@@ -70,9 +95,29 @@ def main() -> int:
             "invalid Ability schema",
         )
 
-    def parse(source: str, symbols: dict[str, int], schemas=abilities):
-        return package.collect_exports(source, "ENTITY", "Enemy", "lux.test.lua", semantics, symbols, schemas)
+    def parse(source: str, symbols: dict[str, int], schemas=abilities, event_schemas=events):
+        return package.collect_exports(
+            source,
+            "ENTITY",
+            "Enemy",
+            "lux.test.lua",
+            semantics,
+            symbols,
+            schemas,
+            event_schemas,
+        )
 
+    expect_failure(
+        lambda: parse(
+            """---@lux.event Gameplay.missing
+---@lux.method
+---@return void
+function Enemy:update() end
+""",
+            {"Enemy:update": 1},
+        ),
+        "unknown Event source",
+    )
     expect_failure(
         lambda: parse(
             """---@lux.method
@@ -192,8 +237,8 @@ function Enemy:update() end
         {"Enemy:update": 1},
     )
     assert event_sources.event_sources == [
-        package.EventSource("Gameplay", "damage"),
-        package.EventSource("Gameplay", "spawned"),
+        damage,
+        spawned,
     ]
 
     old = parse(

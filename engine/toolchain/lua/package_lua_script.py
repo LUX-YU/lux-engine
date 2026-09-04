@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package statically described Lua exports as canonical LXSA v7."""
+"""Package statically described Lua exports as canonical LXSA v8."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 
 MAGIC = 0x4153584C
-WIRE_VERSION = 7
-SCHEMA_VERSION = 9
+WIRE_VERSION = 8
+SCHEMA_VERSION = 10
 LUA_SOURCE_KIND = 1
 SIMULATION_SCOPE = "SIMULATION"
 ENTITY_SCOPE = "ENTITY"
@@ -176,10 +176,16 @@ class AbilitySchema:
     schema_hash: int
 
 
-@dataclass(frozen=True, order=True)
+@dataclass(frozen=True)
 class EventSource:
     system_name: str
     event_name: str
+    system_id: int
+    event_id: int
+    route: int
+    payload: Semantic
+    payload_schema_hash: int
+    payload_schema_version: int
 
 
 @dataclass(frozen=True)
@@ -257,6 +263,84 @@ def load_ability_schemas(paths: list[pathlib.Path]) -> dict[str, AbilitySchema]:
     return result
 
 
+def load_event_schemas(paths: list[pathlib.Path]) -> dict[tuple[str, str], EventSource]:
+    result: dict[tuple[str, str], EventSource] = {}
+    identities: dict[tuple[int, int], EventSource] = {}
+    routes = {"simulation_broadcast": 0, "entity_targeted": 1}
+    for path in paths:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if document.get("schema") != "lux-script-event" or document.get("version") != 1:
+            raise ValueError(f"unsupported Event schema manifest '{path}'")
+        events = document.get("events")
+        if not isinstance(events, list):
+            raise ValueError(f"Event schema manifest '{path}' has no events")
+        for value in events:
+            payload_value = value.get("payload")
+            if not isinstance(payload_value, dict):
+                raise ValueError(f"invalid Event payload schema in '{path}'")
+            system_name = value.get("system_name")
+            event_name = value.get("event_name")
+            system_id = int(value.get("system_id", 0))
+            event_id = int(value.get("event_id", 0))
+            route_name = value.get("route")
+            canonical = payload_value.get("canonical_name")
+            type_id = int(payload_value.get("type_id", 0))
+            abi_kind = int(payload_value.get("abi_kind", 0))
+            size = int(payload_value.get("size", 0))
+            alignment = int(payload_value.get("alignment", 0))
+            schema_hash = int(value.get("payload_schema_hash", 0))
+            schema_version = int(value.get("payload_schema_version", 0))
+            is_invalid = (
+                not isinstance(system_name, str)
+                or not code_identifier(system_name)
+                or not isinstance(event_name, str)
+                or not code_identifier(event_name)
+                or system_id <= 0
+                or system_id > 0xFFFFFFFFFFFFFFFF
+                or event_id <= 0
+                or event_id > 0xFFFFFFFFFFFFFFFF
+                or route_name not in routes
+                or not isinstance(canonical, str)
+                or not canonical
+                or type_id != fnv1a(canonical)
+                or abi_kind <= 0
+                or abi_kind > 10
+                or size <= 0
+                or size > 0xFFFFFFFF
+                or alignment <= 0
+                or alignment > 0xFFFFFFFF
+                or alignment & (alignment - 1)
+                or schema_hash <= 0
+                or schema_hash > 0xFFFFFFFFFFFFFFFF
+                or schema_version <= 0
+                or schema_version > 0xFFFFFFFF
+            )
+            if is_invalid:
+                raise ValueError(f"invalid Event schema in '{path}'")
+            payload = Semantic(canonical, type_id, VALUE_PASS, True, abi_kind, size, alignment)
+            source = EventSource(
+                system_name,
+                event_name,
+                system_id,
+                event_id,
+                routes[route_name],
+                payload,
+                schema_hash,
+                schema_version,
+            )
+            source_key = (system_name, event_name)
+            identity_key = (system_id, event_id)
+            previous_source = result.get(source_key)
+            previous_identity = identities.get(identity_key)
+            if (previous_source is not None and previous_source != source) or (
+                previous_identity is not None and previous_identity != source
+            ):
+                raise ValueError(f"conflicting Event schema in '{path}'")
+            result[source_key] = source
+            identities[identity_key] = source
+    return result
+
+
 def collect_exports(
     source: str,
     scope: str,
@@ -265,6 +349,7 @@ def collect_exports(
     semantics: dict[str, Semantic],
     symbols_by_source: dict[str, int],
     ability_schemas: dict[str, AbilitySchema],
+    event_schemas: dict[tuple[str, str], EventSource],
 ) -> PackageDescription:
     marked = False
     parameters: list[tuple[str, str]] = []
@@ -299,7 +384,12 @@ def collect_exports(
                 raise ValueError(
                     f"line {line_number}: @lux.event must precede all exports"
                 )
-            source = EventSource(match.group(1), match.group(2))
+            source_key = (match.group(1), match.group(2))
+            source = event_schemas.get(source_key)
+            if source is None:
+                raise ValueError(
+                    f"line {line_number}: unknown Event source '{source_key[0]}.{source_key[1]}'"
+                )
             if source in seen_event_sources:
                 raise ValueError(f"line {line_number}: duplicate Event source")
             seen_event_sources.add(source)
@@ -436,7 +526,14 @@ def collect_exports(
         (ability_schemas[name] for name in requirement_names),
         key=lambda value: value.contract,
     )
-    event_sources.sort()
+    event_sources.sort(
+        key=lambda value: (
+            value.system_id,
+            value.event_id,
+            value.system_name,
+            value.event_name,
+        )
+    )
     return PackageDescription(
         exports,
         begin_play,
@@ -507,6 +604,20 @@ def encode(
         writer.string(requirement.contract)
         writer.u64(requirement.contract_id)
         writer.u64(requirement.schema_hash)
+    writer.u32(len(package.event_sources))
+    for source in package.event_sources:
+        writer.string(source.system_name)
+        writer.string(source.event_name)
+        writer.u64(source.system_id)
+        writer.u64(source.event_id)
+        writer.u32(source.route)
+        writer.string(source.payload.canonical)
+        writer.u64(source.payload.type_id)
+        writer.u32(source.payload.abi_kind)
+        writer.u32(source.payload.size)
+        writer.u32(source.payload.alignment)
+        writer.u64(source.payload_schema_hash)
+        writer.u32(source.payload_schema_version)
     writer.string("lux-lua-static")
     writer.string("2")
     writer.string(source_id)
@@ -516,10 +627,6 @@ def encode(
     writer.u32(len(package.suspension_capable_exports))
     for symbol in package.suspension_capable_exports:
         writer.u64(symbol)
-    writer.u32(len(package.event_sources))
-    for source in package.event_sources:
-        writer.string(source.system_name)
-        writer.string(source.event_name)
     writer.u64(len(payload))
     writer.data += payload
     return bytes(writer.data)
@@ -557,6 +664,7 @@ def main() -> int:
     parser.add_argument("--record-type", action="append", default=[])
     parser.add_argument("--value-type", action="append", default=[])
     parser.add_argument("--ability-schema", action="append", default=[], type=pathlib.Path)
+    parser.add_argument("--event-schema", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--symbol-ledger", required=True, type=pathlib.Path)
     parser.add_argument("--module", required=True)
     parser.add_argument("--entry", required=True)
@@ -569,6 +677,7 @@ def main() -> int:
         source = payload.decode("utf-8")
         semantics = make_semantics(arguments.record_type, arguments.value_type)
         ability_schemas = load_ability_schemas(arguments.ability_schema)
+        event_schemas = load_event_schemas(arguments.event_schema)
         symbols_by_source = load_symbol_ledger(arguments.symbol_ledger)
         package = collect_exports(
             source,
@@ -578,6 +687,7 @@ def main() -> int:
             semantics,
             symbols_by_source,
             ability_schemas,
+            event_schemas,
         )
         inner = encode(
             arguments.module,

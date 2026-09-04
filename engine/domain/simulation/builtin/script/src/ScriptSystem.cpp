@@ -221,6 +221,7 @@ namespace lux::simulation::script
             ScriptBehavior behavior;
             ScriptInstanceId instance;
             std::vector<PreparedScriptApiCapability> capabilities;
+            std::vector<lux::script::ScriptEventSourceDescription> event_sources;
             ResolvedScriptArtifact artifact;
             const ScriptBackendDescriptor* backend{};
             ScriptBackendInstance backend_instance;
@@ -1100,6 +1101,12 @@ namespace lux::simulation::script
             auto& mount = mounts[owner->mount_slot];
             if (mount.state != EMountState::ACTIVE || mount.instance != instance)
                 return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
+            const auto declared = std::ranges::find_if(mount.event_sources, [&](const auto& source) noexcept {
+                return source.system_id == request.system.value && source.event_id == request.event.value &&
+                    static_cast<std::uint8_t>(source.route) == static_cast<std::uint8_t>(request.route);
+            });
+            if (declared == mount.event_sources.end())
+                return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
 
             const auto endpoint_slot = findEventEndpoint({request.system, request.event});
             if (!endpoint_slot)
@@ -1543,6 +1550,33 @@ namespace lux::simulation::script
         {
             const auto found = event_endpoint_index.find({target.system.value, target.event.value});
             return found == event_endpoint_index.end() ? std::nullopt : std::optional<std::uint32_t>{found->second};
+        }
+
+        [[nodiscard]] bool eventRequirementMatches(
+            const lux::script::ScriptEventSourceDescription& requirement,
+            const SimulationEventView& described,
+            const ScriptEventEndpointDescriptor& endpoint
+        ) const noexcept
+        {
+            if (!described)
+                return false;
+            const auto expected_route = described.route() == EEventRoute::SIMULATION_BROADCAST
+                ? lux::script::EScriptEventRoute::SIMULATION_BROADCAST
+                : lux::script::EScriptEventRoute::ENTITY_TARGETED;
+            const auto& owned = endpoint.payload_projection.owned_layout;
+            return endpoint.system.value == requirement.system_id &&
+                endpoint.event.value == requirement.event_id && expected_route == requirement.route &&
+                endpoint.route == described.route() && described.payloadType() == requirement.payload.type_id &&
+                described.payloadSchemaName() == requirement.payload.canonical_name &&
+                described.payloadSchemaHash() == requirement.payload_schema_hash &&
+                described.payloadSchemaVersion() == requirement.payload_schema_version &&
+                endpoint.payload_type.type_id == requirement.payload.type_id &&
+                endpoint.payload_type.canonical_name == requirement.payload.canonical_name &&
+                endpoint.payload_type.pass == lux::semantic::EValuePass::CONST_REF &&
+                owned.type_id == requirement.payload.type_id &&
+                owned.canonical_name == requirement.payload.canonical_name &&
+                owned.abi_kind == requirement.payload.abi_kind && owned.size == requirement.payload.size &&
+                owned.alignment == requirement.payload.alignment && endpoint.payload_projection.copy != nullptr;
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> buildLayout() noexcept
@@ -2085,6 +2119,7 @@ namespace lux::simulation::script
             mount.begin_play_method = kInvalidMethodSlot;
             mount.end_play_method = kInvalidMethodSlot;
             mount.capabilities.clear();
+            mount.event_sources.clear();
             mount.artifact = {};
             mount.backend = nullptr;
             mount.backend_instance = {};
@@ -2137,6 +2172,7 @@ namespace lux::simulation::script
                 mount.backend->destroyInstance(mount.backend->context, mount.backend_instance);
             }
             mount.capabilities.clear();
+            mount.event_sources.clear();
             if (mount.artifact.lease != nullptr && mount.artifact.release != nullptr)
                 mount.artifact.release(mount.artifact.lease);
 
@@ -2257,6 +2293,38 @@ namespace lux::simulation::script
                     }
                     mount.capabilities.push_back(*resolved);
                 }
+
+                const auto& event_requirements = mount.artifact.artifact->description().event_requirements;
+                mount.event_sources.clear();
+                mount.event_sources.reserve(event_requirements.size());
+                for (const auto& requirement : event_requirements)
+                {
+                    if (requirement.payload.size > limits.max_resume_payload_bytes)
+                    {
+                        releaseMount(mount_slot, EMountState::INACTIVE, false);
+                        return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
+                    }
+                    const auto endpoint_slot = findEventEndpoint({
+                        lux::system::SystemInstanceId{requirement.system_id},
+                        EventPointId{requirement.event_id}
+                    });
+                    if (!endpoint_slot)
+                    {
+                        releaseMount(mount_slot, EMountState::INACTIVE, false);
+                        return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_NOT_FOUND);
+                    }
+                    const auto described = simulation->findEvent(
+                        lux::system::SystemInstanceId{requirement.system_id},
+                        EventPointId{requirement.event_id}
+                    );
+                    const auto& endpoint = event_endpoints[*endpoint_slot];
+                    if (!eventRequirementMatches(requirement, described, endpoint))
+                    {
+                        releaseMount(mount_slot, EMountState::INACTIVE, false);
+                        return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
+                    }
+                    mount.event_sources.push_back(requirement);
+                }
             }
             catch (const std::bad_alloc&)
             {
@@ -2277,7 +2345,8 @@ namespace lux::simulation::script
                                                              mount.scope,
                                                              std::addressof(mount.behavior),
                                                              mount.instance,
-                                                             mount.capabilities};
+                                                             mount.capabilities,
+                                                             mount.event_sources};
             const auto created = mount.backend->createInstance(mount.backend->context,
                                                                create_context,
                                                                *mount.artifact.artifact,

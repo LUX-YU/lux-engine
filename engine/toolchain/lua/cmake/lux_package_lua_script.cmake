@@ -9,7 +9,14 @@ function(lux_package_lua_script)
         set(packager "${packager_root}/package_lua_script.py")
     endif()
     set(one_value_args NAME SOURCE OUTPUT MODULE ENTRY SCOPE SYMBOL_LEDGER OUT_VAR)
-    set(multi_value_args ABILITY_TARGETS ABILITY_SCHEMAS VALUE_TYPES RECORD_TYPES)
+    set(multi_value_args
+        ABILITY_TARGETS
+        ABILITY_SCHEMAS
+        EVENT_SCHEMA_TARGETS
+        EVENT_SCHEMAS
+        VALUE_TYPES
+        RECORD_TYPES
+    )
     cmake_parse_arguments(ARGS "" "${one_value_args}" "${multi_value_args}" ${ARGN})
     foreach(required NAME SOURCE OUTPUT MODULE ENTRY SCOPE SYMBOL_LEDGER)
         if(NOT ARGS_${required})
@@ -40,6 +47,15 @@ function(lux_package_lua_script)
     endforeach()
     list(REMOVE_DUPLICATES schema_files)
     list(REMOVE_DUPLICATES schema_targets)
+    set(event_schema_files ${ARGS_EVENT_SCHEMAS})
+    set(event_schema_targets ${ARGS_EVENT_SCHEMA_TARGETS})
+    foreach(event_schema_target IN LISTS event_schema_targets)
+        if(NOT TARGET ${event_schema_target})
+            message(FATAL_ERROR "[lux_package_lua_script] unknown Event schema target '${event_schema_target}'")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES event_schema_files)
+    list(REMOVE_DUPLICATES event_schema_targets)
 
     set(command
         ${Python3_EXECUTABLE}
@@ -54,6 +70,9 @@ function(lux_package_lua_script)
     foreach(schema IN LISTS schema_files)
         list(APPEND command --ability-schema ${schema})
     endforeach()
+    foreach(schema IN LISTS event_schema_files)
+        list(APPEND command --event-schema ${schema})
+    endforeach()
     foreach(value IN LISTS ARGS_VALUE_TYPES)
         list(APPEND command --value-type ${value})
     endforeach()
@@ -64,12 +83,15 @@ function(lux_package_lua_script)
     add_custom_command(
         OUTPUT ${output}
         COMMAND ${command}
-        DEPENDS ${packager} ${source} ${ledger} ${schema_files}
+        DEPENDS ${packager} ${source} ${ledger} ${schema_files} ${event_schema_files}
         VERBATIM
     )
     add_custom_target(${ARGS_NAME} DEPENDS ${output})
     if(schema_targets)
         add_dependencies(${ARGS_NAME} ${schema_targets})
+    endif()
+    if(event_schema_targets)
+        add_dependencies(${ARGS_NAME} ${event_schema_targets})
     endif()
     if(COMMAND lux_classify_target)
         lux_classify_target(

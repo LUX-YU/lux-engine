@@ -273,6 +273,7 @@ namespace lux::simulation::script
     enum class EScriptEventWaitError : std::uint8_t
     {
         INVALID_INSTANCE,
+        UNDECLARED_SOURCE,
         ENDPOINT_NOT_FOUND,
         ROUTE_MISMATCH,
         SCOPE_MISMATCH,

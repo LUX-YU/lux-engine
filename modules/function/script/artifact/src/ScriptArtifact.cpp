@@ -17,7 +17,7 @@ namespace lux::script
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion = 7U;
+        constexpr std::uint32_t kWireVersion = 8U;
 
         class Writer final
         {
@@ -253,6 +253,22 @@ namespace lux::script
                     writer.u64(requirement.contract.hash());
                     writer.u64(requirement.expected_schema_hash);
                 }
+                writer.u32(static_cast<std::uint32_t>(description.event_requirements.size()));
+                for (const auto& requirement : description.event_requirements)
+                {
+                    writer.string(requirement.system_name);
+                    writer.string(requirement.event_name);
+                    writer.u64(requirement.system_id);
+                    writer.u64(requirement.event_id);
+                    writer.u32(static_cast<std::uint32_t>(requirement.route));
+                    writer.string(requirement.payload.canonical_name);
+                    writer.u64(requirement.payload.type_id);
+                    writer.u32(requirement.payload.abi_kind);
+                    writer.u32(requirement.payload.size);
+                    writer.u32(requirement.payload.alignment);
+                    writer.u64(requirement.payload_schema_hash);
+                    writer.u32(requirement.payload_schema_version);
+                }
                 const auto& provenance = description.provenance;
                 writer.string(provenance.compiler_id);
                 writer.string(provenance.compiler_version);
@@ -267,12 +283,6 @@ namespace lux::script
                     writer.u32(static_cast<std::uint32_t>(lua->suspension_capable_exports.size()));
                     for (const auto symbol : lua->suspension_capable_exports)
                         writer.u64(symbol);
-                    writer.u32(static_cast<std::uint32_t>(lua->event_sources.size()));
-                    for (const auto& source : lua->event_sources)
-                    {
-                        writer.string(source.system_name);
-                        writer.string(source.event_name);
-                    }
                 }
                 else if (const auto* native =
                     std::get_if<lux::rdesc::NativeModuleScript>(
@@ -430,6 +440,38 @@ namespace lux::script
                     }
                     description.api_requirements.push_back({lux::script::ScriptApiContractId{name}, schema});
                 }
+                if (!reader.u32(count) || !reserveRecords(
+                        description.event_requirements,
+                        count,
+                        decoded,
+                        limit,
+                        reader.remaining()
+                    ))
+                {
+                    return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                }
+                for (std::uint32_t index{}; index < count; ++index)
+                {
+                    lux::script::ScriptEventSourceDescription requirement;
+                    std::uint32_t route{};
+                    std::uint32_t abi_kind{};
+                    if (!reader.string(requirement.system_name, decoded, limit) ||
+                        !reader.string(requirement.event_name, decoded, limit) ||
+                        !reader.u64(requirement.system_id) || !reader.u64(requirement.event_id) ||
+                        !reader.u32(route) || !reader.string(requirement.payload.canonical_name, decoded, limit) ||
+                        !reader.u64(requirement.payload.type_id) || !reader.u32(abi_kind) ||
+                        !reader.u32(requirement.payload.size) || !reader.u32(requirement.payload.alignment) ||
+                        !reader.u64(requirement.payload_schema_hash) ||
+                        !reader.u32(requirement.payload_schema_version) ||
+                        route > static_cast<std::uint32_t>(lux::script::EScriptEventRoute::ENTITY_TARGETED) ||
+                        abi_kind > std::numeric_limits<std::uint8_t>::max())
+                    {
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    }
+                    requirement.route = static_cast<lux::script::EScriptEventRoute>(route);
+                    requirement.payload.abi_kind = static_cast<std::uint8_t>(abi_kind);
+                    description.event_requirements.push_back(std::move(requirement));
+                }
                 auto& provenance = description.provenance;
                 if (!reader.string(provenance.compiler_id, decoded, limit) ||
                     !reader.string(provenance.compiler_version, decoded, limit) ||
@@ -461,26 +503,6 @@ namespace lux::script
                         if (!reader.u64(symbol))
                             return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                         lua.suspension_capable_exports.push_back(symbol);
-                    }
-                    if (!reader.u32(count) || !reserveRecords(
-                            lua.event_sources,
-                            count,
-                            decoded,
-                            limit,
-                            reader.remaining()
-                        ))
-                    {
-                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                    }
-                    for (std::uint32_t index{}; index < count; ++index)
-                    {
-                        lux::rdesc::LuaSourceScript::EventSource source;
-                        if (!reader.string(source.system_name, decoded, limit) ||
-                            !reader.string(source.event_name, decoded, limit))
-                        {
-                            return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
-                        }
-                        lua.event_sources.push_back(std::move(source));
                     }
                     description.body = std::move(lua);
                 }
@@ -580,6 +602,25 @@ namespace lux::script
                     !requirements.insert(requirement.contract.hash()).second)
                 {
                     return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+                }
+            }
+            const auto& event_requirements = artifact.description_.event_requirements;
+            if (!std::ranges::is_sorted(event_requirements, ScriptEventSourceLess{}))
+                return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+            for (std::size_t index{}; index < event_requirements.size(); ++index)
+            {
+                const auto& requirement = event_requirements[index];
+                if (!requirement.valid())
+                    return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
+                for (std::size_t previous{}; previous < index; ++previous)
+                {
+                    const auto& candidate = event_requirements[previous];
+                    const bool duplicate_identity = candidate.system_id == requirement.system_id &&
+                        candidate.event_id == requirement.event_id;
+                    const bool duplicate_name = candidate.system_name == requirement.system_name &&
+                        candidate.event_name == requirement.event_name;
+                    if (duplicate_identity || duplicate_name)
+                        return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
                 }
             }
             return artifact;

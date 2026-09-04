@@ -553,19 +553,25 @@ namespace lux::simulation::script
 
         [[nodiscard]] EScriptBackendResult prepareEvents(
             std::size_t instance_slot,
-            const lux::rdesc::LuaSourceScript& body
+            const ScriptInstanceCreateContext& context,
+            const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
+            const auto& requirements = artifact.description().event_requirements;
+            if (requirements.size() != context.events.size())
+                return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             auto prepared = std::span{
                 prepared_events.data() + instance_slot * event_source_capacity,
                 event_source_capacity
             };
             std::fill(prepared.begin(), prepared.end(), PreparedEventSource{});
-            for (const auto& requirement : body.event_sources)
+            for (const auto& requirement : requirements)
             {
+                const auto resolved = std::ranges::find(context.events, requirement);
+                if (resolved == context.events.end())
+                    return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 const auto found = std::ranges::find_if(event_sources, [&](const auto& candidate) noexcept {
-                    return candidate.system_name == requirement.system_name &&
-                        candidate.event_name == requirement.event_name;
+                    return candidate == requirement;
                 });
                 if (found == event_sources.end())
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
@@ -806,7 +812,7 @@ namespace lux::simulation::script
             const auto ability_result = self.prepareAbilities(instance_slot, context);
             if (ability_result != EScriptBackendResult::SUCCESS)
                 return ability_result;
-            const auto event_result = self.prepareEvents(instance_slot, *body);
+            const auto event_result = self.prepareEvents(instance_slot, context, artifact);
             if (event_result != EScriptBackendResult::SUCCESS)
                 return event_result;
             self.free_instances.pop_back();

@@ -13,6 +13,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -42,6 +43,24 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kScalarSymbol{0x4C55410BU};
     inline constexpr lux::script::ScriptSymbolId kEventWaitSymbol{0x4C55410DU};
     inline constexpr lux::script::ScriptSymbolId kTargetWaitSymbol{0x4C554110U};
+
+    [[nodiscard]] lux::script::ScriptEventSourceDescription eventSource(
+        EventPointId event,
+        std::string_view name,
+        lux::script::EScriptEventRoute route
+    )
+    {
+        return {
+            "Gameplay",
+            std::string(name),
+            kSystem.value,
+            event.value,
+            route,
+            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
+            lux::semantic::typeId("lux.i32"),
+            1U
+        };
+    }
 
     struct Provider final
     {
@@ -274,8 +293,16 @@ namespace
         };
         if (declare_event)
         {
-            lua.event_sources.push_back({"Gameplay", "damage"});
-            lua.event_sources.push_back({"Gameplay", "targeted"});
+            description.event_requirements.push_back(eventSource(
+                kAsyncEvent,
+                "damage",
+                lux::script::EScriptEventRoute::SIMULATION_BROADCAST
+            ));
+            description.event_requirements.push_back(eventSource(
+                kTargetEvent,
+                "targeted",
+                lux::script::EScriptEventRoute::ENTITY_TARGETED
+            ));
         }
         description.body = std::move(lua);
         std::vector<std::byte> payload;

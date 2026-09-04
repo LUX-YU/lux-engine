@@ -42,10 +42,11 @@ int main()
     assert(description.lifecycle.end_play == 2U);
     const auto& lua = std::get<lux::rdesc::LuaSourceScript>(description.body);
     assert(lua.suspension_capable_exports == std::vector<lux::script::ScriptSymbolId>{3U});
-    const std::vector<lux::rdesc::LuaSourceScript::EventSource> expected_event_sources{
-        {"Inventory", "changed"}
-    };
-    assert(lua.event_sources == expected_event_sources);
+    assert(description.event_requirements.size() == 1U);
+    assert(description.event_requirements.front().system_name == "Inventory");
+    assert(description.event_requirements.front().event_name == "changed");
+    assert(description.event_requirements.front().system_id == 51U);
+    assert(description.event_requirements.front().event_id == 52U);
     const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<
         installed_consumer::InventoryAbility
     >();

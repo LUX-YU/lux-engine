@@ -20,6 +20,21 @@ lux_script_abilities(
     LOGICAL_PATHS InventoryAbility.hpp
 )
 
+add_executable(inventory_event_schema_writer EventSchemaWriter.cpp)
+target_compile_features(inventory_event_schema_writer PRIVATE cxx_std_20)
+target_link_libraries(
+    inventory_event_schema_writer
+    PRIVATE lux::engine::toolchain::lua_script_packager
+)
+set(event_schema ${CMAKE_CURRENT_BINARY_DIR}/inventory.events.schema.json)
+add_custom_command(
+    OUTPUT ${event_schema}
+    COMMAND $<TARGET_FILE:inventory_event_schema_writer> ${event_schema}
+    DEPENDS inventory_event_schema_writer
+    VERBATIM
+)
+add_custom_target(inventory_event_schema DEPENDS ${event_schema})
+
 set(artifact ${CMAKE_CURRENT_BINARY_DIR}/inventory.lxsa)
 lux_package_lua_script(
     NAME inventory_lua_artifact
@@ -27,6 +42,8 @@ lux_package_lua_script(
     OUTPUT ${artifact}
     VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
     ABILITY_TARGETS inventory_ability_contract
+    EVENT_SCHEMAS ${event_schema}
+    EVENT_SCHEMA_TARGETS inventory_event_schema
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/inventory.symbols.json
     MODULE consumer.inventory.lua-script
     ENTRY InventoryBehavior

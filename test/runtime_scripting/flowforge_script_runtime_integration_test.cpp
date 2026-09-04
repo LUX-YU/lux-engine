@@ -1029,6 +1029,8 @@ int main(int argc, char** argv)
         }
     );
     assert(event_artifact);
+    assert(event_artifact->description().event_requirements ==
+        std::vector<lux::script::ScriptEventSourceDescription>{event_source});
     auto event_module = lux::script::loadNativeModule(
         event_artifact->payload(),
         "lux.test.flowforge.event-wait"
@@ -1070,6 +1072,43 @@ int main(int argc, char** argv)
         }
     };
     assert(event_backend);
+    auto mismatched_description = event_artifact->description();
+    ++mismatched_description.event_requirements.front().payload_schema_version;
+    auto mismatched_artifact = lux::script::ScriptArtifact::create(
+        std::move(mismatched_description),
+        std::vector<std::byte>(event_artifact->payload().begin(), event_artifact->payload().end())
+    );
+    assert(mismatched_artifact);
+    ArtifactSource mismatched_source{std::addressof(*mismatched_artifact), std::addressof(*event_module)};
+    NativeScriptBackend mismatched_backend{
+        {std::addressof(mismatched_source), &ArtifactSource::resolveModule},
+        NativeScriptBackendConfig{
+            .module_capacity = 1U,
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 2U,
+            .continuation_capacity = 2U,
+            .max_ability_imports_per_module = 2U,
+            .max_continuation_frame_bytes = 8192U,
+            .max_event_wait_imports_per_module = 2U
+        }
+    };
+    assert(mismatched_backend);
+    auto mismatched_descriptor = mismatched_backend.descriptor();
+    ScriptBackendInstance mismatched_instance;
+    const auto& mismatched_events = mismatched_artifact->description().event_requirements;
+    assert(mismatched_descriptor.createInstance(
+        mismatched_descriptor.context,
+        ScriptInstanceCreateContext{
+            assetId(),
+            SimulationScriptScope{},
+            nullptr,
+            {1U, 1U},
+            {},
+            mismatched_events
+        },
+        *mismatched_artifact,
+        mismatched_instance
+    ) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
     TestProvider event_wait_provider;
     const lux::script::ScriptAbilityBinding event_wait_binding{
         &kTestAbility,

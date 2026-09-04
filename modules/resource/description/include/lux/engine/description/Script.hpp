@@ -2,6 +2,7 @@
 
 #include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/function/script/ScriptApi.hpp>
+#include <lux/engine/function/script/ScriptEvent.hpp>
 #include <lux/engine/function/script/ScriptSymbol.hpp>
 
 #include <algorithm>
@@ -97,18 +98,8 @@ namespace lux::rdesc
 
     struct LuaSourceScript final
     {
-        struct EventSource final
-        {
-            std::string system_name;
-            std::string event_name;
-
-            friend bool operator==(const EventSource&, const EventSource&) noexcept = default;
-            friend auto operator<=>(const EventSource&, const EventSource&) noexcept = default;
-        };
-
         std::string entry;
         std::vector<lux::script::ScriptSymbolId> suspension_capable_exports;
-        std::vector<EventSource> event_sources;
 
         friend bool operator==(const LuaSourceScript&, const LuaSourceScript&)
             noexcept = default;
@@ -141,7 +132,7 @@ namespace lux::rdesc
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 9U;
+        static constexpr std::uint32_t kSchemaVersion = 10U;
 
         enum class Kind : std::uint8_t
         {
@@ -163,6 +154,7 @@ namespace lux::rdesc
         ScriptLifecycleRoles lifecycle;
         std::vector<ScriptDependency> dependencies;
         std::vector<ScriptApiRequirement> api_requirements;
+        std::vector<lux::script::ScriptEventSourceDescription> event_requirements;
         ScriptProvenance provenance;
         Body body;
 
@@ -240,20 +232,9 @@ namespace lux::rdesc
                     lua->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
                     !std::ranges::is_sorted(lua->suspension_capable_exports) ||
                     std::ranges::adjacent_find(lua->suspension_capable_exports) !=
-                        lua->suspension_capable_exports.end() ||
-                    lua->event_sources.size() > std::numeric_limits<std::uint32_t>::max() ||
-                    !std::ranges::is_sorted(lua->event_sources) ||
-                    std::ranges::adjacent_find(lua->event_sources) != lua->event_sources.end()))
+                        lua->suspension_capable_exports.end()))
             {
                 return false;
-            }
-            if (const auto* lua = std::get_if<LuaSourceScript>(&description.body))
-            {
-                for (const auto& source : lua->event_sources)
-                {
-                    if (source.system_name.empty() || source.event_name.empty())
-                        return false;
-                }
             }
             return true;
         }
@@ -300,6 +281,30 @@ namespace lux::rdesc
                     !contracts.insert(requirement.contract.hash()).second)
                 {
                     return false;
+                }
+            }
+            if (description.event_requirements.size() > std::numeric_limits<std::uint32_t>::max() ||
+                !std::ranges::is_sorted(
+                    description.event_requirements,
+                    lux::script::ScriptEventSourceLess{}
+                ))
+            {
+                return false;
+            }
+            for (std::size_t index{}; index < description.event_requirements.size(); ++index)
+            {
+                const auto& requirement = description.event_requirements[index];
+                if (!requirement.valid())
+                    return false;
+                for (std::size_t previous{}; previous < index; ++previous)
+                {
+                    const auto& candidate = description.event_requirements[previous];
+                    const bool duplicate_identity = candidate.system_id == requirement.system_id &&
+                        candidate.event_id == requirement.event_id;
+                    const bool duplicate_source_name = candidate.system_name == requirement.system_name &&
+                        candidate.event_name == requirement.event_name;
+                    if (duplicate_identity || duplicate_source_name)
+                        return false;
                 }
             }
             return true;

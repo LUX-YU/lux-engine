@@ -36,6 +36,12 @@ namespace lux::simulation::script
                 const lux::script::ScriptAbilityErasedMethodBinding* method{};
             };
 
+            struct PreparedEvent final
+            {
+                const lux::script::ScriptEventSourceDescription* source{};
+                const lux_script_event_wait_import_desc* import{};
+            };
+
             ModuleEntry* module{};
             void* state{};
             std::size_t state_size{};
@@ -43,6 +49,7 @@ namespace lux::simulation::script
             bool over_aligned{};
             std::size_t state_slot{(std::numeric_limits<std::size_t>::max)()};
             std::vector<PreparedAbility> abilities;
+            std::vector<PreparedEvent> events;
             lux_script_ability_runtime ability_runtime{};
             lux_script_native_instance_context native_context{};
         };
@@ -321,6 +328,50 @@ namespace lux::simulation::script
             return EScriptBackendResult::SUCCESS;
         }
 
+        [[nodiscard]] bool sameEventImport(
+            const lux_script_event_wait_import_desc& import,
+            const lux::script::ScriptEventSourceDescription& source
+        ) const noexcept
+        {
+            const auto route = static_cast<std::uint8_t>(source.route);
+            const auto& payload = source.payload;
+            return import.system_id == source.system_id && import.event_id == source.event_id &&
+                import.route == route && import.payload_schema_hash == source.payload_schema_hash &&
+                import.payload_schema_version == source.payload_schema_version && import.payload.name != nullptr &&
+                payload.canonical_name == import.payload.name && import.payload.type_id == payload.type_id &&
+                import.payload.kind == payload.abi_kind && import.payload.pass == LUX_SCRIPT_PASS_VALUE &&
+                import.payload.size == payload.size && import.payload.align == payload.alignment;
+        }
+
+        [[nodiscard]] EScriptBackendResult bindEvents(
+            Instance& instance,
+            const ScriptInstanceCreateContext& context
+        ) noexcept
+        {
+            const auto imports = instance.module->module->eventWaitImports();
+            if (imports.size() != context.events.size() || imports.size() > config.max_event_wait_imports_per_module)
+                return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+            try
+            {
+                instance.events.clear();
+                instance.events.reserve(imports.size());
+                for (const auto& import : imports)
+                {
+                    const auto found = std::ranges::find_if(context.events, [&](const auto& source) noexcept {
+                        return source.system_id == import.system_id && source.event_id == import.event_id;
+                    });
+                    if (found == context.events.end() || !sameEventImport(import, *found))
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                    instance.events.push_back({std::addressof(*found), std::addressof(import)});
+                }
+                return EScriptBackendResult::SUCCESS;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return EScriptBackendResult::ALLOCATION_FAILURE;
+            }
+        }
+
         static int invokeAbility(
             void* opaque,
             std::uint32_t ordinal,
@@ -418,11 +469,13 @@ namespace lux::simulation::script
             {
                 return -1;
             }
-            const auto imports = adapter.call->instance->module->module->eventWaitImports();
-            if (ordinal >= imports.size())
+            if (ordinal >= adapter.call->instance->events.size())
                 return -1;
-            const auto& source = imports[ordinal];
-            const auto route = source.route == 0U
+            const auto& prepared = adapter.call->instance->events[ordinal];
+            if (prepared.source == nullptr || prepared.import == nullptr)
+                return -1;
+            const auto& source = *prepared.source;
+            const auto route = source.route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
                 ? EEventRoute::SIMULATION_BROADCAST
                 : EEventRoute::ENTITY_TARGETED;
             const auto result = adapter.context->event_waits.wait({
@@ -433,7 +486,7 @@ namespace lux::simulation::script
             if (!result)
                 return -1000 - static_cast<std::int32_t>(result.error());
             if (adapter.continuation != nullptr)
-                adapter.continuation->waiting_event_payload = std::addressof(source.payload);
+                adapter.continuation->waiting_event_payload = std::addressof(prepared.import->payload);
             waiting_on->slot = result->slot;
             waiting_on->generation = result->generation;
             return 0;
@@ -655,6 +708,20 @@ namespace lux::simulation::script
                         return false;
                 }
             }
+            const auto event_imports = module.eventWaitImports();
+            if (event_imports.size() != artifact.description().event_requirements.size())
+                return false;
+            for (const auto& import : event_imports)
+            {
+                const auto found = std::ranges::find_if(
+                    artifact.description().event_requirements,
+                    [&](const auto& source) noexcept {
+                        return source.system_id == import.system_id && source.event_id == import.event_id;
+                    }
+                );
+                if (found == artifact.description().event_requirements.end() || !sameEventImport(import, *found))
+                    return false;
+            }
             return true;
         }
 
@@ -833,6 +900,15 @@ namespace lux::simulation::script
                 *instance = {};
                 self.free_instances.push_back(instance_slot);
                 return abilities;
+            }
+            const auto events = self.bindEvents(*instance, context);
+            if (events != EScriptBackendResult::SUCCESS)
+            {
+                if (instance->state)
+                    module->free_state_slots.push_back(instance->state_slot);
+                *instance = {};
+                self.free_instances.push_back(instance_slot);
+                return events;
             }
             ++self.live_instances;
             result.value = instance;

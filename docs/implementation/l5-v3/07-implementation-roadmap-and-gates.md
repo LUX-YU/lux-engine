@@ -2,7 +2,7 @@
 
 Status: **Normative Implementation Roadmap — Script framework frozen 2026-09-04**
 
-Qualified implementation checkpoint: production `647b80d6fdc4472840cdf23be3c35ab5b42d5ab0`.
+Qualified implementation checkpoint: production `e9870c05d31467f2a5f4bc9ae3426855038942ad`.
 
 > 本文定义当前唯一实施 DAG。旧版本中把 R0/S0/S1/S2 写成“下一步”的状态说明已过时；这些阶段的设计方向保留，但 implementation status 以本文为准。Coding agent 仍必须同时遵守 `08`；Script work 额外遵守 `11/12/13`；Plugin/package work 额外遵守 `14`；Pak/Product storage work 额外遵守 `15`；UI work 额外遵守 `10`。
 

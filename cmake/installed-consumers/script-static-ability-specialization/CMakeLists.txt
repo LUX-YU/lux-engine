@@ -14,6 +14,11 @@ endif()
 add_executable(lux_script_static_ability_consumer main.cpp)
 target_include_directories(lux_script_static_ability_consumer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(lux_script_static_ability_consumer PRIVATE cxx_std_20)
+if(MSVC)
+    target_compile_options(lux_script_static_ability_consumer PRIVATE /UNDEBUG)
+else()
+    target_compile_options(lux_script_static_ability_consumer PRIVATE -UNDEBUG)
+endif()
 target_link_libraries(lux_script_static_ability_consumer PRIVATE lux::engine::function::script_core)
 lux_script_abilities(
     TARGET lux_script_static_ability_consumer

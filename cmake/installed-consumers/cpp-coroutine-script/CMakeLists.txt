@@ -27,6 +27,11 @@ engine_add_type_runtime_info(
 add_executable(lux_cpp_coroutine_script_consumer main.cpp)
 target_include_directories(lux_cpp_coroutine_script_consumer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(lux_cpp_coroutine_script_consumer PRIVATE cxx_std_20)
+if(MSVC)
+    target_compile_options(lux_cpp_coroutine_script_consumer PRIVATE /UNDEBUG)
+else()
+    target_compile_options(lux_cpp_coroutine_script_consumer PRIVATE -UNDEBUG)
+endif()
 target_link_libraries(
     lux_cpp_coroutine_script_consumer
     PRIVATE

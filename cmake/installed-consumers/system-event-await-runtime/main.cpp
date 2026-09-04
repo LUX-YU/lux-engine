@@ -183,30 +183,6 @@ int main()
     auto simulation = std::move(simulation_builder).build();
     assert(simulation);
 
-    lux::rdesc::Script description;
-    description.module_name = "consumer.event-await.script";
-    description.exports.push_back({
-        "start",
-        kSymbol,
-        {lux::rdesc::makeScriptValueType<std::int32_t>(lux::semantic::EValuePass::CONST_REF)},
-        {}
-    });
-    description.body = lux::rdesc::CppStaticScript{"consumer-event-await"};
-    auto artifact = lux::script::ScriptArtifact::create(std::move(description), {});
-    assert(artifact);
-    ArtifactSource source{assetId(), std::move(*artifact)};
-
-    ScriptSystemDescriptionBuilder script_builder;
-    assert(script_builder.addMount({
-        ScriptMountId{1U},
-        source.id,
-        SimulationScriptMount{},
-        true,
-        {{kSymbol, EventScriptTarget{kSystem, kStart}}}
-    }));
-    auto scripts = std::move(script_builder).build(*simulation);
-    assert(scripts);
-
     EventPoint<SimulationBroadcastRoute, std::int32_t> start;
     EventPoint<SimulationBroadcastRoute, std::int32_t> ready;
     assert(start.prepare(1U, 1U, 1U) == EEndpointMutationError::NONE);
@@ -222,6 +198,31 @@ int main()
     );
     assert(projected_event && projected_event->system_id == kSystem.value &&
         projected_event->event_id == kReady.value && projected_event->payload.canonical_name == "lux.i32");
+
+    lux::rdesc::Script description;
+    description.module_name = "consumer.event-await.script";
+    description.exports.push_back({
+        "start",
+        kSymbol,
+        {lux::rdesc::makeScriptValueType<std::int32_t>(lux::semantic::EValuePass::CONST_REF)},
+        {}
+    });
+    description.event_requirements.push_back(*projected_event);
+    description.body = lux::rdesc::CppStaticScript{"consumer-event-await"};
+    auto artifact = lux::script::ScriptArtifact::create(std::move(description), {});
+    assert(artifact);
+    ArtifactSource source{assetId(), std::move(*artifact)};
+
+    ScriptSystemDescriptionBuilder script_builder;
+    assert(script_builder.addMount({
+        ScriptMountId{1U},
+        source.id,
+        SimulationScriptMount{},
+        true,
+        {{kSymbol, EventScriptTarget{kSystem, kStart}}}
+    }));
+    auto scripts = std::move(script_builder).build(*simulation);
+    assert(scripts);
 
     BackendState backend_state;
     const std::array backends{ScriptBackendDescriptor{

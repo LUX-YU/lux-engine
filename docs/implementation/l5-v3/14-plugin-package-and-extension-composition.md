@@ -2,6 +2,11 @@
 
 Status: **Normative Source Plugin / Extension Composition Contract — 2026-09-03**
 
+Implementation clarification (2026-09-04): the repository has no top-level `/extensions` owner. Optional
+Engine-owned implementations live under their canonical owner's `builtin/<domain>` tree; Physics2D therefore lives
+under `engine/domain/simulation/builtin/physics2d`. Reusable external project/plugin source packages remain
+out-of-tree source composition and continue to contribute through explicit owner-specific CMake/codegen seams.
+
 Parents:
 
 - `00-L5-architecture-overview.md`

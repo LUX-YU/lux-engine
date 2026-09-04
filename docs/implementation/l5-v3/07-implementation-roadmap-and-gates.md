@@ -1,8 +1,8 @@
 # L5 / Runtime Script / Editor / Product Storage 实施路线、Dependency DAG、Architecture Gates 与 Stop Conditions
 
-Status: **Normative Implementation Roadmap — v3 reconciled 2026-09-03**
+Status: **Normative Implementation Roadmap — Script framework frozen 2026-09-04**
 
-Reviewed public repository checkpoint: `main@bc15a84252c5740e6e47f3e1094810d6dd4ab711`.
+Qualified implementation checkpoint: production `647b80d6fdc4472840cdf23be3c35ab5b42d5ab0`.
 
 > 本文定义当前唯一实施 DAG。旧版本中把 R0/S0/S1/S2 写成“下一步”的状态说明已过时；这些阶段的设计方向保留，但 implementation status 以本文为准。Coding agent 仍必须同时遵守 `08`；Script work 额外遵守 `11/12/13`；Plugin/package work 额外遵守 `14`；Pak/Product storage work 额外遵守 `15`；UI work 额外遵守 `10`。
 
@@ -48,7 +48,8 @@ old Authoring/session architecture
 
 ## 2. 已完成的 Script 子 DAG
 
-当前 public main checkpoint 已记录到 S4/PB2；S4-P 是进入 S5 前的 portability gate。
+当前 implementation 已完成 S1–S6：S5 CLOSED/PASS，S6 COMPLETE/PASS，Script framework FROZEN。
+本节保留阶段定义和 gates 作为已执行 contract；下一步仅标记为 R1，不在本轮启动。
 
 已完成方向：
 

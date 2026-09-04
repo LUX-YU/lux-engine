@@ -2,6 +2,14 @@
 
 Status: **Normative Implementation Contract — v3 reconciled 2026-09-03**
 
+Implementation status (2026-09-04): **qualified and frozen through S6.** Canonical codegen now emits the existing
+dynamic C++ facade, the coroutine-aware facade and the optional `ScriptAbilityStatic<Ability, Provider>` adapter.
+The static adapter is product/composition-local, validates the same ContractId/schema/binding, never enters
+ScriptArtifact and does not create a runtime provider registry.
+
+`CppStaticScript` persists explicit coroutine-capable ScriptSymbolIds under Script schema 11 / LXSA wire 9.
+Generated Delay ergonomics remain a projection of the owner-side Delay Ability; they are not a second contract.
+
 Parent: `11-script-api-capabilities-coroutines-and-await.md`
 
 > 本文件冻结 Script Ability 的 physical ownership、stable identity、code/display naming、receiver/provider binding、CMake opt-in、generated artifacts 与 C++/Lua/FlowForge projection。Project-owned code and source Plugin Packages use the same public contract; there is no separate Plugin Script API registry.

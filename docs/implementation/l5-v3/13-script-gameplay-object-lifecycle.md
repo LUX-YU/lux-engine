@@ -2,6 +2,11 @@
 
 Status: **Normative Runtime Scripting Lifecycle Contract — 2026-09-03**
 
+Implementation status (2026-09-04): **qualified across C++ Static/coroutine, Native/FlowForge, LuaJIT and Lua
+5.4; frozen.** A C++ coroutine invocation frame is invocation-local and bounded. Retirement still destroys all
+ordinary backend continuations before synchronous EndPlay and physical object destruction. Coroutine support does
+not make BeginPlay or EndPlay asynchronous.
+
 Parents:
 
 - `11-script-api-capabilities-coroutines-and-await.md`

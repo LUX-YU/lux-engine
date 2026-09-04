@@ -2,6 +2,15 @@
 
 Status: **Normative Runtime Scripting Design — v3 reconciled 2026-09-03**
 
+Implementation status (2026-09-04): **S5 PASS; S6 PASS; Script framework frozen.** The existing
+ScriptSystem Awaitable/Continuation/ResumeRing remains the only scheduler. C++ coroutine handles and frames are
+private to `simulation_script_cpp_static`; Lua threads remain private to the Lua backend; FlowForge continues to
+compile into NativeModuleScript.
+
+The first production Physics Ability is the synchronous, backend-neutral `PhysicsQuery2D::overlapsBox` owned by
+`engine/domain/simulation/builtin/physics2d`. Box2D remains private. Navigation remains not ready and AssetLoad
+remains blocked by the residency-backed Script Asset handle contract; neither reopens the frozen framework.
+
 Parent documents: `00-L5-architecture-overview.md`, `08-normative-execution-contract.md`, `07-implementation-roadmap-and-gates.md`
 
 Companions:

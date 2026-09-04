@@ -1,10 +1,10 @@
-# Lux Engine Architecture / Implementation Docset — 2026-09-03 v3 reconciliation
+# Lux Engine Architecture / Implementation Docset — 2026-09-04 v3 framework freeze
 
 Status: **Normative architecture + current implementation roadmap**
 
-This revision reconciles the original 2026-09-02 v3 design with the runtime scripting work qualified on `main` through the Lua S4/PB2 checkpoint and with the currently approved post-S4 plan.
+This revision records the qualified completion of Script S1–S6 and freezes the Script framework for product/editor consumption.
 
-Reviewed public repository checkpoint for this reconciliation: `main@bc15a84252c5740e6e47f3e1094810d6dd4ab711` (`docs(perf): record final Lua PB2 baseline`). Later implementation may move ahead of this checkpoint; when that happens, coding agents MUST remap physical paths/targets to current repository facts without silently changing the semantic contracts in this docset.
+Qualified implementation checkpoint: production `647b80d6fdc4472840cdf23be3c35ab5b42d5ab0`; evidence follows in the implementation branch. Later implementation may move ahead of this checkpoint; coding agents MUST remap physical paths/targets to current repository facts without silently changing the semantic contracts in this docset.
 
 > The v3 direction is preserved: explicit ownership, reusable `modules/`, domain-owned contracts, product-clean dependency boundaries, Lux UI with private Dear ImGui backend, shared graph source/edit protocol, project-specific final products, backend-neutral script continuations, and no global service-locator architecture.
 
@@ -36,7 +36,13 @@ S3-H       transitive suspension / borrowed-lifetime hardening
 PB1        FlowForge end-to-end baseline
 S4         production Lua object + prepared Ability + coroutine bridge
 PB2        LuaJIT end-to-end baseline
+S4-P       portable LuaJIT/Lua 5.4 closure
+S5         Event.await + FlowForge/Lua projection + PhysicsQuery2D
+PB3        complete gameplay Event/Delay/Physics baseline
+S6         C++ coroutine frontend + generated Ability ergonomics + static specialization
 ```
+
+Status: **S5 CLOSED/PASS. S6 COMPLETE/PASS. SCRIPT FRAMEWORK FROZEN.**
 
 `S2.4 AssetLoad` is **not** considered complete merely because the coroutine bridge exists. It remains conditional on an approved script-visible stable/residency-backed Asset handle/value contract.
 
@@ -49,7 +55,7 @@ S4-P  portable Lua VM closure
       JIT is an optimization, never a script semantic
 ```
 
-The approved remaining Script roadmap is:
+The completed Script roadmap is:
 
 ```text
 S4-P
@@ -63,6 +69,8 @@ S6   C++ coroutine ergonomics + shipping static specialization
   ↓
 Script framework FREEZE
 ```
+
+`R1` is the next review activity. It is not started by this freeze revision.
 
 There is intentionally **no planned S7**. New Script/runtime work after S6 must be justified by a real product/editor/gameplay consumer.
 

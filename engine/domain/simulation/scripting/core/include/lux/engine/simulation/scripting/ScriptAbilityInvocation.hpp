@@ -20,6 +20,7 @@ namespace lux::simulation::script
         AWAITABLE_ALLOCATION_FAILURE = -3,
         STOPPING = -4,
         INVALID_START_RESULT = -5,
+        RESULT_NOT_TRANSPORTABLE = -6,
     };
 
     namespace detail
@@ -39,6 +40,8 @@ namespace lux::simulation::script
                 return invocationStatus(EScriptAbilityInvocationStatus::AWAITABLE_ALLOCATION_FAILURE);
             case EScriptAwaitableCreateError::STOPPING:
                 return invocationStatus(EScriptAbilityInvocationStatus::STOPPING);
+            case EScriptAwaitableCreateError::EXTERNAL_RESULT_NOT_TRANSPORTABLE:
+                return invocationStatus(EScriptAbilityInvocationStatus::RESULT_NOT_TRANSPORTABLE);
             case EScriptAwaitableCreateError::INVALID_INSTANCE:
             case EScriptAwaitableCreateError::INVALID_RESULT_TYPE:
                 return invocationStatus(EScriptAbilityInvocationStatus::INVALID_CONTEXT);

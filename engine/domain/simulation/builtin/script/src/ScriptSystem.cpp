@@ -1302,6 +1302,11 @@ namespace lux::simulation::script
             {
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_RESULT_TYPE);
             }
+            if (external_completion && result_type &&
+                !supportsExternalResumeLayout(result_type->size, result_type->alignment))
+            {
+                return lux::cxx::unexpected(EScriptAwaitableCreateError::EXTERNAL_RESULT_NOT_TRANSPORTABLE);
+            }
 
             if (stopping)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::STOPPING);
@@ -1539,6 +1544,7 @@ namespace lux::simulation::script
             case EScriptAwaitableCreateError::INVALID_INSTANCE:
                 return EScriptEventWaitError::INVALID_INSTANCE;
             case EScriptAwaitableCreateError::INVALID_RESULT_TYPE:
+            case EScriptAwaitableCreateError::EXTERNAL_RESULT_NOT_TRANSPORTABLE:
                 return EScriptEventWaitError::PAYLOAD_NOT_OWNABLE;
             case EScriptAwaitableCreateError::CAPACITY_EXCEEDED:
                 return EScriptEventWaitError::AWAITABLE_CAPACITY_EXCEEDED;
@@ -2842,6 +2848,21 @@ namespace lux::simulation::script
                     {
                         releaseMount(mount_slot, EMountState::INACTIVE, false);
                         return lux::cxx::unexpected(EScriptSystemError::SCRIPT_CAPABILITY_SCHEMA_MISMATCH);
+                    }
+                    for (const auto& method : resolved->methods)
+                    {
+                        if (method.kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
+                            continue;
+                        for (const auto& result : method.results)
+                        {
+                            const bool is_unsupported_result = result.size > limits.max_resume_payload_bytes ||
+                                !supportsExternalResumeLayout(result.size, result.alignment);
+                            if (is_unsupported_result)
+                            {
+                                releaseMount(mount_slot, EMountState::INACTIVE, false);
+                                return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
+                            }
+                        }
                     }
                     mount.capabilities.push_back(*resolved);
                 }

@@ -19,6 +19,30 @@
 #include <utility>
 #include <vector>
 
+namespace lux::simulation::script::test
+{
+    template <std::size_t Size, std::size_t Alignment = 1U>
+    struct alignas(Alignment) ExternalPayload final
+    {
+        std::array<std::byte, Size> bytes{};
+    };
+}
+
+namespace lux::semantic
+{
+    template <std::size_t Bytes, std::size_t Align>
+    struct TypeTraits<lux::simulation::script::test::ExternalPayload<Bytes, Align>> final
+    {
+        using Value = lux::simulation::script::test::ExternalPayload<Bytes, Align>;
+        inline static constexpr std::string_view CanonicalName = Bytes == 32U
+            ? "lux.test.external.transport.payload32.with.a.deliberately.long.canonical.name"
+            : Bytes == 33U ? "lux.test.external.payload33" : "lux.test.external.payload64";
+        inline static constexpr std::uint8_t AbiKind = LUX_SCRIPT_VK_STRUCT_REF;
+        inline static constexpr std::uint32_t Size = sizeof(Value);
+        inline static constexpr std::uint32_t Alignment = alignof(Value);
+    };
+}
+
 namespace
 {
     using namespace lux::simulation;
@@ -28,6 +52,8 @@ namespace
     inline constexpr HookPointId kHook{0x5102U};
     inline constexpr HookPointId kHookSecond{0x5104U};
     inline constexpr HookPointId kHookThird{0x5105U};
+    inline constexpr EventPointId kLargeEvent{0x5108U};
+    using LargePayload = lux::simulation::script::test::ExternalPayload<64U>;
     inline constexpr lux::script::ScriptSymbolId kSymbol{0x5103U};
     inline constexpr lux::script::ScriptSymbolId kSymbolSecond{0x5106U};
     inline constexpr lux::script::ScriptSymbolId kSymbolThird{0x5107U};
@@ -129,9 +155,14 @@ namespace
             makeHookPointSpec<void()>(kHookSecond, "tick-second"),
             makeHookPointSpec<void()>(kHookThird, "tick-third")
         };
+        constexpr std::array events{makeEventPointSpec<LargePayload>(
+            kLargeEvent, "large", kHook, EEventRoute::SIMULATION_BROADCAST,
+            lux::semantic::TypeTraits<LargePayload>::CanonicalName, 1U
+        )};
         const SimulationSystemDescription system{
             .type = {.canonical_name = "lux.test.script-continuation", .version = 1U},
-            .hooks = hooks};
+            .hooks = hooks,
+            .events = events};
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem(kSystem, "script-continuation", system));
         auto result = std::move(builder).build();
@@ -200,6 +231,9 @@ namespace
         std::thread::id resume_thread;
         std::vector<ScriptAwaitableCompletion> completions;
         std::optional<lux::script::ScriptAbilityStarter<TestAbility>> ability_starter;
+        ScriptStepResult (*custom_step)(BackendState&, ScriptStepContext&) noexcept{};
+        std::size_t provider_starts{};
+        std::size_t expected_payload_size{};
     };
 
     int invokeSync(lux_script_call_frame* frame)
@@ -307,6 +341,10 @@ namespace
         else
         {
             assert(packet.state == EScriptAwaitableState::READY);
+            if (owner.expected_payload_size != 0U)
+            {
+                assert(packet.value != nullptr && packet.value->bytes.size() == owner.expected_payload_size);
+            }
             if (owner.enable_ability_async)
             {
                 assert(packet.value != nullptr && packet.value->type.valid());
@@ -355,7 +393,11 @@ namespace
         auto& state = *static_cast<BackendState*>(context);
         ++state.step_calls;
         ScriptStepResult result;
-        if (state.enable_ability_async)
+        if (state.custom_step != nullptr)
+        {
+            result = state.custom_step(state, step);
+        }
+        else if (state.enable_ability_async)
         {
             assert(state.ability_starter.has_value());
             result = invokeScriptAbilityAsync<std::uint64_t>(
@@ -394,11 +436,37 @@ namespace
             bool require_capability,
             std::size_t mount_count = 1U,
             bool entity_scope = false,
-            bool quota_layout = false
+            bool quota_layout = false,
+            bool owner_large_result = false
         )
             : simulation(makeSimulation()), artifact(makeArtifact(require_capability)), asset(assetId()),
               object(objectId()), uses_entity_scope(entity_scope)
         {
+            if (owner_large_result)
+            {
+                auto source = artifact.description();
+                using Traits = lux::semantic::TypeTraits<LargePayload>;
+                source.event_requirements.push_back({
+                    "script-continuation", "large", kSystem.value, kLargeEvent.value,
+                    lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+                    {std::string{Traits::CanonicalName}, lux::semantic::typeId(Traits::CanonicalName),
+                        Traits::AbiKind, Traits::Size, Traits::Alignment},
+                    lux::semantic::typeId(Traits::CanonicalName), 1U
+                });
+                auto updated = lux::script::ScriptArtifact::create(std::move(source), {});
+                assert(updated);
+                artifact = std::move(*updated);
+                assert(large_event.prepare(1U, 2U, 1U) == EEndpointMutationError::NONE);
+                large_bridge = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, LargePayload>>(
+                    kSystem, kLargeEvent, large_event,
+                    [](const LargePayload& payload, std::span<std::byte> bytes) noexcept {
+                        if (bytes.size() != sizeof(payload))
+                            return false;
+                        std::memcpy(bytes.data(), &payload, sizeof(payload));
+                        return true;
+                    });
+                large_endpoint = large_bridge->descriptor();
+            }
             if (uses_entity_scope)
                 entity = registry.create();
             ScriptSystemDescriptionBuilder builder;
@@ -471,7 +539,7 @@ namespace
                 std::span{&backend, 1U},
                 include_endpoint ? std::span<const ScriptHookEndpointDescriptor>{endpoints}
                                  : std::span<const ScriptHookEndpointDescriptor>{},
-                {});
+                large_bridge ? std::span{&large_endpoint, 1U} : std::span<const ScriptEventEndpointDescriptor>{});
         }
 
         static bool resolveArtifact(void* context,
@@ -514,6 +582,9 @@ namespace
         std::array<ScriptHookEndpointDescriptor, 3U> endpoints;
         BackendState backend_state;
         ScriptBackendDescriptor backend;
+        EventPoint<SimulationBroadcastRoute, LargePayload> large_event;
+        std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, LargePayload>> large_bridge;
+        ScriptEventEndpointDescriptor large_endpoint;
     };
 
     [[nodiscard]] ScriptRuntimeLimits limits(std::size_t instances = 1U,
@@ -1005,8 +1076,66 @@ namespace
     }
 } // namespace
 
+template <std::size_t Size, std::size_t Alignment = 1U>
+void testExternalAdmission()
+{
+    using Payload = lux::simulation::script::test::ExternalPayload<Size, Alignment>;
+    constexpr bool Supported = sizeof(Payload) <= 32U && alignof(Payload) <= alignof(std::max_align_t);
+    Harness harness{false};
+    harness.backend_state.enable_step = true;
+    harness.backend_state.expected_payload_size = sizeof(Payload);
+    harness.backend_state.custom_step = [](BackendState& state, ScriptStepContext& step) noexcept {
+        return invokeScriptAbilityAsync<Payload>(step,
+            [&state](lux::script::ScriptAbilityCompletion<Payload> completion) noexcept {
+                ++state.provider_starts;
+                static_cast<void>(completion.success(Payload{}));
+                return lux::script::ScriptAbilityStartResult{};
+            });
+    };
+    auto runtime_limits = limits();
+    runtime_limits.max_resume_payload_bytes = 128U;
+    auto created = harness.create(runtime_limits, {});
+    assert(created);
+    auto& system = *created;
+    assert(system.prepare());
+    assert(harness.hook.dispatch() == 1U);
+    assert(harness.backend_state.provider_starts == (Supported ? 1U : 0U));
+    assert(system.activeAwaitableCount() == (Supported ? 1U : 0U));
+    assert(system.activeContinuationCount() == (Supported ? 1U : 0U));
+    static_cast<void>(system.executeStablePoint());
+    assert(harness.backend_state.resume_calls == (Supported ? 1U : 0U));
+    assert(system.activeAwaitableCount() == 0U && system.activeContinuationCount() == 0U);
+    assert(system.shutdown());
+}
+
 int main()
 {
+    testExternalAdmission<32U>();
+    testExternalAdmission<33U>();
+    testExternalAdmission<64U>();
+    testExternalAdmission<32U, 32U>();
+    {
+        Harness harness{false, 1U, false, false, true};
+        harness.backend_state.enable_step = true;
+        harness.backend_state.expected_payload_size = sizeof(LargePayload);
+        harness.backend_state.custom_step = [](BackendState&, ScriptStepContext& step) noexcept {
+            const auto waiting = step.event_waits.wait({kSystem, kLargeEvent, EEventRoute::SIMULATION_BROADCAST});
+            assert(waiting);
+            return ScriptStepResult::suspended(*waiting);
+        };
+        auto created = harness.create(limits(), {});
+        assert(created && created->prepare());
+        assert(harness.hook.dispatch() == 1U);
+        {
+            auto writer = harness.large_event.begin(0U);
+            assert(writer.record(LargePayload{}));
+        }
+        assert(harness.large_event.drain() == 1U);
+        assert(harness.backend_state.resume_calls == 0U);
+        assert(created->executeStablePoint());
+        assert(harness.backend_state.resume_calls == 1U);
+        assert(created->shutdown());
+    }
     testCapabilities();
     testSyncAndContinuation();
     testAsyncAbilityInvocation();

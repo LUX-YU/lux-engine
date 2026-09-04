@@ -430,10 +430,18 @@ namespace lux::simulation::script
         ScriptAwaitableCompletion completion;
     };
 
+    [[nodiscard]] constexpr bool supportsExternalResumeLayout(std::size_t size, std::size_t alignment) noexcept
+    {
+        const bool is_valid_alignment = alignment != 0U && (alignment & (alignment - 1U)) == 0U;
+        return size <= ScriptOwnedBytes::InlineCapacity && is_valid_alignment &&
+            alignment <= alignof(std::max_align_t);
+    }
+
     enum class EScriptAwaitableCreateError : std::uint8_t
     {
         INVALID_INSTANCE,
         INVALID_RESULT_TYPE,
+        EXTERNAL_RESULT_NOT_TRANSPORTABLE,
         CAPACITY_EXCEEDED,
         ALLOCATION_FAILURE,
         STOPPING,

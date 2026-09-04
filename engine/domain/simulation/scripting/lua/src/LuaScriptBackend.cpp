@@ -14,10 +14,8 @@
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <new>
 #include <optional>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -365,6 +363,47 @@ namespace lux::simulation::script
             Instance* instance{};
             LuaContinuation* continuation{};
             ScriptStepContext* step{};
+            ExecutionFrame* previous{};
+        };
+
+        class ExecutionScope final
+        {
+        public:
+            ExecutionScope(State& owner, ExecutionFrame frame) noexcept
+                : owner_(std::addressof(owner)), frame_(frame)
+            {
+                if (owner.execution_depth >= owner.execution_depth_capacity)
+                    return;
+                frame_.previous = owner.active_execution;
+                owner.active_execution = std::addressof(frame_);
+                ++owner.execution_depth;
+                owner.execution_depth_high_water = (std::max)(
+                    owner.execution_depth_high_water,
+                    owner.execution_depth
+                );
+                active_ = true;
+            }
+
+            ExecutionScope(const ExecutionScope&) = delete;
+            ExecutionScope& operator=(const ExecutionScope&) = delete;
+
+            ~ExecutionScope()
+            {
+                if (!active_)
+                    return;
+                owner_->active_execution = frame_.previous;
+                --owner_->execution_depth;
+            }
+
+            [[nodiscard]] explicit operator bool() const noexcept
+            {
+                return active_;
+            }
+
+        private:
+            State* owner_{};
+            ExecutionFrame frame_;
+            bool active_{};
         };
 
         State(
@@ -418,7 +457,6 @@ namespace lux::simulation::script
             std::ranges::sort(event_sources, {}, [](const auto& source) noexcept {
                 return std::pair{std::string_view(source.system_name), std::string_view(source.event_name)};
             });
-            execution_stack.reserve(execution_depth_capacity);
             instances.resize(instance_capacity);
             free_instances.reserve(instance_capacity);
             for (std::size_t index = instance_capacity; index > 0U; --index)
@@ -995,7 +1033,6 @@ namespace lux::simulation::script
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            std::lock_guard lock{self.mutex};
             if (self.free_instances.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(
@@ -1100,7 +1137,6 @@ namespace lux::simulation::script
         {
             auto& self = *static_cast<State*>(opaque);
             auto* instance = static_cast<Instance*>(instance_value.value);
-            std::lock_guard lock{self.mutex};
             if (!instance)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
             if (self.free_prepared_calls.empty())
@@ -1372,31 +1408,6 @@ namespace lux::simulation::script
             return pushComponentValue(state, description.abi_kind, value);
         }
 
-        [[nodiscard]] ExecutionFrame* currentExecution(lua_State* thread) noexcept
-        {
-            for (auto current = execution_stack.rbegin(); current != execution_stack.rend(); ++current)
-            {
-                ++execution_stack_lookup_probes;
-                if (current->thread == thread)
-                    return std::addressof(*current);
-            }
-            return nullptr;
-        }
-
-        [[nodiscard]] bool pushExecution(ExecutionFrame frame) noexcept
-        {
-            if (execution_stack.size() >= execution_depth_capacity)
-                return false;
-            execution_stack.push_back(frame);
-            return true;
-        }
-
-        void popExecution(lua_State* thread) noexcept
-        {
-            if (!execution_stack.empty() && execution_stack.back().thread == thread)
-                execution_stack.pop_back();
-        }
-
         static int abilityFailure(
             lua_State* state,
             LuaContinuation* continuation,
@@ -1418,9 +1429,9 @@ namespace lux::simulation::script
                 static_cast<std::size_t>(raw_ordinal) >= self->ability_methods.size();
             if (is_invalid_ordinal)
                 return abilityFailure(state, nullptr, kInvalidCall, "invalid Lux Script Ability method");
-            auto* execution = self->currentExecution(state);
+            auto* execution = self->active_execution;
             const auto ordinal = static_cast<std::size_t>(raw_ordinal);
-            if (execution == nullptr || execution->instance == nullptr)
+            if (execution == nullptr || execution->thread != state || execution->instance == nullptr)
             {
                 return abilityFailure(
                     state,
@@ -1598,9 +1609,10 @@ namespace lux::simulation::script
                 static_cast<std::size_t>(raw_ordinal) >= self->event_sources.size();
             if (is_invalid_ordinal)
                 return abilityFailure(state, nullptr, kInvalidCall, "invalid Lux Script Event source");
-            auto* execution = self->currentExecution(state);
+            auto* execution = self->active_execution;
             const auto ordinal = static_cast<std::size_t>(raw_ordinal);
-            const bool is_invalid_context = execution == nullptr || execution->instance == nullptr ||
+            const bool is_invalid_context = execution == nullptr || execution->thread != state ||
+                execution->instance == nullptr ||
                 execution->continuation == nullptr || execution->step == nullptr || lua_gettop(state) != 0;
             if (is_invalid_context)
             {
@@ -1649,7 +1661,6 @@ namespace lux::simulation::script
             if (!call.active || !call.instance || !call.function)
                 return -1;
             auto& self = *call.instance->owner;
-            std::lock_guard lock{self.mutex};
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, self.traceback_ref);
             const auto error_index = lua_gettop(self.state);
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, call.function->function_ref);
@@ -1674,7 +1685,11 @@ namespace lux::simulation::script
                 }
                 ++argument_count;
             }
-            if (!self.pushExecution({self.state, call.instance, nullptr, nullptr}))
+            ExecutionScope execution{
+                self,
+                {self.state, call.instance, nullptr, nullptr, nullptr}
+            };
+            if (!execution)
             {
                 lua_settop(self.state, error_index - 1);
                 return kExecutionDepthCapacity;
@@ -1685,11 +1700,9 @@ namespace lux::simulation::script
                     static_cast<int>(frame->return_count),
                     error_index) != LUA_OK)
             {
-                self.popExecution(self.state);
                 lua_settop(self.state, error_index - 1);
                 return kLuaFailure;
             }
-            self.popExecution(self.state);
             for (std::uint32_t index{}; index < frame->return_count; ++index)
             {
                 const auto stack_index =
@@ -1766,7 +1779,6 @@ namespace lux::simulation::script
             auto& continuation = *static_cast<LuaContinuation*>(opaque);
             if (continuation.owner == nullptr)
                 return;
-            std::lock_guard lock{continuation.owner->mutex};
             destroyLuaContinuation(continuation);
         }
 
@@ -1891,7 +1903,6 @@ namespace lux::simulation::script
             auto& continuation = *static_cast<LuaContinuation*>(opaque);
             if (continuation.owner == nullptr)
                 return ScriptStepResult::failed(kInvalidResume);
-            std::lock_guard lock{continuation.owner->mutex};
             if (!continuation.active || continuation.owner == nullptr || continuation.instance == nullptr ||
                 continuation.call == nullptr || continuation.thread == nullptr ||
                 packet.awaitable != continuation.waiting_on)
@@ -1912,12 +1923,17 @@ namespace lux::simulation::script
             continuation.waiting_on = {};
             continuation.pending_operation = EPendingOperation::NONE;
             continuation.failure_status = 0;
-            if (!continuation.owner->pushExecution({
+            ExecutionScope execution{
+                *continuation.owner,
+                {
                     continuation.thread,
                     continuation.instance,
                     std::addressof(continuation),
-                    std::addressof(context)
-                }))
+                    std::addressof(context),
+                    nullptr
+                }
+            };
+            if (!execution)
             {
                 return ScriptStepResult::failed(kExecutionDepthCapacity);
             }
@@ -1926,7 +1942,6 @@ namespace lux::simulation::script
                 nullptr,
                 argument_count
             );
-            continuation.owner->popExecution(continuation.thread);
             return finishLuaStep(continuation, resume, false);
         }
 
@@ -1941,7 +1956,6 @@ namespace lux::simulation::script
             if (!call.active || call.instance == nullptr || call.function == nullptr || frame.return_count != 0U)
                 return ScriptStepResult::failed(kInvalidCall);
             auto& self = *call.instance->owner;
-            std::lock_guard lock{self.mutex};
             auto* continuation = self.acquireContinuation(*call.instance, call);
             if (continuation == nullptr)
                 return ScriptStepResult::failed(kContinuationCapacity);
@@ -1965,7 +1979,11 @@ namespace lux::simulation::script
                 }
                 ++argument_count;
             }
-            if (!self.pushExecution({continuation->thread, call.instance, continuation, std::addressof(context)}))
+            ExecutionScope execution{
+                self,
+                {continuation->thread, call.instance, continuation, std::addressof(context), nullptr}
+            };
+            if (!execution)
             {
                 destroyLuaContinuation(*continuation);
                 return ScriptStepResult::failed(kExecutionDepthCapacity);
@@ -1975,7 +1993,6 @@ namespace lux::simulation::script
                 nullptr,
                 static_cast<int>(argument_count)
             );
-            self.popExecution(continuation->thread);
             const auto step_result = finishLuaStep(*continuation, resume, true);
             if (step_result.state == EScriptStepState::SUSPENDED && step_result.valid())
             {
@@ -1992,7 +2009,6 @@ namespace lux::simulation::script
         {
             auto& self = *static_cast<State*>(opaque);
             auto* call = static_cast<PreparedCall*>(method.token);
-            std::lock_guard lock{self.mutex};
             if (!call || !call->active)
                 return;
             call->instance = nullptr;
@@ -2009,7 +2025,6 @@ namespace lux::simulation::script
         {
             auto& self = *static_cast<State*>(opaque);
             auto* instance = static_cast<Instance*>(instance_value.value);
-            std::lock_guard lock{self.mutex};
             if (!instance)
                 return;
             if (instance->active_continuations != 0U)
@@ -2036,7 +2051,6 @@ namespace lux::simulation::script
         lua_State* state{};
         lux::script::lua::LuaRuntimeInfo runtime_info;
         bool vm_configured{};
-        std::recursive_mutex mutex;
         int traceback_ref{LUA_NOREF};
         std::size_t instance_capacity{};
         std::size_t prepared_call_capacity{};
@@ -2060,9 +2074,10 @@ namespace lux::simulation::script
         PreparedOrdinalTable<PreparedEventSource> prepared_events;
         std::vector<LuaContinuation> continuations;
         std::vector<std::size_t> free_continuations;
-        std::vector<ExecutionFrame> execution_stack;
+        ExecutionFrame* active_execution{};
+        std::size_t execution_depth{};
+        std::size_t execution_depth_high_water{};
         std::size_t vm_coroutine_creations{};
-        std::size_t execution_stack_lookup_probes{};
     };
 
     lux::cxx::expected<
@@ -2306,7 +2321,6 @@ namespace lux::simulation::script
     {
         if (!state_)
             return {};
-        std::lock_guard lock{state_->mutex};
         const auto abilities = state_->prepared_abilities.stats();
         const auto events = state_->prepared_events.stats();
         return {
@@ -2316,7 +2330,7 @@ namespace lux::simulation::script
             events.high_water,
             abilities.storage_bytes + events.storage_bytes,
             state_->vm_coroutine_creations,
-            state_->execution_stack_lookup_probes
+            state_->execution_depth_high_water
         };
     }
 

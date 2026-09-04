@@ -88,7 +88,7 @@ namespace lux::simulation::script
         std::size_t prepared_event_high_water{};
         std::size_t prepared_binding_bytes{};
         std::size_t vm_coroutine_creations{};
-        std::size_t execution_stack_lookup_probes{};
+        std::size_t execution_depth_high_water{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final

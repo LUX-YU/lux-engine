@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp>
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/ScriptContractValidation.hpp>
 #include <lux/engine/simulation/scripting/detail/BoundedFrameStorage.hpp>
@@ -31,13 +32,6 @@ namespace lux::simulation::script
 
         struct Instance final
         {
-            struct PreparedAbility final
-            {
-                void* context{};
-                const void* dispatch{};
-                const lux::script::ScriptAbilityErasedMethodBinding* method{};
-            };
-
             struct PreparedEvent final
             {
                 const lux::script::ScriptEventSourceDescription* source{};
@@ -50,9 +44,8 @@ namespace lux::simulation::script
             std::size_t state_align{1U};
             bool over_aligned{};
             std::size_t state_slot{(std::numeric_limits<std::size_t>::max)()};
-            std::vector<PreparedAbility> abilities;
+            std::vector<lux_script_prepared_ability> abilities;
             std::vector<PreparedEvent> events;
-            lux_script_ability_runtime ability_runtime{};
             lux_script_native_instance_context native_context{};
         };
 
@@ -89,6 +82,7 @@ namespace lux::simulation::script
               module_capacity(source_config.module_capacity),
               instance_capacity(source_config.instance_capacity),
               record_layouts(source_config.record_layouts),
+              ability_contributions(source_config.abilities.begin(), source_config.abilities.end()),
               frame_storage(std::move(source_frame_storage))
         {
             modules.reserve(module_capacity);
@@ -277,6 +271,24 @@ namespace lux::simulation::script
                 instance.abilities.reserve(imports.size());
                 for (const auto& import : imports)
                 {
+                    const auto contribution = std::ranges::find_if(ability_contributions, [&](const auto& candidate) {
+                        return candidate.description != nullptr &&
+                            candidate.description->id.hash() == import.contract_id &&
+                            candidate.description->id.name() == import.contract_name;
+                    });
+                    if (contribution == ability_contributions.end() ||
+                        contribution->description->schema_hash != import.schema_hash ||
+                        contribution->description->schema_version != import.schema_version)
+                    {
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                    }
+                    const auto projected = std::ranges::find_if(contribution->methods, [&](const auto& candidate) {
+                        return candidate.method.hash() == import.method_id &&
+                            candidate.method.name() == import.method_name;
+                    });
+                    if (projected == contribution->methods.end() || projected->entry == nullptr)
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+
                     const PreparedScriptApiCapability* capability{};
                     for (const auto& candidate : context.capabilities)
                     {
@@ -318,15 +330,23 @@ namespace lux::simulation::script
                         if (!sameType(import.results[index], method->results[index]))
                             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                     }
-                    instance.abilities.push_back({capability->context, capability->dispatch, method});
+                    instance.abilities.push_back({
+                        capability->context,
+                        capability->dispatch,
+                        projected->entry
+                    });
                 }
             }
             catch (const std::bad_alloc&)
             {
                 return EScriptBackendResult::ALLOCATION_FAILURE;
             }
-            instance.ability_runtime = {std::addressof(instance), &invokeAbility};
-            instance.native_context = {instance.state, std::addressof(instance.ability_runtime)};
+            instance.native_context = {
+                instance.state,
+                instance.abilities.data(),
+                static_cast<std::uint32_t>(instance.abilities.size()),
+                0U
+            };
             return EScriptBackendResult::SUCCESS;
         }
 
@@ -359,30 +379,6 @@ namespace lux::simulation::script
             }
         }
 
-        static int invokeAbility(
-            void* opaque,
-            std::uint32_t ordinal,
-            const lux_script_value_slot* arguments,
-            std::uint32_t argument_count,
-            lux_script_value_slot* results,
-            std::uint32_t result_count
-        ) noexcept
-        {
-            auto& instance = *static_cast<Instance*>(opaque);
-            if (ordinal >= instance.abilities.size())
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            const auto& prepared = instance.abilities[ordinal];
-            if (prepared.method == nullptr || prepared.method->invoke == nullptr)
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            const auto invoked = prepared.method->invoke(
-                prepared.context,
-                prepared.dispatch,
-                {arguments, argument_count},
-                {results, result_count}
-            );
-            return invoked ? 0 : invoked.error().status;
-        }
-
         static int invokePrepared(lux_script_call_frame* frame) noexcept
         {
             if (frame == nullptr || frame->user_context == nullptr)
@@ -398,49 +394,6 @@ namespace lux::simulation::script
             frame->user_context = previous_user;
             frame->native_instance = previous_native;
             return status;
-        }
-
-        static int startAsyncAbility(
-            void* opaque,
-            std::uint32_t ordinal,
-            const lux_script_value_slot* arguments,
-            std::uint32_t argument_count,
-            lux_script_async_token* waiting_on
-        ) noexcept
-        {
-            auto& adapter = *static_cast<StepAdapter*>(opaque);
-            if (adapter.call == nullptr || adapter.call->instance == nullptr || adapter.context == nullptr ||
-                waiting_on == nullptr || ordinal >= adapter.call->instance->abilities.size())
-            {
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            }
-            const auto& prepared = adapter.call->instance->abilities[ordinal];
-            if (prepared.method == nullptr ||
-                prepared.method->kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION ||
-                prepared.method->start == nullptr || prepared.method->results.size() > 1U)
-            {
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            }
-            const auto* result_description = prepared.method->results.empty()
-                ? nullptr
-                : std::addressof(prepared.method->results.front());
-            const auto result = invokeScriptAbilityAsyncErased(
-                *adapter.context,
-                prepared.context,
-                prepared.dispatch,
-                prepared.method->start,
-                {arguments, argument_count},
-                result_description
-            );
-            if (result.state == EScriptStepState::SUSPENDED && result.valid())
-            {
-                if (adapter.continuation != nullptr)
-                    adapter.continuation->waiting_event_payload = nullptr;
-                waiting_on->slot = result.waiting_on.slot;
-                waiting_on->generation = result.waiting_on.generation;
-                return 0;
-            }
-            return result.state == EScriptStepState::FAILED && result.error.valid() ? result.error.status : -1;
         }
 
         static int startEventWait(
@@ -580,7 +533,7 @@ namespace lux::simulation::script
                 };
             }
             StepAdapter adapter{continuation.call, std::addressof(context), std::addressof(continuation)};
-            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility, &startEventWait};
+            const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = continuation.call->function->step->resume(
                 std::addressof(host),
@@ -617,7 +570,7 @@ namespace lux::simulation::script
             frame.native_instance = std::addressof(prepared.instance->native_context);
             frame.user_context = prepared.instance->state;
             StepAdapter adapter{std::addressof(prepared), std::addressof(context), continuation};
-            const lux_script_step_host host{std::addressof(adapter), &startAsyncAbility, &startEventWait};
+            const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = prepared.function->step->start(
                 std::addressof(frame),
@@ -1002,6 +955,7 @@ namespace lux::simulation::script
         std::size_t instance_capacity{};
         std::size_t live_instances{};
         NativeScriptRecordLayoutResolver record_layouts;
+        std::vector<lux::script::native::ScriptAbilityNativeContribution> ability_contributions;
         std::vector<ModuleEntry> modules;
         std::unordered_map<lux::asset::AssetId, std::size_t> module_index;
         std::vector<Instance> instances;
@@ -1012,6 +966,23 @@ namespace lux::simulation::script
         std::vector<std::size_t> free_continuations;
         detail::BoundedFrameStorage frame_storage;
     };
+
+    ScriptStepContext* detail::NativeAbilityProjectionAccess::step(void* invocation) noexcept
+    {
+        if (invocation == nullptr)
+            return nullptr;
+        auto& adapter = *static_cast<NativeScriptBackend::State::StepAdapter*>(invocation);
+        return adapter.context;
+    }
+
+    void detail::NativeAbilityProjectionAccess::beginAbility(void* invocation) noexcept
+    {
+        if (invocation == nullptr)
+            return;
+        auto& adapter = *static_cast<NativeScriptBackend::State::StepAdapter*>(invocation);
+        if (adapter.continuation != nullptr)
+            adapter.continuation->waiting_event_payload = nullptr;
+    }
 
     NativeScriptBackend::NativeScriptBackend(
         NativeModuleResolver resolver,
@@ -1029,6 +1000,16 @@ namespace lux::simulation::script
         if (!resolver.resolve || is_invalid_config)
         {
             return;
+        }
+        for (std::size_t index{}; index < config.abilities.size(); ++index)
+        {
+            if (!config.abilities[index].valid())
+                return;
+            for (std::size_t previous{}; previous < index; ++previous)
+            {
+                if (config.abilities[previous].description->id == config.abilities[index].description->id)
+                    return;
+            }
         }
         try
         {

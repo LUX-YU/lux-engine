@@ -1,0 +1,56 @@
+#pragma once
+// Generated typed Native projection. Include the matching .ability.generated.hpp first.
+#include <lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp>
+
+#include <array>
+#include <type_traits>
+#include <utility>
+
+namespace lux::script::native
+{
+{% for rec_index in marked_record_decls %}{% set rec = decl_from_index(rec_index) %}{% set receiver = annotation_get_for_or(rec, "luxability::contract", "receiver", "none") %}{% if receiver == "none" %}{% set ability_methods = rec.static_method_decls %}{% else %}{% set ability_methods = rec.method_decls %}{% endif %}
+    template <>
+    struct ScriptAbilityNativeTraits<::{{ rec.fq_name }}> final
+    {
+        using AbilityTraits = ScriptAbilityTraits<::{{ rec.fq_name }}>;
+{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}
+{% if kind == "async_operation" %}        [[nodiscard]] static int {{ method.spelling }}(
+            void* invocation,
+            void* provider,
+            const void* dispatch_value{% for param_id in method.params %},{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}
+            std::remove_cvref_t<{{ type.id }}> {{ param.name }}{% endfor %},
+            lux_script_async_token* waiting_on
+        ) noexcept
+        {
+            const auto& dispatch = *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+            return lux::simulation::script::detail::startNativeAbility<{{ method.result_type_id }}>(
+                invocation,
+                waiting_on,
+                [provider, &dispatch{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %}](
+                    ScriptAbilityCompletion<{{ method.result_type_id }}> completion
+                ) noexcept
+                {
+                    return dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %}, std::move(completion));
+                }
+            );
+        }
+{% else %}        [[nodiscard]] static {{ method.result_type_id }} {{ method.spelling }}(
+            void* provider,
+            const void* dispatch_value{% for param_id in method.params %},{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}
+            std::remove_cvref_t<{{ type.id }}> {{ param.name }}{% endfor %}
+        ) noexcept
+        {
+            const auto& dispatch = *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+{% if method.result_type_id == "void" %}            dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
+{% else %}            return dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
+{% endif %}        }
+{% endif %}{% endif %}{% endfor %}
+        inline static const std::array<ScriptAbilityNativeMethodProjection, AbilityTraits::Methods.size()> Methods{
+{% set emitted = false %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% if emitted %},
+{% endif %}            ScriptAbilityNativeMethodProjection{
+                ScriptApiMethodIdView{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"},
+                reinterpret_cast<lux_script_ability_direct_entry_fn>(&{{ method.spelling }})
+            }{% set emitted = true %}{% endif %}{% endfor %}
+        };
+    };
+{% endfor %}} // namespace lux::script::native

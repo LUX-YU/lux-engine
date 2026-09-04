@@ -1,6 +1,8 @@
 #include "Physics2DFlowForgeTestAbility.hpp"
 #include "Physics2DFlowForgeTestAbility.ability.generated.hpp"
+#include "Physics2DFlowForgeTestAbility.ability.native.generated.hpp"
 #include "PhysicsQuery2D.ability.generated.hpp"
+#include "PhysicsQuery2D.ability.native.generated.hpp"
 #include "Physics2DScriptTestSupport.hpp"
 
 #include <lux/engine/flowforge/Compiler.hpp>
@@ -161,6 +163,10 @@ int main()
     auto script_description = std::move(description_builder).build(simulation->description());
     assert(script_description);
     Source source{std::addressof(*artifact), std::addressof(*module)};
+    const std::array native_contributions{
+        lux::script::native::makeScriptAbilityNativeContribution<PhysicsQuery2D>(),
+        lux::script::native::makeScriptAbilityNativeContribution<Physics2DCaptureAbility>()
+    };
     NativeScriptBackend backend{{std::addressof(source), &Source::resolveModule},
                                 {.module_capacity = 1U,
                                  .instance_capacity = 1U,
@@ -169,7 +175,8 @@ int main()
                                  .max_ability_imports_per_module = 2U,
                                  .max_continuation_frame_bytes = 256U,
                                  .continuation_frame_storage_bytes = 256U,
-                                 .max_event_wait_imports_per_module = 1U}};
+                                 .max_event_wait_imports_per_module = 1U,
+                                 .abilities = native_contributions}};
     assert(backend);
     const auto descriptor = backend.descriptor();
     auto system = ScriptSystem::create(simulation->description(),

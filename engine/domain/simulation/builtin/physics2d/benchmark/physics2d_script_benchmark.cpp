@@ -1,8 +1,10 @@
 #include "PhysicsQuery2D.ability.generated.hpp"
 #include "PhysicsQuery2D.ability.lua.generated.hpp"
+#include "PhysicsQuery2D.ability.native.generated.hpp"
 #include "Physics2DScriptTestSupport.hpp"
 #include "DelayAbility.ability.generated.hpp"
 #include "DelayAbility.ability.lua.generated.hpp"
+#include "DelayAbility.ability.native.generated.hpp"
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
@@ -486,6 +488,10 @@ namespace
             }
             description.emplace(*std::move(builder).build(simulation->description()));
 
+            const std::array native_contributions{
+                lux::script::native::makeScriptAbilityNativeContribution<PhysicsQuery2D>(),
+                lux::script::native::makeScriptAbilityNativeContribution<DelayAbility>()
+            };
             native.emplace(
                 NativeModuleResolver{std::addressof(sources), &Sources::resolveModule},
                 NativeScriptBackendConfig{
@@ -496,9 +502,12 @@ namespace
                     .max_ability_imports_per_module = 2U,
                     .max_continuation_frame_bytes = 256U,
                     .continuation_frame_storage_bytes = (std::max)(std::size_t{256U}, flow_count * 128U),
-                    .max_event_wait_imports_per_module = 1U
+                    .max_event_wait_imports_per_module = 1U,
+                    .abilities = native_contributions
                 }
             );
+            if (!*native)
+                throw std::runtime_error("Physics2D benchmark Native backend creation failed");
             const std::array contributions{
                 lux::script::lua::makeScriptAbilityLuaContribution<PhysicsQuery2D>(),
                 lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>()

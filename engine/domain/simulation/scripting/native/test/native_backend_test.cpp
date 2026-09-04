@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 
 #include <array>
@@ -55,20 +56,62 @@ namespace
 
     struct AsyncProvider final
     {
-        lux::script::ScriptAbilityErasedCompletion completion;
+        lux::script::ScriptAbilityCompletion<void> completion;
 
         static lux::script::ScriptAbilityStartResult start(
-            void* opaque,
-            const void*,
-            std::span<const lux::script::ScriptAbilityInputSlot> arguments,
-            lux::script::ScriptAbilityErasedCompletion completion
+            AsyncProvider& provider,
+            lux::script::ScriptAbilityCompletion<void> completion
         ) noexcept
         {
-            if (!arguments.empty())
-                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{81});
-            static_cast<AsyncProvider*>(opaque)->completion = std::move(completion);
+            provider.completion = std::move(completion);
             return {};
         }
+    };
+
+    int startAsync(
+        void* invocation,
+        void* provider,
+        const void*,
+        lux_script_async_token* waiting_on
+    ) noexcept
+    {
+        return lux::simulation::script::detail::startNativeAbility<void>(
+            invocation,
+            waiting_on,
+            [provider](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                return AsyncProvider::start(*static_cast<AsyncProvider*>(provider), std::move(completion));
+            }
+        );
+    }
+
+    inline constexpr std::array AsyncMethods{
+        lux::script::ScriptAbilityMethodDescription{
+            lux::script::ScriptApiMethodIdView{"lux.test.native_async.wait"},
+            "wait",
+            "wait",
+            lux::script::EScriptApiMethodKind::ASYNC_OPERATION,
+            {},
+            {}
+        }
+    };
+    inline constexpr lux::script::ScriptAbilityDescription AsyncDescription{
+        lux::script::ScriptApiContractIdView{"lux.test.native_async"},
+        "NativeAsync",
+        "Native Async",
+        1U,
+        0xA55A55A5ULL,
+        lux::script::EScriptAbilityReceiverKind::PROVIDER_INSTANCE,
+        AsyncMethods
+    };
+    inline const std::array AsyncNativeMethods{
+        lux::script::native::ScriptAbilityNativeMethodProjection{
+            lux::script::ScriptApiMethodIdView{"lux.test.native_async.wait"},
+            reinterpret_cast<lux_script_ability_direct_entry_fn>(&startAsync)
+        }
+    };
+    inline const lux::script::native::ScriptAbilityNativeContribution AsyncContribution{
+        std::addressof(AsyncDescription),
+        AsyncNativeMethods
     };
 
     struct AwaitableHarness final
@@ -500,7 +543,8 @@ int main()
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 256U,
-            .continuation_frame_storage_bytes = 512U
+            .continuation_frame_storage_bytes = 512U,
+            .abilities = std::span{std::addressof(AsyncContribution), 1U}
         }
     };
     assert(step_backend);
@@ -537,7 +581,7 @@ int main()
             {},
             {},
             nullptr,
-            &AsyncProvider::start
+            nullptr
         }
     };
     const std::array capabilities{

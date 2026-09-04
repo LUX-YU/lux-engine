@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 /** Increment whenever the layout below changes in a non-additive way. */
-#define LUX_SCRIPT_ABI_VERSION 4u
+#define LUX_SCRIPT_ABI_VERSION 5u
 
 /** Symbol name compiled modules must export. */
 #define LUX_SCRIPT_MODULE_ENTRY "lux_script_get_module"
@@ -99,24 +99,22 @@ typedef struct lux_script_event_wait_import_desc {
     lux_script_type_desc payload;
 } lux_script_event_wait_import_desc;
 
-typedef int (*lux_script_ability_invoke_fn)(
-    void* context,
-    uint32_t ordinal,
-    const lux_script_value_slot* args,
-    uint32_t arg_count,
-    lux_script_value_slot* results,
-    uint32_t result_count);
+/** Method-specific entry. The module casts this to the validated exact signature. */
+typedef void (*lux_script_ability_direct_entry_fn)(void);
 
-/** Per-instance prepared Ability table. Provider receivers remain host-owned. */
-typedef struct lux_script_ability_runtime {
-    void* context;
-    lux_script_ability_invoke_fn invoke;
-} lux_script_ability_runtime;
+/** Per-instance prepared Ability method. Provider receivers remain host-owned. */
+typedef struct lux_script_prepared_ability {
+    void* provider_context;
+    const void* dispatch;
+    lux_script_ability_direct_entry_fn direct_entry;
+} lux_script_prepared_ability;
 
 /** Explicit native instance context; separate from generic per-call user_context. */
 typedef struct lux_script_native_instance_context {
     void* state;
-    const lux_script_ability_runtime* abilities;
+    const lux_script_prepared_ability* abilities;
+    uint32_t ability_count;
+    uint32_t reserved;
 } lux_script_native_instance_context;
 
 /** Per-call frame passed to compiled script functions. */
@@ -166,13 +164,6 @@ typedef struct lux_script_step_resume_packet {
     int32_t status;
 } lux_script_step_resume_packet;
 
-typedef int (*lux_script_start_async_fn)(
-    void* context,
-    uint32_t ordinal,
-    const lux_script_value_slot* args,
-    uint32_t arg_count,
-    lux_script_async_token* waiting_on);
-
 typedef int (*lux_script_start_event_wait_fn)(
     void* context,
     uint32_t ordinal,
@@ -181,7 +172,6 @@ typedef int (*lux_script_start_event_wait_fn)(
 /** Invocation-local host seam. Completion never resumes script directly. */
 typedef struct lux_script_step_host {
     void* context;
-    lux_script_start_async_fn start_async;
     lux_script_start_event_wait_fn start_event_wait;
 } lux_script_step_host;
 

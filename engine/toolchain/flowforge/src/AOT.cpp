@@ -12,7 +12,7 @@
 //      every slot via resolve(ctx, "<name>") and returning the number of
 //      unresolved imports (0 = success). Only emitted when imports exist.
 //   4. Per OnEvent entry `lux_event_X(state, abilities, a0..aN)`: a call_frame
-//      wrapper pulls the explicit native instance context from the v4 frame,
+//      wrapper pulls the explicit native instance context from the v5 frame,
 //      loads each argument from args[i].data, calls the event function and
 //      returns 0. Frame/slot field offsets
 //      come from offsetof() on the REAL C structs — both sides compile
@@ -84,6 +84,8 @@ static_assert(sizeof(lux_script_function_desc) == 64, "ABI drift: function_desc"
 static_assert(sizeof(lux_script_module_desc) == 80, "ABI drift: module_desc");
 static_assert(sizeof(lux_script_event_wait_import_desc) == 64, "ABI drift: event_wait_import_desc");
 static_assert(sizeof(lux_script_value_slot) == 24, "ABI drift: value_slot");
+static_assert(sizeof(lux_script_prepared_ability) == 24, "ABI drift: prepared_ability");
+static_assert(sizeof(lux_script_native_instance_context) == 24, "ABI drift: native_instance_context");
 
 namespace lux::flowforge
 {
@@ -260,32 +262,6 @@ namespace lux::flowforge
                 f->setVisibility(llvm::GlobalValue::DefaultVisibility);
         }
 
-        void storeValueSlot(
-            llvm::IRBuilder<>& builder,
-            llvm::Value* slot,
-            const lux::script::ScriptAbilityValueDescription& type,
-            llvm::Value* data
-        )
-        {
-            auto& context = builder.getContext();
-            auto* i8 = llvm::Type::getInt8Ty(context);
-            auto* i32 = llvm::Type::getInt32Ty(context);
-            auto* i64 = llvm::Type::getInt64Ty(context);
-            const auto field = [&](std::size_t offset) {
-                return builder.CreateGEP(i8, slot, llvm::ConstantInt::get(i64, offset));
-            };
-            builder.CreateStore(
-                llvm::ConstantInt::get(i8, type.abi_kind),
-                field(offsetof(lux_script_value_slot, kind))
-            );
-            builder.CreateStore(llvm::ConstantInt::get(i32, type.size), field(offsetof(lux_script_value_slot, size)));
-            builder.CreateStore(
-                llvm::ConstantInt::get(i64, type.type_id),
-                field(offsetof(lux_script_value_slot, type_id))
-            );
-            builder.CreateStore(data, field(offsetof(lux_script_value_slot, data)));
-        }
-
         bool materializeSynchronousAbilityCalls(
             llvm::Module& module,
             const std::vector<AbilityImportInfo>& imports,
@@ -295,7 +271,6 @@ namespace lux::flowforge
             auto& context = module.getContext();
             auto* ptr_type = llvm::PointerType::get(context, 0);
             auto* i8 = llvm::Type::getInt8Ty(context);
-            auto* i32 = llvm::Type::getInt32Ty(context);
             auto* i64 = llvm::Type::getInt64Ty(context);
             for (std::size_t ordinal{}; ordinal < imports.size(); ++ordinal)
             {
@@ -314,66 +289,39 @@ namespace lux::flowforge
                 auto* block = llvm::BasicBlock::Create(context, "entry", function);
                 llvm::IRBuilder<> builder(block);
                 auto* runtime = function->getArg(0);
-                const auto runtime_field = [&](std::size_t offset) {
-                    return builder.CreateGEP(i8, runtime, llvm::ConstantInt::get(i64, offset));
-                };
-                auto* runtime_context =
-                    builder.CreateLoad(ptr_type, runtime_field(offsetof(lux_script_ability_runtime, context)));
-                auto* invoke =
-                    builder.CreateLoad(ptr_type, runtime_field(offsetof(lux_script_ability_runtime, invoke)));
-
-                llvm::Value* arguments = llvm::ConstantPointerNull::get(ptr_type);
-                if (!description.parameters().empty())
-                {
-                    arguments = builder.CreateAlloca(
-                        i8,
-                        llvm::ConstantInt::get(i32, description.parameters().size() * sizeof(lux_script_value_slot))
-                    );
-                    for (std::size_t index{}; index < description.parameters().size(); ++index)
-                    {
-                        auto* storage = builder.CreateAlloca(function->getArg(index + 1U)->getType());
-                        builder.CreateStore(function->getArg(index + 1U), storage);
-                        auto* slot = builder.CreateGEP(
-                            i8,
-                            arguments,
-                            llvm::ConstantInt::get(i64, index * sizeof(lux_script_value_slot))
-                        );
-                        storeValueSlot(builder, slot, description.parameters()[index].value, storage);
-                    }
-                }
-
-                llvm::Value* results = llvm::ConstantPointerNull::get(ptr_type);
-                llvm::Value* result_storage{};
-                if (!description.results().empty())
-                {
-                    results = builder.CreateAlloca(i8, llvm::ConstantInt::get(i32, sizeof(lux_script_value_slot)));
-                    result_storage = builder.CreateAlloca(function->getReturnType());
-                    storeValueSlot(builder, results, description.results().front(), result_storage);
-                }
-
-                auto* invoke_type = llvm::FunctionType::get(i32, {ptr_type, i32, ptr_type, i32, ptr_type, i32}, false);
-                const auto status = builder.CreateCall(
-                    invoke_type,
-                    invoke,
-                    {runtime_context,
-                     llvm::ConstantInt::get(i32, ordinal),
-                     arguments,
-                     llvm::ConstantInt::get(i32, description.parameters().size()),
-                     results,
-                     llvm::ConstantInt::get(i32, description.results().size())}
+                auto* prepared = builder.CreateGEP(
+                    i8,
+                    runtime,
+                    llvm::ConstantInt::get(i64, ordinal * sizeof(lux_script_prepared_ability))
                 );
-                if (description.results().empty())
+                const auto prepared_field = [&](std::size_t offset) {
+                    return builder.CreateGEP(i8, prepared, llvm::ConstantInt::get(i64, offset));
+                };
+                auto* provider = builder.CreateLoad(
+                    ptr_type,
+                    prepared_field(offsetof(lux_script_prepared_ability, provider_context))
+                );
+                auto* dispatch = builder.CreateLoad(
+                    ptr_type,
+                    prepared_field(offsetof(lux_script_prepared_ability, dispatch))
+                );
+                auto* entry = builder.CreateLoad(
+                    ptr_type,
+                    prepared_field(offsetof(lux_script_prepared_ability, direct_entry))
+                );
+                llvm::SmallVector<llvm::Type*, 8> argument_types{ptr_type, ptr_type};
+                llvm::SmallVector<llvm::Value*, 8> arguments{provider, dispatch};
+                for (std::size_t index{}; index < description.parameters().size(); ++index)
                 {
+                    argument_types.push_back(function->getArg(index + 1U)->getType());
+                    arguments.push_back(function->getArg(index + 1U));
+                }
+                auto* entry_type = llvm::FunctionType::get(function->getReturnType(), argument_types, false);
+                auto* value = builder.CreateCall(entry_type, entry, arguments);
+                if (function->getReturnType()->isVoidTy())
                     builder.CreateRetVoid();
-                }
                 else
-                {
-                    const auto value = builder.CreateLoad(function->getReturnType(), result_storage);
-                    const auto success = builder.CreateICmpEQ(status, llvm::ConstantInt::get(i32, 0));
-                    builder.CreateRet(
-                        builder.CreateSelect(success, value, llvm::Constant::getNullValue(value->getType()))
-                    );
-                }
+                    builder.CreateRet(value);
             }
             return true;
         }
@@ -557,23 +505,6 @@ namespace lux::flowforge
             }
             std::uint64_t scratch_size{sizeof(lux_script_async_token)};
             std::uint64_t scratch_alignment{alignof(lux_script_async_token)};
-            for (const auto& await : awaits)
-            {
-                if (await.event_wait)
-                    continue;
-                const auto& import = *imports[await.import_ordinal].node;
-                std::uint64_t required = import.parameters().size() * sizeof(lux_script_value_slot);
-                for (const auto& parameter : import.parameters())
-                {
-                    required = alignFrameOffset(required, parameter.value.alignment);
-                    required += parameter.value.size;
-                    scratch_alignment =
-                        (std::max)(scratch_alignment, static_cast<std::uint64_t>(parameter.value.alignment));
-                }
-                required = alignFrameOffset(required, alignof(lux_script_async_token));
-                required += sizeof(lux_script_async_token);
-                scratch_size = (std::max)(scratch_size, required);
-            }
             const auto scratch_offset = alignFrameOffset(frame_size, scratch_alignment);
             frame_size = scratch_offset + scratch_size;
             frame_alignment = (std::max)(frame_alignment, scratch_alignment);
@@ -653,6 +584,7 @@ namespace lux::flowforge
                 suspend_block->getTerminator()->eraseFromParent();
 
                 llvm::SmallVector<llvm::Value*, 8> visible_arguments;
+                auto* prepared_abilities = marker->getArgOperand(0U);
                 auto* awaited_result_type = marker->getType();
                 for (std::size_t index{1U}; index < marker->arg_size(); ++index)
                     visible_arguments.push_back(marker->getArgOperand(index));
@@ -664,36 +596,7 @@ namespace lux::flowforge
                 llvm::IRBuilder<> suspend_builder(suspend_block);
                 auto* scratch =
                     suspend_builder.CreateGEP(i8, frame_argument, llvm::ConstantInt::get(i64, scratch_offset));
-                llvm::Value* arguments = llvm::ConstantPointerNull::get(ptr_type);
-                const auto* ability_import = awaits[await_index].event_wait
-                    ? nullptr
-                    : imports[awaits[await_index].import_ordinal].node;
-                std::uint64_t scratch_cursor = ability_import == nullptr
-                    ? 0U
-                    : ability_import->parameters().size() * sizeof(lux_script_value_slot);
-                if (!visible_arguments.empty())
-                {
-                    arguments = scratch;
-                    for (std::size_t index{}; index < visible_arguments.size(); ++index)
-                    {
-                        scratch_cursor = alignFrameOffset(
-                            scratch_cursor,
-                            ability_import->parameters()[index].value.alignment
-                        );
-                        auto* storage =
-                            suspend_builder.CreateGEP(i8, scratch, llvm::ConstantInt::get(i64, scratch_cursor));
-                        scratch_cursor += ability_import->parameters()[index].value.size;
-                        suspend_builder.CreateStore(visible_arguments[index], storage);
-                        auto* slot = suspend_builder.CreateGEP(
-                            i8,
-                            arguments,
-                            llvm::ConstantInt::get(i64, index * sizeof(lux_script_value_slot))
-                        );
-                        storeValueSlot(suspend_builder, slot, ability_import->parameters()[index].value, storage);
-                    }
-                }
-                scratch_cursor = alignFrameOffset(scratch_cursor, alignof(lux_script_async_token));
-                auto* token = suspend_builder.CreateGEP(i8, scratch, llvm::ConstantInt::get(i64, scratch_cursor));
+                auto* token = scratch;
                 const auto host_field = [&](std::size_t offset) {
                     return suspend_builder.CreateGEP(i8, host_argument, llvm::ConstantInt::get(i64, offset));
                 };
@@ -715,25 +618,41 @@ namespace lux::flowforge
                 }
                 else
                 {
+                    const auto ordinal = awaits[await_index].import_ordinal;
+                    auto* prepared = suspend_builder.CreateGEP(
+                        i8,
+                        prepared_abilities,
+                        llvm::ConstantInt::get(i64, ordinal * sizeof(lux_script_prepared_ability))
+                    );
+                    const auto prepared_field = [&](std::size_t offset) {
+                        return suspend_builder.CreateGEP(i8, prepared, llvm::ConstantInt::get(i64, offset));
+                    };
+                    auto* provider = suspend_builder.CreateLoad(
+                        ptr_type,
+                        prepared_field(offsetof(lux_script_prepared_ability, provider_context))
+                    );
+                    auto* ability_dispatch = suspend_builder.CreateLoad(
+                        ptr_type,
+                        prepared_field(offsetof(lux_script_prepared_ability, dispatch))
+                    );
                     auto* start_async = suspend_builder.CreateLoad(
                         ptr_type,
-                        host_field(offsetof(lux_script_step_host, start_async))
+                        prepared_field(offsetof(lux_script_prepared_ability, direct_entry))
                     );
-                    auto* start_type = llvm::FunctionType::get(
-                        i32,
-                        {ptr_type, i32, ptr_type, i32, ptr_type},
-                        false
-                    );
+                    llvm::SmallVector<llvm::Type*, 8> argument_types{ptr_type, ptr_type, ptr_type};
+                    llvm::SmallVector<llvm::Value*, 8> arguments{host_context, provider, ability_dispatch};
+                    for (auto* argument : visible_arguments)
+                    {
+                        argument_types.push_back(argument->getType());
+                        arguments.push_back(argument);
+                    }
+                    argument_types.push_back(ptr_type);
+                    arguments.push_back(token);
+                    auto* start_type = llvm::FunctionType::get(i32, argument_types, false);
                     status = suspend_builder.CreateCall(
                         start_type,
                         start_async,
-                        {
-                            host_context,
-                            llvm::ConstantInt::get(i32, awaits[await_index].import_ordinal),
-                            arguments,
-                            llvm::ConstantInt::get(i32, visible_arguments.size()),
-                            token
-                        }
+                        arguments
                     );
                 }
                 const auto next_pc = static_cast<std::uint32_t>(await_index + 1U);

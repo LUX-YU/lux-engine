@@ -46,14 +46,23 @@ namespace
     ) noexcept
     {
         if (call == nullptr || call->native_instance == nullptr || call->native_instance->state == nullptr ||
-            host == nullptr || host->start_async == nullptr || frame_value == nullptr || outcome == nullptr)
+            call->native_instance->abilities == nullptr || call->native_instance->ability_count != 1U ||
+            host == nullptr || frame_value == nullptr || outcome == nullptr)
         {
             return 92;
         }
         auto& frame = *static_cast<StepFrame*>(frame_value);
         frame.state = static_cast<std::uint32_t*>(call->native_instance->state);
         lux_script_async_token waiting{};
-        const auto status = host->start_async(host->context, 0U, nullptr, 0U, &waiting);
+        const auto& prepared = call->native_instance->abilities[0];
+        using Start = int (*)(void*, void*, const void*, lux_script_async_token*) noexcept;
+        const auto start = reinterpret_cast<Start>(prepared.direct_entry);
+        const auto status = start(
+            host->context,
+            prepared.provider_context,
+            prepared.dispatch,
+            &waiting
+        );
         if (status != 0)
         {
             outcome->state = LUX_SCRIPT_STEP_FAILED;

@@ -1,14 +1,21 @@
 #pragma once
 
 #include <lux/engine/function/script/native/NativeModule.hpp>
+#include <lux/engine/function/script/native/ScriptAbilityNative.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/native/visibility.h>
 
 #include <cstddef>
 #include <memory>
+#include <span>
 
 namespace lux::simulation::script
 {
+    namespace detail
+    {
+        struct NativeAbilityProjectionAccess;
+    }
+
     struct NativeScriptRecordLayoutResolver final
     {
         void* context{};
@@ -50,6 +57,7 @@ namespace lux::simulation::script
         std::size_t continuation_frame_storage_alignment{alignof(std::max_align_t)};
         NativeScriptRecordLayoutResolver record_layouts;
         std::size_t max_event_wait_imports_per_module{64U};
+        std::span<const lux::script::native::ScriptAbilityNativeContribution> abilities;
     };
 
     struct NativeScriptBackendStats final
@@ -84,6 +92,7 @@ namespace lux::simulation::script
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
 
       private:
+        friend struct detail::NativeAbilityProjectionAccess;
         struct State;
         std::unique_ptr<State> state_;
     };

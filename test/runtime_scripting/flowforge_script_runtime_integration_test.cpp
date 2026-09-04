@@ -13,7 +13,9 @@
 #include <lux/engine/simulation/ScriptSystemDescription.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
+#include "DelayAbility.ability.native.generated.hpp"
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 
 #include <array>
@@ -243,6 +245,67 @@ namespace
         kTestSchema,
         lux::script::EScriptAbilityReceiverKind::PROVIDER_INSTANCE,
         kTestMethods
+    };
+
+    void writeDirect(void* opaque, const void*, std::int32_t value) noexcept
+    {
+        auto& provider = *static_cast<TestProvider*>(opaque);
+        provider.value = value;
+        provider.checksum += static_cast<std::uint32_t>(value);
+        ++provider.calls;
+    }
+
+    std::int32_t readDirect(void* opaque, const void*, std::int32_t value) noexcept
+    {
+        auto& provider = *static_cast<TestProvider*>(opaque);
+        ++provider.calls;
+        return provider.value + value;
+    }
+
+    int eagerDirect(
+        void* invocation,
+        void* opaque,
+        const void*,
+        lux_script_async_token* waiting_on
+    ) noexcept
+    {
+        return lux::simulation::script::detail::startNativeAbility<void>(
+            invocation,
+            waiting_on,
+            [opaque](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                auto& provider = *static_cast<TestProvider*>(opaque);
+                ++provider.eager_starts;
+                const auto completed = completion.success();
+                return completed
+                    ? lux::script::ScriptAbilityStartResult{}
+                    : lux::script::ScriptAbilityStartResult{lux::cxx::unexpected(
+                        lux::script::ScriptAbilityOperationError{93}
+                    )};
+            }
+        );
+    }
+
+    inline const std::array kTestNativeMethods{
+        lux::script::native::ScriptAbilityNativeMethodProjection{
+            kTestMethod,
+            reinterpret_cast<lux_script_ability_direct_entry_fn>(&writeDirect)
+        },
+        lux::script::native::ScriptAbilityNativeMethodProjection{
+            kReadMethod,
+            reinterpret_cast<lux_script_ability_direct_entry_fn>(&readDirect)
+        },
+        lux::script::native::ScriptAbilityNativeMethodProjection{
+            kEagerMethod,
+            reinterpret_cast<lux_script_ability_direct_entry_fn>(&eagerDirect)
+        }
+    };
+    inline const lux::script::native::ScriptAbilityNativeContribution kTestNativeContribution{
+        std::addressof(kTestAbility),
+        kTestNativeMethods
+    };
+    inline const std::array kNativeContributions{
+        kTestNativeContribution,
+        lux::script::native::makeScriptAbilityNativeContribution<DelayAbility>()
     };
     static constexpr std::array kTestErasedMethods{
         lux::script::ScriptAbilityErasedMethodBinding{
@@ -706,7 +769,8 @@ namespace
                 .continuation_capacity = options.size,
                 .max_ability_imports_per_module = 4U,
                 .max_continuation_frame_bytes = 8192U,
-                .continuation_frame_storage_bytes = (std::max)(std::size_t{8192U}, options.size * 256U)
+                .continuation_frame_storage_bytes = (std::max)(std::size_t{8192U}, options.size * 256U),
+                .abilities = kNativeContributions
             }
         };
         if (!backend)
@@ -734,6 +798,7 @@ namespace
                 options.size,
                 64U,
                 (std::min)(options.resume_budget, options.size),
+                options.size,
                 options.size,
                 options.size,
                 options.size
@@ -936,7 +1001,8 @@ int main(int argc, char** argv)
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 4U,
             .max_continuation_frame_bytes = 8192U,
-            .continuation_frame_storage_bytes = 16384U
+            .continuation_frame_storage_bytes = 16384U,
+            .abilities = kNativeContributions
         }
     };
     assert(backend);
@@ -954,7 +1020,7 @@ int main(int argc, char** argv)
         *script_description,
         registry,
         simulation->clock(),
-        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
         {},
         {},
@@ -975,7 +1041,7 @@ int main(int argc, char** argv)
         *script_description,
         registry,
         simulation->clock(),
-        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
         {},
         mismatch_capabilities,
@@ -993,7 +1059,7 @@ int main(int argc, char** argv)
         *script_description,
         registry,
         simulation->clock(),
-        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
         {},
         capabilities,
@@ -1071,7 +1137,8 @@ int main(int argc, char** argv)
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 8192U,
             .continuation_frame_storage_bytes = 16384U,
-            .max_event_wait_imports_per_module = 2U
+            .max_event_wait_imports_per_module = 2U,
+            .abilities = kNativeContributions
         }
     };
     assert(event_backend);
@@ -1093,7 +1160,8 @@ int main(int argc, char** argv)
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 8192U,
             .continuation_frame_storage_bytes = 16384U,
-            .max_event_wait_imports_per_module = 2U
+            .max_event_wait_imports_per_module = 2U,
+            .abilities = kNativeContributions
         }
     };
     assert(mismatched_backend);
@@ -1127,7 +1195,7 @@ int main(int argc, char** argv)
         *event_script_description,
         registry,
         simulation->clock(),
-        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(event_artifact_source), &ArtifactSource::resolveArtifact},
         {},
         event_wait_capabilities,
@@ -1161,7 +1229,7 @@ int main(int argc, char** argv)
         *event_script_description,
         registry,
         simulation->clock(),
-        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(event_artifact_source), &ArtifactSource::resolveArtifact},
         {},
         event_wait_capabilities,
@@ -1187,7 +1255,7 @@ int main(int argc, char** argv)
         *script_description,
         registry,
         simulation->clock(),
-        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
         {},
         capabilities,

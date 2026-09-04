@@ -12,6 +12,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -152,69 +153,96 @@ namespace
     {
         std::int32_t value{};
         std::size_t calls{};
-
-        static int invoke(
-            void* opaque,
-            std::uint32_t ordinal,
-            const lux_script_value_slot* arguments,
-            std::uint32_t argument_count,
-            lux_script_value_slot* results,
-            std::uint32_t result_count
-        ) noexcept
-        {
-            auto& self = *static_cast<AbilityProvider*>(opaque);
-            if (argument_count != 1U || arguments == nullptr || arguments[0].data == nullptr)
-                return 1;
-            ++self.calls;
-            if (ordinal == 0U && result_count == 1U)
-            {
-                if (result_count != 1U || results == nullptr || results[0].data == nullptr)
-                    return 2;
-                *static_cast<std::int32_t*>(results[0].data) =
-                    self.value + *static_cast<const std::int32_t*>(arguments[0].data);
-                return 0;
-            }
-            if ((ordinal == 1U || ordinal == 0U) && result_count == 0U)
-            {
-                self.value = *static_cast<const std::int32_t*>(arguments[0].data);
-                return 0;
-            }
-            return 3;
-        }
     };
+
+    std::int32_t readAbility(void* opaque, const void*, std::int32_t value) noexcept
+    {
+        auto& self = *static_cast<AbilityProvider*>(opaque);
+        ++self.calls;
+        return self.value + value;
+    }
+
+    void writeAbility(void* opaque, const void*, std::int32_t value) noexcept
+    {
+        auto& self = *static_cast<AbilityProvider*>(opaque);
+        ++self.calls;
+        self.value = value;
+    }
+
+    int startAbility(
+        void* invocation,
+        void*,
+        const void*,
+        lux_script_async_token* waiting
+    ) noexcept
+    {
+        auto& host = *static_cast<AsyncHost*>(invocation);
+        return AsyncHost::start(std::addressof(host), host.expected_ordinal, nullptr, 0U, waiting);
+    }
 
     struct BorrowProvider final
     {
         std::int32_t value{47};
         std::int32_t observed{};
         std::size_t calls{};
-
-        static int invoke(
-            void* opaque,
-            std::uint32_t ordinal,
-            const lux_script_value_slot* arguments,
-            std::uint32_t argument_count,
-            lux_script_value_slot* results,
-            std::uint32_t result_count
-        ) noexcept
-        {
-            auto& self = *static_cast<BorrowProvider*>(opaque);
-            ++self.calls;
-            if (ordinal == 0U && argument_count == 0U && result_count == 1U && results != nullptr &&
-                results[0].data != nullptr)
-            {
-                *static_cast<std::int32_t*>(results[0].data) = self.value;
-                return 0;
-            }
-            if (ordinal == 2U && argument_count == 1U && arguments != nullptr && arguments[0].data != nullptr &&
-                result_count == 0U)
-            {
-                self.observed = *static_cast<const std::int32_t*>(arguments[0].data);
-                return 0;
-            }
-            return 4;
-        }
     };
+
+    std::int32_t borrowAbility(void* opaque, const void*) noexcept
+    {
+        auto& self = *static_cast<BorrowProvider*>(opaque);
+        ++self.calls;
+        return self.value;
+    }
+
+    void consumeBorrowed(void* opaque, const void*, std::int32_t value) noexcept
+    {
+        auto& self = *static_cast<BorrowProvider*>(opaque);
+        ++self.calls;
+        self.observed = value;
+    }
+
+    template <class Provider>
+    std::vector<lux_script_prepared_ability> prepareAbilities(
+        const lux::script::NativeModule& module,
+        Provider& provider
+    )
+    {
+        std::vector<lux_script_prepared_ability> result;
+        result.reserve(module.abilityImports().size());
+        for (const auto& import : module.abilityImports())
+        {
+            const std::string_view method{import.method_name};
+            lux_script_ability_direct_entry_fn entry{};
+            if (method == "lux.test.flowforge.value.read")
+                entry = reinterpret_cast<lux_script_ability_direct_entry_fn>(&readAbility);
+            else if (method == "lux.test.flowforge.value.write")
+            {
+                if constexpr (std::is_same_v<Provider, BorrowProvider>)
+                    entry = reinterpret_cast<lux_script_ability_direct_entry_fn>(&consumeBorrowed);
+                else
+                    entry = reinterpret_cast<lux_script_ability_direct_entry_fn>(&writeAbility);
+            }
+            else if (method == "lux.test.flowforge.value.next" ||
+                     method == "lux.test.flowforge.value.async_value")
+            {
+                entry = reinterpret_cast<lux_script_ability_direct_entry_fn>(&startAbility);
+            }
+            else if (method == "lux.test.flowforge.value.borrow")
+                entry = reinterpret_cast<lux_script_ability_direct_entry_fn>(&borrowAbility);
+            assert(entry != nullptr);
+            result.push_back({std::addressof(provider), nullptr, entry});
+        }
+        return result;
+    }
+
+    template <class Provider>
+    lux_script_native_instance_context nativeContext(
+        std::vector<lux_script_prepared_ability>& abilities,
+        Provider*
+    ) noexcept
+    {
+        return {nullptr, abilities.data(), static_cast<std::uint32_t>(abilities.size()), 0U};
+    }
 
     lux::flowforge::FlowGraph makeGraph(
         std::string_view display_name,
@@ -703,8 +731,8 @@ int main()
     assert(std::string_view{ability_module->abilityImports()[0].method_name} == "lux.test.flowforge.value.read");
     assert(std::string_view{ability_module->abilityImports()[1].method_name} == "lux.test.flowforge.value.write");
     AbilityProvider ability_provider;
-    const lux_script_ability_runtime ability_runtime{std::addressof(ability_provider), &AbilityProvider::invoke};
-    const lux_script_native_instance_context ability_instance{nullptr, std::addressof(ability_runtime)};
+    auto ability_prepared = prepareAbilities(*ability_module, ability_provider);
+    const auto ability_instance = nativeContext(ability_prepared, std::addressof(ability_provider));
     lux_script_call_frame ability_frame{};
     ability_frame.native_instance = std::addressof(ability_instance);
     assert(ability_module->findFunction(AbilitySymbol)->invoke(std::addressof(ability_frame)) == 0);
@@ -768,17 +796,13 @@ int main()
     const auto* event_wait_function = event_wait_module->findFunction(EventWaitSymbol);
     assert(event_wait_function != nullptr && event_wait_function->step != nullptr);
     AbilityProvider event_wait_provider;
-    const lux_script_ability_runtime event_wait_runtime{
-        std::addressof(event_wait_provider),
-        &AbilityProvider::invoke
-    };
-    const lux_script_native_instance_context event_wait_instance{nullptr, std::addressof(event_wait_runtime)};
+    auto event_wait_prepared = prepareAbilities(*event_wait_module, event_wait_provider);
+    const auto event_wait_instance = nativeContext(event_wait_prepared, std::addressof(event_wait_provider));
     lux_script_call_frame event_wait_frame{};
     event_wait_frame.native_instance = std::addressof(event_wait_instance);
     AsyncHost event_wait_host;
     const lux_script_step_host event_wait_step_host{
         std::addressof(event_wait_host),
-        &AsyncHost::start,
         &AsyncHost::waitEvent
     };
     const auto& event_wait_step = *event_wait_function->step;
@@ -888,12 +912,12 @@ int main()
     assert(std::string_view{async_module->abilityImports()[0].method_name} == "lux.test.flowforge.value.next");
     assert(std::string_view{async_module->abilityImports()[1].method_name} == "lux.test.flowforge.value.write");
     AbilityProvider async_provider;
-    const lux_script_ability_runtime async_runtime{std::addressof(async_provider), &AbilityProvider::invoke};
-    const lux_script_native_instance_context async_instance{nullptr, std::addressof(async_runtime)};
+    auto async_prepared = prepareAbilities(*async_module, async_provider);
+    const auto async_instance = nativeContext(async_prepared, std::addressof(async_provider));
     lux_script_call_frame async_frame{};
     async_frame.native_instance = std::addressof(async_instance);
     AsyncHost async_host;
-    const lux_script_step_host step_host{std::addressof(async_host), &AsyncHost::start};
+    const lux_script_step_host step_host{std::addressof(async_host), nullptr};
     const auto& step = *async_function->step;
     const bool is_over_aligned = step.frame_align > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
     void* continuation_frame = is_over_aligned
@@ -1006,12 +1030,12 @@ int main()
     const auto* control_function = control_module->findFunction(ControlSymbol);
     assert(control_function != nullptr && control_function->step != nullptr);
     AbilityProvider control_provider;
-    const lux_script_ability_runtime control_runtime{std::addressof(control_provider), &AbilityProvider::invoke};
-    const lux_script_native_instance_context control_instance{nullptr, std::addressof(control_runtime)};
+    auto control_prepared = prepareAbilities(*control_module, control_provider);
+    const auto control_instance = nativeContext(control_prepared, std::addressof(control_provider));
     lux_script_call_frame control_frame{};
     control_frame.native_instance = std::addressof(control_instance);
     AsyncHost control_host;
-    const lux_script_step_host control_step_host{std::addressof(control_host), &AsyncHost::start};
+    const lux_script_step_host control_step_host{std::addressof(control_host), nullptr};
     const auto& control_step = *control_function->step;
     const bool control_over_aligned = control_step.frame_align > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
     void* control_continuation = control_over_aligned
@@ -1060,12 +1084,12 @@ int main()
     const auto* result_function = result_module->findFunction(AsyncResultSymbol);
     assert(result_function != nullptr && result_function->step != nullptr);
     AbilityProvider result_provider;
-    const lux_script_ability_runtime result_runtime{std::addressof(result_provider), &AbilityProvider::invoke};
-    const lux_script_native_instance_context result_instance{nullptr, std::addressof(result_runtime)};
+    auto result_prepared = prepareAbilities(*result_module, result_provider);
+    const auto result_instance = nativeContext(result_prepared, std::addressof(result_provider));
     lux_script_call_frame result_frame{};
     result_frame.native_instance = std::addressof(result_instance);
     AsyncHost result_host;
-    const lux_script_step_host result_step_host{std::addressof(result_host), &AsyncHost::start};
+    const lux_script_step_host result_step_host{std::addressof(result_host), nullptr};
     const auto& result_step = *result_function->step;
     const bool result_over_aligned = result_step.frame_align > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
     void* result_continuation = result_over_aligned
@@ -1127,12 +1151,12 @@ int main()
     const auto* function_export = function_module->findFunction(FunctionSymbol);
     assert(function_export != nullptr && function_export->step != nullptr);
     AbilityProvider function_provider;
-    const lux_script_ability_runtime function_runtime{std::addressof(function_provider), &AbilityProvider::invoke};
-    const lux_script_native_instance_context function_instance{nullptr, std::addressof(function_runtime)};
+    auto function_prepared = prepareAbilities(*function_module, function_provider);
+    const auto function_instance = nativeContext(function_prepared, std::addressof(function_provider));
     lux_script_call_frame function_frame{};
     function_frame.native_instance = std::addressof(function_instance);
     AsyncHost function_host;
-    const lux_script_step_host function_step_host{std::addressof(function_host), &AsyncHost::start};
+    const lux_script_step_host function_step_host{std::addressof(function_host), nullptr};
     const auto& function_step = *function_export->step;
     const bool function_over_aligned = function_step.frame_align > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
     void* function_continuation = function_over_aligned
@@ -1208,13 +1232,13 @@ int main()
         borrowed_same_step_module->findFunction(BorrowedSameStepSymbol);
     assert(borrowed_same_step_function != nullptr && borrowed_same_step_function->step != nullptr);
     BorrowProvider borrow_provider;
-    const lux_script_ability_runtime borrow_runtime{std::addressof(borrow_provider), &BorrowProvider::invoke};
-    const lux_script_native_instance_context borrow_instance{nullptr, std::addressof(borrow_runtime)};
+    auto borrow_prepared = prepareAbilities(*borrowed_same_step_module, borrow_provider);
+    const auto borrow_instance = nativeContext(borrow_prepared, std::addressof(borrow_provider));
     lux_script_call_frame borrow_frame{};
     borrow_frame.native_instance = std::addressof(borrow_instance);
     AsyncHost borrow_host;
     borrow_host.expected_ordinal = 1U;
-    const lux_script_step_host borrow_step_host{std::addressof(borrow_host), &AsyncHost::start};
+    const lux_script_step_host borrow_step_host{std::addressof(borrow_host), nullptr};
     const auto& borrow_step = *borrowed_same_step_function->step;
     const bool borrow_over_aligned = borrow_step.frame_align > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
     void* borrow_continuation = borrow_over_aligned

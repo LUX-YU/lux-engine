@@ -1189,6 +1189,7 @@ namespace
                     (std::max)(resume_budget, std::size_t{1U}),
                     bounded_count,
                     bounded_count,
+                    bounded_count,
                     bounded_count
                 },
                 {this, &resolveArtifact},
@@ -1706,8 +1707,13 @@ namespace
         row.active_instances = stats.active_instances;
         row.continuations = stats.active_continuations;
         row.awaitables = stats.active_awaitables;
+        row.event_waiters = stats.active_event_waiters;
+        row.event_dispatch_visits = stats.event_waiter_dispatch_visits;
         row.queue_depth = stats.resume_queue_depth;
         row.queue_high_water = stats.resume_queue_high_water;
+        row.external_queue_depth = stats.external_completion_queue_depth;
+        row.external_queue_high_water = stats.external_completion_queue_high_water;
+        row.external_queue_capacity_failures = stats.external_completion_capacity_failures;
         row.calls = harness.dispatches * stats.active_instances;
         row.ability_calls = harness.value_provider.calls;
         row.suspensions = stats.active_continuations;

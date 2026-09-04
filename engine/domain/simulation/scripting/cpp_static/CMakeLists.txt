@@ -69,6 +69,10 @@ engine_target_add_type_runtime_info(
     METAS cpp_static_script_bridge_test_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
 )
+add_dependencies(
+    cpp_static_script_bridge_test_meta_generate
+    simulation_script_script_abilities_generate
+)
 if(MSVC)
     target_compile_options(
         simulation_script_cpp_static_test PRIVATE /UNDEBUG

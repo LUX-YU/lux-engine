@@ -1,10 +1,12 @@
 #include "PhysicsQuery2D.ability.generated.hpp"
 #include "Physics2DScriptTestSupport.hpp"
+#include "DelayAbility.ability.generated.hpp"
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
@@ -76,6 +78,13 @@ namespace
         std::size_t active_instances{};
         std::uint64_t physics_queries{};
         std::uint64_t script_calls{};
+        std::uint64_t events{};
+        std::size_t continuations{};
+        std::size_t awaitables{};
+        std::size_t event_waiters{};
+        std::size_t next_step_waits{};
+        std::size_t queue_depth{};
+        std::size_t queue_high_water{};
         std::uint64_t checksum{};
     };
 
@@ -179,13 +188,17 @@ namespace
         if (!output)
             throw std::runtime_error("cannot open Physics2D benchmark output");
         output << "git_commit,build_type,scenario,backend,size,seed,sample,nanoseconds,allocations,"
-                  "active_instances,physics_queries,script_calls,checksum\n";
+                  "active_instances,physics_queries,script_calls,events,continuations,awaitables,event_waiters,"
+                  "next_step_waits,queue_depth,queue_high_water,checksum\n";
         for (const auto& row : rows)
         {
             output << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ',' << row.scenario << ','
                    << row.backend << ',' << row.size << ',' << options.seed << ',' << row.sample << ','
                    << row.nanoseconds << ',' << row.allocations << ',' << row.active_instances << ','
-                   << row.physics_queries << ',' << row.script_calls << ',' << row.checksum << '\n';
+                   << row.physics_queries << ',' << row.script_calls << ',' << row.events << ','
+                   << row.continuations << ',' << row.awaitables << ',' << row.event_waiters << ','
+                   << row.next_step_waits << ',' << row.queue_depth << ',' << row.queue_high_water << ','
+                   << row.checksum << '\n';
         }
     }
 
@@ -400,23 +413,35 @@ namespace
             }
             description.emplace(*std::move(builder).build(simulation->description()));
 
-            native.emplace(NativeModuleResolver{std::addressof(sources), &Sources::resolveModule},
-                           NativeScriptBackendConfig{.module_capacity = 1U,
-                                                     .instance_capacity = flow_count,
-                                                     .prepared_call_capacity = flow_count,
-                                                     .continuation_capacity = 1U,
-                                                     .max_ability_imports_per_module = 1U,
-                                                     .max_continuation_frame_bytes = 256U,
-                                                     .max_event_wait_imports_per_module = 1U});
-            const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<PhysicsQuery2D>();
-            lua.emplace(*LuaScriptBackend::create({.instance_capacity = options.size - cpp_count - flow_count,
-                                                   .prepared_call_capacity = options.size - cpp_count - flow_count,
-                                                   .continuation_capacity = 1U,
-                                                   .execution_depth_capacity = 4U,
-                                                   .ability_method_capacity = 1U,
-                                                   .abilities = std::span{&contribution, 1U},
-                                                   .execution_policy = options.lua_policy,
-                                                   .event_source_capacity = 1U}));
+            native.emplace(
+                NativeModuleResolver{std::addressof(sources), &Sources::resolveModule},
+                NativeScriptBackendConfig{
+                    .module_capacity = 1U,
+                    .instance_capacity = flow_count,
+                    .prepared_call_capacity = flow_count * 2U,
+                    .continuation_capacity = flow_count,
+                    .max_ability_imports_per_module = 2U,
+                    .max_continuation_frame_bytes = 256U,
+                    .max_event_wait_imports_per_module = 1U
+                }
+            );
+            const std::array contributions{
+                lux::script::lua::makeScriptAbilityLuaContribution<PhysicsQuery2D>(),
+                lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>()
+            };
+            const std::array event_sources{pulseEventSource()};
+            const auto lua_count = options.size - cpp_count - flow_count;
+            lua.emplace(*LuaScriptBackend::create({
+                .instance_capacity = lua_count,
+                .prepared_call_capacity = lua_count * 5U,
+                .continuation_capacity = lua_count,
+                .execution_depth_capacity = 4U,
+                .ability_method_capacity = 5U,
+                .abilities = contributions,
+                .execution_policy = options.lua_policy,
+                .event_source_capacity = 1U,
+                .events = event_sources
+            }));
             backends = {cpp.backend->descriptor(), native->descriptor(), lua->descriptor()};
             const auto bounded = (std::max)(options.size, std::size_t{1U});
             auto created = ScriptSystem::create(
@@ -449,8 +474,19 @@ namespace
             const auto simulated = simulation->execute(*executor, std::chrono::milliseconds{16});
             const auto active = system->activeInstanceCount();
             const auto dispatched = ActiveProbe != nullptr ? ActiveProbe->tick.dispatch() : 0U;
+            bool event_recorded{};
+            std::size_t event_count{};
+            if (ActiveProbe != nullptr)
+            {
+                {
+                    auto writer = ActiveProbe->pulse.begin(0U);
+                    event_recorded = writer.record(1);
+                }
+                event_count = ActiveProbe->pulse.drain();
+            }
             const auto stable = system->executeStablePoint();
-            if (!simulated || ActiveProbe == nullptr || dispatched != 1U || !stable || !system->failures().empty())
+            if (!simulated || ActiveProbe == nullptr || dispatched != 1U || !event_recorded || event_count != 1U ||
+                !stable || !system->failures().empty())
             {
                 std::fprintf(
                     stderr,
@@ -547,10 +583,19 @@ namespace
                     throw std::runtime_error("Physics2D mixed frame failed");
                 const auto runtime = harness.system->stats();
                 const auto physics = harness.physics->stats();
-                return Row{.active_instances = runtime.active_instances,
-                           .physics_queries = physics.overlap_queries - query_start,
-                           .script_calls = (frame + 1U) * options.size,
-                           .checksum = g_cpp_checksum - cpp_start};
+                return Row{
+                    .active_instances = runtime.active_instances,
+                    .physics_queries = physics.overlap_queries - query_start,
+                    .script_calls = (frame + 1U) * options.size,
+                    .events = frame + 1U,
+                    .continuations = runtime.active_continuations,
+                    .awaitables = runtime.active_awaitables,
+                    .event_waiters = runtime.active_event_waiters,
+                    .next_step_waits = runtime.next_step_waits,
+                    .queue_depth = runtime.resume_queue_depth,
+                    .queue_high_water = runtime.resume_queue_high_water,
+                    .checksum = g_cpp_checksum - cpp_start
+                };
             }));
         }
         if (harness.system->activeInstanceCount() != options.size ||

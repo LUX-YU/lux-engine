@@ -162,12 +162,45 @@ if(LUX_PROFILE_HAS_TOOLCHAIN AND COMMAND lux_package_lua_script)
         DESTINATION share/lux-engine-physics2d/schema
         COMPONENT lux_sdk
     )
+    add_executable(physics2d_event_schema_writer test/physics2d_event_schema_writer.cpp)
+    target_include_directories(
+        physics2d_event_schema_writer
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+    target_link_libraries(
+        physics2d_event_schema_writer
+        PRIVATE
+            lux::engine::physics2d::physics2d_simulation
+            lux::engine::toolchain::lua_script_packager
+    )
+    lux_classify_target(
+        TARGET  physics2d_event_schema_writer
+        LAYER   TOOLCHAIN
+        PRODUCT BUILD_TOOL
+        ROLE    COMPOSITION
+    )
+    set(_physics2d_event_schema ${CMAKE_CURRENT_BINARY_DIR}/physics2d.events.schema.json)
+    add_custom_command(
+        OUTPUT ${_physics2d_event_schema}
+        COMMAND $<TARGET_FILE:physics2d_event_schema_writer> ${_physics2d_event_schema}
+        DEPENDS physics2d_event_schema_writer
+        VERBATIM
+    )
+    add_custom_target(physics2d_event_schema DEPENDS ${_physics2d_event_schema})
+    lux_classify_target(
+        TARGET  physics2d_event_schema
+        LAYER   TOOLCHAIN
+        PRODUCT BUILD_TOOL
+        ROLE    COMPOSITION
+    )
     set(_physics2d_lua_artifact ${CMAKE_CURRENT_BINARY_DIR}/physics2d_lua_fixture.lxsa)
     lux_package_lua_script(
         NAME physics2d_lua_fixture
         SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/test/physics2d_lua_fixture.lua
         OUTPUT ${_physics2d_lua_artifact}
-        ABILITY_TARGETS physics2d_simulation
+        ABILITY_TARGETS physics2d_simulation simulation_script
+        EVENT_SCHEMAS ${_physics2d_event_schema}
+        EVENT_SCHEMA_TARGETS physics2d_event_schema
         SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/test/physics2d_lua_fixture.symbols.json
         MODULE lux.physics2d.lua-test
         ENTRY PhysicsBehavior
@@ -184,6 +217,7 @@ if(LUX_PROFILE_HAS_TOOLCHAIN AND COMMAND lux_package_lua_script)
         PRIVATE
             lux::engine::physics2d::physics2d_simulation
             lux::engine::flowforge::flowforge_compiler
+            lux::engine::simulation::simulation_script
     )
     lux_classify_target(
         TARGET  physics2d_flowforge_fixture_writer

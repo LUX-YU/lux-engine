@@ -3,11 +3,15 @@
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 
+#include "DelayAbility.ability.generated.hpp"
+
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -71,8 +75,8 @@ int main()
     using namespace lux::simulation::script;
 
     auto artifact = artifactAsset();
-    assert(artifact->data().description().event_requirements.empty());
-    assert(artifact->data().description().api_requirements.size() == 1U);
+    assert(artifact->data().description().event_requirements.size() == 1U);
+    assert(artifact->data().description().api_requirements.size() == 2U);
     ecs::Registry registry;
     const auto collider = registry.create();
     registry.emplace<ecs::Transform2D>(collider);
@@ -86,14 +90,19 @@ int main()
     auto* physics = static_cast<Physics2DSystem*>(simulation->scriptApiCapabilities().front().context);
     assert(physics != nullptr && physics->overlapsBox(0.0, 0.0, 0.25, 0.25));
 
-    const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<PhysicsQuery2D>();
+    const std::array contributions{
+        lux::script::lua::makeScriptAbilityLuaContribution<PhysicsQuery2D>(),
+        lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>()
+    };
+    const std::array event_sources{pulseEventSource()};
     auto backend = LuaScriptBackend::create({.instance_capacity = 1U,
-                                             .prepared_call_capacity = 2U,
+                                             .prepared_call_capacity = 5U,
                                              .continuation_capacity = 1U,
                                              .execution_depth_capacity = 4U,
-                                             .ability_method_capacity = 1U,
-                                             .abilities = std::span{&contribution, 1U},
-                                             .event_source_capacity = 1U});
+                                             .ability_method_capacity = 5U,
+                                             .abilities = contributions,
+                                             .event_source_capacity = 1U,
+                                             .events = event_sources});
     assert(backend);
     const auto descriptor = backend->descriptor();
     ScriptSystemDescriptionBuilder description_builder;
@@ -118,6 +127,20 @@ int main()
                                        simulation->scriptEventEndpoints());
     assert(system && system->prepare());
     assert(ActiveProbe != nullptr && ActiveProbe->tick.dispatch() == 1U);
+    assert(system->activeContinuationCount() == 1U);
+    assert(system->activeAwaitableCount() == 1U);
+    assert(system->stats().active_event_waiters == 1U);
+    {
+        auto writer = ActiveProbe->pulse.begin(0U);
+        assert(writer.record(1));
+    }
+    assert(ActiveProbe->pulse.drain() == 1U);
+    assert(system->activeContinuationCount() == 1U);
+    assert(system->executeStablePoint());
+    assert(system->activeContinuationCount() == 1U);
+    assert(system->stats().next_step_waits == 1U);
+    assert(simulation->execute(*executor, std::chrono::milliseconds{16}));
+    assert(system->executeStablePoint());
     if (!system->failures().empty())
     {
         const auto& failure = system->failures().back();

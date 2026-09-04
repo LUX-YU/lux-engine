@@ -2,7 +2,7 @@
 
 ## Environment and raw data
 
-- Production SHA: `647b80d6fdc4472840cdf23be3c35ab5b42d5ab0`.
+- Production SHA: `e9870c05d31467f2a5f4bc9ae3426855038942ad`.
 - Windows x64, MSVC 19.44.35228.0, RelWithDebInfo, 24 logical CPUs.
 - Seed: `1592598566` (`0x5EED2026`).
 - Raw CSV and dependency inventories:
@@ -78,4 +78,3 @@ The bimodal high percentile is the expected ready/resume frame; resume budget an
    observed.
 
 This is a recorded baseline, not an absolute performance gate.
-

@@ -3,7 +3,7 @@
 ## Qualified revision
 
 - Baseline: `48a14af5e88d722435458a5b2d29d2c55043bcf3`.
-- Production and qualification code: `647b80d6fdc4472840cdf23be3c35ab5b42d5ab0`.
+- Production and qualification code: `e9870c05d31467f2a5f4bc9ae3426855038942ad`.
 - Source: clean `codex/s6-script-freeze` worktree; `ValidateTrackedSnapshot` passed at the qualified revision.
 - Build: Windows x64, MSVC 19.44.35228.0, RelWithDebInfo, Ninja, `-j 4 -k 0`.
 

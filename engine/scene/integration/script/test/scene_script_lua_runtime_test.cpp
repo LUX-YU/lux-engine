@@ -315,15 +315,16 @@ namespace
                 lux::script::lua::makeScriptAbilityLuaContribution<TestAbility>()
             };
             auto created = LuaScriptBackend::create({
-                4U,
-                8U,
-                8U,
-                8U,
-                DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size(),
-                {},
-                {},
-                contributions,
-                g_execution_policy
+                .instance_capacity = 4U,
+                .prepared_call_capacity = 8U,
+                .continuation_capacity = 8U,
+                .execution_depth_capacity = 8U,
+                .ability_catalog_method_capacity =
+                    DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size(),
+                .prepared_ability_capacity =
+                    4U * (DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size()),
+                .abilities = contributions,
+                .execution_policy = g_execution_policy
             });
             assert(created);
             backend.emplace(std::move(*created));

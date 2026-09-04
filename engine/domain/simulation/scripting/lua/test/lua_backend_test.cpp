@@ -123,15 +123,12 @@ int main()
     assert(!missing_capacity);
     assert(missing_capacity.error() == ELuaScriptBindingBackendError::INVALID_CAPACITY);
     const auto invalid_policy = LuaScriptBackend::create({
-        1U,
-        1U,
-        1U,
-        1U,
-        1U,
-        {},
-        {},
-        {},
-        static_cast<lux::script::lua::ELuaExecutionPolicy>(0xFFU)
+        .instance_capacity = 1U,
+        .prepared_call_capacity = 1U,
+        .continuation_capacity = 1U,
+        .execution_depth_capacity = 1U,
+        .ability_catalog_method_capacity = 1U,
+        .execution_policy = static_cast<lux::script::lua::ELuaExecutionPolicy>(0xFFU)
     });
     assert(!invalid_policy);
     assert(invalid_policy.error() == ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
@@ -157,14 +154,13 @@ int main()
         lux::script::lua::ScriptAbilityLuaContribution{&inventory_name}
     };
     const auto display_backend = LuaScriptBackend::create({
-        1U,
-        1U,
-        1U,
-        4U,
-        2U,
-        {},
-        {},
-        display_duplicates
+        .instance_capacity = 1U,
+        .prepared_call_capacity = 1U,
+        .continuation_capacity = 1U,
+        .execution_depth_capacity = 4U,
+        .ability_catalog_method_capacity = 2U,
+        .prepared_ability_capacity = 2U,
+        .abilities = display_duplicates
     });
     assert(display_backend);
 
@@ -178,14 +174,13 @@ int main()
         lux::script::lua::ScriptAbilityLuaContribution{&duplicate_name}
     };
     const auto duplicate_name_backend = LuaScriptBackend::create({
-        1U,
-        1U,
-        1U,
-        4U,
-        2U,
-        {},
-        {},
-        duplicate_names
+        .instance_capacity = 1U,
+        .prepared_call_capacity = 1U,
+        .continuation_capacity = 1U,
+        .execution_depth_capacity = 4U,
+        .ability_catalog_method_capacity = 2U,
+        .prepared_ability_capacity = 2U,
+        .abilities = duplicate_names
     });
     assert(!duplicate_name_backend);
     assert(duplicate_name_backend.error() == ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
@@ -193,14 +188,13 @@ int main()
     constexpr auto reserved_name = nameDescription("lux.test.lua_name.reserved", "end", "End");
     const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{&reserved_name};
     const auto reserved_name_backend = LuaScriptBackend::create({
-        1U,
-        1U,
-        1U,
-        4U,
-        1U,
-        {},
-        {},
-        {&reserved_contribution, 1U}
+        .instance_capacity = 1U,
+        .prepared_call_capacity = 1U,
+        .continuation_capacity = 1U,
+        .execution_depth_capacity = 4U,
+        .ability_catalog_method_capacity = 1U,
+        .prepared_ability_capacity = 1U,
+        .abilities = {&reserved_contribution, 1U}
     });
     assert(!reserved_name_backend);
     assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
@@ -209,14 +203,13 @@ int main()
         test::LuaUnsupportedIntegerAbility
     >();
     const auto unsupported_integer_backend = LuaScriptBackend::create({
-        1U,
-        1U,
-        1U,
-        4U,
-        1U,
-        {},
-        {},
-        {&unsupported_integer, 1U}
+        .instance_capacity = 1U,
+        .prepared_call_capacity = 1U,
+        .continuation_capacity = 1U,
+        .execution_depth_capacity = 4U,
+        .ability_catalog_method_capacity = 1U,
+        .prepared_ability_capacity = 1U,
+        .abilities = {&unsupported_integer, 1U}
     });
     assert(!unsupported_integer_backend);
     assert(unsupported_integer_backend.error() == ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
@@ -237,7 +230,14 @@ int main()
         health_binding,
         health_binding};
     const auto duplicate_backend = LuaScriptBackend::create(
-        {1U, 1U, 1U, 4U, 1U, duplicate_components}
+        {
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 1U,
+            .continuation_capacity = 1U,
+            .execution_depth_capacity = 4U,
+            .ability_catalog_method_capacity = 1U,
+            .components = duplicate_components
+        }
     );
     assert(!duplicate_backend);
     assert(
@@ -247,7 +247,14 @@ int main()
     auto invalid_binding = health_binding;
     ++invalid_binding.size;
     const auto invalid_backend = LuaScriptBackend::create(
-        {1U, 1U, 1U, 4U, 1U, std::span{&invalid_binding, 1U}}
+        {
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 1U,
+            .continuation_capacity = 1U,
+            .execution_depth_capacity = 4U,
+            .ability_catalog_method_capacity = 1U,
+            .components = std::span{&invalid_binding, 1U}
+        }
     );
     assert(!invalid_backend);
     assert(
@@ -266,12 +273,26 @@ int main()
         i64_layout->alignment
     };
     const auto i64_component_backend = LuaScriptBackend::create(
-        {1U, 1U, 1U, 4U, 1U, std::span{&i64_binding, 1U}}
+        {
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 1U,
+            .continuation_capacity = 1U,
+            .execution_depth_capacity = 4U,
+            .ability_catalog_method_capacity = 1U,
+            .components = std::span{&i64_binding, 1U}
+        }
     );
     assert(!i64_component_backend);
     assert(i64_component_backend.error() == ELuaScriptBindingBackendError::INVALID_COMPONENT_CONTRACT);
     auto contract_backend_result = LuaScriptBackend::create(
-        {1U, 1U, 1U, 4U, 1U, std::span{&health_binding, 1U}}
+        {
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 1U,
+            .continuation_capacity = 1U,
+            .execution_depth_capacity = 4U,
+            .ability_catalog_method_capacity = 1U,
+            .components = std::span{&health_binding, 1U}
+        }
     );
     assert(contract_backend_result);
     auto contract_backend = std::move(*contract_backend_result);
@@ -286,7 +307,14 @@ int main()
         nullptr,
         &pushCollisionEvent};
     auto created_backend = LuaScriptBackend::create(
-        {4U, 12U, 4U, 8U, 1U, {}, std::span{&collision_marshaller, 1U}}
+        {
+            .instance_capacity = 4U,
+            .prepared_call_capacity = 12U,
+            .continuation_capacity = 4U,
+            .execution_depth_capacity = 8U,
+            .ability_catalog_method_capacity = 1U,
+            .record_marshallers = std::span{&collision_marshaller, 1U}
+        }
     );
     assert(created_backend);
     auto backend = std::move(*created_backend);

@@ -705,7 +705,8 @@ namespace
                 .prepared_call_capacity = options.size * (sync ? 1U : 2U),
                 .continuation_capacity = options.size,
                 .max_ability_imports_per_module = 4U,
-                .max_continuation_frame_bytes = 8192U
+                .max_continuation_frame_bytes = 8192U,
+                .continuation_frame_storage_bytes = (std::max)(std::size_t{8192U}, options.size * 256U)
             }
         };
         if (!backend)
@@ -934,7 +935,8 @@ int main(int argc, char** argv)
             .prepared_call_capacity = 4U,
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 4U,
-            .max_continuation_frame_bytes = 8192U
+            .max_continuation_frame_bytes = 8192U,
+            .continuation_frame_storage_bytes = 16384U
         }
     };
     assert(backend);
@@ -1068,6 +1070,7 @@ int main(int argc, char** argv)
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 8192U,
+            .continuation_frame_storage_bytes = 16384U,
             .max_event_wait_imports_per_module = 2U
         }
     };
@@ -1089,6 +1092,7 @@ int main(int argc, char** argv)
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 8192U,
+            .continuation_frame_storage_bytes = 16384U,
             .max_event_wait_imports_per_module = 2U
         }
     };

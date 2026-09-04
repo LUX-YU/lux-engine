@@ -855,7 +855,13 @@ namespace
             if (!created_artifact)
                 throw std::runtime_error("lua pool artifact creation failed");
             artifact.emplace(std::move(*created_artifact));
-            auto created_backend = LuaScriptBackend::create({count, call_count, count, 8U, 1U});
+            auto created_backend = LuaScriptBackend::create({
+                .instance_capacity = count,
+                .prepared_call_capacity = call_count,
+                .continuation_capacity = count,
+                .execution_depth_capacity = 8U,
+                .ability_catalog_method_capacity = 1U
+            });
             if (!created_backend)
                 throw std::runtime_error("lua pool backend creation failed");
             backend.emplace(std::move(*created_backend));

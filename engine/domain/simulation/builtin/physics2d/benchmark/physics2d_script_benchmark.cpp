@@ -422,6 +422,7 @@ namespace
                     .continuation_capacity = flow_count,
                     .max_ability_imports_per_module = 2U,
                     .max_continuation_frame_bytes = 256U,
+                    .continuation_frame_storage_bytes = (std::max)(std::size_t{256U}, flow_count * 128U),
                     .max_event_wait_imports_per_module = 1U
                 }
             );
@@ -436,10 +437,12 @@ namespace
                 .prepared_call_capacity = lua_count * 5U,
                 .continuation_capacity = lua_count,
                 .execution_depth_capacity = 4U,
-                .ability_method_capacity = 5U,
+                .ability_catalog_method_capacity = 5U,
+                .prepared_ability_capacity = lua_count * 5U,
                 .abilities = contributions,
                 .execution_policy = options.lua_policy,
-                .event_source_capacity = 1U,
+                .event_catalog_capacity = 1U,
+                .prepared_event_capacity = lua_count,
                 .events = event_sources
             }));
             backends = {cpp.backend->descriptor(), native->descriptor(), lua->descriptor()};

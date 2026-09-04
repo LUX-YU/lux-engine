@@ -67,15 +67,28 @@ namespace lux::simulation::script
         std::size_t prepared_call_capacity{};
         std::size_t continuation_capacity{};
         std::size_t execution_depth_capacity{};
-        std::size_t ability_method_capacity{};
+        std::size_t ability_catalog_method_capacity{};
+        std::size_t prepared_ability_capacity{};
         std::span<const LuaComponentBinding> components;
         std::span<const LuaRecordMarshaller> record_marshallers;
         std::span<const lux::script::lua::ScriptAbilityLuaContribution> abilities;
         lux::script::lua::ELuaExecutionPolicy execution_policy{
             lux::script::lua::ELuaExecutionPolicy::DEFAULT
         };
-        std::size_t event_source_capacity{1U};
+        std::size_t event_catalog_capacity{1U};
+        std::size_t prepared_event_capacity{};
         std::span<const lux::script::ScriptEventSourceDescription> events;
+    };
+
+    struct LuaScriptBackendStats final
+    {
+        std::size_t prepared_ability_slots{};
+        std::size_t prepared_ability_high_water{};
+        std::size_t prepared_event_slots{};
+        std::size_t prepared_event_high_water{};
+        std::size_t prepared_binding_bytes{};
+        std::size_t vm_coroutine_creations{};
+        std::size_t execution_stack_lookup_probes{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final
@@ -95,6 +108,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] lux::script::lua::LuaRuntimeInfo runtimeInfo() const noexcept;
+        [[nodiscard]] LuaScriptBackendStats stats() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
       private:
         struct State;

@@ -69,6 +69,30 @@ add_test(
 )
 
 add_executable(
+    simulation_script_lua_prepared_storage_test
+    test/lua_prepared_storage_test.cpp
+)
+target_link_libraries(
+    simulation_script_lua_prepared_storage_test
+    PRIVATE lux::engine::simulation::simulation_script_lua
+)
+if(MSVC)
+    target_compile_options(simulation_script_lua_prepared_storage_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_lua_prepared_storage_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_script_lua_prepared_storage_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+add_test(
+    NAME simulation_script_lua_prepared_storage_test
+    COMMAND simulation_script_lua_prepared_storage_test
+)
+
+add_executable(
     simulation_script_lua_vm_coroutine_contract_test
     test/lua_vm_coroutine_contract_test.cpp
 )

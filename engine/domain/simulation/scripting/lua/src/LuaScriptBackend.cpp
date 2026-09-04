@@ -3,6 +3,7 @@
 #include <lux/engine/function/script/lua/Lua.hpp>
 #include <lux/engine/function/script/lua/detail/LuaVmCompatibility.hpp>
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
+#include <lux/engine/simulation/scripting/ScriptContractValidation.hpp>
 
 #include <lua.hpp>
 
@@ -60,6 +61,8 @@ namespace lux::simulation::script
             std::span<const lux::script::ScriptSymbolId> suspension_capable_exports;
             std::size_t slot{};
             std::size_t active_continuations{};
+            std::uint32_t first_prepared_ability{(std::numeric_limits<std::uint32_t>::max)()};
+            std::uint32_t first_prepared_event{(std::numeric_limits<std::uint32_t>::max)()};
             bool active{};
         };
 
@@ -113,6 +116,235 @@ namespace lux::simulation::script
             const lux::script::ScriptEventSourceDescription* source{};
         };
 
+        template <class Value>
+        class PreparedOrdinalTable final
+        {
+        public:
+            static constexpr std::uint32_t InvalidSlot{(std::numeric_limits<std::uint32_t>::max)()};
+            static constexpr std::uint32_t EmptyBucket{InvalidSlot};
+            static constexpr std::uint32_t TombstoneBucket{InvalidSlot - 1U};
+
+            struct Stats final
+            {
+                std::size_t active{};
+                std::size_t high_water{};
+                std::size_t storage_bytes{};
+            };
+
+            explicit PreparedOrdinalTable(std::size_t capacity)
+            {
+                if (capacity == 0U)
+                    return;
+                if (capacity > (std::numeric_limits<std::uint32_t>::max)() ||
+                    capacity > (std::numeric_limits<std::size_t>::max)() / 2U)
+                {
+                    valid_ = false;
+                    return;
+                }
+                entries_.resize(capacity);
+                free_entries_.reserve(capacity);
+                for (std::size_t index = capacity; index > 0U; --index)
+                    free_entries_.push_back(static_cast<std::uint32_t>(index - 1U));
+                std::size_t bucket_count{2U};
+                while (bucket_count < capacity * 2U)
+                {
+                    if (bucket_count > (std::numeric_limits<std::size_t>::max)() / 2U)
+                    {
+                        valid_ = false;
+                        return;
+                    }
+                    bucket_count *= 2U;
+                }
+                buckets_.assign(bucket_count, EmptyBucket);
+            }
+
+            [[nodiscard]] bool insert(
+                std::uint32_t instance_slot,
+                std::uint32_t ordinal,
+                Value value,
+                std::uint32_t& ownership_head
+            ) noexcept
+            {
+                if (free_entries_.empty() || buckets_.empty())
+                    return false;
+                if (tombstones_ > buckets_.size() / 4U)
+                    rebuild();
+                const auto bucket = insertionBucket(instance_slot, ordinal);
+                if (bucket == InvalidSlot)
+                    return false;
+                if (buckets_[bucket] != EmptyBucket && buckets_[bucket] != TombstoneBucket)
+                    return false;
+                if (buckets_[bucket] == TombstoneBucket)
+                    --tombstones_;
+                const auto entry_slot = free_entries_.back();
+                free_entries_.pop_back();
+                entries_[entry_slot] = {
+                    instance_slot,
+                    ordinal,
+                    ownership_head,
+                    bucket,
+                    std::move(value),
+                    true
+                };
+                buckets_[bucket] = entry_slot;
+                ownership_head = entry_slot;
+                ++active_;
+                high_water_ = (std::max)(high_water_, active_);
+                return true;
+            }
+
+            [[nodiscard]] Value* find(std::uint32_t instance_slot, std::uint32_t ordinal) noexcept
+            {
+                const auto entry = findEntry(instance_slot, ordinal);
+                return entry == InvalidSlot ? nullptr : std::addressof(entries_[entry].value);
+            }
+
+            void eraseOwned(std::uint32_t& ownership_head) noexcept
+            {
+                auto current = ownership_head;
+                ownership_head = InvalidSlot;
+                while (current != InvalidSlot)
+                {
+                    auto& entry = entries_[current];
+                    const auto next = entry.ownership_next;
+                    if (entry.active)
+                        erase(current);
+                    current = next;
+                }
+            }
+
+            [[nodiscard]] Stats stats() const noexcept
+            {
+                return {
+                    active_,
+                    high_water_,
+                    entries_.size() * sizeof(Entry) + buckets_.size() * sizeof(std::uint32_t) +
+                        free_entries_.capacity() * sizeof(std::uint32_t)
+                };
+            }
+
+            [[nodiscard]] bool valid() const noexcept
+            {
+                return valid_;
+            }
+
+        private:
+            struct Entry final
+            {
+                std::uint32_t instance_slot{};
+                std::uint32_t ordinal{};
+                std::uint32_t ownership_next{InvalidSlot};
+                std::uint32_t bucket{InvalidSlot};
+                Value value;
+                bool active{};
+            };
+
+            [[nodiscard]] std::size_t hash(std::uint32_t instance_slot, std::uint32_t ordinal) const noexcept
+            {
+                const auto key = (static_cast<std::uint64_t>(instance_slot) << 32U) | ordinal;
+                auto mixed = key + 0x9E3779B97F4A7C15ULL;
+                mixed = (mixed ^ (mixed >> 30U)) * 0xBF58476D1CE4E5B9ULL;
+                mixed = (mixed ^ (mixed >> 27U)) * 0x94D049BB133111EBULL;
+                return static_cast<std::size_t>(mixed ^ (mixed >> 31U));
+            }
+
+            [[nodiscard]] std::uint32_t findEntry(
+                std::uint32_t instance_slot,
+                std::uint32_t ordinal
+            ) const noexcept
+            {
+                if (buckets_.empty())
+                    return InvalidSlot;
+                const auto mask = buckets_.size() - 1U;
+                auto bucket = hash(instance_slot, ordinal) & mask;
+                for (std::size_t probe{}; probe < buckets_.size(); ++probe)
+                {
+                    const auto entry_slot = buckets_[bucket];
+                    if (entry_slot == EmptyBucket)
+                        return InvalidSlot;
+                    if (entry_slot != TombstoneBucket)
+                    {
+                        const auto& entry = entries_[entry_slot];
+                        if (entry.active && entry.instance_slot == instance_slot && entry.ordinal == ordinal)
+                            return entry_slot;
+                    }
+                    bucket = (bucket + 1U) & mask;
+                }
+                return InvalidSlot;
+            }
+
+            [[nodiscard]] std::uint32_t insertionBucket(
+                std::uint32_t instance_slot,
+                std::uint32_t ordinal
+            ) const noexcept
+            {
+                const auto mask = buckets_.size() - 1U;
+                auto bucket = hash(instance_slot, ordinal) & mask;
+                auto tombstone = InvalidSlot;
+                for (std::size_t probe{}; probe < buckets_.size(); ++probe)
+                {
+                    const auto entry_slot = buckets_[bucket];
+                    if (entry_slot == EmptyBucket)
+                        return tombstone == InvalidSlot ? static_cast<std::uint32_t>(bucket) : tombstone;
+                    if (entry_slot == TombstoneBucket)
+                    {
+                        if (tombstone == InvalidSlot)
+                            tombstone = static_cast<std::uint32_t>(bucket);
+                    }
+                    else
+                    {
+                        const auto& entry = entries_[entry_slot];
+                        if (entry.active && entry.instance_slot == instance_slot && entry.ordinal == ordinal)
+                            return static_cast<std::uint32_t>(bucket);
+                    }
+                    bucket = (bucket + 1U) & mask;
+                }
+                return tombstone;
+            }
+
+            void erase(std::uint32_t entry_slot) noexcept
+            {
+                auto& entry = entries_[entry_slot];
+                buckets_[entry.bucket] = TombstoneBucket;
+                ++tombstones_;
+                entry = {};
+                entry.ownership_next = InvalidSlot;
+                entry.bucket = InvalidSlot;
+                free_entries_.push_back(entry_slot);
+                --active_;
+                if (active_ == 0U)
+                {
+                    std::fill(buckets_.begin(), buckets_.end(), EmptyBucket);
+                    tombstones_ = 0U;
+                }
+            }
+
+            void rebuild() noexcept
+            {
+                std::fill(buckets_.begin(), buckets_.end(), EmptyBucket);
+                tombstones_ = 0U;
+                for (std::uint32_t entry_slot{}; entry_slot < entries_.size(); ++entry_slot)
+                {
+                    auto& entry = entries_[entry_slot];
+                    if (!entry.active)
+                        continue;
+                    const auto bucket = insertionBucket(entry.instance_slot, entry.ordinal);
+                    if (bucket == InvalidSlot)
+                        std::terminate();
+                    entry.bucket = bucket;
+                    buckets_[bucket] = entry_slot;
+                }
+            }
+
+            std::vector<Entry> entries_;
+            std::vector<std::uint32_t> free_entries_;
+            std::vector<std::uint32_t> buckets_;
+            std::size_t active_{};
+            std::size_t high_water_{};
+            std::size_t tombstones_{};
+            bool valid_{true};
+        };
+
         struct LuaContinuation final
         {
             State* owner{};
@@ -143,9 +375,11 @@ namespace lux::simulation::script
               prepared_call_capacity(config.prepared_call_capacity),
               continuation_capacity(config.continuation_capacity),
               execution_depth_capacity(config.execution_depth_capacity),
-              ability_method_capacity(config.ability_method_capacity),
-              event_source_capacity(config.event_source_capacity)
+              prepared_abilities(config.prepared_ability_capacity),
+              prepared_events(config.prepared_event_capacity)
         {
+            if (!prepared_abilities.valid() || !prepared_events.valid())
+                return;
             if (!lux::script::lua::detail::configureLuaVm(
                     state,
                     config.execution_policy,
@@ -184,8 +418,6 @@ namespace lux::simulation::script
             std::ranges::sort(event_sources, {}, [](const auto& source) noexcept {
                 return std::pair{std::string_view(source.system_name), std::string_view(source.event_name)};
             });
-            prepared_abilities.resize(instance_capacity * ability_method_capacity);
-            prepared_events.resize(instance_capacity * event_source_capacity);
             execution_stack.reserve(execution_depth_capacity);
             instances.resize(instance_capacity);
             free_instances.reserve(instance_capacity);
@@ -464,52 +696,13 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] static bool sameValue(
-            const lux::script::ScriptAbilityValueDescription& left,
-            const lux::script::ScriptAbilityValueDescription& right
-        ) noexcept
-        {
-            return left.type_id == right.type_id && left.canonical_name == right.canonical_name &&
-                left.pass == right.pass && left.abi_kind == right.abi_kind && left.size == right.size &&
-                left.alignment == right.alignment && left.lifetime == right.lifetime;
-        }
-
-        [[nodiscard]] static bool sameMethod(
-            const lux::script::ScriptAbilityMethodDescription& semantic,
-            const lux::script::ScriptAbilityErasedMethodBinding& runtime
-        ) noexcept
-        {
-            if (semantic.id != runtime.method || semantic.kind != runtime.kind ||
-                semantic.parameters.size() != runtime.parameters.size() ||
-                semantic.results.size() != runtime.results.size())
-            {
-                return false;
-            }
-            for (std::size_t index{}; index < semantic.parameters.size(); ++index)
-            {
-                if (!sameValue(semantic.parameters[index].value, runtime.parameters[index].value))
-                    return false;
-            }
-            for (std::size_t index{}; index < semantic.results.size(); ++index)
-            {
-                if (!sameValue(semantic.results[index], runtime.results[index]))
-                    return false;
-            }
-            return semantic.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION
-                ? runtime.start != nullptr && runtime.invoke == nullptr
-                : runtime.invoke != nullptr && runtime.start == nullptr;
-        }
-
         [[nodiscard]] EScriptBackendResult prepareAbilities(
             std::size_t instance_slot,
+            Instance& instance,
             const ScriptInstanceCreateContext& context
         ) noexcept
         {
-            auto prepared = std::span{
-                prepared_abilities.data() + instance_slot * ability_method_capacity,
-                ability_method_capacity
-            };
-            std::fill(prepared.begin(), prepared.end(), PreparedAbility{});
+            prepared_abilities.eraseOwned(instance.first_prepared_ability);
             for (const auto& capability : context.capabilities)
             {
                 const lux::script::ScriptAbilityDescription* ability{};
@@ -527,6 +720,7 @@ namespace lux::simulation::script
                 if (ability == nullptr || ability->schema_version != capability.schema_version ||
                     ability->schema_hash != capability.schema_hash)
                 {
+                    prepared_abilities.eraseOwned(instance.first_prepared_ability);
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 }
                 for (std::size_t ordinal = first_method;
@@ -543,9 +737,21 @@ namespace lux::simulation::script
                             break;
                         }
                     }
-                    if (method == nullptr || !sameMethod(semantic, *method))
+                    if (method == nullptr || !scriptAbilityMethodMatches(semantic, *method))
+                    {
+                        prepared_abilities.eraseOwned(instance.first_prepared_ability);
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-                    prepared[ordinal] = {capability.context, capability.dispatch, method};
+                    }
+                    if (!prepared_abilities.insert(
+                            static_cast<std::uint32_t>(instance_slot),
+                            static_cast<std::uint32_t>(ordinal),
+                            PreparedAbility{capability.context, capability.dispatch, method},
+                            instance.first_prepared_ability
+                        ))
+                    {
+                        prepared_abilities.eraseOwned(instance.first_prepared_ability);
+                        return EScriptBackendResult::CAPACITY_EXCEEDED;
+                    }
                 }
             }
             return EScriptBackendResult::SUCCESS;
@@ -553,6 +759,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] EScriptBackendResult prepareEvents(
             std::size_t instance_slot,
+            Instance& instance,
             const ScriptInstanceCreateContext& context,
             const lux::script::ScriptArtifact& artifact
         ) noexcept
@@ -560,25 +767,34 @@ namespace lux::simulation::script
             const auto& requirements = artifact.description().event_requirements;
             if (requirements.size() != context.events.size())
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-            auto prepared = std::span{
-                prepared_events.data() + instance_slot * event_source_capacity,
-                event_source_capacity
-            };
-            std::fill(prepared.begin(), prepared.end(), PreparedEventSource{});
+            prepared_events.eraseOwned(instance.first_prepared_event);
             for (const auto& requirement : requirements)
             {
                 const auto resolved = std::ranges::find(context.events, requirement);
                 if (resolved == context.events.end())
+                {
+                    prepared_events.eraseOwned(instance.first_prepared_event);
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                }
                 const auto found = std::ranges::find_if(event_sources, [&](const auto& candidate) noexcept {
                     return candidate == requirement;
                 });
                 if (found == event_sources.end())
+                {
+                    prepared_events.eraseOwned(instance.first_prepared_event);
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                }
                 const auto ordinal = static_cast<std::size_t>(found - event_sources.begin());
-                if (ordinal >= prepared.size())
+                if (!prepared_events.insert(
+                        static_cast<std::uint32_t>(instance_slot),
+                        static_cast<std::uint32_t>(ordinal),
+                        PreparedEventSource{std::addressof(*found)},
+                        instance.first_prepared_event
+                    ))
+                {
+                    prepared_events.eraseOwned(instance.first_prepared_event);
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
-                prepared[ordinal].source = std::addressof(*found);
+                }
             }
             return EScriptBackendResult::SUCCESS;
         }
@@ -809,13 +1025,6 @@ namespace lux::simulation::script
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
 
             const auto instance_slot = self.free_instances.back();
-            const auto ability_result = self.prepareAbilities(instance_slot, context);
-            if (ability_result != EScriptBackendResult::SUCCESS)
-                return ability_result;
-            const auto event_result = self.prepareEvents(instance_slot, context, artifact);
-            if (event_result != EScriptBackendResult::SUCCESS)
-                return event_result;
-            self.free_instances.pop_back();
             auto* instance = std::addressof(self.instances[instance_slot]);
             *instance = Instance{
                 std::addressof(self),
@@ -824,9 +1033,23 @@ namespace lux::simulation::script
                 std::holds_alternative<EntityScriptScope>(context.scope),
                 nullptr,
                 body->suspension_capable_exports,
-                instance_slot,
-                0U,
-                true};
+                instance_slot
+            };
+            const auto ability_result = self.prepareAbilities(instance_slot, *instance, context);
+            if (ability_result != EScriptBackendResult::SUCCESS)
+            {
+                *instance = {};
+                return ability_result;
+            }
+            const auto event_result = self.prepareEvents(instance_slot, *instance, context, artifact);
+            if (event_result != EScriptBackendResult::SUCCESS)
+            {
+                self.prepared_abilities.eraseOwned(instance->first_prepared_ability);
+                *instance = {};
+                return event_result;
+            }
+            self.free_instances.pop_back();
+            instance->active = true;
 
             lua_newtable(self.state);
             const auto instance_index = lua_gettop(self.state);
@@ -1134,6 +1357,7 @@ namespace lux::simulation::script
         {
             for (auto current = execution_stack.rbegin(); current != execution_stack.rend(); ++current)
             {
+                ++execution_stack_lookup_probes;
                 if (current->thread == thread)
                     return std::addressof(*current);
             }
@@ -1177,8 +1401,7 @@ namespace lux::simulation::script
                 return abilityFailure(state, nullptr, kInvalidCall, "invalid Lux Script Ability method");
             auto* execution = self->currentExecution(state);
             const auto ordinal = static_cast<std::size_t>(raw_ordinal);
-            if (execution == nullptr || execution->instance == nullptr ||
-                ordinal >= self->ability_method_capacity)
+            if (execution == nullptr || execution->instance == nullptr)
             {
                 return abilityFailure(
                     state,
@@ -1187,11 +1410,12 @@ namespace lux::simulation::script
                     "Script Ability called outside a script invocation"
                 );
             }
-            auto& prepared = self->prepared_abilities[
-                execution->instance->slot * self->ability_method_capacity + ordinal
-            ];
+            auto* prepared = self->prepared_abilities.find(
+                static_cast<std::uint32_t>(execution->instance->slot),
+                static_cast<std::uint32_t>(ordinal)
+            );
             const auto& semantic = *self->ability_methods[ordinal].method;
-            if (prepared.method == nullptr)
+            if (prepared == nullptr || prepared->method == nullptr)
             {
                 return abilityFailure(
                     state,
@@ -1234,7 +1458,7 @@ namespace lux::simulation::script
             if (semantic.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
             {
                 const bool is_invalid_async_context = execution->continuation == nullptr ||
-                    execution->step == nullptr || prepared.method->start == nullptr;
+                    execution->step == nullptr || prepared->method->start == nullptr;
                 if (is_invalid_async_context)
                 {
                     return abilityFailure(
@@ -1249,9 +1473,9 @@ namespace lux::simulation::script
                     : std::addressof(semantic.results.front());
                 const auto started = invokeScriptAbilityAsyncErased(
                     *execution->step,
-                    prepared.context,
-                    prepared.dispatch,
-                    prepared.method->start,
+                    prepared->context,
+                    prepared->dispatch,
+                    prepared->method->start,
                     {arguments.data(), semantic.parameters.size()},
                     result_description
                 );
@@ -1285,9 +1509,9 @@ namespace lux::simulation::script
             }
             std::int32_t failure_status{};
             {
-                const auto invoked = prepared.method->invoke(
-                    prepared.context,
-                    prepared.dispatch,
+                const auto invoked = prepared->method->invoke(
+                    prepared->context,
+                    prepared->dispatch,
                     {arguments.data(), semantic.parameters.size()},
                     {results.data(), semantic.results.size()}
                 );
@@ -1358,8 +1582,7 @@ namespace lux::simulation::script
             auto* execution = self->currentExecution(state);
             const auto ordinal = static_cast<std::size_t>(raw_ordinal);
             const bool is_invalid_context = execution == nullptr || execution->instance == nullptr ||
-                execution->continuation == nullptr || execution->step == nullptr || lua_gettop(state) != 0 ||
-                ordinal >= self->event_source_capacity;
+                execution->continuation == nullptr || execution->step == nullptr || lua_gettop(state) != 0;
             if (is_invalid_context)
             {
                 return abilityFailure(
@@ -1369,10 +1592,11 @@ namespace lux::simulation::script
                     "Script Event wait requires a coroutine-capable export"
                 );
             }
-            auto& prepared = self->prepared_events[
-                execution->instance->slot * self->event_source_capacity + ordinal
-            ];
-            if (prepared.source == nullptr)
+            auto* prepared = self->prepared_events.find(
+                static_cast<std::uint32_t>(execution->instance->slot),
+                static_cast<std::uint32_t>(ordinal)
+            );
+            if (prepared == nullptr || prepared->source == nullptr)
             {
                 return abilityFailure(
                     state,
@@ -1381,7 +1605,7 @@ namespace lux::simulation::script
                     "Script did not declare this Event source"
                 );
             }
-            const auto& source = *prepared.source;
+            const auto& source = *prepared->source;
             const auto admission = admitEventWait(*execution->step, source);
             if (admission.failure != 0)
             {
@@ -1477,6 +1701,7 @@ namespace lux::simulation::script
             const auto thread_ref = luaL_ref(state, LUA_REGISTRYINDEX);
             if (thread_ref == LUA_NOREF || thread_ref == LUA_REFNIL)
                 return nullptr;
+            ++vm_coroutine_creations;
             const auto slot = free_continuations.back();
             free_continuations.pop_back();
             auto& continuation = continuations[slot];
@@ -1822,16 +2047,8 @@ namespace lux::simulation::script
             const auto instance_slot = static_cast<std::size_t>(
                 instance - self.instances.data()
             );
-            auto abilities = std::span{
-                self.prepared_abilities.data() + instance_slot * self.ability_method_capacity,
-                self.ability_method_capacity
-            };
-            std::fill(abilities.begin(), abilities.end(), PreparedAbility{});
-            auto events = std::span{
-                self.prepared_events.data() + instance_slot * self.event_source_capacity,
-                self.event_source_capacity
-            };
-            std::fill(events.begin(), events.end(), PreparedEventSource{});
+            self.prepared_abilities.eraseOwned(instance->first_prepared_ability);
+            self.prepared_events.eraseOwned(instance->first_prepared_event);
             *instance = {};
             self.free_instances.push_back(instance_slot);
         }
@@ -1846,8 +2063,6 @@ namespace lux::simulation::script
         std::size_t prepared_call_capacity{};
         std::size_t continuation_capacity{};
         std::size_t execution_depth_capacity{};
-        std::size_t ability_method_capacity{};
-        std::size_t event_source_capacity{};
         std::unordered_map<lux::asset::AssetId, int> prototypes;
         std::vector<LuaComponentBinding> components;
         std::unordered_map<std::string_view, std::size_t> component_index;
@@ -1861,12 +2076,14 @@ namespace lux::simulation::script
         std::vector<PreparedCall> prepared_calls;
         std::vector<std::size_t> free_prepared_calls;
         std::vector<AbilityMethod> ability_methods;
-        std::vector<PreparedAbility> prepared_abilities;
+        PreparedOrdinalTable<PreparedAbility> prepared_abilities;
         std::vector<lux::script::ScriptEventSourceDescription> event_sources;
-        std::vector<PreparedEventSource> prepared_events;
+        PreparedOrdinalTable<PreparedEventSource> prepared_events;
         std::vector<LuaContinuation> continuations;
         std::vector<std::size_t> free_continuations;
         std::vector<ExecutionFrame> execution_stack;
+        std::size_t vm_coroutine_creations{};
+        std::size_t execution_stack_lookup_probes{};
     };
 
     lux::cxx::expected<
@@ -1877,10 +2094,8 @@ namespace lux::simulation::script
     {
         const bool has_invalid_capacity = config.instance_capacity == 0U ||
             config.prepared_call_capacity == 0U || config.continuation_capacity == 0U ||
-            config.execution_depth_capacity == 0U || config.ability_method_capacity == 0U ||
-            config.event_source_capacity == 0U ||
-            config.instance_capacity > std::numeric_limits<std::size_t>::max() / config.ability_method_capacity ||
-            config.instance_capacity > std::numeric_limits<std::size_t>::max() / config.event_source_capacity;
+            config.execution_depth_capacity == 0U || config.ability_catalog_method_capacity == 0U ||
+            config.event_catalog_capacity == 0U;
         if (has_invalid_capacity)
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         for (std::size_t index{}; index < config.components.size(); ++index)
@@ -2009,9 +2224,11 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
             ability_method_count += contribution.description->methods.size();
         }
-        if (ability_method_count > config.ability_method_capacity)
+        if (ability_method_count > config.ability_catalog_method_capacity ||
+            (ability_method_count != 0U && config.prepared_ability_capacity == 0U))
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
-        if (config.events.size() > config.event_source_capacity)
+        if (config.events.size() > config.event_catalog_capacity ||
+            (!config.events.empty() && config.prepared_event_capacity == 0U))
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         for (std::size_t index{}; index < config.events.size(); ++index)
         {
@@ -2104,6 +2321,24 @@ namespace lux::simulation::script
     lux::script::lua::LuaRuntimeInfo LuaScriptBackend::runtimeInfo() const noexcept
     {
         return state_ ? state_->runtime_info : lux::script::lua::LuaRuntimeInfo{};
+    }
+
+    LuaScriptBackendStats LuaScriptBackend::stats() const noexcept
+    {
+        if (!state_)
+            return {};
+        std::lock_guard lock{state_->mutex};
+        const auto abilities = state_->prepared_abilities.stats();
+        const auto events = state_->prepared_events.stats();
+        return {
+            abilities.active,
+            abilities.high_water,
+            events.active,
+            events.high_water,
+            abilities.storage_bytes + events.storage_bytes,
+            state_->vm_coroutine_creations,
+            state_->execution_stack_lookup_probes
+        };
     }
 
     ScriptBackendDescriptor LuaScriptBackend::descriptor() noexcept

@@ -36,15 +36,27 @@ namespace lux::script
     {
     public:
         using CompletionResult = lux::cxx::expected<void, EScriptAbilityCompletionError>;
-        using SuccessFn = CompletionResult (*)(void*, lux::semantic::TypeId, const void*, std::uint32_t) noexcept;
-        using FailureFn = CompletionResult (*)(void*, ScriptAbilityOperationError) noexcept;
-        using ActiveFn = bool (*)(void*) noexcept;
+        using SuccessFn = CompletionResult (*)(
+            void*,
+            std::uint64_t,
+            std::uint64_t,
+            lux::semantic::TypeId,
+            const void*,
+            std::uint32_t
+        ) noexcept;
+        using FailureFn = CompletionResult (*)(
+            void*,
+            std::uint64_t,
+            std::uint64_t,
+            ScriptAbilityOperationError
+        ) noexcept;
+        using ActiveFn = bool (*)(void*, std::uint64_t, std::uint64_t) noexcept;
 
         ScriptAbilityErasedCompletion() = default;
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return state_ != nullptr && success_ != nullptr && failure_ != nullptr;
+            return lease_ != nullptr && context_ != nullptr && success_ != nullptr && failure_ != nullptr;
         }
 
         [[nodiscard]] CompletionResult success(
@@ -55,7 +67,7 @@ namespace lux::script
         {
             if (!*this)
                 return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
-            return success_(state_.get(), type, value, size);
+            return success_(context_, token_a_, token_b_, type, value, size);
         }
 
         [[nodiscard]] CompletionResult success() const noexcept
@@ -67,36 +79,59 @@ namespace lux::script
         {
             if (!*this)
                 return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
-            return failure_(state_.get(), error);
+            return failure_(context_, token_a_, token_b_, error);
         }
 
         [[nodiscard]] bool active() const noexcept
         {
-            return *this && (active_ == nullptr || active_(state_.get()));
+            return *this && (active_ == nullptr || active_(context_, token_a_, token_b_));
         }
 
         [[nodiscard]] static ScriptAbilityErasedCompletion bind(
-            std::shared_ptr<void> state,
+            std::shared_ptr<void> lease,
+            void* context,
+            std::uint64_t token_a,
+            std::uint64_t token_b,
             SuccessFn success,
             FailureFn failure,
             ActiveFn active = nullptr
         ) noexcept
         {
-            return ScriptAbilityErasedCompletion(std::move(state), success, failure, active);
+            return ScriptAbilityErasedCompletion(
+                std::move(lease),
+                context,
+                token_a,
+                token_b,
+                success,
+                failure,
+                active
+            );
         }
 
     private:
         ScriptAbilityErasedCompletion(
-            std::shared_ptr<void> state,
+            std::shared_ptr<void> lease,
+            void* context,
+            std::uint64_t token_a,
+            std::uint64_t token_b,
             SuccessFn success,
             FailureFn failure,
             ActiveFn active
         ) noexcept
-            : state_(std::move(state)), success_(success), failure_(failure), active_(active)
+            : lease_(std::move(lease)),
+              context_(context),
+              token_a_(token_a),
+              token_b_(token_b),
+              success_(success),
+              failure_(failure),
+              active_(active)
         {
         }
 
-        std::shared_ptr<void> state_;
+        std::shared_ptr<void> lease_;
+        void* context_{};
+        std::uint64_t token_a_{};
+        std::uint64_t token_b_{};
         SuccessFn success_{};
         FailureFn failure_{};
         ActiveFn active_{};

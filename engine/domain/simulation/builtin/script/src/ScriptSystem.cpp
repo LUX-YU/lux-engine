@@ -521,6 +521,150 @@ namespace lux::simulation::script
                                                                          error);
             }
 
+            [[nodiscard]] static ScriptInstanceId unpackInstance(std::uint64_t value) noexcept
+            {
+                return {
+                    static_cast<std::uint32_t>(value >> 32U),
+                    static_cast<std::uint32_t>(value)
+                };
+            }
+
+            [[nodiscard]] static ScriptAwaitableId unpackAwaitable(std::uint64_t value) noexcept
+            {
+                return {
+                    static_cast<std::uint32_t>(value >> 32U),
+                    static_cast<std::uint32_t>(value)
+                };
+            }
+
+            [[nodiscard]] static lux::script::EScriptAbilityCompletionError abilityError(
+                EScriptAwaitableCompletionError error
+            ) noexcept
+            {
+                switch (error)
+                {
+                case EScriptAwaitableCompletionError::INVALID_ID:
+                    return lux::script::EScriptAbilityCompletionError::STALE;
+                case EScriptAwaitableCompletionError::INVALID_VALUE:
+                    return lux::script::EScriptAbilityCompletionError::INVALID_VALUE;
+                case EScriptAwaitableCompletionError::ALREADY_TERMINAL:
+                    return lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED;
+                case EScriptAwaitableCompletionError::RESUME_QUEUE_FULL:
+                    return lux::script::EScriptAbilityCompletionError::BACKPRESSURE;
+                case EScriptAwaitableCompletionError::STOPPING:
+                    return lux::script::EScriptAbilityCompletionError::STOPPING;
+                }
+                return lux::script::EScriptAbilityCompletionError::STALE;
+            }
+
+            [[nodiscard]] lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> completeAbility(
+                ScriptInstanceId instance,
+                ScriptAwaitableId awaitable,
+                lux::semantic::TypeId type,
+                const void* data,
+                std::uint32_t size
+            ) noexcept
+            {
+                std::lock_guard lock{mutex};
+                if (stopping)
+                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STOPPING);
+                auto* record = awaitables.find(awaitableKey(awaitable));
+                if (record == nullptr || record->instance != instance)
+                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STALE);
+                if (record->state != EScriptAwaitableState::PENDING)
+                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED);
+                if (record->continuation.valid() && resumes.count >= resumes.records.size())
+                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::BACKPRESSURE);
+
+                ScriptOwnedResumeValue owned;
+                if (!record->result_type)
+                {
+                    if (type != lux::semantic::InvalidTypeId || data != nullptr || size != 0U)
+                        return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+                }
+                else
+                {
+                    const auto& expected = *record->result_type;
+                    if (data == nullptr || type != expected.type_id || size != expected.size)
+                        return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+                    try
+                    {
+                        owned.type = expected;
+                        if (!owned.bytes.resize(size, expected.alignment))
+                        {
+                            return lux::cxx::unexpected(
+                                lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE
+                            );
+                        }
+                    }
+                    catch (const std::bad_alloc&)
+                    {
+                        return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE);
+                    }
+                    std::memcpy(owned.bytes.data(), data, size);
+                }
+
+                record->state = EScriptAwaitableState::READY;
+                record->value = std::move(owned);
+                if (record->continuation.valid())
+                {
+                    static_cast<void>(resumes.push({record->instance, record->continuation, record->id}));
+                    record->resume_enqueued = true;
+                }
+                return {};
+            }
+
+            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
+            completeAbilityErased(
+                void* context,
+                std::uint64_t instance,
+                std::uint64_t awaitable,
+                lux::semantic::TypeId type,
+                const void* data,
+                std::uint32_t size
+            ) noexcept
+            {
+                return static_cast<AwaitableIngress*>(context)->completeAbility(
+                    unpackInstance(instance),
+                    unpackAwaitable(awaitable),
+                    type,
+                    data,
+                    size
+                );
+            }
+
+            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
+            failAbilityErased(
+                void* context,
+                std::uint64_t instance,
+                std::uint64_t awaitable,
+                lux::script::ScriptAbilityOperationError error
+            ) noexcept
+            {
+                const auto completed = static_cast<AwaitableIngress*>(context)->complete(
+                    unpackInstance(instance),
+                    unpackAwaitable(awaitable),
+                    EScriptAwaitableState::FAILED,
+                    {},
+                    {error.status}
+                );
+                return completed
+                    ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                    : lux::cxx::unexpected(abilityError(completed.error()));
+            }
+
+            [[nodiscard]] static bool activeAbilityErased(
+                void* context,
+                std::uint64_t instance,
+                std::uint64_t awaitable
+            ) noexcept
+            {
+                return static_cast<AwaitableIngress*>(context)->active(
+                    unpackInstance(instance),
+                    unpackAwaitable(awaitable)
+                );
+            }
+
             [[nodiscard]] bool active(ScriptInstanceId instance, ScriptAwaitableId awaitable) noexcept
             {
                 std::lock_guard lock{mutex};
@@ -977,7 +1121,10 @@ namespace lux::simulation::script
                                                                          &AwaitableIngress::completeErased,
                                                                          &AwaitableIngress::activeErased,
                                                                          instance,
-                                                                         id}};
+                                                                         id,
+                                                                         &AwaitableIngress::completeAbilityErased,
+                                                                         &AwaitableIngress::failAbilityErased,
+                                                                         &AwaitableIngress::activeAbilityErased}};
         }
 
         [[nodiscard]] static lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError>
@@ -1148,7 +1295,8 @@ namespace lux::simulation::script
                     projection.owned_layout.size,
                     projection.owned_layout.alignment
                 });
-                payload.bytes.resize(projection.owned_layout.size);
+                if (!payload.bytes.resize(projection.owned_layout.size, projection.owned_layout.alignment))
+                    return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
             }
             catch (const std::bad_alloc&)
             {
@@ -1847,7 +1995,7 @@ namespace lux::simulation::script
             const bool copied = !is_invalid_frame && bucket.endpoint->payload_projection.copy(
                 bucket.endpoint->context,
                 frame.args[0],
-                waiter->payload.bytes
+                waiter->payload.bytes.span()
             );
             if (!copied)
             {

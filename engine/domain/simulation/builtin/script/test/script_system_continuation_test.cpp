@@ -672,7 +672,7 @@ namespace
         assert(typed.hook.dispatch() == 1U);
         ScriptOwnedResumeValue value;
         value.type = lux::rdesc::makeScriptValueType<std::int32_t>();
-        value.bytes.resize(sizeof(std::int32_t));
+        assert(value.bytes.resize(sizeof(std::int32_t)));
         assert(typed.backend_state.completions.front().ready(std::move(value)));
         assert(typed_system.executeStablePoint());
         assert(typed.backend_state.saw_typed_result);

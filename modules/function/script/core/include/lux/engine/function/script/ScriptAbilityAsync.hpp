@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/function/script/ScriptAbilityOperation.hpp>
+#include <lux/engine/function/script/ScriptAbility.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -18,63 +18,49 @@ namespace lux::script
         static_assert(std::is_nothrow_move_constructible_v<Result>);
 
         using CompletionResult = lux::cxx::expected<void, EScriptAbilityCompletionError>;
-        using SuccessFn = CompletionResult (*)(void*, Result) noexcept;
-        using FailureFn = CompletionResult (*)(void*, ScriptAbilityOperationError) noexcept;
-        using ActiveFn = bool (*)(void*) noexcept;
 
         ScriptAbilityCompletion() = default;
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return state_ != nullptr && success_ != nullptr && failure_ != nullptr;
+            return static_cast<bool>(completion_);
         }
 
         [[nodiscard]] CompletionResult success(Result value) const noexcept
         {
             if (!*this)
-                return lux::cxx::unexpected(EScriptAbilityCompletionError::STALE);
-            return success_(state_.get(), std::move(value));
+                return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
+            return completion_.success(
+                lux::semantic::typeId(lux::semantic::TypeTraits<Result>::CanonicalName),
+                std::addressof(value),
+                sizeof(Result)
+            );
         }
 
         [[nodiscard]] CompletionResult fail(ScriptAbilityOperationError error) const noexcept
         {
-            if (!*this)
-                return lux::cxx::unexpected(EScriptAbilityCompletionError::STALE);
-            if (!error.valid())
-                return lux::cxx::unexpected(EScriptAbilityCompletionError::INVALID_VALUE);
-            return failure_(state_.get(), error);
+            return completion_.fail(error);
         }
 
         [[nodiscard]] bool active() const noexcept
         {
-            return *this && (active_ == nullptr || active_(state_.get()));
+            return completion_.active();
         }
 
-        [[nodiscard]] static ScriptAbilityCompletion bind(
-            std::shared_ptr<void> state,
-            SuccessFn success,
-            FailureFn failure,
-            ActiveFn active = nullptr
+        [[nodiscard]] static ScriptAbilityCompletion fromErased(
+            ScriptAbilityErasedCompletion completion
         ) noexcept
         {
-            return ScriptAbilityCompletion(std::move(state), success, failure, active);
+            return ScriptAbilityCompletion(std::move(completion));
         }
 
     private:
-        ScriptAbilityCompletion(
-            std::shared_ptr<void> state,
-            SuccessFn success,
-            FailureFn failure,
-            ActiveFn active
-        ) noexcept
-            : state_(std::move(state)), success_(success), failure_(failure), active_(active)
+        explicit ScriptAbilityCompletion(ScriptAbilityErasedCompletion completion) noexcept
+            : completion_(std::move(completion))
         {
         }
 
-        std::shared_ptr<void> state_;
-        SuccessFn success_{};
-        FailureFn failure_{};
-        ActiveFn active_{};
+        ScriptAbilityErasedCompletion completion_;
     };
 
     template <>
@@ -82,63 +68,43 @@ namespace lux::script
     {
     public:
         using CompletionResult = lux::cxx::expected<void, EScriptAbilityCompletionError>;
-        using SuccessFn = CompletionResult (*)(void*) noexcept;
-        using FailureFn = CompletionResult (*)(void*, ScriptAbilityOperationError) noexcept;
-        using ActiveFn = bool (*)(void*) noexcept;
 
         ScriptAbilityCompletion() = default;
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return state_ != nullptr && success_ != nullptr && failure_ != nullptr;
+            return static_cast<bool>(completion_);
         }
 
         [[nodiscard]] CompletionResult success() const noexcept
         {
-            if (!*this)
-                return lux::cxx::unexpected(EScriptAbilityCompletionError::STALE);
-            return success_(state_.get());
+            return completion_.success();
         }
 
         [[nodiscard]] CompletionResult fail(ScriptAbilityOperationError error) const noexcept
         {
-            if (!*this)
-                return lux::cxx::unexpected(EScriptAbilityCompletionError::STALE);
-            if (!error.valid())
-                return lux::cxx::unexpected(EScriptAbilityCompletionError::INVALID_VALUE);
-            return failure_(state_.get(), error);
+            return completion_.fail(error);
         }
 
         [[nodiscard]] bool active() const noexcept
         {
-            return *this && (active_ == nullptr || active_(state_.get()));
+            return completion_.active();
         }
 
-        [[nodiscard]] static ScriptAbilityCompletion bind(
-            std::shared_ptr<void> state,
-            SuccessFn success,
-            FailureFn failure,
-            ActiveFn active = nullptr
+        [[nodiscard]] static ScriptAbilityCompletion fromErased(
+            ScriptAbilityErasedCompletion completion
         ) noexcept
         {
-            return ScriptAbilityCompletion(std::move(state), success, failure, active);
+            return ScriptAbilityCompletion(std::move(completion));
         }
 
     private:
-        ScriptAbilityCompletion(
-            std::shared_ptr<void> state,
-            SuccessFn success,
-            FailureFn failure,
-            ActiveFn active
-        ) noexcept
-            : state_(std::move(state)), success_(success), failure_(failure), active_(active)
+        explicit ScriptAbilityCompletion(ScriptAbilityErasedCompletion completion) noexcept
+            : completion_(std::move(completion))
         {
         }
 
-        std::shared_ptr<void> state_;
-        SuccessFn success_{};
-        FailureFn failure_{};
-        ActiveFn active_{};
+        ScriptAbilityErasedCompletion completion_;
     };
 
     template <class Ability>

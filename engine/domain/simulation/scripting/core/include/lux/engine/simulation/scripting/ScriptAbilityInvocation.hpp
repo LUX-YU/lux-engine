@@ -3,9 +3,7 @@
 #include <lux/engine/function/script/ScriptAbilityAsync.hpp>
 #include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
 
-#include <cstring>
 #include <functional>
-#include <memory>
 #include <new>
 #include <optional>
 #include <span>
@@ -20,9 +18,8 @@ namespace lux::simulation::script
         INVALID_CONTEXT = -1,
         AWAITABLE_CAPACITY_EXCEEDED = -2,
         AWAITABLE_ALLOCATION_FAILURE = -3,
-        COMPLETION_ADAPTER_ALLOCATION_FAILURE = -4,
-        STOPPING = -5,
-        INVALID_START_RESULT = -6,
+        STOPPING = -4,
+        INVALID_START_RESULT = -5,
     };
 
     namespace detail
@@ -48,184 +45,7 @@ namespace lux::simulation::script
             }
             return invocationStatus(EScriptAbilityInvocationStatus::INVALID_CONTEXT);
         }
-
-        [[nodiscard]] constexpr lux::script::EScriptAbilityCompletionError mapCompletionError(
-            EScriptAwaitableCompletionError error
-        ) noexcept
-        {
-            switch (error)
-            {
-            case EScriptAwaitableCompletionError::INVALID_ID:
-                return lux::script::EScriptAbilityCompletionError::STALE;
-            case EScriptAwaitableCompletionError::INVALID_VALUE:
-                return lux::script::EScriptAbilityCompletionError::INVALID_VALUE;
-            case EScriptAwaitableCompletionError::ALREADY_TERMINAL:
-                return lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED;
-            case EScriptAwaitableCompletionError::RESUME_QUEUE_FULL:
-                return lux::script::EScriptAbilityCompletionError::BACKPRESSURE;
-            case EScriptAwaitableCompletionError::STOPPING:
-                return lux::script::EScriptAbilityCompletionError::STOPPING;
-            }
-            return lux::script::EScriptAbilityCompletionError::STALE;
-        }
-
-        template <class Result>
-        struct AbilityCompletionAdapter final
-        {
-            explicit AbilityCompletionAdapter(ScriptAwaitableCompletion completion_value) noexcept
-                : completion(std::move(completion_value))
-            {
-            }
-
-            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> success(
-                void* state,
-                Result value
-            ) noexcept
-            {
-                ScriptOwnedResumeValue owned;
-                try
-                {
-                    owned.type = lux::rdesc::makeScriptValueType<Result>();
-                    owned.bytes.resize(sizeof(Result));
-                }
-                catch (const std::bad_alloc&)
-                {
-                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE);
-                }
-                std::memcpy(owned.bytes.data(), std::addressof(value), sizeof(Result));
-                auto completed = static_cast<AbilityCompletionAdapter*>(state)->completion.ready(std::move(owned));
-                if (!completed)
-                    return lux::cxx::unexpected(mapCompletionError(completed.error()));
-                return {};
-            }
-
-            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> failure(
-                void* state,
-                lux::script::ScriptAbilityOperationError error
-            ) noexcept
-            {
-                auto completed = static_cast<AbilityCompletionAdapter*>(state)->completion.fail({error.status});
-                if (!completed)
-                    return lux::cxx::unexpected(mapCompletionError(completed.error()));
-                return {};
-            }
-
-            ScriptAwaitableCompletion completion;
-
-            [[nodiscard]] static bool active(void* state) noexcept
-            {
-                return static_cast<AbilityCompletionAdapter*>(state)->completion.active();
-            }
-        };
-
-        template <>
-        struct AbilityCompletionAdapter<void> final
-        {
-            explicit AbilityCompletionAdapter(ScriptAwaitableCompletion completion_value) noexcept
-                : completion(std::move(completion_value))
-            {
-            }
-
-            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> success(
-                void* state
-            ) noexcept
-            {
-                auto completed = static_cast<AbilityCompletionAdapter*>(state)->completion.ready();
-                if (!completed)
-                    return lux::cxx::unexpected(mapCompletionError(completed.error()));
-                return {};
-            }
-
-            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> failure(
-                void* state,
-                lux::script::ScriptAbilityOperationError error
-            ) noexcept
-            {
-                auto completed = static_cast<AbilityCompletionAdapter*>(state)->completion.fail({error.status});
-                if (!completed)
-                    return lux::cxx::unexpected(mapCompletionError(completed.error()));
-                return {};
-            }
-
-            ScriptAwaitableCompletion completion;
-
-            [[nodiscard]] static bool active(void* state) noexcept
-            {
-                return static_cast<AbilityCompletionAdapter*>(state)->completion.active();
-            }
-        };
-
-        struct ErasedAbilityCompletionAdapter final
-        {
-            ErasedAbilityCompletionAdapter(
-                ScriptAwaitableCompletion completion_value,
-                std::optional<lux::rdesc::ScriptValueType> expected_value
-            ) noexcept
-                : completion(std::move(completion_value)), expected(std::move(expected_value))
-            {
-            }
-
-            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> success(
-                void* state,
-                lux::semantic::TypeId type,
-                const void* value,
-                std::uint32_t size
-            ) noexcept
-            {
-                auto& self = *static_cast<ErasedAbilityCompletionAdapter*>(state);
-                if (!self.expected)
-                {
-                    if (type != lux::semantic::InvalidTypeId || value != nullptr || size != 0U)
-                        return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
-                    const auto completed = self.completion.ready();
-                    return completed
-                        ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
-                        : lux::cxx::unexpected(mapCompletionError(completed.error()));
-                }
-                const bool is_invalid_value = value == nullptr || type != self.expected->type_id ||
-                    size != self.expected->size;
-                if (is_invalid_value)
-                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
-
-                ScriptOwnedResumeValue owned;
-                try
-                {
-                    owned.type = self.expected;
-                    owned.bytes.resize(size);
-                }
-                catch (const std::bad_alloc&)
-                {
-                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE);
-                }
-                std::memcpy(owned.bytes.data(), value, size);
-                const auto completed = self.completion.ready(std::move(owned));
-                return completed
-                    ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
-                    : lux::cxx::unexpected(mapCompletionError(completed.error()));
-            }
-
-            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> failure(
-                void* state,
-                lux::script::ScriptAbilityOperationError error
-            ) noexcept
-            {
-                const auto completed = static_cast<ErasedAbilityCompletionAdapter*>(state)->completion.fail(
-                    {error.status}
-                );
-                return completed
-                    ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
-                    : lux::cxx::unexpected(mapCompletionError(completed.error()));
-            }
-
-            [[nodiscard]] static bool active(void* state) noexcept
-            {
-                return static_cast<ErasedAbilityCompletionAdapter*>(state)->completion.active();
-            }
-
-            ScriptAwaitableCompletion completion;
-            std::optional<lux::rdesc::ScriptValueType> expected;
-        };
-    } // namespace detail
+    }
 
     template <class Result, class Starter>
         requires std::is_void_v<Result> ||
@@ -236,7 +56,6 @@ namespace lux::simulation::script
     ) noexcept
     {
         using Completion = lux::script::ScriptAbilityCompletion<Result>;
-        using Adapter = detail::AbilityCompletionAdapter<Result>;
         static_assert(std::is_nothrow_invocable_r_v<lux::script::ScriptAbilityStartResult, Starter, Completion>);
 
         std::optional<lux::rdesc::ScriptValueType> result_type;
@@ -258,25 +77,7 @@ namespace lux::simulation::script
         if (!awaiting)
             return ScriptStepResult::failed(detail::awaitableCreateStatus(awaiting.error()));
 
-        std::shared_ptr<Adapter> adapter;
-        try
-        {
-            adapter = std::make_shared<Adapter>(std::move(awaiting->completion));
-        }
-        catch (const std::bad_alloc&)
-        {
-            context.awaitables.discard(awaiting->id);
-            return ScriptStepResult::failed(
-                detail::invocationStatus(EScriptAbilityInvocationStatus::COMPLETION_ADAPTER_ALLOCATION_FAILURE)
-            );
-        }
-
-        auto completion = Completion::bind(
-            std::static_pointer_cast<void>(adapter),
-            &Adapter::success,
-            &Adapter::failure,
-            &Adapter::active
-        );
+        auto completion = Completion::fromErased(std::move(awaiting->completion).intoAbilityCompletion());
         auto started = std::invoke(std::forward<Starter>(starter), std::move(completion));
         if (started)
             return ScriptStepResult::suspended(awaiting->id);
@@ -325,32 +126,11 @@ namespace lux::simulation::script
             }
         }
 
-        auto awaiting = context.awaitables.create(result_type);
+        auto awaiting = context.awaitables.create(std::move(result_type));
         if (!awaiting)
             return ScriptStepResult::failed(detail::awaitableCreateStatus(awaiting.error()));
 
-        std::shared_ptr<detail::ErasedAbilityCompletionAdapter> adapter;
-        try
-        {
-            adapter = std::make_shared<detail::ErasedAbilityCompletionAdapter>(
-                std::move(awaiting->completion),
-                std::move(result_type)
-            );
-        }
-        catch (const std::bad_alloc&)
-        {
-            context.awaitables.discard(awaiting->id);
-            return ScriptStepResult::failed(
-                detail::invocationStatus(EScriptAbilityInvocationStatus::COMPLETION_ADAPTER_ALLOCATION_FAILURE)
-            );
-        }
-
-        auto completion = lux::script::ScriptAbilityErasedCompletion::bind(
-            std::static_pointer_cast<void>(adapter),
-            &detail::ErasedAbilityCompletionAdapter::success,
-            &detail::ErasedAbilityCompletionAdapter::failure,
-            &detail::ErasedAbilityCompletionAdapter::active
-        );
+        auto completion = std::move(awaiting->completion).intoAbilityCompletion();
         auto started = start(provider_context, typed_dispatch, arguments, std::move(completion));
         if (started)
             return ScriptStepResult::suspended(awaiting->id);

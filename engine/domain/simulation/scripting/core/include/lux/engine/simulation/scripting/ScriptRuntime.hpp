@@ -1,19 +1,24 @@
 #pragma once
 
 #include <lux/engine/description/Script.hpp>
+#include <lux/engine/function/script/ScriptAbility.hpp>
 #include <lux/engine/simulation/SimulationEndpointId.hpp>
 #include <lux/engine/simulation/SimulationEndpointSpec.hpp>
 #include <lux/engine/system/SystemInstanceId.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
+#include <new>
 #include <optional>
+#include <span>
 #include <utility>
-#include <vector>
 
 namespace lux::simulation::script
 {
@@ -119,10 +124,144 @@ namespace lux::simulation::script
         }
     };
 
+    class ScriptOwnedBytes final
+    {
+    public:
+        static constexpr std::size_t InlineCapacity{32U};
+
+        ScriptOwnedBytes() noexcept = default;
+        ScriptOwnedBytes(const ScriptOwnedBytes&) = delete;
+        ScriptOwnedBytes& operator=(const ScriptOwnedBytes&) = delete;
+
+        ScriptOwnedBytes(ScriptOwnedBytes&& other) noexcept
+        {
+            moveFrom(std::move(other));
+        }
+
+        ScriptOwnedBytes& operator=(ScriptOwnedBytes&& other) noexcept
+        {
+            if (this == std::addressof(other))
+                return *this;
+            reset();
+            moveFrom(std::move(other));
+            return *this;
+        }
+
+        ~ScriptOwnedBytes()
+        {
+            reset();
+        }
+
+        [[nodiscard]] bool resize(
+            std::size_t size,
+            std::size_t alignment = alignof(std::max_align_t)
+        ) noexcept
+        {
+            const bool is_invalid_alignment = alignment == 0U || (alignment & (alignment - 1U)) != 0U;
+            if (is_invalid_alignment)
+                return false;
+            if (size <= InlineCapacity && alignment <= alignof(std::max_align_t))
+            {
+                if (size_ != 0U)
+                    std::memcpy(inline_.data(), data(), (std::min)(size_, size));
+                releaseSpill();
+                size_ = size;
+                return true;
+            }
+
+            const auto allocation_alignment = (std::max)(alignment, alignof(std::max_align_t));
+            if (spill_ != nullptr && spill_capacity_ >= size && spill_alignment_ >= allocation_alignment)
+            {
+                size_ = size;
+                return true;
+            }
+            auto* replacement = static_cast<std::byte*>(
+                ::operator new(size, std::align_val_t{allocation_alignment}, std::nothrow)
+            );
+            if (replacement == nullptr)
+                return false;
+            if (size_ != 0U)
+                std::memcpy(replacement, data(), (std::min)(size_, size));
+            releaseSpill();
+            spill_ = replacement;
+            spill_capacity_ = size;
+            spill_alignment_ = allocation_alignment;
+            size_ = size;
+            return true;
+        }
+
+        [[nodiscard]] std::byte* data() noexcept
+        {
+            return spill_ != nullptr ? spill_ : inline_.data();
+        }
+
+        [[nodiscard]] const std::byte* data() const noexcept
+        {
+            return spill_ != nullptr ? spill_ : inline_.data();
+        }
+
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            return size_;
+        }
+
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return size_ == 0U;
+        }
+
+        [[nodiscard]] std::span<std::byte> span() noexcept
+        {
+            return {data(), size_};
+        }
+
+        [[nodiscard]] std::span<const std::byte> span() const noexcept
+        {
+            return {data(), size_};
+        }
+
+    private:
+        void releaseSpill() noexcept
+        {
+            if (spill_ != nullptr)
+                ::operator delete(spill_, std::align_val_t{spill_alignment_});
+            spill_ = nullptr;
+            spill_capacity_ = 0U;
+            spill_alignment_ = alignof(std::max_align_t);
+        }
+
+        void reset() noexcept
+        {
+            releaseSpill();
+            size_ = 0U;
+        }
+
+        void moveFrom(ScriptOwnedBytes&& other) noexcept
+        {
+            size_ = std::exchange(other.size_, 0U);
+            if (other.spill_ != nullptr)
+            {
+                spill_ = std::exchange(other.spill_, nullptr);
+                spill_capacity_ = std::exchange(other.spill_capacity_, 0U);
+                spill_alignment_ = std::exchange(other.spill_alignment_, alignof(std::max_align_t));
+            }
+            else if (size_ != 0U)
+            {
+                std::memcpy(inline_.data(), other.inline_.data(), size_);
+            }
+        }
+
+        alignas(std::max_align_t) std::array<std::byte, InlineCapacity> inline_{};
+        std::byte* spill_{};
+        std::size_t size_{};
+        std::size_t spill_capacity_{};
+        std::size_t spill_alignment_{alignof(std::max_align_t)};
+    };
+
     struct ScriptOwnedResumeValue final
     {
         std::optional<lux::rdesc::ScriptValueType> type;
-        std::vector<std::byte> bytes;
+        ScriptOwnedBytes bytes;
     };
 
     struct ScriptResumePacket final
@@ -169,6 +308,19 @@ namespace lux::simulation::script
             return query_ != nullptr && query_(context_, instance_, awaitable_);
         }
 
+        [[nodiscard]] lux::script::ScriptAbilityErasedCompletion intoAbilityCompletion() && noexcept
+        {
+            return lux::script::ScriptAbilityErasedCompletion::bind(
+                std::move(lease_),
+                context_,
+                pack(instance_.slot, instance_.generation),
+                pack(awaitable_.slot, awaitable_.generation),
+                ability_success_,
+                ability_failure_,
+                ability_active_
+            );
+        }
+
         using CompleteFn = lux::cxx::expected<void, EScriptAwaitableCompletionError> (*)(void*,
                                                                                          ScriptInstanceId,
                                                                                          ScriptAwaitableId,
@@ -176,18 +328,33 @@ namespace lux::simulation::script
                                                                                          ScriptOwnedResumeValue,
                                                                                          ScriptStepError) noexcept;
         using QueryFn = bool (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
+        using AbilitySuccessFn = lux::script::ScriptAbilityErasedCompletion::SuccessFn;
+        using AbilityFailureFn = lux::script::ScriptAbilityErasedCompletion::FailureFn;
+        using AbilityActiveFn = lux::script::ScriptAbilityErasedCompletion::ActiveFn;
 
         ScriptAwaitableCompletion(std::shared_ptr<void> lease,
                                   void* context,
                                   CompleteFn complete,
                                   QueryFn query,
                                   ScriptInstanceId instance,
-                                  ScriptAwaitableId awaitable) noexcept
+                                  ScriptAwaitableId awaitable,
+                                  AbilitySuccessFn ability_success,
+                                  AbilityFailureFn ability_failure,
+                                  AbilityActiveFn ability_active) noexcept
             : lease_(std::move(lease)), context_(context), complete_(complete), query_(query), instance_(instance),
-              awaitable_(awaitable)
+              awaitable_(awaitable), ability_success_(ability_success), ability_failure_(ability_failure),
+              ability_active_(ability_active)
         {}
 
     private:
+        [[nodiscard]] static constexpr std::uint64_t pack(
+            std::uint32_t slot,
+            std::uint32_t generation
+        ) noexcept
+        {
+            return (static_cast<std::uint64_t>(slot) << 32U) | generation;
+        }
+
         [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> complete(
             EScriptAwaitableState state,
             ScriptOwnedResumeValue value,
@@ -204,6 +371,9 @@ namespace lux::simulation::script
         QueryFn query_{};
         ScriptInstanceId instance_;
         ScriptAwaitableId awaitable_;
+        AbilitySuccessFn ability_success_{};
+        AbilityFailureFn ability_failure_{};
+        AbilityActiveFn ability_active_{};
     };
 
     struct ScriptAwaitableRegistration final

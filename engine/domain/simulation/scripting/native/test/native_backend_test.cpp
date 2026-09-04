@@ -75,6 +75,7 @@ namespace
     {
         lux::simulation::script::ScriptInstanceId instance{1U, 1U};
         lux::simulation::script::ScriptAwaitableId awaiting{1U, 1U};
+        std::shared_ptr<void> lease{std::make_shared<int>(0)};
         bool completed{};
 
         static lux::cxx::expected<lux::simulation::script::ScriptAwaitableRegistration,
@@ -95,12 +96,15 @@ namespace
             return lux::simulation::script::ScriptAwaitableRegistration{
                 self.awaiting,
                 lux::simulation::script::ScriptAwaitableCompletion{
-                    {},
+                    self.lease,
                     std::addressof(self),
                     &complete,
                     &active,
                     self.instance,
-                    self.awaiting
+                    self.awaiting,
+                    &abilitySuccess,
+                    &abilityFailure,
+                    &abilityActive
                 }
             };
         }
@@ -141,6 +145,39 @@ namespace
         {
             return !static_cast<AwaitableHarness*>(opaque)->completed;
         }
+
+        static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> abilitySuccess(
+            void* opaque,
+            std::uint64_t,
+            std::uint64_t,
+            lux::semantic::TypeId type,
+            const void* data,
+            std::uint32_t size
+        ) noexcept
+        {
+            auto& self = *static_cast<AwaitableHarness*>(opaque);
+            if (self.completed)
+                return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED);
+            if (type != lux::semantic::InvalidTypeId || data != nullptr || size != 0U)
+                return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+            self.completed = true;
+            return {};
+        }
+
+        static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> abilityFailure(
+            void*,
+            std::uint64_t,
+            std::uint64_t,
+            lux::script::ScriptAbilityOperationError
+        ) noexcept
+        {
+            return {};
+        }
+
+        static bool abilityActive(void* opaque, std::uint64_t, std::uint64_t) noexcept
+        {
+            return !static_cast<AwaitableHarness*>(opaque)->completed;
+        }
     };
 }
 
@@ -172,10 +209,13 @@ int main()
             .prepared_call_capacity = 8U,
             .continuation_capacity = 4U,
             .max_ability_imports_per_module = 8U,
-            .max_continuation_frame_bytes = 4096U
+            .max_continuation_frame_bytes = 4096U,
+            .continuation_frame_storage_bytes = 16384U
         }
     );
     assert(*backend);
+    assert(backend->stats().frame_storage_bytes == 16384U);
+    assert(backend->stats().heap_frame_allocations == 0U);
 
     lux::rdesc::Script description;
     description.module_name = "native_fixture";
@@ -453,7 +493,8 @@ int main()
             .prepared_call_capacity = 4U,
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 2U,
-            .max_continuation_frame_bytes = 256U
+            .max_continuation_frame_bytes = 256U,
+            .continuation_frame_storage_bytes = 512U
         }
     };
     assert(step_backend);
@@ -548,6 +589,9 @@ int main()
     assert(suspended.state == EScriptStepState::SUSPENDED);
     assert(suspended.waiting_on == awaitable.awaiting);
     assert(continuation);
+    assert(step_backend.stats().active_frames == 1U);
+    assert(step_backend.stats().frame_high_water == 1U);
+    assert(step_backend.stats().heap_frame_allocations == 0U);
     assert(async_provider.completion);
     assert(async_provider.completion.success());
     assert(awaitable.completed);
@@ -561,6 +605,7 @@ int main()
     const auto resumed = continuation.resume(continuation.state, step_context, resume_packet);
     assert(resumed.state == EScriptStepState::COMPLETED);
     continuation.destroy(continuation.state);
+    assert(step_backend.stats().active_frames == 0U);
 
     std::uint32_t state_value{};
     lux_script_value_slot state_result{

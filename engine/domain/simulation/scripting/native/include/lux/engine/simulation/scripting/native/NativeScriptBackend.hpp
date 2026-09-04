@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/native/visibility.h>
 
+#include <cstddef>
 #include <memory>
 
 namespace lux::simulation::script
@@ -45,8 +46,19 @@ namespace lux::simulation::script
         std::size_t continuation_capacity{};
         std::size_t max_ability_imports_per_module{};
         std::size_t max_continuation_frame_bytes{};
+        std::size_t continuation_frame_storage_bytes{};
+        std::size_t continuation_frame_storage_alignment{alignof(std::max_align_t)};
         NativeScriptRecordLayoutResolver record_layouts;
         std::size_t max_event_wait_imports_per_module{64U};
+    };
+
+    struct NativeScriptBackendStats final
+    {
+        std::size_t frame_storage_bytes{};
+        std::size_t active_frames{};
+        std::size_t frame_high_water{};
+        std::size_t frame_capacity_failures{};
+        std::size_t heap_frame_allocations{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_PUBLIC NativeScriptBackend final
@@ -68,6 +80,7 @@ namespace lux::simulation::script
         ) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept;
+        [[nodiscard]] NativeScriptBackendStats stats() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
 
       private:

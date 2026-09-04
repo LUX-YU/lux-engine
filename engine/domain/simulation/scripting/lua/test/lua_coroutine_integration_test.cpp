@@ -434,10 +434,12 @@ namespace
                 .prepared_call_capacity = 16U,
                 .continuation_capacity = lua_continuation_capacity,
                 .execution_depth_capacity = 8U,
-                .ability_method_capacity = AbilityTraits::Description.methods.size(),
+                .ability_catalog_method_capacity = AbilityTraits::Description.methods.size(),
+                .prepared_ability_capacity = AbilityTraits::Description.methods.size(),
                 .abilities = std::span{&contribution, 1U},
                 .execution_policy = g_execution_policy,
-                .event_source_capacity = event_sources.size(),
+                .event_catalog_capacity = event_sources.size(),
+                .prepared_event_capacity = event_sources.size(),
                 .events = event_sources
             });
             assert(created_backend);

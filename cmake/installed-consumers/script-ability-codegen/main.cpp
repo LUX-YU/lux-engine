@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 namespace
 {
@@ -56,15 +57,23 @@ namespace
 
     lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> completeCount(
         void* state,
-        std::int32_t value
+        std::uint64_t,
+        std::uint64_t,
+        lux::semantic::TypeId type,
+        const void* value,
+        std::uint32_t size
     ) noexcept
     {
-        static_cast<CompletionState*>(state)->value = value;
+        if (type != lux::semantic::typeId("lux.i32") || value == nullptr || size != sizeof(std::int32_t))
+            return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+        static_cast<CompletionState*>(state)->value = *static_cast<const std::int32_t*>(value);
         return {};
     }
 
     lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> failCount(
         void*,
+        std::uint64_t,
+        std::uint64_t,
         lux::script::ScriptAbilityOperationError
     ) noexcept
     {
@@ -98,10 +107,16 @@ int main()
     auto starter = lux::script::ScriptAbilityStarter<Ability>::create(binding);
     assert(starter);
     auto state = std::make_shared<CompletionState>();
-    auto completion = lux::script::ScriptAbilityCompletion<std::int32_t>::bind(
+    auto erased_completion = lux::script::ScriptAbilityErasedCompletion::bind(
         std::static_pointer_cast<void>(state),
+        state.get(),
+        0U,
+        0U,
         &completeCount,
         &failCount
+    );
+    auto completion = lux::script::ScriptAbilityCompletion<std::int32_t>::fromErased(
+        std::move(erased_completion)
     );
     assert(starter->countLater(18U, std::move(completion)));
     assert(state->value == 4);

@@ -206,6 +206,7 @@ int main()
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 4U,
             .max_continuation_frame_bytes = 4096U,
+            .continuation_frame_storage_bytes = 8192U,
             .record_layouts = {nullptr, &resolveRecord}
         }};
     assert(native_backend);
@@ -218,7 +219,14 @@ int main()
         nullptr,
         &pushCollision};
     auto lua_created = LuaScriptBackend::create(
-        {1U, 2U, 1U, 4U, 1U, {}, std::span{&marshaller, 1U}}
+        {
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 2U,
+            .continuation_capacity = 1U,
+            .execution_depth_capacity = 4U,
+            .ability_catalog_method_capacity = 1U,
+            .record_marshallers = std::span{&marshaller, 1U}
+        }
     );
     assert(lua_created);
     auto lua_backend = std::move(*lua_created);

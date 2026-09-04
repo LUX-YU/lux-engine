@@ -1149,10 +1149,12 @@ namespace
                 .prepared_call_capacity = bounded_count * 4U,
                 .continuation_capacity = bounded_count,
                 .execution_depth_capacity = 16U,
-                .ability_method_capacity = 6U,
+                .ability_catalog_method_capacity = 6U,
+                .prepared_ability_capacity = bounded_count * 6U,
                 .abilities = contributions,
                 .execution_policy = execution_policy,
-                .event_source_capacity = 1U,
+                .event_catalog_capacity = 1U,
+                .prepared_event_capacity = bounded_count,
                 .events = std::span{&event_source, 1U}
             });
             if (!created_backend)
@@ -1557,15 +1559,12 @@ namespace
                 throw std::runtime_error("Lua lifecycle artifact creation failed");
             artifact.emplace(std::move(*created_artifact));
             auto created_backend = LuaScriptBackend::create({
-                capacity,
-                capacity * 3U,
-                capacity,
-                8U,
-                1U,
-                {},
-                {},
-                {},
-                execution_policy
+                .instance_capacity = capacity,
+                .prepared_call_capacity = capacity * 3U,
+                .continuation_capacity = capacity,
+                .execution_depth_capacity = 8U,
+                .ability_catalog_method_capacity = 1U,
+                .execution_policy = execution_policy
             });
             if (!created_backend)
                 throw std::runtime_error("Lua lifecycle backend creation failed");
@@ -1617,7 +1616,8 @@ namespace
                     .prepared_call_capacity = capacity * 5U,
                     .continuation_capacity = capacity,
                     .max_ability_imports_per_module = 8U,
-                    .max_continuation_frame_bytes = 4096U
+                    .max_continuation_frame_bytes = 4096U,
+                    .continuation_frame_storage_bytes = (std::max)(std::size_t{4096U}, capacity * 256U)
                 }
             );
             if (!*backend)

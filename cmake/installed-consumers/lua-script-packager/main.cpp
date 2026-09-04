@@ -65,9 +65,11 @@ int main()
         .prepared_call_capacity = 4U,
         .continuation_capacity = 1U,
         .execution_depth_capacity = 4U,
-        .ability_method_capacity = Traits::Description.methods.size(),
+        .ability_catalog_method_capacity = Traits::Description.methods.size(),
+        .prepared_ability_capacity = Traits::Description.methods.size(),
         .abilities = {&contribution, 1U},
-        .event_source_capacity = 1U,
+        .event_catalog_capacity = 1U,
+        .prepared_event_capacity = 1U,
         .events = {&event_source, 1U}
     });
     assert(backend);

@@ -163,6 +163,7 @@ int main()
                                  .continuation_capacity = 1U,
                                  .max_ability_imports_per_module = 2U,
                                  .max_continuation_frame_bytes = 256U,
+                                 .continuation_frame_storage_bytes = 256U,
                                  .max_event_wait_imports_per_module = 1U}};
     assert(backend);
     const auto descriptor = backend.descriptor();

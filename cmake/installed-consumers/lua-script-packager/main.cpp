@@ -1,5 +1,6 @@
 #include "InventoryAbility.hpp"
 #include "InventoryAbility.ability.generated.hpp"
+#include "InventoryAbility.ability.lua.generated.hpp"
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>

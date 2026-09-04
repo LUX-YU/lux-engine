@@ -1,5 +1,8 @@
 #include "ScriptBenchmarkAbility.hpp"
 #include "ScriptBenchmarkAbility.ability.generated.hpp"
+#if LUX_BENCHMARK_HAS_LUA
+#include "ScriptBenchmarkAbility.ability.lua.generated.hpp"
+#endif
 
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -7,6 +10,9 @@
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
+#if LUX_BENCHMARK_HAS_LUA
+#include "DelayAbility.ability.lua.generated.hpp"
+#endif
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>

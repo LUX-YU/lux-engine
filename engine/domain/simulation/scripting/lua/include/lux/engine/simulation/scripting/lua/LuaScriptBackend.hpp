@@ -15,6 +15,11 @@
 
 namespace lux::simulation::script
 {
+    namespace detail
+    {
+        struct LuaAbilityProjectionAccess;
+    }
+
     struct LuaComponentBinding final
     {
         std::string name;
@@ -116,5 +121,6 @@ namespace lux::simulation::script
             std::unique_ptr<State> state
         ) noexcept;
         std::unique_ptr<State> state_;
+        friend struct detail::LuaAbilityProjectionAccess;
     };
 }

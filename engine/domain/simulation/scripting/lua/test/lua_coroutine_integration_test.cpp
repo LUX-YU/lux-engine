@@ -1,5 +1,6 @@
 #include "LuaRuntimeTestAbility.hpp"
 #include "LuaRuntimeTestAbility.ability.generated.hpp"
+#include "LuaRuntimeTestAbility.ability.lua.generated.hpp"
 
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>

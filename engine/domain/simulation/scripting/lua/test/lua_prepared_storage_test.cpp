@@ -26,6 +26,11 @@ namespace
         return {};
     }
 
+    int project(lua_State*) noexcept
+    {
+        return 0;
+    }
+
     [[nodiscard]] lux::script::ScriptArtifact artifact(
         const lux::script::ScriptAbilityDescription& ability
     )
@@ -53,9 +58,11 @@ int main()
 {
     std::deque<std::string> names;
     std::vector<std::array<lux::script::ScriptAbilityMethodDescription, MethodsPerAbility>> methods;
+    std::vector<std::array<lux::script::lua::ScriptAbilityLuaMethodProjection, MethodsPerAbility>> projections;
     std::vector<lux::script::ScriptAbilityDescription> abilities;
     std::vector<lux::script::lua::ScriptAbilityLuaContribution> contributions;
     methods.reserve(AbilityCount);
+    projections.reserve(AbilityCount);
     abilities.reserve(AbilityCount);
     contributions.reserve(AbilityCount);
     for (std::size_t ability_index{}; ability_index < AbilityCount; ++ability_index)
@@ -95,7 +102,11 @@ int main()
             lux::script::EScriptAbilityReceiverKind::PROVIDER_INSTANCE,
             methods.back()
         });
-        contributions.push_back({std::addressof(abilities.back())});
+        std::array<lux::script::lua::ScriptAbilityLuaMethodProjection, MethodsPerAbility> ability_projections;
+        for (std::size_t method_index{}; method_index < MethodsPerAbility; ++method_index)
+            ability_projections[method_index] = {methods.back()[method_index].id, &project};
+        projections.push_back(ability_projections);
+        contributions.push_back({std::addressof(abilities.back()), projections.back()});
     }
 
     auto backend = lux::simulation::script::LuaScriptBackend::create({

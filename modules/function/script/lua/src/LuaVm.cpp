@@ -97,4 +97,35 @@ namespace lux::script::lua::detail
 #    error "Lux Lua VM implementation was not selected"
 #endif
     }
+
+    void pushLuaGlobalEnvironment(lua_State* state) noexcept
+    {
+#if defined(LUX_SCRIPT_LUA_VM_LUAJIT)
+        lua_pushvalue(state, LUA_GLOBALSINDEX);
+#elif defined(LUX_SCRIPT_LUA_VM_LUA54)
+        lua_pushglobaltable(state);
+#endif
+    }
+
+    bool setLuaChunkEnvironment(
+        lua_State* state,
+        int chunk_index,
+        int environment_index
+    ) noexcept
+    {
+        if (state == nullptr)
+            return false;
+        const auto top = lua_gettop(state);
+        const auto absolute_chunk = chunk_index < 0 ? top + chunk_index + 1 : chunk_index;
+        const auto absolute_environment = environment_index < 0 ? top + environment_index + 1 : environment_index;
+        if (absolute_chunk <= 0 || absolute_environment <= 0 || absolute_chunk > top || absolute_environment > top)
+            return false;
+        lua_pushvalue(state, absolute_environment);
+#if defined(LUX_SCRIPT_LUA_VM_LUAJIT)
+        return lua_setfenv(state, absolute_chunk) != 0;
+#elif defined(LUX_SCRIPT_LUA_VM_LUA54)
+        const auto* name = lua_setupvalue(state, absolute_chunk, 1);
+        return name != nullptr && std::string_view{name} == "_ENV";
+#endif
+    }
 } // namespace lux::script::lua::detail

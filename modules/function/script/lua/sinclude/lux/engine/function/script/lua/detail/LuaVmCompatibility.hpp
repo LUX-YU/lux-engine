@@ -29,4 +29,12 @@ namespace lux::script::lua::detail
         lua_State* state,
         int result_count
     ) noexcept;
+
+    LUX_FUNCTION_PUBLIC void pushLuaGlobalEnvironment(lua_State* state) noexcept;
+
+    [[nodiscard]] LUX_FUNCTION_PUBLIC bool setLuaChunkEnvironment(
+        lua_State* state,
+        int chunk_index,
+        int environment_index
+    ) noexcept;
 } // namespace lux::script::lua::detail

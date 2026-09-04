@@ -1,5 +1,6 @@
 #include "LuaUnsupportedIntegerAbility.hpp"
 #include "LuaUnsupportedIntegerAbility.ability.generated.hpp"
+#include "LuaUnsupportedIntegerAbility.ability.lua.generated.hpp"
 
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
@@ -30,6 +31,18 @@ namespace
             lux::script::EScriptApiMethodKind::QUERY,
             kNoParameters,
             kNoResults
+        }
+    };
+
+    int noOpAbility(lua_State*) noexcept
+    {
+        return 0;
+    }
+
+    inline constexpr std::array kNameLuaMethods{
+        lux::script::lua::ScriptAbilityLuaMethodProjection{
+            lux::script::ScriptApiMethodIdView{"lux.test.lua_name.call"},
+            &noOpAbility
         }
     };
 
@@ -150,8 +163,8 @@ int main()
     );
     static_assert(physics_display_changed.schema_hash == physics_name.schema_hash);
     const std::array display_duplicates{
-        lux::script::lua::ScriptAbilityLuaContribution{&physics_name},
-        lux::script::lua::ScriptAbilityLuaContribution{&inventory_name}
+        lux::script::lua::ScriptAbilityLuaContribution{&physics_name, kNameLuaMethods},
+        lux::script::lua::ScriptAbilityLuaContribution{&inventory_name, kNameLuaMethods}
     };
     const auto display_backend = LuaScriptBackend::create({
         .instance_capacity = 1U,
@@ -170,8 +183,8 @@ int main()
         "Different Display"
     );
     const std::array duplicate_names{
-        lux::script::lua::ScriptAbilityLuaContribution{&physics_name},
-        lux::script::lua::ScriptAbilityLuaContribution{&duplicate_name}
+        lux::script::lua::ScriptAbilityLuaContribution{&physics_name, kNameLuaMethods},
+        lux::script::lua::ScriptAbilityLuaContribution{&duplicate_name, kNameLuaMethods}
     };
     const auto duplicate_name_backend = LuaScriptBackend::create({
         .instance_capacity = 1U,
@@ -186,7 +199,10 @@ int main()
     assert(duplicate_name_backend.error() == ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
 
     constexpr auto reserved_name = nameDescription("lux.test.lua_name.reserved", "end", "End");
-    const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{&reserved_name};
+    const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{
+        &reserved_name,
+        kNameLuaMethods
+    };
     const auto reserved_name_backend = LuaScriptBackend::create({
         .instance_capacity = 1U,
         .prepared_call_capacity = 1U,

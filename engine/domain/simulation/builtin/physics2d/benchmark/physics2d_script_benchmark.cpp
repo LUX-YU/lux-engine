@@ -1,6 +1,8 @@
 #include "PhysicsQuery2D.ability.generated.hpp"
+#include "PhysicsQuery2D.ability.lua.generated.hpp"
 #include "Physics2DScriptTestSupport.hpp"
 #include "DelayAbility.ability.generated.hpp"
+#include "DelayAbility.ability.lua.generated.hpp"
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>

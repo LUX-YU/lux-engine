@@ -1,5 +1,6 @@
 #include "LuaRuntimeTestAbility.hpp"
 #include "LuaRuntimeTestAbility.ability.generated.hpp"
+#include "LuaRuntimeTestAbility.ability.lua.generated.hpp"
 
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
@@ -12,6 +13,7 @@
 #include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
+#include "DelayAbility.ability.lua.generated.hpp"
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>

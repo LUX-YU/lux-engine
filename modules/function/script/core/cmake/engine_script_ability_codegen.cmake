@@ -71,10 +71,18 @@ function(lux_script_abilities)
         OUTPUT_SUFFIX .ability.schema.cpp
         FLAT_OUTPUT
     )
+    lux_codegen_add_projection(
+        JOB ${job}
+        NAME script_ability_lua
+        TEMPLATE ${template_dir}/script_ability_lua.template
+        OUTPUT_ROOT ${output_root}
+        OUTPUT_SUFFIX .ability.lua.generated.hpp
+        FLAT_OUTPUT
+    )
     lux_target_add_codegen(
         TARGET ${ARGS_TARGET}
         JOB ${job}
-        PROJECTIONS script_ability_semantics script_ability_cpp script_ability_schema_writer
+        PROJECTIONS script_ability_semantics script_ability_cpp script_ability_schema_writer script_ability_lua
         DONT_ADD_TO_SOURCE
     )
     target_include_directories(${ARGS_TARGET} PUBLIC "$<BUILD_INTERFACE:${output_root}>")

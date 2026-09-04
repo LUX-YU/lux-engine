@@ -62,9 +62,5 @@ int main()
         assert(nodes[index].kind == Traits::Description.methods[index].kind);
     }
 
-    const auto lua = lux::script::lua::makeScriptAbilityLuaContribution<Ability>();
-    assert(lua.valid());
-    assert(lua.description == std::addressof(Traits::Description));
-    assert(lua.description->schema_hash == nodes.front().schema_hash);
     return 0;
 }

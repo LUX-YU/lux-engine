@@ -176,7 +176,7 @@ int main()
     namespace test = lux::simulation::test;
 
     static_assert(script::detail::kCppCoroutineArgumentSupported<std::int32_t>);
-    static_assert(!script::detail::kCppCoroutineArgumentSupported<const std::int32_t&>);
+    static_assert(script::detail::kCppCoroutineArgumentSupported<const std::int32_t&>);
     static_assert(!script::detail::kCppCoroutineArgumentSupported<std::int32_t&>);
     static_assert(!script::detail::kCppCoroutineArgumentSupported<std::int32_t*>);
 
@@ -296,7 +296,7 @@ int main()
     assert(projected->description().exports[1].args[0].pass ==
         lux::semantic::EValuePass::CONST_REF);
     assert(projected->description().exports[4].args[0].pass ==
-        lux::semantic::EValuePass::VALUE);
+        lux::semantic::EValuePass::CONST_REF);
 
     const auto invalid_lifecycle = projectCppStaticEntityScript(
         "lux.test.invalid-coroutine-lifecycle",
@@ -482,6 +482,7 @@ int main()
     assert(suspended.state == EScriptStepState::SUSPENDED);
     assert(test::coroutine_value == 5);
     assert(continuation);
+    coroutine_input = 999;
     const ScriptResumePacket packet{
         suspended.waiting_on,
         EScriptAwaitableState::READY,

@@ -2,6 +2,7 @@
 #include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <new>
 #include <string>
@@ -642,6 +643,7 @@ namespace lux::simulation::script
             std::size_t active_instances{};
             std::size_t coroutine_capacity{};
             std::size_t active_coroutines{};
+            std::size_t coroutine_high_water{};
         };
 
         struct Instance final
@@ -661,6 +663,7 @@ namespace lux::simulation::script
             DescriptorIndex* descriptor{};
             Instance* instance{};
             ScriptCoroutineContext context;
+            detail::BoundedFrameStorage::Allocation arguments;
             std::coroutine_handle<ScriptCoroutine::promise_type> handle;
             std::uint32_t slot{};
             bool active{};
@@ -671,6 +674,7 @@ namespace lux::simulation::script
             Instance* instance{};
             const Callable* callable{};
             std::vector<void*> arguments;
+            std::vector<lux_script_value_slot> coroutine_arguments;
             bool active{};
 
             static int invoke(lux_script_call_frame* frame) noexcept
@@ -722,11 +726,24 @@ namespace lux::simulation::script
                 if (continuation == nullptr)
                     return ScriptStepResult::failed(-1);
 
+                auto invocation_frame = frame;
+                const auto& invokable = self.callable->method != nullptr
+                    ? self.callable->method->invokable
+                    : self.callable->function->invokable;
+                const bool is_invalid_shape = frame.arg_count + 1U != invokable.parameters.size() ||
+                    frame.arg_count > self.coroutine_arguments.size() ||
+                    (frame.arg_count != 0U && frame.args == nullptr);
+                if (is_invalid_shape || !state->ownCoroutineReferences(*continuation, self, invocation_frame))
+                {
+                    state->releaseCoroutineSlot(*continuation);
+                    return ScriptStepResult::failed(-1);
+                }
+
                 CppStaticCoroutineAccess::activate(continuation->context, step);
                 auto coroutine = self.callable->coroutine_invoke(
                     self.instance->object,
                     continuation->context,
-                    frame
+                    invocation_frame
                 );
                 CppStaticCoroutineAccess::deactivate(continuation->context);
                 if (!coroutine)
@@ -795,9 +812,14 @@ namespace lux::simulation::script
                 );
                 if (!cpp_body.suspension_capable_exports.empty())
                 {
+                    if (pool.coroutine_capacity > (std::numeric_limits<std::size_t>::max)() / 2U)
+                    {
+                        valid = false;
+                        return;
+                    }
                     auto frames = detail::BoundedFrameStorage::create(
                         pool.coroutine_frame_storage_bytes,
-                        pool.coroutine_capacity,
+                        pool.coroutine_capacity * 2U,
                         pool.coroutine_frame_storage_alignment
                     );
                     if (!frames)
@@ -897,6 +919,7 @@ namespace lux::simulation::script
                 prepared_calls[index - 1U].arguments.resize(
                     maximum_parameters
                 );
+                prepared_calls[index - 1U].coroutine_arguments.resize(maximum_parameters);
                 free_prepared_calls.push_back(index - 1U);
             }
             continuations.resize(coroutine_capacity);
@@ -966,11 +989,74 @@ namespace lux::simulation::script
             return true;
         }
 
+        [[nodiscard]] bool ownCoroutineReferences(
+            CoroutineContinuation& continuation,
+            PreparedCall& prepared,
+            lux_script_call_frame& frame
+        ) noexcept
+        {
+            const auto& invokable = prepared.callable->method != nullptr
+                ? prepared.callable->method->invokable
+                : prepared.callable->function->invokable;
+            std::size_t required_bytes{};
+            std::size_t required_alignment{1U};
+            for (std::size_t index{}; index < frame.arg_count; ++index)
+            {
+                const auto& parameter = invokable.parameters[index + 1U];
+                const auto qualifier = static_cast<lux::meta::ETypeQual>(parameter.type.qtype.qual);
+                if (qualifier != lux::meta::ETypeQual::LRefToConst)
+                    continue;
+                const auto alignment = static_cast<std::size_t>(parameter.type.alignment);
+                const bool is_invalid_alignment = alignment == 0U ||
+                    (alignment & (alignment - 1U)) != 0U;
+                const bool is_padding_overflow = !is_invalid_alignment &&
+                    required_bytes > (std::numeric_limits<std::size_t>::max)() - (alignment - 1U);
+                if (is_invalid_alignment || is_padding_overflow)
+                    return false;
+                required_bytes = (required_bytes + alignment - 1U) & ~(alignment - 1U);
+                if (parameter.type.size > (std::numeric_limits<std::size_t>::max)() - required_bytes)
+                    return false;
+                required_bytes += parameter.type.size;
+                required_alignment = (std::max)(required_alignment, alignment);
+            }
+            if (required_bytes == 0U)
+                return true;
+
+            auto storage = continuation.descriptor->coroutine_frames.acquire(
+                required_bytes,
+                required_alignment
+            );
+            if (!storage)
+                return false;
+            continuation.arguments = *storage;
+            std::size_t offset{};
+            for (std::size_t index{}; index < frame.arg_count; ++index)
+            {
+                prepared.coroutine_arguments[index] = frame.args[index];
+                const auto& parameter = invokable.parameters[index + 1U];
+                const auto qualifier = static_cast<lux::meta::ETypeQual>(parameter.type.qtype.qual);
+                if (qualifier != lux::meta::ETypeQual::LRefToConst)
+                    continue;
+                if (frame.args[index].data == nullptr || frame.args[index].size < parameter.type.size)
+                    return false;
+                const auto alignment = static_cast<std::size_t>(parameter.type.alignment);
+                offset = (offset + alignment - 1U) & ~(alignment - 1U);
+                auto* destination = static_cast<std::byte*>(storage->data) + offset;
+                std::memcpy(destination, frame.args[index].data, parameter.type.size);
+                prepared.coroutine_arguments[index].data = destination;
+                offset += parameter.type.size;
+            }
+            frame.args = prepared.coroutine_arguments.data();
+            return true;
+        }
+
         void releaseCoroutineSlot(CoroutineContinuation& continuation) noexcept
         {
             auto* descriptor = continuation.descriptor;
             auto* instance = continuation.instance;
             const auto slot = continuation.slot;
+            if (continuation.arguments && descriptor != nullptr)
+                static_cast<void>(descriptor->coroutine_frames.release(continuation.arguments));
             continuation = {};
             if (descriptor != nullptr)
                 --descriptor->active_coroutines;
@@ -1009,6 +1095,10 @@ namespace lux::simulation::script
             continuation.slot = static_cast<std::uint32_t>(slot);
             continuation.active = true;
             ++descriptor.active_coroutines;
+            descriptor.coroutine_high_water = (std::max)(
+                descriptor.coroutine_high_water,
+                descriptor.active_coroutines
+            );
             ++instance.active_coroutines;
             return std::addressof(continuation);
         }
@@ -1321,8 +1411,8 @@ namespace lux::simulation::script
         {
             const auto stats = descriptor.coroutine_frames.stats();
             result.frame_storage_bytes += stats.storage_bytes;
-            result.active_frames += stats.active_frames;
-            result.frame_high_water += stats.frame_high_water;
+            result.active_frames += descriptor.active_coroutines;
+            result.frame_high_water += descriptor.coroutine_high_water;
             result.frame_capacity_failures += stats.capacity_failures;
         }
         return result;

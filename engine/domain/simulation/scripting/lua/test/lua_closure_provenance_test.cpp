@@ -81,7 +81,7 @@ namespace
     }
 }
 
-int main()
+void testAbilityProvenance()
 {
     Ability alpha{"lux.test.provenance.alpha", "Alpha", "lux.test.provenance.alpha.call"};
     Ability beta{"lux.test.provenance.beta", "Beta", "lux.test.provenance.beta.call"};
@@ -91,7 +91,7 @@ int main()
     };
     auto backend = LuaScriptBackend::create({
         .instance_capacity = 4U,
-        .prepared_call_capacity = 4U,
+        .prepared_call_capacity = 8U,
         .continuation_capacity = 1U,
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 2U,
@@ -144,7 +144,8 @@ int main()
     assert(alpha_calls == 0 && beta_calls == 0);
     assert(invoke(second, beta_artifact, 1U) == 0);
     assert(beta_calls == 1);
-    auto same_prototype = create(1U, alpha_artifact, beta_capability = capability(alpha, beta_calls));
+    const auto same_capability = capability(alpha, beta_calls);
+    auto same_prototype = create(1U, alpha_artifact, same_capability);
     assert(invoke(same_prototype, alpha_artifact, 2U) == 0);
     assert(alpha_calls == 0 && beta_calls == 2);
     runtime.destroyInstance(runtime.context, first);
@@ -155,4 +156,88 @@ int main()
     runtime.destroyInstance(runtime.context, rebuilt);
     runtime.destroyInstance(runtime.context, second);
     assert(backend->stats().prepared_ability_slots == 0U);
+}
+
+void testEventProvenance()
+{
+    const std::array sources{
+        lux::script::ScriptEventSourceDescription{"Source", "alpha", 1U, 1U,
+            lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U}, 1U, 1U},
+        lux::script::ScriptEventSourceDescription{"Source", "beta", 2U, 2U,
+            lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U}, 1U, 1U}
+    };
+    auto backend = LuaScriptBackend::create({
+        .instance_capacity = 2U,
+        .prepared_call_capacity = 4U,
+        .continuation_capacity = 2U,
+        .execution_depth_capacity = 4U,
+        .ability_catalog_method_capacity = 1U,
+        .event_catalog_capacity = 2U,
+        .prepared_event_capacity = 2U,
+        .events = sources
+    });
+    assert(backend);
+    const auto make = [&](std::size_t index, std::string_view source) {
+        lux::rdesc::Script description;
+        description.module_name = sources[index].event_name;
+        description.body = lux::rdesc::LuaSourceScript{"Object", {2U}};
+        description.exports = {{"save", 1U, {}, {}}, {"wait", 2U, {}, {}}};
+        description.event_requirements = {sources[index]};
+        const auto bytes = std::as_bytes(std::span{source.data(), source.size()});
+        auto created = lux::script::ScriptArtifact::create(
+            std::move(description), std::vector<std::byte>{bytes.begin(), bytes.end()}
+        );
+        assert(created);
+        return std::move(*created);
+    };
+    auto first_artifact = make(0U,
+        "return {save=function() table.lux_event= lux.Event.Source.alpha end,"
+        "wait=function() table.lux_event() end}"
+    );
+    auto second_artifact = make(1U,
+        "return {save=function() end, wait=function() table.lux_event() end}"
+    );
+    const auto runtime = backend->descriptor();
+    std::array<ScriptBackendInstance, 2U> instances;
+    const std::array artifacts{&first_artifact, &second_artifact};
+    for (std::size_t index{}; index < instances.size(); ++index)
+    {
+        assert(runtime.createInstance(runtime.context,
+            {assetId(static_cast<std::uint8_t>(index + 1U)), SimulationScriptScope{}, nullptr,
+                {static_cast<std::uint32_t>(index + 1U), 1U}, {}, {&sources[index], 1U}},
+            *artifacts[index], instances[index]) == EScriptBackendResult::SUCCESS);
+    }
+    ScriptBackendPreparedMethod save;
+    assert(runtime.prepareMethod(runtime.context, instances[0], first_artifact.description().exports[0], save) ==
+        EScriptBackendResult::SUCCESS);
+    lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, save.synchronous.context};
+    assert(save.synchronous.invoke(&frame) == 0);
+    runtime.releaseMethod(runtime.context, instances[0], save);
+    ScriptBackendPreparedMethod wait;
+    assert(runtime.prepareMethod(runtime.context, instances[1], second_artifact.description().exports[1], wait) ==
+        EScriptBackendResult::SUCCESS);
+    std::size_t registrations{};
+    ScriptStepContext step{{2U, 1U}, &registrations, nullptr, nullptr,
+        [](void* context, ScriptInstanceId, ScriptEventWaitRequest) noexcept
+            -> lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> {
+            ++*static_cast<std::size_t*>(context);
+            return ScriptAwaitableId{1U, 1U};
+        }};
+    ScriptBackendContinuation continuation;
+    assert(wait.resumable.invoke(wait.resumable.context, frame, step, continuation).state == EScriptStepState::FAILED);
+    assert(registrations == 0U);
+    if (continuation)
+        continuation.destroy(continuation.state);
+    runtime.releaseMethod(runtime.context, instances[1], wait);
+    for (auto instance : instances)
+        runtime.destroyInstance(runtime.context, instance);
+    assert(backend->stats().prepared_event_slots == 0U);
+}
+
+int main()
+{
+    testAbilityProvenance();
+    testEventProvenance();
 }

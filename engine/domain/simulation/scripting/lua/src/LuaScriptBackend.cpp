@@ -66,6 +66,7 @@ namespace lux::simulation::script
         {
             int table_ref{LUA_NOREF};
             int environment_ref{LUA_NOREF};
+            const void* layout_token{};
             std::vector<std::uint32_t> ability_ordinals;
             std::vector<std::uint32_t> event_ordinals;
         };
@@ -502,7 +503,12 @@ namespace lux::simulation::script
                     lua_pushlstring(state, method->name.data(), method->name.size());
                     lua_pushlightuserdata(state, this);
                     lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
-                    lua_pushcclosure(state, ability_methods[ordinal].entry, 2);
+                    lua_pushlightuserdata(state, this);
+                    lua_rawget(state, lux_index);
+                    lua_pushcclosure(state, ability_methods[ordinal].entry, 3);
+                    const bool is_async = method->kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION;
+                    if (!wrapAbility(is_async, !method->results.empty()))
+                        return false;
                     lua_settable(state, ability_index);
                     prototype.ability_ordinals.push_back(static_cast<std::uint32_t>(ordinal));
                     ++ordinal;
@@ -515,6 +521,25 @@ namespace lux::simulation::script
             return true;
         }
 
+        [[nodiscard]] bool wrapAbility(bool is_async, bool has_result) noexcept
+        {
+            // Raise/yield in Lua only, after the typed C++ thunk (and its noexcept frames) has returned.
+            constexpr std::string_view prefix =
+                "return function(start) return function(...) local ok,value=start(...); "
+                "if not ok then error(value,0) end; ";
+            const auto suffix = is_async ? "return coroutine.yield() end end" :
+                has_result ? "return value end end" : "end end";
+            std::array<char, 256U> wrapper{};
+            const auto suffix_size = std::strlen(suffix);
+            std::memcpy(wrapper.data(), prefix.data(), prefix.size());
+            std::memcpy(wrapper.data() + prefix.size(), suffix, suffix_size);
+            if (luaL_loadbufferx(state, wrapper.data(), prefix.size() + suffix_size, "lux.Ability.wrapper", "t") !=
+                    LUA_OK || lua_pcall(state, 0, 1, 0) != LUA_OK)
+                return false;
+            lua_insert(state, -2);
+            return lua_pcall(state, 1, 1, 0) == LUA_OK;
+        }
+
         [[nodiscard]] bool appendArtifactEvents(
             Prototype& prototype,
             const lux::script::ScriptArtifact& artifact,
@@ -524,7 +549,8 @@ namespace lux::simulation::script
             if (artifact.description().event_requirements.empty())
                 return true;
             static constexpr std::string_view wrapper_source =
-                "return function(start) return function() start(); return coroutine.yield() end end";
+                "return function(start) return function() local ok,message=start(); "
+                "if not ok then error(message,0) end; return coroutine.yield() end end";
             lua_newtable(state);
             const auto event_index = lua_gettop(state);
             if (luaL_loadbufferx(
@@ -565,7 +591,9 @@ namespace lux::simulation::script
                 lua_pushvalue(state, factory_index);
                 lua_pushlightuserdata(state, this);
                 lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
-                lua_pushcclosure(state, &State::invokeEventWait, 2);
+                lua_pushlightuserdata(state, this);
+                lua_rawget(state, lux_index);
+                lua_pushcclosure(state, &State::invokeEventWait, 3);
                 if (lua_pcall(state, 1, 1, 0) != LUA_OK)
                     return false;
                 lua_settable(state, system_index);
@@ -596,6 +624,11 @@ namespace lux::simulation::script
             lua_setmetatable(state, environment_index);
             lua_newtable(state);
             const auto lux_index = lua_gettop(state);
+            // A full userdata is retained by the environment and every closure. An old reachable closure
+            // therefore prevents reuse of its layout identity, independently of C++ prototype storage.
+            lua_pushlightuserdata(state, this);
+            prototype.layout_token = lua_newuserdata(state, 1U);
+            lua_rawset(state, lux_index);
             if (!appendArtifactAbilities(prototype, artifact, lux_index) ||
                 !appendArtifactEvents(prototype, artifact, lux_index))
             {
@@ -1402,8 +1435,9 @@ namespace lux::simulation::script
         {
             if (continuation != nullptr)
                 continuation->failure_status = status;
+            lua_pushboolean(state, false);
             lua_pushstring(state, message);
-            return lua_error(state);
+            return 2;
         }
 
         struct EventWaitAdmission final
@@ -1456,6 +1490,14 @@ namespace lux::simulation::script
                     "Script Event wait requires a coroutine-capable export"
                 );
             }
+            const bool is_foreign_layout = execution->instance->owner != self ||
+                execution->instance->prototype == nullptr ||
+                lua_touserdata(state, lua_upvalueindex(3)) != execution->instance->prototype->layout_token;
+            if (is_foreign_layout)
+            {
+                return abilityFailure(state, execution->continuation, kInvalidCall,
+                    "Script Event closure belongs to a different prepared layout");
+            }
             auto* prepared = self->prepared_events.at(execution->instance->prepared_events, ordinal);
             if (prepared == nullptr || prepared->source == nullptr)
             {
@@ -1480,7 +1522,8 @@ namespace lux::simulation::script
             execution->continuation->waiting_on = admission.waiting_on;
             execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
             execution->continuation->pending_operation = EPendingOperation::EVENT;
-            return 0;
+            lua_pushboolean(state, true);
+            return 1;
         }
 
         static int invoke(lux_script_call_frame* frame) noexcept
@@ -1932,6 +1975,11 @@ namespace lux::simulation::script
         {
             return false;
         }
+        const auto* instance = owner->active_execution->instance;
+        const bool is_foreign_layout = instance->owner != owner || instance->prototype == nullptr ||
+            lua_touserdata(state, lua_upvalueindex(3)) != instance->prototype->layout_token;
+        if (is_foreign_layout)
+            return false;
         const auto local_slot = static_cast<std::size_t>(raw_slot);
         auto* prepared = owner->prepared_abilities.at(
             owner->active_execution->instance->prepared_abilities,
@@ -1983,7 +2031,15 @@ namespace lux::simulation::script
         execution->continuation->waiting_on = result.waiting_on;
         execution->continuation->pending_ordinal = local_slot;
         execution->continuation->pending_operation = LuaScriptBackend::State::EPendingOperation::ABILITY;
-        return lux::script::lua::detail::yieldLuaInvocation(state, 0);
+        lua_pushboolean(state, true);
+        return 1;
+    }
+
+    int detail::LuaAbilityProjectionAccess::succeed(lua_State* state, int results) noexcept
+    {
+        lua_pushboolean(state, true);
+        lua_insert(state, -results - 1);
+        return results + 1;
     }
 
     int detail::LuaAbilityProjectionAccess::argumentCount(lua_State* state) noexcept

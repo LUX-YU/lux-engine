@@ -34,6 +34,7 @@ namespace lux::simulation::script::detail
     {
         [[nodiscard]] static bool current(lua_State* state, LuaPreparedAbilityAccess& result) noexcept;
         [[nodiscard]] static int fail(lua_State* state, std::int32_t status, const char* message) noexcept;
+        [[nodiscard]] static int succeed(lua_State* state, int results) noexcept;
         [[nodiscard]] static int suspend(
             lua_State* state,
             ScriptStepResult result,
@@ -89,7 +90,7 @@ namespace lux::simulation::script::detail
         if constexpr (std::is_void_v<Result>)
         {
             std::apply([&](auto&... arguments) noexcept { invoke(access, arguments...); }, values);
-            return 0;
+            return LuaAbilityProjectionAccess::succeed(state, 0);
         }
         else
         {
@@ -102,7 +103,7 @@ namespace lux::simulation::script::detail
             if constexpr (LuaAbilityScalar<Value>)
             {
                 LuaAbilityProjectionAccess::push(state, result);
-                return 1;
+                return LuaAbilityProjectionAccess::succeed(state, 1);
             }
             else
             {

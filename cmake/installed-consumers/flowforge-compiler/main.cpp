@@ -2,6 +2,7 @@
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
+#include <lux/engine/function/script/native/NativeModule.hpp>
 
 #include <memory>
 #include <cstdio>

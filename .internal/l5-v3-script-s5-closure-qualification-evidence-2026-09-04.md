@@ -1,5 +1,10 @@
 # L5 v3 Script S5 closure qualification evidence
 
+> Superseded by `l5-v3-script-s5-final-qualification-evidence-2026-09-04.md`.
+> This checkpoint correctly qualified the S5.1 execution mechanisms, but it did not yet persist and validate the
+> complete Event contract at mount admission and it predated the canonical Physics2D Simulation provider. It must
+> not be used as the final S5 PASS evidence.
+
 Date: 2026-09-04
 
 ## Verdict
@@ -185,4 +190,3 @@ No installed generated path refers to the repository source tree.
 - S2.4 AssetLoad: BLOCKED by the Script asset handle contract.
 - Full Physics-inclusive PB3: NOT RECORDED.
 - S6 C++ coroutine/static specialization: NOT STARTED.
-

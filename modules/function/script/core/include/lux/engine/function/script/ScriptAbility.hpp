@@ -19,6 +19,11 @@
 
 namespace lux::script
 {
+    namespace detail
+    {
+        struct ScriptAbilityOwnerCompletionAccess;
+    }
+
     struct ScriptAbilityValueDescription;
     struct ScriptAbilityParameterDescription;
 
@@ -94,7 +99,10 @@ namespace lux::script
             std::uint64_t token_b,
             SuccessFn success,
             FailureFn failure,
-            ActiveFn active = nullptr
+            ActiveFn active = nullptr,
+            void* owner_context = nullptr,
+            SuccessFn owner_success = nullptr,
+            FailureFn owner_failure = nullptr
         ) noexcept
         {
             return ScriptAbilityErasedCompletion(
@@ -104,11 +112,16 @@ namespace lux::script
                 token_b,
                 success,
                 failure,
-                active
+                active,
+                owner_context,
+                owner_success,
+                owner_failure
             );
         }
 
     private:
+        friend struct detail::ScriptAbilityOwnerCompletionAccess;
+
         ScriptAbilityErasedCompletion(
             std::shared_ptr<void> lease,
             void* context,
@@ -116,7 +129,10 @@ namespace lux::script
             std::uint64_t token_b,
             SuccessFn success,
             FailureFn failure,
-            ActiveFn active
+            ActiveFn active,
+            void* owner_context,
+            SuccessFn owner_success,
+            FailureFn owner_failure
         ) noexcept
             : lease_(std::move(lease)),
               context_(context),
@@ -124,8 +140,29 @@ namespace lux::script
               token_b_(token_b),
               success_(success),
               failure_(failure),
-              active_(active)
+              active_(active),
+              owner_context_(owner_context),
+              owner_success_(owner_success),
+              owner_failure_(owner_failure)
         {
+        }
+
+        [[nodiscard]] CompletionResult successOwner(
+            lux::semantic::TypeId type,
+            const void* value,
+            std::uint32_t size
+        ) const noexcept
+        {
+            if (owner_context_ == nullptr || owner_success_ == nullptr)
+                return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
+            return owner_success_(owner_context_, token_a_, token_b_, type, value, size);
+        }
+
+        [[nodiscard]] CompletionResult failOwner(ScriptAbilityOperationError error) const noexcept
+        {
+            if (owner_context_ == nullptr || owner_failure_ == nullptr)
+                return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
+            return owner_failure_(owner_context_, token_a_, token_b_, error);
         }
 
         std::shared_ptr<void> lease_;
@@ -135,6 +172,9 @@ namespace lux::script
         SuccessFn success_{};
         FailureFn failure_{};
         ActiveFn active_{};
+        void* owner_context_{};
+        SuccessFn owner_success_{};
+        FailureFn owner_failure_{};
     };
 
     using ScriptAbilityErasedCallResult = lux::cxx::expected<void, ScriptAbilityOperationError>;

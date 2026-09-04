@@ -55,6 +55,8 @@ namespace lux::script
         }
 
     private:
+        friend struct detail::ScriptAbilityOwnerCompletionAccess;
+
         explicit ScriptAbilityCompletion(ScriptAbilityErasedCompletion completion) noexcept
             : completion_(std::move(completion))
         {
@@ -99,6 +101,8 @@ namespace lux::script
         }
 
     private:
+        friend struct detail::ScriptAbilityOwnerCompletionAccess;
+
         explicit ScriptAbilityCompletion(ScriptAbilityErasedCompletion completion) noexcept
             : completion_(std::move(completion))
         {
@@ -109,4 +113,39 @@ namespace lux::script
 
     template <class Ability>
     class ScriptAbilityStarter;
+
+    namespace detail
+    {
+        struct ScriptAbilityOwnerCompletionAccess final
+        {
+            template <class Result>
+            [[nodiscard]] static typename ScriptAbilityCompletion<Result>::CompletionResult success(
+                const ScriptAbilityCompletion<Result>& completion,
+                Result value
+            ) noexcept
+            {
+                return completion.completion_.successOwner(
+                    lux::semantic::typeId(lux::semantic::TypeTraits<Result>::CanonicalName),
+                    std::addressof(value),
+                    sizeof(Result)
+                );
+            }
+
+            [[nodiscard]] static ScriptAbilityCompletion<void>::CompletionResult success(
+                const ScriptAbilityCompletion<void>& completion
+            ) noexcept
+            {
+                return completion.completion_.successOwner(lux::semantic::InvalidTypeId, nullptr, 0U);
+            }
+
+            template <class Result>
+            [[nodiscard]] static typename ScriptAbilityCompletion<Result>::CompletionResult fail(
+                const ScriptAbilityCompletion<Result>& completion,
+                ScriptAbilityOperationError error
+            ) noexcept
+            {
+                return completion.completion_.failOwner(error);
+            }
+        };
+    } // namespace detail
 } // namespace lux::script

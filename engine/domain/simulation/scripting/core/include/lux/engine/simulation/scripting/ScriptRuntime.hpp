@@ -355,7 +355,10 @@ namespace lux::simulation::script
                 pack(awaitable_.slot, awaitable_.generation),
                 ability_success_,
                 ability_failure_,
-                ability_active_
+                ability_active_,
+                ability_owner_context_,
+                ability_owner_success_,
+                ability_owner_failure_
             );
         }
 
@@ -378,10 +381,14 @@ namespace lux::simulation::script
                                   ScriptAwaitableId awaitable,
                                   AbilitySuccessFn ability_success,
                                   AbilityFailureFn ability_failure,
-                                  AbilityActiveFn ability_active) noexcept
+                                  AbilityActiveFn ability_active,
+                                  void* ability_owner_context = nullptr,
+                                  AbilitySuccessFn ability_owner_success = nullptr,
+                                  AbilityFailureFn ability_owner_failure = nullptr) noexcept
             : lease_(std::move(lease)), context_(context), complete_(complete), query_(query), instance_(instance),
               awaitable_(awaitable), ability_success_(ability_success), ability_failure_(ability_failure),
-              ability_active_(ability_active)
+              ability_active_(ability_active), ability_owner_context_(ability_owner_context),
+              ability_owner_success_(ability_owner_success), ability_owner_failure_(ability_owner_failure)
         {}
 
     private:
@@ -412,6 +419,9 @@ namespace lux::simulation::script
         AbilitySuccessFn ability_success_{};
         AbilityFailureFn ability_failure_{};
         AbilityActiveFn ability_active_{};
+        void* ability_owner_context_{};
+        AbilitySuccessFn ability_owner_success_{};
+        AbilityFailureFn ability_owner_failure_{};
     };
 
     struct ScriptAwaitableRegistration final

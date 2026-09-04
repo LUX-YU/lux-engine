@@ -1085,7 +1085,9 @@ namespace lux::simulation::script
                 if (ready->target_step > current.step_index)
                     return true;
 
-                const auto completed = ready->completion.success();
+                const auto completed = lux::script::detail::ScriptAbilityOwnerCompletionAccess::success(
+                    ready->completion
+                );
                 if (!completed && completed.error() == lux::script::EScriptAbilityCompletionError::BACKPRESSURE)
                     return true;
 
@@ -1245,7 +1247,9 @@ namespace lux::simulation::script
                     simulation_delays.pop_back();
                 }
 
-                auto completed = ready->completion.success();
+                auto completed = lux::script::detail::ScriptAbilityOwnerCompletionAccess::success(
+                    ready->completion
+                );
                 if (completed)
                     continue;
                 switch (completed.error())
@@ -1339,7 +1343,10 @@ namespace lux::simulation::script
                                                                          id,
                                                                          &AwaitableIngress::completeAbilityErased,
                                                                          &AwaitableIngress::failAbilityErased,
-                                                                         &AwaitableIngress::activeAbilityErased}};
+                                                                         &AwaitableIngress::activeAbilityErased,
+                                                                         this,
+                                                                         &State::completeAbilityOwnerErased,
+                                                                         &State::failAbilityOwnerErased}};
         }
 
         [[nodiscard]] static lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError>
@@ -1394,12 +1401,81 @@ namespace lux::simulation::script
             record->state = state;
             record->value = std::move(value);
             record->error = error;
+            if (record->external_completion)
+                ingress->completions.close(awaitable);
             if (record->continuation.valid())
             {
                 static_cast<void>(resumes.push({record->instance, record->continuation, record->id}));
                 record->resume_enqueued = true;
             }
             return {};
+        }
+
+        [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
+        completeAbilityOwnerErased(
+            void* context,
+            std::uint64_t instance_value,
+            std::uint64_t awaitable_value,
+            lux::semantic::TypeId type,
+            const void* data,
+            std::uint32_t size
+        ) noexcept
+        {
+            auto& owner = *static_cast<State*>(context);
+            const auto instance = AwaitableIngress::unpackInstance(instance_value);
+            const auto awaitable = AwaitableIngress::unpackAwaitable(awaitable_value);
+            const auto* record = owner.awaitables.find(awaitableKey(awaitable));
+            if (record == nullptr || record->instance != instance)
+                return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STALE);
+
+            ScriptOwnedResumeValue value;
+            if (record->result_type)
+            {
+                const auto& expected = *record->result_type;
+                if (data == nullptr || type != expected.type_id || size != expected.size ||
+                    !value.bytes.resize(size, expected.alignment))
+                {
+                    return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+                }
+                value.type = expected;
+                std::memcpy(value.bytes.data(), data, size);
+            }
+            else if (type != lux::semantic::InvalidTypeId || data != nullptr || size != 0U)
+            {
+                return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+            }
+
+            const auto completed = owner.completeAwaitableOwner(
+                instance,
+                awaitable,
+                EScriptAwaitableState::READY,
+                std::move(value),
+                {}
+            );
+            return completed
+                ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                : lux::cxx::unexpected(AwaitableIngress::abilityError(completed.error()));
+        }
+
+        [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
+        failAbilityOwnerErased(
+            void* context,
+            std::uint64_t instance_value,
+            std::uint64_t awaitable_value,
+            lux::script::ScriptAbilityOperationError error
+        ) noexcept
+        {
+            auto& owner = *static_cast<State*>(context);
+            const auto completed = owner.completeAwaitableOwner(
+                AwaitableIngress::unpackInstance(instance_value),
+                AwaitableIngress::unpackAwaitable(awaitable_value),
+                EScriptAwaitableState::FAILED,
+                {},
+                {error.status}
+            );
+            return completed
+                ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                : lux::cxx::unexpected(AwaitableIngress::abilityError(completed.error()));
         }
 
         [[nodiscard]] bool drainExternalCompletions() noexcept

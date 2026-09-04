@@ -99,33 +99,22 @@ namespace
         void*,
         ScriptBackendInstance instance,
         const lux::rdesc::ScriptFunction&,
-        lux::script::BoundScriptCall& output
+        ScriptBackendPreparedMethod& output
     ) noexcept
     {
-        output = {&invokeSync, instance.value};
+        output = {
+            instance.value,
+            lux::script::BoundScriptCall{&invokeSync, instance.value},
+            BoundScriptStepCall{instance.value, &invokeStep}
+        };
         return EScriptBackendResult::SUCCESS;
     }
 
-    void releaseMethod(void*, ScriptBackendInstance, lux::script::BoundScriptCall) noexcept
+    void releaseMethod(void*, ScriptBackendInstance, ScriptBackendPreparedMethod) noexcept
     {
     }
 
     void destroyInstance(void*, ScriptBackendInstance) noexcept
-    {
-    }
-
-    EScriptBackendResult prepareStepMethod(
-        void*,
-        ScriptBackendInstance instance,
-        const lux::rdesc::ScriptFunction&,
-        BoundScriptStepCall& output
-    ) noexcept
-    {
-        output = {instance.value, &invokeStep};
-        return EScriptBackendResult::SUCCESS;
-    }
-
-    void releaseStepMethod(void*, ScriptBackendInstance, BoundScriptStepCall) noexcept
     {
     }
 
@@ -231,9 +220,7 @@ int main()
         &createInstance,
         &prepareMethod,
         &releaseMethod,
-        &destroyInstance,
-        &prepareStepMethod,
-        &releaseStepMethod
+        &destroyInstance
     }};
     ecs::Registry registry;
     SimulationClock clock;

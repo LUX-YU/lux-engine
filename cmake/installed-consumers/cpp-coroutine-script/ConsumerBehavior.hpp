@@ -18,7 +18,8 @@ namespace installed_consumer
         ) noexcept
         {
             observed = 1;
-            co_await context.makeAwaiter<void>(
+            co_await lux::simulation::script::CppStaticCoroutineAccess::makeAwaiter<void>(
+                context,
                 [](
                     lux::simulation::script::ScriptCoroutineContext&,
                     lux::simulation::script::ScriptStepContext& step

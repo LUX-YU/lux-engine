@@ -81,7 +81,9 @@ namespace lux::simulation::script
             !std::is_pointer_v<std::remove_reference_t<Argument>> &&
             (!std::is_reference_v<Argument> ||
                 (std::is_lvalue_reference_v<Argument> &&
-                    std::is_const_v<std::remove_reference_t<Argument>>)) &&
+                    std::is_const_v<std::remove_reference_t<Argument>> &&
+                    std::is_trivially_copyable_v<std::remove_cvref_t<Argument>> &&
+                    std::is_trivially_destructible_v<std::remove_cvref_t<Argument>>)) &&
             lux::semantic::TypeDeclared<std::remove_cvref_t<Argument>>;
 
         template <class Owner, class... Arguments,
@@ -245,6 +247,7 @@ namespace lux::simulation::script
         std::size_t coroutine_capacity{};
         std::size_t coroutine_frame_storage_bytes{};
         std::size_t coroutine_frame_storage_alignment{alignof(std::max_align_t)};
+        std::size_t prepared_method_capacity{};
     };
 
     struct CppStaticScriptBackendStats final

@@ -194,8 +194,7 @@ namespace lux::simulation::script
         struct PreparedMethod final
         {
             lux::script::ScriptSymbolId symbol{};
-            lux::script::BoundScriptCall call;
-            BoundScriptStepCall step;
+            ScriptBackendPreparedMethod backend;
             ScriptContinuationId active_hook;
             bool used_by_binding{};
         };
@@ -1787,7 +1786,7 @@ namespace lux::simulation::script
                             if (methods.size() >= std::numeric_limits<std::uint32_t>::max())
                                 return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
                             runtime.method_slot = static_cast<std::uint32_t>(methods.size());
-                            methods.push_back({binding.symbol, {}, {}, {}, true});
+                            methods.push_back({binding.symbol, {}, {}, true});
                             method_index.emplace(binding.symbol, runtime.method_slot);
                             ++mount.method_count;
                         }
@@ -1888,7 +1887,7 @@ namespace lux::simulation::script
             {
                 return;
             }
-            if (method.step)
+            if (method.backend.resumable)
             {
                 ScriptBackendContinuation continuation;
                 ScriptStepContext context{
@@ -1898,7 +1897,12 @@ namespace lux::simulation::script
                     &State::discardAwaitableErased,
                     &State::waitEventErased
                 };
-                const auto result = method.step.invoke(method.step.context, frame, context, continuation);
+                const auto result = method.backend.resumable.invoke(
+                    method.backend.resumable.context,
+                    frame,
+                    context,
+                    continuation
+                );
                 if (result.state == EScriptStepState::COMPLETED && result.valid())
                 {
                     if (continuation)
@@ -1919,8 +1923,8 @@ namespace lux::simulation::script
                 return;
             }
 
-            frame.user_context = method.call.context;
-            const auto status = method.call.invoke(&frame);
+            frame.user_context = method.backend.synchronous.context;
+            const auto status = method.backend.synchronous.invoke(&frame);
             if (status == 0)
                 return;
             faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
@@ -2211,8 +2215,8 @@ namespace lux::simulation::script
                 frame.args = std::addressof(argument);
                 frame.arg_count = 1U;
             }
-            frame.user_context = method.call.context;
-            return method.call.invoke(&frame);
+            frame.user_context = method.backend.synchronous.context;
+            return method.backend.synchronous.invoke(&frame);
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> beginPlayMount(std::uint32_t mount_slot) noexcept
@@ -2307,15 +2311,14 @@ namespace lux::simulation::script
                 for (std::size_t index{method_end}; index > mount.method_first; --index)
                 {
                     auto& method = methods[index - 1U];
-                    if (method.step)
-                    {
-                        mount.backend->releaseStepMethod(mount.backend->context, mount.backend_instance, method.step);
-                        method.step = {};
-                    }
-                    if (!method.call)
+                    if (!method.backend)
                         continue;
-                    mount.backend->releaseMethod(mount.backend->context, mount.backend_instance, method.call);
-                    method.call = {};
+                    mount.backend->releaseMethod(
+                        mount.backend->context,
+                        mount.backend_instance,
+                        method.backend
+                    );
+                    method.backend = {};
                 }
                 mount.backend->destroyInstance(mount.backend->context, mount.backend_instance);
             }
@@ -2519,28 +2522,17 @@ namespace lux::simulation::script
                     return lux::cxx::unexpected(EScriptSystemError::SYMBOL_NOT_FOUND);
                 }
 
-                const auto prepared_method = mount.backend->prepareMethod(mount.backend->context,
-                                                                          mount.backend_instance,
-                                                                          *function,
-                                                                          method.call);
-                if (prepared_method != EScriptBackendResult::SUCCESS || !method.call)
+                const auto prepared_method = mount.backend->prepareMethod(
+                    mount.backend->context,
+                    mount.backend_instance,
+                    *function,
+                    method.backend
+                );
+                if (prepared_method != EScriptBackendResult::SUCCESS || !method.backend)
                 {
                     const auto error = backendError(prepared_method);
                     releaseMount(mount_slot, EMountState::INACTIVE, false);
                     return lux::cxx::unexpected(error);
-                }
-                if (method.used_by_binding && mount.backend->prepareStepMethod != nullptr)
-                {
-                    const auto prepared_step = mount.backend->prepareStepMethod(mount.backend->context,
-                                                                                mount.backend_instance,
-                                                                                *function,
-                                                                                method.step);
-                    if (prepared_step != EScriptBackendResult::SUCCESS)
-                    {
-                        const auto error = backendError(prepared_step);
-                        releaseMount(mount_slot, EMountState::INACTIVE, false);
-                        return lux::cxx::unexpected(error);
-                    }
                 }
             }
 
@@ -2906,9 +2898,7 @@ namespace lux::simulation::script
                 backend.kind == lux::rdesc::Script::Kind::UNKNOWN || index >= backend_table.size();
             const bool is_invalid_functions = backend.createInstance == nullptr || backend.prepareMethod == nullptr ||
                                               backend.releaseMethod == nullptr || backend.destroyInstance == nullptr;
-            const bool is_invalid_step_pair =
-                (backend.prepareStepMethod == nullptr) != (backend.releaseStepMethod == nullptr);
-            if (is_invalid_kind || is_invalid_functions || is_invalid_step_pair)
+            if (is_invalid_kind || is_invalid_functions)
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
             if (backend_table[index].kind != lux::rdesc::Script::Kind::UNKNOWN)
                 return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_BACKEND_KIND);

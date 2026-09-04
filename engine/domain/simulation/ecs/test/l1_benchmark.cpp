@@ -635,15 +635,15 @@ namespace
         void* context,
         ScriptBackendInstance instance,
         const lux::rdesc::ScriptFunction&,
-        lux::script::BoundScriptCall& output
+        ScriptBackendPreparedMethod& output
     ) noexcept
     {
         ++static_cast<PrepareBackendState*>(context)->method_prepares;
-        output = {&prepareInvoke, instance.value};
+        output = {instance.value, lux::script::BoundScriptCall{&prepareInvoke, instance.value}, {}};
         return EScriptBackendResult::SUCCESS;
     }
 
-    void releaseBenchmarkMethod(void* context, ScriptBackendInstance, lux::script::BoundScriptCall) noexcept
+    void releaseBenchmarkMethod(void* context, ScriptBackendInstance, ScriptBackendPreparedMethod) noexcept
     {
         ++static_cast<PrepareBackendState*>(context)->method_releases;
     }
@@ -800,6 +800,10 @@ namespace
             artifact.emplace(std::move(*created_artifact));
             const std::array pools{CppStaticScriptPoolDescription{
                 std::addressof(*script_descriptor),
+                count,
+                0U,
+                0U,
+                alignof(std::max_align_t),
                 count
             }};
             auto created_backend = CppStaticScriptBackend::create(pools);
@@ -912,7 +916,7 @@ namespace
         std::optional<LuaScriptBackend> backend;
         ScriptBackendDescriptor backend_descriptor;
         std::vector<ScriptBackendInstance> instances;
-        std::vector<lux::script::BoundScriptCall> calls;
+        std::vector<ScriptBackendPreparedMethod> calls;
     };
 #endif
 

@@ -11,9 +11,32 @@
 #include <cstring>
 #include <optional>
 
+namespace cpp_static_test_detail
+{
+    struct NonTrivialSemantic final
+    {
+        NonTrivialSemantic() = default;
+        NonTrivialSemantic(const NonTrivialSemantic&) noexcept {}
+        ~NonTrivialSemantic() noexcept {}
+    };
+}
+
+namespace lux::semantic
+{
+    template <>
+    struct TypeTraits<cpp_static_test_detail::NonTrivialSemantic> final
+    {
+        inline static constexpr std::string_view CanonicalName{"lux.test.NonTrivialSemantic"};
+        inline static constexpr std::uint8_t AbiKind{LUX_SCRIPT_VK_STRUCT_REF};
+        inline static constexpr std::uint32_t Size{sizeof(cpp_static_test_detail::NonTrivialSemantic)};
+        inline static constexpr std::uint32_t Alignment{alignof(cpp_static_test_detail::NonTrivialSemantic)};
+    };
+}
+
 namespace
 {
     using namespace lux::simulation::script;
+    using NonTrivialSemantic = cpp_static_test_detail::NonTrivialSemantic;
 
     bool resolveRecord(
         void*,
@@ -177,8 +200,10 @@ int main()
 
     static_assert(script::detail::kCppCoroutineArgumentSupported<std::int32_t>);
     static_assert(script::detail::kCppCoroutineArgumentSupported<const std::int32_t&>);
+    static_assert(!script::detail::kCppCoroutineArgumentSupported<std::int32_t&&>);
     static_assert(!script::detail::kCppCoroutineArgumentSupported<std::int32_t&>);
     static_assert(!script::detail::kCppCoroutineArgumentSupported<std::int32_t*>);
+    static_assert(!script::detail::kCppCoroutineArgumentSupported<const NonTrivialSemantic&>);
 
     lux::meta::ReflectionRegistry::initRegistry();
     auto& registry = lux::meta::ReflectionRegistry::instance();
@@ -349,11 +374,12 @@ int main()
         1U,
         2U,
         4096U,
-        alignof(std::max_align_t)
+        alignof(std::max_align_t),
+        8U
     }};
     const std::array duplicate_pools{
-        CppStaticScriptPoolDescription{std::addressof(*projected), 1U},
-        CppStaticScriptPoolDescription{std::addressof(*projected), 1U}
+        CppStaticScriptPoolDescription{std::addressof(*projected), 1U, 0U, 0U, alignof(std::max_align_t), 1U},
+        CppStaticScriptPoolDescription{std::addressof(*projected), 1U, 0U, 0U, alignof(std::max_align_t), 1U}
     };
     auto duplicate_backend = CppStaticScriptBackend::create(duplicate_pools);
     assert(!duplicate_backend);
@@ -390,13 +416,14 @@ int main()
         instance
     ) == EScriptBackendResult::SUCCESS);
 
-    lux::script::BoundScriptCall call;
+    ScriptBackendPreparedMethod call_method;
     assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[0],
-        call
+        call_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto call = call_method.synchronous;
     float value{3.5F};
     lux_script_value_slot argument{
         LUX_SCRIPT_VK_FLOAT,
@@ -409,20 +436,22 @@ int main()
     assert(call.invoke(&frame) == 0);
     assert(test::observed_value == value);
 
-    lux::script::BoundScriptCall begin_call;
-    lux::script::BoundScriptCall end_call;
+    ScriptBackendPreparedMethod begin_method_prepared;
+    ScriptBackendPreparedMethod end_method_prepared;
     assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[2],
-        begin_call
+        begin_method_prepared
     ) == EScriptBackendResult::SUCCESS);
     assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[3],
-        end_call
+        end_method_prepared
     ) == EScriptBackendResult::SUCCESS);
+    const auto begin_call = begin_method_prepared.synchronous;
+    const auto end_call = end_method_prepared.synchronous;
     lux_script_call_frame begin_frame{
         nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
     assert(begin_call.invoke(&begin_frame) == 0);
@@ -441,13 +470,14 @@ int main()
     assert(test::observed_lifecycle_value == 11);
     assert(test::observed_end_reason == end_reason);
 
-    BoundScriptStepCall step_call;
-    assert(descriptor.prepareStepMethod(
+    ScriptBackendPreparedMethod step_method;
+    assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[4],
-        step_call
+        step_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto step_call = step_method.resumable;
     std::int32_t coroutine_input{5};
     lux_script_value_slot coroutine_argument{
         LUX_SCRIPT_VK_INT32,
@@ -493,15 +523,16 @@ int main()
     assert(completed.state == EScriptStepState::COMPLETED);
     assert(test::coroutine_value == 15);
     continuation.destroy(continuation.state);
-    descriptor.releaseStepMethod(descriptor.context, instance, step_call);
+    descriptor.releaseMethod(descriptor.context, instance, step_method);
 
-    BoundScriptStepCall event_step_call;
-    assert(descriptor.prepareStepMethod(
+    ScriptBackendPreparedMethod event_method_prepared;
+    assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[5],
-        event_step_call
+        event_method_prepared
     ) == EScriptBackendResult::SUCCESS);
+    const auto event_step_call = event_method_prepared.resumable;
     lux_script_call_frame empty_frame{};
     ScriptStepContext event_context{
         {1U, 1U},
@@ -544,15 +575,16 @@ int main()
     assert(event_completed.state == EScriptStepState::COMPLETED);
     assert(test::coroutine_event_value == event_value);
     event_continuation.destroy(event_continuation.state);
-    descriptor.releaseStepMethod(descriptor.context, instance, event_step_call);
+    descriptor.releaseMethod(descriptor.context, instance, event_method_prepared);
 
-    BoundScriptStepCall multi_event_call;
-    assert(descriptor.prepareStepMethod(
+    ScriptBackendPreparedMethod multi_event_method;
+    assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[5],
-        multi_event_call
+        multi_event_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto multi_event_call = multi_event_method.resumable;
     ScriptBackendContinuation first_event_continuation;
     ScriptBackendContinuation second_event_continuation;
     ScriptBackendContinuation exhausted_event_continuation;
@@ -580,15 +612,16 @@ int main()
     assert(!exhausted_event_continuation);
     first_event_continuation.destroy(first_event_continuation.state);
     second_event_continuation.destroy(second_event_continuation.state);
-    descriptor.releaseStepMethod(descriptor.context, instance, multi_event_call);
+    descriptor.releaseMethod(descriptor.context, instance, multi_event_method);
 
-    BoundScriptStepCall delay_step_call;
-    assert(descriptor.prepareStepMethod(
+    ScriptBackendPreparedMethod delay_method;
+    assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[6],
-        delay_step_call
+        delay_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto delay_step_call = delay_method.resumable;
     ScriptBackendContinuation delay_continuation;
     const auto delay_suspended = delay_step_call.invoke(
         delay_step_call.context,
@@ -611,15 +644,16 @@ int main()
     assert(delay_completed.state == EScriptStepState::COMPLETED);
     assert(test::coroutine_value == 115);
     delay_continuation.destroy(delay_continuation.state);
-    descriptor.releaseStepMethod(descriptor.context, instance, delay_step_call);
+    descriptor.releaseMethod(descriptor.context, instance, delay_method);
 
-    BoundScriptStepCall twice_step_call;
-    assert(descriptor.prepareStepMethod(
+    ScriptBackendPreparedMethod twice_method_prepared;
+    assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         entity_asset.description().exports[7],
-        twice_step_call
+        twice_method_prepared
     ) == EScriptBackendResult::SUCCESS);
+    const auto twice_step_call = twice_method_prepared.resumable;
     ScriptBackendContinuation twice_continuation;
     const auto twice_first = twice_step_call.invoke(
         twice_step_call.context,
@@ -655,7 +689,7 @@ int main()
     assert(twice_completed.state == EScriptStepState::COMPLETED);
     assert(test::coroutine_value == 11'115);
     twice_continuation.destroy(twice_continuation.state);
-    descriptor.releaseStepMethod(descriptor.context, instance, twice_step_call);
+    descriptor.releaseMethod(descriptor.context, instance, twice_method_prepared);
     const auto coroutine_stats = backend.stats();
     assert(coroutine_stats.active_frames == 0U);
     assert(coroutine_stats.frame_high_water == 2U);
@@ -676,9 +710,9 @@ int main()
         rejected_instance
     ) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
 
-    descriptor.releaseMethod(descriptor.context, instance, end_call);
-    descriptor.releaseMethod(descriptor.context, instance, begin_call);
-    descriptor.releaseMethod(descriptor.context, instance, call);
+    descriptor.releaseMethod(descriptor.context, instance, end_method_prepared);
+    descriptor.releaseMethod(descriptor.context, instance, begin_method_prepared);
+    descriptor.releaseMethod(descriptor.context, instance, call_method);
     descriptor.destroyInstance(descriptor.context, instance);
     assert(test::constructed_objects == 1U);
     assert(test::destroyed_objects == 1U);
@@ -693,18 +727,19 @@ int main()
         recycled_instance
     ) == EScriptBackendResult::SUCCESS);
     assert(recycled_instance.value == instance.value);
-    lux::script::BoundScriptCall recycled_call;
+    ScriptBackendPreparedMethod recycled_method;
     assert(descriptor.prepareMethod(
         descriptor.context,
         recycled_instance,
         entity_asset.description().exports[0],
-        recycled_call
+        recycled_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto recycled_call = recycled_method.synchronous;
     assert(recycled_call.context == call.context);
     descriptor.releaseMethod(
         descriptor.context,
         recycled_instance,
-        recycled_call
+        recycled_method
     );
     descriptor.destroyInstance(descriptor.context, recycled_instance);
     assert(test::constructed_objects == 2U);
@@ -713,7 +748,9 @@ int main()
     auto global_asset_result = lux::script::ScriptArtifact::create(global->description(), {});
     assert(global_asset_result);
     auto global_asset = std::move(*global_asset_result);
-    const std::array global_pools{CppStaticScriptPoolDescription{std::addressof(*global), 1U}};
+    const std::array global_pools{CppStaticScriptPoolDescription{
+        std::addressof(*global), 1U, 0U, 0U, alignof(std::max_align_t), 1U
+    }};
     auto global_backend_result = CppStaticScriptBackend::create(global_pools);
     assert(global_backend_result);
     auto global_backend = std::move(*global_backend_result);
@@ -728,13 +765,14 @@ int main()
         global_asset,
         global_instance
     ) == EScriptBackendResult::SUCCESS);
-    lux::script::BoundScriptCall global_call;
+    ScriptBackendPreparedMethod global_method;
     assert(global_descriptor.prepareMethod(
         global_descriptor.context,
         global_instance,
         global_asset.description().exports[0],
-        global_call
+        global_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto global_call = global_method.synchronous;
     std::int32_t input{4};
     std::int32_t output{};
     lux_script_value_slot input_slot{
@@ -751,7 +789,7 @@ int main()
     global_descriptor.releaseMethod(
         global_descriptor.context,
         global_instance,
-        global_call);
+        global_method);
     global_descriptor.destroyInstance(
         global_descriptor.context,
         global_instance);
@@ -816,7 +854,8 @@ int main()
         1U,
         1U,
         2048U,
-        alignof(std::max_align_t)
+        alignof(std::max_align_t),
+        1U
     }};
     auto ability_backend_result = CppStaticScriptBackend::create(ability_pools);
     assert(ability_backend_result);
@@ -847,13 +886,14 @@ int main()
         *ability_artifact,
         ability_instance
     ) == EScriptBackendResult::SUCCESS);
-    BoundScriptStepCall ability_step;
-    assert(ability_backend_descriptor.prepareStepMethod(
+    ScriptBackendPreparedMethod ability_method_prepared;
+    assert(ability_backend_descriptor.prepareMethod(
         ability_backend_descriptor.context,
         ability_instance,
         ability_artifact->description().exports.front(),
-        ability_step
+        ability_method_prepared
     ) == EScriptBackendResult::SUCCESS);
+    const auto ability_step = ability_method_prepared.resumable;
     ScriptStepContext ability_step_context{
         {3U, 1U},
         nullptr,
@@ -923,10 +963,10 @@ int main()
     );
     assert(rejected_ability.state == EScriptStepState::FAILED);
     assert(!rejected_ability_continuation);
-    ability_backend_descriptor.releaseStepMethod(
+    ability_backend_descriptor.releaseMethod(
         ability_backend_descriptor.context,
         ability_instance,
-        ability_step
+        ability_method_prepared
     );
     ability_backend_descriptor.destroyInstance(
         ability_backend_descriptor.context,

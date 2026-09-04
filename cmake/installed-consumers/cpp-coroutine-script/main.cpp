@@ -59,7 +59,8 @@ int main()
         1U,
         1U,
         1024U,
-        alignof(std::max_align_t)
+        alignof(std::max_align_t),
+        1U
     }};
     auto backend = CppStaticScriptBackend::create(pools);
     assert(backend);
@@ -72,13 +73,14 @@ int main()
         *artifact,
         instance
     ) == EScriptBackendResult::SUCCESS);
-    BoundScriptStepCall call;
-    assert(descriptor.prepareStepMethod(
+    ScriptBackendPreparedMethod method;
+    assert(descriptor.prepareMethod(
         descriptor.context,
         instance,
         artifact->description().exports.front(),
-        call
+        method
     ) == EScriptBackendResult::SUCCESS);
+    const auto call = method.resumable;
     lux_script_call_frame frame{};
     ScriptStepContext step{{1U, 1U}, nullptr, &createAwaitable, &discardAwaitable};
     ScriptBackendContinuation continuation;
@@ -95,7 +97,7 @@ int main()
     assert(completed.state == EScriptStepState::COMPLETED);
     assert(installed_consumer::observed == 2);
     continuation.destroy(continuation.state);
-    descriptor.releaseStepMethod(descriptor.context, instance, call);
+    descriptor.releaseMethod(descriptor.context, instance, method);
     descriptor.destroyInstance(descriptor.context, instance);
     assert(backend->stats().active_frames == 0U);
     return 0;

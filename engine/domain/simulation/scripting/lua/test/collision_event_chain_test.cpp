@@ -35,7 +35,7 @@ namespace
 
     struct Subscriber final
     {
-        lux::script::BoundScriptCall call;
+        ScriptBackendPreparedMethod method;
         std::size_t callbacks{};
     };
 
@@ -60,8 +60,8 @@ namespace
             0U,
             0U,
             nullptr,
-            subscriber.call.context};
-        if (subscriber.call.invoke(&frame) == 0)
+            subscriber.method.synchronous.context};
+        if (subscriber.method.synchronous.invoke(&frame) == 0)
             ++subscriber.callbacks;
     }
 
@@ -267,13 +267,13 @@ int main()
         native_descriptor.context,
         native_instance,
         native_asset.description().exports[0],
-        native_subscriber.call
+        native_subscriber.method
     ) == EScriptBackendResult::SUCCESS);
     assert(lua_descriptor.prepareMethod(
         lua_descriptor.context,
         lua_instance,
         lua_asset.description().exports[0],
-        lua_subscriber.call
+        lua_subscriber.method
     ) == EScriptBackendResult::SUCCESS);
 
     EventPoint<EntityTargetedRoute<ecs::Entity>, CollisionEvent> endpoint;
@@ -318,12 +318,12 @@ int main()
     native_descriptor.releaseMethod(
         native_descriptor.context,
         native_instance,
-        native_subscriber.call
+        native_subscriber.method
     );
     lua_descriptor.releaseMethod(
         lua_descriptor.context,
         lua_instance,
-        lua_subscriber.call
+        lua_subscriber.method
     );
     native_descriptor.destroyInstance(
         native_descriptor.context,

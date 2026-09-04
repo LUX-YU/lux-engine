@@ -363,27 +363,30 @@ int main()
         over_capacity
     ) == EScriptBackendResult::CAPACITY_EXCEEDED);
 
-    lux::script::BoundScriptCall first;
-    lux::script::BoundScriptCall second;
-    lux::script::BoundScriptCall third;
+    ScriptBackendPreparedMethod first_method;
+    ScriptBackendPreparedMethod second_method;
+    ScriptBackendPreparedMethod third_method;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
         function,
-        first
+        first_method
     ) == EScriptBackendResult::SUCCESS);
     assert(descriptor.prepareMethod(
         descriptor.context,
         third_instance,
         function,
-        third
+        third_method
     ) == EScriptBackendResult::SUCCESS);
     assert(descriptor.prepareMethod(
         descriptor.context,
         second_instance,
         function,
-        second
+        second_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto first = first_method.synchronous;
+    const auto second = second_method.synchronous;
+    const auto third = third_method.synchronous;
     assert(first && second && third && first.context != second.context &&
         second.context != third.context);
 
@@ -402,20 +405,22 @@ int main()
     frame.user_context = third.context;
     assert(third.invoke(&frame) == 0);
 
-    lux::script::BoundScriptCall begin_call;
-    lux::script::BoundScriptCall end_call;
+    ScriptBackendPreparedMethod begin_method;
+    ScriptBackendPreparedMethod end_method;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
         begin_lifecycle,
-        begin_call
+        begin_method
     ) == EScriptBackendResult::SUCCESS);
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
         end_lifecycle,
-        end_call
+        end_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto begin_call = begin_method.synchronous;
+    const auto end_call = end_method.synchronous;
     lux_script_call_frame begin_frame{
         nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
     assert(begin_call.invoke(&begin_frame) == 0);
@@ -433,7 +438,7 @@ int main()
     auto mismatched = function;
     mismatched.args[0].canonical_name = "lux.f64";
     mismatched.args[0].type_id = lux::semantic::typeId("lux.f64");
-    lux::script::BoundScriptCall rejected;
+    ScriptBackendPreparedMethod rejected;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
@@ -441,11 +446,11 @@ int main()
         rejected
     ) == EScriptBackendResult::UNSUPPORTED_SIGNATURE);
 
-    descriptor.releaseMethod(descriptor.context, first_instance, first);
-    descriptor.releaseMethod(descriptor.context, first_instance, end_call);
-    descriptor.releaseMethod(descriptor.context, first_instance, begin_call);
-    descriptor.releaseMethod(descriptor.context, second_instance, second);
-    descriptor.releaseMethod(descriptor.context, third_instance, third);
+    descriptor.releaseMethod(descriptor.context, first_instance, first_method);
+    descriptor.releaseMethod(descriptor.context, first_instance, end_method);
+    descriptor.releaseMethod(descriptor.context, first_instance, begin_method);
+    descriptor.releaseMethod(descriptor.context, second_instance, second_method);
+    descriptor.releaseMethod(descriptor.context, third_instance, third_method);
     descriptor.destroyInstance(descriptor.context, first_instance);
     descriptor.destroyInstance(descriptor.context, second_instance);
     descriptor.destroyInstance(descriptor.context, third_instance);
@@ -461,18 +466,19 @@ int main()
         recycled_instance
     ) == EScriptBackendResult::SUCCESS);
     assert(recycled_instance.value == third_instance.value);
-    lux::script::BoundScriptCall recycled_call;
+    ScriptBackendPreparedMethod recycled_method;
     assert(descriptor.prepareMethod(
         descriptor.context,
         recycled_instance,
         function,
-        recycled_call
+        recycled_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto recycled_call = recycled_method.synchronous;
     assert(recycled_call);
     descriptor.releaseMethod(
         descriptor.context,
         recycled_instance,
-        recycled_call
+        recycled_method
     );
     descriptor.destroyInstance(descriptor.context, recycled_instance);
     assert(provider.resolves == 6U);
@@ -561,20 +567,22 @@ int main()
         step_instance
     ) == EScriptBackendResult::SUCCESS);
 
-    lux::script::BoundScriptCall read_call;
-    BoundScriptStepCall step_call;
+    ScriptBackendPreparedMethod read_method;
+    ScriptBackendPreparedMethod step_method;
     assert(step_descriptor.prepareMethod(
         step_descriptor.context,
         step_instance,
         read_state,
-        read_call
+        read_method
     ) == EScriptBackendResult::SUCCESS);
-    assert(step_descriptor.prepareStepMethod(
+    assert(step_descriptor.prepareMethod(
         step_descriptor.context,
         step_instance,
         async_update,
-        step_call
+        step_method
     ) == EScriptBackendResult::SUCCESS);
+    const auto read_call = read_method.synchronous;
+    const auto step_call = step_method.resumable;
 
     AwaitableHarness awaitable;
     ScriptStepContext step_context{
@@ -622,7 +630,7 @@ int main()
     assert(read_call.invoke(std::addressof(read_frame)) == 0);
     assert(state_value == 1U);
 
-    step_descriptor.releaseStepMethod(step_descriptor.context, step_instance, step_call);
-    step_descriptor.releaseMethod(step_descriptor.context, step_instance, read_call);
+    step_descriptor.releaseMethod(step_descriptor.context, step_instance, step_method);
+    step_descriptor.releaseMethod(step_descriptor.context, step_instance, read_method);
     step_descriptor.destroyInstance(step_descriptor.context, step_instance);
 }

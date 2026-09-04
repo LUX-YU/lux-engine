@@ -186,11 +186,18 @@ namespace
         return EScriptBackendResult::SUCCESS;
     }
 
+    ScriptStepResult invokeAsync(
+        void* context,
+        lux_script_call_frame&,
+        ScriptStepContext& step,
+        ScriptBackendContinuation& output
+    ) noexcept;
+
     EScriptBackendResult prepareMethod(
         void* context,
         ScriptBackendInstance instance,
         const lux::rdesc::ScriptFunction& function,
-        lux::script::BoundScriptCall& output
+        ScriptBackendPreparedMethod& output
     ) noexcept
     {
         auto& state = *static_cast<BackendState*>(context);
@@ -201,14 +208,20 @@ namespace
         if (call == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         ++state.prepares;
-        output = {&invokePrepared, call};
+        output = {
+            call,
+            lux::script::BoundScriptCall{&invokePrepared, call},
+            state.async_tick && function.symbol_id == kTick
+                ? BoundScriptStepCall{call, &invokeAsync}
+                : BoundScriptStepCall{}
+        };
         return EScriptBackendResult::SUCCESS;
     }
 
-    void releaseMethod(void* context, ScriptBackendInstance, lux::script::BoundScriptCall call) noexcept
+    void releaseMethod(void* context, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
     {
         ++static_cast<BackendState*>(context)->releases;
-        delete static_cast<PreparedCall*>(call.context);
+        delete static_cast<PreparedCall*>(method.token);
     }
 
     void destroyInstance(void* context, ScriptBackendInstance instance) noexcept
@@ -255,31 +268,6 @@ namespace
         return ScriptStepResult::suspended(awaiting->id);
     }
 
-    EScriptBackendResult prepareStepMethod(
-        void* context,
-        ScriptBackendInstance instance,
-        const lux::rdesc::ScriptFunction& function,
-        BoundScriptStepCall& output
-    ) noexcept
-    {
-        auto& state = *static_cast<BackendState*>(context);
-        if (!state.async_tick || function.symbol_id != kTick)
-            return EScriptBackendResult::SUCCESS;
-        auto* call = new (std::nothrow) PreparedCall{
-            static_cast<Instance*>(instance.value),
-            function.symbol_id
-        };
-        if (call == nullptr)
-            return EScriptBackendResult::ALLOCATION_FAILURE;
-        output = {call, &invokeAsync};
-        return EScriptBackendResult::SUCCESS;
-    }
-
-    void releaseStepMethod(void*, ScriptBackendInstance, BoundScriptStepCall call) noexcept
-    {
-        delete static_cast<PreparedCall*>(call.context);
-    }
-
     struct Harness final
     {
         Harness(
@@ -323,9 +311,7 @@ namespace
                 &createInstance,
                 &prepareMethod,
                 &releaseMethod,
-                &destroyInstance,
-                &prepareStepMethod,
-                &releaseStepMethod
+                &destroyInstance
             };
         }
 

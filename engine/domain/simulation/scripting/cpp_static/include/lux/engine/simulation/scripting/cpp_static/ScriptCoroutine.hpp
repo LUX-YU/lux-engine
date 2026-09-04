@@ -27,6 +27,15 @@ namespace lux::simulation::script
 {
     struct DelayAbility;
 
+    namespace detail
+    {
+        struct ScriptCoroutineAbilityAccess final
+        {
+            void* context{};
+            const void* dispatch{};
+        };
+    }
+
     enum class EScriptCoroutineError : std::uint8_t
     {
         INVALID_CONTEXT,
@@ -80,15 +89,6 @@ namespace lux::simulation::script
     class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC ScriptCoroutineContext final
     {
     public:
-        struct AbilityAccess final
-        {
-            void* context{};
-            const void* dispatch{};
-        };
-
-        using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
-        using ResolveAbilityFn = bool (*)(void*, std::uint32_t, std::uint32_t, AbilityAccess&) noexcept;
-
         ScriptCoroutineContext() noexcept = default;
 
         template <class Payload>
@@ -102,6 +102,15 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext> delay() noexcept;
 
+    private:
+        using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
+        using ResolveAbilityFn = bool (*)(
+            void*,
+            std::uint32_t,
+            std::uint32_t,
+            detail::ScriptCoroutineAbilityAccess&
+        ) noexcept;
+
         template <class Result, class Invoker>
         [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
 
@@ -111,13 +120,15 @@ namespace lux::simulation::script
         template <class Result, class Admission>
         [[nodiscard]] auto makeAwaiter(Admission admission) noexcept;
 
-        [[nodiscard]] bool resolveAbility(std::uint32_t ability_slot, AbilityAccess& result) const noexcept
+        [[nodiscard]] bool resolveAbility(
+            std::uint32_t ability_slot,
+            detail::ScriptCoroutineAbilityAccess& result
+        ) const noexcept
         {
             return active_step_ != nullptr && resolve_ability_ != nullptr &&
                 resolve_ability_(backend_, instance_slot_, ability_slot, result);
         }
 
-    private:
         struct FrameHeader final
         {
             detail::BoundedFrameStorage* storage{};
@@ -202,6 +213,8 @@ namespace lux::simulation::script
         friend class ScriptCoroutine;
         friend struct ScriptCoroutinePromiseAccess;
         friend struct CppStaticCoroutineAccess;
+        template <class Ability, class Context>
+        friend class lux::script::ScriptAbilityCoroutine;
         template <class Result, class Admission>
         friend class ScriptCoroutineAwaiter;
     };
@@ -480,7 +493,7 @@ namespace lux::simulation::script
     auto ScriptCoroutineContext::invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept
     {
         using Value = std::remove_cvref_t<Result>;
-        AbilityAccess access;
+        detail::ScriptCoroutineAbilityAccess access;
         if (!resolveAbility(ability_slot, access))
         {
             if constexpr (std::is_void_v<Result>)
@@ -515,7 +528,7 @@ namespace lux::simulation::script
                 ScriptStepContext& step
             ) mutable noexcept
             {
-                AbilityAccess access;
+                detail::ScriptCoroutineAbilityAccess access;
                 if (!context.resolveAbility(ability_slot, access))
                     return ScriptStepResult::failed(-1);
                 return invokeScriptAbilityAsync<Result>(
@@ -531,6 +544,15 @@ namespace lux::simulation::script
 
     struct CppStaticCoroutineAccess final
     {
+        template <class Result, class Admission>
+        [[nodiscard]] static auto makeAwaiter(
+            ScriptCoroutineContext& context,
+            Admission admission
+        ) noexcept
+        {
+            return context.template makeAwaiter<Result>(std::move(admission));
+        }
+
         [[nodiscard]] static ScriptCoroutineContext context(
             void* backend,
             std::uint32_t instance_slot,

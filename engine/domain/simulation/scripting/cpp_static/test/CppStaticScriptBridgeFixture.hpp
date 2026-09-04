@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -78,15 +79,7 @@ namespace lux::simulation::test
         ) noexcept
         {
             coroutine_value += borrowed_value;
-            co_await context.makeAwaiter<void>(
-                [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
-                {
-                    const auto waiting = step.awaitables.create();
-                    return waiting
-                        ? script::ScriptStepResult::suspended(waiting->id)
-                        : script::ScriptStepResult::failed(-1);
-                }
-            );
+            co_await context.delay().nextStep();
             coroutine_value += borrowed_value + 5;
         }
 
@@ -101,40 +94,16 @@ namespace lux::simulation::test
         LUX_METHOD()
         script::ScriptCoroutine waitForNextStep(script::ScriptCoroutineContext& context) noexcept
         {
-            co_await context.makeAwaiter<void>(
-                [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
-                {
-                    const auto waiting = step.awaitables.create();
-                    return waiting
-                        ? script::ScriptStepResult::suspended(waiting->id)
-                        : script::ScriptStepResult::failed(-1);
-                }
-            );
+            co_await context.delay().nextStep();
             coroutine_value += 100;
         }
 
         LUX_METHOD()
         script::ScriptCoroutine waitTwice(script::ScriptCoroutineContext& context) noexcept
         {
-            co_await context.makeAwaiter<void>(
-                [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
-                {
-                    const auto waiting = step.awaitables.create();
-                    return waiting
-                        ? script::ScriptStepResult::suspended(waiting->id)
-                        : script::ScriptStepResult::failed(-1);
-                }
-            );
+            co_await context.delay().nextStep();
             coroutine_value += 1'000;
-            co_await context.makeAwaiter<void>(
-                [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
-                {
-                    const auto waiting = step.awaitables.create();
-                    return waiting
-                        ? script::ScriptStepResult::suspended(waiting->id)
-                        : script::ScriptStepResult::failed(-1);
-                }
-            );
+            co_await context.delay().nextStep();
             coroutine_value += 10'000;
         }
 

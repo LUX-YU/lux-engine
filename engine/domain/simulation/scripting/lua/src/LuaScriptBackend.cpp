@@ -1095,7 +1095,7 @@ namespace lux::simulation::script
             void* opaque,
             ScriptBackendInstance instance_value,
             const lux::rdesc::ScriptFunction& function,
-            lux::script::BoundScriptCall& result
+            ScriptBackendPreparedMethod& result
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
@@ -1189,7 +1189,26 @@ namespace lux::simulation::script
             call.instance = instance;
             call.function = function_binding;
             call.active = true;
-            result = lux::script::BoundScriptCall{&State::invoke, std::addressof(call)};
+            const bool resumable = std::binary_search(
+                instance->suspension_capable_exports.begin(),
+                instance->suspension_capable_exports.end(),
+                function.symbol_id
+            );
+            if (resumable && !function.returns.empty())
+            {
+                call.instance = nullptr;
+                call.function = nullptr;
+                call.active = false;
+                self.free_prepared_calls.push_back(call_slot);
+                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+            }
+            result = {
+                std::addressof(call),
+                lux::script::BoundScriptCall{&State::invoke, std::addressof(call)},
+                resumable
+                    ? BoundScriptStepCall{std::addressof(call), &invokePreparedStep}
+                    : BoundScriptStepCall{}
+            };
             return EScriptBackendResult::SUCCESS;
         }
 
@@ -1965,54 +1984,14 @@ namespace lux::simulation::script
             return step_result;
         }
 
-        static EScriptBackendResult prepareStepMethod(
-            void* opaque,
-            ScriptBackendInstance instance_value,
-            const lux::rdesc::ScriptFunction& function,
-            BoundScriptStepCall& result
-        ) noexcept
-        {
-            auto& self = *static_cast<State*>(opaque);
-            auto* instance = static_cast<Instance*>(instance_value.value);
-            std::lock_guard lock{self.mutex};
-            if (instance == nullptr || !instance->active)
-                return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            if (!std::binary_search(
-                    instance->suspension_capable_exports.begin(),
-                    instance->suspension_capable_exports.end(),
-                    function.symbol_id
-                ))
-            {
-                result = {};
-                return EScriptBackendResult::SUCCESS;
-            }
-            if (!function.returns.empty())
-                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
-            lux::script::BoundScriptCall call;
-            const auto prepared = prepareMethod(opaque, instance_value, function, call);
-            if (prepared != EScriptBackendResult::SUCCESS)
-                return prepared;
-            result = {call.context, &invokePreparedStep};
-            return EScriptBackendResult::SUCCESS;
-        }
-
-        static void releaseStepMethod(
-            void* opaque,
-            ScriptBackendInstance instance,
-            BoundScriptStepCall call
-        ) noexcept
-        {
-            releaseMethod(opaque, instance, lux::script::BoundScriptCall{nullptr, call.context});
-        }
-
         static void releaseMethod(
             void* opaque,
             ScriptBackendInstance,
-            lux::script::BoundScriptCall call_value
+            ScriptBackendPreparedMethod method
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            auto* call = static_cast<PreparedCall*>(call_value.context);
+            auto* call = static_cast<PreparedCall*>(method.token);
             std::lock_guard lock{self.mutex};
             if (!call || !call->active)
                 return;
@@ -2349,9 +2328,7 @@ namespace lux::simulation::script
             &State::createInstance,
             &State::prepareMethod,
             &State::releaseMethod,
-            &State::destroyInstance,
-            &State::prepareStepMethod,
-            &State::releaseStepMethod};
+            &State::destroyInstance};
     }
 
 }

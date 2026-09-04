@@ -287,18 +287,29 @@ namespace
         return EScriptBackendResult::SUCCESS;
     }
 
+    ScriptStepResult invokeStep(
+        void* context,
+        lux_script_call_frame&,
+        ScriptStepContext& step,
+        ScriptBackendContinuation& output
+    ) noexcept;
+
     EScriptBackendResult prepareMethod(
-        void*,
+        void* context,
         ScriptBackendInstance,
         const rdesc::ScriptFunction&,
-        lux::script::BoundScriptCall& output
+        ScriptBackendPreparedMethod& output
     ) noexcept
     {
-        output = {&invokeSync, nullptr};
+        output = {
+            context,
+            lux::script::BoundScriptCall{&invokeSync, nullptr},
+            BoundScriptStepCall{context, &invokeStep}
+        };
         return EScriptBackendResult::SUCCESS;
     }
 
-    void releaseMethod(void*, ScriptBackendInstance, lux::script::BoundScriptCall) noexcept
+    void releaseMethod(void*, ScriptBackendInstance, ScriptBackendPreparedMethod) noexcept
     {
     }
 
@@ -377,21 +388,6 @@ namespace
         return result;
     }
 
-    EScriptBackendResult prepareStepMethod(
-        void* context,
-        ScriptBackendInstance,
-        const rdesc::ScriptFunction&,
-        BoundScriptStepCall& output
-    ) noexcept
-    {
-        output = {context, &invokeStep};
-        return EScriptBackendResult::SUCCESS;
-    }
-
-    void releaseStepMethod(void*, ScriptBackendInstance, BoundScriptStepCall) noexcept
-    {
-    }
-
     struct Fixture final
     {
         Fixture() : artifact(makeArtifact())
@@ -402,9 +398,7 @@ namespace
                 &createInstance,
                 &prepareMethod,
                 &releaseMethod,
-                &destroyInstance,
-                &prepareStepMethod,
-                &releaseStepMethod
+                &destroyInstance
             };
         }
 

@@ -902,7 +902,7 @@ namespace lux::simulation::script
             void* opaque,
             ScriptBackendInstance instance_value,
             const lux::rdesc::ScriptFunction& description,
-            lux::script::BoundScriptCall& result
+            ScriptBackendPreparedMethod& result
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
@@ -937,18 +937,24 @@ namespace lux::simulation::script
             self.free_prepared_calls.pop_back();
             auto& prepared = self.prepared_calls[slot];
             prepared = {std::addressof(self), instance, function};
-            result = lux::script::BoundScriptCall{&invokePrepared, std::addressof(prepared)};
+            result = {
+                std::addressof(prepared),
+                lux::script::BoundScriptCall{&invokePrepared, std::addressof(prepared)},
+                function->step == nullptr
+                    ? BoundScriptStepCall{}
+                    : BoundScriptStepCall{std::addressof(prepared), &invokePreparedStep}
+            };
             return EScriptBackendResult::SUCCESS;
         }
 
         static void releaseMethod(
             void* opaque,
             ScriptBackendInstance,
-            lux::script::BoundScriptCall call
+            ScriptBackendPreparedMethod method
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            auto* prepared = static_cast<PreparedCall*>(call.context);
+            auto* prepared = static_cast<PreparedCall*>(method.token);
             const auto address = reinterpret_cast<std::uintptr_t>(prepared);
             const auto begin = reinterpret_cast<std::uintptr_t>(self.prepared_calls.data());
             const auto end = begin + self.prepared_calls.size() * sizeof(PreparedCall);
@@ -962,44 +968,6 @@ namespace lux::simulation::script
                 return;
             *prepared = {};
             self.free_prepared_calls.push_back(slot);
-        }
-
-        static EScriptBackendResult prepareStepMethod(
-            void* opaque,
-            ScriptBackendInstance instance_value,
-            const lux::rdesc::ScriptFunction& description,
-            BoundScriptStepCall& result
-        ) noexcept
-        {
-            auto& self = *static_cast<State*>(opaque);
-            auto* instance = static_cast<Instance*>(instance_value.value);
-            if (instance == nullptr || instance->module == nullptr || instance->module->module == nullptr)
-                return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            const auto* function = instance->module->module->findFunction(description.symbol_id);
-            if (function == nullptr)
-                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
-            if (function->step == nullptr)
-            {
-                result = {};
-                return EScriptBackendResult::SUCCESS;
-            }
-            if (self.free_prepared_calls.empty())
-                return EScriptBackendResult::CAPACITY_EXCEEDED;
-            const auto slot = self.free_prepared_calls.back();
-            self.free_prepared_calls.pop_back();
-            auto& prepared = self.prepared_calls[slot];
-            prepared = {std::addressof(self), instance, function};
-            result = {std::addressof(prepared), &invokePreparedStep};
-            return EScriptBackendResult::SUCCESS;
-        }
-
-        static void releaseStepMethod(
-            void* opaque,
-            ScriptBackendInstance instance,
-            BoundScriptStepCall call
-        ) noexcept
-        {
-            releaseMethod(opaque, instance, lux::script::BoundScriptCall{nullptr, call.context});
         }
 
         static void destroyInstance(
@@ -1118,9 +1086,7 @@ namespace lux::simulation::script
                 &State::createInstance,
                 &State::prepareMethod,
                 &State::releaseMethod,
-                &State::destroyInstance,
-                &State::prepareStepMethod,
-                &State::releaseStepMethod}
+                &State::destroyInstance}
             : ScriptBackendDescriptor{};
     }
 }

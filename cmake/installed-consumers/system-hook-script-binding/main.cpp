@@ -262,7 +262,9 @@ int main()
     const std::array hook_endpoints{hook_bridge.descriptor()};
     const std::array event_endpoints{event_bridge.descriptor()};
 
-    const std::array pools{CppStaticScriptPoolDescription{std::addressof(*projected), 1U}};
+    const std::array pools{CppStaticScriptPoolDescription{
+        std::addressof(*projected), 1U, 0U, 0U, alignof(std::max_align_t), 3U
+    }};
     auto backend_result = CppStaticScriptBackend::create(pools);
     assert(backend_result);
     auto backend = std::move(*backend_result);

@@ -206,6 +206,18 @@ namespace lux::simulation::script
         }
     };
 
+    struct ScriptBackendPreparedMethod final
+    {
+        void* token{};
+        lux::script::BoundScriptCall synchronous;
+        BoundScriptStepCall resumable;
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return token != nullptr && static_cast<bool>(synchronous);
+        }
+    };
+
     struct ScriptBackendDescriptor final
     {
         lux::rdesc::Script::Kind kind{lux::rdesc::Script::Kind::UNKNOWN};
@@ -220,27 +232,16 @@ namespace lux::simulation::script
             void*,
             ScriptBackendInstance,
             const lux::rdesc::ScriptFunction&,
-            lux::script::BoundScriptCall&
+            ScriptBackendPreparedMethod&
         ) noexcept{};
         void (*releaseMethod)(
             void*,
             ScriptBackendInstance,
-            lux::script::BoundScriptCall
+            ScriptBackendPreparedMethod
         ) noexcept{};
         void (*destroyInstance)(
             void*,
             ScriptBackendInstance
-        ) noexcept{};
-        EScriptBackendResult (*prepareStepMethod)(
-            void*,
-            ScriptBackendInstance,
-            const lux::rdesc::ScriptFunction&,
-            BoundScriptStepCall&
-        ) noexcept{};
-        void (*releaseStepMethod)(
-            void*,
-            ScriptBackendInstance,
-            BoundScriptStepCall
         ) noexcept{};
     };
 }

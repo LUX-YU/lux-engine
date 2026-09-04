@@ -186,7 +186,7 @@ namespace
         void*,
         ScriptBackendInstance instance,
         const lux::rdesc::ScriptFunction& function,
-        lux::script::BoundScriptCall& output
+        ScriptBackendPreparedMethod& output
     ) noexcept
     {
         auto* backend = static_cast<BackendInstance*>(instance.value);
@@ -197,19 +197,19 @@ namespace
         if (!call)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         ++backend->owner->prepares;
-        output = {&invoke, call};
+        output = {call, lux::script::BoundScriptCall{&invoke, call}, {}};
         return EScriptBackendResult::SUCCESS;
     }
 
     void releaseMethod(
         void*,
         ScriptBackendInstance instance,
-        lux::script::BoundScriptCall call
+        ScriptBackendPreparedMethod method
     ) noexcept
     {
         auto* backend = static_cast<BackendInstance*>(instance.value);
         ++backend->owner->releases;
-        delete static_cast<PreparedCall*>(call.context);
+        delete static_cast<PreparedCall*>(method.token);
     }
 
     void destroyInstance(void*, ScriptBackendInstance instance) noexcept

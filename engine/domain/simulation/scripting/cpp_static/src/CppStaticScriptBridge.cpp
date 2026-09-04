@@ -790,11 +790,8 @@ namespace lux::simulation::script
                 }
                 const bool instance_capacity_overflow = instance_capacity >
                     (std::numeric_limits<std::size_t>::max)() - pool.instance_capacity;
-                const bool prepared_capacity_overflow =
-                    !descriptor->state_->callables.empty() &&
-                    pool.instance_capacity >
-                        ((std::numeric_limits<std::size_t>::max)() - prepared_capacity) /
-                            descriptor->state_->callables.size();
+                const bool prepared_capacity_overflow = pool.prepared_method_capacity == 0U ||
+                    prepared_capacity > (std::numeric_limits<std::size_t>::max)() - pool.prepared_method_capacity;
                 const bool coroutine_capacity_overflow = coroutine_capacity >
                     (std::numeric_limits<std::size_t>::max)() - pool.coroutine_capacity;
                 if (instance_capacity_overflow || prepared_capacity_overflow || coroutine_capacity_overflow)
@@ -905,7 +902,7 @@ namespace lux::simulation::script
                     return;
                 }
                 instance_capacity += pool.instance_capacity;
-                prepared_capacity += descriptor->state_->callables.size() * pool.instance_capacity;
+                prepared_capacity += pool.prepared_method_capacity;
                 coroutine_capacity += pool.coroutine_capacity;
             }
             instances.resize(instance_capacity);
@@ -973,7 +970,7 @@ namespace lux::simulation::script
             void* opaque,
             std::uint32_t instance_slot,
             std::uint32_t ability_slot,
-            ScriptCoroutineContext::AbilityAccess& result
+            detail::ScriptCoroutineAbilityAccess& result
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
@@ -1236,7 +1233,7 @@ namespace lux::simulation::script
             void* opaque,
             ScriptBackendInstance opaque_instance,
             const lux::rdesc::ScriptFunction& function,
-            lux::script::BoundScriptCall& result
+            ScriptBackendPreparedMethod& result
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
@@ -1256,51 +1253,24 @@ namespace lux::simulation::script
             call.instance = instance;
             call.callable = found->second;
             call.active = true;
-            result = lux::script::BoundScriptCall{
-                &PreparedCall::invoke,
-                std::addressof(call)};
-            return EScriptBackendResult::SUCCESS;
-        }
-
-        static EScriptBackendResult prepareStepMethod(
-            void* opaque,
-            ScriptBackendInstance opaque_instance,
-            const lux::rdesc::ScriptFunction& function,
-            BoundScriptStepCall& result
-        ) noexcept
-        {
-            auto& self = *static_cast<State*>(opaque);
-            auto* instance = static_cast<Instance*>(opaque_instance.value);
-            if (instance == nullptr)
-                return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            const auto found = instance->descriptor->callables.find(function.symbol_id);
-            if (found == instance->descriptor->callables.end())
-                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
-            if (found->second->coroutine_invoke == nullptr)
-            {
-                result = {};
-                return EScriptBackendResult::SUCCESS;
-            }
-            if (self.free_prepared_calls.empty())
-                return EScriptBackendResult::CAPACITY_EXCEEDED;
-            const auto call_slot = self.free_prepared_calls.back();
-            self.free_prepared_calls.pop_back();
-            auto& call = self.prepared_calls[call_slot];
-            call.instance = instance;
-            call.callable = found->second;
-            call.active = true;
-            result = BoundScriptStepCall{std::addressof(call), &PreparedCall::invokeStep};
+            result = {
+                std::addressof(call),
+                lux::script::BoundScriptCall{&PreparedCall::invoke, std::addressof(call)},
+                call.callable->coroutine_invoke == nullptr
+                    ? BoundScriptStepCall{}
+                    : BoundScriptStepCall{std::addressof(call), &PreparedCall::invokeStep}
+            };
             return EScriptBackendResult::SUCCESS;
         }
 
         static void releaseMethod(
             void* opaque,
             ScriptBackendInstance,
-            lux::script::BoundScriptCall call
+            ScriptBackendPreparedMethod method
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            auto* prepared = static_cast<PreparedCall*>(call.context);
+            auto* prepared = static_cast<PreparedCall*>(method.token);
             if (!prepared || !prepared->active)
                 return;
             prepared->instance = nullptr;
@@ -1310,19 +1280,6 @@ namespace lux::simulation::script
                 prepared - self.prepared_calls.data()
             );
             self.free_prepared_calls.push_back(index);
-        }
-
-        static void releaseStepMethod(
-            void* opaque,
-            ScriptBackendInstance instance,
-            BoundScriptStepCall call
-        ) noexcept
-        {
-            releaseMethod(
-                opaque,
-                instance,
-                lux::script::BoundScriptCall{nullptr, call.context}
-            );
         }
 
         static void destroyInstance(
@@ -1427,9 +1384,7 @@ namespace lux::simulation::script
                 &State::createInstance,
                 &State::prepareMethod,
                 &State::releaseMethod,
-                &State::destroyInstance,
-                &State::prepareStepMethod,
-                &State::releaseStepMethod
+                &State::destroyInstance
             }
             : ScriptBackendDescriptor{};
     }

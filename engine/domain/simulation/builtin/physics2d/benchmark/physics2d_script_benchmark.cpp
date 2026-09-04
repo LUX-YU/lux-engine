@@ -340,7 +340,8 @@ namespace
                 instance_capacity,
                 coroutine_capacity,
                 (std::max)(std::size_t{1024U}, coroutine_capacity * 512U),
-                alignof(std::max_align_t)
+                alignof(std::max_align_t),
+                instance_capacity
             }};
             auto created_backend = CppStaticScriptBackend::create(pools);
             if (!created_backend)

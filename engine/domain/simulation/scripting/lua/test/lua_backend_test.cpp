@@ -487,10 +487,10 @@ int main()
         second_instance
     ) == EScriptBackendResult::SUCCESS);
 
-    lux::script::BoundScriptCall first_begin;
-    lux::script::BoundScriptCall second_begin;
-    lux::script::BoundScriptCall first_end;
-    lux::script::BoundScriptCall second_end;
+    ScriptBackendPreparedMethod first_begin;
+    ScriptBackendPreparedMethod second_begin;
+    ScriptBackendPreparedMethod first_end;
+    ScriptBackendPreparedMethod second_end;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
@@ -516,13 +516,13 @@ int main()
         second_end
     ) == EScriptBackendResult::SUCCESS);
     lux_script_call_frame first_begin_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, first_begin.context};
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, first_begin.synchronous.context};
     lux_script_call_frame second_begin_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, second_begin.context};
-    assert(first_begin.invoke(&first_begin_frame) == 0);
-    assert(second_begin.invoke(&second_begin_frame) == 0);
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, second_begin.synchronous.context};
+    assert(first_begin.synchronous.invoke(&first_begin_frame) == 0);
+    assert(second_begin.synchronous.invoke(&second_begin_frame) == 0);
 
-    lux::script::BoundScriptCall scalar_call;
+    ScriptBackendPreparedMethod scalar_call;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
@@ -561,15 +561,15 @@ int main()
         static_cast<std::uint32_t>(scalar_results.size()),
         0U,
         nullptr,
-        scalar_call.context
+        scalar_call.synchronous.context
     };
-    assert(scalar_call.invoke(&scalar_frame) == 0);
+    assert(scalar_call.synchronous.invoke(&scalar_frame) == 0);
     assert(!bool_output);
     assert(i32_output == i32_input && u32_output == u32_input);
     assert(f32_output == f32_input && f64_output == f64_input);
 
-    lux::script::BoundScriptCall first;
-    lux::script::BoundScriptCall second;
+    ScriptBackendPreparedMethod first;
+    ScriptBackendPreparedMethod second;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
@@ -583,8 +583,8 @@ int main()
         second
     ) == EScriptBackendResult::SUCCESS);
 
-    lux::script::BoundScriptCall collision_call;
-    lux::script::BoundScriptCall collision_count_call;
+    ScriptBackendPreparedMethod collision_call;
+    ScriptBackendPreparedMethod collision_count_call;
     assert(descriptor.prepareMethod(
         descriptor.context,
         second_instance,
@@ -612,8 +612,8 @@ int main()
         0U,
         0U,
         nullptr,
-        collision_call.context};
-    assert(collision_call.invoke(&collision_frame) == 0);
+        collision_call.synchronous.context};
+    assert(collision_call.synchronous.invoke(&collision_frame) == 0);
     std::int32_t collision_count_value{};
     lux_script_value_slot collision_count_slot{
         LUX_SCRIPT_VK_INT32,
@@ -629,11 +629,11 @@ int main()
         1U,
         0U,
         nullptr,
-        collision_count_call.context};
-    assert(collision_count_call.invoke(&collision_count_frame) == 0);
+        collision_count_call.synchronous.context};
+    assert(collision_count_call.synchronous.invoke(&collision_count_frame) == 0);
     assert(collision_count_value == 1);
 
-    lux::script::BoundScriptCall bad_return_call;
+    ScriptBackendPreparedMethod bad_return_call;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
@@ -649,8 +649,8 @@ int main()
         &bad_result};
     lux_script_call_frame bad_return_frame{
         nullptr, 0U, 0U, &bad_result_slot, 1U, 0U,
-        nullptr, bad_return_call.context};
-    assert(bad_return_call.invoke(&bad_return_frame) != 0);
+        nullptr, bad_return_call.synchronous.context};
+    assert(bad_return_call.synchronous.invoke(&bad_return_frame) != 0);
 
     std::array<lux_script_value_slot, 2U> arguments{};
     std::array<std::int32_t, 2U> values{};
@@ -664,8 +664,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = first.context;
-    assert(first.invoke(&frame) == 0);
+    frame.user_context = first.synchronous.context;
+    assert(first.synchronous.invoke(&frame) == 0);
     assert(result == 1);
     frame = makeFrame(
         1,
@@ -675,8 +675,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = first.context;
-    assert(first.invoke(&frame) == 0);
+    frame.user_context = first.synchronous.context;
+    assert(first.synchronous.invoke(&frame) == 0);
     assert(result == 2);
     frame = makeFrame(
         1,
@@ -686,8 +686,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = second.context;
-    assert(second.invoke(&frame) == 0);
+    frame.user_context = second.synchronous.context;
+    assert(second.synchronous.invoke(&frame) == 0);
     assert(result == 1);
 
     frame = makeFrame(
@@ -698,8 +698,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = second.context;
-    assert(second.invoke(&frame) != 0);
+    frame.user_context = second.synchronous.context;
+    assert(second.synchronous.invoke(&frame) != 0);
 
     const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
     lux_script_value_slot end_reason_slot{
@@ -709,11 +709,11 @@ int main()
         lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
         const_cast<EScriptEndPlayReason*>(std::addressof(end_reason))};
     lux_script_call_frame first_end_frame{
-        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, first_end.context};
+        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, first_end.synchronous.context};
     lux_script_call_frame second_end_frame{
-        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, second_end.context};
-    assert(first_end.invoke(&first_end_frame) == 0);
-    assert(second_end.invoke(&second_end_frame) == 0);
+        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, second_end.synchronous.context};
+    assert(first_end.synchronous.invoke(&first_end_frame) == 0);
+    assert(second_end.synchronous.invoke(&second_end_frame) == 0);
 
     auto unsupported = function;
     unsupported.symbol_id = 12U;
@@ -722,7 +722,7 @@ int main()
         lux::semantic::typeId("lux.test.Record"),
         lux::semantic::EValuePass::CONST_REF}};
     unsupported.returns.clear();
-    lux::script::BoundScriptCall rejected;
+    ScriptBackendPreparedMethod rejected;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
@@ -751,8 +751,8 @@ int main()
         rejected
     ) == EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE);
 
-    lux::script::BoundScriptCall escape_call;
-    lux::script::BoundScriptCall probe_call;
+    ScriptBackendPreparedMethod escape_call;
+    ScriptBackendPreparedMethod probe_call;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
@@ -766,17 +766,17 @@ int main()
         probe_call
     ) == EScriptBackendResult::SUCCESS);
     lux_script_call_frame escape_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, escape_call.context};
-    assert(escape_call.invoke(&escape_frame) == 0);
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, escape_call.synchronous.context};
+    assert(escape_call.synchronous.invoke(&escape_frame) == 0);
 
-    lux::script::BoundScriptCall exhausted_call;
+    ScriptBackendPreparedMethod exhausted_call;
     assert(descriptor.prepareMethod(
         descriptor.context,
         first_instance,
         function,
         exhausted_call
     ) == EScriptBackendResult::CAPACITY_EXCEEDED);
-    const auto recycled_call_context = bad_return_call.context;
+    const auto recycled_call_context = bad_return_call.synchronous.context;
     descriptor.releaseMethod(
         descriptor.context,
         first_instance,
@@ -788,7 +788,7 @@ int main()
         function,
         exhausted_call
     ) == EScriptBackendResult::SUCCESS);
-    assert(exhausted_call.context == recycled_call_context);
+    assert(exhausted_call.synchronous.context == recycled_call_context);
     descriptor.releaseMethod(descriptor.context, first_instance, exhausted_call);
     descriptor.releaseMethod(descriptor.context, first_instance, first_end);
     descriptor.releaseMethod(descriptor.context, first_instance, first_begin);
@@ -812,8 +812,8 @@ int main()
         1U,
         0U,
         nullptr,
-        probe_call.context};
-    assert(probe_call.invoke(&probe_frame) == 0);
+        probe_call.synchronous.context};
+    assert(probe_call.synchronous.invoke(&probe_frame) == 0);
     assert(escaped_is_dead);
 
     descriptor.releaseMethod(descriptor.context, second_instance, second);

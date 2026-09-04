@@ -527,11 +527,18 @@ namespace
         return EScriptBackendResult::SUCCESS;
     }
 
+    ScriptStepResult invokeStep(
+        void* opaque,
+        lux_script_call_frame&,
+        ScriptStepContext& step,
+        ScriptBackendContinuation& output
+    ) noexcept;
+
     EScriptBackendResult prepareMethod(
         void* opaque,
         ScriptBackendInstance instance,
         const lux::rdesc::ScriptFunction& function,
-        lux::script::BoundScriptCall& output
+        ScriptBackendPreparedMethod& output
     ) noexcept
     {
         auto* prepared = new (std::nothrow) PreparedCall{
@@ -539,14 +546,21 @@ namespace
         if (!prepared)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         ++static_cast<BackendState*>(opaque)->prepares;
-        output = {&invokePrepared, prepared};
+        const auto mode = static_cast<BackendState*>(opaque)->mode;
+        output = {
+            prepared,
+            lux::script::BoundScriptCall{&invokePrepared, prepared},
+            function.symbol_id == kTick && mode != EScenarioMode::SYNC
+                ? BoundScriptStepCall{instance.value, &invokeStep}
+                : BoundScriptStepCall{}
+        };
         return EScriptBackendResult::SUCCESS;
     }
 
-    void releaseMethod(void* opaque, ScriptBackendInstance, lux::script::BoundScriptCall call) noexcept
+    void releaseMethod(void* opaque, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
     {
         ++static_cast<BackendState*>(opaque)->releases;
-        delete static_cast<PreparedCall*>(call.context);
+        delete static_cast<PreparedCall*>(method.token);
     }
 
     void destroyInstance(void* opaque, ScriptBackendInstance instance) noexcept
@@ -702,23 +716,6 @@ namespace
         return result;
     }
 
-    EScriptBackendResult prepareStepMethod(
-        void* opaque,
-        ScriptBackendInstance instance,
-        const lux::rdesc::ScriptFunction& function,
-        BoundScriptStepCall& output
-    ) noexcept
-    {
-        const auto mode = static_cast<BackendState*>(opaque)->mode;
-        if (function.symbol_id == kTick && mode != EScenarioMode::SYNC)
-            output = {instance.value, &invokeStep};
-        return EScriptBackendResult::SUCCESS;
-    }
-
-    void releaseStepMethod(void*, ScriptBackendInstance, BoundScriptStepCall) noexcept
-    {
-    }
-
     struct RuntimeHarness final
     {
         RuntimeHarness(
@@ -840,9 +837,7 @@ namespace
                 &createInstance,
                 &prepareMethod,
                 &releaseMethod,
-                &destroyInstance,
-                &prepareStepMethod,
-                &releaseStepMethod
+                &destroyInstance
             };
 
             std::array<ScriptApiCapabilityPublication, 1U> publications{};
@@ -1333,9 +1328,9 @@ namespace
     {
         struct Calls final
         {
-            lux::script::BoundScriptCall begin;
-            lux::script::BoundScriptCall tick;
-            lux::script::BoundScriptCall end;
+            ScriptBackendPreparedMethod begin;
+            ScriptBackendPreparedMethod tick;
+            ScriptBackendPreparedMethod end;
         };
         std::vector<ScriptBackendInstance> instances(options.size);
         std::vector<Calls> calls(options.size);
@@ -1375,8 +1370,8 @@ namespace
             for (auto& value : calls)
             {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.begin.context};
-                if (value.begin.invoke(&frame) != 0)
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.begin.synchronous.context};
+                if (value.begin.synchronous.invoke(&frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark BeginPlay failed");
                 ++successful;
             }
@@ -1388,8 +1383,8 @@ namespace
             for (auto& value : calls)
             {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.tick.context};
-                if (value.tick.invoke(&frame) != 0)
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.tick.synchronous.context};
+                if (value.tick.synchronous.invoke(&frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark steady call failed");
                 ++successful;
             }
@@ -1409,8 +1404,8 @@ namespace
             {
                 auto& value = calls[index];
                 lux_script_call_frame frame{
-                    &reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, value.end.context};
-                if (value.end.invoke(&frame) != 0)
+                    &reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, value.end.synchronous.context};
+                if (value.end.synchronous.invoke(&frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark EndPlay failed");
                 descriptor.releaseMethod(descriptor.context, instances[index], value.end);
                 descriptor.releaseMethod(descriptor.context, instances[index], value.tick);
@@ -1481,7 +1476,9 @@ namespace
             if (!created_artifact)
                 throw std::runtime_error("C++ lifecycle artifact creation failed");
             artifact.emplace(std::move(*created_artifact));
-            const std::array pools{CppStaticScriptPoolDescription{std::addressof(*script), capacity}};
+            const std::array pools{CppStaticScriptPoolDescription{
+                std::addressof(*script), capacity, 0U, 0U, alignof(std::max_align_t), capacity * 3U
+            }};
             auto created_backend = CppStaticScriptBackend::create(pools);
             if (!created_backend)
                 throw std::runtime_error("C++ lifecycle backend creation failed");
@@ -1712,7 +1709,8 @@ namespace
     {
         ScriptCoroutine run(ScriptCoroutineContext& context) noexcept
         {
-            co_await context.makeAwaiter<void>(
+            co_await CppStaticCoroutineAccess::makeAwaiter<void>(
+                context,
                 [](ScriptCoroutineContext&, ScriptStepContext& step) noexcept
                 {
                     const auto waiting = step.awaitables.create();
@@ -1783,7 +1781,8 @@ namespace
                 1U,
                 capacity,
                 storage_bytes,
-                alignof(std::max_align_t)
+                alignof(std::max_align_t),
+                1U
             }};
             auto created_backend = CppStaticScriptBackend::create(pools);
             if (!created_backend)
@@ -1796,20 +1795,21 @@ namespace
                     *artifact,
                     instance
                 ) != EScriptBackendResult::SUCCESS ||
-                runtime.prepareStepMethod(
+                runtime.prepareMethod(
                     runtime.context,
                     instance,
                     artifact->description().exports.front(),
-                    call
+                    prepared
                 ) != EScriptBackendResult::SUCCESS)
             {
                 throw std::runtime_error("C++ coroutine benchmark preparation failed");
             }
+            call = prepared.resumable;
         }
 
         ~CppCoroutineBenchmarkHarness()
         {
-            runtime.releaseStepMethod(runtime.context, instance, call);
+            runtime.releaseMethod(runtime.context, instance, prepared);
             runtime.destroyInstance(runtime.context, instance);
         }
 
@@ -1835,6 +1835,7 @@ namespace
         ScriptBackendDescriptor runtime;
         ScriptBehavior behavior;
         ScriptBackendInstance instance;
+        ScriptBackendPreparedMethod prepared;
         BoundScriptStepCall call;
         std::uint32_t next_awaitable{1U};
     };
@@ -1936,23 +1937,25 @@ namespace
         {
             throw std::runtime_error("Lua micro instance creation failed");
         }
-        lux::script::BoundScriptCall lua_tick;
-        lux::script::BoundScriptCall lua_begin;
+        ScriptBackendPreparedMethod lua_tick_method;
+        ScriptBackendPreparedMethod lua_begin_method;
         if (lua_descriptor.prepareMethod(
                 lua_descriptor.context,
                 lua_instance,
                 lua.artifact->description().exports[0],
-                lua_begin
+                lua_begin_method
             ) != EScriptBackendResult::SUCCESS ||
             lua_descriptor.prepareMethod(
                 lua_descriptor.context,
                 lua_instance,
                 lua.artifact->description().exports[1],
-                lua_tick
+                lua_tick_method
             ) != EScriptBackendResult::SUCCESS)
         {
             throw std::runtime_error("Lua micro call preparation failed");
         }
+        const auto lua_begin = lua_begin_method.synchronous;
+        const auto lua_tick = lua_tick_method.synchronous;
         lux_script_call_frame lua_begin_frame{
             nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, lua_begin.context};
         if (lua_begin.invoke(&lua_begin_frame) != 0)
@@ -1997,8 +2000,8 @@ namespace
 #endif
         }
 #if LUX_BENCHMARK_HAS_LUA
-        lua_descriptor.releaseMethod(lua_descriptor.context, lua_instance, lua_tick);
-        lua_descriptor.releaseMethod(lua_descriptor.context, lua_instance, lua_begin);
+        lua_descriptor.releaseMethod(lua_descriptor.context, lua_instance, lua_tick_method);
+        lua_descriptor.releaseMethod(lua_descriptor.context, lua_instance, lua_begin_method);
         lua_descriptor.destroyInstance(lua_descriptor.context, lua_instance);
 #endif
         if (bound_checksum != options.size * 30U || provider.calls != options.size * 60U)

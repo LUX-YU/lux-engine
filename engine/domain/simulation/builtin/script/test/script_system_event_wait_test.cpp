@@ -321,28 +321,8 @@ namespace
     EScriptBackendResult prepareMethod(
         void*,
         ScriptBackendInstance instance,
-        const lux::rdesc::ScriptFunction&,
-        lux::script::BoundScriptCall& output
-    ) noexcept
-    {
-        output = {&invokeSync, instance.value};
-        return EScriptBackendResult::SUCCESS;
-    }
-
-    void releaseMethod(void*, ScriptBackendInstance, lux::script::BoundScriptCall) noexcept
-    {
-    }
-
-    void destroyInstance(void*, ScriptBackendInstance instance) noexcept
-    {
-        delete static_cast<BackendInstance*>(instance.value);
-    }
-
-    EScriptBackendResult prepareStepMethod(
-        void*,
-        ScriptBackendInstance instance,
         const lux::rdesc::ScriptFunction& function,
-        BoundScriptStepCall& output
+        ScriptBackendPreparedMethod& output
     ) noexcept
     {
         auto* prepared = new (std::nothrow) PreparedCall{
@@ -351,13 +331,22 @@ namespace
         };
         if (prepared == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
-        output = {prepared, &invokeStep};
+        output = {
+            prepared,
+            lux::script::BoundScriptCall{&invokeSync, instance.value},
+            BoundScriptStepCall{prepared, &invokeStep}
+        };
         return EScriptBackendResult::SUCCESS;
     }
 
-    void releaseStepMethod(void*, ScriptBackendInstance, BoundScriptStepCall call) noexcept
+    void releaseMethod(void*, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
     {
-        delete static_cast<PreparedCall*>(call.context);
+        delete static_cast<PreparedCall*>(method.token);
+    }
+
+    void destroyInstance(void*, ScriptBackendInstance instance) noexcept
+    {
+        delete static_cast<BackendInstance*>(instance.value);
     }
 
     struct HarnessOptions final
@@ -573,9 +562,7 @@ namespace
                 &createInstance,
                 &prepareMethod,
                 &releaseMethod,
-                &destroyInstance,
-                &prepareStepMethod,
-                &releaseStepMethod
+                &destroyInstance
             };
 
             auto created = ScriptSystem::create(

@@ -248,22 +248,34 @@ namespace
         return EScriptBackendResult::SUCCESS;
     }
 
+    ScriptStepResult invokeStep(
+        void* context,
+        lux_script_call_frame&,
+        ScriptStepContext& step,
+        ScriptBackendContinuation& output
+    ) noexcept;
+
     EScriptBackendResult prepareMethod(void*,
                                        ScriptBackendInstance instance,
                                        const lux::rdesc::ScriptFunction&,
-                                       lux::script::BoundScriptCall& output) noexcept
+                                       ScriptBackendPreparedMethod& output) noexcept
     {
         auto* prepared = new (std::nothrow) PreparedSync();
         if (prepared == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         prepared->instance = static_cast<BackendInstance*>(instance.value);
-        output = {&invokeSync, prepared};
+        auto* state = prepared->instance->owner;
+        output = {
+            prepared,
+            lux::script::BoundScriptCall{&invokeSync, prepared},
+            state->enable_step ? BoundScriptStepCall{state, &invokeStep} : BoundScriptStepCall{}
+        };
         return EScriptBackendResult::SUCCESS;
     }
 
-    void releaseMethod(void*, ScriptBackendInstance, lux::script::BoundScriptCall call) noexcept
+    void releaseMethod(void*, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
     {
-        delete static_cast<PreparedSync*>(call.context);
+        delete static_cast<PreparedSync*>(method.token);
     }
 
     void destroyInstance(void*, ScriptBackendInstance instance) noexcept
@@ -376,19 +388,6 @@ namespace
         return result;
     }
 
-    EScriptBackendResult prepareStepMethod(void* context,
-                                           ScriptBackendInstance,
-                                           const lux::rdesc::ScriptFunction&,
-                                           BoundScriptStepCall& output) noexcept
-    {
-        auto& state = *static_cast<BackendState*>(context);
-        if (state.enable_step)
-            output = {&state, &invokeStep};
-        return EScriptBackendResult::SUCCESS;
-    }
-
-    void releaseStepMethod(void*, ScriptBackendInstance, BoundScriptStepCall) noexcept {}
-
     struct Harness final
     {
         explicit Harness(
@@ -452,9 +451,7 @@ namespace
                        &createInstance,
                        &prepareMethod,
                        &releaseMethod,
-                       &destroyInstance,
-                       &prepareStepMethod,
-                       &releaseStepMethod};
+                       &destroyInstance};
         }
 
         [[nodiscard]] lux::cxx::expected<ScriptSystem, EScriptSystemError> create(

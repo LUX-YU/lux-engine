@@ -3,6 +3,7 @@
 #include "CppCoroutineAbility.ability.generated.hpp"
 
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 
 #include <array>
 #include <cassert>
@@ -81,19 +82,11 @@ namespace
 
     struct DelayProvider final
     {
-        bool reject{};
-
         lux::script::ScriptAbilityStartResult nextStep(
             lux::script::ScriptAbilityCompletion<void>
         ) noexcept
         {
-            return reject
-                ? lux::script::ScriptAbilityStartResult{
-                    lux::cxx::unexpected<lux::script::ScriptAbilityOperationError>(
-                        lux::script::ScriptAbilityOperationError{71}
-                    )
-                }
-                : lux::script::ScriptAbilityStartResult{};
+            return {};
         }
 
         lux::script::ScriptAbilityStartResult seconds(
@@ -126,6 +119,7 @@ namespace
     struct CoroutineAbilityProvider final
     {
         std::int32_t value{10};
+        bool reject{};
 
         std::int32_t read(std::int32_t input) noexcept
         {
@@ -147,7 +141,13 @@ namespace
             lux::script::ScriptAbilityCompletion<std::int32_t>
         ) noexcept
         {
-            return {};
+            return reject
+                ? lux::script::ScriptAbilityStartResult{
+                    lux::cxx::unexpected<lux::script::ScriptAbilityOperationError>(
+                        lux::script::ScriptAbilityOperationError{81}
+                    )
+                }
+                : lux::script::ScriptAbilityStartResult{};
         }
     };
 
@@ -607,26 +607,6 @@ int main()
     delay_continuation.destroy(delay_continuation.state);
     descriptor.releaseStepMethod(descriptor.context, instance, delay_step_call);
 
-    delay_provider.reject = true;
-    BoundScriptStepCall rejected_delay_call;
-    assert(descriptor.prepareStepMethod(
-        descriptor.context,
-        instance,
-        entity_asset.description().exports[6],
-        rejected_delay_call
-    ) == EScriptBackendResult::SUCCESS);
-    ScriptBackendContinuation rejected_delay_continuation;
-    const auto rejected_delay = rejected_delay_call.invoke(
-        rejected_delay_call.context,
-        empty_frame,
-        step_context,
-        rejected_delay_continuation
-    );
-    assert(rejected_delay.state == EScriptStepState::FAILED);
-    assert(!rejected_delay_continuation);
-    descriptor.releaseStepMethod(descriptor.context, instance, rejected_delay_call);
-    delay_provider.reject = false;
-
     BoundScriptStepCall twice_step_call;
     assert(descriptor.prepareStepMethod(
         descriptor.context,
@@ -927,6 +907,16 @@ int main()
     assert(failed_ability.state == EScriptStepState::FAILED);
     assert(failed_ability.error.status == 77);
     failed_ability_continuation.destroy(failed_ability_continuation.state);
+    coroutine_provider.reject = true;
+    ScriptBackendContinuation rejected_ability_continuation;
+    const auto rejected_ability = ability_step.invoke(
+        ability_step.context,
+        empty_frame,
+        ability_step_context,
+        rejected_ability_continuation
+    );
+    assert(rejected_ability.state == EScriptStepState::FAILED);
+    assert(!rejected_ability_continuation);
     ability_backend_descriptor.releaseStepMethod(
         ability_backend_descriptor.context,
         ability_instance,

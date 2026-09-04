@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -11,6 +12,16 @@
 
 namespace lux::simulation::script
 {
+    lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext>
+    ScriptCoroutineContext::delay() noexcept
+    {
+        const auto slot = findAbility(lux::script::ScriptAbilityTraits<DelayAbility>::Description.id.hash());
+        return {
+            *this,
+            slot.value_or((std::numeric_limits<std::uint32_t>::max)())
+        };
+    }
+
     namespace
     {
         struct Callable final

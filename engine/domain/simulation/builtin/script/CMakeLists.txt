@@ -65,6 +65,12 @@ lux_script_abilities(
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/simulation/abilities/DelayAbility.hpp
     LOGICAL_PATHS lux/engine/simulation/abilities/DelayAbility.hpp
 )
+get_target_property(_delay_ability_generated_dir simulation_script LUX_SCRIPT_ABILITY_GENERATED_DIR)
+install(
+    FILES ${_delay_ability_generated_dir}/DelayAbility.ability.generated.hpp
+    DESTINATION include/lux/engine/simulation/abilities
+    COMPONENT lux_sdk
+)
 
 add_executable(
     simulation_script_description_test

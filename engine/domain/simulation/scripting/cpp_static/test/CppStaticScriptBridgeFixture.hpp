@@ -102,16 +102,40 @@ namespace lux::simulation::test
         LUX_METHOD()
         script::ScriptCoroutine waitForNextStep(script::ScriptCoroutineContext& context) noexcept
         {
-            co_await context.delay().nextStep();
+            co_await context.makeAwaiter<void>(
+                [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
+                {
+                    const auto waiting = step.awaitables.create();
+                    return waiting
+                        ? script::ScriptStepResult::suspended(waiting->id)
+                        : script::ScriptStepResult::failed(-1);
+                }
+            );
             coroutine_value += 100;
         }
 
         LUX_METHOD()
         script::ScriptCoroutine waitTwice(script::ScriptCoroutineContext& context) noexcept
         {
-            co_await context.delay().nextStep();
+            co_await context.makeAwaiter<void>(
+                [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
+                {
+                    const auto waiting = step.awaitables.create();
+                    return waiting
+                        ? script::ScriptStepResult::suspended(waiting->id)
+                        : script::ScriptStepResult::failed(-1);
+                }
+            );
             coroutine_value += 1'000;
-            co_await context.delay().nextStep();
+            co_await context.makeAwaiter<void>(
+                [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
+                {
+                    const auto waiting = step.awaitables.create();
+                    return waiting
+                        ? script::ScriptStepResult::suspended(waiting->id)
+                        : script::ScriptStepResult::failed(-1);
+                }
+            );
             coroutine_value += 10'000;
         }
 

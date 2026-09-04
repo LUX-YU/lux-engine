@@ -7,6 +7,7 @@
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>

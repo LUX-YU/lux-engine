@@ -1,11 +1,8 @@
 #pragma once
 
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
-#include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include <lux/engine/simulation/scripting/detail/BoundedFrameStorage.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/visibility.h>
-
-#include "DelayAbility.ability.generated.hpp"
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -28,6 +25,8 @@ namespace lux::script
 
 namespace lux::simulation::script
 {
+    struct DelayAbility;
+
     enum class EScriptCoroutineError : std::uint8_t
     {
         INVALID_CONTEXT,
@@ -101,7 +100,7 @@ namespace lux::simulation::script
             EScriptCoroutineError
         > ability() noexcept;
 
-        [[nodiscard]] auto delay() noexcept;
+        [[nodiscard]] lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext> delay() noexcept;
 
         template <class Result, class Invoker>
         [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
@@ -475,17 +474,6 @@ namespace lux::simulation::script
                 EScriptCoroutineError
             >{lux::script::ScriptAbilityCoroutine<Ability, ScriptCoroutineContext>{*this, *slot}}
             : lux::cxx::unexpected<EScriptCoroutineError>(EScriptCoroutineError::UNDECLARED_ABILITY);
-    }
-
-    inline auto ScriptCoroutineContext::delay() noexcept
-    {
-        const auto slot = findAbility(
-            lux::script::ScriptAbilityTraits<DelayAbility>::Description.id.hash()
-        );
-        return lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext>{
-            *this,
-            slot.value_or((std::numeric_limits<std::uint32_t>::max)())
-        };
     }
 
     template <class Result, class Invoker>

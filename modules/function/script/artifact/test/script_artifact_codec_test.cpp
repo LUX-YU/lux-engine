@@ -64,7 +64,7 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(*encoded),
         decode_limits
     );
-    assert(image && image->data().view()[4] == std::byte{8U});
+    assert(image && image->data().view()[4] == std::byte{9U});
 
     auto decoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
         (*typed)->id(),
@@ -73,7 +73,7 @@ int main()
     );
     assert(decoded);
     const auto& artifact = (*decoded)->data();
-    assert(artifact.description().schema_version == 10U);
+    assert(artifact.description().schema_version == 11U);
     assert(artifact.description().lifecycle.begin_play == 10U);
     assert(artifact.description().lifecycle.end_play == 12U);
     assert(artifact.description().api_requirements.size() == 1U);
@@ -118,5 +118,33 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(trailing),
         asset::AssetDecodeLimits{trailing.size(), trailing.size(), 4U}
     ));
+
+    rdesc::Script cpp_description;
+    cpp_description.module_name = "lux.test.cpp-coroutine";
+    cpp_description.exports.push_back({"task", 31U, {}, {}});
+    cpp_description.body = rdesc::CppStaticScript{"cpp-coroutine-v1", {31U}};
+    auto cpp_artifact = script::ScriptArtifact::create(std::move(cpp_description), {});
+    assert(cpp_artifact);
+    id_bytes.back() = 2U;
+    auto cpp_asset = script::ScriptArtifactAsset::create(
+        asset::AssetInfo{
+            asset::AssetId{id_bytes},
+            script::ScriptArtifactAsset::asset_type,
+            0U
+        },
+        std::make_shared<const script::ScriptArtifact>(std::move(*cpp_artifact))
+    );
+    assert(cpp_asset);
+    auto cpp_encoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::encode(**cpp_asset, encode_limits);
+    assert(cpp_encoded);
+    auto cpp_decoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
+        (*cpp_asset)->id(),
+        lux::cxx::SharedBytes<>::copyOf(*cpp_encoded),
+        decode_limits
+    );
+    assert(cpp_decoded);
+    const auto& cpp_body = std::get<rdesc::CppStaticScript>((*cpp_decoded)->data().description().body);
+    assert(cpp_body.descriptor == "cpp-coroutine-v1");
+    assert(cpp_body.suspension_capable_exports == std::vector<script::ScriptSymbolId>{31U});
     return 0;
 }

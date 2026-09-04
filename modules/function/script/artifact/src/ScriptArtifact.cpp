@@ -17,7 +17,7 @@ namespace lux::script
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion = 8U;
+        constexpr std::uint32_t kWireVersion = 9U;
 
         class Writer final
         {
@@ -301,6 +301,9 @@ namespace lux::script
                         &description.body))
                 {
                     writer.string(cpp_static->descriptor);
+                    writer.u32(static_cast<std::uint32_t>(cpp_static->suspension_capable_exports.size()));
+                    for (const auto symbol : cpp_static->suspension_capable_exports)
+                        writer.u64(symbol);
                 }
 
                 writer.u64(artifact.payload().size());
@@ -530,8 +533,24 @@ namespace lux::script
                 else if (script_kind == lux::rdesc::Script::Kind::CPP_STATIC)
                 {
                     lux::rdesc::CppStaticScript cpp_static;
-                    if (!reader.string(cpp_static.descriptor, decoded, limit))
+                    if (!reader.string(cpp_static.descriptor, decoded, limit) || !reader.u32(count) ||
+                        !reserveRecords(
+                            cpp_static.suspension_capable_exports,
+                            count,
+                            decoded,
+                            limit,
+                            reader.remaining()
+                        ))
+                    {
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    }
+                    for (std::uint32_t index{}; index < count; ++index)
+                    {
+                        lux::script::ScriptSymbolId symbol{};
+                        if (!reader.u64(symbol))
+                            return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                        cpp_static.suspension_capable_exports.push_back(symbol);
+                    }
                     description.body = std::move(cpp_static);
                 }
                 else

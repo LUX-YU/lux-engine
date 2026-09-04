@@ -50,6 +50,12 @@ add_executable(
     simulation_script_cpp_static_test
     test/cpp_static_script_bridge_test.cpp
 )
+include_component_cmake_scripts(script_core)
+lux_script_abilities(
+    TARGET simulation_script_cpp_static_test
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/CppCoroutineAbility.hpp
+    LOGICAL_PATHS CppCoroutineAbility.hpp
+)
 target_include_directories(
     simulation_script_cpp_static_test
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test

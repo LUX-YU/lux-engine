@@ -18,6 +18,7 @@ namespace lux::simulation::script
             lux::script::ScriptSymbolId symbol{};
             const lux::meta::RefMethod* method{};
             const lux::meta::RefFunction* function{};
+            CppStaticCoroutineExport::InvokeFn coroutine_invoke{};
         };
 
         [[nodiscard]] const lux::semantic::Layout* builtin(
@@ -230,6 +231,56 @@ namespace lux::simulation::script
                 );
             }
         }
+
+        [[nodiscard]] lux::cxx::expected<
+            lux::rdesc::ScriptFunction,
+            ECppStaticScriptBridgeError> projectCoroutineInvokable(
+                const CppStaticCoroutineExport& coroutine,
+                bool is_noexcept,
+                CppStaticRecordSemanticResolver resolver
+            ) noexcept
+        {
+            const auto* invokable = coroutine.method != nullptr
+                ? std::addressof(coroutine.method->invokable)
+                : coroutine.function != nullptr
+                    ? std::addressof(coroutine.function->invokable)
+                    : nullptr;
+            const bool is_invalid_signature = invokable == nullptr || coroutine.invoke == nullptr ||
+                coroutine.symbol == lux::script::InvalidScriptSymbolId || !is_noexcept || invokable->is_variadic ||
+                invokable->return_type.hash != lux::cxx::type_hash<ScriptCoroutine>() ||
+                invokable->parameters.size() != coroutine.visible_parameter_count + 1U;
+            if (is_invalid_signature)
+                return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
+
+            const auto& hidden_context = invokable->parameters.front();
+            const auto context_qualifier = static_cast<lux::meta::ETypeQual>(hidden_context.type.qtype.qual);
+            const bool is_invalid_context = hidden_context.value_type_hash !=
+                    lux::cxx::type_hash<ScriptCoroutineContext>() ||
+                context_qualifier != lux::meta::ETypeQual::LRef;
+            if (is_invalid_context)
+                return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
+
+            try
+            {
+                lux::rdesc::ScriptFunction projected;
+                projected.name = invokable->name;
+                projected.symbol_id = coroutine.symbol;
+                projected.args.reserve(coroutine.visible_parameter_count);
+                for (std::size_t index{1U}; index < invokable->parameters.size(); ++index)
+                {
+                    const auto& parameter = invokable->parameters[index];
+                    auto type = projectType(parameter.type, parameter.value_type_hash, false, resolver);
+                    if (!type)
+                        return lux::cxx::unexpected(type.error());
+                    projected.args.push_back(std::move(*type));
+                }
+                return projected;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(ECppStaticScriptBridgeError::ALLOCATION_FAILURE);
+            }
+        }
     }
 
     struct CppStaticScriptDescriptor::State final
@@ -285,7 +336,10 @@ namespace lux::simulation::script
             std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types,
             void (*attach)(void*, ScriptBehavior&) noexcept,
-            lux::rdesc::ScriptLifecycleRoles lifecycle
+            lux::rdesc::ScriptLifecycleRoles lifecycle,
+            std::span<const CppStaticCoroutineExport> coroutines,
+            std::span<const lux::rdesc::ScriptApiRequirement> abilities,
+            std::span<const lux::script::ScriptEventSourceDescription> events
         ) noexcept
     {
         if (module_name.empty() || descriptor_key.empty() ||
@@ -303,16 +357,32 @@ namespace lux::simulation::script
             auto state = std::make_unique<CppStaticScriptDescriptor::State>();
             state->description.module_name = module_name;
             state->description.body = lux::rdesc::CppStaticScript{
-                std::string{descriptor_key}};
+                std::string{descriptor_key},
+                {}
+            };
             state->description.lifecycle = lifecycle;
+            state->description.api_requirements.assign(abilities.begin(), abilities.end());
+            state->description.event_requirements.assign(events.begin(), events.end());
+            std::ranges::sort(
+                state->description.api_requirements,
+                {},
+                [](const auto& requirement) noexcept
+                {
+                    return requirement.contract.hash();
+                }
+            );
+            std::ranges::sort(
+                state->description.event_requirements,
+                lux::script::ScriptEventSourceLess{}
+            );
             state->descriptor_key = descriptor_key;
             state->reflected_class = std::addressof(reflected_class);
             state->attach = attach;
             state->entity_scope = true;
-            state->description.exports.reserve(methods.size());
-            state->callables.reserve(methods.size());
+            state->description.exports.reserve(methods.size() + coroutines.size());
+            state->callables.reserve(methods.size() + coroutines.size());
             std::unordered_set<lux::script::ScriptSymbolId> symbols_seen;
-            symbols_seen.reserve(methods.size());
+            symbols_seen.reserve(methods.size() + coroutines.size());
             for (std::size_t method_index{}; method_index < methods.size();
                  ++method_index)
             {
@@ -346,8 +416,34 @@ namespace lux::simulation::script
                     );
                 }
                 state->description.exports.push_back(std::move(*projected));
-                state->callables.push_back(Callable{symbol, method, nullptr});
+                state->callables.push_back(Callable{symbol, method, nullptr, nullptr});
             }
+            auto& body = std::get<lux::rdesc::CppStaticScript>(state->description.body);
+            body.suspension_capable_exports.reserve(coroutines.size());
+            for (const auto& coroutine : coroutines)
+            {
+                const auto* method = coroutine.method;
+                const bool is_invalid_method = method == nullptr || coroutine.function != nullptr ||
+                    method->owner_class != std::addressof(reflected_class) || method->is_static;
+                if (is_invalid_method)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_CLASS);
+                if (method->visibility != lux::meta::EVisibility::Public)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::METHOD_NOT_PUBLIC);
+                auto projected = projectCoroutineInvokable(coroutine, method->is_noexcept, record_types);
+                if (!projected)
+                    return lux::cxx::unexpected(projected.error());
+                if (!symbols_seen.emplace(coroutine.symbol).second)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::DUPLICATE_SYMBOL);
+                state->description.exports.push_back(std::move(*projected));
+                state->callables.push_back(Callable{
+                    coroutine.symbol,
+                    method,
+                    nullptr,
+                    coroutine.invoke
+                });
+                body.suspension_capable_exports.push_back(coroutine.symbol);
+            }
+            std::ranges::sort(body.suspension_capable_exports);
             if (!lux::rdesc::validScriptDescription(state->description))
                 return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
             return CppStaticScriptDescriptor{std::move(state)};
@@ -368,7 +464,10 @@ namespace lux::simulation::script
             std::span<const lux::meta::RefFunction* const> functions,
             std::span<const lux::script::ScriptSymbolId> symbols,
             CppStaticRecordSemanticResolver record_types,
-            lux::rdesc::ScriptLifecycleRoles lifecycle
+            lux::rdesc::ScriptLifecycleRoles lifecycle,
+            std::span<const CppStaticCoroutineExport> coroutines,
+            std::span<const lux::rdesc::ScriptApiRequirement> abilities,
+            std::span<const lux::script::ScriptEventSourceDescription> events
         ) noexcept
     {
         if (module_name.empty() || descriptor_key.empty() ||
@@ -383,13 +482,29 @@ namespace lux::simulation::script
             auto state = std::make_unique<CppStaticScriptDescriptor::State>();
             state->description.module_name = module_name;
             state->description.body = lux::rdesc::CppStaticScript{
-                std::string{descriptor_key}};
+                std::string{descriptor_key},
+                {}
+            };
             state->description.lifecycle = lifecycle;
+            state->description.api_requirements.assign(abilities.begin(), abilities.end());
+            state->description.event_requirements.assign(events.begin(), events.end());
+            std::ranges::sort(
+                state->description.api_requirements,
+                {},
+                [](const auto& requirement) noexcept
+                {
+                    return requirement.contract.hash();
+                }
+            );
+            std::ranges::sort(
+                state->description.event_requirements,
+                lux::script::ScriptEventSourceLess{}
+            );
             state->descriptor_key = descriptor_key;
-            state->description.exports.reserve(functions.size());
-            state->callables.reserve(functions.size());
+            state->description.exports.reserve(functions.size() + coroutines.size());
+            state->callables.reserve(functions.size() + coroutines.size());
             std::unordered_set<lux::script::ScriptSymbolId> symbols_seen;
-            symbols_seen.reserve(functions.size());
+            symbols_seen.reserve(functions.size() + coroutines.size());
             for (std::size_t function_index{};
                  function_index < functions.size(); ++function_index)
             {
@@ -425,8 +540,30 @@ namespace lux::simulation::script
                     );
                 }
                 state->description.exports.push_back(std::move(*projected));
-                state->callables.push_back(Callable{symbol, nullptr, function});
+                state->callables.push_back(Callable{symbol, nullptr, function, nullptr});
             }
+            auto& body = std::get<lux::rdesc::CppStaticScript>(state->description.body);
+            body.suspension_capable_exports.reserve(coroutines.size());
+            for (const auto& coroutine : coroutines)
+            {
+                const auto* function = coroutine.function;
+                if (function == nullptr || coroutine.method != nullptr)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
+                auto projected = projectCoroutineInvokable(coroutine, function->is_noexcept, record_types);
+                if (!projected)
+                    return lux::cxx::unexpected(projected.error());
+                if (!symbols_seen.emplace(coroutine.symbol).second)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::DUPLICATE_SYMBOL);
+                state->description.exports.push_back(std::move(*projected));
+                state->callables.push_back(Callable{
+                    coroutine.symbol,
+                    nullptr,
+                    function,
+                    coroutine.invoke
+                });
+                body.suspension_capable_exports.push_back(coroutine.symbol);
+            }
+            std::ranges::sort(body.suspension_capable_exports);
             if (!lux::rdesc::validScriptDescription(state->description))
                 return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
             return CppStaticScriptDescriptor{std::move(state)};
@@ -488,16 +625,34 @@ namespace lux::simulation::script
                 const Callable*> callables;
             ObjectSlab objects;
             std::vector<std::size_t> free_objects;
+            detail::BoundedFrameStorage coroutine_frames;
             std::size_t object_stride{};
             std::size_t instance_capacity{};
             std::size_t active_instances{};
+            std::size_t coroutine_capacity{};
+            std::size_t active_coroutines{};
         };
 
         struct Instance final
         {
+            State* owner{};
             DescriptorIndex* descriptor{};
             void* object{};
             std::size_t object_slot{(std::numeric_limits<std::size_t>::max)()};
+            std::uint32_t slot{};
+            std::span<const PreparedScriptApiCapability> capabilities;
+            std::size_t active_coroutines{};
+        };
+
+        struct CoroutineContinuation final
+        {
+            State* owner{};
+            DescriptorIndex* descriptor{};
+            Instance* instance{};
+            ScriptCoroutineContext context;
+            std::coroutine_handle<ScriptCoroutine::promise_type> handle;
+            std::uint32_t slot{};
+            bool active{};
         };
 
         struct PreparedCall final
@@ -512,6 +667,8 @@ namespace lux::simulation::script
                 if (!frame || !frame->user_context)
                     return -1;
                 auto& self = *static_cast<PreparedCall*>(frame->user_context);
+                if (self.callable == nullptr || self.callable->coroutine_invoke != nullptr)
+                    return -1;
                 const auto& invokable = self.callable->method
                     ? self.callable->method->invokable
                     : self.callable->function->invokable;
@@ -534,6 +691,56 @@ namespace lux::simulation::script
                 );
                 return 0;
             }
+
+            static ScriptStepResult invokeStep(
+                void* opaque,
+                lux_script_call_frame& frame,
+                ScriptStepContext& step,
+                ScriptBackendContinuation& result
+            ) noexcept
+            {
+                auto& self = *static_cast<PreparedCall*>(opaque);
+                const bool is_invalid_call = !self.active || self.instance == nullptr || self.callable == nullptr ||
+                    self.callable->coroutine_invoke == nullptr;
+                if (is_invalid_call)
+                    return ScriptStepResult::failed(-1);
+                auto* state = self.instance->owner;
+                if (state == nullptr)
+                    return ScriptStepResult::failed(-1);
+                auto* continuation = state->acquireCoroutine(*self.instance);
+                if (continuation == nullptr)
+                    return ScriptStepResult::failed(-1);
+
+                CppStaticCoroutineAccess::activate(continuation->context, step);
+                auto coroutine = self.callable->coroutine_invoke(
+                    self.instance->object,
+                    continuation->context,
+                    frame
+                );
+                CppStaticCoroutineAccess::deactivate(continuation->context);
+                if (!coroutine)
+                {
+                    state->releaseCoroutineSlot(*continuation);
+                    return ScriptStepResult::failed(-1);
+                }
+                continuation->handle = CppStaticCoroutineAccess::release(coroutine);
+                const auto outcome = continuation->handle.promise().outcome;
+                const bool is_suspended = !continuation->handle.done() &&
+                    outcome.state == EScriptStepState::SUSPENDED && outcome.valid();
+                if (is_suspended)
+                {
+                    result = {
+                        continuation,
+                        &State::resumeCoroutine,
+                        &State::destroyCoroutineErased
+                    };
+                    return outcome;
+                }
+                const bool is_completed = continuation->handle.done() &&
+                    outcome.state == EScriptStepState::COMPLETED && outcome.valid();
+                state->destroyCoroutine(*continuation);
+                return is_completed ? outcome : ScriptStepResult::failed(-1);
+            }
         };
 
         explicit State(std::span<const CppStaticScriptPoolDescription> pools)
@@ -542,6 +749,7 @@ namespace lux::simulation::script
             descriptor_by_key.reserve(pools.size());
             std::size_t maximum_parameters{};
             std::size_t prepared_capacity{};
+            std::size_t coroutine_capacity{};
             for (const auto& pool : pools)
             {
                 const auto* descriptor = pool.descriptor;
@@ -559,7 +767,9 @@ namespace lux::simulation::script
                     pool.instance_capacity >
                         ((std::numeric_limits<std::size_t>::max)() - prepared_capacity) /
                             descriptor->state_->callables.size();
-                if (instance_capacity_overflow || prepared_capacity_overflow)
+                const bool coroutine_capacity_overflow = coroutine_capacity >
+                    (std::numeric_limits<std::size_t>::max)() - pool.coroutine_capacity;
+                if (instance_capacity_overflow || prepared_capacity_overflow || coroutine_capacity_overflow)
                 {
                     valid = false;
                     return;
@@ -568,6 +778,32 @@ namespace lux::simulation::script
                 DescriptorIndex index;
                 index.descriptor = descriptor->state_.get();
                 index.instance_capacity = pool.instance_capacity;
+                index.coroutine_capacity = pool.coroutine_capacity;
+                const auto& cpp_body = std::get<lux::rdesc::CppStaticScript>(
+                    descriptor->state_->description.body
+                );
+                if (!cpp_body.suspension_capable_exports.empty())
+                {
+                    auto frames = detail::BoundedFrameStorage::create(
+                        pool.coroutine_frame_storage_bytes,
+                        pool.coroutine_capacity,
+                        pool.coroutine_frame_storage_alignment
+                    );
+                    if (!frames)
+                    {
+                        error = frames.error() == detail::EBoundedFrameStorageError::ALLOCATION_FAILURE
+                            ? ECppStaticScriptBridgeError::ALLOCATION_FAILURE
+                            : ECppStaticScriptBridgeError::INVALID_DESCRIPTOR;
+                        valid = false;
+                        return;
+                    }
+                    index.coroutine_frames = std::move(*frames);
+                }
+                else if (pool.coroutine_capacity != 0U || pool.coroutine_frame_storage_bytes != 0U)
+                {
+                    valid = false;
+                    return;
+                }
                 index.callables.reserve(index.descriptor->callables.size());
                 for (const auto& callable : index.descriptor->callables)
                 {
@@ -637,6 +873,7 @@ namespace lux::simulation::script
                 }
                 instance_capacity += pool.instance_capacity;
                 prepared_capacity += descriptor->state_->callables.size() * pool.instance_capacity;
+                coroutine_capacity += pool.coroutine_capacity;
             }
             instances.resize(instance_capacity);
             free_instances.reserve(instance_capacity);
@@ -651,10 +888,19 @@ namespace lux::simulation::script
                 );
                 free_prepared_calls.push_back(index - 1U);
             }
+            continuations.resize(coroutine_capacity);
+            free_continuations.reserve(coroutine_capacity);
+            for (std::size_t index = coroutine_capacity; index > 0U; --index)
+                free_continuations.push_back(index - 1U);
         }
 
         ~State()
         {
+            for (auto& continuation : continuations)
+            {
+                if (continuation.active && continuation.handle)
+                    continuation.handle.destroy();
+            }
             for (auto& instance : instances)
             {
                 if (instance.object && instance.descriptor &&
@@ -663,6 +909,130 @@ namespace lux::simulation::script
                     instance.descriptor->descriptor->reflected_class->destruct(instance.object);
                 }
             }
+        }
+
+        [[nodiscard]] static bool findAbility(
+            void* opaque,
+            std::uint32_t instance_slot,
+            std::uint64_t contract_hash,
+            std::uint32_t& result
+        ) noexcept
+        {
+            auto& self = *static_cast<State*>(opaque);
+            if (instance_slot >= self.instances.size())
+                return false;
+            const auto& instance = self.instances[instance_slot];
+            if (instance.descriptor == nullptr)
+                return false;
+            for (std::size_t index{}; index < instance.capabilities.size(); ++index)
+            {
+                if (instance.capabilities[index].contract.hash() == contract_hash)
+                {
+                    result = static_cast<std::uint32_t>(index);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        [[nodiscard]] static bool resolveAbility(
+            void* opaque,
+            std::uint32_t instance_slot,
+            std::uint32_t ability_slot,
+            ScriptCoroutineContext::AbilityAccess& result
+        ) noexcept
+        {
+            auto& self = *static_cast<State*>(opaque);
+            if (instance_slot >= self.instances.size())
+                return false;
+            const auto& instance = self.instances[instance_slot];
+            if (instance.descriptor == nullptr || ability_slot >= instance.capabilities.size())
+                return false;
+            const auto& ability = instance.capabilities[ability_slot];
+            if (ability.context == nullptr || ability.dispatch == nullptr)
+                return false;
+            result = {ability.context, ability.dispatch};
+            return true;
+        }
+
+        void releaseCoroutineSlot(CoroutineContinuation& continuation) noexcept
+        {
+            auto* descriptor = continuation.descriptor;
+            auto* instance = continuation.instance;
+            const auto slot = continuation.slot;
+            continuation = {};
+            if (descriptor != nullptr)
+                --descriptor->active_coroutines;
+            if (instance != nullptr)
+                --instance->active_coroutines;
+            free_continuations.push_back(slot);
+        }
+
+        void destroyCoroutine(CoroutineContinuation& continuation) noexcept
+        {
+            if (!continuation.active)
+                return;
+            if (continuation.handle)
+                continuation.handle.destroy();
+            releaseCoroutineSlot(continuation);
+        }
+
+        [[nodiscard]] CoroutineContinuation* acquireCoroutine(Instance& instance) noexcept
+        {
+            auto& descriptor = *instance.descriptor;
+            if (free_continuations.empty() || descriptor.active_coroutines >= descriptor.coroutine_capacity)
+                return nullptr;
+            const auto slot = free_continuations.back();
+            free_continuations.pop_back();
+            auto& continuation = continuations[slot];
+            continuation.owner = this;
+            continuation.descriptor = std::addressof(descriptor);
+            continuation.instance = std::addressof(instance);
+            continuation.context = CppStaticCoroutineAccess::context(
+                this,
+                instance.slot,
+                &State::findAbility,
+                &State::resolveAbility,
+                descriptor.coroutine_frames
+            );
+            continuation.slot = static_cast<std::uint32_t>(slot);
+            continuation.active = true;
+            ++descriptor.active_coroutines;
+            ++instance.active_coroutines;
+            return std::addressof(continuation);
+        }
+
+        [[nodiscard]] static ScriptStepResult resumeCoroutine(
+            void* opaque,
+            ScriptStepContext& step,
+            const ScriptResumePacket& packet
+        ) noexcept
+        {
+            auto& continuation = *static_cast<CoroutineContinuation*>(opaque);
+            if (!continuation.active || !continuation.handle || continuation.instance == nullptr)
+                return ScriptStepResult::failed(-1);
+            auto& promise = continuation.handle.promise();
+            if (!promise.prepareResume(packet))
+                return promise.outcome;
+            CppStaticCoroutineAccess::activate(continuation.context, step, std::addressof(packet));
+            continuation.handle.resume();
+            CppStaticCoroutineAccess::deactivate(continuation.context);
+            promise.clearResume();
+            const auto result = promise.outcome;
+            const bool is_invalid_terminal = continuation.handle.done() &&
+                result.state == EScriptStepState::SUSPENDED;
+            const bool is_invalid_suspension = !continuation.handle.done() &&
+                result.state != EScriptStepState::SUSPENDED;
+            return is_invalid_terminal || is_invalid_suspension
+                ? ScriptStepResult::failed(-1)
+                : result;
+        }
+
+        static void destroyCoroutineErased(void* opaque) noexcept
+        {
+            auto* continuation = static_cast<CoroutineContinuation*>(opaque);
+            if (continuation != nullptr && continuation->owner != nullptr)
+                continuation->owner->destroyCoroutine(*continuation);
         }
 
         [[nodiscard]] DescriptorIndex* find(
@@ -695,9 +1065,11 @@ namespace lux::simulation::script
             return asset_body && descriptor_body &&
                 artifact.description().module_name ==
                     descriptor.description.module_name &&
-                asset_body->descriptor == descriptor_body->descriptor &&
+                *asset_body == *descriptor_body &&
                 artifact.description().exports == descriptor.description.exports &&
-                artifact.description().lifecycle == descriptor.description.lifecycle;
+                artifact.description().lifecycle == descriptor.description.lifecycle &&
+                artifact.description().api_requirements == descriptor.description.api_requirements &&
+                artifact.description().event_requirements == descriptor.description.event_requirements;
         }
 
         static EScriptBackendResult createInstance(
@@ -728,8 +1100,11 @@ namespace lux::simulation::script
             const auto instance_slot = self.free_instances.back();
             self.free_instances.pop_back();
             auto* instance = std::addressof(self.instances[instance_slot]);
+            instance->owner = std::addressof(self);
             instance->descriptor = descriptor_index;
             instance->object = nullptr;
+            instance->slot = static_cast<std::uint32_t>(instance_slot);
+            instance->capabilities = context.capabilities;
             if (descriptor.reflected_class)
             {
                 instance->object_slot = descriptor_index->free_objects.back();
@@ -786,6 +1161,37 @@ namespace lux::simulation::script
             return EScriptBackendResult::SUCCESS;
         }
 
+        static EScriptBackendResult prepareStepMethod(
+            void* opaque,
+            ScriptBackendInstance opaque_instance,
+            const lux::rdesc::ScriptFunction& function,
+            BoundScriptStepCall& result
+        ) noexcept
+        {
+            auto& self = *static_cast<State*>(opaque);
+            auto* instance = static_cast<Instance*>(opaque_instance.value);
+            if (instance == nullptr)
+                return EScriptBackendResult::CONSTRUCTION_FAILURE;
+            const auto found = instance->descriptor->callables.find(function.symbol_id);
+            if (found == instance->descriptor->callables.end())
+                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+            if (found->second->coroutine_invoke == nullptr)
+            {
+                result = {};
+                return EScriptBackendResult::SUCCESS;
+            }
+            if (self.free_prepared_calls.empty())
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            const auto call_slot = self.free_prepared_calls.back();
+            self.free_prepared_calls.pop_back();
+            auto& call = self.prepared_calls[call_slot];
+            call.instance = instance;
+            call.callable = found->second;
+            call.active = true;
+            result = BoundScriptStepCall{std::addressof(call), &PreparedCall::invokeStep};
+            return EScriptBackendResult::SUCCESS;
+        }
+
         static void releaseMethod(
             void* opaque,
             ScriptBackendInstance,
@@ -805,6 +1211,19 @@ namespace lux::simulation::script
             self.free_prepared_calls.push_back(index);
         }
 
+        static void releaseStepMethod(
+            void* opaque,
+            ScriptBackendInstance instance,
+            BoundScriptStepCall call
+        ) noexcept
+        {
+            releaseMethod(
+                opaque,
+                instance,
+                lux::script::BoundScriptCall{nullptr, call.context}
+            );
+        }
+
         static void destroyInstance(
             void* opaque,
             ScriptBackendInstance opaque_instance
@@ -814,6 +1233,8 @@ namespace lux::simulation::script
             auto* instance = static_cast<Instance*>(opaque_instance.value);
             if (!instance)
                 return;
+            if (instance->active_coroutines != 0U)
+                std::terminate();
             if (instance->object)
             {
                 instance->descriptor->descriptor->reflected_class->destruct(
@@ -836,6 +1257,8 @@ namespace lux::simulation::script
         std::vector<std::size_t> free_instances;
         std::vector<PreparedCall> prepared_calls;
         std::vector<std::size_t> free_prepared_calls;
+        std::vector<CoroutineContinuation> continuations;
+        std::vector<std::size_t> free_continuations;
         std::size_t instance_capacity{};
         std::size_t active_instances{};
         ECppStaticScriptBridgeError error{ECppStaticScriptBridgeError::INVALID_DESCRIPTOR};
@@ -878,6 +1301,22 @@ namespace lux::simulation::script
         return state_ != nullptr;
     }
 
+    CppStaticScriptBackendStats CppStaticScriptBackend::stats() const noexcept
+    {
+        CppStaticScriptBackendStats result;
+        if (!state_)
+            return result;
+        for (const auto& descriptor : state_->descriptor_indexes)
+        {
+            const auto stats = descriptor.coroutine_frames.stats();
+            result.frame_storage_bytes += stats.storage_bytes;
+            result.active_frames += stats.active_frames;
+            result.frame_high_water += stats.frame_high_water;
+            result.frame_capacity_failures += stats.capacity_failures;
+        }
+        return result;
+    }
+
     ScriptBackendDescriptor CppStaticScriptBackend::descriptor() noexcept
     {
         return state_
@@ -887,7 +1326,10 @@ namespace lux::simulation::script
                 &State::createInstance,
                 &State::prepareMethod,
                 &State::releaseMethod,
-                &State::destroyInstance}
+                &State::destroyInstance,
+                &State::prepareStepMethod,
+                &State::releaseStepMethod
+            }
             : ScriptBackendDescriptor{};
     }
 }

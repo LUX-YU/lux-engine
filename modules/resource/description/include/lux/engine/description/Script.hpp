@@ -122,6 +122,7 @@ namespace lux::rdesc
     struct CppStaticScript final
     {
         std::string descriptor;
+        std::vector<lux::script::ScriptSymbolId> suspension_capable_exports;
 
         friend bool operator==(
             const CppStaticScript&,
@@ -132,7 +133,7 @@ namespace lux::rdesc
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 10U;
+        static constexpr std::uint32_t kSchemaVersion = 11U;
 
         enum class Kind : std::uint8_t
         {
@@ -223,7 +224,11 @@ namespace lux::rdesc
                 }
             }
             if (const auto* cpp_static = std::get_if<CppStaticScript>(&description.body);
-                cpp_static != nullptr && cpp_static->descriptor.empty())
+                cpp_static != nullptr && (cpp_static->descriptor.empty() ||
+                    cpp_static->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
+                    !std::ranges::is_sorted(cpp_static->suspension_capable_exports) ||
+                    std::ranges::adjacent_find(cpp_static->suspension_capable_exports) !=
+                        cpp_static->suspension_capable_exports.end()))
             {
                 return false;
             }
@@ -265,6 +270,17 @@ namespace lux::rdesc
             if (const auto* lua = std::get_if<LuaSourceScript>(&description.body))
             {
                 for (const auto symbol : lua->suspension_capable_exports)
+                {
+                    const bool is_missing_export = !symbols.contains(symbol);
+                    const bool is_lifecycle = symbol == description.lifecycle.begin_play ||
+                        symbol == description.lifecycle.end_play;
+                    if (is_missing_export || is_lifecycle)
+                        return false;
+                }
+            }
+            if (const auto* cpp_static = std::get_if<CppStaticScript>(&description.body))
+            {
+                for (const auto symbol : cpp_static->suspension_capable_exports)
                 {
                     const bool is_missing_export = !symbols.contains(symbol);
                     const bool is_lifecycle = symbol == description.lifecycle.begin_play ||

@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cassert>
+#include <cstdio>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -126,7 +127,11 @@ int main()
     auto artifact = flowforge::compileFlowForgeScript(
         graph,
         {.module_name = "lux.physics2d.flowforge-test", .script_abilities = catalog.view()});
-    assert(artifact);
+    if (!artifact)
+    {
+        std::fprintf(stderr, "FlowForge compile failed: %s\n", artifact.error().message.c_str());
+        return 1;
+    }
     assert(artifact->description().api_requirements.size() == 2U);
     auto module = lux::script::loadNativeModule(artifact->payload(), artifact->description().module_name);
     assert(module);

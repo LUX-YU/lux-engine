@@ -69,6 +69,27 @@ int main()
                                                              capabilities.front().methods};
     const auto prepared_api = lux::script::ScriptAbilityCpp<PhysicsQuery2D>::create(prepared_binding);
     assert(prepared_api && prepared_api->overlapsBox(0.0, 0.0, 0.25, 0.25));
+    const auto static_api = lux::script::ScriptAbilityStatic<PhysicsQuery2D, Physics2DSystem>::create(
+        *provider,
+        prepared_binding
+    );
+    assert(static_api && static_api->overlapsBox(0.0, 0.0, 0.25, 0.25));
+    auto mismatched_description = Traits::Description;
+    mismatched_description.schema_hash ^= 1U;
+    const lux::script::ScriptAbilityBinding mismatched_binding{
+        &mismatched_description,
+        prepared_binding.context,
+        prepared_binding.dispatch,
+        prepared_binding.erased_methods
+    };
+    const auto rejected_static_api = lux::script::ScriptAbilityStatic<
+        PhysicsQuery2D,
+        Physics2DSystem
+    >::create(
+        *provider,
+        mismatched_binding
+    );
+    assert(!rejected_static_api);
     assert(!provider->overlapsBox(50.0, 50.0, 0.25, 0.25));
     assert(!provider->overlapsBox(0.0, 0.0, -1.0, 1.0));
 

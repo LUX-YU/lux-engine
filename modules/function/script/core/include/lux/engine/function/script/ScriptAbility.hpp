@@ -434,6 +434,12 @@ namespace lux::script
     template <class Ability>
     class ScriptAbilityCpp;
 
+    template <class Ability, class Context>
+    class ScriptAbilityCoroutine;
+
+    template <class Ability, class Provider>
+    class ScriptAbilityStatic;
+
     template <class Ability, class Provider>
     [[nodiscard]] auto bindScriptAbility(Provider& provider) noexcept
         -> decltype(ScriptAbilityTraits<Ability>::bind(provider))

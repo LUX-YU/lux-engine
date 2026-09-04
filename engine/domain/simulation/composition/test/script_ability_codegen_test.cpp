@@ -371,12 +371,17 @@ int main()
 
     auto api = ScriptAbilityCpp<TestAbility>::create(binding);
     assert(api);
+    auto static_api = lux::script::ScriptAbilityStatic<TestAbility, TestProvider>::create(provider, binding);
+    assert(static_api);
     assert(api->readValue(5) == 12);
+    assert(static_api->readValue(5) == 12);
     api->setValue(41);
     assert(provider.value == 41);
-    assert(provider.calls == 2U);
+    assert(provider.calls == 3U);
     assert(api->identity(0x51U) == 0x51U);
     assert(&api->borrowedValue() == &provider.value);
+    const auto rejected_async = static_api->beginOperation(1U, {});
+    assert(!rejected_async && rejected_async.error().status == 71);
     assert(binding.erased_methods.size() == ScriptAbilityTraits<TestAbility>::Methods.size());
     std::int32_t erased_input{3};
     std::int32_t erased_output{};

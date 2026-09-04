@@ -95,6 +95,45 @@ def main() -> int:
             "invalid Ability schema",
         )
 
+        event_manifest = pathlib.Path(directory) / "event.json"
+        event_document = {
+            "schema": "lux-script-event",
+            "version": 1,
+            "events": [
+                {
+                    "system_name": damage.system_name,
+                    "event_name": damage.event_name,
+                    "system_id": damage.system_id,
+                    "event_id": damage.event_id,
+                    "route": "simulation_broadcast",
+                    "payload": {
+                        "canonical_name": payload.canonical,
+                        "type_id": payload.type_id,
+                        "abi_kind": payload.abi_kind,
+                        "size": payload.size,
+                        "alignment": payload.alignment,
+                    },
+                    "payload_schema_hash": damage.payload_schema_hash,
+                    "payload_schema_version": damage.payload_schema_version,
+                }
+            ],
+        }
+        event_manifest.write_text(json.dumps(event_document), encoding="utf-8")
+        assert package.load_event_schemas([event_manifest])[("Gameplay", "damage")] == damage
+        conflicting_manifest = pathlib.Path(directory) / "event-conflict.json"
+        event_document["events"][0]["event_id"] = damage.event_id + 1
+        conflicting_manifest.write_text(json.dumps(event_document), encoding="utf-8")
+        expect_failure(
+            lambda: package.load_event_schemas([event_manifest, conflicting_manifest]),
+            "conflicting Event schema",
+        )
+        event_document["events"][0]["payload_schema_hash"] = 0
+        conflicting_manifest.write_text(json.dumps(event_document), encoding="utf-8")
+        expect_failure(
+            lambda: package.load_event_schemas([conflicting_manifest]),
+            "invalid Event schema",
+        )
+
     def parse(source: str, symbols: dict[str, int], schemas=abilities, event_schemas=events):
         return package.collect_exports(
             source,

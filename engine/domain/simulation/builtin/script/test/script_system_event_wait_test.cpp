@@ -610,7 +610,13 @@ namespace
                 return;
             }
             if (!prepared)
-                std::fprintf(stderr, "Event waiter harness prepare failed: %u\n", static_cast<unsigned>(prepared.error()));
+            {
+                std::fprintf(
+                    stderr,
+                    "Event waiter harness prepare failed: %u\n",
+                    static_cast<unsigned>(prepared.error())
+                );
+            }
             assert(prepared);
         }
 

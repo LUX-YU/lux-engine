@@ -1,0 +1,10 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "entries": [
+    {
+      "source_identity": "PhysicsConsumer:tick",
+      "symbol": 1345130500
+    }
+  ]
+}

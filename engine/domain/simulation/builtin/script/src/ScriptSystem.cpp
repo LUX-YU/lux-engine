@@ -118,21 +118,18 @@ namespace lux::simulation::script
     {
         struct DelayProvider;
 
+        struct NextStepWaitTag;
+        using NextStepWaitId = lux::cxx::SlotKey<NextStepWaitTag>;
+
         struct NextStepWait final
         {
             std::uint64_t target_step{};
-            std::uint64_t sequence{};
             lux::script::ScriptAbilityCompletion<void> completion;
+            NextStepWaitId previous;
+            NextStepWaitId next;
         };
 
-        struct NextStepLater final
-        {
-            [[nodiscard]] bool operator()(const NextStepWait& left, const NextStepWait& right) const noexcept
-            {
-                return left.target_step > right.target_step ||
-                    (left.target_step == right.target_step && left.sequence > right.sequence);
-            }
-        };
+        using NextStepWaitStorage = lux::cxx::SlotMap<NextStepWait, NextStepWaitTag>;
 
         struct SimulationDelayWait final
         {
@@ -771,8 +768,10 @@ namespace lux::simulation::script
         std::vector<std::uint32_t> lifecycle_initialized;
         std::vector<RetirementRecord> lifecycle_retirements;
         DelayProvider delay_provider{this};
-        std::mutex delay_mutex;
-        std::vector<NextStepWait> next_step_waits;
+        std::mutex simulation_delay_mutex;
+        NextStepWaitStorage next_step_waits;
+        NextStepWaitId next_step_first;
+        NextStepWaitId next_step_last;
         std::vector<SimulationDelayWait> simulation_delays;
         std::uint64_t delay_sequence{};
         std::uint64_t event_wait_sequence{};
@@ -841,38 +840,32 @@ namespace lux::simulation::script
                 });
             }
 
-            std::lock_guard lock{delay_mutex};
-            if (next_step_waits.size() >= limits.next_step_wait_capacity)
-            {
-                std::erase_if(next_step_waits, [](const NextStepWait& wait) noexcept {
-                    return !wait.completion.active();
-                });
-                std::make_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
-            }
             if (next_step_waits.size() >= limits.next_step_wait_capacity)
             {
                 return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
                     static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED)
                 });
             }
-            if (delay_sequence == std::numeric_limits<std::uint64_t>::max())
-            {
-                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
-                    static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
-                });
-            }
-            try
-            {
-                next_step_waits.push_back({current.step_index + 1U, delay_sequence++, std::move(completion)});
-                std::push_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
-                return {};
-            }
-            catch (const std::bad_alloc&)
+
+            const auto inserted = next_step_waits.tryEmplace(NextStepWait{
+                current.step_index + 1U,
+                std::move(completion),
+                next_step_last,
+                {}
+            });
+            if (!inserted)
             {
                 return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
                     static_cast<std::int32_t>(EScriptDelayStatus::ALLOCATION_FAILURE)
                 });
             }
+
+            if (auto* previous = next_step_waits.find(next_step_last))
+                previous->next = *inserted;
+            else
+                next_step_first = *inserted;
+            next_step_last = *inserted;
+            return {};
         }
 
         [[nodiscard]] bool promoteNextStepWaits() noexcept
@@ -880,17 +873,28 @@ namespace lux::simulation::script
             const auto current = clock->snapshot();
             for (;;)
             {
-                std::optional<NextStepWait> ready;
+                auto* ready = next_step_waits.find(next_step_first);
+                if (ready == nullptr)
                 {
-                    std::lock_guard lock{delay_mutex};
-                    if (next_step_waits.empty() || next_step_waits.front().target_step > current.step_index)
-                        return true;
-                    std::pop_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
-                    ready.emplace(std::move(next_step_waits.back()));
-                    next_step_waits.pop_back();
+                    next_step_first = {};
+                    next_step_last = {};
+                    return true;
                 }
+                if (ready->target_step > current.step_index)
+                    return true;
 
-                auto completed = ready->completion.success();
+                const auto completed = ready->completion.success();
+                if (!completed && completed.error() == lux::script::EScriptAbilityCompletionError::BACKPRESSURE)
+                    return true;
+
+                const auto ready_id = next_step_first;
+                next_step_first = ready->next;
+                if (auto* next = next_step_waits.find(next_step_first))
+                    next->previous = {};
+                else
+                    next_step_last = {};
+                static_cast<void>(next_step_waits.erase(ready_id));
+
                 if (completed)
                     continue;
                 switch (completed.error())
@@ -900,12 +904,7 @@ namespace lux::simulation::script
                 case lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED:
                     continue;
                 case lux::script::EScriptAbilityCompletionError::BACKPRESSURE:
-                {
-                    std::lock_guard lock{delay_mutex};
-                    next_step_waits.push_back(std::move(*ready));
-                    std::push_heap(next_step_waits.begin(), next_step_waits.end(), NextStepLater{});
                     return true;
-                }
                 case lux::script::EScriptAbilityCompletionError::INVALID_VALUE:
                 case lux::script::EScriptAbilityCompletionError::ALLOCATION_FAILURE:
                     return false;
@@ -953,7 +952,7 @@ namespace lux::simulation::script
                 });
             }
 
-            std::lock_guard lock{delay_mutex};
+            std::lock_guard lock{simulation_delay_mutex};
             if (simulation_delays.size() >= limits.simulation_delay_capacity)
             {
                 std::erase_if(simulation_delays, [](const SimulationDelayWait& wait) noexcept {
@@ -1033,7 +1032,7 @@ namespace lux::simulation::script
             {
                 std::optional<SimulationDelayWait> ready;
                 {
-                    std::lock_guard lock{delay_mutex};
+                    std::lock_guard lock{simulation_delay_mutex};
                     if (simulation_delays.empty())
                         return true;
                     const auto& next = simulation_delays.front();
@@ -1055,7 +1054,7 @@ namespace lux::simulation::script
                     continue;
                 case lux::script::EScriptAbilityCompletionError::BACKPRESSURE:
                 {
-                    std::lock_guard lock{delay_mutex};
+                    std::lock_guard lock{simulation_delay_mutex};
                     simulation_delays.push_back(std::move(*ready));
                     std::push_heap(simulation_delays.begin(), simulation_delays.end(), SimulationDelayLater{});
                     return true;
@@ -3310,9 +3309,11 @@ namespace lux::simulation::script
             std::lock_guard lock{state_->ingress->mutex};
             state_->ingress->stopping = true;
         }
+        state_->next_step_waits.clear();
+        state_->next_step_first = {};
+        state_->next_step_last = {};
         {
-            std::lock_guard lock{state_->delay_mutex};
-            state_->next_step_waits.clear();
+            std::lock_guard lock{state_->simulation_delay_mutex};
             state_->simulation_delays.clear();
         }
 
@@ -3400,9 +3401,9 @@ namespace lux::simulation::script
             result.resume_queue_depth = state_->ingress->resumes.count;
             result.resume_queue_high_water = state_->ingress->resumes.high_water;
         }
+        result.next_step_waits = state_->next_step_waits.size();
         {
-            std::lock_guard lock{state_->delay_mutex};
-            result.next_step_waits = state_->next_step_waits.size();
+            std::lock_guard lock{state_->simulation_delay_mutex};
             result.simulation_delay_waits = state_->simulation_delays.size();
         }
         return result;

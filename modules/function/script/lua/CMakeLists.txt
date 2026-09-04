@@ -99,6 +99,23 @@ target_link_libraries(
     PRIVATE
         lux::engine::function::script_lua_vm
 )
+get_target_property(_lux_lua_vm_runtime lux::engine::function::script_lua_vm LUX_LUA_VM_RUNTIME_FILE)
+if(_lux_lua_vm_runtime)
+    add_custom_command(
+        TARGET script_lua
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_lux_lua_vm_runtime}"
+            "$<TARGET_FILE_DIR:script_lua>"
+        VERBATIM
+    )
+    install(
+        FILES "${_lux_lua_vm_runtime}"
+        DESTINATION bin
+        COMPONENT lux_sdk
+    )
+endif()
+unset(_lux_lua_vm_runtime)
 
 component_add_transitive_commands(
     script_lua

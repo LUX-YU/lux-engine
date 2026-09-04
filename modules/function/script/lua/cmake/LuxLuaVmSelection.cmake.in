@@ -27,7 +27,25 @@ elseif(_lux_lua_vm_kind STREQUAL "LUA54")
             "LUX_LUA_VM=LUA54 requires Lua 5.4.x; found '${LUA_VERSION_STRING}'"
         )
     endif()
-    if(NOT TARGET Lua::Lua)
+    if(WIN32)
+        get_filename_component(_lux_lua_library_dir "${LUA_LIBRARY}" DIRECTORY)
+        get_filename_component(_lux_lua_prefix "${_lux_lua_library_dir}" DIRECTORY)
+        set(_lux_lua_runtime "${_lux_lua_prefix}/bin/lua.dll")
+        if(NOT EXISTS "${_lux_lua_runtime}")
+            message(FATAL_ERROR
+                "LUX_LUA_VM=LUA54 requires the runtime beside the selected import library: ${_lux_lua_runtime}"
+            )
+        endif()
+        add_library(lux_lua54_runtime SHARED IMPORTED GLOBAL)
+        set_target_properties(
+            lux_lua54_runtime
+            PROPERTIES
+                IMPORTED_IMPLIB "${LUA_LIBRARY}"
+                IMPORTED_LOCATION "${_lux_lua_runtime}"
+                INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
+        )
+        set(_lux_lua_provider lux_lua54_runtime)
+    elseif(NOT TARGET Lua::Lua)
         add_library(Lua::Lua INTERFACE IMPORTED GLOBAL)
         set_target_properties(
             Lua::Lua
@@ -35,8 +53,10 @@ elseif(_lux_lua_vm_kind STREQUAL "LUA54")
                 INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
                 INTERFACE_LINK_LIBRARIES "${LUA_LIBRARIES}"
         )
+        set(_lux_lua_provider Lua::Lua)
+    else()
+        set(_lux_lua_provider Lua::Lua)
     endif()
-    set(_lux_lua_provider Lua::Lua)
 else()
     message(FATAL_ERROR "Unsupported installed Lux Lua VM '${_lux_lua_vm_kind}'")
 endif()
@@ -47,8 +67,12 @@ set_target_properties(
     PROPERTIES
         INTERFACE_LINK_LIBRARIES "${_lux_lua_provider}"
         LUX_LUA_VM_KIND "${_lux_lua_vm_kind}"
+        LUX_LUA_VM_RUNTIME_FILE "${_lux_lua_runtime}"
 )
 
+unset(_lux_lua_library_dir)
+unset(_lux_lua_prefix)
+unset(_lux_lua_runtime)
 unset(_lux_lua_provider)
 unset(_lux_lua_vm_kind)
 unset(_lux_lua_vm_target)

@@ -77,6 +77,7 @@ namespace lux::simulation::script::detail
                     result.free_metadata_.push_back(static_cast<std::uint32_t>(index - 1U));
                 result.blocks_[0] = Block{0U, storage_bytes, invalidSlot(), invalidSlot(), 1U, true, true};
                 result.head_ = 0U;
+                result.free_head_ = 0U;
                 return result;
             }
             catch (const std::bad_alloc&)
@@ -100,6 +101,7 @@ namespace lux::simulation::script::detail
               blocks_(std::move(other.blocks_)),
               free_metadata_(std::move(other.free_metadata_)),
               head_(std::exchange(other.head_, invalidSlot())),
+              free_head_(std::exchange(other.free_head_, invalidSlot())),
               active_frames_(std::exchange(other.active_frames_, 0U)),
               frame_high_water_(std::exchange(other.frame_high_water_, 0U)),
               capacity_failures_(std::exchange(other.capacity_failures_, 0U))
@@ -118,6 +120,7 @@ namespace lux::simulation::script::detail
             blocks_ = std::move(other.blocks_);
             free_metadata_ = std::move(other.free_metadata_);
             head_ = std::exchange(other.head_, invalidSlot());
+            free_head_ = std::exchange(other.free_head_, invalidSlot());
             active_frames_ = std::exchange(other.active_frames_, 0U);
             frame_high_water_ = std::exchange(other.frame_high_water_, 0U);
             capacity_failures_ = std::exchange(other.capacity_failures_, 0U);
@@ -139,22 +142,17 @@ namespace lux::simulation::script::detail
             if (arena_ == nullptr || size == 0U || is_invalid_alignment || active_frames_ >= frame_capacity_)
                 return fail(EBoundedFrameStorageError::CAPACITY_EXCEEDED);
 
-            auto current = head_;
+            auto current = free_head_;
             while (current != invalidSlot())
             {
                 auto& block = blocks_[current];
-                if (!block.used || !block.free)
-                {
-                    current = block.next;
-                    continue;
-                }
                 const auto aligned = alignUp(block.offset, alignment);
                 const bool offset_overflow = aligned < block.offset;
                 const bool size_overflow = !offset_overflow && size > storage_bytes_ - aligned;
                 const bool fits = !size_overflow && aligned + size <= block.offset + block.size;
                 if (!fits)
                 {
-                    current = block.next;
+                    current = block.free_next;
                     continue;
                 }
 
@@ -167,11 +165,13 @@ namespace lux::simulation::script::detail
 
                 const auto previous = block.previous;
                 const auto next = block.next;
+                unlinkFree(current);
                 if (prefix != 0U)
                 {
                     const auto prefix_slot = takeMetadata();
                     blocks_[prefix_slot] = Block{block.offset, prefix, previous, current, nextGeneration(prefix_slot),
                                                  true, true};
+                    linkFree(prefix_slot);
                     if (previous != invalidSlot())
                         blocks_[previous].next = prefix_slot;
                     else
@@ -183,6 +183,7 @@ namespace lux::simulation::script::detail
                     const auto suffix_slot = takeMetadata();
                     blocks_[suffix_slot] = Block{aligned + size, suffix, current, next, nextGeneration(suffix_slot),
                                                  true, true};
+                    linkFree(suffix_slot);
                     if (next != invalidSlot())
                         blocks_[next].previous = suffix_slot;
                     block.next = suffix_slot;
@@ -221,6 +222,7 @@ namespace lux::simulation::script::detail
                 return false;
             }
             block.free = true;
+            linkFree(allocation.slot);
             --active_frames_;
             auto slot = allocation.slot;
             if (block.previous != invalidSlot() && blocks_[block.previous].free)
@@ -245,6 +247,8 @@ namespace lux::simulation::script::detail
             std::uint32_t generation{};
             bool free{};
             bool used{};
+            std::uint32_t free_previous{invalidSlot()};
+            std::uint32_t free_next{invalidSlot()};
         };
 
         [[nodiscard]] static constexpr std::uint32_t invalidSlot() noexcept
@@ -273,6 +277,29 @@ namespace lux::simulation::script::detail
             return result;
         }
 
+        void linkFree(std::uint32_t slot) noexcept
+        {
+            auto& block = blocks_[slot];
+            block.free_previous = invalidSlot();
+            block.free_next = free_head_;
+            if (free_head_ != invalidSlot())
+                blocks_[free_head_].free_previous = slot;
+            free_head_ = slot;
+        }
+
+        void unlinkFree(std::uint32_t slot) noexcept
+        {
+            auto& block = blocks_[slot];
+            if (block.free_previous != invalidSlot())
+                blocks_[block.free_previous].free_next = block.free_next;
+            else
+                free_head_ = block.free_next;
+            if (block.free_next != invalidSlot())
+                blocks_[block.free_next].free_previous = block.free_previous;
+            block.free_previous = invalidSlot();
+            block.free_next = invalidSlot();
+        }
+
         void returnMetadata(std::uint32_t slot) noexcept
         {
             const auto generation = blocks_[slot].generation;
@@ -285,11 +312,14 @@ namespace lux::simulation::script::detail
         {
             auto& left_block = blocks_[left];
             auto& right_block = blocks_[right];
+            unlinkFree(left);
+            unlinkFree(right);
             left_block.size += right_block.size;
             left_block.next = right_block.next;
             if (right_block.next != invalidSlot())
                 blocks_[right_block.next].previous = left;
             returnMetadata(right);
+            linkFree(left);
             return left;
         }
 
@@ -308,6 +338,8 @@ namespace lux::simulation::script::detail
             arena_ = nullptr;
             storage_bytes_ = 0U;
             active_frames_ = 0U;
+            head_ = invalidSlot();
+            free_head_ = invalidSlot();
         }
 
         void* arena_{};
@@ -317,6 +349,7 @@ namespace lux::simulation::script::detail
         std::vector<Block> blocks_;
         std::vector<std::uint32_t> free_metadata_;
         std::uint32_t head_{invalidSlot()};
+        std::uint32_t free_head_{invalidSlot()};
         std::size_t active_frames_{};
         std::size_t frame_high_water_{};
         std::size_t capacity_failures_{};

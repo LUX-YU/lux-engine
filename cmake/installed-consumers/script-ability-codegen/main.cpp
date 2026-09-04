@@ -38,7 +38,9 @@ namespace
             return completed
                 ? lux::script::ScriptAbilityStartResult{}
                 : lux::script::ScriptAbilityStartResult{
-                    lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{91})
+                    lux::cxx::unexpected<lux::script::ScriptAbilityOperationError>(
+                        lux::script::ScriptAbilityOperationError{91}
+                    )
                 };
         }
     };
@@ -65,7 +67,9 @@ namespace
     ) noexcept
     {
         if (type != lux::semantic::typeId("lux.i32") || value == nullptr || size != sizeof(std::int32_t))
-            return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+            return lux::cxx::unexpected<lux::script::EScriptAbilityCompletionError>(
+                lux::script::EScriptAbilityCompletionError::INVALID_VALUE
+            );
         static_cast<CompletionState*>(state)->value = *static_cast<const std::int32_t*>(value);
         return {};
     }
@@ -103,6 +107,10 @@ int main()
     api->setCount(17U, 4);
     assert(api->count(17U) == 4);
     assert(provider.last_item == 17U);
+    auto static_api = lux::script::ScriptAbilityStatic<Ability, InventoryProvider>::create(provider, binding);
+    assert(static_api);
+    static_api->setCount(19U, 6);
+    assert(static_api->count(19U) == 6);
 
     auto starter = lux::script::ScriptAbilityStarter<Ability>::create(binding);
     assert(starter);

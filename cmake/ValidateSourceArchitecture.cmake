@@ -2220,6 +2220,13 @@ if(EXISTS "${source_root}/extensions")
         "Architecture: repository-level extensions/ must not exist; place optional builtins under their owner."
     )
 endif()
+foreach(script_consumer IN ITEMS cpp-coroutine-script script-static-ability-specialization)
+    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${script_consumer}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "Architecture: missing installed Script consumer '${script_consumer}'."
+        )
+    endif()
+endforeach()
 set(physics2d_source_package "${source_root}/engine/domain/simulation/builtin/physics2d")
 foreach(required IN ITEMS
     "${physics2d_source_package}/include/lux/engine/physics2d/Physics2DSystem.hpp"

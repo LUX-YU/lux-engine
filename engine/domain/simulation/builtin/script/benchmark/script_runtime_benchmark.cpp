@@ -193,7 +193,8 @@ namespace
             std::string_view{"micro-event-wait"},
             std::string_view{"scene-event-idle"},
             std::string_view{"scene-event-fanout"},
-            std::string_view{"scene-event-sparse"}
+            std::string_view{"scene-event-sparse"},
+            std::string_view{"micro-cpp-coroutine"}
 #if LUX_BENCHMARK_HAS_LUA
             , std::string_view{"micro-lua-sync"}
             , std::string_view{"micro-lua-ability-query"}
@@ -1705,6 +1706,200 @@ namespace
     }
 #endif
 
+    inline std::uint64_t g_cpp_coroutine_checksum{};
+
+    struct CppCoroutineBenchmarkObject final
+    {
+        ScriptCoroutine run(ScriptCoroutineContext& context) noexcept
+        {
+            co_await context.makeAwaiter<void>(
+                [](ScriptCoroutineContext&, ScriptStepContext& step) noexcept
+                {
+                    const auto waiting = step.awaitables.create();
+                    return waiting
+                        ? ScriptStepResult::suspended(waiting->id)
+                        : ScriptStepResult::failed(-1);
+                }
+            );
+            ++g_cpp_coroutine_checksum;
+        }
+    };
+
+    struct CppCoroutineBenchmarkHarness final
+    {
+        explicit CppCoroutineBenchmarkHarness(std::size_t capacity)
+        {
+            reflected.name = "CppCoroutineBenchmarkObject";
+            reflected.full_name = "lux.benchmark.CppCoroutineBenchmarkObject";
+            reflected.type = lux::meta::ref_type_of_v<CppCoroutineBenchmarkObject>;
+            reflected.construct = [](void* memory)
+            {
+                std::construct_at(static_cast<CppCoroutineBenchmarkObject*>(memory));
+            };
+            reflected.destruct = [](void* object)
+            {
+                std::destroy_at(static_cast<CppCoroutineBenchmarkObject*>(object));
+            };
+            method.owner_class = std::addressof(reflected);
+            method.visibility = lux::meta::EVisibility::Public;
+            method.is_noexcept = true;
+            method.invokable.name = "run";
+            method.invokable.full_name = "lux.benchmark.CppCoroutineBenchmarkObject::run";
+            method.invokable.return_type = lux::meta::ref_type_of_v<ScriptCoroutine>;
+            method.invokable.parameters.push_back({
+                "context",
+                lux::meta::ref_type_of_v<ScriptCoroutineContext&>,
+                "lux::simulation::script::ScriptCoroutineContext",
+                lux::cxx::type_hash<ScriptCoroutineContext>(),
+                false
+            });
+            const auto coroutine = makeCppStaticCoroutineExport<
+                &CppCoroutineBenchmarkObject::run
+            >(method, lux::script::ScriptSymbolId{0xC601U});
+            const std::array coroutines{coroutine};
+            const std::array<const lux::meta::RefMethod*, 0U> methods{};
+            const std::array<lux::script::ScriptSymbolId, 0U> symbols{};
+            auto projected = projectCppStaticEntityScript(
+                "lux.benchmark.cpp-coroutine",
+                "cpp-coroutine-benchmark-v1",
+                reflected,
+                methods,
+                symbols,
+                {},
+                nullptr,
+                {},
+                coroutines
+            );
+            if (!projected)
+                throw std::runtime_error("C++ coroutine benchmark projection failed");
+            descriptor.emplace(std::move(*projected));
+            auto created_artifact = lux::script::ScriptArtifact::create(descriptor->description(), {});
+            if (!created_artifact)
+                throw std::runtime_error("C++ coroutine benchmark artifact failed");
+            artifact.emplace(std::move(*created_artifact));
+            const auto storage_bytes = (std::max)(std::size_t{1024U}, capacity * 512U);
+            const std::array pools{CppStaticScriptPoolDescription{
+                std::addressof(*descriptor),
+                1U,
+                capacity,
+                storage_bytes,
+                alignof(std::max_align_t)
+            }};
+            auto created_backend = CppStaticScriptBackend::create(pools);
+            if (!created_backend)
+                throw std::runtime_error("C++ coroutine benchmark backend failed");
+            backend.emplace(std::move(*created_backend));
+            runtime = backend->descriptor();
+            if (runtime.createInstance(
+                    runtime.context,
+                    {{}, EntityScriptScope{ecs::Entity{1U}}, &behavior, {1U, 1U}},
+                    *artifact,
+                    instance
+                ) != EScriptBackendResult::SUCCESS ||
+                runtime.prepareStepMethod(
+                    runtime.context,
+                    instance,
+                    artifact->description().exports.front(),
+                    call
+                ) != EScriptBackendResult::SUCCESS)
+            {
+                throw std::runtime_error("C++ coroutine benchmark preparation failed");
+            }
+        }
+
+        ~CppCoroutineBenchmarkHarness()
+        {
+            runtime.releaseStepMethod(runtime.context, instance, call);
+            runtime.destroyInstance(runtime.context, instance);
+        }
+
+        static lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> createAwaitable(
+            void* opaque,
+            ScriptInstanceId,
+            std::optional<lux::rdesc::ScriptValueType>
+        ) noexcept
+        {
+            auto& self = *static_cast<CppCoroutineBenchmarkHarness*>(opaque);
+            return ScriptAwaitableRegistration{{self.next_awaitable++, 1U}, {}};
+        }
+
+        static void discardAwaitable(void*, ScriptInstanceId, ScriptAwaitableId) noexcept
+        {
+        }
+
+        lux::meta::RefClass reflected;
+        lux::meta::RefMethod method;
+        std::optional<CppStaticScriptDescriptor> descriptor;
+        std::optional<lux::script::ScriptArtifact> artifact;
+        std::optional<CppStaticScriptBackend> backend;
+        ScriptBackendDescriptor runtime;
+        ScriptBehavior behavior;
+        ScriptBackendInstance instance;
+        BoundScriptStepCall call;
+        std::uint32_t next_awaitable{1U};
+    };
+
+    void runCppCoroutineMicro(const Options& options, std::vector<Row>& rows)
+    {
+        CppCoroutineBenchmarkHarness harness{options.size};
+        std::vector<ScriptBackendContinuation> continuations(options.size);
+        std::vector<ScriptAwaitableId> awaitables(options.size);
+        lux_script_call_frame frame{};
+        ScriptStepContext step{
+            {1U, 1U},
+            std::addressof(harness),
+            &CppCoroutineBenchmarkHarness::createAwaitable,
+            &CppCoroutineBenchmarkHarness::discardAwaitable
+        };
+        rows.push_back(measureRow("micro-cpp-coroutine-start", "cpp-static", options.size, 0U, [&] {
+            for (std::size_t index{}; index < options.size; ++index)
+            {
+                const auto result = harness.call.invoke(
+                    harness.call.context,
+                    frame,
+                    step,
+                    continuations[index]
+                );
+                if (result.state != EScriptStepState::SUSPENDED || !continuations[index])
+                    throw std::runtime_error("C++ coroutine benchmark start failed");
+                awaitables[index] = result.waiting_on;
+            }
+            const auto stats = harness.backend->stats();
+            return Row{
+                .suspensions = options.size,
+                .continuations = stats.active_frames,
+                .payload_bytes = stats.frame_storage_bytes,
+                .queue_high_water = stats.frame_high_water,
+                .checksum = g_cpp_coroutine_checksum
+            };
+        }));
+        rows.push_back(measureRow("micro-cpp-coroutine-resume", "cpp-static", options.size, 0U, [&] {
+            for (std::size_t index{}; index < options.size; ++index)
+            {
+                const ScriptResumePacket packet{
+                    awaitables[index],
+                    EScriptAwaitableState::READY,
+                    nullptr,
+                    {}
+                };
+                const auto result = continuations[index].resume(continuations[index].state, step, packet);
+                if (result.state != EScriptStepState::COMPLETED)
+                    throw std::runtime_error("C++ coroutine benchmark resume failed");
+                continuations[index].destroy(continuations[index].state);
+            }
+            const auto stats = harness.backend->stats();
+            return Row{
+                .resumes = options.size,
+                .continuations = stats.active_frames,
+                .payload_bytes = stats.frame_storage_bytes,
+                .queue_high_water = stats.frame_high_water,
+                .checksum = g_cpp_coroutine_checksum
+            };
+        }));
+        if (g_cpp_coroutine_checksum < options.size || harness.backend->stats().heap_frame_allocations != 0U)
+            throw std::runtime_error("C++ coroutine benchmark observation mismatch");
+    }
+
     void runMicroSync(const Options& options, std::vector<Row>& rows)
     {
         ValueProvider provider;
@@ -2496,6 +2691,8 @@ int main(int argc, char** argv)
             runEventFanout(*options, rows);
         else if (options->group == "scene-event-sparse")
             runEventSparse(*options, rows);
+        else if (options->group == "micro-cpp-coroutine")
+            runCppCoroutineMicro(*options, rows);
 #if LUX_BENCHMARK_HAS_LUA
         else if (options->group == "micro-lua-sync")
             runLuaSync(*options, rows, kLuaPlain, options->group);

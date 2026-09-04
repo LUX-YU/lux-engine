@@ -229,7 +229,7 @@ int main()
         *scripts,
         registry,
         clock,
-        {8U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U},
+        {8U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U, 2U},
         {std::addressof(source), &ArtifactSource::resolve},
         {},
         {},

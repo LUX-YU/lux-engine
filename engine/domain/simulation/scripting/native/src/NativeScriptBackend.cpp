@@ -547,13 +547,13 @@ namespace lux::simulation::script
             }
             if (packet.state == EScriptAwaitableState::READY && continuation.waiting_event_payload != nullptr)
             {
-                const auto* actual = packet.value != nullptr && packet.value->type
-                    ? std::addressof(*packet.value->type)
+                const auto* actual = packet.value != nullptr && packet.value->type.valid()
+                    ? std::addressof(packet.value->type)
                     : nullptr;
                 const auto& expected = *continuation.waiting_event_payload;
                 const bool is_mismatch = actual == nullptr || actual->type_id != expected.type_id ||
-                    actual->canonical_name != expected.name || actual->abi_kind != expected.kind ||
-                    actual->size != expected.size || actual->alignment != expected.align ||
+                    actual->abi_kind != expected.kind || actual->size != expected.size ||
+                    actual->alignment != expected.align ||
                     packet.value->bytes.size() != expected.size;
                 if (is_mismatch)
                     return ScriptStepResult::failed(-1);
@@ -568,14 +568,14 @@ namespace lux::simulation::script
             case EScriptAwaitableState::PENDING: native_packet.state = LUX_SCRIPT_RESUME_CANCELLED; break;
             }
             native_packet.status = packet.error.status;
-            if (packet.value != nullptr && packet.value->type && !packet.value->bytes.empty())
+            if (packet.value != nullptr && packet.value->type.valid() && !packet.value->bytes.empty())
             {
                 native_packet.has_value = 1U;
                 native_packet.value = {
-                    packet.value->type->abi_kind,
+                    packet.value->type.abi_kind,
                     {},
                     static_cast<std::uint32_t>(packet.value->bytes.size()),
-                    packet.value->type->type_id,
+                    packet.value->type.type_id,
                     const_cast<std::byte*>(packet.value->bytes.data())
                 };
             }

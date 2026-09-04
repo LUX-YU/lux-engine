@@ -227,8 +227,8 @@ namespace
         auto& continuation = *static_cast<Continuation*>(opaque);
         auto& state = *continuation.owner;
         assert(packet.state == EScriptAwaitableState::READY);
-        assert(packet.value != nullptr && packet.value->type.has_value());
-        assert(packet.value->type->type_id == lux::semantic::typeId("lux.i32"));
+        assert(packet.value != nullptr && packet.value->type.valid());
+        assert(packet.value->type.type_id == lux::semantic::typeId("lux.i32"));
         assert(packet.value->bytes.size() == sizeof(std::int32_t));
         std::int32_t value{};
         std::memcpy(std::addressof(value), packet.value->bytes.data(), sizeof(value));
@@ -363,7 +363,7 @@ namespace
         ERequirementMutation requirement_mutation{ERequirementMutation::NONE};
         std::optional<EScriptSystemError> expected_prepare_error;
         std::size_t occurrence_capacity{8U};
-        ScriptRuntimeLimits limits{32U, 1U, 16U, 16U, 16U, 16U, 64U, 16U, 16U, 16U, 16U};
+        ScriptRuntimeLimits limits{32U, 1U, 16U, 16U, 16U, 16U, 64U, 16U, 16U, 16U, 16U, 16U};
     };
 
     struct Harness final
@@ -578,6 +578,17 @@ namespace
                 {},
                 endpoints
             );
+            if (!created)
+            {
+                std::fprintf(
+                    stderr,
+                    "Event waiter harness create failed: %u; limits=%zu/%zu/%zu\n",
+                    static_cast<unsigned>(created.error()),
+                    options.limits.awaitable_capacity,
+                    options.limits.event_wait_capacity,
+                    options.limits.external_completion_capacity
+                );
+            }
             assert(created);
             system = std::make_unique<ScriptSystem>(std::move(*created));
             const auto prepared = system->prepare();
@@ -845,7 +856,7 @@ namespace
     {
         HarnessOptions options;
         options.occurrence_capacity = 2U;
-        options.limits = {8U, 1U, 2U, 2U, 2U, 1U, 64U, 1U, 2U, 2U, 1U};
+        options.limits = {8U, 1U, 2U, 2U, 2U, 1U, 64U, 1U, 2U, 2U, 1U, 2U};
         Harness harness{options};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
@@ -864,7 +875,7 @@ namespace
     {
         HarnessOptions options;
         options.occurrence_capacity = 2U;
-        options.limits = {8U, 1U, 2U, 2U, 1U, 1U, 64U, 1U, 2U, 2U, 2U};
+        options.limits = {8U, 1U, 2U, 2U, 1U, 1U, 64U, 1U, 2U, 2U, 2U, 2U};
         Harness harness{options};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
@@ -881,7 +892,7 @@ namespace
     {
         HarnessOptions options;
         options.occurrence_capacity = 2U;
-        options.limits = {8U, 1U, 2U, 2U, 2U, 1U, 64U, 1U, 2U, 2U, 2U};
+        options.limits = {8U, 1U, 2U, 2U, 2U, 1U, 64U, 1U, 2U, 2U, 2U, 2U};
         Harness harness{options};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
@@ -899,7 +910,7 @@ namespace
     {
         HarnessOptions options;
         options.occurrence_capacity = 3U;
-        options.limits = {8U, 1U, 3U, 3U, 3U, 3U, 64U, 1U, 3U, 3U, 3U};
+        options.limits = {8U, 1U, 3U, 3U, 3U, 3U, 64U, 1U, 3U, 3U, 3U, 3U};
         Harness harness{options};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
@@ -927,7 +938,7 @@ namespace
         }
         {
             HarnessOptions options;
-            options.limits = {8U, 1U, 2U, 2U, 2U, 2U, 1U, 2U, 2U, 2U, 2U};
+            options.limits = {8U, 1U, 2U, 2U, 2U, 2U, 1U, 2U, 2U, 2U, 2U, 2U};
             options.expected_prepare_error = EScriptSystemError::CAPACITY_EXCEEDED;
             Harness harness{options};
         }
@@ -1003,7 +1014,7 @@ namespace
     {
         HarnessOptions options;
         options.occurrence_capacity = count;
-        options.limits = {16U, 1U, count, count, count, 1U, 64U, 1U, count, count, count};
+        options.limits = {16U, 1U, count, count, count, 1U, 64U, 1U, count, count, count, count};
         Harness harness{options};
         for (std::size_t index{}; index < count; ++index)
             harness.recordBroadcastStart(static_cast<std::int32_t>(index));
@@ -1037,6 +1048,7 @@ namespace
             1U,
             64U,
             1U,
+            100'000U,
             100'000U,
             100'000U,
             100'000U

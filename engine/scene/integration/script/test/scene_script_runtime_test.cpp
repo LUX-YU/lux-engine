@@ -489,7 +489,7 @@ int main()
     Fixture fixture;
     const std::array backends{fixture.backend};
     ScriptRuntimeHost host{
-        ScriptRuntimeLimits{8U, 2U, 4U, 2U, 4U, 4U, 64U, 1U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 2U, 4U, 2U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         codec_limits,
         4U,
         {&fixture, &Fixture::resolveArtifact},

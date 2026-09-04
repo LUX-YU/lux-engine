@@ -392,7 +392,7 @@ int main(int argc, char** argv)
 
     const std::array backends{fixture.descriptor};
     ScriptRuntimeHost host{
-        {16U, 4U, 16U, 8U, 16U, 16U, 64U, 8U, 16U, 16U, 16U},
+        {16U, 4U, 16U, 8U, 16U, 16U, 64U, 8U, 16U, 16U, 16U, 16U},
         codec_limits,
         2U,
         {&fixture, &Fixture::resolve},

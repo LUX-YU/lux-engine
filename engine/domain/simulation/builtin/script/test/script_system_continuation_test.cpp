@@ -309,8 +309,8 @@ namespace
             assert(packet.state == EScriptAwaitableState::READY);
             if (owner.enable_ability_async)
             {
-                assert(packet.value != nullptr && packet.value->type.has_value());
-                assert(packet.value->type->type_id == lux::semantic::typeId("lux.u64"));
+                assert(packet.value != nullptr && packet.value->type.valid());
+                assert(packet.value->type.type_id == lux::semantic::typeId("lux.u64"));
                 assert(packet.value->bytes.size() == sizeof(std::uint64_t));
                 std::memcpy(
                     std::addressof(owner.ability_result),
@@ -320,8 +320,8 @@ namespace
             }
             else if (owner.typed_result)
             {
-                assert(packet.value != nullptr && packet.value->type.has_value());
-                assert(packet.value->type->type_id == lux::semantic::typeId("lux.i32"));
+                assert(packet.value != nullptr && packet.value->type.valid());
+                assert(packet.value->type.type_id == lux::semantic::typeId("lux.i32"));
                 assert(packet.value->bytes.size() == sizeof(std::int32_t));
                 owner.saw_typed_result = true;
             }
@@ -521,11 +521,13 @@ namespace
                                              std::size_t awaitables = 8U,
                                              std::size_t resumes = 8U,
                                              std::size_t budget = 8U,
-                                             std::size_t continuations_per_instance = 0U) noexcept
+                                             std::size_t continuations_per_instance = 0U,
+                                             std::size_t external_completions = 0U) noexcept
     {
         const std::size_t per_instance = continuations_per_instance == 0U
             ? continuations
             : continuations_per_instance;
+        const std::size_t external_capacity = external_completions == 0U ? awaitables : external_completions;
         return {
             16U,
             instances,
@@ -537,7 +539,8 @@ namespace
             budget,
             awaitables,
             awaitables,
-            awaitables
+            awaitables,
+            external_capacity
         };
     }
 
@@ -813,6 +816,31 @@ namespace
             assert(!completed && completed.error() == lux::script::EScriptAbilityCompletionError::STOPPING);
             assert(late.backend_state.resume_calls == 0U);
         }
+
+        {
+            Harness concurrent{false, 2U, false, true};
+            concurrent.backend_state.enable_step = true;
+            auto created = concurrent.create(limits(2U, 2U, 2U, 2U, 2U), {});
+            assert(created);
+            auto system = std::move(*created);
+            assert(system.prepare());
+            assert(concurrent.hook.dispatch() == 1U);
+            assert(concurrent.hook_third.dispatch() == 1U);
+            assert(concurrent.backend_state.completions.size() == 2U);
+            std::array<std::optional<lux::cxx::expected<void, EScriptAwaitableCompletionError>>, 2U> results;
+            std::array<std::thread, 2U> producers{
+                std::thread{[&]() noexcept { results[0] = concurrent.backend_state.completions[0].ready(); }},
+                std::thread{[&]() noexcept { results[1] = concurrent.backend_state.completions[1].ready(); }}
+            };
+            for (auto& producer : producers)
+                producer.join();
+            assert(results[0].has_value() && *results[0]);
+            assert(results[1].has_value() && *results[1]);
+            assert(system.stats().external_completion_queue_depth == 2U);
+            assert(system.executeStablePoint());
+            assert(concurrent.backend_state.resume_calls == 2U);
+            assert(system.shutdown());
+        }
         assert(constructions == destructions);
     }
 
@@ -838,6 +866,18 @@ namespace
         assert(
             !invalid_simulation_delay_created &&
             invalid_simulation_delay_created.error() == EScriptSystemError::INVALID_INPUT
+        );
+
+        Harness invalid_external_completion{false};
+        auto invalid_external_completion_limits = limits();
+        invalid_external_completion_limits.external_completion_capacity = 0U;
+        const auto invalid_external_completion_created = invalid_external_completion.create(
+            invalid_external_completion_limits,
+            {}
+        );
+        assert(
+            !invalid_external_completion_created &&
+            invalid_external_completion_created.error() == EScriptSystemError::INVALID_INPUT
         );
 
         Harness per_instance{false, 2U, false, true};
@@ -909,7 +949,7 @@ namespace
 
         Harness queue_limited{false, 2U};
         queue_limited.backend_state.enable_step = true;
-        auto queue_created = queue_limited.create(limits(2U, 2U, 2U, 1U, 2U), {});
+        auto queue_created = queue_limited.create(limits(2U, 2U, 2U, 2U, 2U, 0U, 1U), {});
         assert(queue_created);
         auto queue_system = std::move(*queue_created);
         assert(queue_system.prepare());

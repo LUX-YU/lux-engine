@@ -176,7 +176,7 @@ int main()
                                        *script_description,
                                        registry,
                                        simulation->clock(),
-                                       {8U, 1U, 1U, 1U, 1U, 1U, 64U, 1U, 1U, 1U, 1U},
+                                       {8U, 1U, 1U, 1U, 1U, 1U, 64U, 1U, 1U, 1U, 1U, 1U},
                                        {std::addressof(source), &Source::resolveArtifact},
                                        {},
                                        capabilities,

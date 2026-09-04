@@ -313,9 +313,9 @@ namespace lux::simulation::script
                     return false;
                 }
                 const bool expects_value = expected_type != lux::semantic::InvalidTypeId;
-                const bool has_value = packet.value != nullptr && packet.value->type.has_value();
+                const bool has_value = packet.value != nullptr && packet.value->type.valid();
                 const bool is_value_mismatch = expects_value != has_value ||
-                    (expects_value && (packet.value->type->type_id != expected_type ||
+                    (expects_value && (packet.value->type.type_id != expected_type ||
                         packet.value->bytes.size() != expected_size));
                 if (is_value_mismatch)
                 {

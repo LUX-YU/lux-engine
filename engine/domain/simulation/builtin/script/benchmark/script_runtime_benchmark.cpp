@@ -246,6 +246,9 @@ namespace
         std::size_t payload_bytes{};
         std::size_t queue_depth{};
         std::size_t queue_high_water{};
+        std::size_t external_queue_depth{};
+        std::size_t external_queue_high_water{};
+        std::size_t external_queue_capacity_failures{};
         std::size_t lifecycle_begins{};
         std::size_t lifecycle_ends{};
         std::uint64_t checksum{};
@@ -269,10 +272,11 @@ namespace
                   "size,seed,sample,nanoseconds,"
                   "allocations,active_instances,calls,ability_calls,events,suspensions,resumes,continuations,"
                   "awaitables,event_waiters,event_dispatch_visits,payload_bytes,queue_depth,queue_high_water,"
+                  "external_queue_depth,external_queue_high_water,external_queue_capacity_failures,"
                   "lifecycle_begins,lifecycle_ends,checksum\n";
         for (const auto& row : rows)
         {
-            output << "3," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
+            output << "4," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
                    << LUX_BENCHMARK_COMPILER << ",windows," << std::thread::hardware_concurrency() << ','
 #if LUX_BENCHMARK_HAS_LUA
                    << g_lua_runtime_info.vm << ',' << g_lua_runtime_info.version << ','
@@ -288,8 +292,9 @@ namespace
                    << ','
                    << row.continuations << ',' << row.awaitables << ',' << row.event_waiters << ','
                    << row.event_dispatch_visits << ',' << row.payload_bytes << ',' << row.queue_depth << ','
-                   << row.queue_high_water << ',' << row.lifecycle_begins << ',' << row.lifecycle_ends << ','
-                   << row.checksum << '\n';
+                   << row.queue_high_water << ',' << row.external_queue_depth << ','
+                   << row.external_queue_high_water << ',' << row.external_queue_capacity_failures << ','
+                   << row.lifecycle_begins << ',' << row.lifecycle_ends << ',' << row.checksum << '\n';
         }
         output.close();
         std::error_code error;
@@ -585,8 +590,8 @@ namespace
         auto& object = *continuation.object;
         ++object.owner->resumes;
         ++object.value;
-        if (packet.value != nullptr && packet.value->type &&
-            packet.value->type->type_id == lux::semantic::typeId("lux.i32") &&
+        if (packet.value != nullptr && packet.value->type.valid() &&
+            packet.value->type.type_id == lux::semantic::typeId("lux.i32") &&
             packet.value->bytes.size() == sizeof(std::int32_t))
         {
             std::int32_t payload{};
@@ -869,6 +874,7 @@ namespace
                     bounded_count,
                     64U,
                     (std::max)(resume_budget, std::size_t{1U}),
+                    bounded_count,
                     bounded_count,
                     bounded_count,
                     bounded_count
@@ -1681,6 +1687,9 @@ namespace
         row.event_dispatch_visits = stats.event_waiter_dispatch_visits;
         row.queue_depth = stats.resume_queue_depth;
         row.queue_high_water = stats.resume_queue_high_water;
+        row.external_queue_depth = stats.external_completion_queue_depth;
+        row.external_queue_high_water = stats.external_completion_queue_high_water;
+        row.external_queue_capacity_failures = stats.external_completion_capacity_failures;
         row.calls = harness.backend_state.calls;
         row.ability_calls = harness.value_provider.calls;
         row.suspensions = harness.backend_state.suspensions;
@@ -2264,7 +2273,8 @@ namespace
             return row;
         }));
         std::size_t frame{};
-        while (harness.system->stats().resume_queue_depth != 0U)
+        while (harness.system->stats().resume_queue_depth != 0U ||
+               harness.system->stats().external_completion_queue_depth != 0U)
         {
             rows.push_back(measureRow("scene-event-fanout-resume", "stable-point", options.size, frame++, [&] {
                 harness.stablePoint();
@@ -2306,7 +2316,8 @@ namespace
         static_cast<void>(harness.hook.dispatch());
         harness.completePending(options.ready_count);
         std::size_t frame{};
-        while (harness.system->stats().resume_queue_depth != 0U)
+        while (harness.system->stats().resume_queue_depth != 0U ||
+               harness.system->stats().external_completion_queue_depth != 0U)
         {
             rows.push_back(measureRow("scene-resume-storm", "synthetic-continuation", options.size, frame++, [&] {
                 harness.stablePoint();

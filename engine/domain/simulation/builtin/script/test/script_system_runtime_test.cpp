@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -355,7 +356,7 @@ namespace
             *description,
             registry,
             clock,
-            ScriptRuntimeLimits{2U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U, 4U},
+            ScriptRuntimeLimits{2U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U, 4U, 4U},
             {&fixture, &resolveAsset},
             {},
             {},
@@ -465,7 +466,7 @@ int main()
         *description,
         registry,
         clock,
-        ScriptRuntimeLimits{8U, 2U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U},
+        ScriptRuntimeLimits{8U, 2U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         {},
@@ -485,6 +486,11 @@ int main()
     assert(backend_state.prepares == 6U);
 
     const SimulationStepInfo step{1.0F / 60.0F, 12U};
+#if defined(LUX_SCRIPT_OWNER_AFFINITY_PROBE)
+    std::thread foreign_owner{[&]() noexcept { static_cast<void>(hook.dispatch(step)); }};
+    foreign_owner.join();
+    assert(backend_state.hook_calls == 0U);
+#endif
     assert(hook.dispatch(step) == 1U);
     assert(backend_state.hook_calls == 2U);
     assert(backend_state.entity_calls == 1U);

@@ -525,7 +525,7 @@ namespace
                 *description,
                 registry,
                 simulation->clock(),
-                {32U, bounded, bounded, bounded, bounded, bounded, 64U, bounded, bounded, bounded, bounded},
+                {32U, bounded, bounded, bounded, bounded, bounded, 64U, bounded, bounded, bounded, bounded, bounded},
                 {std::addressof(sources), &Sources::resolveArtifact},
                 {std::addressof(sources), &Sources::resolveWorld},
                 simulation->scriptApiCapabilities(),

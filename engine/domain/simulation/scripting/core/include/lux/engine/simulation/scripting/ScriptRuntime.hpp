@@ -258,9 +258,47 @@ namespace lux::simulation::script
         std::size_t spill_alignment_{alignof(std::max_align_t)};
     };
 
+    struct PreparedResumeType final
+    {
+        lux::semantic::TypeId type_id{lux::semantic::InvalidTypeId};
+        std::uint32_t size{};
+        std::uint32_t alignment{};
+        std::uint8_t abi_kind{};
+
+        PreparedResumeType() noexcept = default;
+
+        PreparedResumeType(const lux::rdesc::ScriptValueType& type) noexcept
+            : type_id(type.type_id),
+              size(type.size),
+              alignment(type.alignment),
+              abi_kind(type.abi_kind)
+        {
+        }
+
+        PreparedResumeType& operator=(const lux::rdesc::ScriptValueType& type) noexcept
+        {
+            type_id = type.type_id;
+            size = type.size;
+            alignment = type.alignment;
+            abi_kind = type.abi_kind;
+            return *this;
+        }
+
+        [[nodiscard]] constexpr bool valid() const noexcept
+        {
+            return type_id != lux::semantic::InvalidTypeId && size != 0U && alignment != 0U && abi_kind != 0U;
+        }
+
+        [[nodiscard]] constexpr bool matches(const lux::rdesc::ScriptValueType& type) const noexcept
+        {
+            return valid() && type_id == type.type_id && size == type.size && alignment == type.alignment &&
+                abi_kind == type.abi_kind;
+        }
+    };
+
     struct ScriptOwnedResumeValue final
     {
-        std::optional<lux::rdesc::ScriptValueType> type;
+        PreparedResumeType type;
         ScriptOwnedBytes bytes;
     };
 

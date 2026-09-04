@@ -1626,16 +1626,16 @@ namespace lux::simulation::script
                     continuation.pending_ordinal
                 );
                 const bool is_invalid_prepared_event = prepared == nullptr || prepared->source == nullptr;
-                const bool is_invalid_packet_value = packet.value == nullptr || !packet.value->type;
+                const bool is_invalid_packet_value = packet.value == nullptr || !packet.value->type.valid();
                 if (is_invalid_prepared_event || is_invalid_packet_value)
                 {
                     return false;
                 }
                 const auto& expected = prepared->source->payload;
-                const auto& actual = *packet.value->type;
+                const auto& actual = packet.value->type;
                 const bool is_mismatch = actual.type_id != expected.type_id ||
-                    actual.canonical_name != expected.canonical_name || actual.abi_kind != expected.abi_kind ||
-                    actual.size != expected.size || actual.alignment != expected.alignment ||
+                    actual.abi_kind != expected.abi_kind || actual.size != expected.size ||
+                    actual.alignment != expected.alignment ||
                     packet.value->bytes.size() != expected.size;
                 if (is_mismatch)
                     return false;
@@ -1677,19 +1677,19 @@ namespace lux::simulation::script
             if (method.results.empty())
             {
                 const bool has_value = packet.value != nullptr &&
-                    (packet.value->type.has_value() || !packet.value->bytes.empty());
+                    (packet.value->type.valid() || !packet.value->bytes.empty());
                 return !has_value;
             }
-            if (method.results.size() != 1U || packet.value == nullptr || !packet.value->type ||
+            if (method.results.size() != 1U || packet.value == nullptr || !packet.value->type.valid() ||
                 packet.value->bytes.size() != method.results.front().size)
             {
                 return false;
             }
             const auto& expected = method.results.front();
-            const auto& actual = *packet.value->type;
+            const auto& actual = packet.value->type;
             const bool is_mismatch = actual.type_id != expected.type_id ||
-                actual.canonical_name != expected.canonical_name || actual.abi_kind != expected.abi_kind ||
-                actual.size != expected.size || actual.alignment != expected.alignment;
+                actual.abi_kind != expected.abi_kind || actual.size != expected.size ||
+                actual.alignment != expected.alignment;
             if (is_mismatch || !pushAbilityResult(continuation.thread, expected, packet.value->bytes.data()))
                 return false;
             argument_count = 1;

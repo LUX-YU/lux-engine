@@ -53,6 +53,7 @@ namespace lux::simulation::script
         std::size_t next_step_wait_capacity{};
         std::size_t simulation_delay_capacity{};
         std::size_t event_wait_capacity{};
+        std::size_t external_completion_capacity{};
     };
 
     struct ScriptRuntimeStats final
@@ -70,6 +71,9 @@ namespace lux::simulation::script
         std::size_t resume_queue_high_water{};
         std::size_t next_step_waits{};
         std::size_t simulation_delay_waits{};
+        std::size_t external_completion_queue_depth{};
+        std::size_t external_completion_queue_high_water{};
+        std::size_t external_completion_capacity_failures{};
     };
 
     namespace detail

@@ -23,7 +23,9 @@ component_include_directories(
 )
 target_compile_definitions(
     simulation_script
-    PRIVATE LUX_ENGINE_SIMULATION_SCRIPT_LIBRARY
+    PRIVATE
+        LUX_ENGINE_SIMULATION_SCRIPT_LIBRARY
+        $<$<CONFIG:Debug>:LUX_SCRIPT_OWNER_AFFINITY_PROBE=1>
 )
 target_link_libraries(
     simulation_script
@@ -103,6 +105,10 @@ add_executable(
 target_link_libraries(
     simulation_script_runtime_test
     PRIVATE lux::engine::simulation::simulation_script
+)
+target_compile_definitions(
+    simulation_script_runtime_test
+    PRIVATE $<$<CONFIG:Debug>:LUX_SCRIPT_OWNER_AFFINITY_PROBE=1>
 )
 if(MSVC)
     target_compile_options(simulation_script_runtime_test PRIVATE /UNDEBUG)

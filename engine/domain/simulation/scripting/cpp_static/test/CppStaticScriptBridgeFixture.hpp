@@ -74,11 +74,10 @@ namespace lux::simulation::test
         LUX_METHOD()
         script::ScriptCoroutine task(
             script::ScriptCoroutineContext& context,
-            const std::int32_t& borrowed_value
+            std::int32_t value
         ) noexcept
         {
-            const auto owned_value = borrowed_value;
-            coroutine_value += owned_value;
+            coroutine_value += value;
             co_await context.makeAwaiter<void>(
                 [](script::ScriptCoroutineContext&, script::ScriptStepContext& step) noexcept
                 {
@@ -88,7 +87,7 @@ namespace lux::simulation::test
                         : script::ScriptStepResult::failed(-1);
                 }
             );
-            coroutine_value += owned_value + 5;
+            coroutine_value += value + 5;
         }
 
         LUX_METHOD()

@@ -78,11 +78,9 @@ namespace lux::simulation::script
 
         template <class Argument>
         inline constexpr bool kCppCoroutineArgumentSupported =
-            !std::is_pointer_v<std::remove_reference_t<Argument>> &&
-            (!std::is_reference_v<Argument> ||
-                (std::is_lvalue_reference_v<Argument> &&
-                    std::is_const_v<std::remove_reference_t<Argument>>)) &&
-            lux::semantic::TypeDeclared<std::remove_cvref_t<Argument>>;
+            !std::is_reference_v<Argument> &&
+            !std::is_pointer_v<Argument> &&
+            lux::semantic::TypeDeclared<Argument>;
 
         template <class Owner, class... Arguments,
                   ScriptCoroutine (Owner::*Function)(ScriptCoroutineContext&, Arguments...) noexcept>

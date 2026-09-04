@@ -25,7 +25,8 @@
 `CppStaticScript` wire/schema was hard-cut to Script schema 11 / LXSA wire 9 and now records sorted
 `suspension_capable_exports`. `makeCppStaticCoroutineExport<&Behavior::task>()` projects the visible semantic
 signature while hiding `ScriptCoroutineContext&` and the `ScriptCoroutine` return type. Lifecycle overlap,
-unsupported references/pointers and malformed signatures fail at projection/compile time.
+reference/pointer parameters and malformed signatures fail at projection/compile time. Coroutine export arguments
+are value-only in v1 because a C++ reference parameter would persist the reference itself in the coroutine frame.
 
 One invocation owns one bounded coroutine frame and persistent `ScriptCoroutineContext`. The context retains only
 backend/instance identity and bounded frame-storage access. `ScriptStepContext*` and resume-packet views are active
@@ -107,4 +108,3 @@ validations passed. No Coroutine/Ability/Event/Physics manager, service locator,
 second backend or runtime string dispatch was introduced.
 
 **S6 PASS. SCRIPT FRAMEWORK FROZEN.** R1 was not started.
-

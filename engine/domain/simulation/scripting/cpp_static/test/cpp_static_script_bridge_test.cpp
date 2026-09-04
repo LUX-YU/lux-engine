@@ -175,6 +175,11 @@ int main()
     using namespace lux::simulation::script;
     namespace test = lux::simulation::test;
 
+    static_assert(script::detail::kCppCoroutineArgumentSupported<std::int32_t>);
+    static_assert(!script::detail::kCppCoroutineArgumentSupported<const std::int32_t&>);
+    static_assert(!script::detail::kCppCoroutineArgumentSupported<std::int32_t&>);
+    static_assert(!script::detail::kCppCoroutineArgumentSupported<std::int32_t*>);
+
     lux::meta::ReflectionRegistry::initRegistry();
     auto& registry = lux::meta::ReflectionRegistry::instance();
     const auto* reflected = registry.findClass(
@@ -291,7 +296,7 @@ int main()
     assert(projected->description().exports[1].args[0].pass ==
         lux::semantic::EValuePass::CONST_REF);
     assert(projected->description().exports[4].args[0].pass ==
-        lux::semantic::EValuePass::CONST_REF);
+        lux::semantic::EValuePass::VALUE);
 
     const auto invalid_lifecycle = projectCppStaticEntityScript(
         "lux.test.invalid-coroutine-lifecycle",

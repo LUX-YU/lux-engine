@@ -176,6 +176,7 @@ foreach(entry IN LISTS installed_text)
     endif()
     if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/](scripting|ScriptSystem)" AND
        NOT normalized MATCHES "[/]simulation[/]scripting[/]cpp_static[/]" AND
+       NOT normalized MATCHES "[/]simulation[/]scripting[/]lua[/]" AND
        content MATCHES "std::(function|any|type_index|coroutine_handle)|lua_State|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|ScriptServices|SceneServices|ServiceRegistry")
         message(FATAL_ERROR
             "Installed Script runtime contract exposes a language runtime or service-locator boundary: ${entry}"

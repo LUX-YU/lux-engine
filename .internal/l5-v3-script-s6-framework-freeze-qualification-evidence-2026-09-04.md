@@ -3,7 +3,7 @@
 ## Qualified revision
 
 - Baseline: `48a14af5e88d722435458a5b2d29d2c55043bcf3`.
-- Production and qualification code: `e9870c05d31467f2a5f4bc9ae3426855038942ad`.
+- Production and qualification code: `718425883a695c26008fa600ae196b60d8738644`.
 - Source: clean `codex/s6-script-freeze` worktree; `ValidateTrackedSnapshot` passed at the qualified revision.
 - Build: Windows x64, MSVC 19.44.35228.0, RelWithDebInfo, Ninja, `-j 4 -k 0`.
 
@@ -25,8 +25,9 @@
 `CppStaticScript` wire/schema was hard-cut to Script schema 11 / LXSA wire 9 and now records sorted
 `suspension_capable_exports`. `makeCppStaticCoroutineExport<&Behavior::task>()` projects the visible semantic
 signature while hiding `ScriptCoroutineContext&` and the `ScriptCoroutine` return type. Lifecycle overlap,
-reference/pointer parameters and malformed signatures fail at projection/compile time. Coroutine export arguments
-are value-only in v1 because a C++ reference parameter would persist the reference itself in the coroutine frame.
+mutable/rvalue/pointer parameters and malformed signatures fail at projection/compile time. Value arguments are
+copied by the coroutine frame; `const T&` arguments are copied into a bounded invocation-owned argument block before
+user code runs, so no call-frame reference survives suspension.
 
 One invocation owns one bounded coroutine frame and persistent `ScriptCoroutineContext`. The context retains only
 backend/instance identity and bounded frame-storage access. `ScriptStepContext*` and resume-packet views are active

@@ -1,6 +1,6 @@
 # L5 v3 Script S6 dependency audit — 2026-09-04
 
-Qualified production SHA: `e9870c05d31467f2a5f4bc9ae3426855038942ad`.
+Qualified production SHA: `718425883a695c26008fa600ae196b60d8738644`.
 
 ## Physics2D
 

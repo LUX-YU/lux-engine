@@ -7,6 +7,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -84,6 +85,7 @@ namespace lux::simulation
         std::vector<PendingData> data;
         std::vector<PendingSystem> systems;
         std::vector<PendingDependency> dependencies;
+        std::vector<SimulationExecutionDependency> execution_dependencies;
     };
 
     namespace
@@ -595,6 +597,9 @@ namespace lux::simulation
             impl_->dependencies.end()
         );
         impl_->systems.erase(system);
+        std::erase_if(impl_->execution_dependencies, [instance_id](const auto& edge) noexcept {
+            return edge.before.system == instance_id || edge.after.system == instance_id;
+        });
         return {};
     }
 
@@ -717,6 +722,30 @@ namespace lux::simulation
         impl_->data.clear();
         impl_->systems.clear();
         impl_->dependencies.clear();
+        impl_->execution_dependencies.clear();
+    }
+
+    lux::cxx::expected<void, SimulationDescriptionFailure> SimulationDescriptionBuilder::addExecutionDependency(
+        SimulationExecutionPoint before, SimulationExecutionPoint after
+    ) noexcept
+    {
+        if (!before.valid() || !after.valid() || before == after)
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::INVALID_DEPENDENCY));
+        if (findSystem(impl_->systems, before.system) == impl_->systems.end() ||
+            findSystem(impl_->systems, after.system) == impl_->systems.end())
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::SYSTEM_NOT_FOUND));
+        const SimulationExecutionDependency edge{before, after};
+        if (std::ranges::find(impl_->execution_dependencies, edge) != impl_->execution_dependencies.end())
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::DUPLICATE_DEPENDENCY));
+        try
+        {
+            impl_->execution_dependencies.push_back(edge);
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::ALLOCATION_FAILURE));
+        }
     }
 
     lux::cxx::expected<SimulationDescription, SimulationDescriptionFailure>
@@ -766,6 +795,13 @@ namespace lux::simulation
             );
 
             SimulationDescription result;
+            result.execution_dependencies_ = impl_->execution_dependencies;
+            std::ranges::sort(result.execution_dependencies_, [](const auto& left, const auto& right) noexcept {
+                return std::tie(left.before.system, left.before.kind, left.before.point,
+                           left.after.system, left.after.kind, left.after.point) <
+                    std::tie(right.before.system, right.before.kind, right.before.point,
+                        right.after.system, right.after.kind, right.after.point);
+            });
             std::size_t total_payload{};
             for (std::size_t index{}; index < impl_->data.size(); ++index)
             {
@@ -964,6 +1000,7 @@ namespace lux::simulation
             impl_->data.clear();
             impl_->systems.clear();
             impl_->dependencies.clear();
+            impl_->execution_dependencies.clear();
             return result;
         }
         catch (const std::length_error&)

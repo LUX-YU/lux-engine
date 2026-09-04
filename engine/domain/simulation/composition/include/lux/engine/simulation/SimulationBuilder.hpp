@@ -179,6 +179,31 @@ namespace lux::simulation
         }
 
         template <SimulationSystem Type, class Callable>
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> addSystemHookTask(
+            lux::system::SystemInstanceId instance, HookPointId hook, Callable&& callable
+        ) noexcept
+        {
+            using Function = std::decay_t<Callable>;
+            static_assert(std::is_nothrow_invocable_v<const Function&, Type&>);
+            Type* object = findInstalledExact<Type>(instance);
+            if (object == nullptr)
+                return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                    ESimulationSystemBuildError::INVALID_DESCRIPTION, instance});
+            try
+            {
+                return addExecutionTask(SimulationExecutionPoint::hook(instance, hook), {},
+                    task::TaskCallable([object, fn = Function(std::forward<Callable>(callable))]() noexcept {
+                        fn(*object);
+                    }), task::ETaskAffinity::CALLER_THREAD);
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                    ESimulationSystemBuildError::ALLOCATION_FAILURE, instance});
+            }
+        }
+
+        template <SimulationSystem Type, class Callable>
         [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> addSystemCommandTask(
             lux::system::SystemInstanceId instance,
             ecs::EcsCommandProducerCapacity capacity,
@@ -298,6 +323,13 @@ namespace lux::simulation
         ) noexcept;
 
         Impl* impl_{};
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> addExecutionTask(
+            SimulationExecutionPoint point,
+            task::TaskResources resources,
+            task::TaskCallable callable,
+            task::ETaskAffinity affinity
+        ) noexcept;
 
         friend class Simulation;
     };

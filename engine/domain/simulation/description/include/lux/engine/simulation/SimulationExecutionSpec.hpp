@@ -1,0 +1,70 @@
+#pragma once
+
+#include <lux/engine/simulation/SimulationEndpointId.hpp>
+#include <lux/engine/system/SystemInstanceId.hpp>
+
+#include <compare>
+#include <cstdint>
+#include <string_view>
+
+namespace lux::simulation
+{
+    struct SimulationTaskId final
+    {
+        std::uint64_t value{};
+        [[nodiscard]] constexpr bool valid() const noexcept { return value != 0U; }
+        friend constexpr auto operator<=>(SimulationTaskId, SimulationTaskId) noexcept = default;
+    };
+
+    inline constexpr SimulationTaskId PrimarySimulationTask{1U};
+
+    struct SimulationTaskSpec final
+    {
+        SimulationTaskId id;
+        std::string_view name;
+    };
+
+    enum class ESimulationExecutionPoint : std::uint8_t
+    {
+        SYSTEM_TASK,
+        HOOK,
+    };
+
+    struct SimulationExecutionPoint final
+    {
+        lux::system::SystemInstanceId system;
+        std::uint64_t point{};
+        ESimulationExecutionPoint kind{ESimulationExecutionPoint::SYSTEM_TASK};
+
+        [[nodiscard]] static constexpr SimulationExecutionPoint task(
+            lux::system::SystemInstanceId system,
+            SimulationTaskId id = PrimarySimulationTask
+        ) noexcept
+        {
+            return {system, id.value, ESimulationExecutionPoint::SYSTEM_TASK};
+        }
+
+        [[nodiscard]] static constexpr SimulationExecutionPoint hook(
+            lux::system::SystemInstanceId system, HookPointId id
+        ) noexcept
+        {
+            return {system, id.value, ESimulationExecutionPoint::HOOK};
+        }
+
+        [[nodiscard]] constexpr bool valid() const noexcept
+        {
+            return system.valid() && point != 0U && kind <= ESimulationExecutionPoint::HOOK;
+        }
+
+        friend constexpr bool operator==(SimulationExecutionPoint, SimulationExecutionPoint) noexcept = default;
+    };
+
+    struct SimulationExecutionDependency final
+    {
+        SimulationExecutionPoint before;
+        SimulationExecutionPoint after;
+        friend constexpr bool operator==(
+            SimulationExecutionDependency, SimulationExecutionDependency
+        ) noexcept = default;
+    };
+}

@@ -115,6 +115,9 @@ namespace lux::simulation
 
         void clear() noexcept;
 
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        addExecutionDependency(SimulationExecutionPoint before, SimulationExecutionPoint after) noexcept;
+
         [[nodiscard]] lux::cxx::expected<
             SimulationDescription,
             SimulationDescriptionFailure>

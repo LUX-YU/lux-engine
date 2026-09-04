@@ -85,7 +85,6 @@ namespace
 
         void execute() noexcept
         {
-            static_cast<void>(hook.dispatch());
         }
 
         std::int32_t readValue(std::int32_t input) noexcept
@@ -176,9 +175,13 @@ namespace
         auto published = builder.publishScriptHook(description.instanceId(), (*probe)->endpoint.descriptor());
         if (!published)
             return published;
-        return builder.addSystemTask<ProbeSystem>(description.instanceId(), [](ProbeSystem& value) noexcept {
+        auto task = builder.addSystemTask<ProbeSystem>(description.instanceId(), [](ProbeSystem& value) noexcept {
             value.execute();
         });
+        if (!task)
+            return task;
+        return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), kTickHook,
+            [](ProbeSystem& value) noexcept { static_cast<void>(value.hook.dispatch()); });
     }
 
     [[nodiscard]] SimulationSystemRegistration probeRegistration() noexcept
@@ -224,6 +227,8 @@ namespace
 
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
+        assert(builder.addExecutionDependency(SimulationExecutionPoint::task(kProbeSystem),
+            SimulationExecutionPoint::hook(kProbeSystem, kTickHook)));
         assert(addScriptSystemData(builder, script, limits));
         auto result = std::move(builder).build();
         assert(result);

@@ -37,6 +37,8 @@ namespace lux::simulation
         SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER,
         INVALID_SCRIPT_ENDPOINT,
         DUPLICATE_SCRIPT_ENDPOINT,
+        INVALID_EXECUTION_POINT,
+        AMBIGUOUS_HOOK_ORDER,
     };
 
     struct SimulationSystemBuildFailure final

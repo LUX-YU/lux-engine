@@ -2,6 +2,7 @@
 
 #include <lux/engine/simulation/SimulationDataSchemaId.hpp>
 #include <lux/engine/simulation/SimulationEndpointSpec.hpp>
+#include <lux/engine/simulation/SimulationExecutionSpec.hpp>
 #include <lux/engine/system/SystemInstanceId.hpp>
 #include <lux/engine/system/SystemTypeDescription.hpp>
 #include <lux/engine/system/SystemTypeId.hpp>
@@ -216,6 +217,10 @@ namespace lux::simulation
         [[nodiscard]] SimulationDependencyView dependencyAt(
             std::size_t index
         ) const noexcept;
+        [[nodiscard]] std::span<const SimulationExecutionDependency> executionDependencies() const noexcept
+        {
+            return execution_dependencies_;
+        }
 
       private:
         struct DataRecord final
@@ -291,6 +296,7 @@ namespace lux::simulation
         std::unordered_map<std::uint64_t, std::size_t> system_ordinals_;
         std::vector<std::byte> configuration_payload_;
         std::vector<DependencyRecord> dependencies_;
+        std::vector<SimulationExecutionDependency> execution_dependencies_;
 
         friend class SimulationDataView;
         friend class SimulationSystemView;

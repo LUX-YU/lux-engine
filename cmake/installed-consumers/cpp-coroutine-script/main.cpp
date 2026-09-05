@@ -1,7 +1,8 @@
 #include "ConsumerBehavior.hpp"
+#include "ConsumerDomain.hpp"
+#include "ConsumerBehavior.CoroutineBehavior.script.generated.hpp"
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
-#include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/physics2d/Physics2DSystem.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
@@ -22,29 +23,13 @@ namespace
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    inline constexpr system::SystemInstanceId PhysicsId{71U};
-    inline constexpr system::SystemInstanceId ProbeId{72U};
-    inline constexpr HookPointId TickHook{73U};
-    inline constexpr EventPointId PulseEvent{74U};
+    using namespace installed_consumer;
     inline constexpr lux::script::ScriptSymbolId RunSymbol{75U};
 
     struct ProbeSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(TickHook, "tick", true, true)};
-        inline static constexpr std::array Events{makeEventPointSpec<std::int32_t>(
-            PulseEvent,
-            "pulse",
-            TickHook,
-            EEventRoute::SIMULATION_BROADCAST,
-            "lux.i32",
-            1U
-        )};
-        inline static constexpr SimulationSystemDescription Description{
-            .type = {.canonical_name = "installed.CoroutineProbe", .version = 1U},
-            .hooks = Hooks,
-            .events = Events
-        };
+        inline static constexpr auto Description = ProbeDescription;
 
         using Channel = HookChannel<SimulationBroadcastRoute, std::int32_t>;
         explicit ProbeSystem(Channel& channel) noexcept
@@ -175,28 +160,7 @@ int main()
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    meta::ReflectionRegistry::initRegistry();
-    Physics2DSystemConfiguration physics_configuration;
-    physics_configuration.gravity_y = 0.0;
-    physics_configuration.body_capacity = 8U;
-    const auto encoded_physics = makePhysics2DSystemConfiguration(physics_configuration);
-    if (!encoded_physics)
-        return 1;
-    SimulationDescriptionBuilder description_builder;
-    if (!description_builder.addSystem(PhysicsId, "physics", physics2DSystemDescription(), *encoded_physics) ||
-        !description_builder.addSystem(ProbeId, "probe", ProbeSystem::Description))
-    {
-        return 2;
-    }
-    for (auto producer : {PhysicsId, ProbeId})
-    {
-        if (!description_builder.addExecutionDependency(SimulationExecutionPoint::task(producer),
-                SimulationExecutionPoint::hook(ProbeId, TickHook)))
-            return 2;
-    }
-    if (!description_builder.addChannelProducer({ProbeId, PulseEvent, ProbeId, PrimarySimulationTask}))
-        return 2;
-    auto description = std::move(description_builder).build();
+    auto description = installed_consumer::makeDescription();
     if (!description)
         return 3;
     SimulationSystemRegistry registrations;
@@ -230,62 +194,21 @@ int main()
         return 8;
     installed_consumer::pulse_event = std::move(*typed_event);
 
-    const auto* reflected = meta::ReflectionRegistry::instance().findClass(
-        "installed_consumer::CoroutineBehavior"
-    );
-    if (reflected == nullptr || reflected->methods.size() != 1U)
-        return 9;
-    const auto coroutine = makeCppStaticCoroutineExport<&installed_consumer::CoroutineBehavior::run>(
-        reflected->methods.front(),
-        RunSymbol
-    );
-    const std::array coroutines{coroutine};
-    const std::array<const meta::RefMethod*, 0U> methods{};
-    const std::array<lux::script::ScriptSymbolId, 0U> symbols{};
-    const std::array ability_requirements{
-        lux::rdesc::ScriptApiRequirement{
-            lux::script::ScriptApiContractId{
-                lux::script::ScriptAbilityTraits<PhysicsQuery2D>::Description.id.name()
-            },
-            lux::script::ScriptAbilityTraits<PhysicsQuery2D>::Description.schema_hash
-        },
-        lux::rdesc::ScriptApiRequirement{
-            lux::script::ScriptApiContractId{
-                lux::script::ScriptAbilityTraits<DelayAbility>::Description.id.name()
-            },
-            lux::script::ScriptAbilityTraits<DelayAbility>::Description.schema_hash
-        }
-    };
-    const std::array event_requirements{*event_source};
-    auto projected = projectCppStaticEntityScript(
-        "installed.cpp-coroutine",
-        "installed-cpp-coroutine-v2",
-        *reflected,
-        methods,
-        symbols,
-        {},
-        nullptr,
-        {},
-        coroutines,
-        ability_requirements,
-        event_requirements
-    );
-    if (!projected)
-        return 10;
-    auto artifact = lux::script::ScriptArtifact::create(projected->description(), {});
+    const auto& contract = generated::CoroutineBehavior;
+    if (contract.events.size() != 1U || !contract.events.front().matches(*event_source)) return 9;
+    auto script_description_value = materializeCppStaticScript(contract);
+    if (!script_description_value) return 10;
+    auto artifact = lux::script::ScriptArtifact::create(std::move(*script_description_value), {});
     if (!artifact)
         return 11;
-    const std::array frame_classes{
-        lux::simulation::script::detail::makeUniformStorageClass(1024U, alignof(std::max_align_t), 1024U, 2U)
-    };
     const std::array pools{CppStaticScriptPoolDescription{
-        std::addressof(*projected),
+        std::addressof(contract),
         1U,
         1U,
         2048U,
         alignof(std::max_align_t),
         1U,
-        frame_classes
+        512U
     }};
     auto backend = CppStaticScriptBackend::create(pools);
     if (!backend)

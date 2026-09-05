@@ -14,8 +14,11 @@ function(lux_package_lua_script)
         ABILITY_SCHEMAS
         EVENT_SCHEMA_TARGETS
         EVENT_SCHEMAS
-        VALUE_TYPES
-        RECORD_TYPES
+        SEMANTIC_TYPES
+        SEMANTIC_HEADERS
+        SEMANTIC_TARGETS
+        SEMANTIC_INCLUDE_DIRECTORIES
+        SEMANTIC_SCHEMAS
     )
     cmake_parse_arguments(ARGS "" "${one_value_args}" "${multi_value_args}" ${ARGN})
     foreach(required NAME SOURCE OUTPUT MODULE ENTRY SCOPE SYMBOL_LEDGER)
@@ -57,6 +60,14 @@ function(lux_package_lua_script)
     list(REMOVE_DUPLICATES event_schema_files)
     list(REMOVE_DUPLICATES event_schema_targets)
 
+    if(NOT COMMAND lux_script_semantic_schema)
+        include_component_cmake_scripts(lux::engine::function::script_core)
+    endif()
+    set(semantic_schema "${CMAKE_CURRENT_BINARY_DIR}/${ARGS_NAME}.semantic.json")
+    lux_script_semantic_schema(NAME ${ARGS_NAME}_semantics OUTPUT "${semantic_schema}"
+        TYPES ${ARGS_SEMANTIC_TYPES} HEADERS ${ARGS_SEMANTIC_HEADERS} TARGETS ${ARGS_SEMANTIC_TARGETS}
+        INCLUDE_DIRECTORIES ${ARGS_SEMANTIC_INCLUDE_DIRECTORIES})
+
     set(command
         ${Python3_EXECUTABLE}
         ${packager}
@@ -66,6 +77,7 @@ function(lux_package_lua_script)
         --module ${ARGS_MODULE}
         --entry ${ARGS_ENTRY}
         --scope ${ARGS_SCOPE}
+        --semantic-schema ${semantic_schema}
     )
     foreach(schema IN LISTS schema_files)
         list(APPEND command --ability-schema ${schema})
@@ -73,20 +85,19 @@ function(lux_package_lua_script)
     foreach(schema IN LISTS event_schema_files)
         list(APPEND command --event-schema ${schema})
     endforeach()
-    foreach(value IN LISTS ARGS_VALUE_TYPES)
-        list(APPEND command --value-type ${value})
-    endforeach()
-    foreach(record IN LISTS ARGS_RECORD_TYPES)
-        list(APPEND command --record-type ${record})
+    foreach(schema IN LISTS ARGS_SEMANTIC_SCHEMAS)
+        list(APPEND command --semantic-schema ${schema})
     endforeach()
 
     add_custom_command(
         OUTPUT ${output}
         COMMAND ${command}
         DEPENDS ${packager} ${source} ${ledger} ${schema_files} ${event_schema_files}
+            ${semantic_schema} ${ARGS_SEMANTIC_SCHEMAS}
         VERBATIM
     )
     add_custom_target(${ARGS_NAME} DEPENDS ${output})
+    add_dependencies(${ARGS_NAME} ${ARGS_NAME}_semantics)
     if(schema_targets)
         add_dependencies(${ARGS_NAME} ${schema_targets})
     endif()

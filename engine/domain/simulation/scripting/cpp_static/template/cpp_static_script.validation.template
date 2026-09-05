@@ -12,5 +12,8 @@
 {% if not existsIn(script.symbols, key) or method.is_variadic or (script.owner != "" and method.visibility != 1) or (role != "" and role != "begin_play" and role != "end_play") or (role != "" and coroutine) %}
 {% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(method.fq_name) }},"message":"Invalid Script export: missing stable symbol, non-public/variadic method or suspending lifecycle"}{% set emitted = true %}
 {% endif %}{% endif %}{% endfor %}
-{% if count == 0 or begins > 1 or ends > 1 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(script.owner) }},"message":"Script must select exports and at most one method per lifecycle role"}{% endif %}
+{% if count == 0 or begins > 1 or ends > 1 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(script.owner) }},"message":"Script must select exports and at most one method per lifecycle role"}{% set emitted = true %}{% endif %}
+{% for name in script.event_names %}{% set matches = 0 %}{% if event_schema.schema == "lux-script-event" and event_schema.version == 2 %}{% for event in event_schema.events %}{% if event.system_name == name.system_name and event.event_name == name.event_name %}{% if event.route == "simulation_broadcast" or event.route == "entity_targeted" %}{% set matches = matches + 1 %}{% endif %}{% endif %}{% endfor %}{% endif %}
+{% if matches != 1 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(name.event_name) }},"message":"required Event must resolve exactly once in the canonical Event schema"}{% set emitted = true %}{% endif %}
+{% endfor %}
 ]}

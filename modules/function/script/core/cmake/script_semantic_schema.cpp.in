@@ -1,0 +1,11 @@
+#include <lux/engine/function/script/ScriptSemanticSchema.hpp>
+#include <array>
+@schema_includes@
+int main(int argc, char** argv)
+{
+    if (argc != 2) return 1;
+    constexpr std::array<lux::semantic::Layout, @schema_type_count@> additions{
+@schema_types@
+    };
+    return lux::script::writeScriptSemanticSchema(argv[1], additions) ? 0 : 2;
+}

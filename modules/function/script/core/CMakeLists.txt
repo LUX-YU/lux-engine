@@ -50,7 +50,10 @@ component_add_transitive_commands(
 component_add_cmake_scripts(
     script_core
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_script_ability_codegen.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_script_semantic_schema.cmake
 )
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/script_semantic_schema.cpp.in
+    DESTINATION share/lux-engine-function/script_core/cmake_scripts)
 
 install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/template/

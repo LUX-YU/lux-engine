@@ -74,7 +74,9 @@ lux_package_lua_script(
     NAME lua_portability_fixture
     SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_portability_fixture.lua
     OUTPUT ${_lua_portability_lxsa}
-    VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
+    SEMANTIC_TYPES lux::simulation::script::EScriptEndPlayReason
+    SEMANTIC_HEADERS lux/engine/simulation/scripting/ScriptLifecycle.hpp
+    SEMANTIC_TARGETS lux::engine::simulation::simulation_scripting_core
     ABILITY_TARGETS simulation_script script_lua_portability_ability_contract
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_portability_fixture.symbols.json
     MODULE lux.test.lua-portability
@@ -87,10 +89,12 @@ lux_package_lua_script(
     NAME lua_packager_fixture
     SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_behavior_fixture.lua
     OUTPUT ${_lua_fixture_lxsa}
-    RECORD_TYPES
-        lux.simulation.SimulationStepInfo,16,8
-        lux.test.CollisionEvent,8,4
-    VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
+    SEMANTIC_TYPES lux::simulation::script::EScriptEndPlayReason lux::simulation::SimulationStepInfo
+        lux::toolchain::lua::test::CollisionEvent
+    SEMANTIC_HEADERS lux/engine/simulation/scripting/ScriptLifecycle.hpp lux/engine/simulation/SimulationStepInfo.hpp
+        LuaPackagingTypes.hpp
+    SEMANTIC_TARGETS lux::engine::simulation::simulation_scripting_core
+    SEMANTIC_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/test
     ABILITY_TARGETS simulation_script
     EVENT_SCHEMAS ${_lua_gameplay_event_schema}
     EVENT_SCHEMA_TARGETS lua_gameplay_event_schema
@@ -105,7 +109,9 @@ lux_package_lua_script(
     NAME lua_runtime_benchmark_fixture
     SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_runtime_benchmark_fixture.lua
     OUTPUT ${_lua_benchmark_lxsa}
-    VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
+    SEMANTIC_TYPES lux::simulation::script::EScriptEndPlayReason
+    SEMANTIC_HEADERS lux/engine/simulation/scripting/ScriptLifecycle.hpp
+    SEMANTIC_TARGETS lux::engine::simulation::simulation_scripting_core
     ABILITY_TARGETS simulation_script script_benchmark_ability_contract
     EVENT_SCHEMAS ${_lua_benchmark_event_schema}
     EVENT_SCHEMA_TARGETS lua_benchmark_event_schema
@@ -148,6 +154,7 @@ add_test(
         ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test/lua_script_packager_negative_test.py
         ${_lua_script_packager}
+        ${CMAKE_CURRENT_BINARY_DIR}/lua_packager_fixture.semantic.json
 )
 
 install(

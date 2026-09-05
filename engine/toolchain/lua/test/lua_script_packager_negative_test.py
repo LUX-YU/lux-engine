@@ -29,12 +29,9 @@ def expect_failure(action, text: str) -> None:
 
 def main() -> int:
     package = load_packager(pathlib.Path(sys.argv[1]))
-    semantics = package.make_semantics([], ["lux.simulation.ScriptEndPlayReason,3,4,4"])
+    schema_path = pathlib.Path(sys.argv[2])
+    semantics = package.make_semantics([schema_path])
     assert "lux.i64" not in semantics and "lux.u64" not in semantics
-    expect_failure(
-        lambda: package.make_semantics([], ["lux.test.WideInteger,4,8,8"]),
-        "invalid --value-type",
-    )
     delay = package.AbilitySchema(
         "lux.simulation.delay",
         package.fnv1a("lux.simulation.delay"),
@@ -44,7 +41,7 @@ def main() -> int:
         17,
     )
     abilities = {delay.contract: delay}
-    payload = package.Semantic("lux.i32", package.fnv1a("lux.i32"), 0, True, 2, 4, 4)
+    payload = semantics["lux.i32"]
     damage = package.EventSource(
         "Gameplay",
         "damage",
@@ -150,6 +147,11 @@ def main() -> int:
             schemas,
             event_schemas,
         )
+
+    for wide in ("lux.i64", "lux.u64"):
+        expect_failure(lambda: parse(
+            "---@lux.method\n---@param value " + wide + "\n---@return void\nfunction Enemy:update(value) end\n",
+            {"Enemy:update": 1}), "unsupported")
 
     expect_failure(
         lambda: parse(

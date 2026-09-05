@@ -36,9 +36,21 @@ namespace lux::simulation::script::generated
 {% for type in script.ability_types %}            CppStaticApiRequirement{lux::script::ScriptAbilityTraits<{{ type }}>::Description.id,
                 lux::script::ScriptAbilityTraits<{{ type }}>::Description.schema_hash}{% if not loop.is_last %},{% endif %}
 {% endfor %}        };
-        constexpr std::array<lux::script::ScriptEventSourceView, {{ length(script.event_sources) }}> Events{
-{% for event in script.event_sources %}            {{ event }}{% if not loop.is_last %},{% endif %}
-{% endfor %}        };
+        constexpr std::array<lux::script::ScriptEventSourceView, {{ length(script.event_sources) + length(script.event_names) }}> Events{
+{% for event in script.event_sources %}            {{ event }},
+{% endfor %}
+{% for name in script.event_names %}{% for event in event_schema.events %}{% if event.system_name == name.system_name and event.event_name == name.event_name %}
+            lux::script::ScriptEventSourceView{
+                "{{ cxx_str(event.system_name) }}", "{{ cxx_str(event.event_name) }}", {{ event.system_id }}ULL, {{ event.event_id }}ULL,
+                lux::script::EScriptEventRoute::{% if event.route == "simulation_broadcast" %}SIMULATION_BROADCAST{% else %}ENTITY_TARGETED{% endif %},
+                { {{ event.payload.type_id }}ULL, "{{ cxx_str(event.payload.canonical_name) }}", {{ event.payload.abi_kind }}U,
+                  {{ event.payload.size }}U, {{ event.payload.alignment }}U },
+                {{ event.payload_schema_hash }}ULL, {{ event.payload_schema_version }}U, {{ event.delivery_hook_id }}ULL,
+                {{ event.delivery_schema_hash }}ULL, {{ event.delivery_schema_version }}U
+            },
+{% endif %}{% endfor %}{% endfor %}        };
+        static_assert([]() consteval { for (const auto& event : Events) if (!event.valid()) return false; return true; }(),
+            "Invalid canonical Script Event source");
     }
 
     extern constinit const CppStaticContract {{ script.name }}{

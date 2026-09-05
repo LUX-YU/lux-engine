@@ -1,4 +1,4 @@
-#include <lux/engine/toolchain/lua/ScriptEventSchema.hpp>
+#include <lux/engine/function/script/ScriptEventSchema.hpp>
 
 #include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -68,7 +68,7 @@ int main(int argc, char** argv)
         return 1;
     const std::array sources{source(argv[2])};
     return sources.front().valid() &&
-        lux::toolchain::lua::writeScriptEventSchemaManifest(std::filesystem::path{argv[1]}, sources)
+        lux::script::writeScriptEventSchemaManifest(std::filesystem::path{argv[1]}, sources)
         ? 0
         : 1;
 }

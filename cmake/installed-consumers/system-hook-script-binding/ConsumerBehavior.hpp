@@ -7,7 +7,7 @@
 
 namespace installed_consumer
 {
-    struct LUX_TYPE_INFO(runtime) CollisionEvent final
+    struct LUX_TYPE_INFO(compile_time) CollisionEvent final
     {
         std::int32_t body{};
         float impulse{};
@@ -16,16 +16,16 @@ namespace installed_consumer
     inline float observed_value{};
     inline CollisionEvent observed_event{};
 
-    class LUX_TYPE_INFO(runtime) ConsumerBehavior final
+    class LUX_TYPE_INFO(compile_time) ConsumerBehavior final
     {
       public:
-        LUX_METHOD()
+        LUX_METHOD(script_export="consumer.value")
         void onValue(float value) noexcept
         {
             observed_value += value;
         }
 
-        LUX_METHOD()
+        LUX_METHOD(script_export="consumer.event")
         void onEvent(const CollisionEvent& value) noexcept
         {
             observed_event = value;

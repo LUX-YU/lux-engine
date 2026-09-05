@@ -13,10 +13,10 @@ namespace installed_consumer
     inline std::int32_t observed{};
     inline std::optional<lux::simulation::script::CppScriptEventSource<std::int32_t>> pulse_event;
 
-    class LUX_TYPE_INFO(runtime) CoroutineBehavior final
+    class LUX_TYPE_INFO(compile_time) CoroutineBehavior final
     {
     public:
-        LUX_METHOD()
+        LUX_METHOD(script_export="consumer.run", script_coroutine=true)
         lux::simulation::script::ScriptCoroutine run(
             lux::simulation::script::ScriptCoroutineContext& context
         ) noexcept

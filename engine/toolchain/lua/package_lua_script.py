@@ -45,88 +45,35 @@ class Semantic:
     alignment: int
 
 
-def make_semantics(
-    record_specs: list[str], value_specs: list[str]
-) -> dict[str, Semantic]:
-    layouts = (
-        ("lux.bool", 1, 1, 1),
-        ("lux.i32", 2, 4, 4),
-        ("lux.u32", 3, 4, 4),
-        ("lux.f32", 6, 4, 4),
-        ("lux.f64", 7, 8, 8),
-    )
-    result = {
-        canonical: Semantic(
-            canonical,
-            fnv1a(canonical),
-            VALUE_PASS,
-            True,
-            abi_kind,
-            size,
-            alignment,
-        )
-        for canonical, abi_kind, size, alignment in layouts
-    }
-    for specification in record_specs:
-        parts = specification.split(",")
-        if len(parts) != 3:
-            raise ValueError(
-                "--record-type must be canonical-name,size,alignment"
+def make_semantics(paths: list[pathlib.Path]) -> dict[str, Semantic]:
+    """Read target-produced facts; the supported-kind set is Lua projection policy."""
+    result: dict[str, Semantic] = {}
+    known: dict[str, tuple[int, int, int, int]] = {}
+    for path in paths:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if document.get("schema") != "lux-script-semantic" or document.get("version") != 1:
+            raise ValueError("unsupported semantic schema")
+        for item in document.get("types", []):
+            canonical = item.get("canonical_name")
+            identity, kind, size, alignment = (
+                int(item.get("type_id", 0)), int(item.get("abi_kind", 0)),
+                int(item.get("size", 0)), int(item.get("alignment", 0)),
             )
-        canonical, size_text, alignment_text = parts
-        size = int(size_text, 0)
-        alignment = int(alignment_text, 0)
-        if (
-            not canonical
-            or canonical in result
-            or size <= 0
-            or size > 0xFFFFFFFF
-            or alignment <= 0
-            or alignment > 0xFFFFFFFF
-            or alignment & (alignment - 1)
-        ):
-            raise ValueError("invalid --record-type")
-        result[canonical] = Semantic(
-            canonical,
-            fnv1a(canonical),
-            CONST_REF_PASS,
-            False,
-            10,
-            size,
-            alignment,
-        )
-    for specification in value_specs:
-        parts = specification.split(",")
-        if len(parts) != 4:
-            raise ValueError(
-                "--value-type must be canonical-name,abi-kind,size,alignment"
-            )
-        canonical, abi_kind_text, size_text, alignment_text = parts
-        abi_kind = int(abi_kind_text, 0)
-        size = int(size_text, 0)
-        alignment = int(alignment_text, 0)
-        if (
-            not canonical
-            or canonical in result
-            or abi_kind < 1
-            or abi_kind > 7
-            or abi_kind in (4, 5)
-            or size <= 0
-            or size > 0xFFFFFFFF
-            or alignment <= 0
-            or alignment > 0xFFFFFFFF
-            or alignment & (alignment - 1)
-        ):
-            raise ValueError("invalid --value-type")
-        result[canonical] = Semantic(
-            canonical,
-            fnv1a(canonical),
-            VALUE_PASS,
-            True,
-            abi_kind,
-            size,
-            alignment,
-        )
+            if (not isinstance(canonical, str) or not canonical or not 0 < identity <= 0xFFFFFFFFFFFFFFFF
+                    or not 0 < size <= 0xFFFFFFFF or not 0 < alignment <= 0xFFFFFFFF
+                    or alignment & (alignment - 1) or identity != fnv1a(canonical)):
+                raise ValueError("invalid semantic layout")
+            layout = identity, kind, size, alignment
+            if canonical in known and known[canonical] != layout:
+                raise ValueError("conflicting semantic layout: " + canonical)
+            known[canonical] = layout
+            # Portable Lua v1 deliberately does not expose plain i64/u64 or pointer kinds.
+            if kind not in (1, 2, 3, 6, 7, 10):
+                continue
+            result[canonical] = Semantic(canonical, identity,
+                CONST_REF_PASS if kind == 10 else VALUE_PASS, kind != 10, kind, size, alignment)
+    if not result:
+        raise ValueError("semantic schema has no supported Lua types")
     return result
 
 
@@ -676,8 +623,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
-    parser.add_argument("--record-type", action="append", default=[])
-    parser.add_argument("--value-type", action="append", default=[])
+    parser.add_argument("--semantic-schema", action="append", required=True, type=pathlib.Path)
     parser.add_argument("--ability-schema", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--event-schema", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--symbol-ledger", required=True, type=pathlib.Path)
@@ -690,7 +636,7 @@ def main() -> int:
     try:
         payload = arguments.source.read_bytes()
         source = payload.decode("utf-8")
-        semantics = make_semantics(arguments.record_type, arguments.value_type)
+        semantics = make_semantics(arguments.semantic_schema)
         ability_schemas = load_ability_schemas(arguments.ability_schema)
         event_schemas = load_event_schemas(arguments.event_schema)
         symbols_by_source = load_symbol_ledger(arguments.symbol_ledger)

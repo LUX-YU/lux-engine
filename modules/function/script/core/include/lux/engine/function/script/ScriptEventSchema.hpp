@@ -12,7 +12,7 @@
 #include <span>
 #include <string_view>
 
-namespace lux::toolchain::lua
+namespace lux::script
 {
     enum class EScriptEventSchemaWriteError : std::uint8_t
     {

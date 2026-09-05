@@ -1,4 +1,6 @@
 #include "ConsumerBehavior.hpp"
+#include "ConsumerBehavior.HookBehavior.script.generated.hpp"
+#include "InventoryAbility.ability.generated.hpp"
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
@@ -28,8 +30,6 @@ namespace
     inline constexpr EventPointId PulseEvent{104U};
     inline constexpr lux::script::ScriptSymbolId ValueSymbol{201U};
     inline constexpr lux::script::ScriptSymbolId EventSymbol{202U};
-    inline constexpr lux::script::ScriptApiContractIdView AbilityContract{"consumer.InventoryAbility"};
-    inline constexpr std::uint64_t AbilitySchema{0xC011AB1EU};
 
     inline constexpr std::array Hooks{
         makeHookPointSpec<void(float)>(ValueHook, "value"),
@@ -74,6 +74,7 @@ namespace
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
         inline static constexpr auto Description = System;
+        std::int32_t count() noexcept { return 1; }
         Fixture& fixture;
         HookPoint<void(float)> value_hook;
         using Channel = HookChannel<EntityTargetedRoute<ecs::Entity>, installed_consumer::CollisionEvent>;
@@ -104,7 +105,10 @@ namespace
         if (!writer)
             return lux::cxx::unexpected(writer.error());
         (*domain)->pulse_writer = *writer;
-        auto result = builder.publishScriptHook(view.instanceId(), (*domain)->hook_bridge.descriptor());
+        auto result = builder.publishScriptAbility(view.instanceId(),
+            lux::script::bindScriptAbility<installed_consumer::InventoryAbility>(**domain));
+        if (!result) return result;
+        result = builder.publishScriptHook(view.instanceId(), (*domain)->hook_bridge.descriptor());
         if (!result)
             return result;
         result = builder.publishScriptEvent(view.instanceId(), (*domain)->event_bridge.descriptor());
@@ -152,75 +156,18 @@ namespace
         return true;
     }
 
-    bool resolveRecord(
-        void*,
-        const lux::meta::RefType& type,
-        lux::semantic::Layout& result
-    ) noexcept
-    {
-        const auto* reflected = static_cast<const lux::meta::RefClass*>(
-            type.ptr
-        );
-        if (!reflected || reflected->full_name !=
-            "installed_consumer::CollisionEvent")
-        {
-            return false;
-        }
-        constexpr std::string_view name{"consumer.CollisionEvent"};
-        result = {
-            lux::semantic::typeId(name),
-            name,
-            LUX_SCRIPT_VK_STRUCT_REF,
-            sizeof(installed_consumer::CollisionEvent),
-            alignof(installed_consumer::CollisionEvent)};
-        return true;
-    }
+
 }
 int main()
 {
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    lux::meta::ReflectionRegistry::initRegistry();
-    auto& reflection = lux::meta::ReflectionRegistry::instance();
-    const auto* reflected = reflection.findClass(
-        "installed_consumer::ConsumerBehavior");
-    assert(reflected && reflected->methods.size() == 2U);
-    const lux::meta::RefMethod* value_method{};
-    const lux::meta::RefMethod* event_method{};
-    for (const auto& method : reflected->methods)
-    {
-        if (method.invokable.name == "onValue")
-            value_method = &method;
-        else if (method.invokable.name == "onEvent")
-            event_method = &method;
-    }
-    assert(value_method && event_method);
-    const std::array methods{value_method, event_method};
-    const std::array symbols{ValueSymbol, EventSymbol};
-    const std::array ability_requirements{
-        lux::rdesc::ScriptApiRequirement{
-            lux::script::ScriptApiContractId{AbilityContract.name()},
-            AbilitySchema
-        }
-    };
-    auto projected = projectCppStaticEntityScript(
-        "consumer.behavior",
-        "consumer-behavior-v1",
-        *reflected,
-        methods,
-        symbols,
-        {nullptr, &resolveRecord},
-        nullptr,
-        {},
-        {},
-        ability_requirements
-    );
-    assert(projected);
-
+    const auto& contract = generated::HookBehavior;
     Fixture fixture;
-    auto projected_description = projected->description();
-    auto artifact = lux::script::ScriptArtifact::create(std::move(projected_description), {});
+    auto description = materializeCppStaticScript(contract);
+    assert(description);
+    auto artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
     assert(artifact);
     fixture.artifact = std::make_shared<lux::script::ScriptArtifact>(std::move(*artifact));
     auto artifact_asset = lux::script::ScriptArtifactAsset::create(
@@ -316,19 +263,12 @@ int main()
     assert(composed);
 
     const std::array pools{CppStaticScriptPoolDescription{
-        std::addressof(*projected), 1U, 0U, 0U, alignof(std::max_align_t), 3U
+        std::addressof(contract), 1U, 0U, 0U, alignof(std::max_align_t), 3U
     }};
     auto backend_result = CppStaticScriptBackend::create(pools);
     assert(backend_result);
     auto backend = std::move(*backend_result);
     const std::array backends{backend.descriptor()};
-    const std::uint32_t ability_dispatch{1U};
-    const std::array capabilities{ScriptApiCapabilityPublication{
-        AbilityContract,
-        AbilitySchema,
-        nullptr,
-        &ability_dispatch
-    }};
     auto created = ScriptSystem::create(
         *simulation_owner,
         *decoded_script,
@@ -337,7 +277,7 @@ int main()
         ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U, 2U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
-        capabilities,
+        composed->scriptApiCapabilities(),
         backends,
         composed->scriptHookEndpoints(),
         composed->scriptEventEndpoints());
@@ -364,6 +304,5 @@ int main()
     assert(installed_consumer::observed_event.body == 17);
     assert(installed_consumer::observed_event.impulse == 4.5F);
     assert(script_system.shutdown());
-    lux::meta::ReflectionRegistry::destroyRegistry();
     return 0;
 }

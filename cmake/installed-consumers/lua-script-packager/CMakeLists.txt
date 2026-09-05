@@ -43,7 +43,9 @@ lux_package_lua_script(
     NAME inventory_lua_artifact
     SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/inventory.lua
     OUTPUT ${artifact}
-    VALUE_TYPES lux.simulation.ScriptEndPlayReason,3,4,4
+    SEMANTIC_TYPES lux::simulation::script::EScriptEndPlayReason
+    SEMANTIC_HEADERS lux/engine/simulation/scripting/ScriptLifecycle.hpp
+    SEMANTIC_TARGETS lux::engine::simulation::simulation_scripting_core
     ABILITY_TARGETS inventory_ability_contract
     EVENT_SCHEMAS ${event_schema}
     EVENT_SCHEMA_TARGETS inventory_event_schema

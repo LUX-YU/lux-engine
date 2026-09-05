@@ -24,6 +24,7 @@ component_include_directories(
 target_include_directories(
     simulation_script
     PUBLIC $<INSTALL_INTERFACE:include/lux/engine/simulation/abilities>
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 target_compile_definitions(
     simulation_script
@@ -47,6 +48,18 @@ target_link_libraries(
 )
 
 find_package(lux-cxx REQUIRED COMPONENTS container)
+
+add_executable(simulation_script_ingress_frontier_test test/script_ingress_frontier_test.cpp)
+target_include_directories(simulation_script_ingress_frontier_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+target_link_libraries(simulation_script_ingress_frontier_test PRIVATE lux::engine::simulation::simulation_scripting_core)
+if(MSVC)
+    target_compile_options(simulation_script_ingress_frontier_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_ingress_frontier_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_script_ingress_frontier_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME simulation_script_ingress_frontier_test COMMAND simulation_script_ingress_frontier_test)
+set_tests_properties(simulation_script_ingress_frontier_test PROPERTIES TIMEOUT 30)
 component_add_transitive_commands(
     simulation_script
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"

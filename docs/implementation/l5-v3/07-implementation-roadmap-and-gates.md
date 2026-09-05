@@ -48,8 +48,9 @@ old Authoring/session architecture
 
 ## 2. 已完成的 Script 子 DAG
 
-当前 implementation 已完成 S1–S6：S5 CLOSED/PASS，S6 COMPLETE/PASS，Script framework FROZEN。
-本节保留阶段定义和 gates 作为已执行 contract；下一步仅标记为 R1，不在本轮启动。
+S1–S5 的已验证语义保持；S6 当前为安全 / TaskGraph / HookChannel 联合闭环 candidate，等待独立审阅。
+历史 freeze 标记已被后续 review findings supersede，不得仅因构建通过而重新宣布冻结。
+本节保留阶段定义；R1 仅是审阅接受后的候选下一步，本轮不启动。
 
 已完成方向：
 
@@ -194,7 +195,7 @@ S5 does not create a new coroutine runtime. It connects the existing one to real
 Canonical topology:
 
 ```text
-EventPoint
+canonical Event source / HookChannel
     ↓
 ScriptSystem EventBucket
     ├─ normal bound handlers
@@ -205,11 +206,11 @@ MUST:
 
 ```text
 waiter is bounded + generational + one-shot
-no per-waiter EventPoint.connect/disconnect
+no per-waiter transport connection; one endpoint-level Script bridge
 event payload crossing dispatch lifetime is copied/marshalled to owned resume storage
 event dispatch only marks READY/enqueues; it never directly resumes script
 idle waiters are event-driven; no per-frame full waiter scan
-callback and await consumption may coexist for one EventPoint
+callback and await consumption may coexist for one canonical Event source
 nested dispatch and entity-retirement ordering deterministic/fail-closed
 ```
 
@@ -336,7 +337,21 @@ cross-backend performance comparison recorded
 no new generic runtime manager/scheduler
 ```
 
-After S6: **STOP Script framework expansion** and enter R1.
+After the joint closure: **STOP and await independent review**. Do not automatically enter R1.
+
+### S6 joint closure gates (2026-09-05)
+
+1. G0: Lua closure provenance is checked before local-slot indexing/typed dispatch; unsupported external results
+   are rejected before Awaitable/ticket/provider admission.
+2. G1/G2: the existing TaskGraph compiles stable task/Hook relationships; Script-capable Hooks own caller-thread
+   exclusion, typed HookChannel delivery, structural commit and the unique per-step stable resume role.
+3. G3: real multi-worker Scene/Physics/language regressions, installed-only consumers, generation/race stress and
+   B0/B1/B2 measurements. Performance comparisons use independent paired runs, not frame samples as repetitions.
+
+Authorized current matrix: LuaJIT DEVELOPER RelWithDebInfo, VM-independent TOOLCHAIN, Debug focused concurrency,
+Release source-composed consumers and Physics OFF. LuaJIT interpreter-only remains a semantic regression mode.
+PLAYER, EDITOR and Lua 5.4 qualification/sampling are NOT RUN in this closure; their implementations are retained.
+Android is not configured/built; required Modules include-prefix synchronization is still performed.
 
 ---
 

@@ -692,6 +692,58 @@ resume script directly from arbitrary worker/render callback
 
 Completion MUST enter the backend-neutral bounded Script resume path at the explicit Simulation stable point. Scene/script shutdown MUST invalidate/cancel stale continuations safely.
 
+### 27.1 Compiled Simulation Hook / Channel execution (2026-09-05)
+
+L0 TaskGraph/TaskExecutor remains dependency-ready and knows only tasks, resources, dependencies and affinity.
+L1 collects immutable named System stages, construction dependencies, execution before/after relations, Hook
+contracts and Channel producers before submitting nodes to that existing builder. Construction order is not
+execution order. Missing references, cycles and an authoritative task with no defined relation to a Script-capable
+Hook MUST fail cold construction. Resource conflicts provide exclusion, not an accidental business ordering.
+
+Each Simulation uses its own execution fence: authoritative tasks take READ, Script-capable Hooks take WRITE plus
+CALLER_THREAD. The Hook's structural commit stays in that exclusion interval. Provider-state-only tasks also take
+the fence. Multiple named Hooks may delimit worker regions. Subscriber, mount, waiter and occurrence counts do not
+change the sealed graph. Hook capability/affinity cannot be upgraded when a subscriber appears.
+
+The named Hook sequence is:
+
+```text
+incoming lifecycle/retirement
+→ direct callbacks
+→ sealed typed Channel delivery
+→ stable Hook only: Delay promotion / bounded ingress adoption / bounded resume
+→ all invocation stacks exit
+→ snapshot structural commit / permitted lifecycle work
+→ consumed Channel reset
+→ dependent workers
+```
+
+Only one Hook per actual step has the stable-resume role. Step identity prevents duplicate resume budgets;
+NextStep created while resuming at N stays in N+1's generation. Final Transform/derived-data propagation must be
+explicitly downstream of the last Script mutation/commit and upstream of Scene publication. Do not rerun the whole
+Simulation to refresh derived data. A failed step skips dependent work, retains bounded cleanup and returns failure;
+there is no implicit whole-world rollback.
+
+Channels are typed Simulation-owned storage with prepared single-writer lanes assigned by logical producer stage.
+They have fixed bounded storage and deterministic lane merge order; no per-record mutex/atomic, subscriber store,
+per-waiter endpoint connection or per-frame idle waiter scan belongs in the transport. Only the compiled Hook can
+authorize Script delivery. Re-production is opt-in, owner-scoped and next-generation. Optional storage maintenance
+belongs at an explicit paused boundary under byte budgets, never automatic hot-path vector growth.
+
+Preparation has two phases: L1 prepares graph/storage, L3 creates ScriptRuntimeSystem/Timer integration and borrows
+it through neutral callbacks while paused, then seals.
+An empty/no-Script graph may execute without a Script runtime. Once a Script endpoint is connected, execution
+without the runtime Hook binding MUST fail before clock advance or any task/user invocation, including a late
+connection to an already sealed graph. Connection state is exact on success, failure rollback and disconnect.
+Shutdown stops execution/producer admission, disconnects
+the graph borrow, closes ingress, retires instances and finally releases providers. No arbitrary live owner-thread
+migration is provided. Live stats are owner-safe-point reads; cross-thread observation consumes published copies.
+
+Simulation wire is hard-cut to v8. Script Event requirements carry delivery Hook identity and delivery hash/version
+under Script schema 12 / LXSA v10. Hashes include normalized producer/execution relationships and re-production
+policy, excluding display strings and runtime ordinals. Asset, current registration and prepared endpoint contracts
+must agree before user code. No compatibility shim, second Scene TaskGraph or Script scheduler is introduced.
+
 ---
 
 ## 28. Source Plugin / Extension Composition Contract

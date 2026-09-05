@@ -2,14 +2,15 @@
 
 Status: **Normative Runtime Scripting Design — v3 reconciled 2026-09-03**
 
-Implementation status (2026-09-04): **S5 PASS; S6 PASS; Script framework frozen.** The existing
-ScriptSystem Awaitable/Continuation/ResumeRing remains the only scheduler. C++ coroutine handles and frames are
+Implementation status (2026-09-05): **joint closure candidate / awaiting independent review, not frozen.** The existing
+ScriptSystem Awaitable/Continuation/ResumeRing remains the only Script continuation runtime. The existing TaskGraph
+remains the Simulation scheduler. C++ coroutine handles and frames are
 private to `simulation_script_cpp_static`; Lua threads remain private to the Lua backend; FlowForge continues to
 compile into NativeModuleScript.
 
 The first production Physics Ability is the synchronous, backend-neutral `PhysicsQuery2D::overlapsBox` owned by
 `engine/domain/simulation/builtin/physics2d`. Box2D remains private. Navigation remains not ready and AssetLoad
-remains blocked by the residency-backed Script Asset handle contract; neither reopens the frozen framework.
+remains blocked by the residency-backed Script Asset handle contract; neither is implemented by this closure.
 
 Parent documents: `00-L5-architecture-overview.md`, `08-normative-execution-contract.md`, `07-implementation-roadmap-and-gates.md`
 
@@ -417,7 +418,13 @@ mark Awaitable READY/FAILED/CANCELLED
 enqueue bounded resume work
 ```
 
-Script code executes at an explicit Simulation Script stable point.
+Script-capable callbacks execute only in compiled caller-thread Hooks, with exclusive access relative to all
+authoritative Simulation tasks, including tasks that only mutate provider-owned state. Continuations resume only
+in the single Hook declared `stable_resume` for that Simulation step. Other Hooks may publish READY but do not
+resume or replenish the budget. Scene stable/presentation tasks do not pump gameplay Script.
+
+External ingress captures an admission frontier at Hook entry and drains at most its bounded budget. A reserved
+but unpublished ring cell ends this drain immediately: no busy wait and no overtaking the publication hole.
 
 At resume:
 
@@ -477,7 +484,7 @@ S5 additionally allows a running Script invocation to wait for the next event fr
 Canonical topology:
 
 ```text
-EventPoint
+canonical Event identity → typed HookChannel sealed generation
     ↓
 ScriptSystem EventBucket
     ├─ normal bound handlers
@@ -490,12 +497,27 @@ MUST:
 waiter bounded + generational
 waiter one-shot
 normal callback and waiters may coexist
-no per-waiter EventPoint.connect/disconnect
+one endpoint-level Script bridge, never a connection per waiter
 dispatch may complete many waiters but never directly executes resumed Script
 resume obeys normal stable-point budget
 ```
 
 Event payload crossing the dispatch lifetime MUST be copied/marshalled into owned resume storage. Never keep the current event call-frame pointer or borrowed payload pointer.
+
+HookChannel storage is Simulation-owned, created through a typed factory. Prepared producers are bound to stable
+System/task identities; lanes are assigned by that identity rather than worker index or registration order.
+Records merge by producer identity and then lane-local order. Native consumers borrow sealed spans; no flattening
+array is required. Ordinary System code cannot authorize Script channel consumption or directly dispatch an
+unscoped Hook. Only the compiled delivery phase authorizes the endpoint-level bridge.
+
+Non-scalar payloads require an explicit owner-provided noexcept ownership copy. Fixed capacities fail the step
+on overflow; incomplete generations are not consumed. Subsequent dependent work is skipped and cleanup proceeds.
+Worker producers cannot append into a sealed generation. Explicit owner re-production requires the declared Hook
+scope and a separately bounded next-generation lane; its records are consumed at a later activation.
+
+Producer declarations and delivery policy are included in the persisted delivery contract. ScriptArtifact Event
+requirements are exact-checked against current endpoint identity, route, payload and delivery hash/version before
+user code. Native ABI remains v5; timing validation belongs to artifact/mount admission, not a new native ABI field.
 
 Nested event/retirement correctness:
 

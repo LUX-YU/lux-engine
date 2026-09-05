@@ -262,7 +262,7 @@ EndPlay(reason)
 Then:
 
 ```text
-release lifecycle/normal/step prepared methods
+release each unique prepared method once (shared synchronous/resumable views)
 destroy backend object
 clear remaining instance/backend state
 ```
@@ -270,6 +270,20 @@ clear remaining instance/backend state
 The key guarantee is:
 
 > No gameplay continuation belonging to the retiring incarnation may resume after EndPlay begins.
+
+Retirement invalidates admission and the ScriptInstance generation immediately. If its invocation is still on the
+native stack, backend continuation/object destruction is deferred until that stack has exited. Cleanup then walks
+only the incarnation's owned waiters, Awaitables and continuations before EndPlay and physical destruction.
+
+Compiled Hooks process incoming dirty/retirement work, direct callbacks, sealed Channel occurrences, optional stable
+resume, structural commit and permitted lifecycle work in that order. Registry commands are producer-owned and
+double-buffered: commands emitted while a batch is committing cannot feed the same batch. Commands produced by
+the final scripted commit are deferred to the next step, never applied after final derived-data propagation.
+DeferredEntity generation changes with committed batches; stale tokens cannot alias a newer batch's entities.
+
+A failed step still performs retirement-only cleanup and physical destruction, but does not admit new gameplay
+incarnations. Scope/stack safety has the same release behavior; Debug affinity probes are diagnostics, not the
+mechanism providing exclusion. `EndPlay(ENTITY_DESTROYED)` still does not guarantee arbitrary component access.
 
 ---
 

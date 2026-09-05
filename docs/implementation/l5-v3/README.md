@@ -1,8 +1,9 @@
-# Lux Engine Architecture / Implementation Docset — 2026-09-04 v3 framework freeze
+# Lux Engine Architecture / Implementation Docset — 2026-09-05 v3 closure candidate
 
 Status: **Normative architecture + current implementation roadmap**
 
-This revision records the qualified completion of Script S1–S6 and freezes the Script framework for product/editor consumption.
+This revision records the authorized Script safety / TaskGraph / HookChannel closure contract. It does not declare
+the Script framework frozen: final qualification and independent review are required before that status can return.
 
 Qualified implementation checkpoint: production `718425883a695c26008fa600ae196b60d8738644`; evidence follows in the implementation branch. Later implementation may move ahead of this checkpoint; coding agents MUST remap physical paths/targets to current repository facts without silently changing the semantic contracts in this docset.
 
@@ -42,7 +43,10 @@ PB3        complete gameplay Event/Delay/Physics baseline
 S6         C++ coroutine frontend + generated Ability ergonomics + static specialization
 ```
 
-Status: **S5 CLOSED/PASS. S6 COMPLETE/PASS. SCRIPT FRAMEWORK FROZEN.**
+Status: **S5 preserved. S6 joint closure candidate / AWAITING INDEPENDENT REVIEW.**
+
+Current closure implementation candidate: `main` production `5f03e9b156421583ae81857025ec6156ad0e0f05`.
+The earlier freeze checkpoint above is historical, not authority to bypass the new safety gates.
 
 `S2.4 AssetLoad` is **not** considered complete merely because the coroutine bridge exists. It remains conditional on an approved script-visible stable/residency-backed Asset handle/value contract.
 
@@ -67,10 +71,12 @@ PB3  realistic gameplay async/event/domain baseline
   ↓
 S6   C++ coroutine ergonomics + shipping static specialization
   ↓
-Script framework FREEZE
+independent joint-closure review
+  ↓
+Script framework FREEZE only after explicit acceptance
 ```
 
-`R1` is the next review activity. It is not started by this freeze revision.
+`R1` is only a subsequent activity after acceptance. It is not authorized or started by this revision.
 
 There is intentionally **no planned S7**. New Script/runtime work after S6 must be justified by a real product/editor/gameplay consumer.
 

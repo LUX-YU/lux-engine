@@ -2,13 +2,30 @@
 
 Status: **Normative Implementation Contract — v3 reconciled 2026-09-03**
 
-Implementation status (2026-09-04): **qualified and frozen through S6.** Canonical codegen now emits the existing
+Implementation status (2026-09-05): **joint closure candidate, awaiting independent review.** Canonical codegen emits the existing
 dynamic C++ facade, the coroutine-aware facade and the optional `ScriptAbilityStatic<Ability, Provider>` adapter.
 The static adapter is product/composition-local, validates the same ContractId/schema/binding, never enters
 ScriptArtifact and does not create a runtime provider registry.
 
-`CppStaticScript` persists explicit coroutine-capable ScriptSymbolIds under Script schema 11 / LXSA wire 9.
+`CppStaticScript` persists explicit coroutine-capable ScriptSymbolIds under Script schema 12 / LXSA wire 10.
 Generated Delay ergonomics remain a projection of the owner-side Delay Ability; they are not a second contract.
+
+### Prepared closure and result admission safety
+
+Every Lua Ability/Event closure carries backend identity, an immutable full-userdata prototype-layout token and
+an artifact-local ordinal. The bridge validates that token against the active instance before indexing its prepared
+span or casting dispatch types. Same-prototype instances use their own prepared provider; foreign-prototype and
+stale retained closures fail without provider invocation or waiter registration. Reachable closures keep their
+layout token alive, preventing address-reuse ABA. Native-stack execution scopes restore nested calls on success,
+failure and yield.
+
+Lua errors/yields must not unwind through C++ noexcept frames. Backend-local Lua wrappers turn typed-thunk status
+into Lua error/yield only after the C++ bridge has returned; they do not create another wait token or runtime.
+
+Generic external async results must fit both the runtime payload limit and the 32-byte inline transport, with exact
+owned type/layout/alignment. Known unsupported results fail preparation; dynamic factories reject before allocating
+an Awaitable/ticket or starting the provider. Owner-local Event/Simulation Delay semantics are a distinct path, not
+a thread-detection shortcut. Larger owner-local Event values still use the existing bounded owned representation.
 
 Parent: `11-script-api-capabilities-coroutines-and-await.md`
 

@@ -829,12 +829,12 @@ namespace
         assert(harness.backend_state.resumes == 1U);
         assert(harness.system->stats().active_event_waiters == 0U);
         const auto retired = harness.system->executeStablePoint();
-        assert(!retired && retired.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
+        assert(retired);
         assert(harness.system->activeInstanceCount() == 0U);
 
         harness.recordTargetedWait(old_entity, 6);
         assert(deliverEndpoint(harness.targeted_wait_bridge) == 1U);
-        assert(harness.system->executeStablePoint().error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
+        assert(harness.system->executeStablePoint());
         assert(harness.backend_state.resumes == 1U);
 
         harness.entity = harness.registry.create();

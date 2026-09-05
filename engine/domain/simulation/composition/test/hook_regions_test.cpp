@@ -24,6 +24,8 @@ namespace
         std::thread::id caller{std::this_thread::get_id()};
         std::barrier<>* rendezvous{};
         bool overflow{};
+        bool fail_hook{};
+        bool fail_command{};
         unsigned constructions{};
         unsigned value{};
         unsigned published{};
@@ -147,13 +149,13 @@ namespace
             ++system.state.step;
             system.state.record(1U);
             auto writer = system.first_writer.begin();
-            const auto recorded = writer.record(1);
+            assert(writer.record(1));
             if (system.state.overflow)
             {
                 assert(writer.record(2));
-                return writer.record(3);
+                // A void producer must propagate its lane failure without cooperation from its return type.
+                assert(!writer.record(3));
             }
-            return recorded;
         });
         if (!result)
             return result;
@@ -186,6 +188,7 @@ namespace
                 assert(!system.samples->beginOwner(invocation).record(90));
                 system.state.record(3U);
                 static_cast<void>(system.first.dispatch(invocation));
+                return !system.state.fail_hook;
             });
         if (!result)
             return result;
@@ -214,12 +217,15 @@ namespace
     }
 
     void run(std::barrier<>* rendezvous = nullptr, bool overflow = false,
-        bool missing_producer = false, bool stale_hook_contract = false)
+        bool missing_producer = false, bool stale_hook_contract = false, bool fail_hook = false,
+        bool fail_command = false)
     {
         ecs::Registry registry;
         auto& state = registry.ctx().emplace<State>();
         state.rendezvous = rendezvous;
         state.overflow = overflow;
+        state.fail_hook = fail_hook;
+        state.fail_command = fail_command;
         state.registry = &registry;
         state.entity = registry.create();
         SimulationDescriptionBuilder builder;
@@ -276,6 +282,8 @@ namespace
                         assert(writer->emplace<Marker>(state.entity, Marker{41U}));
                     else
                         assert(writer->remove<Marker>(state.entity));
+                    if (state.fail_command)
+                        writer->destroy(ecs::NullEntity);
                 });
             assert(connected);
         }
@@ -308,6 +316,22 @@ namespace
             assert(state.callbacks == 0U && state.stable_calls == 0U && state.published == 0U);
             return;
         }
+        if (fail_hook)
+        {
+            const auto result = simulation->execute(*executor, SimulationDuration{1});
+            assert(!result && result.error().code == ESimulationExecutionError::SYSTEM_TASK_FAILURE);
+            assert(state.count == 3U && state.callbacks == 1U && state.published == 0U);
+            return;
+        }
+        if (fail_command)
+        {
+            const auto result = simulation->execute(*executor, SimulationDuration{1});
+            assert(!result && result.error().code == ESimulationExecutionError::ECS_COMMAND_FAILURE);
+            assert(result.error().ecs_command.code == ecs::EEcsCommandError::INVALID_ENTITY);
+            assert(result.error().ecs_command.producer == 0U && result.error().ecs_command.command == 1U);
+            assert(state.callbacks == 1U && state.published == 0U);
+            return;
+        }
         for (unsigned step = 1U; step <= 2U; ++step)
         {
             state.count = 0U;
@@ -328,6 +352,8 @@ int main()
     run(nullptr, true);
     run(nullptr, false, true);
     run(nullptr, false, false, true);
+    run(nullptr, false, false, false, true);
+    run(nullptr, false, false, false, false, true);
     std::barrier rendezvous{2};
     std::jthread first([&] { run(&rendezvous); });
     std::jthread second([&] { run(&rendezvous); });

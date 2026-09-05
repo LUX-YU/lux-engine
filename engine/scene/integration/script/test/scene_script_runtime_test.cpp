@@ -175,6 +175,14 @@ namespace
             true,
             {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
         }));
+        // A long-lived pending object must not prevent the stable Hook or final derived propagation.
+        assert(builder.addMount({
+            ScriptMountId{3U},
+            assetId(0x72U),
+            EntityScriptMount{worldId<lux::world::WorldObjectId>(0xf1U)},
+            true,
+            {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
+        }));
         auto result = std::move(builder).build(*simulation);
         assert(result);
         return std::move(*result);
@@ -518,7 +526,7 @@ int main()
     Fixture fixture;
     const std::array backends{fixture.backend};
     ScriptRuntimeHost host{
-        ScriptRuntimeLimits{8U, 2U, 4U, 2U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
+        ScriptRuntimeLimits{8U, 3U, 4U, 2U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         codec_limits,
         4U,
         {&fixture, &Fixture::resolveArtifact},

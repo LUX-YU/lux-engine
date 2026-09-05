@@ -193,13 +193,11 @@ namespace lux::simulation
         void reportSystemFailure(void* state, lux::system::SystemInstanceId system) noexcept
         {
             auto& failure = *static_cast<std::atomic<std::uint64_t>*>(state);
-            std::uint64_t expected{};
-            failure.compare_exchange_strong(
-                expected,
-                system.value,
-                std::memory_order_acq_rel,
-                std::memory_order_acquire
-            );
+            auto expected = failure.load(std::memory_order_acquire);
+            while ((expected == 0U || system.value < expected) &&
+                !failure.compare_exchange_weak(expected, system.value,
+                    std::memory_order_acq_rel, std::memory_order_acquire))
+            {}
         }
 
         [[nodiscard]] std::size_t descriptionOrdinal(
@@ -1082,6 +1080,10 @@ namespace lux::simulation
                         }
                         if (!failed())
                             callable();
+                        // Check only this stage's lanes before publishing dependency readiness.
+                        for (const auto* slot : producer_slots)
+                            if (slot->failed == nullptr || slot->failed(slot->channel, slot->lane))
+                                fail();
                         for (auto* slot : command_slots)
                             if (owner->commands->producerFailure(slot->producer))
                                 fail();
@@ -1143,6 +1145,18 @@ namespace lux::simulation
                 task::TaskCallable flush([owner = impl.get()]() noexcept {
                     if (owner->execution.system_failure.load(std::memory_order_acquire) != 0U)
                     {
+                        if (!owner->execution.command_failure)
+                        {
+                            for (std::size_t index{}; index < owner->command_producers.size(); ++index)
+                            {
+                                const auto failure = owner->commands->producerFailure(index);
+                                if (failure)
+                                {
+                                    owner->execution.command_failure = failure;
+                                    break;
+                                }
+                            }
+                        }
                         owner->commands->discardPending();
                         return;
                     }
@@ -1299,17 +1313,6 @@ namespace lux::simulation
 
         const std::uint64_t system_failure =
             impl_->execution.system_failure.load(std::memory_order_acquire);
-        if (system_failure != 0U)
-        {
-            return lux::cxx::unexpected(
-                SimulationExecutionFailure{
-                    ESimulationExecutionError::SYSTEM_TASK_FAILURE,
-                    lux::system::SystemInstanceId{system_failure},
-                    {},
-                    {}
-                }
-            );
-        }
         if (impl_->execution.command_failure)
         {
             return lux::cxx::unexpected(
@@ -1320,6 +1323,15 @@ namespace lux::simulation
                     *impl_->execution.command_failure
                 }
             );
+        }
+        if (system_failure != 0U)
+        {
+            return lux::cxx::unexpected(SimulationExecutionFailure{
+                ESimulationExecutionError::SYSTEM_TASK_FAILURE,
+                lux::system::SystemInstanceId{system_failure},
+                {},
+                {}
+            });
         }
         return {};
     }

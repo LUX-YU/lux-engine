@@ -379,6 +379,40 @@ namespace
         bool entity_scope{};
     };
 
+    void testPendingDoesNotMaskFatal()
+    {
+        Harness harness{3U, true, true, true};
+        auto created = harness.create();
+        assert(created);
+        auto system = std::move(*created);
+        assert(system.prepare());
+        harness.registry.destroy(harness.entities[0]);
+        harness.entities[0] = NullEntity;
+        for (unsigned step{}; step < 8U; ++step)
+        {
+            assert(system.processLifecycle());
+            assert(system.executeStablePoint());
+            assert(system.activeInstanceCount() == 2U);
+            assert(harness.backend_state.begins == 3U);
+        }
+        harness.entities[0] = harness.registry.create();
+        assert(system.executeStablePoint());
+        assert(harness.backend_state.begins == 4U);
+        assert(system.activeInstanceCount() == 3U);
+
+        // Queue a pending candidate before another candidate whose BeginPlay will fail.
+        harness.registry.destroy(harness.entities[0]);
+        harness.entities[0] = NullEntity;
+        harness.registry.destroy(harness.entities[1]);
+        harness.entities[1] = harness.registry.create();
+        harness.backend_state.fail_begin_serial = harness.backend_state.creates + 1U;
+        const auto result = system.executeStablePoint();
+        assert(!result && result.error() == EScriptSystemError::INVOCATION_FAILURE);
+        assert(system.activeInstanceCount() == 1U);
+        assert(system.shutdown());
+        assert(harness.backend_state.destroys == harness.backend_state.creates);
+    }
+
     void testInitialLifecycle()
     {
         Harness harness{3U, false, true, true};
@@ -536,5 +570,6 @@ int main()
     testOptionalAndFailureLifecycle();
     testSignatureValidation();
     testIncarnationAndPendingContinuation();
+    testPendingDoesNotMaskFatal();
     return 0;
 }

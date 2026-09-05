@@ -1059,7 +1059,7 @@ namespace
         const auto completion = stale.backend_state.completions.front();
         stale.registry.destroy(stale.entity);
         const auto detached = stale_system.executeStablePoint();
-        assert(!detached && detached.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
+        assert(detached);
         const auto stale_completion = completion.ready();
         assert(!stale_completion && stale_completion.error() == EScriptAwaitableCompletionError::INVALID_ID);
         assert(stale_system.shutdown());

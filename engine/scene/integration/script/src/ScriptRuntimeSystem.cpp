@@ -473,7 +473,7 @@ namespace lux::scene
                     system.beginStableAdmission();
                 }
                 const auto result = system.processLifecycle();
-                return result || result.error() == simulation::script::EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED;
+                return static_cast<bool>(result);
             },
             [](void* context, const simulation::SimulationClockSnapshot&, bool stable_resume) noexcept {
                 if (!stable_resume)
@@ -486,7 +486,7 @@ namespace lux::scene
                 const auto result = runtime.system_.processLifecycle();
                 runtime.stats_exchange_.write() = runtime.system_.stats();
                 runtime.stats_exchange_.publish();
-                return result || result.error() == simulation::script::EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED;
+                return static_cast<bool>(result);
             },
             [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);

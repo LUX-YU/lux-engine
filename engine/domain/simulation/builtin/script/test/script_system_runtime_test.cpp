@@ -523,8 +523,7 @@ int main()
     const auto destroyed_entity = fixture.entity;
     registry.destroy(destroyed_entity);
     const auto pending_world = system.executeStablePoint();
-    assert(!pending_world);
-    assert(pending_world.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
+    assert(pending_world);
     assert(system.activeInstanceCount() == 1U);
 
     fixture.entity = registry.create();

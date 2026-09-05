@@ -3519,13 +3519,14 @@ namespace lux::simulation::script
             }
 
             const auto error = initialized.error();
-            if (!first_error)
-                first_error = error;
             if (error == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED)
             {
                 state_->queueDirty(mount_slot);
                 continue;
             }
+
+            if (!first_error)
+                first_error = error;
 
             auto& failed_mount = state_->mounts[mount_slot];
             failed_mount.state = EMountState::FAULTED;

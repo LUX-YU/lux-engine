@@ -99,6 +99,11 @@ namespace lux::simulation
             auto slot = bindChannelProducer(SimulationExecutionPoint::task(system, stage), &channel);
             if (!slot)
                 return lux::cxx::unexpected(slot.error());
+            (*slot)->channel = &channel;
+            (*slot)->failed = [](const void* context, std::size_t lane) noexcept {
+                const auto& source = *static_cast<const HookChannel<Route, Payload>*>(context);
+                return lane >= source.lanes_.size() || source.lanes_[lane].failed || source.lanes_[lane].active;
+            };
             return typename HookChannel<Route, Payload>::Producer{&channel, *slot};
         }
 
@@ -243,6 +248,9 @@ namespace lux::simulation
         {
             using Function = std::decay_t<Callable>;
             static_assert(std::is_nothrow_invocable_v<const Function&, Type&, const HookInvocation&>);
+            using Result = std::invoke_result_t<const Function&, Type&, const HookInvocation&>;
+            static_assert(std::same_as<Result, void> || std::same_as<Result, bool>,
+                "Simulation Hook callable must return void or bool");
             Type* object = findInstalledExact<Type>(instance);
             if (object == nullptr)
                 return lux::cxx::unexpected(SimulationSystemBuildFailure{
@@ -250,11 +258,18 @@ namespace lux::simulation
             try
             {
                 auto* invocation = allocateHookInvocation();
+                const auto reporter = failureReporter();
                 return addExecutionTask(
                     SimulationExecutionPoint::hook(instance, hook), ecs::systemTaskResources<Type>(),
-                    task::TaskCallable([object, invocation,
+                    task::TaskCallable([object, invocation, reporter, instance,
                         fn = Function(std::forward<Callable>(callable))]() noexcept {
-                        fn(*object, *invocation->current);
+                        if constexpr (std::same_as<Result, bool>)
+                        {
+                            if (!fn(*object, *invocation->current))
+                                reporter.report(instance);
+                        }
+                        else
+                            fn(*object, *invocation->current);
                     }), task::ETaskAffinity::CALLER_THREAD, invocation);
             }
             catch (const std::bad_alloc&)

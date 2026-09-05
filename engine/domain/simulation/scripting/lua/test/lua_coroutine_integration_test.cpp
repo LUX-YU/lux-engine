@@ -706,7 +706,7 @@ int main(int argc, char** argv)
     assert(event_retirement_system.stats().active_event_waiters == 1U);
     event_retirement.registry.destroy(event_retirement.entity);
     const auto event_retired = event_retirement_system.executeStablePoint();
-    assert(!event_retired && event_retired.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
+    assert(event_retired);
     assert(event_retirement_system.stats().active_event_waiters == 0U);
     const auto writes_before_late_event = event_retirement_provider.writes;
     {
@@ -749,7 +749,7 @@ int main(int argc, char** argv)
     const auto late_completion = *retiring_provider.pending;
     retiring.registry.destroy(retiring.entity);
     const auto retired = retiring_system.executeStablePoint();
-    assert(!retired && retired.error() == EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED);
+    assert(retired);
     assert(retiring_system.activeContinuationCount() == 0U);
     const auto late = late_completion.success(9);
     assert(!late && late.error() == lux::script::EScriptAbilityCompletionError::STALE);

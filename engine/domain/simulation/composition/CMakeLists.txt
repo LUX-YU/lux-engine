@@ -92,6 +92,14 @@ lux_classify_target(TARGET simulation_hook_regions_test LAYER SIMULATION PRODUCT
 add_test(NAME simulation_hook_regions_test COMMAND simulation_hook_regions_test)
 set_tests_properties(simulation_hook_regions_test PROPERTIES TIMEOUT 30)
 
+add_executable(simulation_hook_return_negative EXCLUDE_FROM_ALL test/hook_return_negative.cpp)
+target_link_libraries(simulation_hook_return_negative PRIVATE lux::engine::simulation::composition)
+lux_classify_target(TARGET simulation_hook_return_negative LAYER SIMULATION PRODUCT TEST ROLE COMPOSITION)
+add_test(NAME simulation_hook_return_negative
+    COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_BINARY_DIR} -DTARGET=simulation_hook_return_negative
+        "-DEXPECTED_PATTERN=Simulation Hook callable must return void or bool"
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake)
+
 include_component_cmake_scripts(script_core)
 add_executable(
     simulation_script_ability_codegen_test

@@ -34,6 +34,8 @@ namespace lux::simulation
         {
             std::size_t lane{};
             bool active{};
+            void* channel{};
+            bool (*failed)(const void*, std::size_t) noexcept{};
         };
         template <class Route> struct HookChannelTarget;
         template <> struct HookChannelTarget<SimulationBroadcastRoute> { using Type = std::monostate; };

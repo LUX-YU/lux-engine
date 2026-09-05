@@ -37,6 +37,17 @@ lux_classify_target(
 )
 
 if(BUILD_TESTING)
+    add_executable(simulation_script_frame_storage_failure_test test/frame_storage_failure_test.cpp)
+    target_link_libraries(simulation_script_frame_storage_failure_test
+        PRIVATE lux::engine::simulation::simulation_scripting_core)
+    lux_classify_target(TARGET simulation_script_frame_storage_failure_test
+        LAYER SIMULATION PRODUCT TEST ROLE FOUNDATION)
+    add_test(NAME simulation_script_frame_storage_move_test COMMAND simulation_script_frame_storage_failure_test)
+    foreach(failure_point RANGE 1 3)
+        add_test(NAME simulation_script_frame_storage_failure_${failure_point}_test
+            COMMAND simulation_script_frame_storage_failure_test ${failure_point})
+    endforeach()
+
     add_executable(
         simulation_script_bounded_frame_storage_test
         test/bounded_frame_storage_test.cpp

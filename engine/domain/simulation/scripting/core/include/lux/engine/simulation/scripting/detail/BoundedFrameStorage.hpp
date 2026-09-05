@@ -53,6 +53,8 @@ namespace lux::simulation::script::detail
             const bool is_invalid_alignment = storage_alignment < alignof(std::max_align_t) ||
                 (storage_alignment & (storage_alignment - 1U)) != 0U;
             const bool is_invalid_capacity = storage_bytes == 0U || frame_capacity == 0U ||
+                storage_bytes > static_cast<std::size_t>((std::numeric_limits<std::ptrdiff_t>::max)()) ||
+                frame_capacity > ((std::numeric_limits<std::uint32_t>::max)() - 1U) / 2U ||
                 frame_capacity > ((std::numeric_limits<std::size_t>::max)() - 1U) / 2U;
             if (is_invalid_alignment || is_invalid_capacity)
                 return lux::cxx::unexpected<EBoundedFrameStorageError>(
@@ -64,12 +66,12 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected<EBoundedFrameStorageError>(
                     EBoundedFrameStorageError::ALLOCATION_FAILURE
                 );
+            BoundedFrameStorage result;
+            result.arena_ = arena;
+            result.storage_alignment_ = storage_alignment;
             try
             {
-                BoundedFrameStorage result;
-                result.arena_ = arena;
                 result.storage_bytes_ = storage_bytes;
-                result.storage_alignment_ = storage_alignment;
                 result.frame_capacity_ = frame_capacity;
                 result.blocks_.resize(frame_capacity * 2U + 1U);
                 result.free_metadata_.reserve(result.blocks_.size() - 1U);
@@ -82,7 +84,6 @@ namespace lux::simulation::script::detail
             }
             catch (const std::bad_alloc&)
             {
-                ::operator delete(arena, std::align_val_t{storage_alignment});
                 return lux::cxx::unexpected<EBoundedFrameStorageError>(
                     EBoundedFrameStorageError::ALLOCATION_FAILURE
                 );
@@ -148,7 +149,8 @@ namespace lux::simulation::script::detail
                 auto& block = blocks_[current];
                 const auto aligned = alignUp(block.offset, alignment);
                 const bool offset_overflow = aligned < block.offset;
-                const bool size_overflow = !offset_overflow && size > storage_bytes_ - aligned;
+                const bool size_overflow = offset_overflow || aligned > storage_bytes_ ||
+                    size > storage_bytes_ - aligned;
                 const bool fits = !size_overflow && aligned + size <= block.offset + block.size;
                 if (!fits)
                 {
@@ -158,6 +160,8 @@ namespace lux::simulation::script::detail
 
                 const auto prefix = aligned - block.offset;
                 const auto suffix = block.offset + block.size - aligned - size;
+                if (block.generation == (std::numeric_limits<std::uint32_t>::max)())
+                    return fail(EBoundedFrameStorageError::CAPACITY_EXCEEDED);
                 const auto metadata_needed = static_cast<std::size_t>(prefix != 0U) +
                     static_cast<std::size_t>(suffix != 0U);
                 if (free_metadata_.size() < metadata_needed)
@@ -169,8 +173,9 @@ namespace lux::simulation::script::detail
                 if (prefix != 0U)
                 {
                     const auto prefix_slot = takeMetadata();
-                    blocks_[prefix_slot] = Block{block.offset, prefix, previous, current, nextGeneration(prefix_slot),
-                                                 true, true};
+                    blocks_[prefix_slot] = Block{
+                        block.offset, prefix, previous, current, blocks_[prefix_slot].generation, true, true
+                    };
                     linkFree(prefix_slot);
                     if (previous != invalidSlot())
                         blocks_[previous].next = prefix_slot;
@@ -181,8 +186,9 @@ namespace lux::simulation::script::detail
                 if (suffix != 0U)
                 {
                     const auto suffix_slot = takeMetadata();
-                    blocks_[suffix_slot] = Block{aligned + size, suffix, current, next, nextGeneration(suffix_slot),
-                                                 true, true};
+                    blocks_[suffix_slot] = Block{
+                        aligned + size, suffix, current, next, blocks_[suffix_slot].generation, true, true
+                    };
                     linkFree(suffix_slot);
                     if (next != invalidSlot())
                         blocks_[next].previous = suffix_slot;
@@ -198,7 +204,7 @@ namespace lux::simulation::script::detail
                 block.size = size;
                 block.free = false;
                 block.used = true;
-                block.generation = nextGeneration(current);
+                ++block.generation;
                 ++active_frames_;
                 frame_high_water_ = (std::max)(frame_high_water_, active_frames_);
                 return Allocation{
@@ -262,12 +268,6 @@ namespace lux::simulation::script::detail
             if (value > (std::numeric_limits<std::size_t>::max)() - padding)
                 return 0U;
             return (value + padding) & ~padding;
-        }
-
-        [[nodiscard]] std::uint32_t nextGeneration(std::uint32_t slot) const noexcept
-        {
-            const auto generation = blocks_[slot].generation + 1U;
-            return generation == 0U ? 1U : generation;
         }
 
         [[nodiscard]] std::uint32_t takeMetadata() noexcept

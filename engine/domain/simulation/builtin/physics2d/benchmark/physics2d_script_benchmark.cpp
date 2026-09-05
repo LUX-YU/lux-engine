@@ -372,13 +372,20 @@ namespace
             if (!created_artifact)
                 throw std::runtime_error("cannot create Physics2D C++ benchmark artifact");
             artifact.emplace(std::move(*created_artifact));
+            const auto frame_bytes = (std::max)(std::size_t{1024U}, coroutine_capacity * 512U);
+            const std::array frame_classes{
+                lux::simulation::script::detail::makeUniformStorageClass(
+                    frame_bytes, alignof(std::max_align_t), frame_bytes, coroutine_capacity
+                )
+            };
             const std::array pools{CppStaticScriptPoolDescription{
                 std::addressof(*descriptor),
                 instance_capacity,
                 coroutine_capacity,
-                (std::max)(std::size_t{1024U}, coroutine_capacity * 512U),
+                frame_bytes * 2U + 4096U,
                 alignof(std::max_align_t),
-                instance_capacity
+                instance_capacity,
+                frame_classes
             }};
             auto created_backend = CppStaticScriptBackend::create(pools);
             if (!created_backend)
@@ -539,9 +546,21 @@ namespace
                     .continuation_capacity = flow_count,
                     .max_ability_imports_per_module = 2U,
                     .max_continuation_frame_bytes = 256U,
-                    .continuation_frame_storage_bytes = (std::max)(std::size_t{256U}, flow_count * 128U),
+                    .continuation_frame_storage_bytes =
+                        2U * ((std::max)(std::size_t{256U}, flow_count * 128U)) + 4096U,
                     .max_event_wait_imports_per_module = 1U,
-                    .abilities = native_contributions
+                    .abilities = native_contributions,
+                    .state_storage_classes = std::array{
+                        lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (flow_count), 1U}
+                    },
+                    .state_storage_bytes = 128U * (flow_count) + 4096U,
+                    .continuation_frame_classes = std::array{
+                        lux::simulation::script::detail::makeUniformStorageClass(
+                            256U, alignof(std::max_align_t),
+                            (std::max)(std::size_t{256U}, flow_count * 128U),
+                            flow_count
+                        )
+                    }
                 }
             );
             if (!*native)
@@ -563,7 +582,23 @@ namespace
                 .execution_policy = options.lua_policy,
                 .event_catalog_capacity = 1U,
                 .prepared_event_capacity = lua_count,
-                .events = event_sources
+                .events = event_sources,
+                .prepared_ability_blocks = std::array{
+                    lux::simulation::script::LuaPreparedBlockClass{
+                        (lua_count * 5U) / ((lua_count) == 0U ? 1U : (lua_count)),
+                        lua_count
+                    }
+                },
+                .prepared_ability_storage_bytes =
+                    128U * (lua_count * 5U) + 4096U,
+                .prepared_event_blocks = std::array{
+                    lux::simulation::script::LuaPreparedBlockClass{
+                        (lua_count) / ((lua_count) == 0U ? 1U : (lua_count)),
+                        lua_count
+                    }
+                },
+                .prepared_event_storage_bytes =
+                    128U * (lua_count) + 4096U
             }));
             backends = {cpp.backend->descriptor(), native->descriptor(), lua->descriptor()};
             const auto bounded = (std::max)(options.size, std::size_t{1U});

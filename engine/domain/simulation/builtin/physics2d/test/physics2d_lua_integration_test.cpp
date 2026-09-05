@@ -105,7 +105,24 @@ int main()
                                              .abilities = contributions,
                                              .event_catalog_capacity = 1U,
                                              .prepared_event_capacity = 1U,
-                                             .events = event_sources});
+                                             .events = event_sources,
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (5U) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (5U) + 4096U,
+        .prepared_event_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (1U) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_event_storage_bytes =
+            128U * (1U) + 4096U
+    });
     assert(backend);
     const auto descriptor = backend->descriptor();
     ScriptSystemDescriptionBuilder description_builder;

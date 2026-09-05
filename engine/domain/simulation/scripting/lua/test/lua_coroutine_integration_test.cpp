@@ -450,7 +450,23 @@ namespace
                 .event_catalog_capacity = event_sources.size(),
                 .prepared_event_capacity = event_sources.size(),
                 .events = event_sources,
-                .track_vm_allocations = true
+                .track_vm_allocations = true,
+                .prepared_ability_blocks = std::array{
+                    lux::simulation::script::LuaPreparedBlockClass{
+                        (AbilityTraits::Description.methods.size()) / ((1U) == 0U ? 1U : (1U)),
+                        1U
+                    }
+                },
+                .prepared_ability_storage_bytes =
+                    128U * (AbilityTraits::Description.methods.size()) + 4096U,
+                .prepared_event_blocks = std::array{
+                    lux::simulation::script::LuaPreparedBlockClass{
+                        (event_sources.size()) / ((1U) == 0U ? 1U : (1U)),
+                        1U
+                    }
+                },
+                .prepared_event_storage_bytes =
+                    128U * (event_sources.size()) + 4096U
             });
             assert(created_backend);
             backend.emplace(std::move(*created_backend));

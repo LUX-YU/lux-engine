@@ -5,6 +5,7 @@
 #include <lux/engine/function/script/lua/detail/LuaVmCompatibility.hpp>
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/ScriptContractValidation.hpp>
+#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 
 #include <lua.hpp>
 
@@ -77,13 +78,11 @@ namespace lux::simulation::script
 
         struct PreparedSpan final
         {
-            static constexpr std::uint32_t InvalidSlot{(std::numeric_limits<std::uint32_t>::max)()};
-            std::uint32_t first{InvalidSlot};
-            std::uint32_t count{};
-
+            detail::BoundedClassStorage::Allocation block;
+            std::uint32_t count{(std::numeric_limits<std::uint32_t>::max)()};
             [[nodiscard]] bool valid() const noexcept
             {
-                return first != InvalidSlot;
+                return count != (std::numeric_limits<std::uint32_t>::max)();
             }
         };
 
@@ -94,6 +93,8 @@ namespace lux::simulation::script
             const void* layout_token{};
             std::vector<std::uint32_t> ability_ordinals;
             std::vector<std::uint32_t> event_ordinals;
+            detail::BoundedClassStorage::ClassHandle ability_class;
+            detail::BoundedClassStorage::ClassHandle event_class;
         };
 
         struct Instance final
@@ -165,138 +166,120 @@ namespace lux::simulation::script
         };
 
         template <class Value>
-        class PreparedSpanArena final
+        class PreparedBlockStorage final
         {
+            static_assert(std::is_nothrow_default_constructible_v<Value>);
+            static_assert(std::is_nothrow_destructible_v<Value>);
         public:
-            static constexpr std::uint32_t InvalidSlot{(std::numeric_limits<std::uint32_t>::max)()};
-
-            using Span = PreparedSpan;
-
             struct Stats final
             {
                 std::size_t active{};
                 std::size_t high_water{};
                 std::size_t storage_bytes{};
+                std::uint64_t acquire_steps{};
+                std::uint64_t release_steps{};
             };
 
-            explicit PreparedSpanArena(std::size_t capacity)
+            PreparedBlockStorage(std::size_t capacity, std::span<const LuaPreparedBlockClass> classes,
+                std::size_t byte_budget) : capacity_(capacity)
             {
                 if (capacity == 0U)
                     return;
-                if (capacity > (std::numeric_limits<std::uint32_t>::max)())
+                if (classes.empty() || classes.size() > 64U || capacity >= (std::numeric_limits<std::uint32_t>::max)())
                 {
                     valid_ = false;
                     return;
                 }
-                entries_.resize(capacity);
-                free_spans_.reserve(capacity + 1U);
-                free_spans_.push_back({0U, static_cast<std::uint32_t>(capacity)});
+                std::vector<detail::StorageClassPlan> plans;
+                plans.reserve(classes.size());
+                std::size_t entries{};
+                std::size_t blocks{};
+                for (const auto& item : classes)
+                {
+                    const bool is_invalid_class = item.entries == 0U || item.blocks == 0U ||
+                        item.entries > capacity - entries || item.blocks > (capacity - entries) / item.entries ||
+                        item.entries > (std::numeric_limits<std::size_t>::max)() / sizeof(Value);
+                    if (is_invalid_class)
+                    {
+                        valid_ = false;
+                        return;
+                    }
+                    const auto block_bytes = item.entries * sizeof(Value);
+                    if (item.blocks > (std::numeric_limits<std::size_t>::max)() / block_bytes)
+                    {
+                        valid_ = false;
+                        return;
+                    }
+                    plans.push_back({block_bytes, alignof(Value), block_bytes * item.blocks, 1U});
+                    entries += item.entries * item.blocks;
+                    blocks += item.blocks;
+                }
+                auto created = detail::BoundedClassStorage::create(plans, byte_budget, blocks);
+                valid_ = static_cast<bool>(created);
+                if (created)
+                    storage_ = std::move(*created);
             }
 
-            [[nodiscard]] Span allocate(std::size_t count) noexcept
+            [[nodiscard]] detail::BoundedClassStorage::ClassHandle select(std::size_t count) noexcept
+            {
+                const bool is_valid_count = count <= capacity_ &&
+                    count <= (std::numeric_limits<std::size_t>::max)() / sizeof(Value);
+                return is_valid_count ? storage_.select(count * sizeof(Value), alignof(Value)) :
+                    detail::BoundedClassStorage::ClassHandle{};
+            }
+
+            [[nodiscard]] PreparedSpan allocate(detail::BoundedClassStorage::ClassHandle layout,
+                std::size_t count) noexcept
             {
                 if (count == 0U)
-                    return {0U, 0U};
-                if (count > (std::numeric_limits<std::uint32_t>::max)())
+                    return {{}, 0U};
+                if (count > capacity_ - active_ || count > (std::numeric_limits<std::size_t>::max)() / sizeof(Value))
                     return {};
-                for (std::size_t index{}; index < free_spans_.size(); ++index)
-                {
-                    auto& free = free_spans_[index];
-                    if (free.count < count)
-                        continue;
-                    const Span result{free.first, static_cast<std::uint32_t>(count)};
-                    free.first += result.count;
-                    free.count -= result.count;
-                    if (free.count == 0U)
-                        free_spans_.erase(free_spans_.begin() + static_cast<std::ptrdiff_t>(index));
-                    active_ += result.count;
-                    high_water_ = (std::max)(high_water_, active_);
-                    return result;
-                }
-                return {};
+                const auto allocation = storage_.acquire(layout, count * sizeof(Value));
+                if (!allocation)
+                    return {};
+                auto* values = static_cast<Value*>(allocation->data);
+                for (std::size_t index{}; index < count; ++index)
+                    std::construct_at(values + index);
+                active_ += count;
+                high_water_ = (std::max)(high_water_, active_);
+                return {*allocation, static_cast<std::uint32_t>(count)};
             }
 
-            void release(Span& span) noexcept
+            void release(PreparedSpan& span) noexcept
             {
-                if (!span.valid() || span.count == 0U)
+                if (span.block)
                 {
-                    span = {};
-                    return;
+                    auto* values = static_cast<Value*>(span.block.data);
+                    for (std::size_t index{}; index < span.count; ++index)
+                        std::destroy_at(values + index);
+                    if (!storage_.release(span.block))
+                        std::terminate();
+                    active_ -= span.count;
                 }
-                const auto end = static_cast<std::size_t>(span.first) + span.count;
-                if (end > entries_.size())
-                    std::terminate();
-                for (std::size_t index = span.first; index < end; ++index)
-                    entries_[index] = {};
-                const FreeSpan returned{span.first, span.count};
-                auto position = free_spans_.begin();
-                while (position != free_spans_.end() && position->first < returned.first)
-                    ++position;
-                const auto inserted = free_spans_.insert(position, returned);
-                coalesce(static_cast<std::size_t>(inserted - free_spans_.begin()));
-                active_ -= span.count;
                 span = {};
             }
 
-            [[nodiscard]] Value* at(Span span, std::size_t local_slot) noexcept
+            [[nodiscard]] Value* at(const PreparedSpan& span, std::size_t local_slot) noexcept
             {
-                if (!span.valid() || local_slot >= span.count)
-                    return nullptr;
-                return std::addressof(entries_[span.first + local_slot]);
+                return span.valid() && local_slot < span.count ?
+                    static_cast<Value*>(span.block.data) + local_slot : nullptr;
             }
-
-            [[nodiscard]] const Value* at(Span span, std::size_t local_slot) const noexcept
+            [[nodiscard]] const Value* at(const PreparedSpan& span, std::size_t local_slot) const noexcept
             {
-                return const_cast<PreparedSpanArena*>(this)->at(span, local_slot);
+                return const_cast<PreparedBlockStorage*>(this)->at(span, local_slot);
             }
-
             [[nodiscard]] Stats stats() const noexcept
             {
-                return {
-                    active_,
-                    high_water_,
-                    entries_.size() * sizeof(Value) + free_spans_.capacity() * sizeof(FreeSpan)
-                };
+                const auto stats = storage_.stats();
+                return {active_, high_water_, stats.arena_bytes + stats.metadata_bytes,
+                    stats.acquire_steps, stats.release_steps};
             }
-
-            [[nodiscard]] bool valid() const noexcept
-            {
-                return valid_;
-            }
+            [[nodiscard]] bool valid() const noexcept { return valid_; }
 
         private:
-            struct FreeSpan final
-            {
-                std::uint32_t first{};
-                std::uint32_t count{};
-            };
-
-            void coalesce(std::size_t index) noexcept
-            {
-                if (index != 0U)
-                {
-                    auto& previous = free_spans_[index - 1U];
-                    auto& current = free_spans_[index];
-                    if (previous.first + previous.count == current.first)
-                    {
-                        previous.count += current.count;
-                        free_spans_.erase(free_spans_.begin() + static_cast<std::ptrdiff_t>(index));
-                        --index;
-                    }
-                }
-                if (index + 1U >= free_spans_.size())
-                    return;
-                auto& current = free_spans_[index];
-                const auto& next = free_spans_[index + 1U];
-                if (current.first + current.count == next.first)
-                {
-                    current.count += next.count;
-                    free_spans_.erase(free_spans_.begin() + static_cast<std::ptrdiff_t>(index + 1U));
-                }
-            }
-
-            std::vector<Value> entries_;
-            std::vector<FreeSpan> free_spans_;
+            detail::BoundedClassStorage storage_;
+            std::size_t capacity_{};
             std::size_t active_{};
             std::size_t high_water_{};
             bool valid_{true};
@@ -373,8 +356,10 @@ namespace lux::simulation::script
               prepared_call_capacity(config.prepared_call_capacity),
               continuation_capacity(config.continuation_capacity),
               execution_depth_capacity(config.execution_depth_capacity),
-              prepared_abilities(config.prepared_ability_capacity),
-              prepared_events(config.prepared_event_capacity)
+              prepared_abilities(config.prepared_ability_capacity, config.prepared_ability_blocks,
+                  config.prepared_ability_storage_bytes),
+              prepared_events(config.prepared_event_capacity, config.prepared_event_blocks,
+                  config.prepared_event_storage_bytes)
         {
             if (!prepared_abilities.valid() || !prepared_events.valid())
                 return;
@@ -549,6 +534,7 @@ namespace lux::simulation::script
                 lua_settable(state, lux_index);
                 lua_pop(state, 1);
             }
+            prototype.ability_class = prepared_abilities.select(prototype.ability_ordinals.size());
             return true;
         }
 
@@ -639,6 +625,7 @@ namespace lux::simulation::script
             }
             lua_remove(state, factory_index);
             lua_setfield(state, lux_index, "Event");
+            prototype.event_class = prepared_events.select(prototype.event_ordinals.size());
             return true;
         }
 
@@ -799,7 +786,8 @@ namespace lux::simulation::script
         {
             if (instance.prototype == nullptr)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-            auto span = prepared_abilities.allocate(instance.prototype->ability_ordinals.size());
+            auto span = prepared_abilities.allocate(
+                instance.prototype->ability_class, instance.prototype->ability_ordinals.size());
             if (!span.valid())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             instance.prepared_abilities = span;
@@ -859,7 +847,7 @@ namespace lux::simulation::script
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             if (instance.prototype == nullptr || instance.prototype->event_ordinals.size() != requirements.size())
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-            auto span = prepared_events.allocate(requirements.size());
+            auto span = prepared_events.allocate(instance.prototype->event_class, requirements.size());
             if (!span.valid())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             instance.prepared_events = span;
@@ -1987,9 +1975,9 @@ namespace lux::simulation::script
         std::vector<PreparedCall> prepared_calls;
         std::vector<std::size_t> free_prepared_calls;
         std::vector<AbilityMethod> ability_methods;
-        PreparedSpanArena<PreparedAbility> prepared_abilities;
+        PreparedBlockStorage<PreparedAbility> prepared_abilities;
         std::vector<lux::script::ScriptEventSourceDescription> event_sources;
-        PreparedSpanArena<PreparedEventSource> prepared_events;
+        PreparedBlockStorage<PreparedEventSource> prepared_events;
         std::vector<LuaContinuation> continuations;
         std::vector<std::size_t> free_continuations;
         ExecutionFrame* active_execution{};
@@ -2332,6 +2320,8 @@ namespace lux::simulation::script
         try
         {
             auto state = std::make_unique<State>(config);
+            if (!state->prepared_abilities.valid() || !state->prepared_events.valid())
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
             if (!state->vm_configured)
             {
                 return lux::cxx::unexpected(
@@ -2388,7 +2378,9 @@ namespace lux::simulation::script
             state_->execution_depth_high_water,
             state_->vm_coroutine_resumes,
             state_->vm_coroutine_releases,
-            state_->vm_allocations.stats
+            state_->vm_allocations.stats,
+            abilities.acquire_steps + events.acquire_steps,
+            abilities.release_steps + events.release_steps
         };
     }
 

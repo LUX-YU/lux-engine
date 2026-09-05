@@ -99,7 +99,15 @@ void testAbilityProvenance()
         .ability_catalog_method_capacity = 2U,
         .prepared_ability_capacity = 4U,
         .abilities = contributions,
-        .execution_policy = policy
+        .execution_policy = policy,
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                1U,
+                4U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (4U) + 4096U
     });
     assert(backend);
     const auto runtime = backend->descriptor();
@@ -180,7 +188,15 @@ void testEventProvenance()
         .execution_policy = policy,
         .event_catalog_capacity = 2U,
         .prepared_event_capacity = 2U,
-        .events = sources
+        .events = sources,
+        .prepared_event_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                1U,
+                2U
+            }
+        },
+        .prepared_event_storage_bytes =
+            128U * (2U) + 4096U
     });
     assert(backend);
     const auto make = [&](std::size_t index, std::string_view source) {
@@ -255,7 +271,23 @@ void testNestedScopes()
         .instance_capacity = 2U, .prepared_call_capacity = 4U, .continuation_capacity = 1U,
         .execution_depth_capacity = 4U, .ability_catalog_method_capacity = 2U, .prepared_ability_capacity = 2U,
         .abilities = contributions, .execution_policy = policy,
-        .event_catalog_capacity = 1U, .prepared_event_capacity = 1U, .events = {&event, 1U}
+        .event_catalog_capacity = 1U, .prepared_event_capacity = 1U, .events = {&event, 1U},
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                1U,
+                2U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (2U) + 4096U,
+        .prepared_event_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                1U,
+                1U
+            }
+        },
+        .prepared_event_storage_bytes =
+            128U * (1U) + 4096U
     });
     assert(backend);
     auto outer = makeArtifact(alpha,

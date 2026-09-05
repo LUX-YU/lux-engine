@@ -637,7 +637,7 @@ namespace lux::simulation::script
                 const Callable*> callables;
             ObjectSlab objects;
             std::vector<std::size_t> free_objects;
-            detail::BoundedFrameStorage coroutine_frames;
+            detail::BoundedClassStorage coroutine_frames;
             std::size_t object_stride{};
             std::size_t instance_capacity{};
             std::size_t active_instances{};
@@ -663,7 +663,7 @@ namespace lux::simulation::script
             DescriptorIndex* descriptor{};
             Instance* instance{};
             ScriptCoroutineContext context;
-            detail::BoundedFrameStorage::Allocation arguments;
+            detail::BoundedClassStorage::Allocation arguments;
             std::coroutine_handle<ScriptCoroutine::promise_type> handle;
             std::uint32_t slot{};
             bool active{};
@@ -814,14 +814,14 @@ namespace lux::simulation::script
                         valid = false;
                         return;
                     }
-                    auto frames = detail::BoundedFrameStorage::create(
+                    auto frames = detail::BoundedClassStorage::create(
+                        pool.coroutine_frame_classes,
                         pool.coroutine_frame_storage_bytes,
-                        pool.coroutine_capacity * 2U,
-                        pool.coroutine_frame_storage_alignment
+                        pool.coroutine_capacity * 2U
                     );
                     if (!frames)
                     {
-                        error = frames.error() == detail::EBoundedFrameStorageError::ALLOCATION_FAILURE
+                        error = frames.error() == detail::EClassStorageError::ALLOCATION_FAILURE
                             ? ECppStaticScriptBridgeError::ALLOCATION_FAILURE
                             : ECppStaticScriptBridgeError::INVALID_DESCRIPTOR;
                         valid = false;
@@ -1019,10 +1019,9 @@ namespace lux::simulation::script
             if (required_bytes == 0U)
                 return true;
 
-            auto storage = continuation.descriptor->coroutine_frames.acquire(
-                required_bytes,
-                required_alignment
-            );
+            auto& frames = continuation.descriptor->coroutine_frames;
+            const auto storage_class = frames.select(required_bytes, required_alignment);
+            auto storage = frames.acquire(storage_class, required_bytes);
             if (!storage)
                 return false;
             continuation.arguments = *storage;
@@ -1367,7 +1366,7 @@ namespace lux::simulation::script
         for (const auto& descriptor : state_->descriptor_indexes)
         {
             const auto stats = descriptor.coroutine_frames.stats();
-            result.frame_storage_bytes += stats.storage_bytes;
+            result.frame_storage_bytes += stats.arena_bytes;
             result.active_frames += descriptor.active_coroutines;
             result.frame_high_water += descriptor.coroutine_high_water;
             result.frame_capacity_failures += stats.capacity_failures;

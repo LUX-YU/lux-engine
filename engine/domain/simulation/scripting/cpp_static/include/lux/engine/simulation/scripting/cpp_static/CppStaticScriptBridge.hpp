@@ -248,6 +248,7 @@ namespace lux::simulation::script
         std::size_t coroutine_frame_storage_bytes{};
         std::size_t coroutine_frame_storage_alignment{alignof(std::max_align_t)};
         std::size_t prepared_method_capacity{};
+        std::span<const detail::StorageClassPlan> coroutine_frame_classes;
     };
 
     struct CppStaticScriptBackendStats final

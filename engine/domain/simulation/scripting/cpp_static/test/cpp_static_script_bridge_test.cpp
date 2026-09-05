@@ -369,13 +369,17 @@ int main()
     auto entity_asset_result = lux::script::ScriptArtifact::create(projected->description(), {});
     assert(entity_asset_result);
     auto entity_asset = std::move(*entity_asset_result);
+    const std::array frame_classes{
+        lux::simulation::script::detail::makeUniformStorageClass(4096U, alignof(std::max_align_t), 4096U, 4U)
+    };
     const std::array pools{CppStaticScriptPoolDescription{
         std::addressof(*projected),
         1U,
         2U,
-        4096U,
+        8192U,
         alignof(std::max_align_t),
-        8U
+        8U,
+        frame_classes
     }};
     const std::array duplicate_pools{
         CppStaticScriptPoolDescription{std::addressof(*projected), 1U, 0U, 0U, alignof(std::max_align_t), 1U},
@@ -522,6 +526,8 @@ int main()
     const auto completed = continuation.resume(continuation.state, step_context, packet);
     assert(completed.state == EScriptStepState::COMPLETED);
     assert(test::coroutine_value == 15);
+    assert(test::aligned_local_before == test::aligned_local_after);
+    assert(test::aligned_local_after % 64U == 0U && test::aligned_local_value == 5);
     continuation.destroy(continuation.state);
     descriptor.releaseMethod(descriptor.context, instance, step_method);
 
@@ -849,13 +855,17 @@ int main()
     assert(ability_descriptor);
     auto ability_artifact = lux::script::ScriptArtifact::create(ability_descriptor->description(), {});
     assert(ability_artifact);
+    const std::array ability_frames{
+        lux::simulation::script::detail::makeUniformStorageClass(2048U, alignof(std::max_align_t), 2048U, 2U)
+    };
     const std::array ability_pools{CppStaticScriptPoolDescription{
         std::addressof(*ability_descriptor),
         1U,
         1U,
-        2048U,
+        4096U,
         alignof(std::max_align_t),
-        1U
+        1U,
+        ability_frames
     }};
     auto ability_backend_result = CppStaticScriptBackend::create(ability_pools);
     assert(ability_backend_result);

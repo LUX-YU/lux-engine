@@ -207,8 +207,20 @@ int main()
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 4U,
             .max_continuation_frame_bytes = 4096U,
-            .continuation_frame_storage_bytes = 8192U,
-            .record_layouts = {nullptr, &resolveRecord}
+            .continuation_frame_storage_bytes =
+                2U * (8192U) + 4096U,
+            .record_layouts = {nullptr, &resolveRecord},
+            .state_storage_classes = std::array{
+                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            },
+            .state_storage_bytes = 128U * (1U) + 4096U,
+            .continuation_frame_classes = std::array{
+                lux::simulation::script::detail::makeUniformStorageClass(
+                    4096U, alignof(std::max_align_t),
+                    8192U,
+                    2U
+                )
+            }
         }};
     assert(native_backend);
 

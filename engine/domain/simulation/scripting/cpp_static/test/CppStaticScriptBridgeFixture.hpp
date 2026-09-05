@@ -26,6 +26,9 @@ namespace lux::simulation::test
     inline std::size_t destroyed_objects{};
     inline std::int32_t coroutine_value{};
     inline std::int32_t coroutine_event_value{};
+    inline std::uintptr_t aligned_local_before{};
+    inline std::uintptr_t aligned_local_after{};
+    inline std::int32_t aligned_local_value{};
     inline std::optional<script::CppScriptEventSource<std::int32_t>> coroutine_event_source;
 
     class LUX_TYPE_INFO(runtime) BridgeBehavior final
@@ -78,8 +81,13 @@ namespace lux::simulation::test
             const std::int32_t& borrowed_value
         ) noexcept
         {
+            alignas(64) volatile std::int32_t owned_local[16]{};
+            owned_local[0] = borrowed_value;
+            aligned_local_before = reinterpret_cast<std::uintptr_t>(&owned_local[0]);
             coroutine_value += borrowed_value;
             co_await context.delay().nextStep();
+            aligned_local_after = reinterpret_cast<std::uintptr_t>(&owned_local[0]);
+            aligned_local_value = owned_local[0];
             coroutine_value += borrowed_value + 5;
         }
 

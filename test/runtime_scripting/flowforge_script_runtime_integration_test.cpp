@@ -832,8 +832,20 @@ namespace
                 .continuation_capacity = options.size,
                 .max_ability_imports_per_module = 4U,
                 .max_continuation_frame_bytes = 8192U,
-                .continuation_frame_storage_bytes = (std::max)(std::size_t{8192U}, options.size * 256U),
-                .abilities = kNativeContributions
+                .continuation_frame_storage_bytes =
+                    2U * ((std::max)(std::size_t{8192U}, options.size * 256U)) + 4096U,
+                .abilities = kNativeContributions,
+                .state_storage_classes = std::array{
+                    lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (options.size), 1U}
+                },
+                .state_storage_bytes = 128U * (options.size) + 4096U,
+                .continuation_frame_classes = std::array{
+                    lux::simulation::script::detail::makeUniformStorageClass(
+                        8192U, alignof(std::max_align_t),
+                        (std::max)(std::size_t{8192U}, options.size * 256U),
+                        options.size
+                    )
+                }
             }
         };
         if (!backend)
@@ -1053,8 +1065,20 @@ int main(int argc, char** argv)
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 4U,
             .max_continuation_frame_bytes = 8192U,
-            .continuation_frame_storage_bytes = 16384U,
-            .abilities = kNativeContributions
+            .continuation_frame_storage_bytes =
+                2U * (16384U) + 4096U,
+            .abilities = kNativeContributions,
+            .state_storage_classes = std::array{
+                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            },
+            .state_storage_bytes = 128U * (1U) + 4096U,
+            .continuation_frame_classes = std::array{
+                lux::simulation::script::detail::makeUniformStorageClass(
+                    8192U, alignof(std::max_align_t),
+                    16384U,
+                    2U
+                )
+            }
         }
     };
     assert(backend);
@@ -1193,9 +1217,21 @@ int main(int argc, char** argv)
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 8192U,
-            .continuation_frame_storage_bytes = 16384U,
+            .continuation_frame_storage_bytes =
+                2U * (16384U) + 4096U,
             .max_event_wait_imports_per_module = 2U,
-            .abilities = kNativeContributions
+            .abilities = kNativeContributions,
+            .state_storage_classes = std::array{
+                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            },
+            .state_storage_bytes = 128U * (1U) + 4096U,
+            .continuation_frame_classes = std::array{
+                lux::simulation::script::detail::makeUniformStorageClass(
+                    8192U, alignof(std::max_align_t),
+                    16384U,
+                    2U
+                )
+            }
         }
     };
     assert(event_backend);
@@ -1216,9 +1252,21 @@ int main(int argc, char** argv)
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 8192U,
-            .continuation_frame_storage_bytes = 16384U,
+            .continuation_frame_storage_bytes =
+                2U * (16384U) + 4096U,
             .max_event_wait_imports_per_module = 2U,
-            .abilities = kNativeContributions
+            .abilities = kNativeContributions,
+            .state_storage_classes = std::array{
+                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            },
+            .state_storage_bytes = 128U * (1U) + 4096U,
+            .continuation_frame_classes = std::array{
+                lux::simulation::script::detail::makeUniformStorageClass(
+                    8192U, alignof(std::max_align_t),
+                    16384U,
+                    2U
+                )
+            }
         }
     };
     assert(mismatched_backend);

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
-#include <lux/engine/simulation/scripting/detail/BoundedFrameStorage.hpp>
+#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -131,8 +131,8 @@ namespace lux::simulation::script
 
         struct FrameHeader final
         {
-            detail::BoundedFrameStorage* storage{};
-            detail::BoundedFrameStorage::Allocation allocation;
+            detail::BoundedClassStorage* storage{};
+            detail::BoundedClassStorage::Allocation allocation;
         };
 
         ScriptCoroutineContext(
@@ -140,7 +140,7 @@ namespace lux::simulation::script
             std::uint32_t instance_slot,
             FindAbilityFn find_ability,
             ResolveAbilityFn resolve_ability,
-            detail::BoundedFrameStorage& frame_storage
+            detail::BoundedClassStorage& frame_storage
         ) noexcept
             : backend_(backend),
               instance_slot_(instance_slot),
@@ -168,7 +168,8 @@ namespace lux::simulation::script
             const auto padding = sizeof(FrameHeader) + alignment - 1U;
             if (size > (std::numeric_limits<std::size_t>::max)() - padding)
                 return nullptr;
-            auto allocation = frame_storage_->acquire(size + padding, alignment);
+            const auto storage_class = frame_storage_->select(size + padding, alignment);
+            auto allocation = frame_storage_->acquire(storage_class, size + padding);
             if (!allocation)
                 return nullptr;
             const auto raw = reinterpret_cast<std::uintptr_t>(allocation->data) + sizeof(FrameHeader);
@@ -185,9 +186,11 @@ namespace lux::simulation::script
             auto* header = reinterpret_cast<FrameHeader*>(
                 static_cast<std::byte*>(frame) - sizeof(FrameHeader)
             );
-            if (header->storage != nullptr)
-                static_cast<void>(header->storage->release(header->allocation));
+            auto* storage = header->storage;
+            const auto allocation = header->allocation;
             std::destroy_at(header);
+            if (storage != nullptr)
+                static_cast<void>(storage->release(allocation));
         }
 
         void activate(ScriptStepContext& step, const ScriptResumePacket* packet) noexcept
@@ -206,7 +209,7 @@ namespace lux::simulation::script
         std::uint32_t instance_slot_{};
         FindAbilityFn find_ability_{};
         ResolveAbilityFn resolve_ability_{};
-        detail::BoundedFrameStorage* frame_storage_{};
+        detail::BoundedClassStorage* frame_storage_{};
         ScriptStepContext* active_step_{};
         const ScriptResumePacket* resume_packet_{};
 
@@ -558,7 +561,7 @@ namespace lux::simulation::script
             std::uint32_t instance_slot,
             ScriptCoroutineContext::FindAbilityFn find_ability,
             ScriptCoroutineContext::ResolveAbilityFn resolve_ability,
-            detail::BoundedFrameStorage& frame_storage
+            detail::BoundedClassStorage& frame_storage
         ) noexcept
         {
             return {backend, instance_slot, find_ability, resolve_ability, frame_storage};

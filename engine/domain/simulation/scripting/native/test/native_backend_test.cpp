@@ -6,9 +6,11 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace
 {
@@ -253,7 +255,19 @@ int main()
             .continuation_capacity = 4U,
             .max_ability_imports_per_module = 8U,
             .max_continuation_frame_bytes = 4096U,
-            .continuation_frame_storage_bytes = 16384U
+            .continuation_frame_storage_bytes =
+                2U * (16384U) + 4096U,
+            .state_storage_classes = std::array{
+                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (3U), 1U}
+            },
+            .state_storage_bytes = 128U * (3U) + 4096U,
+            .continuation_frame_classes = std::array{
+                lux::simulation::script::detail::makeUniformStorageClass(
+                    4096U, alignof(std::max_align_t),
+                    16384U,
+                    4U
+                )
+            }
         }
     );
     assert(*backend);
@@ -300,6 +314,62 @@ int main()
     auto asset_result = lux::script::ScriptArtifact::create(description, {});
     assert(asset_result);
     auto asset = std::move(*asset_result);
+
+    for (const std::size_t module_count : {1U, 8U, 32U, 64U})
+    {
+        constexpr std::size_t Population{128U};
+        Provider spread{{module, second_module}};
+        NativeScriptBackend spread_backend{
+            {&spread, &Provider::resolve},
+            {
+                .module_capacity = module_count,
+                .instance_capacity = Population,
+                .prepared_call_capacity = 1U,
+                .continuation_capacity = 1U,
+                .max_ability_imports_per_module = 8U,
+                .max_continuation_frame_bytes = 256U,
+                .continuation_frame_storage_bytes =
+                    2U * (256U) + 4096U,
+                .state_storage_classes = std::array{
+                    lux::simulation::script::detail::StorageClassPlan{64U, 64U, Population * 64U, 1U}
+                },
+                .state_storage_bytes = Population * 128U + 4096U,
+                .continuation_frame_classes = std::array{
+                    lux::simulation::script::detail::makeUniformStorageClass(
+                        256U, alignof(std::max_align_t),
+                        256U,
+                        1U
+                    )
+                }
+            }
+        };
+        assert(spread_backend);
+        auto spread_descriptor = spread_backend.descriptor();
+        std::array<ScriptBackendInstance, Population> population;
+        for (std::size_t index{}; index < Population; ++index)
+        {
+            std::array<std::uint8_t, 16U> bytes{};
+            bytes[0] = static_cast<std::uint8_t>(3U + index % module_count);
+            assert(spread_descriptor.createInstance(spread_descriptor.context,
+                {lux::asset::AssetId{bytes}, SimulationScriptScope{}, nullptr}, asset, population[index]) ==
+                EScriptBackendResult::SUCCESS);
+        }
+        const auto full = spread_backend.stats();
+        assert(spread.resolves == module_count);
+        assert(full.active_states == Population && full.state_storage_bytes == Population * 64U);
+        assert(full.state_metadata_bytes < Population * 32U + 256U);
+        assert(full.state_acquire_steps == Population * 3U + 2U);
+        for (std::size_t index{}; index < Population; index += 2U)
+            spread_descriptor.destroyInstance(spread_descriptor.context, population[index]);
+        for (std::size_t index = Population; index != 0U; index -= 2U)
+            spread_descriptor.destroyInstance(spread_descriptor.context, population[index - 1U]);
+        const auto empty = spread_backend.stats();
+        assert(empty.active_states == 0U && empty.state_release_steps == Population * 3U + 2U);
+        std::printf("modules=%zu instances=%zu state_arena=%zu metadata=%zu acquire=%llu release=%llu\n",
+            module_count, Population, full.state_storage_bytes, full.state_metadata_bytes,
+            static_cast<unsigned long long>(full.state_acquire_steps),
+            static_cast<unsigned long long>(empty.state_release_steps));
+    }
 
     auto second_description = description;
     second_description.module_name = "native_fixture_two";
@@ -543,8 +613,20 @@ int main()
             .continuation_capacity = 2U,
             .max_ability_imports_per_module = 2U,
             .max_continuation_frame_bytes = 256U,
-            .continuation_frame_storage_bytes = 512U,
-            .abilities = std::span{std::addressof(AsyncContribution), 1U}
+            .continuation_frame_storage_bytes =
+                2U * (512U) + 4096U,
+            .abilities = std::span{std::addressof(AsyncContribution), 1U},
+            .state_storage_classes = std::array{
+                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            },
+            .state_storage_bytes = 128U * (1U) + 4096U,
+            .continuation_frame_classes = std::array{
+                lux::simulation::script::detail::makeUniformStorageClass(
+                    256U, alignof(std::max_align_t),
+                    512U,
+                    2U
+                )
+            }
         }
     };
     assert(step_backend);

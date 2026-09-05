@@ -173,7 +173,23 @@ int main()
         .abilities = {&contribution, 1U},
         .event_catalog_capacity = 1U,
         .prepared_event_capacity = 1U,
-        .events = {&event_source, 1U}
+        .events = {&event_source, 1U},
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (Traits::Description.methods.size()) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (Traits::Description.methods.size()) + 4096U,
+        .prepared_event_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (1U) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_event_storage_bytes =
+            128U * (1U) + 4096U
     });
     assert(backend);
     Source source{&(*decoded)->data(), (*decoded)->id(),

@@ -37,38 +37,36 @@ lux_classify_target(
 )
 
 if(BUILD_TESTING)
-    add_executable(simulation_script_frame_storage_failure_test test/frame_storage_failure_test.cpp)
-    target_link_libraries(simulation_script_frame_storage_failure_test
+    if(MSVC)
+        add_executable(simulation_script_coroutine_alignment_contract_test test/coroutine_alignment_contract_probe.cpp)
+        target_link_libraries(simulation_script_coroutine_alignment_contract_test
+            PRIVATE lux::engine::simulation::simulation_scripting_core)
+        lux_classify_target(TARGET simulation_script_coroutine_alignment_contract_test
+            LAYER SIMULATION PRODUCT TEST ROLE FOUNDATION)
+        add_test(NAME simulation_script_coroutine_alignment_contract_test
+            COMMAND simulation_script_coroutine_alignment_contract_test)
+    endif()
+    add_executable(simulation_script_class_storage_test test/class_storage_test.cpp)
+    target_link_libraries(simulation_script_class_storage_test
         PRIVATE lux::engine::simulation::simulation_scripting_core)
-    lux_classify_target(TARGET simulation_script_frame_storage_failure_test
+    if(MSVC)
+        target_compile_options(simulation_script_class_storage_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(simulation_script_class_storage_test PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(TARGET simulation_script_class_storage_test
         LAYER SIMULATION PRODUCT TEST ROLE FOUNDATION)
-    add_test(NAME simulation_script_frame_storage_move_test COMMAND simulation_script_frame_storage_failure_test)
-    foreach(failure_point RANGE 1 3)
-        add_test(NAME simulation_script_frame_storage_failure_${failure_point}_test
-            COMMAND simulation_script_frame_storage_failure_test ${failure_point})
+    add_test(NAME simulation_script_class_storage_test COMMAND simulation_script_class_storage_test)
+
+    add_executable(simulation_script_class_storage_failure_test test/frame_storage_failure_test.cpp)
+    target_link_libraries(simulation_script_class_storage_failure_test
+        PRIVATE lux::engine::simulation::simulation_scripting_core)
+    lux_classify_target(TARGET simulation_script_class_storage_failure_test
+        LAYER SIMULATION PRODUCT TEST ROLE FOUNDATION)
+    add_test(NAME simulation_script_class_storage_move_test COMMAND simulation_script_class_storage_failure_test)
+    foreach(failure_point RANGE 1 4)
+        add_test(NAME simulation_script_class_storage_failure_${failure_point}_test
+            COMMAND simulation_script_class_storage_failure_test ${failure_point})
     endforeach()
 
-    add_executable(
-        simulation_script_bounded_frame_storage_test
-        test/bounded_frame_storage_test.cpp
-    )
-    target_link_libraries(
-        simulation_script_bounded_frame_storage_test
-        PRIVATE lux::engine::simulation::simulation_scripting_core
-    )
-    if(MSVC)
-        target_compile_options(simulation_script_bounded_frame_storage_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(simulation_script_bounded_frame_storage_test PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  simulation_script_bounded_frame_storage_test
-        LAYER   SIMULATION
-        PRODUCT TEST
-        ROLE    FOUNDATION
-    )
-    add_test(
-        NAME simulation_script_bounded_frame_storage_test
-        COMMAND simulation_script_bounded_frame_storage_test
-    )
 endif()

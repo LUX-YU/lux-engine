@@ -1,4 +1,4 @@
-#include <lux/engine/simulation/scripting/detail/BoundedFrameStorage.hpp>
+#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 
 #include <array>
 #include <cstdio>
@@ -78,18 +78,20 @@ void operator delete(void* value, std::align_val_t) noexcept
 
 int main(int argc, char** argv)
 {
-    using lux::simulation::script::detail::BoundedFrameStorage;
-    using lux::simulation::script::detail::EBoundedFrameStorageError;
     fail_at = argc == 2 ? static_cast<std::size_t>(std::strtoul(argv[1], nullptr, 10)) : 0U;
     bool valid = true;
     {
-        auto created = BoundedFrameStorage::create(4096U, 8U, 64U);
+        using lux::simulation::script::detail::BoundedClassStorage;
+        using lux::simulation::script::detail::StorageClassPlan;
+        using lux::simulation::script::detail::EClassStorageError;
+        constexpr std::array plans{StorageClassPlan{64U, 64U, 4096U, 1U}};
+        auto created = BoundedClassStorage::create(plans, 8192U, 8U);
         fail_at = 0U;
         if (argc == 2)
         {
             valid &= check(!created, "injected factory allocation did not fail");
             if (!created)
-                valid &= check(created.error() == EBoundedFrameStorageError::ALLOCATION_FAILURE,
+                valid &= check(created.error() == EClassStorageError::ALLOCATION_FAILURE,
                     "wrong injected failure classification");
         }
         else
@@ -98,9 +100,9 @@ int main(int argc, char** argv)
             if (created)
             {
                 auto moved = std::move(*created);
-                BoundedFrameStorage assigned;
+                BoundedClassStorage assigned;
                 assigned = std::move(moved);
-                const auto allocation = assigned.acquire(48U, 32U);
+                const auto allocation = assigned.acquire(assigned.select(48U, 32U), 48U);
                 valid &= check(static_cast<bool>(allocation), "moved storage cannot allocate");
                 if (allocation)
                     valid &= check(assigned.release(*allocation), "moved storage cannot release");

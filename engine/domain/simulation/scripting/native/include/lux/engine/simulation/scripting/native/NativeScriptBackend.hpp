@@ -3,6 +3,7 @@
 #include <lux/engine/function/script/native/NativeModule.hpp>
 #include <lux/engine/function/script/native/ScriptAbilityNative.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 #include <lux/engine/simulation/scripting/native/visibility.h>
 
 #include <cstddef>
@@ -58,6 +59,9 @@ namespace lux::simulation::script
         NativeScriptRecordLayoutResolver record_layouts;
         std::size_t max_event_wait_imports_per_module{64U};
         std::span<const lux::script::native::ScriptAbilityNativeContribution> abilities;
+        std::span<const detail::StorageClassPlan> state_storage_classes;
+        std::size_t state_storage_bytes{};
+        std::span<const detail::StorageClassPlan> continuation_frame_classes;
     };
 
     struct NativeScriptBackendStats final
@@ -67,6 +71,15 @@ namespace lux::simulation::script
         std::size_t frame_high_water{};
         std::size_t frame_capacity_failures{};
         std::size_t heap_frame_allocations{};
+        std::size_t state_storage_bytes{};
+        std::size_t state_metadata_bytes{};
+        std::size_t active_states{};
+        std::size_t state_high_water{};
+        std::uint64_t state_acquire_steps{};
+        std::uint64_t state_release_steps{};
+        std::size_t frame_metadata_bytes{};
+        std::uint64_t frame_acquire_steps{};
+        std::uint64_t frame_release_steps{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_PUBLIC NativeScriptBackend final

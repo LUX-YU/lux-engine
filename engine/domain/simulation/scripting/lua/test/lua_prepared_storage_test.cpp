@@ -1,11 +1,15 @@
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <deque>
 #include <memory>
+#include <numeric>
+#include <random>
 #include <span>
 #include <string>
 #include <string_view>
@@ -32,7 +36,8 @@ namespace
     }
 
     [[nodiscard]] lux::script::ScriptArtifact artifact(
-        const lux::script::ScriptAbilityDescription& ability
+        const lux::script::ScriptAbilityDescription& ability,
+        const lux::script::ScriptEventSourceDescription* event = nullptr
     )
     {
         constexpr std::string_view source = "return { tick = function(self) self.count = 1 end }";
@@ -44,6 +49,8 @@ namespace
             ability.schema_hash
         });
         description.body = lux::rdesc::LuaSourceScript{"SparsePrepared"};
+        if (event != nullptr)
+            description.event_requirements.push_back(*event);
         std::vector<std::byte> payload;
         payload.reserve(source.size());
         for (const auto character : source)
@@ -54,7 +61,7 @@ namespace
     }
 }
 
-int main()
+int main(int argc, char**)
 {
     std::deque<std::string> names;
     std::vector<std::array<lux::script::ScriptAbilityMethodDescription, MethodsPerAbility>> methods;
@@ -116,7 +123,15 @@ int main()
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = AbilityCount * MethodsPerAbility,
         .prepared_ability_capacity = 4U,
-        .abilities = contributions
+        .abilities = contributions,
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                MethodsPerAbility,
+                2U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (4U) + 4096U
     });
     assert(backend);
     const auto initial_stats = backend->stats();
@@ -167,5 +182,74 @@ int main()
     assert(prepared_stats.prepared_binding_bytes == initial_stats.prepared_binding_bytes);
     descriptor.destroyInstance(descriptor.context, instance);
     assert(backend->stats().prepared_ability_slots == 0U);
+
+    // The large structural population is opt-in, not repeated in every normal CTest profile or race loop.
+    if (argc > 1)
+    {
+        using namespace lux::simulation::script;
+        const lux::script::ScriptEventSourceDescription event{
+            "MemoryFixture", "ready", 1U, 1U, lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
+            1U, 1U, 1U, 1U, 1U
+        };
+        auto content = artifact(abilities.front(), &event);
+        for (const std::size_t population : {10000U, 50000U, 100000U})
+        {
+            auto storage_backend = LuaScriptBackend::create({
+                .instance_capacity = population,
+                .prepared_call_capacity = 1U,
+                .continuation_capacity = 1U,
+                .execution_depth_capacity = 4U,
+                .ability_catalog_method_capacity = AbilityCount * MethodsPerAbility,
+                .prepared_ability_capacity = population * MethodsPerAbility,
+                .abilities = contributions,
+                .event_catalog_capacity = 1U,
+                .prepared_event_capacity = population,
+                .events = {&event, 1U},
+                .prepared_ability_blocks = std::array{LuaPreparedBlockClass{MethodsPerAbility, population}},
+                .prepared_ability_storage_bytes = population * 128U + 4096U,
+                .prepared_event_blocks = std::array{LuaPreparedBlockClass{1U, population}},
+                .prepared_event_storage_bytes = population * 64U + 4096U
+            });
+            assert(storage_backend);
+            const auto runtime = storage_backend->descriptor();
+            const auto initial_bytes = storage_backend->stats().prepared_binding_bytes;
+            std::vector<ScriptBackendInstance> instances(population);
+            const auto create = [&](std::size_t index, std::uint32_t generation) {
+                const auto result = runtime.createInstance(runtime.context,
+                    {{}, SimulationScriptScope{}, nullptr,
+                        {static_cast<std::uint32_t>(index + 1U), generation}, {&capability, 1U}, {&event, 1U}},
+                    content, instances[index]);
+                assert(result == EScriptBackendResult::SUCCESS);
+            };
+            for (std::size_t index{}; index < population; ++index)
+                create(index, 1U);
+            for (std::size_t index{}; index < population; index += 2U)
+            {
+                const auto before = storage_backend->stats().prepared_release_steps;
+                runtime.destroyInstance(runtime.context, instances[index]);
+                assert(storage_backend->stats().prepared_release_steps - before <= 12U);
+            }
+            for (std::size_t index{}; index < population; index += 2U)
+                create(index, 2U);
+            std::vector<std::size_t> order(population);
+            std::iota(order.begin(), order.end(), 0U);
+            std::mt19937 random{1592598566U};
+            std::shuffle(order.begin(), order.end(), random);
+            for (const auto index : order)
+            {
+                const auto before = storage_backend->stats().prepared_release_steps;
+                runtime.destroyInstance(runtime.context, instances[index]);
+                assert(storage_backend->stats().prepared_release_steps - before <= 12U);
+            }
+            const auto final = storage_backend->stats();
+            assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
+            assert(final.prepared_binding_bytes == initial_bytes);
+            std::printf("lua_instances=%zu catalog_methods=%zu prepared_bytes=%zu acquire=%llu release=%llu\n",
+                population, AbilityCount * MethodsPerAbility, final.prepared_binding_bytes,
+                static_cast<unsigned long long>(final.prepared_acquire_steps),
+                static_cast<unsigned long long>(final.prepared_release_steps));
+        }
+    }
     return 0;
 }

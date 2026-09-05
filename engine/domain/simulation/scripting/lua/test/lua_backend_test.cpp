@@ -173,7 +173,15 @@ int main()
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 2U,
         .prepared_ability_capacity = 2U,
-        .abilities = display_duplicates
+        .abilities = display_duplicates,
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (2U) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (2U) + 4096U
     });
     assert(display_backend);
 
@@ -193,7 +201,15 @@ int main()
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 2U,
         .prepared_ability_capacity = 2U,
-        .abilities = duplicate_names
+        .abilities = duplicate_names,
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (2U) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (2U) + 4096U
     });
     assert(!duplicate_name_backend);
     assert(duplicate_name_backend.error() == ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
@@ -210,7 +226,15 @@ int main()
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 1U,
         .prepared_ability_capacity = 1U,
-        .abilities = {&reserved_contribution, 1U}
+        .abilities = {&reserved_contribution, 1U},
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (1U) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (1U) + 4096U
     });
     assert(!reserved_name_backend);
     assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
@@ -225,7 +249,15 @@ int main()
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 1U,
         .prepared_ability_capacity = 1U,
-        .abilities = {&unsupported_integer, 1U}
+        .abilities = {&unsupported_integer, 1U},
+        .prepared_ability_blocks = std::array{
+            lux::simulation::script::LuaPreparedBlockClass{
+                (1U) / ((1U) == 0U ? 1U : (1U)),
+                1U
+            }
+        },
+        .prepared_ability_storage_bytes =
+            128U * (1U) + 4096U
     });
     assert(!unsupported_integer_backend);
     assert(unsupported_integer_backend.error() == ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);

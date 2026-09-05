@@ -336,7 +336,17 @@ namespace
                 .prepared_ability_capacity =
                     4U * (DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size()),
                 .abilities = contributions,
-                .execution_policy = g_execution_policy
+                .execution_policy = g_execution_policy,
+                .prepared_ability_blocks = std::array{
+                    lux::simulation::script::LuaPreparedBlockClass{
+                        DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size(),
+                        4U
+                    }
+                },
+                .prepared_ability_storage_bytes =
+                    512U * (
+                        DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size()
+                    ) + 4096U
             });
             assert(created);
             backend.emplace(std::move(*created));

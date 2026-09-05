@@ -275,13 +275,17 @@ int main()
     auto artifact = lux::script::ScriptArtifact::create(projected->description(), {});
     if (!artifact)
         return 11;
+    const std::array frame_classes{
+        lux::simulation::script::detail::makeUniformStorageClass(1024U, alignof(std::max_align_t), 1024U, 2U)
+    };
     const std::array pools{CppStaticScriptPoolDescription{
         std::addressof(*projected),
         1U,
         1U,
-        1024U,
+        2048U,
         alignof(std::max_align_t),
-        1U
+        1U,
+        frame_classes
     }};
     auto backend = CppStaticScriptBackend::create(pools);
     if (!backend)

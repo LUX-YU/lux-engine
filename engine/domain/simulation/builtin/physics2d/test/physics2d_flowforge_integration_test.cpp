@@ -173,9 +173,21 @@ int main()
                                  .continuation_capacity = 1U,
                                  .max_ability_imports_per_module = 2U,
                                  .max_continuation_frame_bytes = 256U,
-                                 .continuation_frame_storage_bytes = 256U,
+                                 .continuation_frame_storage_bytes =
+                                     2U * (256U) + 4096U,
                                  .max_event_wait_imports_per_module = 1U,
-                                 .abilities = native_contributions}};
+                                 .abilities = native_contributions,
+                                 .state_storage_classes = std::array{
+                                     lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U, 1U}
+                                 },
+                                 .state_storage_bytes = 4224U,
+                                 .continuation_frame_classes = std::array{
+                                     lux::simulation::script::detail::makeUniformStorageClass(
+                                         256U, alignof(std::max_align_t),
+                                         256U,
+                                         1U
+                                     )
+                                 }}};
     assert(backend);
     const auto descriptor = backend.descriptor();
     auto system = ScriptSystem::create(simulation->description(),

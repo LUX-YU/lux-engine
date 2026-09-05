@@ -66,6 +66,12 @@ namespace lux::simulation::script
         ALLOCATION_FAILURE,
     };
 
+    struct LuaPreparedBlockClass final
+    {
+        std::size_t entries{};
+        std::size_t blocks{};
+    };
+
     struct LuaScriptBackendConfig final
     {
         std::size_t instance_capacity{};
@@ -84,6 +90,10 @@ namespace lux::simulation::script
         std::size_t prepared_event_capacity{};
         std::span<const lux::script::ScriptEventSourceDescription> events;
         bool track_vm_allocations{};
+        std::span<const LuaPreparedBlockClass> prepared_ability_blocks;
+        std::size_t prepared_ability_storage_bytes{};
+        std::span<const LuaPreparedBlockClass> prepared_event_blocks;
+        std::size_t prepared_event_storage_bytes{};
     };
 
     struct LuaVmAllocationStats final
@@ -109,6 +119,8 @@ namespace lux::simulation::script
         std::size_t vm_coroutine_resumes{};
         std::size_t vm_coroutine_releases{};
         LuaVmAllocationStats vm_allocations;
+        std::uint64_t prepared_acquire_steps{};
+        std::uint64_t prepared_release_steps{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final

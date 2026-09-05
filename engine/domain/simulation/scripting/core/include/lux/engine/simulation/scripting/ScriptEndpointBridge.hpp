@@ -52,6 +52,7 @@ namespace lux::simulation::script
         bool (*failed)(void*) noexcept{};
         void (*reset)(void*) noexcept{};
         void (*discard)(void*) noexcept{};
+        void* channel_context{};
     };
 
     namespace detail
@@ -239,7 +240,7 @@ namespace lux::simulation::script
                 &consume,
                 [](void* context) noexcept { return self(context).channel_->failed(); },
                 [](void* context) noexcept { self(context).channel_->reset(); },
-                [](void* context) noexcept { self(context).channel_->discard(); }};
+                [](void* context) noexcept { self(context).channel_->discard(); }, channel_};
         }
 
     private:

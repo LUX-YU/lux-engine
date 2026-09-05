@@ -340,6 +340,23 @@ namespace lux::simulation
                 append(static_cast<std::uint64_t>(point.kind));
             }
         }
+        for (const auto& producer : description_->channel_producers_)
+        {
+            append(producer.system.value);
+            append(producer.event.value);
+            append(producer.producer_system.value);
+            append(producer.stage.value);
+        }
+        for (std::size_t index{}; index < system().eventCount(); ++index)
+        {
+            const auto event = system().eventAt(index);
+            if (event.dispatchHook().id() == id() && event.ownerReproduction())
+            {
+                append(0x43484F574E455231ULL);
+                append(event.id().value);
+                append(1U);
+            }
+        }
         return hash;
     }
 
@@ -425,6 +442,12 @@ namespace lux::simulation
         return description_->system_types_[type].events[event_index_].payload_schema_hash;
     }
 
+    bool SimulationEventView::ownerReproduction() const noexcept
+    {
+        const auto type = description_->systems_[system_index_].type_ordinal;
+        return description_->system_types_[type].events[event_index_].owner_reproduction;
+    }
+
     std::uint32_t SimulationEventView::payloadSchemaVersion() const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
@@ -486,6 +509,7 @@ namespace lux::simulation
         );
         addRetainedArray(result, dependencies_.capacity(), sizeof(DependencyRecord));
         addRetainedArray(result, execution_dependencies_.capacity(), sizeof(SimulationExecutionDependency));
+        addRetainedArray(result, channel_producers_.capacity(), sizeof(SimulationChannelProducer));
         for (const auto& schema : schemas_)
             addRetainedArray(result, schema.name.capacity(), sizeof(char));
         for (const auto& system : systems_)

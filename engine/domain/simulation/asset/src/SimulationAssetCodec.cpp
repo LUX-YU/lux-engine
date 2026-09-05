@@ -20,8 +20,8 @@ namespace lux::simulation
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion{7U};
-        constexpr std::uint32_t kSectionCount{12U};
+        constexpr std::uint32_t kWireVersion{8U};
+        constexpr std::uint32_t kSectionCount{13U};
         constexpr std::uint32_t kDirectoryEntryBytes{24U};
         constexpr std::uint64_t kHeaderBytes{32U};
         constexpr std::uint64_t kDirectoryOffset{kHeaderBytes};
@@ -44,10 +44,11 @@ namespace lux::simulation
             PAYLOAD,
             EXECUTION_DEPENDENCIES,
             SYSTEM_TASKS,
+            CHANNEL_PRODUCERS,
         };
 
         constexpr std::array<std::uint32_t, kSectionCount> kRecordBytes{
-            0U, 32U, 60U, 32U, 4U, 32U, 16U, 40U, 8U, 0U, 40U, 16U};
+            0U, 32U, 60U, 32U, 4U, 32U, 16U, 40U, 8U, 0U, 40U, 16U, 32U};
 
         class Bytes final
         {
@@ -355,7 +356,7 @@ namespace lux::simulation
                         events.u32(strings.ordinal(event.payloadSchemaName()));
                         events.u32(event.payloadSchemaVersion());
                         events.u64(event.payloadType());
-                        events.u32(0U);
+                        events.u32(event.ownerReproduction() ? 1U : 0U);
                     }
 
                     system_types.u64(source.type.hash);
@@ -434,6 +435,13 @@ namespace lux::simulation
                     }
                 }
 
+                for (const auto& producer : description.channelProducers())
+                {
+                    sections[12].u64(producer.system.value);
+                    sections[12].u64(producer.event.value);
+                    sections[12].u64(producer.producer_system.value);
+                    sections[12].u64(producer.stage.value);
+                }
                 Bytes output;
                 output.u32(SimulationAssetPrimaryMagic);
                 output.u32(kWireVersion);
@@ -909,7 +917,7 @@ namespace lux::simulation
                             type.event_first + item) * kRecordBytes[7];
                         EventPointId id;
                         std::uint32_t name{}, dispatch{}, route{}, payload_name{},
-                            payload_version{}, reserved{};
+                            payload_version{}, delivery_flags{};
                         lux::semantic::TypeId payload_type{};
                         if (!readU64(sections[7].bytes, offset, id.value) ||
                             !readU32(sections[7].bytes, offset, name) ||
@@ -930,8 +938,8 @@ namespace lux::simulation
                                 offset,
                                 payload_type
                             ) ||
-                            !readU32(sections[7].bytes, offset, reserved) ||
-                            !id.valid() || reserved != 0U ||
+                            !readU32(sections[7].bytes, offset, delivery_flags) ||
+                            !id.valid() || delivery_flags > 1U ||
                             dispatch < type.hook_first ||
                             dispatch >= type.hook_first + type.hook_count ||
                             route > static_cast<std::uint32_t>(
@@ -954,7 +962,7 @@ namespace lux::simulation
                             static_cast<EEventRoute>(route),
                             payload_type,
                             payload_schema,
-                            payload_version});
+                            payload_version, delivery_flags != 0U});
                     }
                 }
 
@@ -1038,6 +1046,17 @@ namespace lux::simulation
                         return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
                 }
 
+                cursor = 0U;
+                for (std::size_t index{}; index < countOf(12); ++index)
+                {
+                    SimulationChannelProducer producer;
+                    const bool valid = readU64(sections[12].bytes, cursor, producer.system.value) &&
+                        readU64(sections[12].bytes, cursor, producer.event.value) &&
+                        readU64(sections[12].bytes, cursor, producer.producer_system.value) &&
+                        readU64(sections[12].bytes, cursor, producer.stage.value);
+                    if (!valid || !builder.addChannelProducer(producer))
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                }
                 auto built = std::move(builder).build();
                 if (!built || built->retainedBytes() >
                     max_decoded_bytes)

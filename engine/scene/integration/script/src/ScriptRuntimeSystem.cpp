@@ -482,8 +482,18 @@ namespace lux::scene
                 return static_cast<bool>(runtime.system_.executeStablePoint());
             },
             [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
-                const auto result = static_cast<ScriptRuntimeSystem*>(context)->system_.processLifecycle();
+                auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                const auto result = runtime.system_.processLifecycle();
+                runtime.stats_exchange_.write() = runtime.system_.stats();
+                runtime.stats_exchange_.publish();
                 return result || result.error() == simulation::script::EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED;
+            },
+            [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
+                auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                static_cast<void>(runtime.system_.processLifecycle(
+                    simulation::script::EScriptLifecycleAdmission::RETIRE_ONLY));
+                runtime.stats_exchange_.write() = runtime.system_.stats();
+                runtime.stats_exchange_.publish();
             }});
         if (!connection)
             return false;
@@ -491,14 +501,16 @@ namespace lux::scene
         return static_cast<bool>(simulation.seal());
     }
 
-    simulation::script::ScriptSystem& ScriptRuntimeSystem::scriptSystem() noexcept
+    const simulation::script::ScriptSystem& ScriptRuntimeSystem::scriptSystem() const noexcept
     {
         return system_;
     }
 
-    const simulation::script::ScriptSystem& ScriptRuntimeSystem::scriptSystem() const noexcept
+    bool ScriptRuntimeSystem::acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept
     {
-        return system_;
+        const bool updated = stats_exchange_.acquireLatest();
+        output = stats_exchange_.read();
+        return updated;
     }
 
     SceneSystemRegistration builtinScriptRuntimeSystemRegistration() noexcept

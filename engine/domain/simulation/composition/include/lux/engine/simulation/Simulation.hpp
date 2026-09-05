@@ -43,6 +43,7 @@ namespace lux::simulation
         bool (*before)(void*, const SimulationClockSnapshot&, bool stable_resume) noexcept{};
         bool (*after)(void*, const SimulationClockSnapshot&, bool stable_resume) noexcept{};
         bool (*committed)(void*, const SimulationClockSnapshot&) noexcept{};
+        void (*failed)(void*, const SimulationClockSnapshot&) noexcept{};
     };
 
     class SimulationHookConnection final

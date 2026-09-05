@@ -9,6 +9,7 @@ namespace lux::simulation
     class Simulation;
     namespace detail { struct HookInvocationTestAccess; }
     template <class Signature> class HookPoint;
+    template <class Route, class Payload> class HookChannel;
 
     class HookInvocation final
     {
@@ -36,6 +37,7 @@ namespace lux::simulation
         friend class Simulation;
         friend struct detail::HookInvocationTestAccess;
         template <class> friend class HookPoint;
+        template <class, class> friend class HookChannel;
     };
 
     namespace detail

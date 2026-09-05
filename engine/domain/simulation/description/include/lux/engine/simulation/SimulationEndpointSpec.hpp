@@ -35,6 +35,7 @@ namespace lux::simulation
         lux::semantic::TypeId payload_type{};
         std::string_view payload_schema_name;
         std::uint32_t payload_schema_version{};
+        bool owner_reproduction{};
     };
 
     namespace detail
@@ -121,7 +122,8 @@ namespace lux::simulation
         HookPointId dispatch_hook,
         EEventRoute route,
         std::string_view payload_schema_name,
-        std::uint32_t payload_schema_version
+        std::uint32_t payload_schema_version,
+        bool owner_reproduction = false
     ) noexcept
     {
         return {
@@ -131,7 +133,7 @@ namespace lux::simulation
             route,
             lux::semantic::makeType<Payload>().type_id,
             payload_schema_name,
-            payload_schema_version};
+            payload_schema_version, owner_reproduction};
     }
 
     [[nodiscard]] constexpr bool validHookPointSpec(

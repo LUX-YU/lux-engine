@@ -84,18 +84,18 @@ namespace
             .events = Events
         };
 
-        ProbeSystem() noexcept
-            : endpoint(kProbeSystem, kTickHook, hook), event_endpoint(kProbeSystem, kPayloadEvent, event)
+        using Channel = HookChannel<SimulationBroadcastRoute, std::int32_t>;
+        explicit ProbeSystem(Channel& channel) noexcept
+            : endpoint(kProbeSystem, kTickHook, hook), event(channel), event_endpoint(kProbeSystem, kPayloadEvent, event)
         {
-            ready = hook.prepare(g_hook_capacity) == EEndpointMutationError::NONE &&
-                event.prepare({1U, 8U}) == EEndpointMutationError::NONE;
+            ready = hook.prepare(g_hook_capacity) == EEndpointMutationError::NONE;
         }
 
         void execute() noexcept
         {
             if (pending_payload)
             {
-                auto writer = event.begin(0U);
+                auto writer = event_writer.begin();
                 assert(writer.record(*pending_payload));
                 pending_payload.reset();
             }
@@ -103,7 +103,8 @@ namespace
 
         HookPoint<void()> hook;
         ScriptHookEndpoint<void()> endpoint;
-        HookChannel<SimulationBroadcastRoute, std::int32_t> event;
+        Channel& event;
+        Channel::Producer event_writer;
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> event_endpoint;
         bool ready{};
         bool tick_enabled{true};
@@ -117,7 +118,11 @@ namespace
         SimulationSystemView description
     ) noexcept
     {
-        auto probe = builder.emplaceSystem<ProbeSystem>(description.instanceId());
+        auto channel = builder.createHookChannel<SimulationBroadcastRoute, std::int32_t>(
+            description.instanceId(), kPayloadEvent, {1U, 8U});
+        if (!channel)
+            return lux::cxx::unexpected(channel.error());
+        auto probe = builder.emplaceSystem<ProbeSystem>(description.instanceId(), **channel);
         if (!probe)
             return lux::cxx::unexpected(probe.error());
         if (!(*probe)->ready)
@@ -128,6 +133,10 @@ namespace
             });
         }
         g_probe = *probe;
+        auto writer = builder.bindHookChannelProducer(description.instanceId(), PrimarySimulationTask, **channel);
+        if (!writer)
+            return lux::cxx::unexpected(writer.error());
+        (*probe)->event_writer = *writer;
         auto published = builder.publishScriptHook(description.instanceId(), (*probe)->endpoint.descriptor());
         if (!published)
             return published;
@@ -150,7 +159,8 @@ namespace
     [[nodiscard]] bool addProbeExecution(SimulationDescriptionBuilder& builder)
     {
         return static_cast<bool>(builder.addExecutionDependency(
-            SimulationExecutionPoint::task(kProbeSystem), SimulationExecutionPoint::hook(kProbeSystem, kTickHook)));
+            SimulationExecutionPoint::task(kProbeSystem), SimulationExecutionPoint::hook(kProbeSystem, kTickHook))) &&
+            static_cast<bool>(builder.addChannelProducer({kProbeSystem, kPayloadEvent, kProbeSystem, PrimarySimulationTask}));
     }
 
     struct RuntimeBinding final

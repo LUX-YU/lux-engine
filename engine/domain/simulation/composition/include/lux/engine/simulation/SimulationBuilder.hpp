@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationClock.hpp>
+#include <lux/engine/simulation/SimulationCommandProducer.hpp>
 #include <lux/engine/simulation/SimulationSystem.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/composition/visibility.h>
@@ -47,6 +48,59 @@ namespace lux::simulation
             lux::system::SystemInstanceId provider,
             script::ScriptEventEndpointDescriptor endpoint
         ) noexcept;
+
+        template <class Route, class Payload>
+        [[nodiscard]] lux::cxx::expected<HookChannel<Route, Payload>*, SimulationSystemBuildFailure>
+        createHookChannel(lux::system::SystemInstanceId owner, EventPointId event, HookChannelCapacity capacity,
+            typename HookChannel<Route, Payload>::OwnedCopy copy = nullptr) noexcept
+        {
+            using Channel = HookChannel<Route, Payload>;
+            static_assert(lux::semantic::TypeDeclared<Payload>);
+            static_assert(std::is_same_v<Route, SimulationBroadcastRoute> ||
+                std::is_same_v<Route, EntityTargetedRoute<ecs::Entity>>);
+            try
+            {
+                auto channel = std::make_unique<Channel>();
+                if (channel->prepare(capacity, copy) != EEndpointMutationError::NONE)
+                    return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                        ESimulationSystemBuildError::CONSTRUCTION_FAILURE, owner});
+                constexpr auto route = std::is_same_v<Route, SimulationBroadcastRoute>
+                    ? EEventRoute::SIMULATION_BROADCAST : EEventRoute::ENTITY_TARGETED;
+                auto stored = ownHookChannel(owner, event, route, lux::semantic::makeType<Payload>().type_id,
+                    channel.get(), capacity.producers, capacity.owner_occurrences != 0U,
+                    [](void* context) noexcept { delete static_cast<Channel*>(context); },
+                    [](void* context) noexcept { return static_cast<Channel*>(context)->sealPrepared(); },
+                    [](void* context) noexcept { return static_cast<Channel*>(context)->failed(); },
+                    [](void* context) noexcept { static_cast<Channel*>(context)->resetPrepared(); },
+                    [](void* context) noexcept { static_cast<Channel*>(context)->discardPrepared(); });
+                if (!stored)
+                    return lux::cxx::unexpected(stored.error());
+                channel->composed_ = true;
+                channel->execution_owner_ = stored->owner;
+                channel->delivery_system_ = owner;
+                channel->delivery_hook_ = stored->hook;
+                return channel.release();
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                    ESimulationSystemBuildError::ALLOCATION_FAILURE, owner});
+            }
+        }
+
+        template <class Route, class Payload>
+        [[nodiscard]] lux::cxx::expected<typename HookChannel<Route, Payload>::Producer, SimulationSystemBuildFailure>
+        bindHookChannelProducer(lux::system::SystemInstanceId system, SimulationTaskId stage,
+            HookChannel<Route, Payload>& channel) noexcept
+        {
+            auto slot = bindChannelProducer(SimulationExecutionPoint::task(system, stage), &channel);
+            if (!slot)
+                return lux::cxx::unexpected(slot.error());
+            return typename HookChannel<Route, Payload>::Producer{&channel, *slot};
+        }
+
+        [[nodiscard]] lux::cxx::expected<SimulationCommandProducer, SimulationSystemBuildFailure>
+        prepareCommandProducer(SimulationExecutionPoint point, ecs::EcsCommandProducerCapacity capacity) noexcept;
 
         template <class Configuration>
         [[nodiscard]] lux::cxx::expected<Configuration, SimulationSystemBuildFailure>
@@ -229,7 +283,7 @@ namespace lux::simulation
                 );
             }
 
-            auto command = allocateCommandProducer(instance, capacity);
+            auto command = allocateCommandProducer(SimulationExecutionPoint::task(instance, stage), capacity);
             if (!command)
                 return lux::cxx::unexpected(command.error());
 
@@ -238,7 +292,7 @@ namespace lux::simulation
                 const CommandBinding binding = *command;
                 task::TaskCallable task_callable(
                     [object, function = Function(std::forward<Callable>(callable)), binding, instance]() noexcept {
-                        auto begun = binding.commands->begin(binding.producer);
+                        auto begun = binding.producer.begin();
                         if (!begun)
                         {
                             binding.reporter.report(instance);
@@ -271,6 +325,16 @@ namespace lux::simulation
         }
 
     private:
+        struct ChannelOwnership final { const void* owner{}; HookPointId hook; };
+        [[nodiscard]] lux::cxx::expected<ChannelOwnership, SimulationSystemBuildFailure>
+        ownHookChannel(lux::system::SystemInstanceId system, EventPointId event,
+            EEventRoute route, lux::semantic::TypeId payload, void* context,
+            std::size_t producer_count, bool owner_reproduction,
+            void (*destroy)(void*) noexcept, bool (*seal)(void*) noexcept,
+            bool (*failed)(void*) noexcept, void (*reset)(void*) noexcept, void (*discard)(void*) noexcept) noexcept;
+        [[nodiscard]] lux::cxx::expected<detail::HookChannelProducerSlot*, SimulationSystemBuildFailure>
+        bindChannelProducer(SimulationExecutionPoint producer, void* channel) noexcept;
+
         struct Impl;
 
         struct FailureReporter final
@@ -286,8 +350,7 @@ namespace lux::simulation
 
         struct CommandBinding final
         {
-            ecs::EcsCommandBuffer* commands{};
-            std::size_t producer{};
+            SimulationCommandProducer producer;
             FailureReporter reporter;
         };
 
@@ -319,7 +382,7 @@ namespace lux::simulation
 
         [[nodiscard]] lux::cxx::expected<CommandBinding, SimulationSystemBuildFailure>
         allocateCommandProducer(
-            lux::system::SystemInstanceId instance,
+            SimulationExecutionPoint point,
             ecs::EcsCommandProducerCapacity capacity
         ) noexcept;
 

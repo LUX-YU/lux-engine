@@ -76,25 +76,34 @@ namespace
         inline static constexpr auto Description = System;
         Fixture& fixture;
         HookPoint<void(float)> value_hook;
-        HookChannel<EntityTargetedRoute<ecs::Entity>, installed_consumer::CollisionEvent> pulse;
+        using Channel = HookChannel<EntityTargetedRoute<ecs::Entity>, installed_consumer::CollisionEvent>;
+        Channel& pulse;
+        Channel::Producer pulse_writer;
         ScriptHookEndpoint<void(float)> hook_bridge{SystemId, ValueHook, value_hook};
         ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, installed_consumer::CollisionEvent>
             event_bridge{SystemId, PulseEvent, pulse};
-        explicit Domain(Fixture& value) noexcept : fixture(value)
+        explicit Domain(Fixture& value, Channel& channel) noexcept : fixture(value), pulse(channel)
         {
             assert(value_hook.prepare(1U) == EEndpointMutationError::NONE);
-            assert(pulse.prepare({1U, 2U}, [](const installed_consumer::CollisionEvent& value) noexcept {
-                return installed_consumer::CollisionEvent{value.body, value.impulse};
-            }) == EEndpointMutationError::NONE);
         }
     };
 
     auto install(SimulationBuilder& builder, SimulationSystemView view) noexcept
         -> lux::cxx::expected<void, SimulationSystemBuildFailure>
     {
-        auto domain = builder.emplaceSystem<Domain>(view.instanceId(), *builder.registry().ctx().get<Fixture*>());
+        auto channel = builder.createHookChannel<EntityTargetedRoute<ecs::Entity>, installed_consumer::CollisionEvent>(
+            view.instanceId(), PulseEvent, {1U, 2U}, [](const installed_consumer::CollisionEvent& value) noexcept {
+                return installed_consumer::CollisionEvent{value.body, value.impulse};
+            });
+        if (!channel)
+            return lux::cxx::unexpected(channel.error());
+        auto domain = builder.emplaceSystem<Domain>(view.instanceId(), *builder.registry().ctx().get<Fixture*>(), **channel);
         if (!domain)
             return lux::cxx::unexpected(domain.error());
+        auto writer = builder.bindHookChannelProducer(view.instanceId(), PrimarySimulationTask, **channel);
+        if (!writer)
+            return lux::cxx::unexpected(writer.error());
+        (*domain)->pulse_writer = *writer;
         auto result = builder.publishScriptHook(view.instanceId(), (*domain)->hook_bridge.descriptor());
         if (!result)
             return result;
@@ -102,7 +111,7 @@ namespace
         if (!result)
             return result;
         result = builder.addSystemTask<Domain>(view.instanceId(), [](Domain& value) noexcept {
-            auto writer = value.pulse.begin(0U);
+            auto writer = value.pulse_writer.begin();
             return writer.record(value.fixture.entity, installed_consumer::CollisionEvent{17, 4.5F});
         });
         if (!result)
@@ -244,6 +253,7 @@ int main()
 
     SimulationDescriptionBuilder simulation_builder;
     assert(simulation_builder.addSystem(SystemId, "consumer", System));
+    assert(simulation_builder.addChannelProducer({SystemId, PulseEvent, SystemId, PrimarySimulationTask}));
     assert(simulation_builder.addExecutionDependency(SimulationExecutionPoint::task(SystemId),
         SimulationExecutionPoint::hook(SystemId, ValueHook)));
     assert(simulation_builder.addExecutionDependency(SimulationExecutionPoint::hook(SystemId, ValueHook),

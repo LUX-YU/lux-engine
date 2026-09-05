@@ -37,6 +37,7 @@ namespace
     inline constexpr HookPointId kTickHook{0x7203U};
     inline constexpr lux::script::ScriptSymbolId kTickSymbol{0x7204U};
     inline constexpr system::SystemInstanceId kStableProbe{0x7205U};
+    inline constexpr SimulationTaskId kPropagate{2U};
     using DelayAbility = lux::simulation::script::DelayAbility;
     using DelayAbilityTraits = lux::script::ScriptAbilityTraits<DelayAbility>;
 
@@ -59,9 +60,13 @@ namespace
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
         inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "tick", true, true)};
+        inline static constexpr std::array Stages{
+            SimulationTaskSpec{PrimarySimulationTask, "produce"}, SimulationTaskSpec{kPropagate, "propagate"}
+        };
         inline static constexpr SimulationSystemDescription Description{
             .type = {.canonical_name = "lux.test.scene-script.probe", .version = 1U},
-            .hooks = Hooks
+            .hooks = Hooks,
+            .tasks = Stages
         };
 
         ProbeSystem() noexcept : endpoint(kProbeSystem, kTickHook, hook)
@@ -77,6 +82,8 @@ namespace
         ScriptHookEndpoint<void()> endpoint;
         bool ready{};
         bool tick_requested{true};
+        std::size_t live_value{};
+        std::size_t derived_value{};
     };
 
     ProbeSystem* active_probe{};
@@ -106,6 +113,10 @@ namespace
         );
         if (!task)
             return task;
+        const auto propagation = builder.addSystemTask<ProbeSystem>(description.instanceId(),
+            [](ProbeSystem& value) noexcept { value.derived_value = value.live_value * 10U; }, kPropagate);
+        if (!propagation)
+            return propagation;
         return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), kTickHook,
             [](ProbeSystem& value, const HookInvocation& invocation) noexcept {
                 if (std::exchange(value.tick_requested, false))
@@ -134,6 +145,8 @@ namespace
         assert(builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
         assert(builder.addExecutionDependency(SimulationExecutionPoint::task(kProbeSystem),
             SimulationExecutionPoint::hook(kProbeSystem, kTickHook)));
+        assert(builder.addExecutionDependency(SimulationExecutionPoint::hook(kProbeSystem, kTickHook),
+            SimulationExecutionPoint::task(kProbeSystem, kPropagate)));
         assert(addScriptSystemData(builder, script_description, codec_limits));
         auto result = std::move(builder).build();
         assert(result);
@@ -214,10 +227,13 @@ namespace
         void executeStablePoint() noexcept
         {
             observed_resume_calls = state_->resume_calls;
+            observed_derived = active_probe->derived_value;
+            assert(observed_derived == state_->resume_calls * 10U);
         }
 
         BackendState* state_{};
         std::size_t observed_resume_calls{};
+        std::size_t observed_derived{};
     };
 
     [[nodiscard]] lux::cxx::expected<void, SceneSystemBuildFailure> installStableProbe(
@@ -334,6 +350,7 @@ namespace
         auto& continuation = *static_cast<Continuation*>(value);
         assert(packet.state == EScriptAwaitableState::READY);
         ++continuation.owner->resume_calls;
+        ++active_probe->live_value;
         return ScriptStepResult::completed();
     }
 
@@ -558,6 +575,7 @@ int main()
     assert(fixture.backend_state.destroys == 2U);
     const auto* stable_probe = (*scene)->findSceneSystem<StableProbeSystem>();
     assert(stable_probe != nullptr && stable_probe->observed_resume_calls == 2U);
+    assert(stable_probe->observed_derived == 20U);
 
     fixture.backend_state.delay_mode = BackendState::EDelayMode::SECONDS;
     active_probe->tick_requested = true;

@@ -46,15 +46,16 @@ namespace
             .events = Events
         };
 
-        ProbeSystem() noexcept
-            : hook_endpoint(ProbeId, TickHook, hook), event_endpoint(ProbeId, PulseEvent, event)
+        using Channel = HookChannel<SimulationBroadcastRoute, std::int32_t>;
+        explicit ProbeSystem(Channel& channel) noexcept
+            : event(channel), hook_endpoint(ProbeId, TickHook, hook), event_endpoint(ProbeId, PulseEvent, event)
         {
-            ready = hook.prepare(1U) == EEndpointMutationError::NONE &&
-                event.prepare({1U, 4U}) == EEndpointMutationError::NONE;
+            ready = hook.prepare(1U) == EEndpointMutationError::NONE;
         }
 
         HookPoint<void()> hook;
-        HookChannel<SimulationBroadcastRoute, std::int32_t> event;
+        Channel& event;
+        Channel::Producer event_writer;
         ScriptHookEndpoint<void()> hook_endpoint;
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> event_endpoint;
         bool ready{};
@@ -69,7 +70,11 @@ namespace
         SimulationSystemView description
     ) noexcept
     {
-        auto created = builder.emplaceSystem<ProbeSystem>(description.instanceId());
+        auto channel = builder.createHookChannel<SimulationBroadcastRoute, std::int32_t>(
+            description.instanceId(), PulseEvent, {1U, 4U});
+        if (!channel)
+            return lux::cxx::unexpected(channel.error());
+        auto created = builder.emplaceSystem<ProbeSystem>(description.instanceId(), **channel);
         if (!created)
             return lux::cxx::unexpected(created.error());
         if (!(*created)->ready)
@@ -80,6 +85,10 @@ namespace
             });
         }
         ActiveProbe = *created;
+        auto writer = builder.bindHookChannelProducer(description.instanceId(), PrimarySimulationTask, **channel);
+        if (!writer)
+            return lux::cxx::unexpected(writer.error());
+        (*created)->event_writer = *writer;
         auto published = builder.publishScriptHook(description.instanceId(), (*created)->hook_endpoint.descriptor());
         if (!published)
             return published;
@@ -90,7 +99,7 @@ namespace
             if (!value.emit)
                 return true;
             value.emit = false;
-            auto writer = value.event.begin(0U);
+            auto writer = value.event_writer.begin();
             return writer.record(7);
         });
         if (!published)
@@ -185,6 +194,8 @@ int main()
                 SimulationExecutionPoint::hook(ProbeId, TickHook)))
             return 2;
     }
+    if (!description_builder.addChannelProducer({ProbeId, PulseEvent, ProbeId, PrimarySimulationTask}))
+        return 2;
     auto description = std::move(description_builder).build();
     if (!description)
         return 3;

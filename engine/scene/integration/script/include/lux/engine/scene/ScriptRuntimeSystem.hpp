@@ -6,6 +6,7 @@
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/LatestSpscExchange.hpp>
 
 #include <array>
 #include <cstddef>
@@ -91,14 +92,17 @@ namespace lux::scene
         ScriptRuntimeSystem& operator=(const ScriptRuntimeSystem&) = delete;
 
         [[nodiscard]] bool bindSimulation(simulation::Simulation& simulation) noexcept;
-        [[nodiscard]] simulation::script::ScriptSystem& scriptSystem() noexcept;
+        // Observation only, on the execution owner at a safe point. Gameplay pumping is graph-owned.
         [[nodiscard]] const simulation::script::ScriptSystem& scriptSystem() const noexcept;
+        // One observation consumer may call this on another thread; no live runtime storage is borrowed.
+        [[nodiscard]] bool acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept;
 
     private:
         std::unique_ptr<ScriptRealDelayProvider> real_delay_;
         std::unique_ptr<simulation::script::ScriptSystemDescription> description_;
         simulation::script::ScriptSystem system_;
         simulation::SimulationHookConnection hook_connection_;
+        LatestSpscExchange<simulation::script::ScriptRuntimeStats> stats_exchange_;
     };
 
     [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC

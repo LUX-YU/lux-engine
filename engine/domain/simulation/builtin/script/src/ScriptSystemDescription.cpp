@@ -133,9 +133,8 @@ namespace lux::simulation::script
                         using Target = std::remove_cvref_t<decltype(target)>;
                         if constexpr (std::is_same_v<Target, HookScriptTarget>)
                         {
-                            return simulation.findHookPoint(
-                                    target.system,
-                                    target.hook)
+                            const auto hook = simulation.findHookPoint(target.system, target.hook);
+                            return hook && hook.scriptCapable()
                                 ? EScriptSystemDescriptionError::INVALID_MOUNT
                                 : EScriptSystemDescriptionError::TARGET_NOT_FOUND;
                         }
@@ -145,7 +144,7 @@ namespace lux::simulation::script
                                 target.system,
                                 target.event
                             );
-                            if (!event)
+                            if (!event || !event.dispatchHook().scriptCapable())
                             {
                                 return EScriptSystemDescriptionError::
                                     TARGET_NOT_FOUND;

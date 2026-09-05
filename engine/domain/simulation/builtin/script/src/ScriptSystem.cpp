@@ -3483,7 +3483,8 @@ namespace lux::simulation::script
                 const bool is_invalid_functions =
                     events[index].connect == nullptr || events[index].disconnect == nullptr;
                 const bool is_invalid_signature =
-                    !described || described.route() != events[index].route ||
+                    !described || !described.dispatchHook().scriptCapable() ||
+                    described.route() != events[index].route ||
                     described.payloadType() != events[index].payload_type.type_id ||
                     described.payloadSchemaName() != events[index].payload_type.canonical_name ||
                     events[index].payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
@@ -3639,17 +3640,19 @@ namespace lux::simulation::script
         return {};
     }
 
-    lux::cxx::expected<void, EScriptSystemError> ScriptSystem::processLifecycle() noexcept
+    lux::cxx::expected<void, EScriptSystemError>
+    ScriptSystem::processLifecycle(EScriptLifecycleAdmission admission) noexcept
     {
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
         if (!execution)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-        if (state_->stopping)
-            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->endpoint_dispatch_depth != 0U || state_->user_invocation_depth != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        if (state_->stopping)
+            return admission == EScriptLifecycleAdmission::RETIRE_ONLY ? shutdown() :
+                lux::cxx::expected<void, EScriptSystemError>{lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY)};
         if (state_->prepare_state == EPrepareState::ROLLBACK_PENDING)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->prepare_state != EPrepareState::PREPARED)
@@ -3700,6 +3703,13 @@ namespace lux::simulation::script
 
         for (const auto& retirement : state_->lifecycle_retirements)
             state_->finishRetirement(retirement);
+
+        if (admission == EScriptLifecycleAdmission::RETIRE_ONLY)
+        {
+            for (const auto mount_slot : state_->lifecycle_candidates)
+                state_->queueDirty(mount_slot);
+            return {};
+        }
 
         state_->lifecycle_initialized.clear();
         for (const auto mount_slot : state_->lifecycle_candidates)
@@ -3896,6 +3906,9 @@ namespace lux::simulation::script
     {
         ScriptRuntimeStats result;
         if (!state_)
+            return result;
+        State::ExecutionOwnerScope execution{*state_};
+        if (!execution)
             return result;
         result.active_instances = state_->active_mount_count;
         result.active_continuations = state_->continuations.size();

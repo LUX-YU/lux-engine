@@ -318,6 +318,14 @@ namespace lux::simulation::ecs
         });
     }
 
+    std::optional<EcsCommandFailure> EcsCommandBuffer::producerFailure(std::size_t producer) const noexcept
+    {
+        if (producer >= impl_->producers.size())
+            return EcsCommandFailure{EEcsCommandError::INVALID_PRODUCER, producer};
+        const auto& state = impl_->producers[producer];
+        return state.failed ? std::optional<EcsCommandFailure>{state.failure} : std::nullopt;
+    }
+
     std::size_t EcsCommandBuffer::allocationEvents() const noexcept
     {
         std::size_t result{};

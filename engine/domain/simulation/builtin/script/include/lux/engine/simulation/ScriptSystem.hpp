@@ -124,6 +124,8 @@ namespace lux::simulation::script
         std::int32_t status{};
     };
 
+    enum class EScriptLifecycleAdmission : std::uint8_t { ALLOW, RETIRE_ONLY };
+
     class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystem final
     {
     public:
@@ -170,7 +172,8 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         executeStablePoint() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> processLifecycle() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
+        processLifecycle(EScriptLifecycleAdmission admission = EScriptLifecycleAdmission::ALLOW) noexcept;
         void beginStableAdmission() noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
@@ -182,6 +185,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] std::size_t activeAwaitableCount() const noexcept;
 
+        // The execution owner reads live counters at safe points. Cross-thread readers use a published copy.
         [[nodiscard]] ScriptRuntimeStats stats() const noexcept;
 
         [[nodiscard]] std::span<const ScriptSystemFailure> failures() const noexcept;

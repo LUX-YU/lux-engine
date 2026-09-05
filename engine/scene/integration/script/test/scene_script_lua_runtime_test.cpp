@@ -19,6 +19,9 @@
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 
 #include <array>
+#include <barrier>
+#include <thread>
+#include <type_traits>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -430,6 +433,21 @@ int main(int argc, char** argv)
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     assert(runtime->scriptSystem().activeContinuationCount() == 1U);
     assert(runtime->scriptSystem().failures().empty());
+    static_assert(std::is_const_v<std::remove_reference_t<decltype(runtime->scriptSystem())>>);
+    std::barrier stats_ready{2};
+    std::jthread observer([&](std::stop_token stop) {
+        ScriptRuntimeStats snapshot;
+        assert(runtime->acquireStats(snapshot));
+        assert(snapshot.active_continuations == 1U);
+        stats_ready.arrive_and_wait();
+        while (!stop.stop_requested())
+        {
+            if (runtime->acquireStats(snapshot))
+                assert(snapshot.active_continuations <= 1U);
+            std::this_thread::yield();
+        }
+    });
+    stats_ready.arrive_and_wait();
     assert((*scene)->executeStablePoint());
     assert(runtime->scriptSystem().activeContinuationCount() == 1U);
     assert(runtime->scriptSystem().failures().empty());
@@ -457,6 +475,8 @@ int main(int argc, char** argv)
     assert(runtime->scriptSystem().failures().back().error == EScriptSystemError::INVOCATION_FAILURE);
 #endif
 
+    observer.request_stop();
+    observer.join();
     scene->reset();
 #if defined(LUX_LUA_PORTABILITY_ARTIFACT)
     assert(g_last_written == -1);

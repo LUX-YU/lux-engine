@@ -56,7 +56,11 @@ namespace lux::simulation
                 return false;
             bool hook_found{};
             for (const auto& hook : description.hooks)
+            {
+                if (hook.id == event.dispatch_hook && event.owner_reproduction && !hook.script_capable)
+                    return false;
                 hook_found = hook_found || hook.id == event.dispatch_hook;
+            }
             if (!hook_found)
                 return false;
             for (std::size_t previous{}; previous < index; ++previous)

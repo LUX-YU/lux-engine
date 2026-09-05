@@ -16,6 +16,7 @@
 
 namespace lux::simulation
 {
+    class SimulationBuilder;
     struct SimulationBroadcastRoute final {};
     template <class Target> struct EntityTargetedRoute final { using TargetType = Target; };
 
@@ -29,6 +30,11 @@ namespace lux::simulation
 
     namespace detail
     {
+        struct HookChannelProducerSlot final
+        {
+            std::size_t lane{};
+            bool active{};
+        };
         template <class Route> struct HookChannelTarget;
         template <> struct HookChannelTarget<SimulationBroadcastRoute> { using Type = std::monostate; };
         template <class Target> struct HookChannelTarget<EntityTargetedRoute<Target>> { using Type = Target; };
@@ -115,6 +121,25 @@ namespace lux::simulation
             friend class HookChannel;
         };
 
+        class Producer final
+        {
+        public:
+            Producer() noexcept = default;
+            [[nodiscard]] Writer begin() const noexcept
+            {
+                if (channel_ == nullptr || slot_ == nullptr || !slot_->active)
+                    return {};
+                return channel_->beginPrepared(slot_->lane);
+            }
+        private:
+            Producer(HookChannel* channel, detail::HookChannelProducerSlot* slot) noexcept
+                : channel_(channel), slot_(slot)
+            {}
+            HookChannel* channel_{};
+            detail::HookChannelProducerSlot* slot_{};
+            friend class SimulationBuilder;
+        };
+
         HookChannel() = default;
         HookChannel(const HookChannel&) = delete;
         HookChannel& operator=(const HookChannel&) = delete;
@@ -123,6 +148,8 @@ namespace lux::simulation
 
         [[nodiscard]] EEndpointMutationError prepare(HookChannelCapacity capacity, OwnedCopy copy = nullptr) noexcept
         {
+            if (composed_)
+                return EEndpointMutationError::DISPATCH_ACTIVE;
             if (sealed_)
                 return EEndpointMutationError::DISPATCH_ACTIVE;
             if (writerActive())
@@ -166,13 +193,22 @@ namespace lux::simulation
 
         [[nodiscard]] Writer begin(std::size_t producer) noexcept
         {
-            if (!prepared_ || sealed_ || producer >= lanes_.size() || lanes_[producer].active)
-                return {};
-            auto& lane = lanes_[producer];
-            return Writer{lane.records, lane.active, lane.failed, capacity_.occurrences_per_producer, copy_};
+            return composed_ ? Writer{} : beginPrepared(producer);
         }
 
         [[nodiscard]] Writer beginOwner() noexcept
+        {
+            return composed_ ? Writer{} : beginOwnerPrepared();
+        }
+        [[nodiscard]] Writer beginOwner(const HookInvocation& invocation) noexcept
+        {
+            const bool allowed = composed_ && invocation.owner_ == execution_owner_ &&
+                invocation.system() == delivery_system_ && invocation.hook() == delivery_hook_;
+            return allowed ? beginOwnerPrepared() : Writer{};
+        }
+
+    private:
+        [[nodiscard]] Writer beginOwnerPrepared() noexcept
         {
             if (!prepared_ || capacity_.owner_occurrences == 0U)
                 return {};
@@ -182,12 +218,10 @@ namespace lux::simulation
             return Writer{lane.records, lane.active, lane.failed, capacity_.owner_occurrences, copy_};
         }
 
+    public:
         [[nodiscard]] bool seal() noexcept
         {
-            if (!prepared_ || sealed_ || writerActive() || failed())
-                return false;
-            sealed_ = true;
-            return true;
+            return !composed_ && sealPrepared();
         }
 
         [[nodiscard]] std::size_t laneCount() const noexcept
@@ -219,23 +253,14 @@ namespace lux::simulation
 
         void reset() noexcept
         {
-            for (auto& lane : lanes_)
-            {
-                lane.records.clear();
-                lane.failed = false;
-            }
-            owner_.records.clear();
-            owner_.records.swap(deferred_.records);
-            owner_.failed = deferred_.failed;
-            deferred_.failed = false;
-            sealed_ = false;
+            if (!composed_)
+                resetPrepared();
         }
 
         void discard() noexcept
         {
-            deferred_.records.clear();
-            deferred_.failed = false;
-            reset();
+            if (!composed_)
+                discardPrepared();
         }
 
         [[nodiscard]] std::size_t pendingOccurrenceCount() const noexcept
@@ -247,6 +272,39 @@ namespace lux::simulation
         }
 
     private:
+        [[nodiscard]] Writer beginPrepared(std::size_t producer) noexcept
+        {
+            if (!prepared_ || sealed_ || producer >= lanes_.size() || lanes_[producer].active)
+                return {};
+            auto& lane = lanes_[producer];
+            return Writer{lane.records, lane.active, lane.failed, capacity_.occurrences_per_producer, copy_};
+        }
+        [[nodiscard]] bool sealPrepared() noexcept
+        {
+            if (!prepared_ || sealed_ || writerActive() || failed())
+                return false;
+            sealed_ = true;
+            return true;
+        }
+        void resetPrepared() noexcept
+        {
+            for (auto& lane : lanes_)
+            {
+                lane.records.clear();
+                lane.failed = false;
+            }
+            owner_.records.clear();
+            owner_.records.swap(deferred_.records);
+            owner_.failed = deferred_.failed;
+            deferred_.failed = false;
+            sealed_ = false;
+        }
+        void discardPrepared() noexcept
+        {
+            deferred_.records.clear();
+            deferred_.failed = false;
+            resetPrepared();
+        }
         struct Lane final
         {
             std::vector<Occurrence> records;
@@ -267,5 +325,10 @@ namespace lux::simulation
         bool prepared_{};
         bool sealed_{};
         OwnedCopy copy_{};
+        bool composed_{};
+        const void* execution_owner_{};
+        lux::system::SystemInstanceId delivery_system_;
+        HookPointId delivery_hook_;
+        friend class SimulationBuilder;
     };
 }

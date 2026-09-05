@@ -117,6 +117,8 @@ namespace lux::simulation
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         addExecutionDependency(SimulationExecutionPoint before, SimulationExecutionPoint after) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        addChannelProducer(SimulationChannelProducer producer) noexcept;
 
         [[nodiscard]] lux::cxx::expected<
             SimulationDescription,

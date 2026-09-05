@@ -78,4 +78,13 @@ namespace lux::simulation
             SimulationExecutionDependency, SimulationExecutionDependency
         ) noexcept = default;
     };
+
+    struct SimulationChannelProducer final
+    {
+        lux::system::SystemInstanceId system;
+        EventPointId event;
+        lux::system::SystemInstanceId producer_system;
+        SimulationTaskId stage;
+        friend constexpr bool operator==(SimulationChannelProducer, SimulationChannelProducer) noexcept = default;
+    };
 }

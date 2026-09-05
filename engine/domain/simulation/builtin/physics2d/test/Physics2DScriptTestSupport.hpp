@@ -70,7 +70,9 @@ namespace lux::physics2d::test
         };
 
         lux::simulation::HookPoint<void()> tick;
-        lux::simulation::HookChannel<lux::simulation::SimulationBroadcastRoute, std::int32_t> pulse;
+        using Channel = lux::simulation::HookChannel<lux::simulation::SimulationBroadcastRoute, std::int32_t>;
+        Channel* pulse{};
+        Channel::Producer pulse_writer;
         std::unique_ptr<lux::simulation::script::ScriptHookEndpoint<void()>> endpoint;
         std::unique_ptr<lux::simulation::script::ScriptEventEndpoint<
             lux::simulation::SimulationBroadcastRoute,
@@ -96,13 +98,16 @@ namespace lux::physics2d::test
                 lux::simulation::ESimulationSystemBuildError::CONSTRUCTION_FAILURE,
                 description.instanceId()});
         }
-        if ((*system)->pulse.prepare({1U, 1U}) != lux::simulation::EEndpointMutationError::NONE)
-        {
-            return lux::cxx::unexpected(lux::simulation::SimulationSystemBuildFailure{
-                lux::simulation::ESimulationSystemBuildError::CONSTRUCTION_FAILURE,
-                description.instanceId()
-            });
-        }
+        auto channel = builder.createHookChannel<lux::simulation::SimulationBroadcastRoute, std::int32_t>(
+            description.instanceId(), PulseEvent, {1U, 1U});
+        if (!channel)
+            return lux::cxx::unexpected(channel.error());
+        (*system)->pulse = *channel;
+        auto writer = builder.bindHookChannelProducer(
+            description.instanceId(), lux::simulation::PrimarySimulationTask, **channel);
+        if (!writer)
+            return lux::cxx::unexpected(writer.error());
+        (*system)->pulse_writer = *writer;
         (*system)->endpoint =
             std::make_unique<lux::simulation::script::ScriptHookEndpoint<void()>>(description.instanceId(),
                                                                                   TickHook,
@@ -110,7 +115,7 @@ namespace lux::physics2d::test
         (*system)->event_endpoint = std::make_unique<lux::simulation::script::ScriptEventEndpoint<
             lux::simulation::SimulationBroadcastRoute,
             std::int32_t
-        >>(description.instanceId(), PulseEvent, (*system)->pulse);
+        >>(description.instanceId(), PulseEvent, *(*system)->pulse);
         const auto published = builder.publishScriptHook(description.instanceId(), (*system)->endpoint->descriptor());
         if (!published)
             return lux::cxx::unexpected(published.error());
@@ -121,7 +126,7 @@ namespace lux::physics2d::test
         const auto task = builder.addSystemTask<ProbeSystem>(description.instanceId(), [](ProbeSystem& value) noexcept {
             if (!value.emit_pulse)
                 return true;
-            auto writer = value.pulse.begin(0U);
+            auto writer = value.pulse_writer.begin();
             const auto recorded = writer.record(1);
             if (recorded)
                 ++value.emitted_pulses;
@@ -166,6 +171,9 @@ namespace lux::physics2d::test
             if (!builder.addExecutionDependency(Point::task(producer), Point::hook(ProbeSystemId, TickHook)))
                 std::terminate();
         }
+        if (!builder.addChannelProducer({ProbeSystemId, PulseEvent, ProbeSystemId,
+                lux::simulation::PrimarySimulationTask}))
+            std::terminate();
         auto built = std::move(builder).build();
         if (!built)
             std::terminate();

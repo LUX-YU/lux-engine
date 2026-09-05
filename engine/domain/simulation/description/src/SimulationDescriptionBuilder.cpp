@@ -58,6 +58,7 @@ namespace lux::simulation
             std::string payload_schema_name;
             std::uint64_t payload_schema_hash{};
             std::uint32_t payload_schema_version{};
+            bool owner_reproduction{};
         };
 
         struct PendingSystem final
@@ -90,6 +91,7 @@ namespace lux::simulation
         std::vector<PendingSystem> systems;
         std::vector<PendingDependency> dependencies;
         std::vector<SimulationExecutionDependency> execution_dependencies;
+        std::vector<SimulationChannelProducer> channel_producers;
     };
 
     namespace
@@ -183,7 +185,8 @@ namespace lux::simulation
                     a.route != b.route || a.payload_type != b.payload_type ||
                     a.payload_schema_name != b.payload_schema_name ||
                     a.payload_schema_hash != b.payload_schema_hash ||
-                    a.payload_schema_version != b.payload_schema_version)
+                    a.payload_schema_version != b.payload_schema_version ||
+                    a.owner_reproduction != b.owner_reproduction)
                 {
                     return false;
                 }
@@ -467,7 +470,7 @@ namespace lux::simulation
                     return candidate.id == event.dispatch_hook;
                 }
             );
-            if (hook == system.hooks.end())
+            if (hook == system.hooks.end() || (event.owner_reproduction && !hook->script_capable))
                 return lux::cxx::unexpected(failure(
                     ESimulationDescriptionError::INVALID_EVENT_DISPATCH_HOOK
                 ));
@@ -540,7 +543,7 @@ namespace lux::simulation
                     event.payload_type,
                     std::string(event.payload_schema_name),
                     lux::semantic::typeId(event.payload_schema_name),
-                    event.payload_schema_version
+                    event.payload_schema_version, event.owner_reproduction
                 });
             }
 
@@ -615,6 +618,9 @@ namespace lux::simulation
             impl_->dependencies.end()
         );
         impl_->systems.erase(system);
+        std::erase_if(impl_->channel_producers, [instance_id](const auto& producer) noexcept {
+            return producer.system == instance_id || producer.producer_system == instance_id;
+        });
         std::erase_if(impl_->execution_dependencies, [instance_id](const auto& edge) noexcept {
             return edge.before.system == instance_id || edge.after.system == instance_id;
         });
@@ -741,6 +747,7 @@ namespace lux::simulation
         impl_->systems.clear();
         impl_->dependencies.clear();
         impl_->execution_dependencies.clear();
+        impl_->channel_producers.clear();
     }
 
     lux::cxx::expected<void, SimulationDescriptionFailure> SimulationDescriptionBuilder::addExecutionDependency(
@@ -758,6 +765,34 @@ namespace lux::simulation
         try
         {
             impl_->execution_dependencies.push_back(edge);
+            return {};
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::ALLOCATION_FAILURE));
+        }
+    }
+
+    lux::cxx::expected<void, SimulationDescriptionFailure>
+    SimulationDescriptionBuilder::addChannelProducer(SimulationChannelProducer producer) noexcept
+    {
+        const auto system = findSystem(impl_->systems, producer.system);
+        const auto source = findSystem(impl_->systems, producer.producer_system);
+        if (system == impl_->systems.end() || source == impl_->systems.end())
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::SYSTEM_NOT_FOUND));
+        const bool has_event = std::ranges::any_of(system->events, [producer](const auto& event) noexcept {
+            return event.id == producer.event;
+        });
+        const bool has_stage = std::ranges::any_of(source->tasks, [producer](const auto& stage) noexcept {
+            return stage.id == producer.stage;
+        });
+        if (!has_event || !has_stage)
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::INVALID_DEPENDENCY));
+        if (std::ranges::find(impl_->channel_producers, producer) != impl_->channel_producers.end())
+            return lux::cxx::unexpected(failure(ESimulationDescriptionError::DUPLICATE_DEPENDENCY));
+        try
+        {
+            impl_->channel_producers.push_back(producer);
             return {};
         }
         catch (const std::bad_alloc&)
@@ -813,6 +848,11 @@ namespace lux::simulation
             );
 
             SimulationDescription result;
+            result.channel_producers_ = impl_->channel_producers;
+            std::ranges::sort(result.channel_producers_, [](const auto& a, const auto& b) noexcept {
+                return std::tie(a.system, a.event, a.producer_system, a.stage) <
+                    std::tie(b.system, b.event, b.producer_system, b.stage);
+            });
             result.execution_dependencies_ = impl_->execution_dependencies;
             std::ranges::sort(result.execution_dependencies_, [](const auto& left, const auto& right) noexcept {
                 return std::tie(left.before.system, left.before.kind, left.before.point,
@@ -941,7 +981,7 @@ namespace lux::simulation
                         event.payload_type,
                         event.payload_schema_name,
                         event.payload_schema_hash,
-                        event.payload_schema_version
+                        event.payload_schema_version, event.owner_reproduction
                     });
                 }
                 result.system_types_.push_back(std::move(record));
@@ -1023,6 +1063,7 @@ namespace lux::simulation
             impl_->systems.clear();
             impl_->dependencies.clear();
             impl_->execution_dependencies.clear();
+            impl_->channel_producers.clear();
             return result;
         }
         catch (const std::length_error&)

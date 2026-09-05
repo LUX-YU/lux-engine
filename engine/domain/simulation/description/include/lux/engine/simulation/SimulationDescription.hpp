@@ -139,6 +139,7 @@ namespace lux::simulation
         [[nodiscard]] std::string_view payloadSchemaName() const noexcept;
         [[nodiscard]] std::uint64_t payloadSchemaHash() const noexcept;
         [[nodiscard]] std::uint32_t payloadSchemaVersion() const noexcept;
+        [[nodiscard]] bool ownerReproduction() const noexcept;
 
       private:
         SimulationEventView(
@@ -226,6 +227,10 @@ namespace lux::simulation
         {
             return execution_dependencies_;
         }
+        [[nodiscard]] std::span<const SimulationChannelProducer> channelProducers() const noexcept
+        {
+            return channel_producers_;
+        }
 
       private:
         struct DataRecord final
@@ -264,6 +269,7 @@ namespace lux::simulation
             std::string payload_schema_name;
             std::uint64_t payload_schema_hash{};
             std::uint32_t payload_schema_version{};
+            bool owner_reproduction{};
         };
 
         struct SystemTypeRecord final
@@ -306,6 +312,7 @@ namespace lux::simulation
         std::vector<std::byte> configuration_payload_;
         std::vector<DependencyRecord> dependencies_;
         std::vector<SimulationExecutionDependency> execution_dependencies_;
+        std::vector<SimulationChannelProducer> channel_producers_;
 
         friend class SimulationDataView;
         friend class SimulationSystemView;

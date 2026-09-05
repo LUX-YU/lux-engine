@@ -175,6 +175,7 @@ namespace lux::simulation::ecs
         [[nodiscard]] lux::cxx::expected<EcsCommandWriter, EcsCommandFailure> begin(std::size_t producer) noexcept;
         [[nodiscard]] std::optional<Entity> resolve(DeferredEntity entity) const noexcept;
         [[nodiscard]] bool failed() const noexcept;
+        [[nodiscard]] std::optional<EcsCommandFailure> producerFailure(std::size_t producer) const noexcept;
         [[nodiscard]] std::size_t allocationEvents() const noexcept;
         [[nodiscard]] std::size_t discarded() const noexcept;
         void discardPending() noexcept;

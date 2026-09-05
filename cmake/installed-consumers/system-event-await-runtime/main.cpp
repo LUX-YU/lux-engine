@@ -36,24 +36,33 @@ namespace
         };
         inline static constexpr SimulationSystemDescription Description{
             .type = {.canonical_name = "consumer.event-await", .version = 1U}, .hooks = Hooks, .events = Events};
-        HookChannel<SimulationBroadcastRoute, std::int32_t> start;
-        HookChannel<SimulationBroadcastRoute, std::int32_t> ready;
+        using Channel = HookChannel<SimulationBroadcastRoute, std::int32_t>;
+        Channel& start;
+        Channel& ready;
+        Channel::Producer start_writer;
+        Channel::Producer ready_writer;
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> start_bridge{kSystem, kStart, start};
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> ready_bridge{kSystem, kReady, ready};
         unsigned steps{};
-        Producer() noexcept
-        {
-            assert(start.prepare({1U, 1U}) == EEndpointMutationError::NONE);
-            assert(ready.prepare({1U, 1U}) == EEndpointMutationError::NONE);
-        }
+        Producer(Channel& first, Channel& second) noexcept : start(first), ready(second) {}
     };
 
     auto install(SimulationBuilder& builder, SimulationSystemView view) noexcept
         -> lux::cxx::expected<void, SimulationSystemBuildFailure>
     {
-        auto value = builder.emplaceSystem<Producer>(view.instanceId());
+        auto start = builder.createHookChannel<SimulationBroadcastRoute, std::int32_t>(view.instanceId(), kStart, {1U, 1U});
+        auto ready = builder.createHookChannel<SimulationBroadcastRoute, std::int32_t>(view.instanceId(), kReady, {1U, 1U});
+        if (!start || !ready)
+            return lux::cxx::unexpected(!start ? start.error() : ready.error());
+        auto value = builder.emplaceSystem<Producer>(view.instanceId(), **start, **ready);
         if (!value)
             return lux::cxx::unexpected(value.error());
+        auto start_writer = builder.bindHookChannelProducer(view.instanceId(), PrimarySimulationTask, **start);
+        auto ready_writer = builder.bindHookChannelProducer(view.instanceId(), PrimarySimulationTask, **ready);
+        if (!start_writer || !ready_writer)
+            return lux::cxx::unexpected(!start_writer ? start_writer.error() : ready_writer.error());
+        (*value)->start_writer = *start_writer;
+        (*value)->ready_writer = *ready_writer;
         auto result = builder.publishScriptEvent(view.instanceId(), (*value)->start_bridge.descriptor());
         if (!result)
             return result;
@@ -62,7 +71,7 @@ namespace
             return result;
         result = builder.addSystemTask<Producer>(view.instanceId(), [](Producer& producer) noexcept {
             const auto step = ++producer.steps;
-            auto writer = step == 1U ? producer.start.begin(0U) : producer.ready.begin(0U);
+            auto writer = step == 1U ? producer.start_writer.begin() : producer.ready_writer.begin();
             std::int32_t payload = step == 1U ? 1 : 42;
             const auto recorded = writer.record(payload);
             payload = -1;
@@ -197,6 +206,8 @@ int main()
 
     SimulationDescriptionBuilder simulation_builder;
     assert(simulation_builder.addSystem(kSystem, "event-await", Producer::Description));
+    assert(simulation_builder.addChannelProducer({kSystem, kStart, kSystem, PrimarySimulationTask}));
+    assert(simulation_builder.addChannelProducer({kSystem, kReady, kSystem, PrimarySimulationTask}));
     assert(simulation_builder.addExecutionDependency(
         SimulationExecutionPoint::task(kSystem), SimulationExecutionPoint::hook(kSystem, kDispatch)));
     auto built = std::move(simulation_builder).build();

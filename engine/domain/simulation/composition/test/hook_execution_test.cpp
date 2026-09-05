@@ -56,7 +56,7 @@ namespace
     struct Host final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(Hook, "gameplay")};
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(Hook, "gameplay", true, true)};
         inline static constexpr SimulationSystemDescription Description{
             .type = {.canonical_name = "lux.test.execution.host", .version = 1U}, .hooks = Hooks
         };
@@ -205,6 +205,8 @@ namespace
             return;
         }
         assert(simulation);
+        // Initially no Script binding; late admission must still require a runtime hook.
+        assert(simulation->seal());
         lux::rdesc::Script script_description;
         script_description.module_name = "lux.test.execution.script";
         script_description.body = lux::rdesc::CppStaticScript{"synthetic-owner-probe"};
@@ -228,6 +230,19 @@ namespace
             }}, {}, {}, {&descriptor, 1U}, simulation->scriptHookEndpoints(), {});
         assert(runtime && runtime->prepare());
         auto executor = lux::task::TaskExecutor::create({workers, 16U});
+        assert(executor && !simulation->execute(*executor, SimulationDuration{1}));
+        assert(probe.script_calls == 0U && probe.finished.load() == 0U);
+        assert(simulation->clock().snapshot().step_index == 0U);
+        auto connection = simulation->bindHookCallbacks({&*runtime,
+            [](void* context, const SimulationClockSnapshot&, bool) noexcept {
+                auto& runtime = *static_cast<ScriptSystem*>(context);
+                runtime.beginStableAdmission();
+                return static_cast<bool>(runtime.processLifecycle());
+            },
+            [](void* context, const SimulationClockSnapshot&, bool) noexcept {
+                return static_cast<bool>(static_cast<ScriptSystem*>(context)->executeStablePoint());
+            }, nullptr});
+        assert(connection);
         assert(executor && simulation->execute(*executor, SimulationDuration{1}));
         assert(probe.script_calls == 1U && probe.consumer_saw_script);
         assert(probe.high_water.load() == (workers >= 2U ? 2U : 1U));

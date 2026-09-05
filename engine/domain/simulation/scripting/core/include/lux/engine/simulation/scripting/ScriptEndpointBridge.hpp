@@ -35,6 +35,7 @@ namespace lux::simulation::script
         EndpointConnectResult (*connect)(void *, void *, ScriptHookLane) noexcept {};
         EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
         void (*bind_owner)(void*, const void*) noexcept{};
+        bool (*connected)(void*) noexcept{};
     };
 
     struct ScriptEventEndpointDescriptor final
@@ -53,6 +54,7 @@ namespace lux::simulation::script
         void (*reset)(void*) noexcept{};
         void (*discard)(void*) noexcept{};
         void* channel_context{};
+        bool (*connected)(void*) noexcept{};
     };
 
     namespace detail
@@ -150,7 +152,8 @@ namespace lux::simulation::script
                 &disconnect,
                 [](void* context, const void* owner) noexcept {
                     static_cast<ScriptHookEndpoint*>(context)->endpoint_->binding_owner_ = owner;
-                }
+                },
+                [](void* context) noexcept { return static_cast<ScriptHookEndpoint*>(context)->lane_ != nullptr; }
             };
         }
 
@@ -161,17 +164,33 @@ namespace lux::simulation::script
             ScriptHookLane lane) noexcept
         {
             auto &self = *static_cast<ScriptHookEndpoint *>(context);
+            if (lane == nullptr)
+                return {{}, EEndpointMutationError::INVALID_CALLBACK};
+            if (self.lane_ != nullptr)
+                return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
             self.lane_context_ = lane_context;
             self.lane_ = lane;
-            return self.endpoint_->connect(&self, &dispatch);
+            auto result = self.endpoint_->connect(&self, &dispatch);
+            if (!result)
+            {
+                self.lane_context_ = nullptr;
+                self.lane_ = nullptr;
+            }
+            return result;
         }
 
         static EEndpointMutationError disconnect(
             void *context,
             EndpointConnectionToken token) noexcept
         {
-            return static_cast<ScriptHookEndpoint *>(context)
-                ->endpoint_->disconnect(token);
+            auto& self = *static_cast<ScriptHookEndpoint*>(context);
+            const auto result = self.endpoint_->disconnect(token);
+            if (result == EEndpointMutationError::NONE)
+            {
+                self.lane_context_ = nullptr;
+                self.lane_ = nullptr;
+            }
+            return result;
         }
 
         static void dispatch(
@@ -240,7 +259,8 @@ namespace lux::simulation::script
                 &consume,
                 [](void* context) noexcept { return self(context).channel_->failed(); },
                 [](void* context) noexcept { self(context).channel_->reset(); },
-                [](void* context) noexcept { self(context).channel_->discard(); }, channel_};
+                [](void* context) noexcept { self(context).channel_->discard(); }, channel_,
+                [](void* context) noexcept { return self(context).lane_ != nullptr; }};
         }
 
     private:

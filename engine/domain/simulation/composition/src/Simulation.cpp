@@ -112,6 +112,18 @@ namespace lux::simulation
         bool stopped{};
         bool executing{};
         std::vector<std::unique_ptr<detail::PreparedHookInvocation>> hook_invocations;
+        [[nodiscard]] bool hasUnboundScriptEndpoints() const noexcept
+        {
+            if (hook_callbacks.context != nullptr)
+                return false;
+            const bool hooks_connected = std::ranges::any_of(script_hooks, [](const auto& endpoint) noexcept {
+                return endpoint.connected != nullptr && endpoint.connected(endpoint.context);
+            });
+            const bool events_connected = std::ranges::any_of(script_events, [](const auto& endpoint) noexcept {
+                return endpoint.connected != nullptr && endpoint.connected(endpoint.context);
+            });
+            return hooks_connected || events_connected;
+        }
     };
 
     struct SimulationBuilder::Impl final
@@ -394,7 +406,7 @@ namespace lux::simulation
         const bool is_current_provider = current && current.instanceId() == provider;
         const bool is_invalid_endpoint = endpoint.system != provider || endpoint.context == nullptr ||
             endpoint.connect == nullptr || endpoint.disconnect == nullptr ||
-            endpoint.bind_owner == nullptr || !described ||
+            endpoint.bind_owner == nullptr || endpoint.connected == nullptr || !described ||
             !described.scriptCapable() ||
             described.parameterCount() != endpoint.signature.parameters.size() || !endpoint.signature.returns.empty();
         if (!is_current_provider || is_invalid_endpoint)
@@ -450,7 +462,8 @@ namespace lux::simulation
              builtin->size != owned.size || builtin->alignment != owned.alignment);
         const bool is_current_provider = current && current.instanceId() == provider;
         const bool is_invalid_endpoint = endpoint.system != provider || endpoint.context == nullptr ||
-            endpoint.connect == nullptr || endpoint.disconnect == nullptr || !described ||
+            endpoint.connect == nullptr || endpoint.disconnect == nullptr ||
+            endpoint.connected == nullptr || !described ||
             !described.dispatchHook().scriptCapable() ||
             described.route() != endpoint.route || described.payloadType() != endpoint.payload_type.type_id ||
             described.payloadSchemaName() != endpoint.payload_type.canonical_name ||
@@ -1228,7 +1241,7 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationSystemBuildFailure> Simulation::seal() noexcept
     {
-        if (impl_->stopped)
+        if (impl_->stopped || impl_->hasUnboundScriptEndpoints())
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
         impl_->sealed = true;
         return {};
@@ -1246,6 +1259,8 @@ namespace lux::simulation
     {
         if (impl_->stopped)
             return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::STOPPED});
+        if (impl_->hasUnboundScriptEndpoints())
+            return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::NOT_SEALED});
         if (!impl_->sealed)
         {
             if (!seal())

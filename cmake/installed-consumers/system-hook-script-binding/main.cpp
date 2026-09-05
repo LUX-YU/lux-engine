@@ -346,6 +346,18 @@ int main()
     assert(script_system.prepare());
     assert(script_system.activeInstanceCount() == 1U);
 
+    auto connection = composed->bindHookCallbacks({&script_system,
+        [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+            auto& runtime = *static_cast<ScriptSystem*>(context);
+            if (stable)
+                runtime.beginStableAdmission();
+            return static_cast<bool>(runtime.processLifecycle());
+        },
+        [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+            return !stable || static_cast<bool>(static_cast<ScriptSystem*>(context)->executeStablePoint());
+        }, nullptr});
+    assert(connection);
+
     auto executor = lux::task::TaskExecutor::create({4U, 8U});
     assert(executor && composed->execute(*executor, SimulationDuration{1}));
     assert(installed_consumer::observed_value == 2.5F);

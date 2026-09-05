@@ -113,7 +113,7 @@ int main()
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (5U) + 4096U,
+            64U * 1024U * 1024U,
         .prepared_event_blocks = std::array{
             lux::simulation::script::LuaPreparedBlockClass{
                 (1U) / ((1U) == 0U ? 1U : (1U)),
@@ -121,7 +121,7 @@ int main()
             }
         },
         .prepared_event_storage_bytes =
-            128U * (1U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(backend);
     const auto descriptor = backend->descriptor();

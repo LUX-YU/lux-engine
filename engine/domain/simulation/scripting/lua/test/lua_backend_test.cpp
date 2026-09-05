@@ -181,7 +181,7 @@ int main()
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (2U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(display_backend);
 
@@ -209,7 +209,7 @@ int main()
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (2U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(!duplicate_name_backend);
     assert(duplicate_name_backend.error() == ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
@@ -234,7 +234,7 @@ int main()
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (1U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(!reserved_name_backend);
     assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
@@ -257,7 +257,7 @@ int main()
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (1U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(!unsupported_integer_backend);
     assert(unsupported_integer_backend.error() == ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);

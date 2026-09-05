@@ -100,10 +100,8 @@ int main()
         std::make_shared<SimulationDescription>(std::move(*simulation_description)), registrations);
     auto executor = lux::task::TaskExecutor::create({2U, 16U});
     if (!simulation || !executor) return 6;
-    const std::array classes{lux::simulation::script::detail::StorageClassPlan{
-        1024U, alignof(std::max_align_t), 4096U, 1U}};
     const std::array pools{CppStaticScriptPoolDescription{&contract, 1U, 1U, 8192U,
-        alignof(std::max_align_t), 4U, classes}};
+        alignof(std::max_align_t), 4U, 512U}};
     auto backend = CppStaticScriptBackend::create(pools);
     if (!backend) return 7;
     std::array<std::uint8_t, 16U> bytes{};

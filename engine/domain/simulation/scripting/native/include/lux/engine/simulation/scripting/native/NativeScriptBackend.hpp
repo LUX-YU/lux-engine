@@ -3,7 +3,6 @@
 #include <lux/engine/function/script/native/NativeModule.hpp>
 #include <lux/engine/function/script/native/ScriptAbilityNative.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
-#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 #include <lux/engine/simulation/scripting/native/visibility.h>
 
 #include <cstddef>
@@ -46,6 +45,13 @@ namespace lux::simulation::script
         ) noexcept{};
     };
 
+    struct NativeScriptStoragePopulation final
+    {
+        const lux::script::NativeModule* executable{};
+        std::size_t instances{};
+        std::size_t continuations{};
+    };
+
     struct NativeScriptBackendConfig final
     {
         std::size_t module_capacity{};
@@ -59,9 +65,8 @@ namespace lux::simulation::script
         NativeScriptRecordLayoutResolver record_layouts;
         std::size_t max_event_wait_imports_per_module{64U};
         std::span<const lux::script::native::ScriptAbilityNativeContribution> abilities;
-        std::span<const detail::StorageClassPlan> state_storage_classes;
+        std::span<const NativeScriptStoragePopulation> storage_populations;
         std::size_t state_storage_bytes{};
-        std::span<const detail::StorageClassPlan> continuation_frame_classes;
     };
 
     struct NativeScriptBackendStats final

@@ -24,6 +24,31 @@
 
 namespace lux::simulation::script
 {
+    lux::cxx::expected<LuaPreparedEntryRequirements, ELuaScriptBindingBackendError> describeLuaPreparedRequirements(
+        const lux::rdesc::Script& description,
+        std::span<const lux::script::lua::ScriptAbilityLuaContribution> contributions) noexcept
+    {
+        LuaPreparedEntryRequirements result{0U, description.event_requirements.size()};
+        for (const auto& requirement : description.api_requirements)
+        {
+            const lux::script::ScriptAbilityDescription* selected{};
+            for (const auto& contribution : contributions)
+            {
+                const auto* candidate = contribution.description;
+                if (candidate == nullptr || candidate->id.name() != requirement.contract.name() ||
+                    candidate->id.hash() != requirement.contract.hash()) continue;
+                if (selected != nullptr || candidate->schema_hash != requirement.expected_schema_hash)
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_SCRIPT_REQUIREMENT);
+                selected = candidate;
+            }
+            if (selected == nullptr || selected->methods.size() >
+                (std::numeric_limits<std::size_t>::max)() - result.ability_methods)
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_SCRIPT_REQUIREMENT);
+            result.ability_methods += selected->methods.size();
+        }
+        return result;
+    }
+
     struct LuaScriptBackend::State final
     {
         struct VmAllocationTracker final
@@ -2265,11 +2290,9 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
             ability_method_count += contribution.description->methods.size();
         }
-        if (ability_method_count > config.ability_catalog_method_capacity ||
-            (ability_method_count != 0U && config.prepared_ability_capacity == 0U))
+        if (ability_method_count > config.ability_catalog_method_capacity)
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
-        if (config.events.size() > config.event_catalog_capacity ||
-            (!config.events.empty() && config.prepared_event_capacity == 0U))
+        if (config.events.size() > config.event_catalog_capacity)
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         for (std::size_t index{}; index < config.events.size(); ++index)
         {

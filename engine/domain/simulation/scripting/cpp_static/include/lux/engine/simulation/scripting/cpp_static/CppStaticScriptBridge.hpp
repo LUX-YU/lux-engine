@@ -40,7 +40,7 @@ struct CppStaticScriptPoolDescription final
     std::size_t coroutine_frame_storage_bytes{};
     std::size_t coroutine_frame_storage_alignment{alignof(std::max_align_t)};
     std::size_t prepared_method_capacity{};
-    std::span<const detail::StorageClassPlan> coroutine_frame_classes;
+    std::size_t max_coroutine_frame_bytes{512U};
 };
 
 struct CppStaticScriptBackendStats final

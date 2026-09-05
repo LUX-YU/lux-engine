@@ -210,17 +210,10 @@ int main()
             .continuation_frame_storage_bytes =
                 2U * (8192U) + 4096U,
             .record_layouts = {nullptr, &resolveRecord},
-            .state_storage_classes = std::array{
-                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            .storage_populations = std::array{
+                lux::simulation::script::NativeScriptStoragePopulation{std::addressof(*loaded), 1U, 2U}
             },
-            .state_storage_bytes = 128U * (1U) + 4096U,
-            .continuation_frame_classes = std::array{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    4096U, alignof(std::max_align_t),
-                    8192U,
-                    2U
-                )
-            }
+            .state_storage_bytes = 64U * 1024U * 1024U
         }};
     assert(native_backend);
 

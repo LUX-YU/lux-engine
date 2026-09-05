@@ -22,18 +22,6 @@ namespace lux::simulation::script::detail
         std::size_t pages{};
     };
 
-    // Explicit product provisioning for a uniform workload; not a heap fallback or a population estimate.
-    [[nodiscard]] constexpr StorageClassPlan makeUniformStorageClass(
-        std::size_t max_size, std::size_t alignment, std::size_t arena_bytes, std::size_t allocation_count
-    ) noexcept
-    {
-        if (allocation_count == 0U || alignment == 0U)
-            return {};
-        const auto available = arena_bytes / allocation_count;
-        const auto size = (std::min)(max_size, available - available % alignment);
-        return {size, alignment, arena_bytes, 1U};
-    }
-
     enum class EClassStorageError : std::uint8_t
     {
         INVALID_CONFIGURATION,
@@ -67,6 +55,8 @@ namespace lux::simulation::script::detail
         {
             std::size_t arena_bytes{};
             std::size_t metadata_bytes{};
+            std::size_t reserved_slots{};
+            std::size_t pages{};
             std::size_t active_allocations{};
             std::size_t allocation_high_water{};
             std::size_t live_bytes{};
@@ -88,7 +78,6 @@ namespace lux::simulation::script::detail
             if (is_invalid_input)
                 return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
             std::size_t max_alignment{alignof(std::max_align_t)};
-            std::size_t minimum_stride{(std::numeric_limits<std::size_t>::max)()};
             for (const auto& plan : plans)
             {
                 const bool is_invalid_layout = plan.size == 0U || !powerOfTwo(plan.alignment) ||
@@ -99,7 +88,6 @@ namespace lux::simulation::script::detail
                 if (plan.page_bytes < stride || plan.pages >= Invalid)
                     return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
                 max_alignment = (std::max)(max_alignment, plan.alignment);
-                minimum_stride = (std::min)(minimum_stride, stride);
             }
             std::size_t arena_bytes{};
             std::size_t page_count{};
@@ -111,7 +99,7 @@ namespace lux::simulation::script::detail
                 if (is_invalid_page)
                     return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
                 const auto page_stride = alignUp(plan.page_bytes, max_alignment);
-                const auto page_slots = plan.page_bytes / minimum_stride;
+                const auto page_slots = plan.page_bytes / alignUp(plan.size, plan.alignment);
                 const bool exceeds_budget = plan.pages > (max_bytes - arena_bytes) / page_stride;
                 const bool exceeds_indices = plan.pages > Invalid - 1U - page_count ||
                     page_slots >= Invalid || plan.pages > (Invalid - 1U - slot_count) / page_slots;
@@ -150,6 +138,8 @@ namespace lux::simulation::script::detail
                 result.capacity_ = allocation_capacity;
                 result.generation_limit_ = generation_limit;
                 result.stats_.arena_bytes = arena_bytes;
+                result.stats_.reserved_slots = slot_count;
+                result.stats_.pages = page_count;
                 result.stats_.metadata_bytes = sizeof(BoundedClassStorage) +
                     result.classes_.capacity() * sizeof(Class) + result.pages_.capacity() * sizeof(Page) +
                     result.slots_.capacity() * sizeof(Slot);
@@ -169,12 +159,11 @@ namespace lux::simulation::script::detail
                     {
                         auto& page = result.pages_[next_page];
                         page.offset = offset;
-                        page.bytes = plan.page_bytes;
                         page.metadata_first = next_slot;
-                        page.metadata_count = static_cast<std::uint32_t>(plan.page_bytes / minimum_stride);
+                        page.slot_count = static_cast<std::uint32_t>(plan.page_bytes / prepared.stride);
                         page.class_index = static_cast<std::uint32_t>(index);
                         result.initializePage(next_page);
-                        next_slot += page.metadata_count;
+                        next_slot += page.slot_count;
                         offset += alignUp(plan.page_bytes, max_alignment);
                         ++next_page;
                     }
@@ -272,23 +261,6 @@ namespace lux::simulation::script::detail
             return true;
         }
 
-        // Explicit cold maintenance. Other pages may be live; no address or interpretation on them changes.
-        [[nodiscard]] bool reclassifyEmptyPage(std::uint32_t page_index, ClassHandle target) noexcept
-        {
-            if (page_index >= pages_.size() || target.index >= classes_.size())
-                return false;
-            auto& page = pages_[page_index];
-            const auto count = page.bytes / classes_[target.index].stride;
-            const bool is_invalid_page = page.active != 0U || count == 0U || count > page.metadata_count;
-            if (is_invalid_page)
-                return false;
-            if (page.free_head != Invalid)
-                stats_.maintenance_steps += unlinkPage(page_index);
-            page.class_index = target.index;
-            initializePage(page_index);
-            return true;
-        }
-
         [[nodiscard]] Stats stats() const noexcept { return stats_; }
 
     private:
@@ -327,10 +299,8 @@ namespace lux::simulation::script::detail
         struct Page final
         {
             std::size_t offset{};
-            std::size_t bytes{};
             std::uint32_t class_index{};
             std::uint32_t metadata_first{};
-            std::uint32_t metadata_count{};
             std::uint32_t slot_count{};
             std::uint32_t free_head{Invalid};
             std::uint32_t previous{Invalid};
@@ -356,7 +326,6 @@ namespace lux::simulation::script::detail
         void initializePage(std::uint32_t index) noexcept
         {
             auto& page = pages_[index];
-            page.slot_count = static_cast<std::uint32_t>(page.bytes / classes_[page.class_index].stride);
             for (std::uint32_t slot{}; slot < page.slot_count; ++slot)
             {
                 slots_[page.metadata_first + slot] = Slot{0U, 0U, slot + 1U, false};

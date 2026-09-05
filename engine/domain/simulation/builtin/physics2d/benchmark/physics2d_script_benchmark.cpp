@@ -295,11 +295,6 @@ namespace
                 throw std::runtime_error("cannot create Physics2D C++ benchmark artifact");
             artifact.emplace(std::move(*created_artifact));
             const auto frame_bytes = (std::max)(std::size_t{1024U}, coroutine_capacity * 512U);
-            const std::array frame_classes{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    frame_bytes, alignof(std::max_align_t), frame_bytes, coroutine_capacity
-                )
-            };
             const std::array pools{CppStaticScriptPoolDescription{
                 &lux::simulation::script::generated::PhysicsCpp,
                 instance_capacity,
@@ -307,7 +302,7 @@ namespace
                 frame_bytes * 2U + 4096U,
                 alignof(std::max_align_t),
                 instance_capacity,
-                frame_classes
+                512U
             }};
             auto created_backend = CppStaticScriptBackend::create(pools);
             if (!created_backend)
@@ -468,17 +463,12 @@ namespace
                         2U * ((std::max)(std::size_t{256U}, flow_count * 128U)) + 4096U,
                     .max_event_wait_imports_per_module = 1U,
                     .abilities = native_contributions,
-                    .state_storage_classes = std::array{
-                        lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (flow_count), 1U}
+                    .storage_populations = std::array{
+                        lux::simulation::script::NativeScriptStoragePopulation{
+                            std::addressof(*flow_module), flow_count, flow_count
+                        }
                     },
-                    .state_storage_bytes = 128U * (flow_count) + 4096U,
-                    .continuation_frame_classes = std::array{
-                        lux::simulation::script::detail::makeUniformStorageClass(
-                            256U, alignof(std::max_align_t),
-                            (std::max)(std::size_t{256U}, flow_count * 128U),
-                            flow_count
-                        )
-                    }
+                    .state_storage_bytes = 64U * 1024U * 1024U
                 }
             );
             if (!*native)
@@ -489,34 +479,36 @@ namespace
             };
             const std::array event_sources{pulseEventSource()};
             const auto lua_count = options.size - cpp_count - flow_count;
+            const auto requirements = describeLuaPreparedRequirements(lua_asset->data().description(), contributions);
+            if (!requirements) throw std::runtime_error("Lua Physics requirements are incompatible");
             lua.emplace(*LuaScriptBackend::create({
                 .instance_capacity = lua_count,
                 .prepared_call_capacity = lua_count * 5U,
                 .continuation_capacity = lua_count,
                 .execution_depth_capacity = 4U,
                 .ability_catalog_method_capacity = 5U,
-                .prepared_ability_capacity = lua_count * 5U,
+                .prepared_ability_capacity = lua_count * requirements->ability_methods,
                 .abilities = contributions,
                 .execution_policy = options.lua_policy,
                 .event_catalog_capacity = 1U,
-                .prepared_event_capacity = lua_count,
+                .prepared_event_capacity = lua_count * requirements->event_sources,
                 .events = event_sources,
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
-                        (lua_count * 5U) / ((lua_count) == 0U ? 1U : (lua_count)),
+                        requirements->ability_methods,
                         lua_count
                     }
                 },
                 .prepared_ability_storage_bytes =
-                    128U * (lua_count * 5U) + 4096U,
+                    64U * 1024U * 1024U,
                 .prepared_event_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
-                        (lua_count) / ((lua_count) == 0U ? 1U : (lua_count)),
+                        requirements->event_sources,
                         lua_count
                     }
                 },
                 .prepared_event_storage_bytes =
-                    128U * (lua_count) + 4096U
+                    64U * 1024U * 1024U
             }));
             backends = {cpp.backend->descriptor(), native->descriptor(), lua->descriptor()};
             const auto bounded = (std::max)(options.size, std::size_t{1U});

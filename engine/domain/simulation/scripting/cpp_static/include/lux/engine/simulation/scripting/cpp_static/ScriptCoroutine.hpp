@@ -140,13 +140,17 @@ namespace lux::simulation::script
             std::uint32_t instance_slot,
             FindAbilityFn find_ability,
             ResolveAbilityFn resolve_ability,
-            detail::BoundedClassStorage& frame_storage
+            detail::BoundedClassStorage& frame_storage,
+            detail::BoundedClassStorage::ClassHandle frame_class,
+            std::size_t frame_limit,
+            std::size_t alignment_limit
         ) noexcept
             : backend_(backend),
               instance_slot_(instance_slot),
               find_ability_(find_ability),
               resolve_ability_(resolve_ability),
-              frame_storage_(std::addressof(frame_storage))
+              frame_storage_(std::addressof(frame_storage)), frame_class_(frame_class),
+              frame_limit_(frame_limit), alignment_limit_(alignment_limit)
         {
         }
 
@@ -160,7 +164,8 @@ namespace lux::simulation::script
 
         [[nodiscard]] void* allocateFrame(std::size_t size, std::size_t alignment) noexcept
         {
-            if (frame_storage_ == nullptr || size == 0U || alignment == 0U ||
+            if (frame_storage_ == nullptr || size == 0U || size > frame_limit_ ||
+                alignment > alignment_limit_ || alignment == 0U ||
                 (alignment & (alignment - 1U)) != 0U)
             {
                 return nullptr;
@@ -168,8 +173,7 @@ namespace lux::simulation::script
             const auto padding = sizeof(FrameHeader) + alignment - 1U;
             if (size > (std::numeric_limits<std::size_t>::max)() - padding)
                 return nullptr;
-            const auto storage_class = frame_storage_->select(size + padding, alignment);
-            auto allocation = frame_storage_->acquire(storage_class, size + padding);
+            auto allocation = frame_storage_->acquire(frame_class_, size + padding);
             if (!allocation)
                 return nullptr;
             const auto raw = reinterpret_cast<std::uintptr_t>(allocation->data) + sizeof(FrameHeader);
@@ -210,6 +214,9 @@ namespace lux::simulation::script
         FindAbilityFn find_ability_{};
         ResolveAbilityFn resolve_ability_{};
         detail::BoundedClassStorage* frame_storage_{};
+        detail::BoundedClassStorage::ClassHandle frame_class_;
+        std::size_t frame_limit_{};
+        std::size_t alignment_limit_{};
         ScriptStepContext* active_step_{};
         const ScriptResumePacket* resume_packet_{};
 
@@ -561,10 +568,19 @@ namespace lux::simulation::script
             std::uint32_t instance_slot,
             ScriptCoroutineContext::FindAbilityFn find_ability,
             ScriptCoroutineContext::ResolveAbilityFn resolve_ability,
-            detail::BoundedClassStorage& frame_storage
+            detail::BoundedClassStorage& frame_storage,
+            detail::BoundedClassStorage::ClassHandle frame_class,
+            std::size_t frame_limit,
+            std::size_t alignment_limit
         ) noexcept
         {
-            return {backend, instance_slot, find_ability, resolve_ability, frame_storage};
+            return {backend, instance_slot, find_ability, resolve_ability, frame_storage,
+                frame_class, frame_limit, alignment_limit};
+        }
+
+        [[nodiscard]] static constexpr std::size_t frameOverhead(std::size_t alignment) noexcept
+        {
+            return sizeof(ScriptCoroutineContext::FrameHeader) + alignment - 1U;
         }
 
         static void activate(

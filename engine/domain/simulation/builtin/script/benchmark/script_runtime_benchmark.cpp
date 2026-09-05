@@ -1189,35 +1189,38 @@ namespace
             };
             if (bounded_count > (std::numeric_limits<std::size_t>::max)() / 4U)
                 throw std::runtime_error("Lua benchmark capacity overflow");
+            const auto requirements =
+                describeLuaPreparedRequirements(artifact_asset->data().description(), contributions);
+            if (!requirements) throw std::runtime_error("Lua benchmark requirements are incompatible");
             auto created_backend = LuaScriptBackend::create({
                 .instance_capacity = bounded_count,
                 .prepared_call_capacity = bounded_count * 4U,
                 .continuation_capacity = bounded_count,
                 .execution_depth_capacity = 16U,
                 .ability_catalog_method_capacity = 6U,
-                .prepared_ability_capacity = bounded_count * 6U,
+                .prepared_ability_capacity = bounded_count * requirements->ability_methods,
                 .abilities = contributions,
                 .execution_policy = execution_policy,
                 .event_catalog_capacity = 1U,
-                .prepared_event_capacity = bounded_count,
+                .prepared_event_capacity = bounded_count * requirements->event_sources,
                 .events = std::span{&event_source, 1U},
                 .track_vm_allocations = vm_accounting,
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
-                        (bounded_count * 6U) / ((bounded_count) == 0U ? 1U : (bounded_count)),
+                        requirements->ability_methods,
                         bounded_count
                     }
                 },
                 .prepared_ability_storage_bytes =
-                    128U * (bounded_count * 6U) + 4096U,
+                    64U * 1024U * 1024U,
                 .prepared_event_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
-                        (bounded_count) / ((bounded_count) == 0U ? 1U : (bounded_count)),
+                        requirements->event_sources,
                         bounded_count
                     }
                 },
                 .prepared_event_storage_bytes =
-                    128U * (bounded_count) + 4096U
+                    64U * 1024U * 1024U
             });
             if (!created_backend)
                 throw std::runtime_error("Lua benchmark backend creation failed");
@@ -1602,17 +1605,12 @@ namespace
                     .max_continuation_frame_bytes = 4096U,
                     .continuation_frame_storage_bytes =
                         2U * ((std::max)(std::size_t{4096U}, capacity * 256U)) + 4096U,
-                    .state_storage_classes = std::array{
-                        lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (capacity), 1U}
+                    .storage_populations = std::array{
+                        lux::simulation::script::NativeScriptStoragePopulation{
+                            std::addressof(*module), capacity, capacity
+                        }
                     },
-                    .state_storage_bytes = 128U * (capacity) + 4096U,
-                    .continuation_frame_classes = std::array{
-                        lux::simulation::script::detail::makeUniformStorageClass(
-                            4096U, alignof(std::max_align_t),
-                            (std::max)(std::size_t{4096U}, capacity * 256U),
-                            capacity
-                        )
-                    }
+                    .state_storage_bytes = 64U * 1024U * 1024U
                 }
             );
             if (!*backend)
@@ -1731,11 +1729,6 @@ namespace
             artifact.emplace(std::move(*created_artifact));
             const auto storage_bytes = (std::max)(std::size_t{1024U}, capacity * 512U);
             // This benchmark has no owned-reference argument block; the plan provisions one frame per flight.
-            const std::array frame_classes{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    storage_bytes, alignof(std::max_align_t), storage_bytes, capacity
-                )
-            };
             const std::array pools{CppStaticScriptPoolDescription{
                 &generated::CppCoroutineBenchmark,
                 1U,
@@ -1743,7 +1736,7 @@ namespace
                 storage_bytes * 2U + 4096U,
                 alignof(std::max_align_t),
                 1U,
-                frame_classes
+                512U
             }};
             auto created_backend = CppStaticScriptBackend::create(pools);
             if (!created_backend)

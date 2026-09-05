@@ -36,7 +36,6 @@ int main()
         allocations.push_back(*value);
     }
     assert(!storage.acquire(small, 48U));
-    assert(!storage.reclassifyEmptyPage(allocations.front().page, tiny));
     for (unsigned index{}; index < allocations.size(); index += 2U)
         assert(storage.release(allocations[index]));
     std::vector<BoundedClassStorage::Allocation> reused;
@@ -60,8 +59,7 @@ int main()
     assert(storage.stats().acquire_steps >= 3U * 192U && storage.stats().acquire_steps <= 6U * 192U);
     assert(storage.stats().release_steps >= 3U * 192U && storage.stats().release_steps <= 6U * 192U);
     const auto stale = allocations.front();
-    assert(storage.reclassifyEmptyPage(stale.page, tiny));
-    const auto replacement = storage.acquire(tiny, 24U);
+    const auto replacement = storage.acquire(small, 48U);
     assert(replacement && !storage.release(stale));
     assert(storage.release(*replacement));
     const auto large = storage.acquire(big, 200U);
@@ -78,7 +76,17 @@ int main()
     const auto last = exhausted->acquire(layout, 48U);
     assert(last && exhausted->release(*last));
     assert(!exhausted->acquire(layout, 48U));
-    assert(exhausted->reclassifyEmptyPage(last->page, layout));
     assert(!exhausted->acquire(layout, 48U));
+
+    constexpr std::array large_pages{StorageClassPlan{1024U, 64U, 65536U, 4U}};
+    auto large_only = BoundedClassStorage::create(large_pages, 1024U * 1024U, 512U);
+    constexpr std::array mixed_pages{
+        StorageClassPlan{1024U, 64U, 65536U, 4U}, StorageClassPlan{1U, 1U, 64U, 1U}};
+    auto mixed = BoundedClassStorage::create(mixed_pages, 1024U * 1024U, 512U);
+    assert(large_only && mixed);
+    assert(large_only->stats().reserved_slots == 256U);
+    assert(mixed->stats().reserved_slots == 320U);
+    assert(mixed->stats().metadata_bytes - large_only->stats().metadata_bytes < 4096U);
+    assert(mixed->stats().arena_bytes - large_only->stats().arena_bytes == 64U);
     return 0;
 }

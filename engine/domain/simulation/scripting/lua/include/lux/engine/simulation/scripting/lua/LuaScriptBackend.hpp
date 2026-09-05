@@ -63,6 +63,7 @@ namespace lux::simulation::script
         UNSUPPORTED_EVENT_PAYLOAD,
         EVENT_REGISTRATION_FAILURE,
         VM_CONFIGURATION_FAILURE,
+        INVALID_SCRIPT_REQUIREMENT,
         ALLOCATION_FAILURE,
     };
 
@@ -71,6 +72,17 @@ namespace lux::simulation::script
         std::size_t entries{};
         std::size_t blocks{};
     };
+
+    struct LuaPreparedEntryRequirements final
+    {
+        std::size_t ability_methods{};
+        std::size_t event_sources{};
+    };
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC
+    lux::cxx::expected<LuaPreparedEntryRequirements, ELuaScriptBindingBackendError> describeLuaPreparedRequirements(
+        const lux::rdesc::Script& description,
+        std::span<const lux::script::lua::ScriptAbilityLuaContribution> contributions) noexcept;
 
     struct LuaScriptBackendConfig final
     {

@@ -257,21 +257,14 @@ int main()
             .max_continuation_frame_bytes = 4096U,
             .continuation_frame_storage_bytes =
                 2U * (16384U) + 4096U,
-            .state_storage_classes = std::array{
-                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (3U), 1U}
+            .storage_populations = std::array{
+                lux::simulation::script::NativeScriptStoragePopulation{module.get(), 3U, 4U}
             },
-            .state_storage_bytes = 128U * (3U) + 4096U,
-            .continuation_frame_classes = std::array{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    4096U, alignof(std::max_align_t),
-                    16384U,
-                    4U
-                )
-            }
+            .state_storage_bytes = 64U * 1024U * 1024U
         }
     );
     assert(*backend);
-    assert(backend->stats().frame_storage_bytes == 16384U);
+    assert(backend->stats().frame_storage_bytes == 0U);
     assert(backend->stats().heap_frame_allocations == 0U);
 
     lux::rdesc::Script description;
@@ -330,17 +323,10 @@ int main()
                 .max_continuation_frame_bytes = 256U,
                 .continuation_frame_storage_bytes =
                     2U * (256U) + 4096U,
-                .state_storage_classes = std::array{
-                    lux::simulation::script::detail::StorageClassPlan{64U, 64U, Population * 64U, 1U}
+                .storage_populations = std::array{
+                    lux::simulation::script::NativeScriptStoragePopulation{module.get(), Population, 1U}
                 },
-                .state_storage_bytes = Population * 128U + 4096U,
-                .continuation_frame_classes = std::array{
-                    lux::simulation::script::detail::makeUniformStorageClass(
-                        256U, alignof(std::max_align_t),
-                        256U,
-                        1U
-                    )
-                }
+                .state_storage_bytes = 64U * 1024U * 1024U
             }
         };
         assert(spread_backend);
@@ -616,17 +602,10 @@ int main()
             .continuation_frame_storage_bytes =
                 2U * (512U) + 4096U,
             .abilities = std::span{std::addressof(AsyncContribution), 1U},
-            .state_storage_classes = std::array{
-                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            .storage_populations = std::array{
+                lux::simulation::script::NativeScriptStoragePopulation{step_module.get(), 1U, 2U}
             },
-            .state_storage_bytes = 128U * (1U) + 4096U,
-            .continuation_frame_classes = std::array{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    256U, alignof(std::max_align_t),
-                    512U,
-                    2U
-                )
-            }
+            .state_storage_bytes = 64U * 1024U * 1024U
         }
     };
     assert(step_backend);

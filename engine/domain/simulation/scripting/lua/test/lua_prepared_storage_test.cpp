@@ -131,7 +131,7 @@ int main(int argc, char**)
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (4U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(backend);
     const auto initial_stats = backend->stats();
@@ -160,6 +160,8 @@ int main(int argc, char**)
         runtime_methods
     };
     auto script = artifact(abilities.front());
+    const auto required = lux::simulation::script::describeLuaPreparedRequirements(script.description(), contributions);
+    assert(required && required->ability_methods == MethodsPerAbility && required->event_sources == 0U);
     lux::simulation::script::ScriptBackendInstance instance;
     auto descriptor = backend->descriptor();
     const auto created = descriptor.createInstance(
@@ -193,24 +195,28 @@ int main(int argc, char**)
             1U, 1U, 1U, 1U, 1U
         };
         auto content = artifact(abilities.front(), &event);
+        const auto required_population = describeLuaPreparedRequirements(content.description(), contributions);
+        assert(required_population && required_population->ability_methods == MethodsPerAbility &&
+            required_population->event_sources == 1U);
         for (const std::size_t population : {10000U, 50000U, 100000U})
         {
-            auto storage_backend = LuaScriptBackend::create({
-                .instance_capacity = population,
-                .prepared_call_capacity = 1U,
-                .continuation_capacity = 1U,
-                .execution_depth_capacity = 4U,
-                .ability_catalog_method_capacity = AbilityCount * MethodsPerAbility,
-                .prepared_ability_capacity = population * MethodsPerAbility,
-                .abilities = contributions,
-                .event_catalog_capacity = 1U,
-                .prepared_event_capacity = population,
-                .events = {&event, 1U},
-                .prepared_ability_blocks = std::array{LuaPreparedBlockClass{MethodsPerAbility, population}},
-                .prepared_ability_storage_bytes = population * 128U + 4096U,
-                .prepared_event_blocks = std::array{LuaPreparedBlockClass{1U, population}},
-                .prepared_event_storage_bytes = population * 64U + 4096U
-            });
+            auto storage_backend = LuaScriptBackend::create(
+                {.instance_capacity = population,
+                 .prepared_call_capacity = 1U,
+                 .continuation_capacity = 1U,
+                 .execution_depth_capacity = 4U,
+                 .ability_catalog_method_capacity = AbilityCount * MethodsPerAbility,
+                 .prepared_ability_capacity = population * required_population->ability_methods,
+                 .abilities = contributions,
+                 .event_catalog_capacity = 1U,
+                 .prepared_event_capacity = population * required_population->event_sources,
+                 .events = {&event, 1U},
+                 .prepared_ability_blocks =
+                     std::array{LuaPreparedBlockClass{required_population->ability_methods, population}},
+                 .prepared_ability_storage_bytes = 64U * 1024U * 1024U,
+                 .prepared_event_blocks =
+                     std::array{LuaPreparedBlockClass{required_population->event_sources, population}},
+                 .prepared_event_storage_bytes = 64U * 1024U * 1024U});
             assert(storage_backend);
             const auto runtime = storage_backend->descriptor();
             const auto initial_bytes = storage_backend->stats().prepared_binding_bytes;

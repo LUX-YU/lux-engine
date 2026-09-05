@@ -177,17 +177,12 @@ int main()
                                      2U * (256U) + 4096U,
                                  .max_event_wait_imports_per_module = 1U,
                                  .abilities = native_contributions,
-                                 .state_storage_classes = std::array{
-                                     lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U, 1U}
+                                 .storage_populations = std::array{
+                                     lux::simulation::script::NativeScriptStoragePopulation{
+                                         std::addressof(*module), 1U, 1U
+                                     }
                                  },
-                                 .state_storage_bytes = 4224U,
-                                 .continuation_frame_classes = std::array{
-                                     lux::simulation::script::detail::makeUniformStorageClass(
-                                         256U, alignof(std::max_align_t),
-                                         256U,
-                                         1U
-                                     )
-                                 }}};
+                                 .state_storage_bytes = 64U * 1024U * 1024U}};
     assert(backend);
     const auto descriptor = backend.descriptor();
     auto system = ScriptSystem::create(simulation->description(),

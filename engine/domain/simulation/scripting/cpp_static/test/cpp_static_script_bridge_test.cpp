@@ -170,10 +170,8 @@ int main()
     auto entity_asset_result = lux::script::ScriptArtifact::create(std::move(*projected), {});
     assert(entity_asset_result);
     auto entity_asset = std::move(*entity_asset_result);
-    const std::array frame_classes{
-        lux::simulation::script::detail::makeUniformStorageClass(4096U, alignof(std::max_align_t), 4096U, 4U)};
     const std::array pools{CppStaticScriptPoolDescription{std::addressof(Bridge), 1U, 2U, 8192U,
-                                                          alignof(std::max_align_t), 8U, frame_classes}};
+                                                          alignof(std::max_align_t), 8U, 512U}};
     const std::array duplicate_pools{
         CppStaticScriptPoolDescription{std::addressof(Bridge), 1U, 0U, 0U, alignof(std::max_align_t), 1U},
         CppStaticScriptPoolDescription{std::addressof(Bridge), 1U, 0U, 0U, alignof(std::max_align_t), 1U}};
@@ -414,10 +412,8 @@ int main()
     assert(ability_description);
     auto ability_artifact = lux::script::ScriptArtifact::create(std::move(*ability_description), {});
     assert(ability_artifact);
-    const std::array ability_frames{
-        lux::simulation::script::detail::makeUniformStorageClass(2048U, alignof(std::max_align_t), 2048U, 2U)};
     const std::array ability_pools{CppStaticScriptPoolDescription{std::addressof(BridgeAbility), 1U, 1U, 4096U,
-                                                                  alignof(std::max_align_t), 1U, ability_frames}};
+                                                                  alignof(std::max_align_t), 1U, 512U}};
     auto ability_backend_result = CppStaticScriptBackend::create(ability_pools);
     assert(ability_backend_result);
     auto ability_backend = std::move(*ability_backend_result);

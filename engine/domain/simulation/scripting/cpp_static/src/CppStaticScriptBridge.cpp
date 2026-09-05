@@ -217,6 +217,9 @@ struct CppStaticScriptBackend::State final
         ObjectSlab objects;
         std::vector<std::size_t> free_objects;
         detail::BoundedClassStorage coroutine_frames;
+        detail::BoundedClassStorage::ClassHandle argument_class;
+        std::size_t frame_limit{};
+        std::size_t frame_alignment{};
         std::size_t object_stride{};
         std::size_t instance_capacity{};
         std::size_t active_instances{};
@@ -233,6 +236,7 @@ struct CppStaticScriptBackend::State final
         std::size_t object_slot{(std::numeric_limits<std::size_t>::max)()};
         std::uint32_t slot{};
         std::span<const PreparedScriptApiCapability> capabilities;
+        const lux::script::ScriptArtifact* artifact{};
         std::size_t active_coroutines{};
     };
 
@@ -343,8 +347,48 @@ struct CppStaticScriptBackend::State final
                     valid = false;
                     return;
                 }
+                index.frame_limit = pool.max_coroutine_frame_bytes;
+                index.frame_alignment = pool.coroutine_frame_storage_alignment;
+                const auto alignment = index.frame_alignment;
+                const bool invalid_alignment = alignment < alignof(std::max_align_t) ||
+                    (alignment & (alignment - 1U)) != 0U;
+                if (invalid_alignment || index.frame_limit == 0U)
+                {
+                    valid = false;
+                    return;
+                }
+                const auto overhead = CppStaticCoroutineAccess::frameOverhead(alignment);
+                if (index.frame_limit > (std::numeric_limits<std::size_t>::max)() - overhead - alignment + 1U)
+                {
+                    valid = false;
+                    return;
+                }
+                const auto frame_bytes = index.frame_limit + overhead;
+                const auto frame_stride = (frame_bytes + alignment - 1U) & ~(alignment - 1U);
+                std::size_t owned_bytes{};
+                std::size_t owned_alignment{1U};
+                for (const auto& entry : descriptor->exports)
+                {
+                    owned_bytes = (std::max)(owned_bytes, entry.owned_bytes);
+                    owned_alignment = (std::max)(owned_alignment, entry.owned_alignment);
+                }
+                const auto owned_stride = (owned_bytes + owned_alignment - 1U) & ~(owned_alignment - 1U);
+                if (pool.coroutine_capacity == 0U ||
+                    pool.coroutine_capacity > (std::numeric_limits<std::size_t>::max)() / frame_stride ||
+                    (owned_stride != 0U &&
+                        pool.coroutine_capacity > (std::numeric_limits<std::size_t>::max)() / owned_stride))
+                {
+                    valid = false;
+                    return;
+                }
+                std::array<detail::StorageClassPlan, 2> plans{
+                    detail::StorageClassPlan{frame_bytes, alignment, frame_stride * pool.coroutine_capacity, 1U},
+                    detail::StorageClassPlan{owned_bytes, owned_alignment, owned_stride * pool.coroutine_capacity, 1U}
+                };
+                if (owned_bytes != 0U) index.argument_class = {1U};
                 auto frames = detail::BoundedClassStorage::create(
-                    pool.coroutine_frame_classes, pool.coroutine_frame_storage_bytes, pool.coroutine_capacity * 2U);
+                    std::span{plans}.first(owned_bytes == 0U ? 1U : 2U),
+                    pool.coroutine_frame_storage_bytes, pool.coroutine_capacity * 2U);
                 if (!frames)
                 {
                     error = frames.error() == detail::EClassStorageError::ALLOCATION_FAILURE
@@ -513,8 +557,9 @@ struct CppStaticScriptBackend::State final
         continuation.owner = this;
         continuation.descriptor = std::addressof(descriptor);
         continuation.instance = std::addressof(instance);
-        continuation.context = CppStaticCoroutineAccess::context(this, instance.slot, &State::findAbility,
-                                                                 &State::resolveAbility, descriptor.coroutine_frames);
+        continuation.context = CppStaticCoroutineAccess::context(
+            this, instance.slot, &State::findAbility, &State::resolveAbility, descriptor.coroutine_frames, {0U},
+            descriptor.frame_limit, descriptor.frame_alignment);
         continuation.slot = static_cast<std::uint32_t>(slot);
         continuation.active = true;
         ++descriptor.active_coroutines;
@@ -586,6 +631,7 @@ struct CppStaticScriptBackend::State final
         instance->object = nullptr;
         instance->slot = static_cast<std::uint32_t>(instance_slot);
         instance->capabilities = context.capabilities;
+        instance->artifact = &artifact;
         if (descriptor.object.size != 0U)
         {
             instance->object_slot = descriptor_index->free_objects.back();
@@ -619,12 +665,10 @@ struct CppStaticScriptBackend::State final
         const auto found = instance->descriptor->callables.find(function.symbol_id);
         if (found == instance->descriptor->callables.end())
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
-        if (!sameFunction(function, *found->second))
+        const auto* canonical = instance->artifact->findExport(function.symbol_id);
+        if (std::addressof(function) != canonical && !sameFunction(function, *found->second))
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
-        const auto argument_class = found->second->owned_bytes != 0U
-                                        ? instance->descriptor->coroutine_frames.select(found->second->owned_bytes,
-                                                                                        found->second->owned_alignment)
-                                        : detail::BoundedClassStorage::ClassHandle{};
+        const auto argument_class = instance->descriptor->argument_class;
         if (found->second->owned_bytes != 0U && !argument_class)
             return EScriptBackendResult::CAPACITY_EXCEEDED;
         if (self.free_prepared_calls.empty())

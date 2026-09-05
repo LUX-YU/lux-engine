@@ -107,7 +107,7 @@ void testAbilityProvenance()
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (4U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(backend);
     const auto runtime = backend->descriptor();
@@ -196,7 +196,7 @@ void testEventProvenance()
             }
         },
         .prepared_event_storage_bytes =
-            128U * (2U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(backend);
     const auto make = [&](std::size_t index, std::string_view source) {
@@ -279,7 +279,7 @@ void testNestedScopes()
             }
         },
         .prepared_ability_storage_bytes =
-            128U * (2U) + 4096U,
+            64U * 1024U * 1024U,
         .prepared_event_blocks = std::array{
             lux::simulation::script::LuaPreparedBlockClass{
                 1U,
@@ -287,7 +287,7 @@ void testNestedScopes()
             }
         },
         .prepared_event_storage_bytes =
-            128U * (1U) + 4096U
+            64U * 1024U * 1024U
     });
     assert(backend);
     auto outer = makeArtifact(alpha,

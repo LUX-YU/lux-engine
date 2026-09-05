@@ -458,7 +458,7 @@ namespace
                     }
                 },
                 .prepared_ability_storage_bytes =
-                    128U * (AbilityTraits::Description.methods.size()) + 4096U,
+                    64U * 1024U * 1024U,
                 .prepared_event_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
                         (event_sources.size()) / ((1U) == 0U ? 1U : (1U)),
@@ -466,7 +466,7 @@ namespace
                     }
                 },
                 .prepared_event_storage_bytes =
-                    128U * (event_sources.size()) + 4096U
+                    64U * 1024U * 1024U
             });
             assert(created_backend);
             backend.emplace(std::move(*created_backend));

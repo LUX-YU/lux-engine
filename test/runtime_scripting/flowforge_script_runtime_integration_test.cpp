@@ -835,17 +835,12 @@ namespace
                 .continuation_frame_storage_bytes =
                     2U * ((std::max)(std::size_t{8192U}, options.size * 256U)) + 4096U,
                 .abilities = kNativeContributions,
-                .state_storage_classes = std::array{
-                    lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (options.size), 1U}
+                .storage_populations = std::array{
+                    lux::simulation::script::NativeScriptStoragePopulation{
+                        std::addressof(*native_module), options.size, options.size
+                    }
                 },
-                .state_storage_bytes = 128U * (options.size) + 4096U,
-                .continuation_frame_classes = std::array{
-                    lux::simulation::script::detail::makeUniformStorageClass(
-                        8192U, alignof(std::max_align_t),
-                        (std::max)(std::size_t{8192U}, options.size * 256U),
-                        options.size
-                    )
-                }
+                .state_storage_bytes = 64U * 1024U * 1024U
             }
         };
         if (!backend)
@@ -1068,17 +1063,12 @@ int main(int argc, char** argv)
             .continuation_frame_storage_bytes =
                 2U * (16384U) + 4096U,
             .abilities = kNativeContributions,
-            .state_storage_classes = std::array{
-                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            .storage_populations = std::array{
+                lux::simulation::script::NativeScriptStoragePopulation{
+                    std::addressof(*native_module), 1U, 2U
+                }
             },
-            .state_storage_bytes = 128U * (1U) + 4096U,
-            .continuation_frame_classes = std::array{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    8192U, alignof(std::max_align_t),
-                    16384U,
-                    2U
-                )
-            }
+            .state_storage_bytes = 64U * 1024U * 1024U
         }
     };
     assert(backend);
@@ -1221,17 +1211,12 @@ int main(int argc, char** argv)
                 2U * (16384U) + 4096U,
             .max_event_wait_imports_per_module = 2U,
             .abilities = kNativeContributions,
-            .state_storage_classes = std::array{
-                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            .storage_populations = std::array{
+                lux::simulation::script::NativeScriptStoragePopulation{
+                    std::addressof(*event_module), 1U, 2U
+                }
             },
-            .state_storage_bytes = 128U * (1U) + 4096U,
-            .continuation_frame_classes = std::array{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    8192U, alignof(std::max_align_t),
-                    16384U,
-                    2U
-                )
-            }
+            .state_storage_bytes = 64U * 1024U * 1024U
         }
     };
     assert(event_backend);
@@ -1256,17 +1241,12 @@ int main(int argc, char** argv)
                 2U * (16384U) + 4096U,
             .max_event_wait_imports_per_module = 2U,
             .abilities = kNativeContributions,
-            .state_storage_classes = std::array{
-                lux::simulation::script::detail::StorageClassPlan{64U, 64U, 64U * (1U), 1U}
+            .storage_populations = std::array{
+                lux::simulation::script::NativeScriptStoragePopulation{
+                    std::addressof(*event_module), 1U, 2U
+                }
             },
-            .state_storage_bytes = 128U * (1U) + 4096U,
-            .continuation_frame_classes = std::array{
-                lux::simulation::script::detail::makeUniformStorageClass(
-                    8192U, alignof(std::max_align_t),
-                    16384U,
-                    2U
-                )
-            }
+            .state_storage_bytes = 64U * 1024U * 1024U
         }
     };
     assert(mismatched_backend);

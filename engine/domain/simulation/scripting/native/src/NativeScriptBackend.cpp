@@ -2,6 +2,7 @@
 #include <lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp>
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/ScriptContractValidation.hpp>
+#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -81,8 +82,7 @@ namespace lux::simulation::script
               ability_contributions(source_config.abilities.begin(), source_config.abilities.end()),
               frame_storage(std::move(source_frame_storage)), state_storage(std::move(source_state_storage))
         {
-            config.state_storage_classes = {};
-            config.continuation_frame_classes = {};
+            config.storage_populations = {};
             modules.reserve(module_capacity);
             module_index.reserve(module_capacity);
             instances.resize(instance_capacity);
@@ -931,18 +931,67 @@ namespace lux::simulation::script
         }
         try
         {
-            auto frame_storage = detail::BoundedClassStorage::create(
-                config.continuation_frame_classes,
-                config.continuation_frame_storage_bytes,
-                config.continuation_capacity
-            );
-            if (!frame_storage)
-                return;
-            detail::BoundedClassStorage state_storage;
-            if (!config.state_storage_classes.empty())
+            if (config.storage_populations.size() > config.module_capacity) return;
+            std::vector<detail::StorageClassPlan> state_plans;
+            std::vector<detail::StorageClassPlan> frame_plans;
+            std::size_t planned_instances{};
+            std::size_t planned_continuations{};
+            const auto append = [](auto& plans, std::size_t size, std::size_t alignment, std::size_t count) noexcept {
+                if (size == 0U || count == 0U) return true;
+                if (alignment == 0U || (alignment & (alignment - 1U)) != 0U ||
+                    size > (std::numeric_limits<std::size_t>::max)() - alignment + 1U) return false;
+                const auto stride = (size + alignment - 1U) & ~(alignment - 1U);
+                if (count > (std::numeric_limits<std::size_t>::max)() / stride) return false;
+                const auto bytes = count * stride;
+                for (auto& plan : plans)
+                {
+                    if (plan.size == size && plan.alignment == alignment)
+                    {
+                        if (plan.page_bytes > (std::numeric_limits<std::size_t>::max)() - bytes) return false;
+                        plan.page_bytes += bytes;
+                        return true;
+                    }
+                }
+                plans.push_back({size, alignment, bytes, 1U});
+                return true;
+            };
+            state_plans.reserve(config.storage_populations.size());
+            frame_plans.reserve(config.storage_populations.size());
+            for (const auto& population : config.storage_populations)
+            {
+                const bool invalid = population.executable == nullptr ||
+                    population.instances > config.instance_capacity - planned_instances ||
+                    population.continuations > config.continuation_capacity - planned_continuations;
+                if (invalid) return;
+                planned_instances += population.instances;
+                planned_continuations += population.continuations;
+                const auto& executable = *population.executable;
+                if (!append(state_plans, executable.stateSize(), executable.stateAlignment(), population.instances))
+                    return;
+                std::size_t frame_size{};
+                std::size_t frame_alignment{1U};
+                for (const auto& function : executable.functions())
+                {
+                    if (function.step == nullptr) continue;
+                    if (function.step->frame_size > config.max_continuation_frame_bytes) return;
+                    frame_size = (std::max)(frame_size, static_cast<std::size_t>(function.step->frame_size));
+                    frame_alignment = (std::max)(frame_alignment, static_cast<std::size_t>(function.step->frame_align));
+                }
+                if (!append(frame_plans, frame_size, frame_alignment, population.continuations)) return;
+            }
+            detail::BoundedClassStorage frame_storage;
+            if (!frame_plans.empty())
             {
                 auto created = detail::BoundedClassStorage::create(
-                    config.state_storage_classes, config.state_storage_bytes, config.instance_capacity);
+                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity);
+                if (!created) return;
+                frame_storage = std::move(*created);
+            }
+            detail::BoundedClassStorage state_storage;
+            if (!state_plans.empty())
+            {
+                auto created = detail::BoundedClassStorage::create(
+                    state_plans, config.state_storage_bytes, config.instance_capacity);
                 if (!created)
                     return;
                 state_storage = std::move(*created);
@@ -950,7 +999,7 @@ namespace lux::simulation::script
             state_ = std::make_unique<State>(
                 resolver,
                 config,
-                std::move(*frame_storage),
+                std::move(frame_storage),
                 std::move(state_storage)
             );
         }

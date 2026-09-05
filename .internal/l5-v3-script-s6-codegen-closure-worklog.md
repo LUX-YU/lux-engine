@@ -71,3 +71,52 @@ are NOT DONE. Historical checkpoints must not be represented as final qualificat
 - P2 still must migrate remaining installed consumers, close authoring/type-schema inputs and simplify quotas.
   Full artifact/executable compatibility checks still run during instance creation; redundant cold checks and
   fixed local import mapping remain in the P2 information-accounting work. P3/P4 are not implemented.
+
+## P2 partial checkpoint (2026-09-06)
+
+- Engine code checkpoint: `eca61106e2acb228ed65408f54535d7c503ea71e`.
+- Dependency checkpoint: lux-cxx `e2355ca4ce4e862f4e108f74422a30fce8afb736`.
+- Native storage populations consume real executable state/frame layouts; public internal page plans are removed.
+  Sync modules allocate no continuation frame arena. C++ frame request limits and byte budgets remain explicit;
+  private frame-header overhead and generated owned-reference storage are provisioned by the backend.
+- Class metadata now accounts only for slots in each page's actual class. Arbitrary empty-page reclassification
+  and makeUniformStorageClass (which silently narrowed the promised size) are removed.
+- Lua population helpers derive actual entry counts from canonical requirements/contributions. Logical entry
+  quotas and byte-budget ceilings remain distinct; tested budgets no longer guess private entry sizeof values.
+- Binding-candidate enumeration and explicit/default selection use the existing Script description owner and
+  share signature rules with runtime preparation. Basic selection, mismatch, rename-by-symbol and codec tests pass.
+  The complete C++/Lua/FlowForge common authoring workflow and source-authored default hints are still incomplete.
+- Lua packaging consumes target-generated semantic schema input. The old handwritten scalar size table and
+  value/record layout command-line inputs are removed. Generic Event schema output belongs to Script core.
+- An attempted new engine/toolchain/script root was rejected by the unchanged architecture guard and removed;
+  no replacement aggregate toolchain root or new runtime owner was created.
+- P3 handle editing was started prematurely during development regression. It affected the last four negative
+  compile tests. The partial change was completely reverted, and that run is excluded from evidence.
+  ScriptEventWaitFactory still consumes ScriptEventWaitRequest; P3 is NOT implemented.
+
+### Verified development results
+
+- Fixed P2 snapshot: TOOLCHAIN all + full 199/199 CTest (`p2-stable-tests.log`).
+- DEVELOPER all + full 223/223 CTest (`p2-stable-tests.log`).
+- Class/storage/native/Lua focused selection: 24/24; later C++/Native/Lua budget regression selection: 20/20.
+- Installed consumers: system-hook-script-binding, cpp-coroutine-script, lua-script-packager configure/build/run
+  successfully. C++ Event requirement is generated from canonical schema produced by the same composition
+  description used at runtime. The first and third second builds report no work; the second needs a final no-op record.
+- Current parser requires explicit unexpected<EClassStorageError> in the public class-storage header. That final
+  spelling-only correction was validated by the installed coroutine consumer; full profile tests above precede it.
+- TrackedSnapshot at eca61106, SourceArchitecture, SourceStyle and InstalledArchitecture for
+  install/codegen-p1-developer and install/codegen-toolchain pass.
+- Physics's installed schema now participates in all, including TOOLCHAIN with Lua runtime disabled.
+- These are incremental development builds, not the requested final independent-clean-clone qualification.
+
+### Overall result: NOT COMPLETE / qualification BLOCKED
+
+The block here is missing implementation/evidence, not a claimed new architecture impossibility:
+
+1. P3 prepared Event handle, one-route claim, owner-only admission, sole payload owner and reentrant copy pin.
+2. P4 VM wrapper factory reuse, private typed-helper visibility and Hook reachability caching.
+3. Remaining P2 authoring/default/import information accounting and cross-language workflow proof.
+4. Clean Debug/Release/Physics-OFF/Lua-disabled/Lua54 qualification, complete relocated consumers, 100x stress.
+5. Bsafe/Bwork/Bfinal paired performance, actual assembly/LTO proof, memory ledger and final docs-branch update.
+
+No final production/qualification candidate, optimization speedup, framework freeze, main merge or push is claimed.

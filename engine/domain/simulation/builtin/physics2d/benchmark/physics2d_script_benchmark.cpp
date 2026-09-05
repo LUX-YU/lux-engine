@@ -286,6 +286,7 @@ namespace
     struct CppObject final
     {
         std::uint64_t value{};
+        void tick() noexcept { ++value; g_cpp_checksum += value; }
 
         ScriptCoroutine coroutineTick(ScriptCoroutineContext& context) noexcept
         {
@@ -316,9 +317,7 @@ namespace
             tick.invokable.full_name = "tick";
             tick.invokable.return_type = meta::ref_type_of_v<void>;
             tick.invokable.invoker = [](void* object, void**, void*) {
-                auto& value = *static_cast<CppObject*>(object);
-                ++value.value;
-                g_cpp_checksum += value.value;
+                static_cast<CppObject*>(object)->tick();
             };
             tick.is_noexcept = true;
             coroutine_tick.owner_class = std::addressof(reflected);
@@ -336,6 +335,7 @@ namespace
             });
             const std::array methods{std::addressof(tick)};
             const std::array symbols{CppTickSymbol};
+            const std::array typed_methods{makeCppStaticMethodExport<&CppObject::tick>(tick, CppTickSymbol)};
             const auto coroutine = makeCppStaticCoroutineExport<&CppObject::coroutineTick>(
                 coroutine_tick,
                 CppCoroutineTickSymbol
@@ -363,7 +363,9 @@ namespace
                 nullptr,
                 {},
                 coroutines,
-                abilities
+                abilities,
+                {},
+                typed_methods
             );
             if (!projected)
                 throw std::runtime_error("cannot project Physics2D C++ benchmark script");

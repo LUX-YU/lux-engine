@@ -62,8 +62,147 @@ namespace lux::simulation::script
         std::size_t visible_parameter_count{};
     };
 
+    struct CppStaticMethodExport final
+    {
+        using InvokeFn = int (*)(lux_script_call_frame*) noexcept;
+        lux::script::ScriptSymbolId symbol{};
+        const lux::meta::RefMethod* method{};
+        const lux::meta::RefFunction* function{};
+        InvokeFn invoke{};
+        std::uint64_t owner_type_hash{};
+        bool (*matches)(const lux::meta::RefInvokable&, const lux::rdesc::ScriptFunction&) noexcept{};
+    };
+
     namespace detail
     {
+        template <class Argument>
+        inline constexpr bool kCppMethodArgumentSupported =
+            lux::semantic::TypeDeclared<std::remove_cvref_t<Argument>> &&
+            !std::is_pointer_v<std::remove_reference_t<Argument>> &&
+            (!std::is_reference_v<Argument> ||
+                (std::is_lvalue_reference_v<Argument> && std::is_const_v<std::remove_reference_t<Argument>>));
+
+        template <class Value>
+        [[nodiscard]] bool cppMethodSlotMatches(const lux_script_value_slot& slot) noexcept
+        {
+            using Traits = lux::semantic::TypeTraits<std::remove_cvref_t<Value>>;
+            return slot.data != nullptr && slot.type_id == lux::semantic::typeId(Traits::CanonicalName) &&
+                slot.kind == Traits::AbiKind && slot.size == Traits::Size &&
+                reinterpret_cast<std::uintptr_t>(slot.data) % Traits::Alignment == 0U;
+        }
+
+        template <class Result, class... Arguments, class Invoke, std::size_t... Index>
+        int invokeCppMethod(lux_script_call_frame& frame, Invoke invoke, std::index_sequence<Index...>) noexcept
+        {
+            static_assert((kCppMethodArgumentSupported<Arguments> && ...));
+            static_assert(sizeof...(Arguments) <= 64U, "CppStatic exports support at most 64 arguments");
+            const bool is_invalid_arguments = frame.arg_count != sizeof...(Arguments) ||
+                (frame.arg_count != 0U && frame.args == nullptr);
+            if (is_invalid_arguments || !(cppMethodSlotMatches<Arguments>(frame.args[Index]) && ...))
+                return -2;
+            if constexpr (std::is_void_v<Result>)
+            {
+                if (frame.return_count != 0U)
+                    return -2;
+                invoke((*static_cast<const std::remove_cvref_t<Arguments>*>(frame.args[Index].data))...);
+            }
+            else
+            {
+                static_assert(lux::semantic::TypeDeclared<Result> && std::is_trivially_copyable_v<Result> &&
+                    std::is_trivially_destructible_v<Result>);
+                const bool is_invalid_result = frame.return_count != 1U || frame.returns == nullptr;
+                if (is_invalid_result || !cppMethodSlotMatches<Result>(frame.returns[0]))
+                    return -2;
+                std::construct_at(static_cast<Result*>(frame.returns[0].data),
+                    invoke((*static_cast<const std::remove_cvref_t<Arguments>*>(frame.args[Index].data))...));
+            }
+            return 0;
+        }
+
+        template <class Value>
+        [[nodiscard]] bool cppMethodSemanticMatches(const lux::rdesc::ScriptValueType& value) noexcept
+        {
+            using Type = std::remove_cvref_t<Value>;
+            using Traits = lux::semantic::TypeTraits<Type>;
+            constexpr auto pass = std::is_reference_v<Value> ? lux::semantic::EValuePass::CONST_REF :
+                lux::semantic::EValuePass::VALUE;
+            return value.type_id == lux::semantic::typeId(Traits::CanonicalName) && value.pass == pass &&
+                value.abi_kind == Traits::AbiKind && value.size == Traits::Size && value.alignment == Traits::Alignment;
+        }
+
+        template <class Result, class... Args>
+        struct CppMethodSignature final
+        {
+            static bool matches(const lux::meta::RefInvokable& method,
+                const lux::rdesc::ScriptFunction& signature) noexcept
+            {
+                if (method.parameters.size() != sizeof...(Args) || signature.args.size() != sizeof...(Args))
+                    return false;
+                const auto arguments_match = [&]<std::size_t... Index>(std::index_sequence<Index...>) noexcept {
+                    return ((method.parameters[Index].value_type_hash ==
+                        lux::cxx::type_hash<std::remove_cvref_t<Args>>() &&
+                        cppMethodSemanticMatches<Args>(signature.args[Index])) && ...);
+                };
+                if (!arguments_match(std::index_sequence_for<Args...>{}))
+                    return false;
+                if constexpr (std::is_void_v<Result>)
+                    return signature.returns.empty();
+                else
+                    return signature.returns.size() == 1U && cppMethodSemanticMatches<Result>(signature.returns[0]);
+            }
+        };
+
+        template <auto Method> struct CppMethodTraits;
+
+        template <class Owner, class Result, class... Args, Result (Owner::*Method)(Args...) noexcept>
+        struct CppMethodTraits<Method> final
+        {
+            static constexpr auto OwnerHash = lux::cxx::type_hash<Owner>();
+            static constexpr auto matches = &CppMethodSignature<Result, Args...>::matches;
+            static int invoke(lux_script_call_frame* pointer) noexcept
+            {
+                if (pointer == nullptr || pointer->user_context == nullptr)
+                    return -1;
+                auto& frame = *pointer;
+                auto* object = frame.user_context;
+                return invokeCppMethod<Result, Args...>(frame,
+                    [object](const std::remove_cvref_t<Args>&... args) noexcept -> Result {
+                        return (static_cast<Owner*>(object)->*Method)(args...);
+                    }, std::index_sequence_for<Args...>{});
+            }
+        };
+
+        template <class Owner, class Result, class... Args, Result (Owner::*Method)(Args...) const noexcept>
+        struct CppMethodTraits<Method> final
+        {
+            static constexpr auto OwnerHash = lux::cxx::type_hash<Owner>();
+            static constexpr auto matches = &CppMethodSignature<Result, Args...>::matches;
+            static int invoke(lux_script_call_frame* pointer) noexcept
+            {
+                if (pointer == nullptr || pointer->user_context == nullptr)
+                    return -1;
+                auto& frame = *pointer;
+                auto* object = frame.user_context;
+                return invokeCppMethod<Result, Args...>(frame,
+                    [object](const std::remove_cvref_t<Args>&... args) noexcept -> Result {
+                        return (static_cast<const Owner*>(object)->*Method)(args...);
+                    }, std::index_sequence_for<Args...>{});
+            }
+        };
+
+        template <class Result, class... Args, Result (*Function)(Args...) noexcept>
+        struct CppMethodTraits<Function> final
+        {
+            static constexpr std::uint64_t OwnerHash{};
+            static constexpr auto matches = &CppMethodSignature<Result, Args...>::matches;
+            static int invoke(lux_script_call_frame* frame) noexcept
+            {
+                if (frame == nullptr)
+                    return -1;
+                return invokeCppMethod<Result, Args...>(*frame, Function, std::index_sequence_for<Args...>{});
+            }
+        };
+
         template <class Argument>
         [[nodiscard]] bool cppCoroutineArgumentMatches(const lux_script_value_slot& slot) noexcept
         {
@@ -162,6 +301,24 @@ namespace lux::simulation::script
     }
 
     template <auto Method>
+    [[nodiscard]] CppStaticMethodExport makeCppStaticMethodExport(
+        const lux::meta::RefMethod& reflected, lux::script::ScriptSymbolId symbol
+    ) noexcept
+    {
+        using Traits = detail::CppMethodTraits<Method>;
+        return {symbol, &reflected, nullptr, &Traits::invoke, Traits::OwnerHash, Traits::matches};
+    }
+
+    template <auto Function>
+    [[nodiscard]] CppStaticMethodExport makeCppStaticMethodExport(
+        const lux::meta::RefFunction& reflected, lux::script::ScriptSymbolId symbol
+    ) noexcept
+    {
+        using Traits = detail::CppMethodTraits<Function>;
+        return {symbol, nullptr, &reflected, &Traits::invoke, Traits::OwnerHash, Traits::matches};
+    }
+
+    template <auto Method>
     [[nodiscard]] CppStaticCoroutineExport makeCppStaticCoroutineExport(
         const lux::meta::RefMethod& reflected,
         lux::script::ScriptSymbolId symbol
@@ -222,7 +379,8 @@ namespace lux::simulation::script
             lux::rdesc::ScriptLifecycleRoles lifecycle = {},
             std::span<const CppStaticCoroutineExport> coroutines = {},
             std::span<const lux::rdesc::ScriptApiRequirement> abilities = {},
-            std::span<const lux::script::ScriptEventSourceDescription> events = {}
+            std::span<const lux::script::ScriptEventSourceDescription> events = {},
+            std::span<const CppStaticMethodExport> typed_methods = {}
         ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC
@@ -237,7 +395,8 @@ namespace lux::simulation::script
             lux::rdesc::ScriptLifecycleRoles lifecycle = {},
             std::span<const CppStaticCoroutineExport> coroutines = {},
             std::span<const lux::rdesc::ScriptApiRequirement> abilities = {},
-            std::span<const lux::script::ScriptEventSourceDescription> events = {}
+            std::span<const lux::script::ScriptEventSourceDescription> events = {},
+            std::span<const CppStaticMethodExport> typed_methods = {}
         ) noexcept;
 
     struct CppStaticScriptPoolDescription final
@@ -258,6 +417,8 @@ namespace lux::simulation::script
         std::size_t frame_high_water{};
         std::size_t frame_capacity_failures{};
         std::size_t heap_frame_allocations{};
+        std::size_t prepared_method_storage_bytes{};
+        std::size_t active_prepared_methods{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC

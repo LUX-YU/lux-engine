@@ -41,6 +41,17 @@ lux_classify_target(
 )
 
 include_component_cmake_scripts(meta)
+add_executable(simulation_script_cpp_prepared_shape_test test/prepared_shape_test.cpp)
+target_link_libraries(simulation_script_cpp_prepared_shape_test
+    PRIVATE lux::engine::simulation::simulation_script_cpp_static)
+if(MSVC)
+    target_compile_options(simulation_script_cpp_prepared_shape_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_cpp_prepared_shape_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_script_cpp_prepared_shape_test LAYER SIMULATION PRODUCT TEST ROLE INTEGRATION)
+add_test(NAME simulation_script_cpp_prepared_shape_test COMMAND simulation_script_cpp_prepared_shape_test)
+
 engine_add_type_runtime_info(
     NAME cpp_static_script_bridge_test_meta
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/CppStaticScriptBridgeFixture.hpp

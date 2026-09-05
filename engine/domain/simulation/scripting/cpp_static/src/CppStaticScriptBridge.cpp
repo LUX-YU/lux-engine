@@ -25,12 +25,24 @@ namespace lux::simulation::script
 
     namespace
     {
+        struct OwnedReference final
+        {
+            std::size_t parameter{};
+            std::size_t offset{};
+            std::size_t size{};
+        };
+
         struct Callable final
         {
             lux::script::ScriptSymbolId symbol{};
             const lux::meta::RefMethod* method{};
             const lux::meta::RefFunction* function{};
             CppStaticCoroutineExport::InvokeFn coroutine_invoke{};
+            CppStaticMethodExport::InvokeFn typed_invoke{};
+            const lux::rdesc::ScriptFunction* signature{};
+            std::vector<OwnedReference> references;
+            std::size_t reference_bytes{};
+            std::size_t reference_alignment{1U};
         };
 
         [[nodiscard]] const lux::semantic::Layout* builtin(
@@ -305,6 +317,57 @@ namespace lux::simulation::script
         std::vector<Callable> callables;
     };
 
+    namespace
+    {
+        [[nodiscard]] lux::cxx::expected<void, ECppStaticScriptBridgeError> prepareCallPlans(
+            CppStaticScriptDescriptor::State& state, std::span<const CppStaticMethodExport> typed_methods
+        )
+        {
+            for (std::size_t index{}; index < state.callables.size(); ++index)
+            {
+                auto& call = state.callables[index];
+                call.signature = &state.description.exports[index];
+                if (call.signature->args.size() > 64U)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::UNSUPPORTED_TYPE);
+                if (call.coroutine_invoke == nullptr)
+                    continue;
+                for (std::size_t argument{}; argument < call.signature->args.size(); ++argument)
+                {
+                    const auto& type = call.signature->args[argument];
+                    if (type.pass != lux::semantic::EValuePass::CONST_REF)
+                        continue;
+                    const auto alignment = static_cast<std::size_t>(type.alignment);
+                    const auto maximum = (std::numeric_limits<std::size_t>::max)();
+                    const bool is_invalid_alignment = alignment == 0U || (alignment & (alignment - 1U)) != 0U;
+                    if (is_invalid_alignment || call.reference_bytes > maximum - (alignment - 1U))
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::UNSUPPORTED_TYPE);
+                    const auto offset = (call.reference_bytes + alignment - 1U) & ~(alignment - 1U);
+                    if (type.size > maximum - offset)
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::UNSUPPORTED_TYPE);
+                    call.references.push_back({argument, offset, type.size});
+                    call.reference_bytes = offset + type.size;
+                    call.reference_alignment = (std::max)(call.reference_alignment, alignment);
+                }
+            }
+            for (const auto& typed : typed_methods)
+            {
+                const auto found = std::ranges::find(state.callables, typed.symbol, &Callable::symbol);
+                if (found == state.callables.end() || found->typed_invoke != nullptr ||
+                    found->coroutine_invoke != nullptr || typed.invoke == nullptr || typed.matches == nullptr)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
+                const auto owner_hash = state.reflected_class != nullptr ? state.reflected_class->type.hash : 0U;
+                if (typed.owner_type_hash != owner_hash || typed.method != found->method ||
+                    typed.function != found->function)
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_CLASS);
+                const auto& reflection = found->method ? found->method->invokable : found->function->invokable;
+                if (!typed.matches(reflection, *found->signature))
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::UNSUPPORTED_TYPE);
+                found->typed_invoke = typed.invoke;
+            }
+            return {};
+        }
+    }
+
     CppStaticScriptDescriptor::CppStaticScriptDescriptor() noexcept = default;
     CppStaticScriptDescriptor::CppStaticScriptDescriptor(
         std::unique_ptr<State> state
@@ -351,7 +414,8 @@ namespace lux::simulation::script
             lux::rdesc::ScriptLifecycleRoles lifecycle,
             std::span<const CppStaticCoroutineExport> coroutines,
             std::span<const lux::rdesc::ScriptApiRequirement> abilities,
-            std::span<const lux::script::ScriptEventSourceDescription> events
+            std::span<const lux::script::ScriptEventSourceDescription> events,
+            std::span<const CppStaticMethodExport> typed_methods
         ) noexcept
     {
         if (module_name.empty() || descriptor_key.empty() ||
@@ -456,6 +520,9 @@ namespace lux::simulation::script
                 body.suspension_capable_exports.push_back(coroutine.symbol);
             }
             std::ranges::sort(body.suspension_capable_exports);
+            const auto plans = prepareCallPlans(*state, typed_methods);
+            if (!plans)
+                return lux::cxx::unexpected(plans.error());
             if (!lux::rdesc::validScriptDescription(state->description))
                 return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
             return CppStaticScriptDescriptor{std::move(state)};
@@ -479,7 +546,8 @@ namespace lux::simulation::script
             lux::rdesc::ScriptLifecycleRoles lifecycle,
             std::span<const CppStaticCoroutineExport> coroutines,
             std::span<const lux::rdesc::ScriptApiRequirement> abilities,
-            std::span<const lux::script::ScriptEventSourceDescription> events
+            std::span<const lux::script::ScriptEventSourceDescription> events,
+            std::span<const CppStaticMethodExport> typed_methods
         ) noexcept
     {
         if (module_name.empty() || descriptor_key.empty() ||
@@ -576,6 +644,9 @@ namespace lux::simulation::script
                 body.suspension_capable_exports.push_back(coroutine.symbol);
             }
             std::ranges::sort(body.suspension_capable_exports);
+            const auto plans = prepareCallPlans(*state, typed_methods);
+            if (!plans)
+                return lux::cxx::unexpected(plans.error());
             if (!lux::rdesc::validScriptDescription(state->description))
                 return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
             return CppStaticScriptDescriptor{std::move(state)};
@@ -673,45 +744,87 @@ namespace lux::simulation::script
         {
             Instance* instance{};
             const Callable* callable{};
-            std::vector<void*> arguments;
-            std::vector<lux_script_value_slot> coroutine_arguments;
+            detail::BoundedClassStorage::ClassHandle argument_class;
             bool active{};
 
-            static int invoke(lux_script_call_frame* frame) noexcept
+            static bool matchesSlots(const lux::rdesc::ScriptFunction& signature,
+                const lux_script_call_frame& frame) noexcept
             {
-                if (!frame || !frame->user_context)
+                const bool is_invalid_shape = signature.args.size() != frame.arg_count ||
+                    signature.returns.size() != frame.return_count ||
+                    (frame.arg_count != 0U && frame.args == nullptr) ||
+                    (frame.return_count != 0U && frame.returns == nullptr);
+                if (is_invalid_shape)
+                    return false;
+                const auto matches = [](const auto& type, const auto& slot) noexcept {
+                    return slot.data != nullptr && slot.type_id == type.type_id && slot.kind == type.abi_kind &&
+                        slot.size == type.size && type.alignment != 0U &&
+                        reinterpret_cast<std::uintptr_t>(slot.data) % type.alignment == 0U;
+                };
+                for (std::size_t index{}; index < frame.arg_count; ++index)
+                    if (!matches(signature.args[index], frame.args[index]))
+                        return false;
+                for (std::size_t index{}; index < frame.return_count; ++index)
+                    if (!matches(signature.returns[index], frame.returns[index]))
+                        return false;
+                return true;
+            }
+
+            static int invokeReflection(lux_script_call_frame* frame, std::span<void*> arguments) noexcept
+            {
+                if (frame == nullptr || frame->user_context == nullptr)
                     return -1;
                 auto& self = *static_cast<PreparedCall*>(frame->user_context);
-                if (self.callable == nullptr || self.callable->coroutine_invoke != nullptr)
+                if (!self.active || self.callable == nullptr || self.callable->coroutine_invoke != nullptr)
                     return -1;
-                const auto& invokable = self.callable->method
-                    ? self.callable->method->invokable
-                    : self.callable->function->invokable;
-                if (frame->arg_count != invokable.parameters.size() ||
-                    frame->arg_count > self.arguments.size() ||
-                    (frame->arg_count != 0U && !frame->args) ||
-                    (frame->return_count != 0U && !frame->returns))
-                {
+                if (!matchesSlots(*self.callable->signature, *frame) || arguments.size() != frame->arg_count)
                     return -2;
-                }
+                const auto& invokable = self.callable->method ? self.callable->method->invokable :
+                    self.callable->function->invokable;
                 for (std::size_t index{}; index < frame->arg_count; ++index)
-                    self.arguments[index] = frame->args[index].data;
-                void* result = frame->return_count == 0U
-                    ? nullptr
-                    : frame->returns[0].data;
-                invokable.invoker(
-                    self.callable->method ? self.instance->object : nullptr,
-                    self.arguments.data(),
-                    result
-                );
+                    arguments[index] = frame->args[index].data;
+                invokable.invoker(self.callable->method ? self.instance->object : nullptr, arguments.data(),
+                    frame->return_count == 0U ? nullptr : frame->returns[0].data);
                 return 0;
             }
 
-            static ScriptStepResult invokeStep(
+            template <std::size_t Count>
+            static int invoke(lux_script_call_frame* frame) noexcept
+            {
+                if constexpr (Count == 0U)
+                    return invokeReflection(frame, {});
+                else
+                {
+                    std::array<void*, Count> arguments;
+                    return invokeReflection(frame, arguments);
+                }
+            }
+
+            template <std::size_t Count>
+            static ScriptStepResult invokeStep(void* opaque, lux_script_call_frame& frame, ScriptStepContext& step,
+                ScriptBackendContinuation& result) noexcept
+            {
+                if constexpr (Count == 0U)
+                    return invokeStepImpl(opaque, frame, step, result, {});
+                else
+                {
+                    std::array<lux_script_value_slot, Count> arguments;
+                    return invokeStepImpl(opaque, frame, step, result, arguments);
+                }
+            }
+
+            static ScriptStepResult invokeStepWithoutCopies(void* opaque, lux_script_call_frame& frame,
+                ScriptStepContext& step, ScriptBackendContinuation& result) noexcept
+            {
+                return invokeStepImpl(opaque, frame, step, result, {});
+            }
+
+            static ScriptStepResult invokeStepImpl(
                 void* opaque,
                 lux_script_call_frame& frame,
                 ScriptStepContext& step,
-                ScriptBackendContinuation& result
+                ScriptBackendContinuation& result,
+                std::span<lux_script_value_slot> arguments
             ) noexcept
             {
                 auto& self = *static_cast<PreparedCall*>(opaque);
@@ -727,13 +840,11 @@ namespace lux::simulation::script
                     return ScriptStepResult::failed(-1);
 
                 auto invocation_frame = frame;
-                const auto& invokable = self.callable->method != nullptr
-                    ? self.callable->method->invokable
-                    : self.callable->function->invokable;
-                const bool is_invalid_shape = frame.arg_count + 1U != invokable.parameters.size() ||
-                    frame.arg_count > self.coroutine_arguments.size() ||
-                    (frame.arg_count != 0U && frame.args == nullptr);
-                if (is_invalid_shape || !state->ownCoroutineReferences(*continuation, self, invocation_frame))
+                const bool is_invalid_shape = !matchesSlots(*self.callable->signature, frame) ||
+                    (self.callable->reference_bytes != 0U && frame.arg_count != arguments.size());
+                const bool copied = !is_invalid_shape &&
+                    state->ownCoroutineReferences(*continuation, self, invocation_frame, arguments);
+                if (!copied)
                 {
                     state->releaseCoroutineSlot(*continuation);
                     return ScriptStepResult::failed(-1);
@@ -775,7 +886,6 @@ namespace lux::simulation::script
         {
             descriptor_indexes.reserve(pools.size());
             descriptor_by_key.reserve(pools.size());
-            std::size_t maximum_parameters{};
             std::size_t prepared_capacity{};
             std::size_t coroutine_capacity{};
             for (const auto& pool : pools)
@@ -845,13 +955,6 @@ namespace lux::simulation::script
                         valid = false;
                         return;
                     }
-                    const auto& invokable = callable.method
-                        ? callable.method->invokable
-                        : callable.function->invokable;
-                    maximum_parameters = (std::max)(
-                        maximum_parameters,
-                        invokable.parameters.size()
-                    );
                 }
                 if (index.descriptor->reflected_class)
                 {
@@ -913,10 +1016,6 @@ namespace lux::simulation::script
             free_prepared_calls.reserve(prepared_capacity);
             for (std::size_t index = prepared_capacity; index > 0U; --index)
             {
-                prepared_calls[index - 1U].arguments.resize(
-                    maximum_parameters
-                );
-                prepared_calls[index - 1U].coroutine_arguments.resize(maximum_parameters);
                 free_prepared_calls.push_back(index - 1U);
             }
             continuations.resize(coroutine_capacity);
@@ -987,62 +1086,26 @@ namespace lux::simulation::script
         }
 
         [[nodiscard]] bool ownCoroutineReferences(
-            CoroutineContinuation& continuation,
-            PreparedCall& prepared,
-            lux_script_call_frame& frame
+            CoroutineContinuation& continuation, PreparedCall& prepared, lux_script_call_frame& frame,
+            std::span<lux_script_value_slot> arguments
         ) noexcept
         {
-            const auto& invokable = prepared.callable->method != nullptr
-                ? prepared.callable->method->invokable
-                : prepared.callable->function->invokable;
-            std::size_t required_bytes{};
-            std::size_t required_alignment{1U};
-            for (std::size_t index{}; index < frame.arg_count; ++index)
-            {
-                const auto& parameter = invokable.parameters[index + 1U];
-                const auto qualifier = static_cast<lux::meta::ETypeQual>(parameter.type.qtype.qual);
-                if (qualifier != lux::meta::ETypeQual::LRefToConst)
-                    continue;
-                const auto alignment = static_cast<std::size_t>(parameter.type.alignment);
-                const bool is_invalid_alignment = alignment == 0U ||
-                    (alignment & (alignment - 1U)) != 0U;
-                const bool is_padding_overflow = !is_invalid_alignment &&
-                    required_bytes > (std::numeric_limits<std::size_t>::max)() - (alignment - 1U);
-                if (is_invalid_alignment || is_padding_overflow)
-                    return false;
-                required_bytes = (required_bytes + alignment - 1U) & ~(alignment - 1U);
-                if (parameter.type.size > (std::numeric_limits<std::size_t>::max)() - required_bytes)
-                    return false;
-                required_bytes += parameter.type.size;
-                required_alignment = (std::max)(required_alignment, alignment);
-            }
-            if (required_bytes == 0U)
+            const auto& plan = *prepared.callable;
+            if (plan.reference_bytes == 0U)
                 return true;
-
-            auto& frames = continuation.descriptor->coroutine_frames;
-            const auto storage_class = frames.select(required_bytes, required_alignment);
-            auto storage = frames.acquire(storage_class, required_bytes);
+            auto storage = continuation.descriptor->coroutine_frames.acquire(
+                prepared.argument_class, plan.reference_bytes);
             if (!storage)
                 return false;
             continuation.arguments = *storage;
-            std::size_t offset{};
-            for (std::size_t index{}; index < frame.arg_count; ++index)
+            std::copy_n(frame.args, frame.arg_count, arguments.data());
+            for (const auto& reference : plan.references)
             {
-                prepared.coroutine_arguments[index] = frame.args[index];
-                const auto& parameter = invokable.parameters[index + 1U];
-                const auto qualifier = static_cast<lux::meta::ETypeQual>(parameter.type.qtype.qual);
-                if (qualifier != lux::meta::ETypeQual::LRefToConst)
-                    continue;
-                if (frame.args[index].data == nullptr || frame.args[index].size < parameter.type.size)
-                    return false;
-                const auto alignment = static_cast<std::size_t>(parameter.type.alignment);
-                offset = (offset + alignment - 1U) & ~(alignment - 1U);
-                auto* destination = static_cast<std::byte*>(storage->data) + offset;
-                std::memcpy(destination, frame.args[index].data, parameter.type.size);
-                prepared.coroutine_arguments[index].data = destination;
-                offset += parameter.type.size;
+                auto* destination = static_cast<std::byte*>(storage->data) + reference.offset;
+                std::memcpy(destination, frame.args[reference.parameter].data, reference.size);
+                arguments[reference.parameter].data = destination;
             }
-            frame.args = prepared.coroutine_arguments.data();
+            frame.args = arguments.data();
             return true;
         }
 
@@ -1244,6 +1307,17 @@ namespace lux::simulation::script
             );
             if (found == instance->descriptor->callables.end())
                 return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+            const auto& signature = *found->second->signature;
+            if (function.args != signature.args || function.returns != signature.returns)
+                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+            const auto argument_count = signature.args.size();
+            if (argument_count > 64U)
+                return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+            const auto argument_class = found->second->reference_bytes != 0U ?
+                instance->descriptor->coroutine_frames.select(found->second->reference_bytes,
+                    found->second->reference_alignment) : detail::BoundedClassStorage::ClassHandle{};
+            if (found->second->reference_bytes != 0U && !argument_class)
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
             if (self.free_prepared_calls.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             const auto call_slot = self.free_prepared_calls.back();
@@ -1252,12 +1326,23 @@ namespace lux::simulation::script
             call.instance = instance;
             call.callable = found->second;
             call.active = true;
+            call.argument_class = argument_class;
+            static constexpr auto sync_entries = []<std::size_t... Index>(std::index_sequence<Index...>) {
+                return std::array{&PreparedCall::invoke<Index>...};
+            }(std::make_index_sequence<65U>{});
+            static constexpr auto step_entries = []<std::size_t... Index>(std::index_sequence<Index...>) {
+                return std::array{&PreparedCall::invokeStep<Index>...};
+            }(std::make_index_sequence<65U>{});
+            const auto sync = call.callable->typed_invoke != nullptr ?
+                lux::script::BoundScriptCall{call.callable->typed_invoke, instance->object} :
+                lux::script::BoundScriptCall{sync_entries[argument_count], &call};
             result = {
                 std::addressof(call),
-                lux::script::BoundScriptCall{&PreparedCall::invoke, std::addressof(call)},
+                sync,
                 call.callable->coroutine_invoke == nullptr
                     ? BoundScriptStepCall{}
-                    : BoundScriptStepCall{std::addressof(call), &PreparedCall::invokeStep}
+                    : BoundScriptStepCall{std::addressof(call), call.callable->reference_bytes == 0U ?
+                        &PreparedCall::invokeStepWithoutCopies : step_entries[argument_count]}
             };
             return EScriptBackendResult::SUCCESS;
         }
@@ -1363,6 +1448,9 @@ namespace lux::simulation::script
         CppStaticScriptBackendStats result;
         if (!state_)
             return result;
+        result.prepared_method_storage_bytes = state_->prepared_calls.capacity() * sizeof(State::PreparedCall) +
+            state_->free_prepared_calls.capacity() * sizeof(std::size_t);
+        result.active_prepared_methods = state_->prepared_calls.size() - state_->free_prepared_calls.size();
         for (const auto& descriptor : state_->descriptor_indexes)
         {
             const auto stats = descriptor.coroutine_frames.stats();

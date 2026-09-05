@@ -1484,6 +1484,13 @@ namespace
     struct CppLifecycleObject final
     {
         std::uint64_t value{};
+        void begin() noexcept { value = 10U; }
+        void tick() noexcept { ++value; }
+        void end(EScriptEndPlayReason reason) noexcept
+        {
+            if (reason != EScriptEndPlayReason::RUNTIME_STOPPED || value != 11U)
+                std::terminate();
+        }
     };
 
     struct CppLifecycleFixture final
@@ -1523,6 +1530,11 @@ namespace
             });
             const std::array methods{std::addressof(begin), std::addressof(tick), std::addressof(end)};
             const std::array symbols{kBegin, kTick, kEnd};
+            const std::array typed_methods{
+                makeCppStaticMethodExport<&CppLifecycleObject::begin>(begin, kBegin),
+                makeCppStaticMethodExport<&CppLifecycleObject::tick>(tick, kTick),
+                makeCppStaticMethodExport<&CppLifecycleObject::end>(end, kEnd)
+            };
             auto projected = projectCppStaticEntityScript(
                 "lux.benchmark.cpp-lifecycle",
                 "cpp-lifecycle-v1",
@@ -1531,7 +1543,7 @@ namespace
                 symbols,
                 {nullptr, &resolveSemantic},
                 nullptr,
-                {kBegin, kEnd}
+                {kBegin, kEnd}, {}, {}, {}, typed_methods
             );
             if (!projected)
                 throw std::runtime_error("C++ lifecycle descriptor projection failed");

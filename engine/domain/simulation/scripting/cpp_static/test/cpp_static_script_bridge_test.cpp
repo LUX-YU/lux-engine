@@ -250,12 +250,21 @@ int main()
     assert(lifecycle_layout.size == end_method->invokable.parameters.front().type.size);
     assert(lifecycle_layout.alignment == end_method->invokable.parameters.front().type.alignment);
 
+    static std::size_t unexpected_reflection_calls{};
+    auto value_metadata = *value_method;
+    value_metadata.invokable.invoker = [](void*, void**, void*) { ++unexpected_reflection_calls; };
+    value_method = &value_metadata;
     const std::array selected{value_method, record_method, begin_method, end_method};
     const std::array symbols{
         lux::script::ScriptSymbolId{101U},
         lux::script::ScriptSymbolId{102U},
         lux::script::ScriptSymbolId{104U},
         lux::script::ScriptSymbolId{105U}};
+    const std::array typed_methods{
+        makeCppStaticMethodExport<&test::BridgeBehavior::onValue>(*value_method, symbols[0]),
+        makeCppStaticMethodExport<&test::BridgeBehavior::admitToGameplay>(*begin_method, symbols[2]),
+        makeCppStaticMethodExport<&test::BridgeBehavior::leaveGameplay>(*end_method, symbols[3])
+    };
     const auto coroutine = makeCppStaticCoroutineExport<
         &test::BridgeBehavior::task
     >(*task_method, lux::script::ScriptSymbolId{106U});
@@ -307,9 +316,17 @@ int main()
         {symbols[2], symbols[3]},
         coroutines,
         ability_requirements,
-        event_requirements
+        event_requirements,
+        typed_methods
     );
     assert(projected);
+    auto wrong_owner = typed_methods;
+    wrong_owner[0].owner_type_hash ^= 1U;
+    const auto rejected_owner = projectCppStaticEntityScript(
+        "lux.test.bridge-behavior", "wrong-owner", *reflected, selected, symbols,
+        CppStaticRecordSemanticResolver{nullptr, &resolveRecord}, nullptr, {}, {}, {}, {}, wrong_owner
+    );
+    assert(!rejected_owner && rejected_owner.error() == ECppStaticScriptBridgeError::INVALID_CLASS);
     assert(projected->description().schema_version == lux::rdesc::Script::kSchemaVersion);
     assert(projected->description().exports.size() == 8U);
     assert(projected->description().lifecycle.begin_play == symbols[2]);
@@ -359,11 +376,14 @@ int main()
     assert(reflected_function && reflected_function->is_noexcept);
     const std::array functions{reflected_function};
     const std::array function_symbols{lux::script::ScriptSymbolId{201U}};
+    const std::array typed_functions{
+        makeCppStaticMethodExport<&test::bridgeFreeFunction>(*reflected_function, function_symbols[0])
+    };
     auto global = projectCppStaticGlobalScript(
         "lux.test.bridge-free",
         "bridge-free-v1",
         functions,
-        function_symbols);
+        function_symbols, {}, {}, {}, {}, {}, typed_functions);
     assert(global);
 
     auto entity_asset_result = lux::script::ScriptArtifact::create(projected->description(), {});
@@ -526,6 +546,7 @@ int main()
     const auto completed = continuation.resume(continuation.state, step_context, packet);
     assert(completed.state == EScriptStepState::COMPLETED);
     assert(test::coroutine_value == 15);
+    assert(unexpected_reflection_calls == 0U);
     assert(test::aligned_local_before == test::aligned_local_after);
     assert(test::aligned_local_after % 64U == 0U && test::aligned_local_value == 5);
     continuation.destroy(continuation.state);

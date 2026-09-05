@@ -754,6 +754,7 @@ namespace
     struct alignas(64) CppSlabObject final
     {
         std::uint64_t value{};
+        void update() noexcept { ++value; }
     };
 
     struct CppSlabState final
@@ -779,20 +780,23 @@ namespace
             reflected_method.invokable.return_type = lux::meta::ref_type_of_v<void>;
             reflected_method.invokable.invoker = [](void* object, void**, void*)
             {
-                ++static_cast<CppSlabObject*>(object)->value;
+                static_cast<CppSlabObject*>(object)->update();
             };
             reflected_method.owner_class = std::addressof(reflected_class);
             reflected_method.is_noexcept = true;
 
             const std::array methods{std::addressof(reflected_method)};
             const std::array symbols{kSymbol};
+            const std::array typed_methods{
+                makeCppStaticMethodExport<&CppSlabObject::update>(reflected_method, kSymbol)
+            };
             auto projected = projectCppStaticEntityScript(
                 "lux.benchmark.cpp-slab",
                 "cpp-slab-v1",
                 reflected_class,
                 methods,
                 symbols,
-                {}
+                {}, nullptr, {}, {}, {}, {}, typed_methods
             );
             if (!projected)
                 throw std::runtime_error("cpp slab descriptor projection failed");

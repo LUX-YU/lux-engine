@@ -1,4 +1,5 @@
-#include <lux/engine/simulation/EventPoint.hpp>
+#include "../../system/test/HookChannelTestDriver.hpp"
+#include <lux/engine/simulation/HookChannel.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
@@ -358,7 +359,7 @@ namespace
                     throw std::runtime_error("event record failed");
             }
         }
-        EventPoint<SimulationBroadcastRoute, std::size_t> event;
+        lux::simulation::test::HookChannelTestDriver<SimulationBroadcastRoute, std::size_t> event;
         std::size_t callbacks{};
     };
 
@@ -427,7 +428,7 @@ namespace
         }
         Registry registry;
         std::vector<Entity> entities;
-        EventPoint<EntityTargetedRoute<Entity>, std::size_t> event;
+        lux::simulation::test::HookChannelTestDriver<EntityTargetedRoute<Entity>, std::size_t> event;
         std::size_t occurrence_count{};
         std::size_t callbacks{};
     };
@@ -456,7 +457,7 @@ namespace
 
         Registry registry;
         Entity entity{NullEntity};
-        EventPoint<EntityTargetedRoute<Entity>, std::size_t> event;
+        lux::simulation::test::HookChannelTestDriver<EntityTargetedRoute<Entity>, std::size_t> event;
         std::size_t callbacks{};
     };
 
@@ -549,7 +550,7 @@ namespace
             }
             executor = std::make_unique<lux::task::TaskExecutor>(std::move(*created));
         }
-        EventPoint<SimulationBroadcastRoute, std::size_t> event;
+        lux::simulation::test::HookChannelTestDriver<SimulationBroadcastRoute, std::size_t> event;
         std::size_t callbacks{};
         std::atomic_bool failed{};
         lux::task::TaskGraph graph;
@@ -1112,7 +1113,7 @@ int main(int argc, char** argv)
             [&] { return std::make_unique<BroadcastState>(options->size); },
             [](BroadcastState& state)
             {
-                const auto calls = state.event.drain();
+                const auto calls = state.event.activate();
                 return Observation{
                     .notifications = calls,
                     .callbacks = state.callbacks,
@@ -1127,7 +1128,7 @@ int main(int argc, char** argv)
             [&] { return std::make_unique<SparseState>(options->size); },
             [](SparseState& state)
             {
-                const auto calls = state.event.drain();
+                const auto calls = state.event.activate();
                 return Observation{
                     .notifications = state.occurrence_count,
                     .callbacks = state.callbacks,
@@ -1148,7 +1149,7 @@ int main(int argc, char** argv)
             [](DenseTargetedState& state)
             {
                 const auto lookups_before = state.event.registrationLookupCount();
-                const auto calls = state.event.drain();
+                const auto calls = state.event.activate();
                 const auto lookups_after = state.event.registrationLookupCount();
                 return Observation{
                     .notifications = 1U,
@@ -1172,7 +1173,7 @@ int main(int argc, char** argv)
             {
                 if (!state.executor->execute(state.graph) || state.failed.load())
                     throw std::runtime_error("worker production failed");
-                const auto calls = state.event.drain();
+                const auto calls = state.event.activate();
                 return Observation{
                     .updates = options->size,
                     .notifications = calls,

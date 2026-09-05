@@ -246,7 +246,7 @@ int main()
     ecs::Registry registry;
     fixture.entity = registry.create();
     HookPoint<void(float)> value_hook;
-    EventPoint<
+    HookChannel<
         EntityTargetedRoute<ecs::Entity>,
         installed_consumer::CollisionEvent> pulse;
     assert(value_hook.prepare(1U) == EEndpointMutationError::NONE);

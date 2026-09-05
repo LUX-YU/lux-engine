@@ -1,4 +1,4 @@
-#include <lux/engine/simulation/EventPoint.hpp>
+#include <lux/engine/simulation/HookChannel.hpp>
 
 struct ThrowingEventPayload final
 {
@@ -12,6 +12,6 @@ struct ThrowingEventPayload final
 
 int main()
 {
-    lux::simulation::EventPoint<lux::simulation::SimulationBroadcastRoute, ThrowingEventPayload> endpoint;
+    lux::simulation::HookChannel<lux::simulation::SimulationBroadcastRoute, ThrowingEventPayload> endpoint;
     return endpoint.handlerCount() == 0U ? 0 : 1;
 }

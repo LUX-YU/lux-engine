@@ -146,7 +146,6 @@ int main()
     assert(simulation);
     auto executor = task::TaskExecutor::create({0U, 1U});
     assert(executor);
-    assert(simulation->execute(*executor, SimulationDuration{}));
 
     CaptureProvider capture_provider;
     const auto capture_binding = lux::script::bindScriptAbility<Physics2DCaptureAbility>(capture_provider);
@@ -191,7 +190,8 @@ int main()
                                        simulation->scriptHookEndpoints(),
                                        simulation->scriptEventEndpoints());
     assert(system && system->prepare());
-    assert(ActiveProbe != nullptr && ActiveProbe->tick.dispatch() == 1U);
+    auto connection = bindScriptRuntime(*simulation, *system);
+    assert(connection && simulation->execute(*executor, SimulationDuration{}));
     assert(capture_provider.calls == 1U && capture_provider.value);
     assert(system->activeContinuationCount() == 0U);
     assert(system->activeAwaitableCount() == 0U);

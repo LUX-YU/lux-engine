@@ -58,7 +58,7 @@ namespace
     struct ProbeSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "tick")};
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "tick", true, true)};
         inline static constexpr SimulationSystemDescription Description{
             .type = {.canonical_name = "lux.test.scene-script.probe", .version = 1U},
             .hooks = Hooks
@@ -71,13 +71,15 @@ namespace
 
         void execute() noexcept
         {
-            static_cast<void>(hook.dispatch());
         }
 
         HookPoint<void()> hook;
         ScriptHookEndpoint<void()> endpoint;
         bool ready{};
+        bool tick_requested{true};
     };
+
+    ProbeSystem* active_probe{};
 
     [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> installProbe(
         SimulationBuilder& builder,
@@ -97,10 +99,18 @@ namespace
         auto published = builder.publishScriptHook(description.instanceId(), (*probe)->endpoint.descriptor());
         if (!published)
             return published;
-        return builder.addSystemTask<ProbeSystem>(
+        active_probe = *probe;
+        const auto task = builder.addSystemTask<ProbeSystem>(
             description.instanceId(),
             [](ProbeSystem& value) noexcept { value.execute(); }
         );
+        if (!task)
+            return task;
+        return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), kTickHook,
+            [](ProbeSystem& value) noexcept {
+                if (std::exchange(value.tick_requested, false))
+                    static_cast<void>(value.hook.dispatch());
+            });
     }
 
     [[nodiscard]] SimulationSystemRegistration probeRegistration() noexcept
@@ -122,6 +132,8 @@ namespace
     {
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
+        assert(builder.addExecutionDependency(SimulationExecutionPoint::task(kProbeSystem),
+            SimulationExecutionPoint::hook(kProbeSystem, kTickHook)));
         assert(addScriptSystemData(builder, script_description, codec_limits));
         auto result = std::move(builder).build();
         assert(result);
@@ -539,12 +551,16 @@ int main()
     assert((*scene)->executeStablePoint());
     assert(fixture.backend_state.resume_calls == 1U);
     assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 1U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert((*scene)->executeStablePoint());
     assert(fixture.backend_state.resume_calls == 2U);
     assert(fixture.backend_state.destroys == 2U);
     const auto* stable_probe = (*scene)->findSceneSystem<StableProbeSystem>();
     assert(stable_probe != nullptr && stable_probe->observed_resume_calls == 2U);
 
     fixture.backend_state.delay_mode = BackendState::EDelayMode::SECONDS;
+    active_probe->tick_requested = true;
     fixture.backend_state.delay_seconds = 3.0e-9;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     assert(fixture.backend_state.step_calls == 4U);
@@ -560,9 +576,12 @@ int main()
     assert((*scene)->executeStablePoint());
     assert(fixture.backend_state.resume_calls == 3U);
     assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 3U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.resume_calls == 4U);
 
     fixture.backend_state.delay_mode = BackendState::EDelayMode::SIMULATION_SECONDS;
+    active_probe->tick_requested = true;
     fixture.backend_state.delay_seconds = 0.0;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.step_calls == 6U);
@@ -572,9 +591,12 @@ int main()
     assert((*scene)->executeStablePoint());
     assert(fixture.backend_state.resume_calls == 5U);
     assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 5U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.resume_calls == 6U);
 
     fixture.backend_state.delay_mode = BackendState::EDelayMode::REAL_SECONDS;
+    active_probe->tick_requested = true;
     fixture.backend_state.delay_seconds = 0.02;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     assert(fixture.backend_state.step_calls == 8U);
@@ -583,11 +605,14 @@ int main()
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
     assert(fixture.backend_state.resume_calls == 6U);
     assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 6U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.resume_calls == 7U);
-    assert((*scene)->executeStablePoint());
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.resume_calls == 8U);
 
     fixture.backend_state.delay_seconds = 0.0;
+    active_probe->tick_requested = true;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.step_calls == 10U);
     assert((*scene)->executeStablePoint());
@@ -596,9 +621,12 @@ int main()
     assert((*scene)->executeStablePoint());
     assert(fixture.backend_state.resume_calls == 9U);
     assert((*scene)->executeStablePoint());
+    assert(fixture.backend_state.resume_calls == 9U);
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.resume_calls == 10U);
 
     fixture.backend_state.delay_seconds = 1000.0;
+    active_probe->tick_requested = true;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.step_calls == 12U);
 

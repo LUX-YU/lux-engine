@@ -1,3 +1,5 @@
+#include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
+using lux::simulation::script::test::deliverEndpoint;
 #include "ScriptBenchmarkAbility.hpp"
 #include "ScriptBenchmarkAbility.ability.generated.hpp"
 #if LUX_BENCHMARK_HAS_LUA
@@ -810,7 +812,7 @@ namespace
                                  : lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
                     {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
                     lux::semantic::typeId("lux.i32"),
-                    1U
+                    1U, kHook.value, simulation_description.findHookPoint(kSystem, kHook).contractHash(), 1U
                 });
             }
             description.body = lux::rdesc::CppStaticScript{"benchmark-synthetic"};
@@ -821,9 +823,9 @@ namespace
 
             if (hook.prepare(1U) != EEndpointMutationError::NONE)
                 throw std::runtime_error("benchmark HookPoint prepare failed");
-            if (event.prepare(1U, (std::max)(count, std::size_t{1U}), 1U) != EEndpointMutationError::NONE)
+            if (event.prepare({1U, (std::max)(count, std::size_t{1U})}) != EEndpointMutationError::NONE)
                 throw std::runtime_error("benchmark EventPoint prepare failed");
-            if (target_event.prepare(1U, (std::max)(count, std::size_t{1U}), 1U) != EEndpointMutationError::NONE)
+            if (target_event.prepare({1U, (std::max)(count, std::size_t{1U})}) != EEndpointMutationError::NONE)
                 throw std::runtime_error("benchmark targeted EventPoint prepare failed");
             hook_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             hook_descriptor = hook_bridge->descriptor();
@@ -979,7 +981,7 @@ namespace
                     if (!writer.record(payload))
                         throw std::runtime_error("benchmark Event record failed");
                 }
-                if (event.drain() == 0U)
+                if (deliverEndpoint(event_bridge) == 0U)
                     throw std::runtime_error("benchmark Event delivery failed");
                 return;
             }
@@ -990,7 +992,7 @@ namespace
                 if (!writer.record(entities[*target], payload))
                     throw std::runtime_error("benchmark targeted Event record failed");
             }
-            if (target_event.drain() == 0U)
+            if (deliverEndpoint(target_event_bridge) == 0U)
                 throw std::runtime_error("benchmark targeted Event delivery failed");
         }
 
@@ -1005,7 +1007,7 @@ namespace
                     throw std::runtime_error("benchmark targeted Event batch record failed");
             }
             writer = {};
-            if (target_event.drain() != count)
+            if (deliverEndpoint(target_event_bridge) != count)
                 throw std::runtime_error("benchmark targeted Event batch delivery failed");
         }
 
@@ -1029,8 +1031,8 @@ namespace
         std::optional<ScriptSystemDescription> system_description;
         std::optional<lux::script::ScriptArtifact> artifact;
         HookPoint<void()> hook;
-        EventPoint<SimulationBroadcastRoute, std::int32_t> event;
-        EventPoint<EntityTargetedRoute<ecs::Entity>, std::int32_t> target_event;
+        HookChannel<SimulationBroadcastRoute, std::int32_t> event;
+        HookChannel<EntityTargetedRoute<ecs::Entity>, std::int32_t> target_event;
         std::unique_ptr<ScriptHookEndpoint<void()>> hook_bridge;
         std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_bridge;
         std::unique_ptr<ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, std::int32_t>> target_event_bridge;
@@ -1126,7 +1128,7 @@ namespace
             const std::size_t bounded_count = (std::max)(count, std::size_t{1U});
             if (hook.prepare(1U) != EEndpointMutationError::NONE)
                 throw std::runtime_error("Lua benchmark HookPoint prepare failed");
-            if (event.prepare(1U, bounded_count, 1U) != EEndpointMutationError::NONE)
+            if (event.prepare({1U, bounded_count}) != EEndpointMutationError::NONE)
                 throw std::runtime_error("Lua benchmark EventPoint prepare failed");
             hook_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             hook_descriptor = hook_bridge->descriptor();
@@ -1274,7 +1276,7 @@ namespace
                 if (!writer.record(payload))
                     throw std::runtime_error("Lua benchmark Event record failed");
             }
-            if (event.drain() == 0U)
+            if (deliverEndpoint(event_bridge) == 0U)
                 throw std::runtime_error("Lua benchmark Event delivery failed");
         }
 
@@ -1298,7 +1300,7 @@ namespace
         std::optional<lux::task::TaskExecutor> executor;
         std::optional<ScriptSystemDescription> system_description;
         HookPoint<void()> hook;
-        EventPoint<SimulationBroadcastRoute, std::int32_t> event;
+        HookChannel<SimulationBroadcastRoute, std::int32_t> event;
         std::unique_ptr<ScriptHookEndpoint<void()>> hook_bridge;
         std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_bridge;
         ScriptHookEndpointDescriptor hook_descriptor;
@@ -1837,7 +1839,7 @@ namespace
         static lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> createAwaitable(
             void* opaque,
             ScriptInstanceId,
-            std::optional<lux::rdesc::ScriptValueType>
+            std::optional<lux::simulation::script::PreparedResumeType>
         ) noexcept
         {
             auto& self = *static_cast<CppCoroutineBenchmarkHarness*>(opaque);

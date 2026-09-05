@@ -118,7 +118,7 @@ endif()
 
 foreach(endpoint_header IN ITEMS
     "${prefix}/include/lux/engine/simulation/HookPoint.hpp"
-    "${prefix}/include/lux/engine/simulation/EventPoint.hpp"
+    "${prefix}/include/lux/engine/simulation/HookChannel.hpp"
 )
     if(EXISTS "${endpoint_header}")
         file(READ "${endpoint_header}" endpoint_contract)

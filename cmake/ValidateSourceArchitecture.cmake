@@ -550,7 +550,7 @@ file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
     if(content MATCHES
-       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^,]+,[^,]+,[^,]+|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|EventManager|ScriptEventManager|AwaitableManager|ScriptServices|ServiceRegistry")
+       "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^(),]*,[^(),]*,[^()]*|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|EventManager|ScriptEventManager|AwaitableManager|ScriptServices|ServiceRegistry")
         message(FATAL_ERROR
             "Architecture: replacement ScriptSystem source '${source}' restores a retired boundary."
         )
@@ -2111,7 +2111,7 @@ if(dense_event_contract MATCHES
 endif()
 
 set(event_point_header
-    "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/EventPoint.hpp"
+    "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/HookChannel.hpp"
 )
 file(READ "${event_point_header}" event_point_contract)
 string(CONCAT event_writer_counter_forbidden

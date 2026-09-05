@@ -40,6 +40,9 @@ namespace lux::simulation
             HookPointId id;
             std::string name;
             std::vector<PendingSemanticType> parameters;
+            bool script_capable{true};
+            bool stable_resume{};
+            std::uint32_t contract_version{1U};
 
             friend bool operator==(const PendingHook&, const PendingHook&) noexcept =
                 default;
@@ -69,6 +72,7 @@ namespace lux::simulation
             std::uint32_t configuration_schema_version{};
             std::vector<std::string> capabilities;
             std::vector<PendingHook> hooks;
+            std::vector<SimulationTaskDescription> tasks;
             std::vector<PendingEvent> events;
             std::vector<std::byte> configuration;
         };
@@ -165,7 +169,7 @@ namespace lux::simulation
                 left.configuration_schema_version !=
                     right.configuration_schema_version ||
                 left.capabilities != right.capabilities ||
-                left.hooks != right.hooks ||
+                left.hooks != right.hooks || left.tasks != right.tasks ||
                 left.events.size() != right.events.size())
             {
                 return false;
@@ -420,6 +424,14 @@ namespace lux::simulation
             if (!validHookPointSpec(hook))
                 return lux::cxx::unexpected(failure(
                     ESimulationDescriptionError::INVALID_HOOK_POINT));
+        for (std::size_t index{}; index < system.tasks.size(); ++index)
+        {
+            if (!system.tasks[index].id.valid() || system.tasks[index].name.empty())
+                return lux::cxx::unexpected(failure(ESimulationDescriptionError::INVALID_SYSTEM_TYPE));
+            for (std::size_t previous{}; previous < index; ++previous)
+                if (system.tasks[previous].id == system.tasks[index].id)
+                    return lux::cxx::unexpected(failure(ESimulationDescriptionError::INVALID_SYSTEM_TYPE));
+        }
         for (std::size_t index{}; index < system.hooks.size(); ++index)
         {
             for (std::size_t previous{}; previous < index; ++previous)
@@ -486,11 +498,17 @@ namespace lux::simulation
             for (const auto value : system.type.capabilities)
                 candidate.capabilities.emplace_back(value);
             candidate.hooks.reserve(system.hooks.size());
+            for (const auto& stage : system.tasks)
+                candidate.tasks.push_back({stage.id, std::string{stage.name}});
+            std::ranges::sort(candidate.tasks, [](const auto& a, const auto& b) noexcept { return a.id < b.id; });
             for (const auto& value : system.hooks)
             {
                 Impl::PendingHook hook;
                 hook.id = value.id;
                 hook.name = value.diagnostic_name;
+                hook.script_capable = value.script_capable;
+                hook.stable_resume = value.stable_resume;
+                hook.contract_version = value.contract_version;
                 hook.parameters.reserve(value.signature.parameters.size());
                 for (const auto& parameter : value.signature.parameters)
                 {
@@ -642,7 +660,7 @@ namespace lux::simulation
     }
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
-    SimulationDescriptionBuilder::addDependency(
+    SimulationDescriptionBuilder::addConstructionDependency(
         lux::system::SystemInstanceId before_system,
         lux::system::SystemInstanceId after_system
     ) noexcept
@@ -695,7 +713,7 @@ namespace lux::simulation
     }
 
     lux::cxx::expected<void, SimulationDescriptionFailure>
-    SimulationDescriptionBuilder::eraseDependency(
+    SimulationDescriptionBuilder::eraseConstructionDependency(
         lux::system::SystemInstanceId before_system,
         lux::system::SystemInstanceId after_system
     ) noexcept
@@ -888,12 +906,16 @@ namespace lux::simulation
                     source.configuration_schema_version;
                 record.capabilities = source.capabilities;
                 record.hooks.reserve(source.hooks.size());
+                record.tasks = source.tasks;
                 record.hook_ordinals.reserve(source.hooks.size());
                 for (const auto& hook : source.hooks)
                 {
                     SimulationDescription::HookRecord hook_record;
                     hook_record.id = hook.id;
                     hook_record.name = hook.name;
+                    hook_record.script_capable = hook.script_capable;
+                    hook_record.stable_resume = hook.stable_resume;
+                    hook_record.contract_version = hook.contract_version;
                     hook_record.parameters.reserve(hook.parameters.size());
                     for (const auto& parameter : hook.parameters)
                     {

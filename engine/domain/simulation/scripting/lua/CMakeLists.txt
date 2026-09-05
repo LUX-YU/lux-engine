@@ -192,6 +192,7 @@ if(TARGET script_native_collision_fixture)
             lux::engine::simulation::simulation_script_lua
             lux::engine::simulation::simulation_script_native
             lux::engine::function::script_lua_vm
+            lux::engine::core::task
     )
     target_compile_definitions(
         simulation_script_collision_event_test

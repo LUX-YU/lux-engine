@@ -133,7 +133,7 @@ namespace lux::rdesc
     class Script final
     {
       public:
-        static constexpr std::uint32_t kSchemaVersion = 11U;
+        static constexpr std::uint32_t kSchemaVersion = 12U;
 
         enum class Kind : std::uint8_t
         {

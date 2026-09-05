@@ -256,7 +256,10 @@ namespace lux::flowforge
                     }
                     const bool is_schema_mismatch = found->payload != expected.payload ||
                         found->payload_schema_hash != expected.payload_schema_hash ||
-                        found->payload_schema_version != expected.payload_schema_version;
+                        found->payload_schema_version != expected.payload_schema_version ||
+                        found->delivery_hook_id != expected.delivery_hook_id ||
+                        found->delivery_schema_hash != expected.delivery_schema_hash ||
+                        found->delivery_schema_version != expected.delivery_schema_version;
                     if (is_schema_mismatch)
                     {
                         return lux::cxx::unexpected(FlowForgeFailure{

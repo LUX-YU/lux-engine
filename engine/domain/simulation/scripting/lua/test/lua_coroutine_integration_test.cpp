@@ -1,3 +1,5 @@
+#include "../../core/test/ScriptEndpointTestAccess.hpp"
+using lux::simulation::script::test::deliverEndpoint;
 #include "LuaRuntimeTestAbility.hpp"
 #include "LuaRuntimeTestAbility.ability.generated.hpp"
 #include "LuaRuntimeTestAbility.ability.lua.generated.hpp"
@@ -45,12 +47,16 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kEventWaitSymbol{0x4C55410DU};
     inline constexpr lux::script::ScriptSymbolId kTargetWaitSymbol{0x4C554110U};
 
+    SimulationDescription makeSimulation();
+
     [[nodiscard]] lux::script::ScriptEventSourceDescription eventSource(
         EventPointId event,
         std::string_view name,
         lux::script::EScriptEventRoute route
     )
     {
+        const auto simulation = makeSimulation();
+        const auto hook = simulation.findEvent(kSystem, event).dispatchHook();
         return {
             "Gameplay",
             std::string(name),
@@ -59,7 +65,7 @@ namespace
             route,
             {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
             lux::semantic::typeId("lux.i32"),
-            1U
+            1U, hook.id().value, hook.contractHash(), hook.contractVersion()
         };
     }
 
@@ -396,8 +402,8 @@ namespace
             assert(scalar_hook.prepare(1U) == EEndpointMutationError::NONE);
             assert(event_wait_hook.prepare(1U) == EEndpointMutationError::NONE);
             assert(target_wait_hook.prepare(1U) == EEndpointMutationError::NONE);
-            assert(async_event.prepare(1U, 4U, 4U) == EEndpointMutationError::NONE);
-            assert(target_event.prepare(1U, 4U, 1U) == EEndpointMutationError::NONE);
+            assert(async_event.prepare({1U, 4U}) == EEndpointMutationError::NONE);
+            assert(target_event.prepare({1U, 4U}) == EEndpointMutationError::NONE);
             sync_endpoint.emplace(kSystem, kSyncHook, sync_hook);
             async_endpoint.emplace(kSystem, kAsyncHook, async_hook);
             scalar_endpoint.emplace(kSystem, kScalarHook, scalar_hook);
@@ -510,8 +516,8 @@ namespace
         HookPoint<void()> scalar_hook;
         HookPoint<void()> event_wait_hook;
         HookPoint<void()> target_wait_hook;
-        EventPoint<SimulationBroadcastRoute, std::int32_t> async_event;
-        EventPoint<EntityTargetedRoute<ecs::Entity>, std::int32_t> target_event;
+        HookChannel<SimulationBroadcastRoute, std::int32_t> async_event;
+        HookChannel<EntityTargetedRoute<ecs::Entity>, std::int32_t> target_event;
         std::optional<ScriptHookEndpoint<void()>> sync_endpoint;
         std::optional<ScriptHookEndpoint<void()>> async_endpoint;
         std::optional<ScriptHookEndpoint<void()>> scalar_endpoint;
@@ -591,6 +597,9 @@ int main(int argc, char** argv)
     assert(eager_provider.eager_result.has_value() && *eager_provider.eager_result);
     assert(eager_system.activeContinuationCount() == 1U);
     assert(eager_system.executeStablePoint());
+    assert(eager_provider.value == 25);
+    assert(eager_system.activeContinuationCount() == 1U);
+    assert(eager_system.executeStablePoint());
     assert(eager_provider.value == 39);
     assert(eager_system.activeContinuationCount() == 0U);
     assert(eager_system.shutdown());
@@ -608,7 +617,7 @@ int main(int argc, char** argv)
         assert(writer.record(2));
         assert(writer.record(3));
     }
-    assert(events.async_event.drain() == 2U);
+    assert(deliverEndpoint(events.event_endpoint) == 2U);
     assert(event_provider.completion_count == 2U);
     assert(event_system.activeContinuationCount() == 2U);
     assert(event_provider.completions[0].success(10));
@@ -635,7 +644,7 @@ int main(int argc, char** argv)
         assert(writer.record(payload));
     }
     payload = 99;
-    assert(waiter.async_event.drain() == 1U);
+    assert(deliverEndpoint(waiter.event_endpoint) == 1U);
     assert(waiter_provider.value == 7);
     assert(waiter_system.stats().active_event_waiters == 0U);
     assert(waiter_system.activeContinuationCount() == 2U);
@@ -659,7 +668,7 @@ int main(int argc, char** argv)
         auto writer = targeted.target_event.begin(0U);
         assert(writer.record(other, 71));
     }
-    assert(targeted.target_event.drain() == 1U);
+    assert(deliverEndpoint(targeted.target_event_endpoint) == 1U);
     assert(targeted_system.stats().active_event_waiters == 1U);
     assert(targeted_system.executeStablePoint());
     assert(targeted_provider.value == 7);
@@ -667,7 +676,7 @@ int main(int argc, char** argv)
         auto writer = targeted.target_event.begin(0U);
         assert(writer.record(targeted.entity, 88));
     }
-    assert(targeted.target_event.drain() == 1U);
+    assert(deliverEndpoint(targeted.target_event_endpoint) == 1U);
     assert(targeted_provider.value == 7);
     assert(targeted_system.executeStablePoint());
     assert(targeted_provider.value == 88);
@@ -693,7 +702,7 @@ int main(int argc, char** argv)
         auto writer = event_retirement.async_event.begin(0U);
         assert(writer.record(109));
     }
-    assert(event_retirement.async_event.drain() == 1U);
+    assert(deliverEndpoint(event_retirement.event_endpoint) == 1U);
     static_cast<void>(event_retirement_system.executeStablePoint());
     assert(event_retirement_provider.writes == writes_before_late_event);
     assert(event_retirement_system.shutdown());
@@ -711,7 +720,7 @@ int main(int argc, char** argv)
         assert(writer.record(2));
         assert(writer.record(3));
     }
-    assert(limited.async_event.drain() == 2U);
+    assert(deliverEndpoint(limited.event_endpoint) == 2U);
     assert(!limited_system.failures().empty());
     assert(limited_system.activeContinuationCount() <= 1U);
     assert(limited_system.shutdown());

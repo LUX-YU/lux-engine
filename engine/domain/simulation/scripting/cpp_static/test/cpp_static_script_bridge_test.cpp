@@ -84,7 +84,7 @@ namespace
     lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> createAwaitable(
         void*,
         ScriptInstanceId,
-        std::optional<lux::rdesc::ScriptValueType>
+        std::optional<lux::simulation::script::PreparedResumeType>
     ) noexcept
     {
         return ScriptAwaitableRegistration{{1U, 1U}, {}};
@@ -283,7 +283,7 @@ int main()
             alignof(std::int32_t)
         },
         0x603U,
-        1U
+        1U, 0x604U, 0x605U, 1U
     };
     auto typed_event = CppScriptEventSource<std::int32_t>::create(event_source);
     assert(typed_event);

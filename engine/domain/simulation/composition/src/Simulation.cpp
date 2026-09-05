@@ -72,6 +72,11 @@ namespace lux::simulation
         std::unique_ptr<ecs::EcsCommandBuffer> commands;
         ExecutionState execution;
         task::TaskGraph graph;
+        SimulationHookCallbacks hook_callbacks;
+        std::size_t stable_hook_count{};
+        bool sealed{};
+        bool stopped{};
+        bool executing{};
     };
 
     struct SimulationBuilder::Impl final
@@ -176,14 +181,14 @@ namespace lux::simulation
                 std::vector<lux::system::SystemInstanceId> instances;
                 std::vector<lux::system::detail::SystemDependencyOrdinalEdge> edges;
                 instances.reserve(count);
-                edges.reserve(description.dependencyCount());
+                edges.reserve(description.constructionDependencyCount());
                 for (std::size_t ordinal{}; ordinal < count; ++ordinal)
                 {
                     instances.push_back(description.systemAt(ordinal).instanceId());
                 }
-                for (std::size_t dependency{}; dependency < description.dependencyCount(); ++dependency)
+                for (std::size_t dependency{}; dependency < description.constructionDependencyCount(); ++dependency)
                 {
-                    const auto edge = description.dependencyAt(dependency);
+                    const auto edge = description.constructionDependencyAt(dependency);
                     const std::size_t before = descriptionOrdinal(description, edge.before().instanceId());
                     const std::size_t after = descriptionOrdinal(description, edge.after().instanceId());
                     if (before == kInvalidOrdinal || after == kInvalidOrdinal || before == after)
@@ -493,7 +498,8 @@ namespace lux::simulation
     lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::addPrimaryTask(
         lux::system::SystemInstanceId instance,
         task::TaskResources resources,
-        task::TaskCallable callable
+        task::TaskCallable callable,
+        SimulationTaskId stage
     ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
@@ -503,7 +509,7 @@ namespace lux::simulation
                 buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, instance)
             );
         }
-        if (impl_->primary_tasks[impl_->current_ordinal])
+        if (stage == PrimarySimulationTask && impl_->primary_tasks[impl_->current_ordinal])
         {
             return lux::cxx::unexpected(
                 buildFailure(ESimulationSystemBuildError::DUPLICATE_PRIMARY_TASK, instance)
@@ -512,11 +518,12 @@ namespace lux::simulation
 
         try
         {
-            auto added = addExecutionTask(SimulationExecutionPoint::task(instance), std::move(resources),
+            auto added = addExecutionTask(SimulationExecutionPoint::task(instance, stage), std::move(resources),
                 std::move(callable), task::ETaskAffinity::WORKER);
             if (!added)
                 return added;
-            impl_->primary_tasks[impl_->current_ordinal] = true;
+            if (stage == PrimarySimulationTask)
+                impl_->primary_tasks[impl_->current_ordinal] = true;
             return {};
         }
         catch (const std::bad_alloc&)
@@ -537,7 +544,11 @@ namespace lux::simulation
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const bool is_invalid_hook = point.kind == ESimulationExecutionPoint::HOOK &&
             (!current || !current.findHookPoint(HookPointId{point.point}));
-        if (!point.valid() || !current || current.instanceId() != point.system || is_invalid_hook)
+        const bool is_unknown_task = point.kind == ESimulationExecutionPoint::SYSTEM_TASK &&
+            std::ranges::none_of(current.tasks(), [point](const auto& stage) noexcept {
+                return stage.id.value == point.point;
+            });
+        if (!point.valid() || !current || current.instanceId() != point.system || is_invalid_hook || is_unknown_task)
             return lux::cxx::unexpected(buildFailure(
                 ESimulationSystemBuildError::INVALID_EXECUTION_POINT, point.system));
         if (std::ranges::any_of(impl_->pending_execution, [point](const auto& item) noexcept {
@@ -651,23 +662,6 @@ namespace lux::simulation
                 }
             }
 
-            for (std::size_t dependency{}; dependency < impl->description->dependencyCount(); ++dependency)
-            {
-                const auto edge = impl->description->dependencyAt(dependency);
-                const std::size_t before = descriptionOrdinal(*impl->description, edge.before().instanceId());
-                const std::size_t after = descriptionOrdinal(*impl->description, edge.after().instanceId());
-                if (!build.primary_tasks[before] || !build.primary_tasks[after])
-                {
-                    return lux::cxx::unexpected(
-                        buildFailure(
-                            ESimulationSystemBuildError::MISSING_PRIMARY_TASK,
-                            edge.after().instanceId(),
-                            edge.before().instanceId()
-                        )
-                    );
-                }
-            }
-
             // Resolve L1 semantic order before submitting anything to the single-pass L0 graph builder.
             auto& pending = build.pending_execution;
             std::ranges::sort(pending, [](const auto& left, const auto& right) noexcept {
@@ -675,6 +669,14 @@ namespace lux::simulation
                     std::tie(right.point.system, right.point.kind, right.point.point);
             });
             const auto count = pending.size();
+            for (const auto& point : pending)
+            {
+                if (point.point.kind == ESimulationExecutionPoint::HOOK &&
+                    impl->description->findHookPoint(point.point.system, HookPointId{point.point.point}).stableResume())
+                    ++impl->stable_hook_count;
+            }
+            if (impl->stable_hook_count > 1U)
+                return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
             std::vector<std::vector<std::size_t>> before(count);
             std::vector<std::vector<std::size_t>> after(count);
             const auto resolve = [&](SimulationExecutionPoint point) noexcept {
@@ -695,13 +697,6 @@ namespace lux::simulation
                 }
                 return true;
             };
-            for (std::size_t index{}; index < impl->description->dependencyCount(); ++index)
-            {
-                const auto edge = impl->description->dependencyAt(index);
-                if (!add_edge(SimulationExecutionPoint::task(edge.before().instanceId()),
-                              SimulationExecutionPoint::task(edge.after().instanceId())))
-                    return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
-            }
             for (const auto& edge : impl->description->executionDependencies())
             {
                 if (!add_edge(edge.before, edge.after))
@@ -759,6 +754,9 @@ namespace lux::simulation
             {
                 if (pending[hook].point.kind != ESimulationExecutionPoint::HOOK)
                     continue;
+                if (!impl->description->findHookPoint(
+                        pending[hook].point.system, HookPointId{pending[hook].point.point}).scriptCapable())
+                    continue;
                 for (std::size_t task{}; task < count; ++task)
                 {
                     if (!reaches(task, hook) && !reaches(hook, task))
@@ -775,13 +773,91 @@ namespace lux::simulation
                 dependencies.reserve(before[ordinal].size());
                 for (const auto predecessor : before[ordinal])
                     dependencies.push_back(handles[predecessor]);
-                item.resources.values.push_back(item.point.kind == ESimulationExecutionPoint::HOOK
+                const auto hook = item.point.kind == ESimulationExecutionPoint::HOOK
+                    ? impl->description->findHookPoint(item.point.system, HookPointId{item.point.point})
+                    : SimulationHookPointView{};
+                const bool is_script_hook = hook && hook.scriptCapable();
+                const bool is_stable = hook && hook.stableResume();
+                std::vector<std::size_t> channels;
+                for (std::size_t channel{}; hook && channel < impl->script_events.size(); ++channel)
+                {
+                    const auto& endpoint = impl->script_events[channel];
+                    const auto described = impl->description->findEvent(endpoint.system, endpoint.event);
+                    if (endpoint.system == item.point.system && described.dispatchHook().id() == hook.id())
+                    {
+                        const bool is_incomplete_channel = endpoint.seal == nullptr || endpoint.consume == nullptr ||
+                            endpoint.failed == nullptr || endpoint.reset == nullptr || endpoint.discard == nullptr;
+                        if (is_incomplete_channel)
+                            return lux::cxx::unexpected(buildFailure(
+                                ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT));
+                        channels.push_back(channel);
+                    }
+                }
+                std::ranges::sort(channels, [&](auto a, auto b) noexcept {
+                    return impl->script_events[a].event.value < impl->script_events[b].event.value;
+                });
+                item.resources.values.push_back(is_script_hook
                     ? task::write(fence) : task::read(fence));
                 auto task = build.graph_builder.add(task::dependencies(dependencies), std::move(item.resources),
-                    task::on(item.affinity),
-                    [owner = impl.get(), callable = std::move(item.callable)]() noexcept {
-                        if (owner->execution.system_failure.load(std::memory_order_acquire) == 0U)
+                    task::on(is_script_hook ? task::ETaskAffinity::CALLER_THREAD : task::ETaskAffinity::WORKER),
+                    [owner = impl.get(), callable = std::move(item.callable), point = item.point,
+                        is_script_hook, is_stable, channels = std::move(channels)]() noexcept {
+                        const auto failed = [&]() noexcept {
+                            return owner->execution.system_failure.load(std::memory_order_acquire) != 0U;
+                        };
+                        const auto fail = [&]() noexcept {
+                            reportSystemFailure(&owner->execution.system_failure, point.system);
+                        };
+                        if (failed())
+                        {
+                            for (auto index : channels)
+                                owner->script_events[index].discard(owner->script_events[index].context);
+                            return;
+                        }
+                        const auto step = owner->clock.snapshot();
+                        const auto& observer = owner->hook_callbacks;
+                        if (is_script_hook && observer.before != nullptr &&
+                            !observer.before(observer.context, step, is_stable))
+                            fail();
+                        for (auto index : channels)
+                        {
+                            const auto& channel = owner->script_events[index];
+                            if (!channel.seal(channel.context))
+                                fail();
+                        }
+                        if (!failed())
                             callable();
+                        for (auto index : channels)
+                        {
+                            const auto& channel = owner->script_events[index];
+                            if (!failed())
+                                channel.consume(channel.context);
+                            if (channel.failed(channel.context))
+                                fail();
+                        }
+                        if (!failed() && is_script_hook && observer.after != nullptr &&
+                            !observer.after(observer.context, step, is_stable))
+                            fail();
+                        if (is_script_hook && owner->commands && !failed())
+                        {
+                            auto applied = ecs::applyEcsCommands(*owner->registry, *owner->commands);
+                            if (!applied)
+                            {
+                                owner->execution.command_failure = applied.error();
+                                fail();
+                            }
+                        }
+                        if (!failed() && is_script_hook && observer.committed != nullptr &&
+                            !observer.committed(observer.context, step))
+                            fail();
+                        for (auto index : channels)
+                        {
+                            const auto& channel = owner->script_events[index];
+                            if (failed())
+                                channel.discard(channel.context);
+                            else
+                                channel.reset(channel.context);
+                        }
                     });
                 if (!task)
                     return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE));
@@ -873,9 +949,49 @@ namespace lux::simulation
         return impl_->clock;
     }
 
+    lux::cxx::expected<SimulationHookConnection, SimulationSystemBuildFailure>
+    Simulation::bindHookCallbacks(SimulationHookCallbacks callbacks) noexcept
+    {
+        const bool is_invalid = impl_->executing || impl_->stopped || impl_->hook_callbacks.context != nullptr ||
+            callbacks.context == nullptr || callbacks.before == nullptr || callbacks.after == nullptr ||
+            impl_->stable_hook_count != 1U;
+        if (is_invalid)
+            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
+        impl_->hook_callbacks = callbacks;
+        return SimulationHookConnection{impl_.get(), [](void* context) noexcept {
+            auto& state = *static_cast<Impl*>(context);
+            if (state.executing)
+                std::terminate();
+            state.stopped = true;
+            state.hook_callbacks = {};
+        }};
+    }
+
+    lux::cxx::expected<void, SimulationSystemBuildFailure> Simulation::seal() noexcept
+    {
+        if (impl_->stopped)
+            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
+        impl_->sealed = true;
+        return {};
+    }
+
+    void Simulation::stop() noexcept
+    {
+        if (impl_->executing)
+            std::terminate();
+        impl_->stopped = true;
+    }
+
     lux::cxx::expected<void, SimulationExecutionFailure>
     Simulation::execute(task::TaskExecutor& executor, SimulationDuration effective_delta) noexcept
     {
+        if (impl_->stopped)
+            return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::STOPPED});
+        if (!impl_->sealed)
+        {
+            if (!seal())
+                return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::NOT_SEALED});
+        }
         const auto clock = impl_->clock.snapshot();
         const auto delta_count = effective_delta.count();
         const auto elapsed_count = clock.elapsed.count();
@@ -895,7 +1011,9 @@ namespace lux::simulation
         if (impl_->commands)
             impl_->commands->reset();
 
+        impl_->executing = true;
         auto executed = executor.execute(impl_->graph);
+        impl_->executing = false;
         if (!executed)
         {
             return lux::cxx::unexpected(

@@ -3,7 +3,7 @@
 #include <lux/engine/system/SystemInstanceId.hpp>
 
 #include <lux/engine/function/script/abi/lux_script_abi.h>
-#include <lux/engine/simulation/EventPoint.hpp>
+#include <lux/engine/simulation/HookChannel.hpp>
 #include <lux/engine/simulation/SimulationEndpointSpec.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
 #include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
@@ -46,6 +46,11 @@ namespace lux::simulation::script
         void *context{};
         EndpointConnectResult (*connect)(void *, void *, ScriptEventLane) noexcept {};
         EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
+        bool (*seal)(void*) noexcept{};
+        std::size_t (*consume)(void*) noexcept{};
+        bool (*failed)(void*) noexcept{};
+        void (*reset)(void*) noexcept{};
+        void (*discard)(void*) noexcept{};
     };
 
     namespace detail
@@ -198,10 +203,7 @@ namespace lux::simulation::script
     };
 
     template <class Route, class Payload>
-    class ScriptEventEndpoint;
-
-    template <class Payload>
-    class ScriptEventEndpoint<SimulationBroadcastRoute, Payload> final
+    class ScriptEventEndpoint final
     {
     public:
         using PayloadCopy = detail::EventPayloadCopy<Payload>;
@@ -209,181 +211,104 @@ namespace lux::simulation::script
         ScriptEventEndpoint(
             lux::system::SystemInstanceId system,
             EventPointId id,
-            EventPoint<SimulationBroadcastRoute, Payload> &endpoint,
-            PayloadCopy payload_copy = detail::defaultEventPayloadCopy<Payload>()) noexcept
-            : system_(system), id_(id), endpoint_(&endpoint), payload_copy_(payload_copy)
-        {
-        }
+            HookChannel<Route, Payload>& channel,
+            PayloadCopy copy = detail::defaultEventPayloadCopy<Payload>()
+        ) noexcept : system_(system), id_(id), channel_(&channel), payload_copy_(copy)
+        {}
 
-        ScriptEventEndpoint(const ScriptEventEndpoint &) = delete;
-        ScriptEventEndpoint &operator=(const ScriptEventEndpoint &) = delete;
-        ScriptEventEndpoint(ScriptEventEndpoint &&) = delete;
-        ScriptEventEndpoint &operator=(ScriptEventEndpoint &&) = delete;
+        ScriptEventEndpoint(const ScriptEventEndpoint&) = delete;
+        ScriptEventEndpoint& operator=(const ScriptEventEndpoint&) = delete;
+
+        [[nodiscard]] std::size_t connectionCount() const noexcept { return lane_ != nullptr ? 1U : 0U; }
 
         [[nodiscard]] ScriptEventEndpointDescriptor descriptor() noexcept
         {
-            return {
-                system_,
-                id_,
-                EEventRoute::SIMULATION_BROADCAST,
-                lux::semantic::makeType<Payload>(
-                    lux::semantic::EValuePass::CONST_REF),
+            constexpr auto route = std::is_same_v<Route, SimulationBroadcastRoute>
+                ? EEventRoute::SIMULATION_BROADCAST : EEventRoute::ENTITY_TARGETED;
+            return {system_, id_, route,
+                lux::semantic::makeType<Payload>(lux::semantic::EValuePass::CONST_REF),
                 {detail::eventPayloadLayout<Payload>(), payload_copy_ != nullptr ? &copyPayload : nullptr},
-                this,
-                &connect,
-                &disconnect};
+                this, &connect, &disconnect,
+                [](void* context) noexcept { return self(context).channel_->seal(); },
+                &consume,
+                [](void* context) noexcept { return self(context).channel_->failed(); },
+                [](void* context) noexcept { self(context).channel_->reset(); },
+                [](void* context) noexcept { self(context).channel_->discard(); }};
         }
 
     private:
-        static EndpointConnectResult connect(
-            void *context,
-            void *lane_context,
-            ScriptEventLane lane) noexcept
+        static ScriptEventEndpoint& self(void* context) noexcept
         {
-            auto &self = *static_cast<ScriptEventEndpoint *>(context);
-            self.lane_context_ = lane_context;
-            self.lane_ = lane;
-            return self.endpoint_->connect(&self, &dispatch);
+            return *static_cast<ScriptEventEndpoint*>(context);
         }
 
-        static EEndpointMutationError disconnect(
-            void *context,
-            EndpointConnectionToken token) noexcept
+        static EndpointConnectResult connect(void* context, void* lane_context, ScriptEventLane lane) noexcept
         {
-            return static_cast<ScriptEventEndpoint *>(context)
-                ->endpoint_->disconnect(token);
+            auto& endpoint = self(context);
+            const auto busy = endpoint.channel_->mutationError();
+            if (busy != EEndpointMutationError::NONE)
+                return {{}, busy};
+            if (lane == nullptr)
+                return {{}, EEndpointMutationError::INVALID_CALLBACK};
+            if (endpoint.lane_ != nullptr)
+                return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
+            endpoint.lane_context_ = lane_context;
+            endpoint.lane_ = lane;
+            return {{0U, endpoint.generation_}, EEndpointMutationError::NONE};
         }
 
-        static void dispatch(void *context, const Payload &payload) noexcept
+        static EEndpointMutationError disconnect(void* context, EndpointConnectionToken token) noexcept
         {
-            auto &self = *static_cast<ScriptEventEndpoint *>(context);
-            auto slot = detail::argumentSlot(payload);
-            lux_script_call_frame frame{
-                &slot,
-                1U,
-                0U,
-                nullptr,
-                0U,
-                0U,
-                nullptr,
-                nullptr};
-            self.lane_(self.lane_context_, ecs::NullEntity, frame);
+            auto& endpoint = self(context);
+            const auto busy = endpoint.channel_->mutationError();
+            if (busy != EEndpointMutationError::NONE)
+                return busy;
+            if (token.slot != 0U || token.generation != endpoint.generation_ || endpoint.lane_ == nullptr)
+                return EEndpointMutationError::INVALID_TOKEN;
+            endpoint.lane_ = nullptr;
+            endpoint.lane_context_ = nullptr;
+            ++endpoint.generation_;
+            return EEndpointMutationError::NONE;
         }
 
-        static bool copyPayload(
-            void* context,
-            const lux_script_value_slot& input,
-            std::span<std::byte> output
-        ) noexcept
+        static std::size_t consume(void* context) noexcept
         {
-            auto& self = *static_cast<ScriptEventEndpoint*>(context);
-            using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Payload>>;
-            const bool is_invalid = self.payload_copy_ == nullptr || input.data == nullptr ||
-                input.kind != Traits::AbiKind || input.size != Traits::Size ||
-                input.type_id != lux::semantic::typeId(Traits::CanonicalName);
-            return !is_invalid && self.payload_copy_(*static_cast<const Payload*>(input.data), output);
+            auto& endpoint = self(context);
+            if (endpoint.lane_ == nullptr)
+                return 0U;
+            std::size_t calls{};
+            for (std::size_t lane{}; lane < endpoint.channel_->laneCount(); ++lane)
+            {
+                for (const auto& occurrence : endpoint.channel_->lane(lane))
+                {
+                    auto slot = detail::argumentSlot(occurrence.payload);
+                    lux_script_call_frame frame{&slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
+                    if constexpr (std::is_same_v<Route, SimulationBroadcastRoute>)
+                        endpoint.lane_(endpoint.lane_context_, ecs::NullEntity, frame);
+                    else
+                        endpoint.lane_(endpoint.lane_context_, occurrence.target, frame);
+                    ++calls;
+                }
+            }
+            return calls;
+        }
+
+        static bool copyPayload(void* context, const lux_script_value_slot& input, std::span<std::byte> output) noexcept
+        {
+            const auto& endpoint = self(context);
+            using Traits = lux::semantic::TypeTraits<Payload>;
+            const bool invalid = input.data == nullptr || input.kind != Traits::AbiKind ||
+                input.type_id != lux::semantic::typeId(Traits::CanonicalName) || input.size != Traits::Size ||
+                output.size() != Traits::Size || endpoint.payload_copy_ == nullptr;
+            return !invalid && endpoint.payload_copy_(*static_cast<const Payload*>(input.data), output);
         }
 
         lux::system::SystemInstanceId system_;
         EventPointId id_;
-        EventPoint<SimulationBroadcastRoute, Payload> *endpoint_{};
+        HookChannel<Route, Payload>* channel_{};
         PayloadCopy payload_copy_{};
-        void *lane_context_{};
+        void* lane_context_{};
         ScriptEventLane lane_{};
-    };
-
-    template <class Payload>
-    class ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, Payload> final
-    {
-    public:
-        using PayloadCopy = detail::EventPayloadCopy<Payload>;
-
-        ScriptEventEndpoint(
-            lux::system::SystemInstanceId system,
-            EventPointId id,
-            EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> &endpoint,
-            PayloadCopy payload_copy = detail::defaultEventPayloadCopy<Payload>()) noexcept
-            : system_(system), id_(id), endpoint_(&endpoint), payload_copy_(payload_copy)
-        {
-        }
-
-        ScriptEventEndpoint(const ScriptEventEndpoint &) = delete;
-        ScriptEventEndpoint &operator=(const ScriptEventEndpoint &) = delete;
-        ScriptEventEndpoint(ScriptEventEndpoint &&) = delete;
-        ScriptEventEndpoint &operator=(ScriptEventEndpoint &&) = delete;
-
-        [[nodiscard]] ScriptEventEndpointDescriptor descriptor() noexcept
-        {
-            return {
-                system_,
-                id_,
-                EEventRoute::ENTITY_TARGETED,
-                lux::semantic::makeType<Payload>(
-                    lux::semantic::EValuePass::CONST_REF),
-                {detail::eventPayloadLayout<Payload>(), payload_copy_ != nullptr ? &copyPayload : nullptr},
-                this,
-                &connect,
-                &disconnect};
-        }
-
-    private:
-        static EndpointConnectResult connect(
-            void *context,
-            void *lane_context,
-            ScriptEventLane lane) noexcept
-        {
-            auto &self = *static_cast<ScriptEventEndpoint *>(context);
-            self.lane_context_ = lane_context;
-            self.lane_ = lane;
-            return self.endpoint_->connectAll(&self, &dispatch);
-        }
-
-        static EEndpointMutationError disconnect(
-            void *context,
-            EndpointConnectionToken token) noexcept
-        {
-            return static_cast<ScriptEventEndpoint *>(context)
-                ->endpoint_->disconnect(token);
-        }
-
-        static void dispatch(
-            void *context,
-            const ecs::Entity &target,
-            const Payload &payload) noexcept
-        {
-            auto &self = *static_cast<ScriptEventEndpoint *>(context);
-            auto slot = detail::argumentSlot(payload);
-            lux_script_call_frame frame{
-                &slot,
-                1U,
-                0U,
-                nullptr,
-                0U,
-                0U,
-                nullptr,
-                nullptr};
-            self.lane_(self.lane_context_, target, frame);
-        }
-
-        static bool copyPayload(
-            void* context,
-            const lux_script_value_slot& input,
-            std::span<std::byte> output
-        ) noexcept
-        {
-            auto& self = *static_cast<ScriptEventEndpoint*>(context);
-            using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Payload>>;
-            const bool is_invalid = self.payload_copy_ == nullptr || input.data == nullptr ||
-                input.kind != Traits::AbiKind || input.size != Traits::Size ||
-                input.type_id != lux::semantic::typeId(Traits::CanonicalName);
-            return !is_invalid && self.payload_copy_(*static_cast<const Payload*>(input.data), output);
-        }
-
-        lux::system::SystemInstanceId system_;
-        EventPointId id_;
-        EventPoint<EntityTargetedRoute<ecs::Entity>, Payload> *endpoint_{};
-        PayloadCopy payload_copy_{};
-        void *lane_context_{};
-        ScriptEventLane lane_{};
+        std::uint32_t generation_{1U};
     };
 }

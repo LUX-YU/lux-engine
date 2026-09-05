@@ -264,14 +264,20 @@ namespace lux::simulation::script
         std::uint32_t size{};
         std::uint32_t alignment{};
         std::uint8_t abi_kind{};
+        bool owned{true};
 
         PreparedResumeType() noexcept = default;
+
+        constexpr PreparedResumeType(lux::semantic::TypeId id, std::uint8_t kind,
+            std::uint32_t bytes, std::uint32_t align) noexcept
+            : type_id(id), size(bytes), alignment(align), abi_kind(kind)
+        {}
 
         PreparedResumeType(const lux::rdesc::ScriptValueType& type) noexcept
             : type_id(type.type_id),
               size(type.size),
               alignment(type.alignment),
-              abi_kind(type.abi_kind)
+              abi_kind(type.abi_kind), owned(type.pass == lux::semantic::EValuePass::VALUE)
         {
         }
 
@@ -281,12 +287,28 @@ namespace lux::simulation::script
             size = type.size;
             alignment = type.alignment;
             abi_kind = type.abi_kind;
+            owned = type.pass == lux::semantic::EValuePass::VALUE;
             return *this;
         }
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {
-            return type_id != lux::semantic::InvalidTypeId && size != 0U && alignment != 0U && abi_kind != 0U;
+            const bool valid_shape = type_id != lux::semantic::InvalidTypeId && size != 0U && alignment != 0U &&
+                (alignment & (alignment - 1U)) == 0U && size % alignment == 0U && owned;
+            if (!valid_shape)
+                return false;
+            switch (abi_kind)
+            {
+            case LUX_SCRIPT_VK_BOOL: return size == sizeof(bool) && alignment == alignof(bool);
+            case LUX_SCRIPT_VK_INT32:
+            case LUX_SCRIPT_VK_UINT32: return size == 4U && alignment == 4U;
+            case LUX_SCRIPT_VK_INT64:
+            case LUX_SCRIPT_VK_UINT64: return size == 8U && alignment == 8U;
+            case LUX_SCRIPT_VK_FLOAT: return size == sizeof(float) && alignment == alignof(float);
+            case LUX_SCRIPT_VK_DOUBLE: return size == sizeof(double) && alignment == alignof(double);
+            case LUX_SCRIPT_VK_STRUCT_REF: return true;
+            default: return false;
+            }
         }
 
         [[nodiscard]] constexpr bool matches(const lux::rdesc::ScriptValueType& type) const noexcept
@@ -294,7 +316,21 @@ namespace lux::simulation::script
             return valid() && type_id == type.type_id && size == type.size && alignment == type.alignment &&
                 abi_kind == type.abi_kind;
         }
+
+        [[nodiscard]] constexpr bool matches(const PreparedResumeType& type) const noexcept
+        {
+            return valid() && type.valid() && type_id == type.type_id && size == type.size &&
+                alignment == type.alignment && abi_kind == type.abi_kind;
+        }
     };
+
+    template <lux::semantic::TypeDeclared Value>
+    [[nodiscard]] constexpr PreparedResumeType makePreparedResumeType() noexcept
+    {
+        using Traits = lux::semantic::TypeTraits<Value>;
+        static_assert(Traits::Size == sizeof(Value) && Traits::Alignment == alignof(Value));
+        return {lux::semantic::typeId(Traits::CanonicalName), Traits::AbiKind, Traits::Size, Traits::Alignment};
+    }
 
     struct ScriptOwnedResumeValue final
     {
@@ -457,7 +493,7 @@ namespace lux::simulation::script
         ScriptAwaitableFactory& operator=(ScriptAwaitableFactory&&) = delete;
 
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> create(
-            std::optional<lux::rdesc::ScriptValueType> result_type = std::nullopt) const noexcept
+            std::optional<PreparedResumeType> result_type = std::nullopt) const noexcept
         {
             if (create_ == nullptr)
                 return lux::cxx::unexpected<EScriptAwaitableCreateError>(EScriptAwaitableCreateError::STOPPING);
@@ -473,7 +509,7 @@ namespace lux::simulation::script
         using CreateFn = lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> (*)(
             void*,
             ScriptInstanceId,
-            std::optional<lux::rdesc::ScriptValueType>) noexcept;
+            std::optional<PreparedResumeType>) noexcept;
         using DiscardFn = void (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
 
     private:

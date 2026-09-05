@@ -21,6 +21,9 @@ namespace lux::simulation
         HookPointId id;
         std::string_view diagnostic_name;
         lux::semantic::SignatureView signature;
+        bool script_capable{true};
+        bool stable_resume{};
+        std::uint32_t contract_version{1U};
     };
 
     struct EventPointSpec final
@@ -97,14 +100,17 @@ namespace lux::simulation
     template <class Signature>
     [[nodiscard]] consteval HookPointSpec makeHookPointSpec(
         HookPointId id,
-        std::string_view diagnostic_name
+        std::string_view diagnostic_name,
+        bool script_capable = true,
+        bool stable_resume = false,
+        std::uint32_t contract_version = 1U
     ) noexcept
     {
         static_assert(std::is_function_v<Signature>);
         return {
             id,
             diagnostic_name,
-            detail::EndpointSignatureStorage<Signature>::view()};
+            detail::EndpointSignatureStorage<Signature>::view(), script_capable, stable_resume, contract_version};
     }
 
     template <class Payload>
@@ -133,7 +139,8 @@ namespace lux::simulation
     ) noexcept
     {
         if (!spec.id.valid() || spec.diagnostic_name.empty() ||
-            !spec.signature.returns.empty())
+            !spec.signature.returns.empty() || spec.contract_version == 0U ||
+            (spec.stable_resume && !spec.script_capable))
         {
             return false;
         }

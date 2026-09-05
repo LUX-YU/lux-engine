@@ -106,7 +106,7 @@ namespace
             alignof(std::int32_t)
         },
         lux::semantic::typeId("lux.i32"),
-        1U
+        1U, 0x5103U, 0x5104U, 1U
     };
 
     struct AsyncHost final

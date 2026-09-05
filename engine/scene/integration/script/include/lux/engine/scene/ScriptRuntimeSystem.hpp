@@ -4,6 +4,7 @@
 #include <lux/engine/scene/script_runtime/visibility.h>
 #include <lux/engine/process/Timer.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
 
 #include <array>
@@ -89,7 +90,7 @@ namespace lux::scene
         ScriptRuntimeSystem(const ScriptRuntimeSystem&) = delete;
         ScriptRuntimeSystem& operator=(const ScriptRuntimeSystem&) = delete;
 
-        [[nodiscard]] bool executeStablePoint() noexcept;
+        [[nodiscard]] bool bindSimulation(simulation::Simulation& simulation) noexcept;
         [[nodiscard]] simulation::script::ScriptSystem& scriptSystem() noexcept;
         [[nodiscard]] const simulation::script::ScriptSystem& scriptSystem() const noexcept;
 
@@ -97,6 +98,7 @@ namespace lux::scene
         std::unique_ptr<ScriptRealDelayProvider> real_delay_;
         std::unique_ptr<simulation::script::ScriptSystemDescription> description_;
         simulation::script::ScriptSystem system_;
+        simulation::SimulationHookConnection hook_connection_;
     };
 
     [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC

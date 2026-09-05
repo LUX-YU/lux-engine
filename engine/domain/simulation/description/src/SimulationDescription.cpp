@@ -88,6 +88,13 @@ namespace lux::simulation
         return description_->systems_[system_index_].instance_name;
     }
 
+    std::span<const SimulationTaskDescription> SimulationSystemView::tasks() const noexcept
+    {
+        if (!*this)
+            return {};
+        return description_->system_types_[description_->systems_[system_index_].type_ordinal].tasks;
+    }
+
     const lux::system::SystemTypeId& SimulationSystemView::type() const noexcept
     {
         const auto type = description_->systems_[system_index_].type_ordinal;
@@ -283,6 +290,59 @@ namespace lux::simulation
         return description_->system_types_[type].hooks[hook_index_].parameters.size();
     }
 
+    bool SimulationHookPointView::scriptCapable() const noexcept
+    {
+        return description_->system_types_[description_->systems_[system_index_].type_ordinal]
+            .hooks[hook_index_].script_capable;
+    }
+
+    bool SimulationHookPointView::stableResume() const noexcept
+    {
+        return description_->system_types_[description_->systems_[system_index_].type_ordinal]
+            .hooks[hook_index_].stable_resume;
+    }
+
+    std::uint32_t SimulationHookPointView::contractVersion() const noexcept
+    {
+        return description_->system_types_[description_->systems_[system_index_].type_ordinal]
+            .hooks[hook_index_].contract_version;
+    }
+
+    std::uint64_t SimulationHookPointView::contractHash() const noexcept
+    {
+        std::uint64_t hash{14695981039346656037ULL};
+        const auto append = [&hash](std::uint64_t value) noexcept {
+            for (unsigned byte{}; byte < 8U; ++byte)
+            {
+                hash ^= value & 0xffU;
+                hash *= 1099511628211ULL;
+                value >>= 8U;
+            }
+        };
+        append(description_->systems_[system_index_].id.value);
+        append(id().value);
+        append(contractVersion());
+        append(scriptCapable() ? 1U : 0U);
+        append(stableResume() ? 1U : 0U);
+        for (std::size_t parameter{}; parameter < parameterCount(); ++parameter)
+        {
+            append(parameterAt(parameter).type_id);
+            append(static_cast<std::uint64_t>(parameterAt(parameter).pass));
+        }
+        // Conservative exact compatibility: authored execution relations are part of delivery timing.
+        // The builder canonicalizes these edges; diagnostics and registration order are excluded.
+        for (const auto& edge : description_->execution_dependencies_)
+        {
+            for (const auto point : {edge.before, edge.after})
+            {
+                append(point.system.value);
+                append(point.point);
+                append(static_cast<std::uint64_t>(point.kind));
+            }
+        }
+        return hash;
+    }
+
     lux::semantic::Type SimulationHookPointView::parameterAt(
         std::size_t index
     ) const noexcept
@@ -425,6 +485,7 @@ namespace lux::simulation
             sizeof(std::byte)
         );
         addRetainedArray(result, dependencies_.capacity(), sizeof(DependencyRecord));
+        addRetainedArray(result, execution_dependencies_.capacity(), sizeof(SimulationExecutionDependency));
         for (const auto& schema : schemas_)
             addRetainedArray(result, schema.name.capacity(), sizeof(char));
         for (const auto& system : systems_)
@@ -439,6 +500,9 @@ namespace lux::simulation
             );
             addRetainedArray(result, type.capabilities.capacity(), sizeof(std::string));
             addRetainedArray(result, type.hooks.capacity(), sizeof(HookRecord));
+            addRetainedArray(result, type.tasks.capacity(), sizeof(SimulationTaskDescription));
+            for (const auto& task : type.tasks)
+                addRetainedArray(result, task.name.capacity(), sizeof(char));
             addRetainedArray(result, type.events.capacity(), sizeof(EventRecord));
             addRetainedArray(result, type.hook_ordinals.size(), sizeof(decltype(type.hook_ordinals)::value_type));
             addRetainedArray(result, type.hook_ordinals.bucket_count(), sizeof(void*));
@@ -591,12 +655,12 @@ namespace lux::simulation
         return system ? system.findEvent(event_name) : SimulationEventView{};
     }
 
-    std::size_t SimulationDescription::dependencyCount() const noexcept
+    std::size_t SimulationDescription::constructionDependencyCount() const noexcept
     {
         return dependencies_.size();
     }
 
-    SimulationDependencyView SimulationDescription::dependencyAt(
+    SimulationDependencyView SimulationDescription::constructionDependencyAt(
         std::size_t index
     ) const noexcept
     {

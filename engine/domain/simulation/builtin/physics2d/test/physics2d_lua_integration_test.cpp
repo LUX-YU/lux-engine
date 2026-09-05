@@ -87,10 +87,9 @@ int main()
     assert(simulation);
     auto executor = task::TaskExecutor::create({0U, 1U});
     assert(executor);
-    assert(simulation->execute(*executor, SimulationDuration{}));
     assert(simulation->scriptApiCapabilities().size() == 1U);
     auto* physics = static_cast<Physics2DSystem*>(simulation->scriptApiCapabilities().front().context);
-    assert(physics != nullptr && physics->overlapsBox(0.0, 0.0, 0.25, 0.25));
+    assert(physics != nullptr);
 
     const std::array contributions{
         lux::script::lua::makeScriptAbilityLuaContribution<PhysicsQuery2D>(),
@@ -130,21 +129,20 @@ int main()
                                        simulation->scriptHookEndpoints(),
                                        simulation->scriptEventEndpoints());
     assert(system && system->prepare());
-    assert(ActiveProbe != nullptr && ActiveProbe->tick.dispatch() == 1U);
+    auto connection = bindScriptRuntime(*simulation, *system);
+    assert(connection);
+    ActiveProbe->emit_pulse = false;
+    assert(simulation->execute(*executor, SimulationDuration{}));
+    assert(physics->overlapsBox(0.0, 0.0, 0.25, 0.25));
     assert(system->activeContinuationCount() == 1U);
     assert(system->activeAwaitableCount() == 1U);
     assert(system->stats().active_event_waiters == 1U);
-    {
-        auto writer = ActiveProbe->pulse.begin(0U);
-        assert(writer.record(1));
-    }
-    assert(ActiveProbe->pulse.drain() == 1U);
+    ActiveProbe->emit_pulse = true;
+    assert(simulation->execute(*executor, SimulationDuration{}));
     assert(system->activeContinuationCount() == 1U);
-    assert(system->executeStablePoint());
     assert(system->activeContinuationCount() == 1U);
     assert(system->stats().next_step_waits == 1U);
     assert(simulation->execute(*executor, std::chrono::milliseconds{16}));
-    assert(system->executeStablePoint());
     if (!system->failures().empty())
     {
         const auto& failure = system->failures().back();

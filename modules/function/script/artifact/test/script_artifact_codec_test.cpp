@@ -35,7 +35,7 @@ int main()
             4U
         },
         semantic::typeId("lux.i32"),
-        1U
+        1U, 23U, 24U, 1U
     });
     description.body = rdesc::LuaSourceScript{"module", {11U}};
     auto source_result = script::ScriptArtifact::create(
@@ -64,7 +64,7 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(*encoded),
         decode_limits
     );
-    assert(image && image->data().view()[4] == std::byte{9U});
+    assert(image && image->data().view()[4] == std::byte{10U});
 
     auto decoded = asset::TAssetSerDeser<script::ScriptArtifactAsset>::decode(
         (*typed)->id(),
@@ -73,7 +73,7 @@ int main()
     );
     assert(decoded);
     const auto& artifact = (*decoded)->data();
-    assert(artifact.description().schema_version == 11U);
+    assert(artifact.description().schema_version == 12U);
     assert(artifact.description().lifecycle.begin_play == 10U);
     assert(artifact.description().lifecycle.end_play == 12U);
     assert(artifact.description().api_requirements.size() == 1U);

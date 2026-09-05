@@ -61,19 +61,10 @@ namespace lux::simulation::script
         using Completion = lux::script::ScriptAbilityCompletion<Result>;
         static_assert(std::is_nothrow_invocable_r_v<lux::script::ScriptAbilityStartResult, Starter, Completion>);
 
-        std::optional<lux::rdesc::ScriptValueType> result_type;
+        std::optional<PreparedResumeType> result_type;
         if constexpr (!std::is_void_v<Result>)
         {
-            try
-            {
-                result_type = lux::rdesc::makeScriptValueType<Result>();
-            }
-            catch (const std::bad_alloc&)
-            {
-                return ScriptStepResult::failed(
-                    detail::invocationStatus(EScriptAbilityInvocationStatus::AWAITABLE_ALLOCATION_FAILURE)
-                );
-            }
+            result_type = makePreparedResumeType<Result>();
         }
 
         auto awaiting = context.awaitables.create(std::move(result_type));
@@ -107,26 +98,16 @@ namespace lux::simulation::script
         if (typed_dispatch == nullptr || start == nullptr)
             return ScriptStepResult::failed(detail::invocationStatus(EScriptAbilityInvocationStatus::INVALID_CONTEXT));
 
-        std::optional<lux::rdesc::ScriptValueType> result_type;
+        std::optional<PreparedResumeType> result_type;
         if (result != nullptr)
         {
-            try
-            {
-                result_type = lux::rdesc::ScriptValueType{
-                    std::string(result->canonical_name),
-                    result->type_id,
-                    lux::semantic::EValuePass::VALUE,
-                    result->abi_kind,
-                    result->size,
-                    result->alignment
-                };
-            }
-            catch (const std::bad_alloc&)
+            if (result->pass != lux::semantic::EValuePass::VALUE)
             {
                 return ScriptStepResult::failed(
-                    detail::invocationStatus(EScriptAbilityInvocationStatus::AWAITABLE_ALLOCATION_FAILURE)
+                    detail::invocationStatus(EScriptAbilityInvocationStatus::INVALID_CONTEXT)
                 );
             }
+            result_type = PreparedResumeType{result->type_id, result->abi_kind, result->size, result->alignment};
         }
 
         auto awaiting = context.awaitables.create(std::move(result_type));

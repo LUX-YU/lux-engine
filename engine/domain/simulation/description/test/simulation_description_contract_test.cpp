@@ -111,7 +111,7 @@ namespace
             "animation",
             kAnimationDescription
         ));
-        assert(builder.addDependency(kPhysicsInstance, kAnimationInstance));
+        assert(builder.addConstructionDependency(kPhysicsInstance, kAnimationInstance));
 
         auto built = std::move(builder).build();
         assert(built);
@@ -141,9 +141,9 @@ namespace
         assert(after && after.parameterCount() == 1U);
         assert(after.parameterAt(0U).pass ==
             lux::semantic::EValuePass::CONST_REF);
-        assert(built->dependencyCount() == 1U);
-        assert(built->dependencyAt(0U).before().instanceId() == kPhysicsInstance);
-        assert(built->dependencyAt(0U).after().instanceId() == kAnimationInstance);
+        assert(built->constructionDependencyCount() == 1U);
+        assert(built->constructionDependencyAt(0U).before().instanceId() == kPhysicsInstance);
+        assert(built->constructionDependencyAt(0U).after().instanceId() == kAnimationInstance);
 
         SimulationDescriptionBuilder invalid;
         assert(invalid.addSystem(
@@ -163,17 +163,17 @@ namespace
             "animation",
             kAnimationDescription
         ));
-        const auto missing = invalid.addDependency(
+        const auto missing = invalid.addConstructionDependency(
             lux::system::SystemInstanceId{99U},
             kAnimationInstance
         );
         assert(!missing);
         assert(missing.error().code ==
             ESimulationDescriptionError::SYSTEM_NOT_FOUND);
-        assert(!invalid.addDependency(kPhysicsInstance, kPhysicsInstance));
-        assert(invalid.addDependency(kPhysicsInstance, kAnimationInstance));
-        assert(!invalid.addDependency(kPhysicsInstance, kAnimationInstance));
-        const auto cycle = invalid.addDependency(
+        assert(!invalid.addConstructionDependency(kPhysicsInstance, kPhysicsInstance));
+        assert(invalid.addConstructionDependency(kPhysicsInstance, kAnimationInstance));
+        assert(!invalid.addConstructionDependency(kPhysicsInstance, kAnimationInstance));
+        const auto cycle = invalid.addConstructionDependency(
             kAnimationInstance,
             kPhysicsInstance
         );

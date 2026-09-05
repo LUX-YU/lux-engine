@@ -1,3 +1,5 @@
+#include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
+using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
@@ -425,12 +427,12 @@ int main()
 
     HookPoint<void(const SimulationStepInfo&)> hook;
     HookPoint<void(const SimulationStepInfo&)> secondary_hook;
-    EventPoint<SimulationBroadcastRoute, SimulationStepInfo> broadcast;
-    EventPoint<EntityTargetedRoute<ecs::Entity>, SimulationStepInfo> targeted;
+    HookChannel<SimulationBroadcastRoute, SimulationStepInfo> broadcast;
+    HookChannel<EntityTargetedRoute<ecs::Entity>, SimulationStepInfo> targeted;
     assert(hook.prepare(1U) == EEndpointMutationError::NONE);
     assert(secondary_hook.prepare(1U) == EEndpointMutationError::NONE);
-    assert(broadcast.prepare(1U, 4U, 2U) == EEndpointMutationError::NONE);
-    assert(targeted.prepare(1U, 4U, 2U) == EEndpointMutationError::NONE);
+    assert(broadcast.prepare({1U, 4U}) == EEndpointMutationError::NONE);
+    assert(targeted.prepare({1U, 4U}) == EEndpointMutationError::NONE);
 
     ScriptHookEndpoint<void(const SimulationStepInfo&)> hook_bridge{
         kSystem,
@@ -480,8 +482,8 @@ int main()
     assert(system.prepare());
     assert(system.activeInstanceCount() == 2U);
     assert(hook.handlerCount() == 1U);
-    assert(broadcast.handlerCount() == 1U);
-    assert(targeted.handlerCount() == 1U);
+    assert(broadcast_bridge.connectionCount() == 1U);
+    assert(targeted_bridge.connectionCount() == 1U);
     assert(backend_state.creates == 2U);
     assert(backend_state.prepares == 6U);
 
@@ -501,7 +503,7 @@ int main()
         auto writer = broadcast.begin(0U);
         assert(writer.record(step));
     }
-    assert(broadcast.drain() == 1U);
+    assert(deliverEndpoint(broadcast_bridge) == 1U);
     assert(backend_state.broadcast_calls == 2U);
 
     const auto other = registry.create();
@@ -510,7 +512,7 @@ int main()
         assert(writer.record(other, step));
         assert(writer.record(fixture.entity, step));
     }
-    assert(targeted.drain() == 2U);
+    assert(deliverEndpoint(targeted_bridge) == 2U);
     assert(backend_state.targeted_calls == 1U);
 
     const auto destroyed_entity = fixture.entity;
@@ -531,7 +533,7 @@ int main()
         assert(writer.record(destroyed_entity, step));
         assert(writer.record(fixture.entity, step));
     }
-    assert(targeted.drain() == 2U);
+    assert(deliverEndpoint(targeted_bridge) == 2U);
     assert(backend_state.targeted_calls == 2U);
 
     const auto releases_before_fault = backend_state.releases;
@@ -545,7 +547,7 @@ int main()
     assert(backend_state.destroys == 2U);
     assert(backend_state.releases == 8U);
     assert(backend_state.releases - releases_before_fault == 4U);
-    assert(targeted.targetBucketCount() == 0U);
+    assert(targeted.pendingOccurrenceCount() == 0U);
 
     backend_state.request_shutdown = true;
     assert(hook.dispatch(step) == 1U);

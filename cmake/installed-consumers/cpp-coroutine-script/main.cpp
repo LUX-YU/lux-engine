@@ -54,7 +54,7 @@ namespace
         }
 
         HookPoint<void()> hook;
-        EventPoint<SimulationBroadcastRoute, std::int32_t> event;
+        HookChannel<SimulationBroadcastRoute, std::int32_t> event;
         ScriptHookEndpoint<void()> hook_endpoint;
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> event_endpoint;
         bool ready{};

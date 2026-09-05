@@ -4,7 +4,9 @@
 #include <lux/engine/system/SystemInstanceId.hpp>
 
 #include <compare>
+#include <array>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace lux::simulation
@@ -22,6 +24,15 @@ namespace lux::simulation
     {
         SimulationTaskId id;
         std::string_view name;
+    };
+
+    inline constexpr std::array DefaultSimulationTasks{SimulationTaskSpec{PrimarySimulationTask, "execute"}};
+
+    struct SimulationTaskDescription final
+    {
+        SimulationTaskId id;
+        std::string name;
+        friend bool operator==(const SimulationTaskDescription&, const SimulationTaskDescription&) noexcept = default;
     };
 
     enum class ESimulationExecutionPoint : std::uint8_t

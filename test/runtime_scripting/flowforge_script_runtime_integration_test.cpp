@@ -1,3 +1,5 @@
+#include "../../engine/domain/simulation/scripting/core/test/ScriptEndpointTestAccess.hpp"
+using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
@@ -88,7 +90,7 @@ namespace
             : endpoint(kProbeSystem, kTickHook, hook), event_endpoint(kProbeSystem, kPayloadEvent, event)
         {
             ready = hook.prepare(g_hook_capacity) == EEndpointMutationError::NONE &&
-                event.prepare(1U, 8U, 1U) == EEndpointMutationError::NONE;
+                event.prepare({1U, 8U}) == EEndpointMutationError::NONE;
         }
 
         void execute() noexcept
@@ -98,7 +100,7 @@ namespace
 
         HookPoint<void()> hook;
         ScriptHookEndpoint<void()> endpoint;
-        EventPoint<SimulationBroadcastRoute, std::int32_t> event;
+        HookChannel<SimulationBroadcastRoute, std::int32_t> event;
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> event_endpoint;
         bool ready{};
     };
@@ -467,6 +469,11 @@ namespace
 
     [[nodiscard]] lux::script::ScriptEventSourceDescription eventSource()
     {
+        SimulationDescriptionBuilder builder;
+        assert(builder.addSystem(kProbeSystem, "Probe", ProbeSystem::Description));
+        auto simulation = std::move(builder).build();
+        assert(simulation);
+        const auto hook = simulation->findHookPoint(kProbeSystem, kTickHook);
         return {
             "Probe",
             "payload",
@@ -481,7 +488,7 @@ namespace
                 alignof(std::int32_t)
             },
             lux::semantic::typeId("lux.i32"),
-            1U
+            1U, hook.id().value, hook.contractHash(), hook.contractVersion()
         };
     }
 
@@ -830,7 +837,7 @@ namespace
                 if (!writer.record(31))
                     return false;
                 writer = {};
-                if (g_probe->event.drain() == 0U)
+                if (deliverEndpoint(g_probe->event_endpoint) == 0U)
                     return false;
             }
             return system->executeStablePoint().has_value();
@@ -845,7 +852,7 @@ namespace
                 if (!writer.record(37))
                     return 23;
                 writer = {};
-                if (g_probe->event.drain() == 0U)
+                if (deliverEndpoint(g_probe->event_endpoint) == 0U)
                     return 23;
             }
             while (!event_storm && system->stats().resume_queue_depth != 0U)
@@ -1215,7 +1222,7 @@ int main(int argc, char** argv)
         assert(writer.record(event_payload));
     }
     event_payload = 99;
-    assert(g_probe->event.drain() == 1U);
+    assert(deliverEndpoint(g_probe->event_endpoint) == 1U);
     assert(event_wait_provider.value == 0);
     assert(event_wait_system->stats().active_event_waiters == 0U);
     assert(event_wait_system->executeStablePoint());
@@ -1247,7 +1254,7 @@ int main(int argc, char** argv)
         auto writer = g_probe->event.begin(0U);
         assert(writer.record(101));
     }
-    assert(g_probe->event.drain() == 0U);
+    assert(deliverEndpoint(g_probe->event_endpoint) == 0U);
     assert(event_wait_provider.calls == writes_before_event_retirement);
 
     auto retiring = ScriptSystem::create(

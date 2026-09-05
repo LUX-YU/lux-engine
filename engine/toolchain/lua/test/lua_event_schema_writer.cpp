@@ -1,6 +1,7 @@
 #include <lux/engine/toolchain/lua/ScriptEventSchema.hpp>
 
 #include <lux/engine/core/semantic/SemanticType.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 
 #include <array>
 #include <filesystem>
@@ -10,6 +11,18 @@ namespace
 {
     [[nodiscard]] lux::script::ScriptEventSourceDescription source(std::string_view catalog)
     {
+        const lux::system::SystemInstanceId system_id{catalog == "gameplay" ? 0x4C554101U : 0xB001U};
+        const lux::simulation::HookPointId hook_id{catalog == "gameplay" ? 0x4C554103U : 0xB002U};
+        const std::array hooks{lux::simulation::makeHookPointSpec<void()>(hook_id, "delivery")};
+        const lux::simulation::SimulationSystemDescription system{
+            .type = {.canonical_name = "lux.test.event.schema", .version = 1U}, .hooks = hooks};
+        lux::simulation::SimulationDescriptionBuilder builder;
+        if (!builder.addSystem(system_id, "source", system))
+            return {};
+        auto description = std::move(builder).build();
+        if (!description)
+            return {};
+        const auto hook = description->findHookPoint(system_id, hook_id);
         constexpr auto payload = lux::script::ScriptEventPayloadDescription{
             "lux.i32",
             lux::semantic::typeId("lux.i32"),
@@ -27,7 +40,7 @@ namespace
                 lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
                 payload,
                 lux::semantic::typeId("lux.i32"),
-                1U
+                1U, hook.id().value, hook.contractHash(), hook.contractVersion()
             };
         }
         if (catalog == "benchmark")
@@ -40,7 +53,7 @@ namespace
                 lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
                 payload,
                 lux::semantic::typeId("lux.i32"),
-                1U
+                1U, hook.id().value, hook.contractHash(), hook.contractVersion()
             };
         }
         return {};

@@ -20,8 +20,8 @@ namespace lux::simulation
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion{6U};
-        constexpr std::uint32_t kSectionCount{10U};
+        constexpr std::uint32_t kWireVersion{7U};
+        constexpr std::uint32_t kSectionCount{12U};
         constexpr std::uint32_t kDirectoryEntryBytes{24U};
         constexpr std::uint64_t kHeaderBytes{32U};
         constexpr std::uint64_t kDirectoryOffset{kHeaderBytes};
@@ -42,10 +42,12 @@ namespace lux::simulation
             EVENTS,
             SYSTEM_DEPENDENCIES,
             PAYLOAD,
+            EXECUTION_DEPENDENCIES,
+            SYSTEM_TASKS,
         };
 
         constexpr std::array<std::uint32_t, kSectionCount> kRecordBytes{
-            0U, 32U, 60U, 32U, 4U, 24U, 16U, 40U, 8U, 0U};
+            0U, 32U, 60U, 32U, 4U, 32U, 16U, 40U, 8U, 0U, 40U, 16U};
 
         class Bytes final
         {
@@ -237,6 +239,8 @@ namespace lux::simulation
                 const auto system = source.system;
                 strings.add(source.type.name);
                 strings.add(system.configurationSchemaName());
+                for (const auto& task : system.tasks())
+                    strings.add(task.name);
                 for (std::size_t index{}; index < system.capabilityCount(); ++index)
                     strings.add(system.capabilityAt(index));
                 for (std::size_t index{}; index < system.hookPointCount(); ++index)
@@ -280,6 +284,8 @@ namespace lux::simulation
                 auto& events = sections[7];
                 auto& dependencies = sections[8];
                 auto& binary_payload = sections[9];
+                auto& execution_dependencies = sections[10];
+                auto& tasks = sections[11];
 
                 for (std::size_t index{}; index < description.dataCount(); ++index)
                 {
@@ -295,6 +301,12 @@ namespace lux::simulation
                 for (const auto& source : types)
                 {
                     const auto system = source.system;
+                    for (const auto& task : system.tasks())
+                    {
+                        tasks.u32(static_cast<std::uint32_t>(&source - types.data()));
+                        tasks.u64(task.id.value);
+                        tasks.u32(strings.ordinal(task.name));
+                    }
                     const auto capability_first = static_cast<std::uint32_t>(
                         capabilities.values.size() / kRecordBytes[4]);
                     for (std::size_t index{}; index < system.capabilityCount(); ++index)
@@ -319,6 +331,8 @@ namespace lux::simulation
                         hooks.u32(parameter_first);
                         hooks.u32(static_cast<std::uint32_t>(
                             hook.parameterCount()));
+                        hooks.u32((hook.scriptCapable() ? 1U : 0U) | (hook.stableResume() ? 2U : 0U));
+                        hooks.u32(hook.contractVersion());
                         hooks.u32(0U);
                     }
 
@@ -384,9 +398,9 @@ namespace lux::simulation
                     binary_payload.raw(system.configurationPayload());
                 }
 
-                for (std::size_t index{}; index < description.dependencyCount(); ++index)
+                for (std::size_t index{}; index < description.constructionDependencyCount(); ++index)
                 {
-                    const auto dependency = description.dependencyAt(index);
+                    const auto dependency = description.constructionDependencyAt(index);
                     std::uint32_t before{}, after{};
                     for (std::size_t system{};
                          system < description.systemCount(); ++system)
@@ -409,6 +423,16 @@ namespace lux::simulation
 
                 if (!strings.valid())
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+
+                for (const auto& edge : description.executionDependencies())
+                {
+                    for (const auto point : {edge.before, edge.after})
+                    {
+                        execution_dependencies.u64(point.system.value);
+                        execution_dependencies.u64(point.point);
+                        execution_dependencies.u32(static_cast<std::uint32_t>(point.kind));
+                    }
+                }
 
                 Bytes output;
                 output.u32(SimulationAssetPrimaryMagic);
@@ -765,6 +789,17 @@ namespace lux::simulation
                 std::vector<std::vector<std::vector<lux::semantic::Type>>>
                     hook_parameters(types.size());
                 std::vector<std::vector<EventPointSpec>> events(types.size());
+                std::vector<std::vector<SimulationTaskSpec>> tasks(types.size());
+                cursor = 0U;
+                for (std::size_t index{}; index < countOf(11); ++index)
+                {
+                    std::uint32_t type{}, name{};
+                    SimulationTaskId id;
+                    if (!readU32(sections[11].bytes, cursor, type) || !readU64(sections[11].bytes, cursor, id.value) ||
+                        !readU32(sections[11].bytes, cursor, name) || type >= types.size() || !id.valid())
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                    tasks[type].push_back({id, stringAt(name)});
+                }
 
                 for (std::size_t type_index{};
                      type_index < types.size(); ++type_index)
@@ -793,7 +828,7 @@ namespace lux::simulation
                         std::size_t offset = static_cast<std::size_t>(
                             type.hook_first + item) * kRecordBytes[5];
                         HookPointId id;
-                        std::uint32_t name{}, parameter_first{}, parameter_count{},
+                        std::uint32_t name{}, parameter_first{}, parameter_count{}, flags{}, contract_version{},
                             reserved{};
                         if (!readU64(sections[5].bytes, offset, id.value) ||
                             !readU32(sections[5].bytes, offset, name) ||
@@ -807,8 +842,10 @@ namespace lux::simulation
                                 offset,
                                 parameter_count
                             ) ||
+                            !readU32(sections[5].bytes, offset, flags) ||
+                            !readU32(sections[5].bytes, offset, contract_version) ||
                             !readU32(sections[5].bytes, offset, reserved) ||
-                            !id.valid() || reserved != 0U ||
+                            !id.valid() || reserved != 0U || flags > 3U || contract_version == 0U ||
                             !rangeValid(
                                 parameter_first,
                                 parameter_count,
@@ -861,7 +898,7 @@ namespace lux::simulation
                         type_hooks.push_back({
                             id,
                             stringAt(name),
-                            {parameters, {}}});
+                            {parameters, {}}, (flags & 1U) != 0U, (flags & 2U) != 0U, contract_version});
                     }
 
                     auto& type_events = events[type_index];
@@ -941,7 +978,8 @@ namespace lux::simulation
                             .multiplicity = static_cast<lux::system::ESystemMultiplicity>(type.multiplicity)
                         },
                         .hooks = hooks[instance.type],
-                        .events = events[instance.type]
+                        .events = events[instance.type],
+                        .tasks = tasks[instance.type]
                     };
                     if (!builder.addSystem(
                             instance.id,
@@ -970,7 +1008,7 @@ namespace lux::simulation
                         before >= instances.size() || after >= instances.size() ||
                         (index != 0U && previous_dependency >=
                             std::pair{before, after}) ||
-                        !builder.addDependency(
+                        !builder.addConstructionDependency(
                             instances[before].id,
                             instances[after].id))
                     {
@@ -982,6 +1020,23 @@ namespace lux::simulation
 
                 if (invalid_string_ordinal)
                     return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+
+                cursor = 0U;
+                for (std::size_t index{}; index < countOf(10); ++index)
+                {
+                    SimulationExecutionDependency edge;
+                    for (auto* point : {&edge.before, &edge.after})
+                    {
+                        std::uint32_t kind{};
+                        if (!readU64(sections[10].bytes, cursor, point->system.value) ||
+                            !readU64(sections[10].bytes, cursor, point->point) ||
+                            !readU32(sections[10].bytes, cursor, kind) || kind > 1U)
+                            return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                        point->kind = static_cast<ESimulationExecutionPoint>(kind);
+                    }
+                    if (!builder.addExecutionDependency(edge.before, edge.after))
+                        return lux::cxx::unexpected(EAssetCodecError::CODEC_FAILURE);
+                }
 
                 auto built = std::move(builder).build();
                 if (!built || built->retainedBytes() >

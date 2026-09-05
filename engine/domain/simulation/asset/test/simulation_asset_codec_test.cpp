@@ -59,7 +59,7 @@ namespace
         ),
         makeHookPointSpec<void(const SimulationStepInfo&)>(
             kPhysicsAfter,
-            "after"
+            "after", true, true
         )};
     inline constexpr std::array kPhysicsEvents{
         makeEventPointSpec<CollisionEvent>(
@@ -117,7 +117,13 @@ int main()
         .hooks = no_hooks,
         .events = no_events};
     assert(builder.addSystem(kAnimationInstance, "animation", animation));
-    assert(builder.addDependency(kPhysicsInstance, kAnimationInstance));
+    assert(builder.addConstructionDependency(kPhysicsInstance, kAnimationInstance));
+    assert(builder.addExecutionDependency(SimulationExecutionPoint::hook(kPhysicsInstance, kPhysicsBefore),
+        SimulationExecutionPoint::task(kPhysicsInstance)));
+    assert(builder.addExecutionDependency(SimulationExecutionPoint::task(kPhysicsInstance),
+        SimulationExecutionPoint::hook(kPhysicsInstance, kPhysicsAfter)));
+    assert(builder.addExecutionDependency(SimulationExecutionPoint::hook(kPhysicsInstance, kPhysicsAfter),
+        SimulationExecutionPoint::task(kAnimationInstance)));
     auto description = std::move(builder).build();
     assert(description);
     auto description_owner = std::make_shared<const SimulationDescription>(std::move(*description));
@@ -135,13 +141,16 @@ int main()
         lux::cxx::SharedBytes<>::copyOf(*encoded),
         decode_limits
     );
-    assert(outer && outer->information().empty() && outer->data().size() == 873U);
+    assert(outer && outer->information().empty());
     const auto digest = lux::cxx::algorithm::Sha256::hash(outer->data().view());
     const auto expected_digest = lux::cxx::algorithm::Sha256Digest::fromHex(
-        "480ed360a99aac9ac125915739e38469896c53bd9d14f76efaac8b6b8f4ac8f3"
+        "e418e948a557fb08cfd31c02b27f9f0c03e2160f8372a4af08cf48b5b155aad3"
     );
-    assert(expected_digest && digest == *expected_digest);
-    assert(outer->data().view()[4] == std::byte{6U});
+    if (outer->data().size() != 1100U || !expected_digest || digest != *expected_digest)
+        std::cerr << "Simulation wire golden: bytes=" << outer->data().size()
+                  << " sha256=" << lux::cxx::algorithm::toHex(digest) << '\n';
+    assert(outer->data().size() == 1100U && expected_digest && digest == *expected_digest);
+    assert(outer->data().view()[4] == std::byte{7U});
     assert(!TAssetSerDeser<SimulationAsset>::encode(
         **asset,
         AssetEncodeLimits{encoded->size() - 1U}
@@ -155,7 +164,10 @@ int main()
     assert(decoded);
     const auto& value = (*decoded)->data();
     assert(value.dataCount() == 2U && value.systemCount() == 2U);
-    assert(value.dependencyCount() == 1U);
+    assert(value.constructionDependencyCount() == 1U);
+    assert(value.executionDependencies().size() == 3U);
+    assert(value.findSystem(kPhysicsInstance).tasks().front().id == PrimarySimulationTask);
+    assert(value.findHookPoint(kPhysicsInstance, kPhysicsAfter).stableResume());
     const auto physics = value.findSystem(kPhysicsInstance);
     assert(physics && physics.instanceName() == "physics");
     assert(lux::simulation::asset::matchesCurrentSystemDescription<
@@ -163,7 +175,7 @@ int main()
     assert(physics.findHookPoint(kPhysicsAfter));
     assert(physics.findEvent(kCollision).route() ==
         EEventRoute::ENTITY_TARGETED);
-    assert(value.dependencyAt(0U).after().instanceId() ==
+    assert(value.constructionDependencyAt(0U).after().instanceId() ==
         kAnimationInstance);
 
     auto reencoded = TAssetSerDeser<SimulationAsset>::encode(**decoded, encode_limits);

@@ -219,12 +219,10 @@ namespace lux::scene
                 if (!installed)
                     return lux::cxx::unexpected(installed.error());
 
-                return builder.addStablePointTask<ScriptRuntimeSystem>(
-                    description.instanceId(),
-                    [](ScriptRuntimeSystem& runtime) noexcept {
-                        return runtime.executeStablePoint();
-                    }
-                );
+                if (!(*installed)->bindSimulation(builder.simulation()))
+                    return lux::cxx::unexpected(failure(
+                        ESceneSystemBuildError::CONSTRUCTION_FAILURE, description.instanceId()));
+                return {};
             }
             catch (const std::bad_alloc&)
             {
@@ -454,16 +452,43 @@ namespace lux::scene
 
     ScriptRuntimeSystem::~ScriptRuntimeSystem() noexcept
     {
+        hook_connection_.reset();
+        real_delay_->requestStop();
         if (!system_.shutdown())
             std::terminate();
-        real_delay_->requestStop();
         if (!real_delay_->join())
             std::terminate();
     }
 
-    bool ScriptRuntimeSystem::executeStablePoint() noexcept
+    bool ScriptRuntimeSystem::bindSimulation(simulation::Simulation& simulation) noexcept
     {
-        return real_delay_->drainCompletions() && static_cast<bool>(system_.executeStablePoint());
+        auto connection = simulation.bindHookCallbacks({this,
+            [](void* context, const simulation::SimulationClockSnapshot&, bool stable) noexcept {
+                auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                auto& system = runtime.system_;
+                if (stable)
+                {
+                    if (!runtime.real_delay_->drainCompletions())
+                        return false;
+                    system.beginStableAdmission();
+                }
+                const auto result = system.processLifecycle();
+                return result || result.error() == simulation::script::EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED;
+            },
+            [](void* context, const simulation::SimulationClockSnapshot&, bool stable_resume) noexcept {
+                if (!stable_resume)
+                    return true;
+                auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                return static_cast<bool>(runtime.system_.executeStablePoint());
+            },
+            [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
+                const auto result = static_cast<ScriptRuntimeSystem*>(context)->system_.processLifecycle();
+                return result || result.error() == simulation::script::EScriptSystemError::WORLD_OBJECT_NOT_RESOLVED;
+            }});
+        if (!connection)
+            return false;
+        hook_connection_ = std::move(*connection);
+        return static_cast<bool>(simulation.seal());
     }
 
     simulation::script::ScriptSystem& ScriptRuntimeSystem::scriptSystem() noexcept

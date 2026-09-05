@@ -163,10 +163,10 @@ void testEventProvenance()
     const std::array sources{
         lux::script::ScriptEventSourceDescription{"Source", "alpha", 1U, 1U,
             lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
-            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U}, 1U, 1U},
+            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U}, 1U, 1U, 1U, 1U, 1U},
         lux::script::ScriptEventSourceDescription{"Source", "beta", 2U, 2U,
             lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
-            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U}, 1U, 1U}
+            {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U}, 1U, 1U, 2U, 2U, 1U}
     };
     auto backend = LuaScriptBackend::create({
         .instance_capacity = 2U,

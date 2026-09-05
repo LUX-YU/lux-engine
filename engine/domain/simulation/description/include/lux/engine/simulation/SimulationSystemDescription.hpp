@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationEndpointSpec.hpp>
+#include <lux/engine/simulation/SimulationExecutionSpec.hpp>
 #include <lux/engine/system/SystemTypeDescription.hpp>
 
 #include <cstdint>
@@ -14,6 +15,7 @@ namespace lux::simulation
         lux::system::SystemTypeDescription type;
         std::span<const HookPointSpec> hooks;
         std::span<const EventPointSpec> events;
+        std::span<const SimulationTaskSpec> tasks{DefaultSimulationTasks};
     };
 
     [[nodiscard]] constexpr bool validSimulationSystemDescription(
@@ -23,6 +25,14 @@ namespace lux::simulation
         if (!lux::system::validSystemTypeDescription(description.type))
         {
             return false;
+        }
+        for (std::size_t index{}; index < description.tasks.size(); ++index)
+        {
+            if (!description.tasks[index].id.valid() || description.tasks[index].name.empty())
+                return false;
+            for (std::size_t previous{}; previous < index; ++previous)
+                if (description.tasks[previous].id == description.tasks[index].id)
+                    return false;
         }
         for (std::size_t index{}; index < description.hooks.size(); ++index)
         {

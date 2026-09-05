@@ -20,7 +20,7 @@ int main()
         lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
         {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
         lux::semantic::typeId("lux.i32"),
-        1U
+        1U, 43U, 44U, 1U
     };
     auto event = std::make_unique<lux::flowforge::OnEventNode>("tick");
     auto wait = std::make_unique<lux::flowforge::ScriptEventAwaitNode>(event_source);

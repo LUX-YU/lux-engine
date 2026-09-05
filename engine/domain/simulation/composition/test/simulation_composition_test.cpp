@@ -283,7 +283,11 @@ namespace
         for (const auto& [instance, system] : systems)
             assert(builder.addSystem(instance, system->type.canonical_name, *system));
         for (const auto& [before, after] : dependencies)
-            assert(builder.addDependency(before, after));
+        {
+            assert(builder.addConstructionDependency(before, after));
+            assert(builder.addExecutionDependency(
+                SimulationExecutionPoint::task(before), SimulationExecutionPoint::task(after)));
+        }
         auto built = std::move(builder).build();
         assert(built);
         return std::make_shared<SimulationDescription>(std::move(*built));
@@ -402,7 +406,7 @@ int main()
             registry_types
         );
         assert(!simulation);
-        assert(simulation.error().code == ESimulationSystemBuildError::MISSING_PRIMARY_TASK);
+        assert(simulation.error().code == ESimulationSystemBuildError::INVALID_EXECUTION_POINT);
     }
 
     {

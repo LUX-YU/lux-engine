@@ -24,7 +24,7 @@ int main(int argc, char** argv)
                 4U
             },
             lux::semantic::typeId("lux.i32"),
-            1U
+            1U, 53U, 54U, 1U
         }
     };
     return lux::toolchain::lua::writeScriptEventSchemaManifest(std::filesystem::path{argv[1]}, sources) ? 0 : 1;

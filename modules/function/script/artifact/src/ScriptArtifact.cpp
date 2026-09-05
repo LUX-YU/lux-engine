@@ -17,7 +17,7 @@ namespace lux::script
 
     namespace detail
     {
-        constexpr std::uint32_t kWireVersion = 9U;
+        constexpr std::uint32_t kWireVersion = 10U;
 
         class Writer final
         {
@@ -268,6 +268,9 @@ namespace lux::script
                     writer.u32(requirement.payload.alignment);
                     writer.u64(requirement.payload_schema_hash);
                     writer.u32(requirement.payload_schema_version);
+                    writer.u64(requirement.delivery_hook_id);
+                    writer.u64(requirement.delivery_schema_hash);
+                    writer.u32(requirement.delivery_schema_version);
                 }
                 const auto& provenance = description.provenance;
                 writer.string(provenance.compiler_id);
@@ -466,6 +469,9 @@ namespace lux::script
                         !reader.u32(requirement.payload.size) || !reader.u32(requirement.payload.alignment) ||
                         !reader.u64(requirement.payload_schema_hash) ||
                         !reader.u32(requirement.payload_schema_version) ||
+                        !reader.u64(requirement.delivery_hook_id) ||
+                        !reader.u64(requirement.delivery_schema_hash) ||
+                        !reader.u32(requirement.delivery_schema_version) ||
                         route > static_cast<std::uint32_t>(lux::script::EScriptEventRoute::ENTITY_TARGETED) ||
                         abi_kind > std::numeric_limits<std::uint8_t>::max())
                     {

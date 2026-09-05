@@ -38,6 +38,9 @@ namespace lux::script
         ScriptEventPayloadDescription payload;
         std::uint64_t payload_schema_hash{};
         std::uint32_t payload_schema_version{};
+        std::uint64_t delivery_hook_id{};
+        std::uint64_t delivery_schema_hash{};
+        std::uint32_t delivery_schema_version{};
 
         [[nodiscard]] bool valid() const noexcept
         {
@@ -46,7 +49,8 @@ namespace lux::script
                 payload.type_id == lux::semantic::typeId(payload.canonical_name) && payload.abi_kind != 0U &&
                 payload.size != 0U && payload.alignment != 0U &&
                 (payload.alignment & (payload.alignment - 1U)) == 0U && payload_schema_hash != 0U &&
-                payload_schema_version != 0U;
+                payload_schema_version != 0U && delivery_hook_id != 0U && delivery_schema_hash != 0U &&
+                delivery_schema_version != 0U;
         }
 
         friend bool operator==(

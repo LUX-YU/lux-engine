@@ -1,4 +1,5 @@
-#include <lux/engine/simulation/EventPoint.hpp>
+#include "HookChannelTestDriver.hpp"
+#include <lux/engine/simulation/HookChannel.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
@@ -48,7 +49,9 @@ namespace
 
     struct BroadcastProbe final
     {
-        lux::simulation::EventPoint<lux::simulation::SimulationBroadcastRoute, std::int32_t> *endpoint{};
+        using Channel = lux::simulation::test::HookChannelTestDriver<
+            lux::simulation::SimulationBroadcastRoute, std::int32_t>;
+        Channel* endpoint{};
         EndpointConnectionToken token;
         EEndpointMutationError disconnect_error{EEndpointMutationError::NONE};
         EEndpointMutationError prepare_error{EEndpointMutationError::NONE};
@@ -64,7 +67,8 @@ namespace
     }
 
     using TargetedEvent =
-        lux::simulation::EventPoint<lux::simulation::EntityTargetedRoute<lux::simulation::ecs::Entity>, std::int32_t>;
+        lux::simulation::test::HookChannelTestDriver<
+            lux::simulation::EntityTargetedRoute<lux::simulation::ecs::Entity>, std::int32_t>;
 
     struct TargetedProbe final
     {
@@ -122,7 +126,7 @@ int main()
     assert(hook_probe.prepare_error == EEndpointMutationError::DISPATCH_ACTIVE);
     assert(hook.disconnect(probe_connection.token) == EEndpointMutationError::NONE);
 
-    EventPoint<SimulationBroadcastRoute, std::int32_t> broadcast;
+    lux::simulation::test::HookChannelTestDriver<SimulationBroadcastRoute, std::int32_t> broadcast;
     static_assert(!std::is_move_constructible_v<decltype(broadcast)>);
     assert(broadcast.prepare(2U, 2U, 1U) == EEndpointMutationError::NONE);
 
@@ -138,9 +142,9 @@ int main()
         assert(writer.record(5));
         assert(broadcast.prepare(2U, 2U, 1U) == EEndpointMutationError::WRITER_ACTIVE);
         assert(broadcast.disconnect(broadcast_connection.token) == EEndpointMutationError::WRITER_ACTIVE);
-        assert(broadcast.drain() == 0U);
+        assert(broadcast.activate() == 0U);
     }
-    assert(broadcast.drain() == 2U);
+    assert(broadcast.activate() == 2U);
     assert((broadcast_probe.values == std::vector<std::int32_t>{4, 5}));
     assert(broadcast_probe.disconnect_error == EEndpointMutationError::DISPATCH_ACTIVE);
     assert(broadcast_probe.prepare_error == EEndpointMutationError::DISPATCH_ACTIVE);
@@ -161,7 +165,7 @@ int main()
         auto producer_zero = targeted.begin(0U);
         assert(producer_zero.record(old_entity, 1));
     }
-    assert(targeted.drain() == 2U);
+    assert(targeted.activate() == 2U);
     assert((exact_probe.values == std::vector<std::int32_t>{901}));
     assert((all_probe.values == std::vector<std::int32_t>{10901}));
 
@@ -185,7 +189,7 @@ int main()
         assert(producer_zero.record(old_entity, 3));
         assert(producer_zero.record(new_entity, 2));
     }
-    assert(targeted.drain() == 4U);
+    assert(targeted.activate() == 4U);
     assert((exact_probe.values == std::vector<std::int32_t>{901, 902}));
     assert((all_probe.values == std::vector<std::int32_t>{10901, 10903, 10902}));
     assert(removed_probe.values.empty());
@@ -199,7 +203,7 @@ int main()
 
     constexpr std::size_t kConcurrentProducerCount = 4U;
     constexpr std::size_t kConcurrentEpochCount = 256U;
-    EventPoint<SimulationBroadcastRoute, std::size_t> concurrent;
+    lux::simulation::test::HookChannelTestDriver<SimulationBroadcastRoute, std::size_t> concurrent;
     const auto concurrent_prepare = concurrent.prepare(kConcurrentProducerCount, kConcurrentEpochCount, 1U);
     assert(concurrent_prepare == EEndpointMutationError::NONE);
     std::size_t concurrent_callbacks{};
@@ -230,7 +234,7 @@ int main()
                             kConcurrentEpochCount,
                             1U
                         );
-                        if (prepare_error != EEndpointMutationError::WRITER_ACTIVE || concurrent.drain() != 0U)
+                        if (prepare_error != EEndpointMutationError::WRITER_ACTIVE || concurrent.activate() != 0U)
                             concurrent_failure.store(true, std::memory_order_relaxed);
                     }
                     mutation_checked.arrive_and_wait();
@@ -251,7 +255,7 @@ int main()
     assert(concurrent_executor);
     assert(concurrent_executor->execute(*concurrent_graph));
     assert(!concurrent_failure.load(std::memory_order_relaxed));
-    assert(concurrent.drain() == kConcurrentProducerCount * kConcurrentEpochCount);
+    assert(concurrent.activate() == kConcurrentProducerCount * kConcurrentEpochCount);
     assert(concurrent_callbacks == kConcurrentProducerCount * kConcurrentEpochCount);
     assert(concurrent.disconnect(concurrent_connection.token) == EEndpointMutationError::NONE);
     return 0;

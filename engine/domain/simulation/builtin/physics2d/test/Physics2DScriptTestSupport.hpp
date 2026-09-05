@@ -23,8 +23,12 @@ namespace lux::physics2d::test
     inline constexpr lux::simulation::EventPointId PulseEvent{0x502D1005U};
     inline constexpr lux::script::ScriptSymbolId FlowTickSymbol{0x502D2001U};
 
+    [[nodiscard]] inline std::shared_ptr<const lux::simulation::SimulationDescription> description();
+
     [[nodiscard]] inline lux::script::ScriptEventSourceDescription pulseEventSource()
     {
+        const auto simulation = description();
+        const auto hook = simulation->findHookPoint(ProbeSystemId, TickHook);
         return {
             "PhysicsBenchmark",
             "pulse",
@@ -39,7 +43,7 @@ namespace lux::physics2d::test
                 alignof(std::int32_t)
             },
             lux::semantic::typeId("lux.i32"),
-            1U
+            1U, hook.id().value, hook.contractHash(), hook.contractVersion()
         };
     }
 
@@ -48,7 +52,7 @@ namespace lux::physics2d::test
     public:
         inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<>();
         inline static constexpr std::array Hooks{
-            lux::simulation::makeHookPointSpec<void()>(TickHook, "physics-script-tick")};
+            lux::simulation::makeHookPointSpec<void()>(TickHook, "physics-script-tick", true, true)};
         inline static constexpr std::array Events{
             lux::simulation::makeEventPointSpec<std::int32_t>(
                 PulseEvent,
@@ -66,12 +70,15 @@ namespace lux::physics2d::test
         };
 
         lux::simulation::HookPoint<void()> tick;
-        lux::simulation::EventPoint<lux::simulation::SimulationBroadcastRoute, std::int32_t> pulse;
+        lux::simulation::HookChannel<lux::simulation::SimulationBroadcastRoute, std::int32_t> pulse;
         std::unique_ptr<lux::simulation::script::ScriptHookEndpoint<void()>> endpoint;
         std::unique_ptr<lux::simulation::script::ScriptEventEndpoint<
             lux::simulation::SimulationBroadcastRoute,
             std::int32_t
         >> event_endpoint;
+        bool emit_pulse{true};
+        std::size_t hook_calls{};
+        std::size_t emitted_pulses{};
     };
 
     inline ProbeSystem* ActiveProbe{};
@@ -89,7 +96,7 @@ namespace lux::physics2d::test
                 lux::simulation::ESimulationSystemBuildError::CONSTRUCTION_FAILURE,
                 description.instanceId()});
         }
-        if ((*system)->pulse.prepare(1U, 1U, 1U) != lux::simulation::EEndpointMutationError::NONE)
+        if ((*system)->pulse.prepare({1U, 1U}) != lux::simulation::EEndpointMutationError::NONE)
         {
             return lux::cxx::unexpected(lux::simulation::SimulationSystemBuildFailure{
                 lux::simulation::ESimulationSystemBuildError::CONSTRUCTION_FAILURE,
@@ -111,11 +118,23 @@ namespace lux::physics2d::test
             builder.publishScriptEvent(description.instanceId(), (*system)->event_endpoint->descriptor());
         if (!published_event)
             return lux::cxx::unexpected(published_event.error());
-        const auto task = builder.addSystemTask<ProbeSystem>(description.instanceId(), [](ProbeSystem&) noexcept {});
+        const auto task = builder.addSystemTask<ProbeSystem>(description.instanceId(), [](ProbeSystem& value) noexcept {
+            if (!value.emit_pulse)
+                return true;
+            auto writer = value.pulse.begin(0U);
+            const auto recorded = writer.record(1);
+            if (recorded)
+                ++value.emitted_pulses;
+            return recorded;
+        });
         if (!task)
             return lux::cxx::unexpected(task.error());
         ActiveProbe = *system;
-        return {};
+        return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), TickHook,
+            [](ProbeSystem& value) noexcept {
+                ++value.hook_calls;
+                static_cast<void>(value.tick.dispatch());
+            });
     }
 
     [[nodiscard]] inline lux::simulation::SimulationSystemRegistration probeRegistration() noexcept
@@ -141,10 +160,37 @@ namespace lux::physics2d::test
         const auto probe = builder.addSystem(ProbeSystemId, "physics-script-probe", ProbeSystem::Description);
         if (!physics || !probe)
             std::terminate();
+        using Point = lux::simulation::SimulationExecutionPoint;
+        for (auto producer : {PhysicsSystemId, ProbeSystemId})
+        {
+            if (!builder.addExecutionDependency(Point::task(producer), Point::hook(ProbeSystemId, TickHook)))
+                std::terminate();
+        }
         auto built = std::move(builder).build();
         if (!built)
             std::terminate();
         return std::make_shared<lux::simulation::SimulationDescription>(std::move(*built));
+    }
+
+    template <class Runtime>
+    [[nodiscard]] inline auto bindScriptRuntime(
+        lux::simulation::Simulation& simulation, Runtime& runtime
+    ) noexcept
+    {
+        return simulation.bindHookCallbacks({&runtime,
+            [](void* context, const lux::simulation::SimulationClockSnapshot&, bool stable) noexcept {
+                auto& runtime = *static_cast<Runtime*>(context);
+                if (stable)
+                    runtime.beginStableAdmission();
+                return static_cast<bool>(runtime.processLifecycle());
+            },
+            [](void* context, const lux::simulation::SimulationClockSnapshot&, bool stable) noexcept {
+                return !stable || static_cast<bool>(
+                    static_cast<Runtime*>(context)->executeStablePoint());
+            },
+            [](void* context, const lux::simulation::SimulationClockSnapshot&) noexcept {
+                return static_cast<bool>(static_cast<Runtime*>(context)->processLifecycle());
+            }});
     }
 
     [[nodiscard]] inline lux::cxx::expected<lux::simulation::Simulation, lux::simulation::SimulationSystemBuildFailure>

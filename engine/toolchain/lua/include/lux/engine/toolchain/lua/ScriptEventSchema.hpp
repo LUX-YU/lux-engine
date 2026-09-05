@@ -52,7 +52,7 @@ namespace lux::toolchain::lua
             std::ofstream stream(output, std::ios::binary | std::ios::trunc);
             if (!stream)
                 return lux::cxx::unexpected(EScriptEventSchemaWriteError::OUTPUT_FAILURE);
-            stream << "{\n  \"schema\": \"lux-script-event\",\n  \"version\": 1,\n  \"events\": [";
+            stream << "{\n  \"schema\": \"lux-script-event\",\n  \"version\": 2,\n  \"events\": [";
             for (std::size_t index{}; index < sources.size(); ++index)
             {
                 const auto& source = sources[index];
@@ -75,7 +75,10 @@ namespace lux::toolchain::lua
                        << "        \"alignment\": " << source.payload.alignment << "\n"
                        << "      },\n"
                        << "      \"payload_schema_hash\": " << source.payload_schema_hash << ",\n"
-                       << "      \"payload_schema_version\": " << source.payload_schema_version << "\n"
+                       << "      \"payload_schema_version\": " << source.payload_schema_version << ",\n"
+                       << "      \"delivery_hook_id\": " << source.delivery_hook_id << ",\n"
+                       << "      \"delivery_schema_hash\": " << source.delivery_schema_hash << ",\n"
+                       << "      \"delivery_schema_version\": " << source.delivery_schema_version << "\n"
                        << "    }";
             }
             stream << "\n  ]\n}\n";

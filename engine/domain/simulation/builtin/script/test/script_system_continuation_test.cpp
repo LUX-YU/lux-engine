@@ -1,3 +1,5 @@
+#include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
+using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include "TestAbility.hpp"
 #include "TestAbility.ability.generated.hpp"
@@ -234,6 +236,8 @@ namespace
         ScriptStepResult (*custom_step)(BackendState&, ScriptStepContext&) noexcept{};
         std::size_t provider_starts{};
         std::size_t expected_payload_size{};
+        void* resume_probe_context{};
+        void (*resume_probe)(void*) noexcept{};
     };
 
     int invokeSync(lux_script_call_frame* frame)
@@ -332,6 +336,8 @@ namespace
     {
         auto& continuation = *static_cast<ContinuationState*>(value);
         auto& owner = *continuation.owner;
+        if (owner.resume_probe != nullptr)
+            owner.resume_probe(owner.resume_probe_context);
         if (packet.state == EScriptAwaitableState::FAILED)
         {
             assert(packet.error.valid());
@@ -451,12 +457,13 @@ namespace
                     lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
                     {std::string{Traits::CanonicalName}, lux::semantic::typeId(Traits::CanonicalName),
                         Traits::AbiKind, Traits::Size, Traits::Alignment},
-                    lux::semantic::typeId(Traits::CanonicalName), 1U
+                    lux::semantic::typeId(Traits::CanonicalName), 1U,
+                    kHook.value, simulation.findHookPoint(kSystem, kHook).contractHash(), 1U
                 });
                 auto updated = lux::script::ScriptArtifact::create(std::move(source), {});
                 assert(updated);
                 artifact = std::move(*updated);
-                assert(large_event.prepare(1U, 2U, 1U) == EEndpointMutationError::NONE);
+                assert(large_event.prepare({1U, 2U}) == EEndpointMutationError::NONE);
                 large_bridge = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, LargePayload>>(
                     kSystem, kLargeEvent, large_event,
                     [](const LargePayload& payload, std::span<std::byte> bytes) noexcept {
@@ -582,7 +589,7 @@ namespace
         std::array<ScriptHookEndpointDescriptor, 3U> endpoints;
         BackendState backend_state;
         ScriptBackendDescriptor backend;
-        EventPoint<SimulationBroadcastRoute, LargePayload> large_event;
+        HookChannel<SimulationBroadcastRoute, LargePayload> large_event;
         std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, LargePayload>> large_bridge;
         ScriptEventEndpointDescriptor large_endpoint;
     };
@@ -704,6 +711,8 @@ namespace
         assert(eager_system.activeContinuationCount() == 1U);
         assert(eager.hook.dispatch() == 1U);
         assert(eager.backend_state.step_calls == 1U);
+        assert(eager_system.executeStablePoint());
+        assert(eager.backend_state.resume_calls == 1U);
         assert(eager_system.executeStablePoint());
         assert(eager.backend_state.resume_calls == 2U);
         assert(eager.backend_state.max_resume_depth == 1U);
@@ -1110,6 +1119,30 @@ void testExternalAdmission()
 
 int main()
 {
+    {
+        Harness harness{false, 1U, true};
+        harness.backend_state.enable_step = true;
+        auto created = harness.create(limits(), {});
+        assert(created && created->prepare());
+        struct ActiveRetirement final { Harness* harness; ScriptSystem* system; } active{&harness, &*created};
+        harness.backend_state.resume_probe_context = &active;
+        harness.backend_state.resume_probe = [](void* context) noexcept {
+            auto& active = *static_cast<ActiveRetirement*>(context);
+            active.harness->registry.destroy(active.harness->entity);
+            const auto lifecycle = active.system->processLifecycle();
+            assert(!lifecycle && lifecycle.error() == EScriptSystemError::ENDPOINT_BUSY);
+            assert(active.harness->backend_state.continuation_destroys == 0U);
+            assert(active.harness->backend_state.destroys == 0U);
+        };
+        assert(harness.hook.dispatch() == 1U);
+        assert(harness.backend_state.completions.front().ready());
+        assert(created->executeStablePoint());
+        assert(harness.backend_state.resume_calls == 1U);
+        static_cast<void>(created->processLifecycle());
+        assert(harness.backend_state.continuation_destroys == 1U);
+        assert(harness.backend_state.destroys == 1U);
+        assert(created->shutdown());
+    }
     testExternalAdmission<32U>();
     testExternalAdmission<33U>();
     testExternalAdmission<64U>();
@@ -1130,7 +1163,7 @@ int main()
             auto writer = harness.large_event.begin(0U);
             assert(writer.record(LargePayload{}));
         }
-        assert(harness.large_event.drain() == 1U);
+        assert(deliverEndpoint(harness.large_bridge) == 1U);
         assert(harness.backend_state.resume_calls == 0U);
         assert(created->executeStablePoint());
         assert(harness.backend_state.resume_calls == 1U);

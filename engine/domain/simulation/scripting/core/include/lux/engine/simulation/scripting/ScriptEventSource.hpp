@@ -102,7 +102,10 @@ namespace lux::simulation::script
                     static_cast<std::uint32_t>(owned.alignment)
                 },
                 event.payloadSchemaHash(),
-                event.payloadSchemaVersion()
+                event.payloadSchemaVersion(),
+                event.dispatchHook().id().value,
+                event.dispatchHook().contractHash(),
+                event.dispatchHook().contractVersion()
             };
         }
         catch (const std::bad_alloc&)

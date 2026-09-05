@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
+#include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
@@ -15,7 +16,7 @@
 #include <cmath>
 #include <exception>
 #include <limits>
-#include <mutex>
+
 #include <new>
 #include <optional>
 #include <type_traits>
@@ -221,6 +222,8 @@ namespace lux::simulation::script
             ScriptInstanceScope scope;
             ScriptBehavior behavior;
             ScriptInstanceId instance;
+            ScriptInstanceId retiring_instance;
+            ScriptContinuationId retiring_continuations;
             std::vector<PreparedScriptApiCapability> capabilities;
             std::vector<lux::script::ScriptEventSourceDescription> event_sources;
             ResolvedScriptArtifact artifact;
@@ -394,7 +397,7 @@ namespace lux::simulation::script
                     cells[index].sequence.store(index, std::memory_order_relaxed);
             }
 
-            void open(ScriptAwaitableId awaitable, const std::optional<lux::rdesc::ScriptValueType>& type) noexcept
+            void open(ScriptAwaitableId awaitable, const std::optional<PreparedResumeType>& type) noexcept
             {
                 if (!awaitable.valid() || awaitable.slot > ticket_capacity)
                     std::terminate();
@@ -557,7 +560,7 @@ namespace lux::simulation::script
             ScriptInstanceId instance;
             ScriptContinuationId continuation;
             EScriptAwaitableState state{EScriptAwaitableState::PENDING};
-            std::optional<lux::rdesc::ScriptValueType> result_type;
+            std::optional<PreparedResumeType> result_type;
             ScriptOwnedResumeValue value;
             ScriptStepError error;
             bool resume_enqueued{};
@@ -920,7 +923,10 @@ namespace lux::simulation::script
         std::vector<std::uint32_t> lifecycle_initialized;
         std::vector<RetirementRecord> lifecycle_retirements;
         DelayProvider delay_provider{this};
-        std::mutex simulation_delay_mutex;
+        std::uint64_t last_stable_step{};
+        std::size_t external_admission_frontier{};
+        std::size_t external_admission_remaining{};
+        bool external_admission_prepared{};
         NextStepWaitStorage next_step_waits;
         NextStepWaitId next_step_first;
         NextStepWaitId next_step_last;
@@ -933,6 +939,14 @@ namespace lux::simulation::script
         std::size_t instance_cleanup_awaitable_visits{};
         std::size_t instance_cleanup_continuation_visits{};
         std::size_t endpoint_dispatch_depth{};
+        std::size_t user_invocation_depth{};
+
+        struct UserInvocationScope final
+        {
+            explicit UserInvocationScope(State& state) noexcept : owner(state) { ++owner.user_invocation_depth; }
+            ~UserInvocationScope() noexcept { --owner.user_invocation_depth; }
+            State& owner;
+        };
         entt::connection constructed;
         entt::connection updated;
         entt::connection destroyed;
@@ -1155,8 +1169,6 @@ namespace lux::simulation::script
                     static_cast<std::int32_t>(EScriptDelayStatus::DURATION_OVERFLOW)
                 });
             }
-
-            std::lock_guard lock{simulation_delay_mutex};
             if (simulation_delays.size() >= limits.simulation_delay_capacity)
             {
                 std::erase_if(simulation_delays, [](const SimulationDelayWait& wait) noexcept {
@@ -1236,7 +1248,6 @@ namespace lux::simulation::script
             {
                 std::optional<SimulationDelayWait> ready;
                 {
-                    std::lock_guard lock{simulation_delay_mutex};
                     if (simulation_delays.empty())
                         return true;
                     const auto& next = simulation_delays.front();
@@ -1260,7 +1271,6 @@ namespace lux::simulation::script
                     continue;
                 case lux::script::EScriptAbilityCompletionError::BACKPRESSURE:
                 {
-                    std::lock_guard lock{simulation_delay_mutex};
                     simulation_delays.push_back(std::move(*ready));
                     std::push_heap(simulation_delays.begin(), simulation_delays.end(), SimulationDelayLater{});
                     return true;
@@ -1287,7 +1297,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> createAwaitable(
             ScriptInstanceId instance,
-            std::optional<lux::rdesc::ScriptValueType> result_type,
+            std::optional<PreparedResumeType> result_type,
             bool external_completion = true
         ) noexcept
         {
@@ -1295,8 +1305,7 @@ namespace lux::simulation::script
             if (owner == nullptr)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
             const bool is_invalid_result_type = result_type &&
-                (!lux::rdesc::detail::validScriptValueType(*result_type) ||
-                    result_type->pass != lux::semantic::EValuePass::VALUE ||
+                (!result_type->valid() ||
                     result_type->size > limits.max_resume_payload_bytes);
             if (is_invalid_result_type)
             {
@@ -1357,7 +1366,7 @@ namespace lux::simulation::script
         [[nodiscard]] static lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError>
         createAwaitableErased(void* context,
                               ScriptInstanceId instance,
-                              std::optional<lux::rdesc::ScriptValueType> result_type) noexcept
+                              std::optional<PreparedResumeType> result_type) noexcept
         {
             return static_cast<State*>(context)->createAwaitable(instance, std::move(result_type));
         }
@@ -1485,8 +1494,13 @@ namespace lux::simulation::script
 
         [[nodiscard]] bool drainExternalCompletions() noexcept
         {
-            while (const auto* external = ingress->completions.front())
+            while (ingress->completions.dequeue_position < external_admission_frontier &&
+                external_admission_remaining != 0U)
             {
+                const auto* external = ingress->completions.front();
+                if (external == nullptr)
+                    break;
+                --external_admission_remaining;
                 auto* record = awaitables.find(awaitableKey(external->awaitable));
                 const bool is_stale = record == nullptr || record->instance != external->instance;
                 if (is_stale)
@@ -1686,18 +1700,12 @@ namespace lux::simulation::script
             if (event_wait_sequence == std::numeric_limits<std::uint64_t>::max())
                 return lux::cxx::unexpected(EScriptEventWaitError::SEQUENCE_EXHAUSTED);
 
-            std::optional<lux::rdesc::ScriptValueType> payload_type;
+            std::optional<PreparedResumeType> payload_type;
             ScriptOwnedResumeValue payload;
             try
             {
-                payload_type.emplace(lux::rdesc::ScriptValueType{
-                    std::string(projection.owned_layout.canonical_name),
-                    projection.owned_layout.type_id,
-                    lux::semantic::EValuePass::VALUE,
-                    projection.owned_layout.abi_kind,
-                    projection.owned_layout.size,
-                    projection.owned_layout.alignment
-                });
+                payload_type.emplace(projection.owned_layout.type_id, projection.owned_layout.abi_kind,
+                    projection.owned_layout.size, projection.owned_layout.alignment);
                 payload.type = *payload_type;
                 if (!payload.bytes.resize(projection.owned_layout.size, projection.owned_layout.alignment))
                     return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
@@ -1971,7 +1979,7 @@ namespace lux::simulation::script
             }
         }
 
-        void invalidateInstance(RuntimeMount& mount) noexcept
+        void invalidateAdmission(RuntimeMount& mount) noexcept
         {
             const auto instance = mount.instance;
             if (!instance.valid())
@@ -1983,10 +1991,22 @@ namespace lux::simulation::script
             const auto first_continuation = record->first_continuation;
             const auto first_event_waiter = record->first_event_waiter;
             static_cast<void>(instances.erase(instanceKey(instance)));
+            mount.retiring_instance = instance;
+            mount.retiring_continuations = first_continuation;
+            mount.instance = {};
             cancelEventWaiters(instance, first_event_waiter);
             cancelAwaitables(instance, first_awaitable);
-            destroyContinuations(instance, first_continuation);
-            mount.instance = {};
+        }
+
+        void invalidateInstance(RuntimeMount& mount) noexcept
+        {
+            invalidateAdmission(mount);
+            if (mount.retiring_instance.valid())
+            {
+                destroyContinuations(mount.retiring_instance, mount.retiring_continuations);
+                mount.retiring_instance = {};
+                mount.retiring_continuations = {};
+            }
         }
 
         void faultInvocation(RuntimeMount& mount,
@@ -1997,6 +2017,7 @@ namespace lux::simulation::script
             mount.state = EMountState::FAULTED;
             mount.pending_end_reason = EScriptEndPlayReason::FAULTED;
             deactivate(mount);
+            invalidateAdmission(mount);
             if (endpoint_dispatch_depth == 0U)
                 removeMountBindings(mount);
             queueRetirement(static_cast<std::uint32_t>(std::addressof(mount) - mounts.data()));
@@ -2107,6 +2128,12 @@ namespace lux::simulation::script
                 ? lux::script::EScriptEventRoute::SIMULATION_BROADCAST
                 : lux::script::EScriptEventRoute::ENTITY_TARGETED;
             const auto& owned = endpoint.payload_projection.owned_layout;
+            const auto delivery = described.dispatchHook();
+            const bool is_delivery_mismatch = requirement.delivery_hook_id != delivery.id().value ||
+                requirement.delivery_schema_hash != delivery.contractHash() ||
+                requirement.delivery_schema_version != delivery.contractVersion();
+            if (is_delivery_mismatch)
+                return false;
             return endpoint.system.value == requirement.system_id &&
                 endpoint.event.value == requirement.event_id && expected_route == requirement.route &&
                 endpoint.route == described.route() && described.payloadType() == requirement.payload.type_id &&
@@ -2293,12 +2320,18 @@ namespace lux::simulation::script
                     &State::discardAwaitableErased,
                     &State::waitEventErased
                 };
-                const auto result = method.backend.resumable.invoke(
-                    method.backend.resumable.context,
-                    frame,
-                    context,
-                    continuation
-                );
+                const auto result = [&]() noexcept {
+                    UserInvocationScope scope(*this);
+                    return method.backend.resumable.invoke(
+                        method.backend.resumable.context, frame, context, continuation);
+                }();
+                if (mount.state != EMountState::ACTIVE || stopping)
+                {
+                    if (continuation)
+                        continuation.destroy(continuation.state);
+                    discardAwaitable(context.instance, result.waiting_on);
+                    return;
+                }
                 if (result.state == EScriptStepState::COMPLETED && result.valid())
                 {
                     if (continuation)
@@ -2320,7 +2353,10 @@ namespace lux::simulation::script
             }
 
             frame.user_context = method.backend.synchronous.context;
-            const auto status = method.backend.synchronous.invoke(&frame);
+            const auto status = [&]() noexcept {
+                UserInvocationScope scope(*this);
+                return method.backend.synchronous.invoke(&frame);
+            }();
             if (status == 0)
                 return;
             faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
@@ -2623,6 +2659,7 @@ namespace lux::simulation::script
                 frame.arg_count = 1U;
             }
             frame.user_context = method.backend.synchronous.context;
+            UserInvocationScope scope(*this);
             return method.backend.synchronous.invoke(&frame);
         }
 
@@ -2920,10 +2957,11 @@ namespace lux::simulation::script
                                                              mount.instance,
                                                              mount.capabilities,
                                                              mount.event_sources};
-            const auto created = mount.backend->createInstance(mount.backend->context,
-                                                               create_context,
-                                                               *mount.artifact.artifact,
-                                                               mount.backend_instance);
+            const auto created = [&]() noexcept {
+                UserInvocationScope scope(*this);
+                return mount.backend->createInstance(mount.backend->context, create_context,
+                    *mount.artifact.artifact, mount.backend_instance);
+            }();
             if (created != EScriptBackendResult::SUCCESS)
             {
                 const auto error = backendError(created);
@@ -3046,6 +3084,7 @@ namespace lux::simulation::script
                 mount.state = EMountState::RETIRING;
                 mount.pending_end_reason = EScriptEndPlayReason::ENTITY_DESTROYED;
                 deactivate(mount);
+                invalidateAdmission(mount);
                 if (endpoint_dispatch_depth == 0U)
                     removeMountBindings(mount);
             }
@@ -3140,6 +3179,8 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> resumeOne(ResumeRecord resume) noexcept
         {
+            if (stopping)
+                return {};
             auto* instance = instances.find(instanceKey(resume.instance));
             auto* continuation = continuations.find(continuationKey(resume.continuation));
             if (instance == nullptr || continuation == nullptr || continuation->instance != resume.instance ||
@@ -3171,7 +3212,10 @@ namespace lux::simulation::script
                 &State::discardAwaitableErased,
                 &State::waitEventErased
             };
-            const auto result = continuation->backend.resume(continuation->backend.state, context, packet);
+            const auto result = [&]() noexcept {
+                UserInvocationScope scope(*this);
+                return continuation->backend.resume(continuation->backend.state, context, packet);
+            }();
 
             continuation = continuations.find(continuationKey(resume.continuation));
             instance = instances.find(instanceKey(resume.instance));
@@ -3406,7 +3450,8 @@ namespace lux::simulation::script
                 const bool is_invalid_identity = !hooks[index].system.valid() || !hooks[index].hook.valid();
                 const bool is_invalid_functions = hooks[index].connect == nullptr || hooks[index].disconnect == nullptr;
                 const bool is_invalid_signature =
-                    !described || described.parameterCount() != hooks[index].signature.parameters.size() ||
+                    !described || !described.scriptCapable() ||
+                    described.parameterCount() != hooks[index].signature.parameters.size() ||
                     !hooks[index].signature.returns.empty();
                 if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
                     return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
@@ -3594,7 +3639,7 @@ namespace lux::simulation::script
         return {};
     }
 
-    lux::cxx::expected<void, EScriptSystemError> ScriptSystem::executeStablePoint() noexcept
+    lux::cxx::expected<void, EScriptSystemError> ScriptSystem::processLifecycle() noexcept
     {
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
@@ -3603,7 +3648,7 @@ namespace lux::simulation::script
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->stopping)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-        if (state_->endpoint_dispatch_depth != 0U)
+        if (state_->endpoint_dispatch_depth != 0U || state_->user_invocation_depth != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->prepare_state == EPrepareState::ROLLBACK_PENDING)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
@@ -3720,6 +3765,29 @@ namespace lux::simulation::script
             }
         }
 
+        return first_error ? lux::cxx::expected<void, EScriptSystemError>{lux::cxx::unexpected(*first_error)}
+                           : lux::cxx::expected<void, EScriptSystemError>{};
+    }
+
+    lux::cxx::expected<void, EScriptSystemError> ScriptSystem::executeStablePoint() noexcept
+    {
+        if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
+            return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
+        State::ExecutionOwnerScope execution{*state_};
+        if (!execution || state_->endpoint_dispatch_depth != 0U || state_->user_invocation_depth != 0U)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        const auto step = state_->clock->snapshot().step_index;
+        // Step zero is the standalone, not-yet-executing test/preparation boundary.
+        if (step != 0U && step == state_->last_stable_step)
+            return {};
+        state_->last_stable_step = step;
+        if (!state_->external_admission_prepared)
+            beginStableAdmission();
+        state_->external_admission_prepared = false;
+        const auto lifecycle = processLifecycle();
+        std::optional<EScriptSystemError> first_error;
+        if (!lifecycle)
+            first_error = lifecycle.error();
         if (!state_->promoteNextStepWaits() && !first_error)
             first_error = EScriptSystemError::INVOCATION_FAILURE;
         if (!state_->promoteSimulationDelays() && !first_error)
@@ -3735,6 +3803,16 @@ namespace lux::simulation::script
                            : lux::cxx::expected<void, EScriptSystemError>{};
     }
 
+    void ScriptSystem::beginStableAdmission() noexcept
+    {
+        if (!state_ || state_->stopping)
+            return;
+        state_->external_admission_frontier =
+            state_->ingress->completions.enqueue_position.load(std::memory_order_acquire);
+        state_->external_admission_remaining = state_->ingress->completions.capacity;
+        state_->external_admission_prepared = true;
+    }
+
     lux::cxx::expected<void, EScriptSystemError> ScriptSystem::shutdown() noexcept
     {
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
@@ -3745,11 +3823,12 @@ namespace lux::simulation::script
 
         state_->stopping = true;
         state_->ingress->completions.stop();
+        if (state_->user_invocation_depth != 0U)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         state_->next_step_waits.clear();
         state_->next_step_first = {};
         state_->next_step_last = {};
         {
-            std::lock_guard lock{state_->simulation_delay_mutex};
             state_->simulation_delays.clear();
         }
 
@@ -3836,7 +3915,6 @@ namespace lux::simulation::script
             state_->ingress->completions.capacity_failures.load(std::memory_order_relaxed);
         result.next_step_waits = state_->next_step_waits.size();
         {
-            std::lock_guard lock{state_->simulation_delay_mutex};
             result.simulation_delay_waits = state_->simulation_delays.size();
         }
         return result;

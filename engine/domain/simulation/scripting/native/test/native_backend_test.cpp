@@ -126,7 +126,7 @@ namespace
         create(
             void* opaque,
             lux::simulation::script::ScriptInstanceId instance,
-            std::optional<lux::rdesc::ScriptValueType> result
+            std::optional<lux::simulation::script::PreparedResumeType> result
         ) noexcept
         {
             auto& self = *static_cast<AwaitableHarness*>(opaque);

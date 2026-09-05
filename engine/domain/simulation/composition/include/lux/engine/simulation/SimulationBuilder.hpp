@@ -134,7 +134,8 @@ namespace lux::simulation
 
         template <SimulationSystem Type, class Callable>
         [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure>
-        addSystemTask(lux::system::SystemInstanceId instance, Callable&& callable) noexcept
+        addSystemTask(lux::system::SystemInstanceId instance, Callable&& callable,
+            SimulationTaskId stage = PrimarySimulationTask) noexcept
         {
             using Function = std::decay_t<Callable>;
             static_assert(std::is_move_constructible_v<Function>);
@@ -167,7 +168,7 @@ namespace lux::simulation
                 return addPrimaryTask(
                     instance,
                     ecs::systemTaskResources<Type>(),
-                    std::move(task_callable)
+                    std::move(task_callable), stage
                 );
             }
             catch (const std::bad_alloc&)
@@ -191,7 +192,8 @@ namespace lux::simulation
                     ESimulationSystemBuildError::INVALID_DESCRIPTION, instance});
             try
             {
-                return addExecutionTask(SimulationExecutionPoint::hook(instance, hook), {},
+                return addExecutionTask(
+                    SimulationExecutionPoint::hook(instance, hook), ecs::systemTaskResources<Type>(),
                     task::TaskCallable([object, fn = Function(std::forward<Callable>(callable))]() noexcept {
                         fn(*object);
                     }), task::ETaskAffinity::CALLER_THREAD);
@@ -207,7 +209,8 @@ namespace lux::simulation
         [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> addSystemCommandTask(
             lux::system::SystemInstanceId instance,
             ecs::EcsCommandProducerCapacity capacity,
-            Callable&& callable
+            Callable&& callable,
+            SimulationTaskId stage = PrimarySimulationTask
         ) noexcept
         {
             using Function = std::decay_t<Callable>;
@@ -252,7 +255,7 @@ namespace lux::simulation
                 return addPrimaryTask(
                     instance,
                     ecs::systemTaskResources<Type>(),
-                    std::move(task_callable)
+                    std::move(task_callable), stage
                 );
             }
             catch (const std::bad_alloc&)
@@ -319,7 +322,8 @@ namespace lux::simulation
         [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> addPrimaryTask(
             lux::system::SystemInstanceId instance,
             task::TaskResources resources,
-            task::TaskCallable callable
+            task::TaskCallable callable,
+            SimulationTaskId stage
         ) noexcept;
 
         Impl* impl_{};

@@ -423,8 +423,6 @@ namespace
                 throw std::runtime_error("Physics2D benchmark composition failed");
             simulation.emplace(std::move(*created_simulation));
             executor.emplace(std::move(*created_executor));
-            if (!simulation->execute(*executor, SimulationDuration{}))
-                throw std::runtime_error("Physics2D benchmark Simulation initialization failed");
             physics = static_cast<Physics2DSystem*>(simulation->scriptApiCapabilities().front().context);
             if (physics == nullptr)
                 throw std::runtime_error("Physics2D benchmark provider is absent");
@@ -555,10 +553,15 @@ namespace
                     "/" + std::to_string(backend_status)
                 );
             }
+            auto connection = bindScriptRuntime(*simulation, *system);
+            if (!connection)
+                throw std::runtime_error("Physics2D benchmark Hook binding failed");
+            hook_connection = std::move(*connection);
         }
 
         ~MixedHarness()
         {
+            hook_connection.reset();
             if (system)
                 static_cast<void>(system->shutdown());
         }
@@ -567,20 +570,8 @@ namespace
         {
             const auto simulated = simulation->execute(*executor, std::chrono::milliseconds{16});
             const auto active = system->activeInstanceCount();
-            const auto dispatched = ActiveProbe != nullptr ? ActiveProbe->tick.dispatch() : 0U;
-            bool event_recorded{};
-            std::size_t event_count{};
-            if (ActiveProbe != nullptr)
-            {
-                {
-                    auto writer = ActiveProbe->pulse.begin(0U);
-                    event_recorded = writer.record(1);
-                }
-                event_count = ActiveProbe->pulse.drain();
-            }
-            const auto stable = system->executeStablePoint();
-            if (!simulated || ActiveProbe == nullptr || dispatched != 1U || !event_recorded || event_count != 1U ||
-                !stable || !system->failures().empty())
+            const auto dispatched = ActiveProbe != nullptr ? ActiveProbe->hook_calls : 0U;
+            if (!simulated || ActiveProbe == nullptr || dispatched == 0U || !system->failures().empty())
             {
                 std::fprintf(
                     stderr,
@@ -589,7 +580,7 @@ namespace
                     ActiveProbe != nullptr ? 1 : 0,
                     dispatched,
                     active,
-                    stable ? 1 : 0);
+                    simulated ? 1 : 0);
                 if (!system->failures().empty())
                 {
                     const auto& failure = system->failures().back();
@@ -608,6 +599,7 @@ namespace
         std::shared_ptr<const lux::script::ScriptArtifactAsset> lua_asset;
         CppFixture cpp;
         std::optional<Simulation> simulation;
+        SimulationHookConnection hook_connection;
         std::optional<task::TaskExecutor> executor;
         Physics2DSystem* physics{};
         std::optional<lux::script::NativeModule> flow_module;

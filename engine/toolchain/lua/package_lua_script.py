@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 
 MAGIC = 0x4153584C
-WIRE_VERSION = 9
-SCHEMA_VERSION = 11
+WIRE_VERSION = 10
+SCHEMA_VERSION = 12
 LUA_SOURCE_KIND = 1
 SIMULATION_SCOPE = "SIMULATION"
 ENTITY_SCOPE = "ENTITY"
@@ -186,6 +186,9 @@ class EventSource:
     payload: Semantic
     payload_schema_hash: int
     payload_schema_version: int
+    delivery_hook_id: int
+    delivery_schema_hash: int
+    delivery_schema_version: int
 
 
 @dataclass(frozen=True)
@@ -269,7 +272,7 @@ def load_event_schemas(paths: list[pathlib.Path]) -> dict[tuple[str, str], Event
     routes = {"simulation_broadcast": 0, "entity_targeted": 1}
     for path in paths:
         document = json.loads(path.read_text(encoding="utf-8"))
-        if document.get("schema") != "lux-script-event" or document.get("version") != 1:
+        if document.get("schema") != "lux-script-event" or document.get("version") != 2:
             raise ValueError(f"unsupported Event schema manifest '{path}'")
         events = document.get("events")
         if not isinstance(events, list):
@@ -290,6 +293,9 @@ def load_event_schemas(paths: list[pathlib.Path]) -> dict[tuple[str, str], Event
             alignment = int(payload_value.get("alignment", 0))
             schema_hash = int(value.get("payload_schema_hash", 0))
             schema_version = int(value.get("payload_schema_version", 0))
+            delivery_hook = int(value.get("delivery_hook_id", 0))
+            delivery_hash = int(value.get("delivery_schema_hash", 0))
+            delivery_version = int(value.get("delivery_schema_version", 0))
             is_invalid = (
                 not isinstance(system_name, str)
                 or not code_identifier(system_name)
@@ -314,6 +320,9 @@ def load_event_schemas(paths: list[pathlib.Path]) -> dict[tuple[str, str], Event
                 or schema_hash > 0xFFFFFFFFFFFFFFFF
                 or schema_version <= 0
                 or schema_version > 0xFFFFFFFF
+                or not 0 < delivery_hook <= 0xFFFFFFFFFFFFFFFF
+                or not 0 < delivery_hash <= 0xFFFFFFFFFFFFFFFF
+                or not 0 < delivery_version <= 0xFFFFFFFF
             )
             if is_invalid:
                 raise ValueError(f"invalid Event schema in '{path}'")
@@ -327,6 +336,9 @@ def load_event_schemas(paths: list[pathlib.Path]) -> dict[tuple[str, str], Event
                 payload,
                 schema_hash,
                 schema_version,
+                delivery_hook,
+                delivery_hash,
+                delivery_version,
             )
             source_key = (system_name, event_name)
             identity_key = (system_id, event_id)
@@ -618,6 +630,9 @@ def encode(
         writer.u32(source.payload.alignment)
         writer.u64(source.payload_schema_hash)
         writer.u32(source.payload_schema_version)
+        writer.u64(source.delivery_hook_id)
+        writer.u64(source.delivery_schema_hash)
+        writer.u32(source.delivery_schema_version)
     writer.string("lux-lua-static")
     writer.string("2")
     writer.string(source_id)

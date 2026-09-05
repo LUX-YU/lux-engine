@@ -72,7 +72,7 @@ namespace
     struct ProbeSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "lua-tick")};
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "lua-tick", true, true)};
         inline static constexpr SimulationSystemDescription Description{
             .type = {.canonical_name = "lux.test.scene-lua.probe", .version = 1U},
             .hooks = Hooks
@@ -431,8 +431,8 @@ int main(int argc, char** argv)
     assert((*scene)->executeStablePoint());
     assert(runtime->scriptSystem().activeContinuationCount() == 1U);
     assert(runtime->scriptSystem().failures().empty());
-    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
 #if defined(LUX_LUA_PORTABILITY_ARTIFACT)
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     assert((*scene)->executeStablePoint());
     assert(runtime->scriptSystem().activeContinuationCount() == 1U);
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
@@ -447,8 +447,9 @@ int main(int argc, char** argv)
     assert(g_probe_system->async_starts == 1U);
     assert(g_probe_system->value == 1234);
 #else
+    assert(!(*scene)->simulation().execute(*executor, SimulationDuration{1}));
     const auto stable = (*scene)->executeStablePoint();
-    assert(!stable);
+    assert(stable);
     assert(runtime->scriptSystem().activeContinuationCount() == 0U);
     assert(!runtime->scriptSystem().failures().empty());
     assert(runtime->scriptSystem().failures().back().error == EScriptSystemError::INVOCATION_FAILURE);

@@ -102,13 +102,13 @@ namespace lux::simulation
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addDependency(
+        addConstructionDependency(
             lux::system::SystemInstanceId before_system,
             lux::system::SystemInstanceId after_system
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseDependency(
+        eraseConstructionDependency(
             lux::system::SystemInstanceId before_system,
             lux::system::SystemInstanceId after_system
         ) noexcept;

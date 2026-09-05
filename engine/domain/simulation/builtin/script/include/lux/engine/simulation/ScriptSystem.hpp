@@ -170,6 +170,8 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         executeStablePoint() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> processLifecycle() noexcept;
+        void beginStableAdmission() noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         shutdown() noexcept;

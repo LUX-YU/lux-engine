@@ -62,6 +62,7 @@ namespace lux::simulation
         [[nodiscard]] std::size_t capabilityCount() const noexcept;
         [[nodiscard]] std::string_view capabilityAt(std::size_t index) const noexcept;
         [[nodiscard]] bool hasCapability(std::string_view name) const noexcept;
+        [[nodiscard]] std::span<const SimulationTaskDescription> tasks() const noexcept;
         [[nodiscard]] std::size_t hookPointCount() const noexcept;
         [[nodiscard]] SimulationHookPointView hookPointAt(
             std::size_t index
@@ -101,6 +102,10 @@ namespace lux::simulation
         [[nodiscard]] HookPointId id() const noexcept;
         [[nodiscard]] std::string_view name() const noexcept;
         [[nodiscard]] std::size_t parameterCount() const noexcept;
+        [[nodiscard]] bool scriptCapable() const noexcept;
+        [[nodiscard]] bool stableResume() const noexcept;
+        [[nodiscard]] std::uint32_t contractVersion() const noexcept;
+        [[nodiscard]] std::uint64_t contractHash() const noexcept;
         [[nodiscard]] lux::semantic::Type parameterAt(
             std::size_t index
         ) const noexcept;
@@ -213,8 +218,8 @@ namespace lux::simulation
             std::string_view system_instance,
             std::string_view event_name
         ) const noexcept;
-        [[nodiscard]] std::size_t dependencyCount() const noexcept;
-        [[nodiscard]] SimulationDependencyView dependencyAt(
+        [[nodiscard]] std::size_t constructionDependencyCount() const noexcept;
+        [[nodiscard]] SimulationDependencyView constructionDependencyAt(
             std::size_t index
         ) const noexcept;
         [[nodiscard]] std::span<const SimulationExecutionDependency> executionDependencies() const noexcept
@@ -244,6 +249,9 @@ namespace lux::simulation
             HookPointId id;
             std::string name;
             std::vector<SemanticTypeRecord> parameters;
+            bool script_capable{true};
+            bool stable_resume{};
+            std::uint32_t contract_version{1U};
         };
 
         struct EventRecord final
@@ -268,6 +276,7 @@ namespace lux::simulation
             std::uint32_t configuration_schema_version{};
             std::vector<std::string> capabilities;
             std::vector<HookRecord> hooks;
+            std::vector<SimulationTaskDescription> tasks;
             std::vector<EventRecord> events;
             std::unordered_map<std::uint64_t, std::size_t> hook_ordinals;
             std::unordered_map<std::uint64_t, std::size_t> event_ordinals;

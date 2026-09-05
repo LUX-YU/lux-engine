@@ -172,8 +172,8 @@ int main()
     auto simulation = std::move(simulation_builder).build();
     assert(simulation);
 
-    EventPoint<SimulationBroadcastRoute, std::int32_t> start;
-    EventPoint<SimulationBroadcastRoute, std::int32_t> ready;
+    HookChannel<SimulationBroadcastRoute, std::int32_t> start;
+    HookChannel<SimulationBroadcastRoute, std::int32_t> ready;
     assert(start.prepare(1U, 1U, 1U) == EEndpointMutationError::NONE);
     assert(ready.prepare(1U, 1U, 1U) == EEndpointMutationError::NONE);
     ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> start_bridge{kSystem, kStart, start};

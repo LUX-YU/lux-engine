@@ -31,7 +31,7 @@ component_add_cmake_scripts(
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux_package_lua_script.cmake)
 
 add_executable(lua_event_schema_writer test/lua_event_schema_writer.cpp)
-target_link_libraries(lua_event_schema_writer PRIVATE lua_script_packager)
+target_link_libraries(lua_event_schema_writer PRIVATE lua_script_packager lux::engine::simulation::description)
 lux_classify_target(
     TARGET  lua_event_schema_writer
     LAYER   TOOLCHAIN

@@ -1,5 +1,6 @@
+#include "../../../system/test/HookChannelTestDriver.hpp"
 #include <lux/engine/function/script/native/NativeModule.hpp>
-#include <lux/engine/simulation/EventPoint.hpp>
+#include <lux/engine/simulation/HookChannel.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
@@ -276,7 +277,7 @@ int main()
         lua_subscriber.method
     ) == EScriptBackendResult::SUCCESS);
 
-    EventPoint<EntityTargetedRoute<ecs::Entity>, CollisionEvent> endpoint;
+    lux::simulation::test::HookChannelTestDriver<EntityTargetedRoute<ecs::Entity>, CollisionEvent> endpoint;
     assert(endpoint.prepare(1U, 2U, 2U) == EEndpointMutationError::NONE);
     const auto native_connection = endpoint.connect(
         entity,
@@ -299,7 +300,7 @@ int main()
     producer.join();
     assert(native_subscriber.callbacks == 0U);
     assert(lua_subscriber.callbacks == 0U);
-    assert(endpoint.drain() == 2U);
+    assert(endpoint.activate() == 2U);
     assert(native_subscriber.callbacks == 1U);
     assert(lua_subscriber.callbacks == 1U);
 
@@ -309,7 +310,7 @@ int main()
     auto reused_writer = endpoint.begin(0U);
     assert(reused_writer.record(reused, CollisionEvent{42, 3.5F}));
     reused_writer = {};
-    assert(endpoint.drain() == 0U);
+    assert(endpoint.activate() == 0U);
     assert(endpoint.disconnect(native_connection.token) ==
         EEndpointMutationError::NONE);
     assert(endpoint.disconnect(lua_connection.token) ==

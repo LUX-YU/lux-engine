@@ -59,7 +59,7 @@ int main()
         lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
         {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
         lux::semantic::typeId("lux.i32"),
-        1U
+        1U, 53U, 54U, 1U
     };
     const auto backend = lux::simulation::script::LuaScriptBackend::create({
         .instance_capacity = 1U,

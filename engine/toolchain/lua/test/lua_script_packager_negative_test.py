@@ -54,6 +54,7 @@ def main() -> int:
         payload,
         package.fnv1a("lux.i32"),
         1,
+        14, 15, 1,
     )
     spawned = package.EventSource(
         "Gameplay",
@@ -64,6 +65,7 @@ def main() -> int:
         payload,
         package.fnv1a("lux.i32"),
         1,
+        14, 15, 1,
     )
     events = {
         (damage.system_name, damage.event_name): damage,
@@ -98,7 +100,7 @@ def main() -> int:
         event_manifest = pathlib.Path(directory) / "event.json"
         event_document = {
             "schema": "lux-script-event",
-            "version": 1,
+            "version": 2,
             "events": [
                 {
                     "system_name": damage.system_name,
@@ -115,6 +117,9 @@ def main() -> int:
                     },
                     "payload_schema_hash": damage.payload_schema_hash,
                     "payload_schema_version": damage.payload_schema_version,
+                    "delivery_hook_id": damage.delivery_hook_id,
+                    "delivery_schema_hash": damage.delivery_schema_hash,
+                    "delivery_schema_version": damage.delivery_schema_version,
                 }
             ],
         }

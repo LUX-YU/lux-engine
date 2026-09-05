@@ -66,6 +66,8 @@ namespace
         std::size_t size{2500U};
         std::size_t frames{30U};
         std::size_t warmups{5U};
+        std::uint32_t workers{};
+        bool trace{};
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"physics2d_script_pb3.csv"};
         std::filesystem::path lua_artifact;
@@ -92,6 +94,18 @@ namespace
         std::size_t queue_depth{};
         std::size_t queue_high_water{};
         std::uint64_t checksum{};
+        std::uint64_t resumes{};
+        std::uint64_t suspensions{};
+        std::uint64_t graph_compile_ns{};
+        std::size_t graph_tasks{};
+        std::size_t graph_edges{};
+        std::uint64_t pre_hook_ns{};
+        std::uint64_t lifecycle_before_ns{};
+        std::uint64_t dispatch_ns{};
+        std::uint64_t resume_ns{};
+        std::uint64_t commit_ns{};
+        std::uint64_t lifecycle_after_ns{};
+        std::uint64_t post_hook_ns{};
     };
 
     [[nodiscard]] bool parseSize(std::string_view text, std::size_t& output) noexcept
@@ -130,6 +144,18 @@ namespace
             }
             else if (key == "--output")
                 result.output = value;
+            else if (key == "--workers")
+            {
+                const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result.workers);
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || result.workers > 64U)
+                    return std::nullopt;
+            }
+            else if (key == "--trace")
+            {
+                if (value != "on" && value != "off")
+                    return std::nullopt;
+                result.trace = value == "on";
+            }
             else if (key == "--lua-artifact")
                 result.lua_artifact = value;
             else if (key == "--flowforge-artifact")
@@ -157,7 +183,8 @@ namespace
             else
                 return std::nullopt;
         }
-        const bool valid_group = result.group == "physics-micro" || result.group == "scene-physics-mixed";
+        const bool valid_group = result.group == "physics-micro" || result.group == "scene-physics-mixed" ||
+            result.group == "scene-no-script";
         const bool missing_artifact =
             result.group == "scene-physics-mixed" && (result.lua_artifact.empty() || result.flowforge_artifact.empty());
         return valid_group && !missing_artifact ? std::optional<Options>{std::move(result)} : std::nullopt;
@@ -195,7 +222,9 @@ namespace
             throw std::runtime_error("cannot open Physics2D benchmark output");
         output << "git_commit,build_type,scenario,backend,size,seed,sample,nanoseconds,allocations,"
                   "active_instances,physics_queries,script_calls,events,continuations,awaitables,event_waiters,"
-                  "next_step_waits,queue_depth,queue_high_water,checksum\n";
+                  "next_step_waits,queue_depth,queue_high_water,checksum,workers,trace,resumes,suspensions,"
+                  "graph_compile_ns,graph_tasks,graph_edges,pre_hook_ns,lifecycle_before_ns,dispatch_ns,"
+                  "resume_ns,commit_ns,lifecycle_after_ns,post_hook_ns\n";
         for (const auto& row : rows)
         {
             output << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ',' << row.scenario << ','
@@ -204,7 +233,11 @@ namespace
                    << row.physics_queries << ',' << row.script_calls << ',' << row.events << ','
                    << row.continuations << ',' << row.awaitables << ',' << row.event_waiters << ','
                    << row.next_step_waits << ',' << row.queue_depth << ',' << row.queue_high_water << ','
-                   << row.checksum << '\n';
+                   << row.checksum << ',' << options.workers << ',' << options.trace << ',' << row.resumes << ','
+                   << row.suspensions << ',' << row.graph_compile_ns << ',' << row.graph_tasks << ',' << row.graph_edges
+                   << ',' << row.pre_hook_ns << ',' << row.lifecycle_before_ns << ',' << row.dispatch_ns << ','
+                   << row.resume_ns << ',' << row.commit_ns << ',' << row.lifecycle_after_ns << ','
+                   << row.post_hook_ns << '\n';
         }
     }
 
@@ -410,15 +443,22 @@ namespace
 
     struct MixedHarness final
     {
+        static std::uint64_t elapsed(Clock::time_point begin, Clock::time_point end) noexcept
+        {
+            return static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+        }
         MixedHarness(const Options& options)
             : flow_asset(loadArtifact(options.flowforge_artifact)), lua_asset(loadArtifact(options.lua_artifact)),
-              cpp(options.size / 2U, options.size / 4U)
+              cpp(options.size / 2U, options.size / 4U), trace(options.trace)
         {
             const auto collider = registry.create();
             registry.emplace<ecs::Transform2D>(collider);
             registry.emplace<BoxCollider2D>(collider);
+            const auto compile_begin = Clock::now();
             auto created_simulation = createSimulation(registry);
-            auto created_executor = task::TaskExecutor::create({0U, 1U});
+            graph_compile_ns = elapsed(compile_begin, Clock::now());
+            auto created_executor = task::TaskExecutor::create({options.workers, 16U});
             if (!created_simulation || !created_executor)
                 throw std::runtime_error("Physics2D benchmark composition failed");
             simulation.emplace(std::move(*created_simulation));
@@ -553,7 +593,45 @@ namespace
                     "/" + std::to_string(backend_status)
                 );
             }
-            auto connection = bindScriptRuntime(*simulation, *system);
+            auto connection = simulation->bindHookCallbacks({this,
+                [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                    auto& self = *static_cast<MixedHarness*>(context);
+                    const auto begin = self.trace ? Clock::now() : Clock::time_point{};
+                    if (stable)
+                        self.system->beginStableAdmission();
+                    const auto result = self.system->processLifecycle();
+                    if (self.trace)
+                    {
+                        self.phase_end = Clock::now();
+                        self.phase.pre_hook_ns = elapsed(self.frame_begin, begin);
+                        self.phase.lifecycle_before_ns = elapsed(begin, self.phase_end);
+                    }
+                    return static_cast<bool>(result);
+                },
+                [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                    auto& self = *static_cast<MixedHarness*>(context);
+                    const auto begin = self.trace ? Clock::now() : Clock::time_point{};
+                    const bool result = !stable || static_cast<bool>(self.system->executeStablePoint());
+                    if (self.trace)
+                    {
+                        self.phase.dispatch_ns = elapsed(self.phase_end, begin);
+                        self.phase_end = Clock::now();
+                        self.phase.resume_ns = elapsed(begin, self.phase_end);
+                    }
+                    return result;
+                },
+                [](void* context, const SimulationClockSnapshot&) noexcept {
+                    auto& self = *static_cast<MixedHarness*>(context);
+                    const auto begin = self.trace ? Clock::now() : Clock::time_point{};
+                    const auto result = self.system->processLifecycle();
+                    if (self.trace)
+                    {
+                        self.phase.commit_ns = elapsed(self.phase_end, begin);
+                        self.phase_end = Clock::now();
+                        self.phase.lifecycle_after_ns = elapsed(begin, self.phase_end);
+                    }
+                    return static_cast<bool>(result);
+                }, nullptr});
             if (!connection)
                 throw std::runtime_error("Physics2D benchmark Hook binding failed");
             hook_connection = std::move(*connection);
@@ -568,7 +646,11 @@ namespace
 
         [[nodiscard]] bool frame()
         {
+            if (trace)
+                frame_begin = Clock::now();
             const auto simulated = simulation->execute(*executor, std::chrono::milliseconds{16});
+            if (trace)
+                phase.post_hook_ns = elapsed(phase_end, Clock::now());
             const auto active = system->activeInstanceCount();
             const auto dispatched = ActiveProbe != nullptr ? ActiveProbe->hook_calls : 0U;
             if (!simulated || ActiveProbe == nullptr || dispatched == 0U || !system->failures().empty())
@@ -609,6 +691,11 @@ namespace
         std::optional<LuaScriptBackend> lua;
         std::array<ScriptBackendDescriptor, 3U> backends;
         std::optional<ScriptSystem> system;
+        bool trace{};
+        std::uint64_t graph_compile_ns{};
+        Clock::time_point frame_begin;
+        Clock::time_point phase_end;
+        Row phase;
     };
 
     void runMicro(const Options& options, std::vector<Row>& rows)
@@ -664,6 +751,34 @@ namespace
         }
     }
 
+    void runNoScript(const Options& options, std::vector<Row>& rows)
+    {
+        ecs::Registry registry;
+        const auto collider = registry.create();
+        registry.emplace<ecs::Transform2D>(collider);
+        registry.emplace<BoxCollider2D>(collider);
+        const auto compile_begin = Clock::now();
+        auto simulation = createSimulation(registry);
+        const auto compile_ns = MixedHarness::elapsed(compile_begin, Clock::now());
+        auto executor = task::TaskExecutor::create({options.workers, 16U});
+        if (!simulation || !executor)
+            throw std::runtime_error("native scene setup failed");
+        for (std::size_t frame{}; frame < options.warmups; ++frame)
+            if (!simulation->execute(*executor, std::chrono::milliseconds{16}))
+                throw std::runtime_error("native scene warmup failed");
+        for (std::size_t frame{}; frame < options.frames; ++frame)
+        {
+            rows.push_back(measure("scene-no-script", "physics-empty-script-hook", 0U, frame, [&] {
+                if (!simulation->execute(*executor, std::chrono::milliseconds{16}))
+                    throw std::runtime_error("native scene step failed");
+                return Row{.events = ActiveProbe->emitted_pulses,
+                    .checksum = simulation->clock().snapshot().step_index,
+                    .graph_compile_ns = compile_ns, .graph_tasks = simulation->taskCount(),
+                    .graph_edges = simulation->dependencyCount()};
+            }));
+        }
+    }
+
     void runMixed(const Options& options, std::vector<Row>& rows)
     {
         MixedHarness harness{options};
@@ -673,6 +788,7 @@ namespace
                 throw std::runtime_error("Physics2D mixed warmup failed");
         }
         const auto query_start = harness.physics->stats().overlap_queries;
+        const auto runtime_start = harness.system->stats();
         const auto cpp_start = g_cpp_checksum;
         for (std::size_t frame{}; frame < options.frames; ++frame)
         {
@@ -684,15 +800,28 @@ namespace
                 return Row{
                     .active_instances = runtime.active_instances,
                     .physics_queries = physics.overlap_queries - query_start,
-                    .script_calls = (frame + 1U) * options.size,
-                    .events = frame + 1U,
+                    .script_calls = runtime.sync_invocations + runtime.step_invocations -
+                        runtime_start.sync_invocations - runtime_start.step_invocations,
+                    .events = runtime.event_occurrences - runtime_start.event_occurrences,
                     .continuations = runtime.active_continuations,
                     .awaitables = runtime.active_awaitables,
                     .event_waiters = runtime.active_event_waiters,
                     .next_step_waits = runtime.next_step_waits,
                     .queue_depth = runtime.resume_queue_depth,
                     .queue_high_water = runtime.resume_queue_high_water,
-                    .checksum = g_cpp_checksum - cpp_start
+                    .checksum = g_cpp_checksum - cpp_start,
+                    .resumes = runtime.backend_resume_calls - runtime_start.backend_resume_calls,
+                    .suspensions = runtime.suspensions_admitted - runtime_start.suspensions_admitted,
+                    .graph_compile_ns = harness.graph_compile_ns,
+                    .graph_tasks = harness.simulation->taskCount(),
+                    .graph_edges = harness.simulation->dependencyCount(),
+                    .pre_hook_ns = harness.phase.pre_hook_ns,
+                    .lifecycle_before_ns = harness.phase.lifecycle_before_ns,
+                    .dispatch_ns = harness.phase.dispatch_ns,
+                    .resume_ns = harness.phase.resume_ns,
+                    .commit_ns = harness.phase.commit_ns,
+                    .lifecycle_after_ns = harness.phase.lifecycle_after_ns,
+                    .post_hook_ns = harness.phase.post_hook_ns
                 };
             }));
         }
@@ -710,7 +839,9 @@ int main(int argc, char** argv)
     try
     {
         std::vector<Row> rows;
-        if (options->group == "physics-micro")
+        if (options->group == "scene-no-script")
+            runNoScript(*options, rows);
+        else if (options->group == "physics-micro")
             runMicro(*options, rows);
         else
             runMixed(*options, rows);

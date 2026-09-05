@@ -83,6 +83,18 @@ namespace lux::simulation::script
         std::size_t event_catalog_capacity{1U};
         std::size_t prepared_event_capacity{};
         std::span<const lux::script::ScriptEventSourceDescription> events;
+        bool track_vm_allocations{};
+    };
+
+    struct LuaVmAllocationStats final
+    {
+        bool enabled{};
+        std::uint64_t allocations{};
+        std::uint64_t reallocations{};
+        std::uint64_t frees{};
+        std::uint64_t failures{};
+        std::uint64_t requested_bytes{};
+        std::uint64_t released_bytes{};
     };
 
     struct LuaScriptBackendStats final
@@ -94,6 +106,9 @@ namespace lux::simulation::script
         std::size_t prepared_binding_bytes{};
         std::size_t vm_coroutine_creations{};
         std::size_t execution_depth_high_water{};
+        std::size_t vm_coroutine_resumes{};
+        std::size_t vm_coroutine_releases{};
+        LuaVmAllocationStats vm_allocations;
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final

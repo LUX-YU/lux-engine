@@ -29,6 +29,8 @@ namespace
         unsigned published{};
         unsigned callbacks{};
         unsigned stable_calls{};
+        unsigned event_callbacks{};
+        script::ScriptEventEndpointDescriptor event_descriptor;
         unsigned step{};
         ecs::Registry* registry{};
         ecs::Entity entity{ecs::NullEntity};
@@ -89,6 +91,7 @@ namespace
         Channel* samples{};
         Channel::Producer first_writer;
         Channel::Producer middle_writer;
+        std::optional<script::ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_endpoint;
         SimulationCommandProducer first_commands;
         SimulationCommandProducer stable_commands;
         entt::scoped_connection marker_connection;
@@ -112,6 +115,11 @@ namespace
             return lux::cxx::unexpected(!middle_writer ? middle_writer.error() : first_writer.error());
         assert(!builder.bindHookChannelProducer(view.instanceId(), PrimarySimulationTask, **channel));
         (*system)->samples = *channel;
+        (*system)->event_endpoint.emplace(System, Samples, **channel);
+        (*system)->state.event_descriptor = (*system)->event_endpoint->descriptor();
+        auto published_event = builder.publishScriptEvent(view.instanceId(), (*system)->state.event_descriptor);
+        if (!published_event)
+            return published_event;
         (*system)->first_writer = *first_writer;
         (*system)->middle_writer = *middle_writer;
         assert(!first_writer->begin().record(90));
@@ -186,6 +194,9 @@ namespace
                 assert(std::this_thread::get_id() == system.state.caller);
                 assert(invocation.stableResume());
                 const auto first = system.samples->lane(0U);
+                // Having a descriptor is not permission to deliver Script during the direct-Hook phase.
+                const auto endpoint = system.event_endpoint->descriptor();
+                assert(endpoint.consume(endpoint.context) == 0U);
                 const auto middle = system.samples->lane(1U);
                 assert(first.size() == 1U && middle.size() == 1U);
                 assert(first.front().payload == 1 && middle.front().payload == 12);
@@ -245,6 +256,12 @@ namespace
             return;
         }
         assert(simulation);
+        const auto event = simulation->scriptEventEndpoints().front();
+        assert(event.connect(event.context, &state, [](void* context, ecs::Entity, lux_script_call_frame&) noexcept {
+            auto& state = *static_cast<State*>(context);
+            ++state.event_callbacks;
+            assert(state.event_descriptor.consume(state.event_descriptor.context) == 0U);
+        }));
         for (const auto& endpoint : simulation->scriptHookEndpoints())
         {
             auto connected = endpoint.connect(endpoint.context, &state,
@@ -296,6 +313,7 @@ namespace
             state.count = 0U;
             assert(simulation->execute(*executor, SimulationDuration{1}));
             assert(state.callbacks == 2U * step && state.stable_calls == step && state.published == 13U);
+            assert(state.event_callbacks == (step == 1U ? 2U : 5U));
             assert(step == 1U ? !registry.all_of<NextFrame>(state.entity) : registry.all_of<NextFrame>(state.entity));
             assert(state.count == 9U);
             for (std::size_t index{}; index < state.count; ++index)

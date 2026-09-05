@@ -47,6 +47,7 @@ namespace lux::simulation
             bool (*failed)(void*) noexcept{};
             void (*reset)(void*) noexcept{};
             void (*discard)(void*) noexcept{};
+            void (*authorize_script)(void*, bool) noexcept{};
             std::size_t producer_count{};
             std::vector<std::unique_ptr<ChannelProducer>> producers;
             std::size_t script_endpoint{kInvalidOrdinal};
@@ -273,7 +274,8 @@ namespace lux::simulation
         lux::system::SystemInstanceId system, EventPointId event, EEventRoute route, lux::semantic::TypeId payload,
         void* context, std::size_t producer_count, bool owner_reproduction,
         void (*destroy)(void*) noexcept, bool (*seal)(void*) noexcept, bool (*failed)(void*) noexcept,
-        void (*reset)(void*) noexcept, void (*discard)(void*) noexcept) noexcept
+        void (*reset)(void*) noexcept, void (*discard)(void*) noexcept,
+        void (*authorize_script)(void*, bool) noexcept) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const auto described = impl_->owner->description->findEvent(system, event);
@@ -289,7 +291,8 @@ namespace lux::simulation
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DUPLICATE_SCRIPT_ENDPOINT, system));
         try
         {
-            impl_->owner->channels.push_back({system, event, context, destroy, seal, failed, reset, discard,
+            impl_->owner->channels.push_back({
+                system, event, context, destroy, seal, failed, reset, discard, authorize_script,
                 producer_count, {}, kInvalidOrdinal});
             return ChannelOwnership{impl_->owner, described.dispatchHook().id()};
         }
@@ -1075,7 +1078,9 @@ namespace lux::simulation
                             if (!failed() && channel.script_endpoint != kInvalidOrdinal)
                             {
                                 const auto& endpoint = owner->script_events[channel.script_endpoint];
+                                channel.authorize_script(channel.context, true);
                                 endpoint.consume(endpoint.context);
+                                channel.authorize_script(channel.context, false);
                             }
                             if (channel.failed(channel.context))
                                 fail();
@@ -1199,6 +1204,9 @@ namespace lux::simulation
     {
         return impl_->clock;
     }
+
+    std::size_t Simulation::taskCount() const noexcept { return impl_->graph.taskCount(); }
+    std::size_t Simulation::dependencyCount() const noexcept { return impl_->graph.dependencyCount(); }
 
     lux::cxx::expected<SimulationHookConnection, SimulationSystemBuildFailure>
     Simulation::bindHookCallbacks(SimulationHookCallbacks callbacks) noexcept

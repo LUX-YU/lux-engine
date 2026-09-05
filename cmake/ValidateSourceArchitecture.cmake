@@ -9,6 +9,30 @@ endif()
 
 file(TO_CMAKE_PATH "${LUX_SOURCE_DIR}" source_root)
 
+# HookChannel is transport, never a callback registry or a synchronized per-record queue.
+set(hook_channel_header "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/HookChannel.hpp")
+if(EXISTS "${source_root}/engine/domain/simulation/system/include/lux/engine/simulation/EventPoint.hpp")
+    message(FATAL_ERROR "Architecture: EventPoint runtime transport was hard-cut to HookChannel.")
+endif()
+if(EXISTS "${hook_channel_header}")
+    file(READ "${hook_channel_header}" hook_channel_source)
+    if(hook_channel_source MATCHES "std::(mutex|recursive_mutex|atomic)|connect\\(|disconnect\\(|drain\\(")
+        message(FATAL_ERROR "Architecture: HookChannel must remain unsynchronized typed transport without subscribers.")
+    endif()
+endif()
+file(READ "${source_root}/engine/scene/integration/script/src/ScriptRuntimeSystem.cpp" script_scene_source)
+if(script_scene_source MATCHES "addStablePointTask|ScriptRuntimeSystem::executeStablePoint")
+    message(FATAL_ERROR "Architecture: gameplay Script pumping belongs to the compiled Simulation Hook, not Scene tasks.")
+endif()
+file(GLOB_RECURSE task_core_sources LIST_DIRECTORIES false
+    "${source_root}/modules/core/task/*.hpp" "${source_root}/modules/core/task/*.cpp")
+foreach(task_source IN LISTS task_core_sources)
+    file(READ "${task_source}" task_source_text)
+    if(task_source_text MATCHES "ScriptSystem|HookChannel|HookPointId|SimulationClock")
+        message(FATAL_ERROR "Architecture: reusable TaskGraph must not acquire Simulation/Script ontology: ${task_source}")
+    endif()
+endforeach()
+
 if(EXISTS "${source_root}/ecs")
     message(FATAL_ERROR
         "Architecture: the retired top-level ecs/ tree must remain quarantined."

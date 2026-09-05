@@ -281,8 +281,9 @@ namespace lux::simulation::script
         static std::size_t consume(void* context) noexcept
         {
             auto& endpoint = self(context);
-            if (endpoint.lane_ == nullptr)
+            if (endpoint.lane_ == nullptr || endpoint.consuming_ || !endpoint.channel_->scriptConsumptionAllowed())
                 return 0U;
+            endpoint.consuming_ = true;
             std::size_t calls{};
             for (std::size_t lane{}; lane < endpoint.channel_->laneCount(); ++lane)
             {
@@ -297,6 +298,7 @@ namespace lux::simulation::script
                     ++calls;
                 }
             }
+            endpoint.consuming_ = false;
             return calls;
         }
 
@@ -313,6 +315,7 @@ namespace lux::simulation::script
         lux::system::SystemInstanceId system_;
         EventPointId id_;
         HookChannel<Route, Payload>* channel_{};
+        bool consuming_{};
         PayloadCopy payload_copy_{};
         void* lane_context_{};
         ScriptEventLane lane_{};

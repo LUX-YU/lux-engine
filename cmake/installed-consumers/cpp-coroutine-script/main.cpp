@@ -346,11 +346,11 @@ int main()
     const auto old_entity = source.entity;
     registry.destroy(old_entity);
     source.entity = registry.create();
-    if (source.entity == old_entity || !system->processLifecycle())
+    ActiveProbe->tick_enabled = false;
+    if (source.entity == old_entity || !simulation->execute(*executor, SimulationDuration{1}))
         return 23;
     if (system->stats().active_event_waiters != 0U || backend->stats().active_frames != 0U)
         return 24;
-    ActiveProbe->tick_enabled = false;
     ActiveProbe->emit = true;
     if (!simulation->execute(*executor, SimulationDuration{1}) || installed_consumer::observed != 1)
         return 25;

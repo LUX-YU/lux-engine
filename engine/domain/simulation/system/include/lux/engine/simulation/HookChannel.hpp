@@ -228,6 +228,10 @@ namespace lux::simulation
         {
             return lanes_.size() + (capacity_.owner_occurrences != 0U ? 1U : 0U);
         }
+        [[nodiscard]] bool scriptConsumptionAllowed() const noexcept
+        {
+            return !composed_ || script_consumption_;
+        }
 
         [[nodiscard]] std::span<const Occurrence> lane(std::size_t index) const noexcept
         {
@@ -326,6 +330,7 @@ namespace lux::simulation
         bool sealed_{};
         OwnedCopy copy_{};
         bool composed_{};
+        bool script_consumption_{};
         const void* execution_owner_{};
         lux::system::SystemInstanceId delivery_system_;
         HookPointId delivery_hook_;

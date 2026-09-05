@@ -367,8 +367,22 @@ namespace
 
 int main(int argc, char** argv)
 {
-    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
-        g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
+    std::uint32_t workers{1U};
+    for (int index = 1; index < argc; ++index)
+    {
+        const std::string_view argument{argv[index]};
+        if (argument == "--interpreter-only")
+            g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
+        else if (argument == "--workers" && index + 1 < argc)
+        {
+            const std::string_view value{argv[++index]};
+            if (value != "0" && value != "1" && value != "2" && value != "4")
+                return 2;
+            workers = static_cast<std::uint32_t>(value.front() - '0');
+        }
+        else
+            return 2;
+    }
     const ScriptSystemCodecLimits codec_limits{4096U, 4096U, 4096U};
     Fixture fixture;
     auto simulation = makeSimulationDescription(codec_limits, fixture.artifact->id());
@@ -427,7 +441,7 @@ int main(int argc, char** argv)
     assert(scene);
     auto* runtime = (*scene)->findSceneSystem<ScriptRuntimeSystem>();
     assert(runtime != nullptr);
-    auto executor = task::TaskExecutor::create({1U, 8U});
+    auto executor = task::TaskExecutor::create({workers, 8U});
     assert(executor);
 
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));

@@ -25,6 +25,31 @@ namespace lux::simulation::script
 {
     struct LuaScriptBackend::State final
     {
+        struct VmAllocationTracker final
+        {
+            lua_Alloc original{};
+            void* context{};
+            LuaVmAllocationStats stats;
+            static void* allocate(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
+            {
+                auto& self = *static_cast<VmAllocationTracker*>(opaque);
+                auto* result = self.original(self.context, pointer, old_size, size);
+                if (size != 0U && result == nullptr)
+                {
+                    ++self.stats.failures;
+                    return nullptr;
+                }
+                if (size == 0U)
+                    self.stats.frees += pointer != nullptr ? 1U : 0U;
+                else if (pointer == nullptr)
+                    ++self.stats.allocations;
+                else
+                    ++self.stats.reallocations;
+                self.stats.requested_bytes += size;
+                self.stats.released_bytes += pointer != nullptr ? old_size : 0U;
+                return result;
+            }
+        };
         static constexpr std::size_t kMaxAbilityArguments = 8U;
         static constexpr std::size_t kMaxAbilityResults = 4U;
         static constexpr std::int32_t kInvalidCall = -1;
@@ -353,6 +378,12 @@ namespace lux::simulation::script
         {
             if (!prepared_abilities.valid() || !prepared_events.valid())
                 return;
+            if (config.track_vm_allocations && state != nullptr)
+            {
+                vm_allocations.original = lua_getallocf(state, &vm_allocations.context);
+                vm_allocations.stats.enabled = true;
+                lua_setallocf(state, &VmAllocationTracker::allocate, &vm_allocations);
+            }
             if (!lux::script::lua::detail::configureLuaVm(
                     state,
                     config.execution_policy,
@@ -1631,6 +1662,7 @@ namespace lux::simulation::script
             if (!continuation.active || continuation.owner == nullptr)
                 return;
             auto* owner = continuation.owner;
+            ++owner->vm_coroutine_releases;
             const auto slot = static_cast<std::size_t>(
                 std::addressof(continuation) - owner->continuations.data()
             );
@@ -1820,6 +1852,7 @@ namespace lux::simulation::script
             {
                 return ScriptStepResult::failed(kExecutionDepthCapacity);
             }
+            ++continuation.owner->vm_coroutine_resumes;
             const auto resume = lux::script::lua::detail::resumeLuaVm(
                 continuation.thread,
                 nullptr,
@@ -1930,6 +1963,8 @@ namespace lux::simulation::script
             self.free_instances.push_back(instance_slot);
         }
 
+        // Must outlive ScriptEngine: lua_close may call the original allocator through this diagnostic wrapper.
+        VmAllocationTracker vm_allocations;
         lux::script::lua::ScriptEngine engine;
         lua_State* state{};
         lux::script::lua::LuaRuntimeInfo runtime_info;
@@ -1961,6 +1996,8 @@ namespace lux::simulation::script
         std::size_t execution_depth{};
         std::size_t execution_depth_high_water{};
         std::size_t vm_coroutine_creations{};
+        std::size_t vm_coroutine_resumes{};
+        std::size_t vm_coroutine_releases{};
     };
 
     bool detail::LuaAbilityProjectionAccess::current(
@@ -2348,7 +2385,10 @@ namespace lux::simulation::script
             events.high_water,
             abilities.storage_bytes + events.storage_bytes,
             state_->vm_coroutine_creations,
-            state_->execution_depth_high_water
+            state_->execution_depth_high_water,
+            state_->vm_coroutine_resumes,
+            state_->vm_coroutine_releases,
+            state_->vm_allocations.stats
         };
     }
 

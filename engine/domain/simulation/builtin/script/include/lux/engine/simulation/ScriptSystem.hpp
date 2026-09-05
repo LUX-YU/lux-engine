@@ -74,6 +74,11 @@ namespace lux::simulation::script
         std::size_t external_completion_queue_depth{};
         std::size_t external_completion_queue_high_water{};
         std::size_t external_completion_capacity_failures{};
+        std::uint64_t sync_invocations{};
+        std::uint64_t step_invocations{};
+        std::uint64_t backend_resume_calls{};
+        std::uint64_t suspensions_admitted{};
+        std::uint64_t event_occurrences{};
     };
 
     namespace detail

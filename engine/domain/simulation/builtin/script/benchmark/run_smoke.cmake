@@ -10,6 +10,7 @@ endif()
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 foreach(group IN ITEMS
     micro-sync
+    micro-hook-channel
     micro-async
     micro-lifecycle
     scene-update-heavy
@@ -34,6 +35,7 @@ foreach(group IN ITEMS
         RESULT_VARIABLE result
         OUTPUT_VARIABLE output
         ERROR_VARIABLE error
+        TIMEOUT 60
     )
     if(NOT result EQUAL 0)
         message(FATAL_ERROR "${group} failed (${result}):\n${output}\n${error}")

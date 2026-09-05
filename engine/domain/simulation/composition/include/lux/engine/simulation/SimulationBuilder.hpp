@@ -72,7 +72,10 @@ namespace lux::simulation
                     [](void* context) noexcept { return static_cast<Channel*>(context)->sealPrepared(); },
                     [](void* context) noexcept { return static_cast<Channel*>(context)->failed(); },
                     [](void* context) noexcept { static_cast<Channel*>(context)->resetPrepared(); },
-                    [](void* context) noexcept { static_cast<Channel*>(context)->discardPrepared(); });
+                    [](void* context) noexcept { static_cast<Channel*>(context)->discardPrepared(); },
+                    [](void* context, bool active) noexcept {
+                        static_cast<Channel*>(context)->script_consumption_ = active;
+                    });
                 if (!stored)
                     return lux::cxx::unexpected(stored.error());
                 channel->composed_ = true;
@@ -331,7 +334,8 @@ namespace lux::simulation
             EEventRoute route, lux::semantic::TypeId payload, void* context,
             std::size_t producer_count, bool owner_reproduction,
             void (*destroy)(void*) noexcept, bool (*seal)(void*) noexcept,
-            bool (*failed)(void*) noexcept, void (*reset)(void*) noexcept, void (*discard)(void*) noexcept) noexcept;
+            bool (*failed)(void*) noexcept, void (*reset)(void*) noexcept, void (*discard)(void*) noexcept,
+            void (*authorize_script)(void*, bool) noexcept) noexcept;
         [[nodiscard]] lux::cxx::expected<detail::HookChannelProducerSlot*, SimulationSystemBuildFailure>
         bindChannelProducer(SimulationExecutionPoint producer, void* channel) noexcept;
 

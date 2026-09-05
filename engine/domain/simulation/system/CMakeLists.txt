@@ -127,6 +127,18 @@ set_tests_properties(
 )
 
 include_component_cmake_scripts(meta)
+add_executable(simulation_unscoped_hook_negative EXCLUDE_FROM_ALL test/unscoped_hook_negative.cpp)
+target_link_libraries(simulation_unscoped_hook_negative PRIVATE lux::engine::simulation::system)
+lux_classify_target(TARGET simulation_unscoped_hook_negative LAYER SIMULATION PRODUCT TEST ROLE FOUNDATION)
+add_test(
+    NAME simulation_unscoped_hook_rejected
+    COMMAND ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=simulation_unscoped_hook_negative
+        "-DEXPECTED_PATTERN=function does not take 0 arguments|no matching.*dispatch"
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)
+
 engine_add_type_runtime_info(
     NAME simulation_object_boundary_meta
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/ObjectBoundaryProbe.hpp

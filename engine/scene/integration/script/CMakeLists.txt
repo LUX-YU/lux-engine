@@ -109,10 +109,18 @@ if(TARGET lux::engine::simulation::simulation_script_lua)
         ROLE    INTEGRATION
     )
     add_test(NAME scene_script_lua_runtime_test COMMAND scene_script_lua_runtime_test)
+    foreach(workers IN ITEMS 0 2 4)
+        add_test(NAME scene_script_lua_runtime_workers_${workers}
+            COMMAND scene_script_lua_runtime_test --workers ${workers})
+        set_tests_properties(scene_script_lua_runtime_workers_${workers} PROPERTIES TIMEOUT 30)
+    endforeach()
     add_test(
         NAME scene_script_lua_runtime_interpreter_test
         COMMAND scene_script_lua_runtime_test --interpreter-only
     )
+    add_test(NAME scene_script_lua_runtime_interpreter_workers_4
+        COMMAND scene_script_lua_runtime_test --interpreter-only --workers 4)
+    set_tests_properties(scene_script_lua_runtime_interpreter_workers_4 PROPERTIES TIMEOUT 30)
 endif()
 
 install_components(

@@ -108,6 +108,8 @@ namespace lux::simulation
         scriptEventEndpoints() const noexcept;
 
         [[nodiscard]] const SimulationClock& clock() const noexcept;
+        [[nodiscard]] std::size_t taskCount() const noexcept;
+        [[nodiscard]] std::size_t dependencyCount() const noexcept;
 
         // The connection must be released while paused and before this Simulation is destroyed.
         [[nodiscard]] lux::cxx::expected<SimulationHookConnection, SimulationSystemBuildFailure>

@@ -940,6 +940,11 @@ namespace lux::simulation::script
         std::size_t instance_cleanup_continuation_visits{};
         std::size_t endpoint_dispatch_depth{};
         std::size_t user_invocation_depth{};
+        std::uint64_t sync_invocations{};
+        std::uint64_t step_invocations{};
+        std::uint64_t backend_resume_calls{};
+        std::uint64_t suspensions_admitted{};
+        std::uint64_t event_occurrences{};
 
         struct UserInvocationScope final
         {
@@ -2101,6 +2106,7 @@ namespace lux::simulation::script
             }
             if (hook_single_flight)
                 method.active_hook = id;
+            ++suspensions_admitted;
             return true;
         }
 
@@ -2322,6 +2328,7 @@ namespace lux::simulation::script
                 };
                 const auto result = [&]() noexcept {
                     UserInvocationScope scope(*this);
+                    ++step_invocations;
                     return method.backend.resumable.invoke(
                         method.backend.resumable.context, frame, context, continuation);
                 }();
@@ -2355,6 +2362,7 @@ namespace lux::simulation::script
             frame.user_context = method.backend.synchronous.context;
             const auto status = [&]() noexcept {
                 UserInvocationScope scope(*this);
+                ++sync_invocations;
                 return method.backend.synchronous.invoke(&frame);
             }();
             if (status == 0)
@@ -2480,6 +2488,7 @@ namespace lux::simulation::script
             if (!execution)
                 return;
             const auto claimed_begin = owner.claimed_event_waiters.size();
+            ++owner.event_occurrences;
             const auto cutoff = owner.event_wait_sequence;
             ++owner.endpoint_dispatch_depth;
             const auto target = bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST
@@ -3214,6 +3223,7 @@ namespace lux::simulation::script
             };
             const auto result = [&]() noexcept {
                 UserInvocationScope scope(*this);
+                ++backend_resume_calls;
                 return continuation->backend.resume(continuation->backend.state, context, packet);
             }();
 
@@ -3238,7 +3248,10 @@ namespace lux::simulation::script
                 continuation->waiting_on = result.waiting_on;
                 auto attached = attachWaiter(result.waiting_on, resume.instance, resume.continuation);
                 if (attached)
+                {
+                    ++suspensions_admitted;
                     return {};
+                }
                 const auto error = attached.error();
                 destroyContinuation(resume.continuation);
                 discardAwaitable(resume.instance, result.waiting_on);
@@ -3911,6 +3924,11 @@ namespace lux::simulation::script
         if (!execution)
             return result;
         result.active_instances = state_->active_mount_count;
+        result.sync_invocations = state_->sync_invocations;
+        result.step_invocations = state_->step_invocations;
+        result.backend_resume_calls = state_->backend_resume_calls;
+        result.suspensions_admitted = state_->suspensions_admitted;
+        result.event_occurrences = state_->event_occurrences;
         result.active_continuations = state_->continuations.size();
         result.active_event_waiters = state_->event_waiters.size();
         result.event_waiter_high_water = state_->event_waiter_high_water;

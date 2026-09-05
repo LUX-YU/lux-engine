@@ -449,7 +449,8 @@ namespace
                 .execution_policy = g_execution_policy,
                 .event_catalog_capacity = event_sources.size(),
                 .prepared_event_capacity = event_sources.size(),
-                .events = event_sources
+                .events = event_sources,
+                .track_vm_allocations = true
             });
             assert(created_backend);
             backend.emplace(std::move(*created_backend));
@@ -550,11 +551,15 @@ int main(int argc, char** argv)
     assert(created);
     auto system = std::move(*created);
     assert(system.prepare());
+    assert(harness.backend->stats().vm_allocations.enabled);
+    assert(harness.backend->stats().vm_allocations.allocations != 0U);
+    assert(harness.backend->stats().vm_allocations.requested_bytes != 0U);
 
     assert(dispatchHookForTest(harness.sync_hook) == 1U);
     assert(provider.reads == 1U && provider.writes == 1U && provider.value == 12);
     assert(system.activeContinuationCount() == 0U);
     assert(system.activeAwaitableCount() == 0U);
+    assert(harness.backend->stats().vm_coroutine_creations == 0U);
     assert(dispatchHookForTest(harness.scalar_hook) == 1U);
     assert(provider.bool_value);
     assert(provider.i32_value == (std::numeric_limits<std::int32_t>::max)());
@@ -580,6 +585,10 @@ int main(int argc, char** argv)
     assert(provider.pending->success(3));
     assert(system.executeStablePoint());
     assert(provider.value == 22);
+    assert(harness.backend->stats().vm_coroutine_creations == 1U);
+    assert(harness.backend->stats().vm_coroutine_resumes == 2U);
+    assert(harness.backend->stats().vm_coroutine_releases == 1U);
+    assert(harness.backend->stats().vm_allocations.failures == 0U);
     assert(provider.writes == 4U);
     assert(system.activeContinuationCount() == 0U);
     assert(system.activeAwaitableCount() == 0U);

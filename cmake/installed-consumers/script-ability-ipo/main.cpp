@@ -9,7 +9,7 @@ namespace
 {
     struct Provider final
     {
-        std::int32_t bias{4};
+        volatile std::int32_t bias{4};
 
         [[nodiscard]] std::int32_t read(std::int32_t input) noexcept
         {

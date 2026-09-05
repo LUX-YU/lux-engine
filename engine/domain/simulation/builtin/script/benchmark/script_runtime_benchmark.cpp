@@ -102,6 +102,7 @@ namespace
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"script_runtime_benchmark.csv"};
         std::filesystem::path lua_artifact;
+        bool vm_accounting{};
 #if LUX_BENCHMARK_HAS_LUA
         lux::script::lua::ELuaExecutionPolicy lua_policy{
             lux::script::lua::ELuaExecutionPolicy::DEFAULT
@@ -125,6 +126,7 @@ namespace
     {
         Options result;
         bool frames_supplied{};
+        bool warmups_supplied{};
         for (int index{1}; index < argc; ++index)
         {
             if (index + 1 >= argc)
@@ -150,6 +152,18 @@ namespace
             {
                 if (!parseU64(value, result.seed))
                     return std::nullopt;
+            }
+            else if (key == "--warmups")
+            {
+                if (!parseSize(value, result.warmups))
+                    return std::nullopt;
+                warmups_supplied = true;
+            }
+            else if (key == "--vm-accounting")
+            {
+                if (value != "on" && value != "off")
+                    return std::nullopt;
+                result.vm_accounting = value == "on";
             }
             else if (key == "--resume-budget")
             {
@@ -181,7 +195,8 @@ namespace
         }
         if (result.mode == "performance")
         {
-            result.warmups = 300U;
+            if (!warmups_supplied)
+                result.warmups = 300U;
             if (!frames_supplied)
                 result.frames = 5000U;
         }
@@ -190,6 +205,7 @@ namespace
 
         constexpr std::array groups{
             std::string_view{"micro-sync"},
+            std::string_view{"micro-hook-channel"},
             std::string_view{"micro-async"},
             std::string_view{"micro-lifecycle"},
             std::string_view{"scene-update-heavy"},
@@ -256,6 +272,14 @@ namespace
         std::size_t lifecycle_begins{};
         std::size_t lifecycle_ends{};
         std::uint64_t checksum{};
+        std::uint64_t vm_allocations{};
+        std::uint64_t vm_reallocations{};
+        std::uint64_t vm_frees{};
+        std::uint64_t vm_requested_bytes{};
+        std::uint64_t vm_released_bytes{};
+        std::uint64_t vm_coroutine_creations{};
+        std::uint64_t vm_coroutine_resumes{};
+        std::uint64_t vm_coroutine_releases{};
     };
 
 #if LUX_BENCHMARK_HAS_LUA
@@ -277,10 +301,12 @@ namespace
                   "allocations,active_instances,calls,ability_calls,events,suspensions,resumes,continuations,"
                   "awaitables,event_waiters,event_dispatch_visits,payload_bytes,queue_depth,queue_high_water,"
                   "external_queue_depth,external_queue_high_water,external_queue_capacity_failures,"
-                  "lifecycle_begins,lifecycle_ends,checksum\n";
+                  "lifecycle_begins,lifecycle_ends,checksum,vm_accounting,vm_allocations,vm_reallocations,vm_frees,"
+                  "vm_requested_bytes,vm_released_bytes,vm_coroutine_creations,"
+                  "vm_coroutine_resumes,vm_coroutine_releases\n";
         for (const auto& row : rows)
         {
-            output << "4," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
+            output << "5," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
                    << LUX_BENCHMARK_COMPILER << ",windows," << std::thread::hardware_concurrency() << ','
 #if LUX_BENCHMARK_HAS_LUA
                    << g_lua_runtime_info.vm << ',' << g_lua_runtime_info.version << ','
@@ -298,7 +324,11 @@ namespace
                    << row.event_dispatch_visits << ',' << row.payload_bytes << ',' << row.queue_depth << ','
                    << row.queue_high_water << ',' << row.external_queue_depth << ','
                    << row.external_queue_high_water << ',' << row.external_queue_capacity_failures << ','
-                   << row.lifecycle_begins << ',' << row.lifecycle_ends << ',' << row.checksum << '\n';
+                   << row.lifecycle_begins << ',' << row.lifecycle_ends << ',' << row.checksum << ','
+                   << options.vm_accounting << ',' << row.vm_allocations << ',' << row.vm_reallocations << ','
+                   << row.vm_frees << ',' << row.vm_requested_bytes << ',' << row.vm_released_bytes << ','
+                   << row.vm_coroutine_creations << ',' << row.vm_coroutine_resumes << ','
+                   << row.vm_coroutine_releases << '\n';
         }
         output.close();
         std::error_code error;
@@ -1089,7 +1119,7 @@ namespace
             std::size_t count,
             lux::script::ScriptSymbolId symbol,
             std::size_t resume_budget,
-            lux::script::lua::ELuaExecutionPolicy execution_policy
+            lux::script::lua::ELuaExecutionPolicy execution_policy, bool vm_accounting = false
         )
             : simulation_description(scriptDescription()), artifact_asset(loadLuaArtifact(artifact_path))
         {
@@ -1167,7 +1197,8 @@ namespace
                 .execution_policy = execution_policy,
                 .event_catalog_capacity = 1U,
                 .prepared_event_capacity = bounded_count,
-                .events = std::span{&event_source, 1U}
+                .events = std::span{&event_source, 1U},
+                .track_vm_allocations = vm_accounting
             });
             if (!created_backend)
                 throw std::runtime_error("Lua benchmark backend creation failed");
@@ -1707,6 +1738,15 @@ namespace
 #if LUX_BENCHMARK_HAS_LUA
     void appendLuaStats(Row& row, LuaRuntimeHarness& harness)
     {
+        const auto vm = harness.backend->stats();
+        row.vm_allocations = vm.vm_allocations.allocations;
+        row.vm_reallocations = vm.vm_allocations.reallocations;
+        row.vm_frees = vm.vm_allocations.frees;
+        row.vm_requested_bytes = vm.vm_allocations.requested_bytes;
+        row.vm_released_bytes = vm.vm_allocations.released_bytes;
+        row.vm_coroutine_creations = vm.vm_coroutine_creations;
+        row.vm_coroutine_resumes = vm.vm_coroutine_resumes;
+        row.vm_coroutine_releases = vm.vm_coroutine_releases;
         const auto stats = harness.system->stats();
         row.active_instances = stats.active_instances;
         row.continuations = stats.active_continuations;
@@ -1718,10 +1758,10 @@ namespace
         row.external_queue_depth = stats.external_completion_queue_depth;
         row.external_queue_high_water = stats.external_completion_queue_high_water;
         row.external_queue_capacity_failures = stats.external_completion_capacity_failures;
-        row.calls = harness.dispatches * stats.active_instances;
+        row.calls = stats.sync_invocations + stats.step_invocations;
         row.ability_calls = harness.value_provider.calls;
-        row.suspensions = stats.active_continuations;
-        row.resumes = harness.dispatches * stats.active_instances - stats.active_continuations;
+        row.suspensions = stats.suspensions_admitted;
+        row.resumes = stats.backend_resume_calls;
         row.lifecycle_begins = harness.lifecycle_begins;
         row.lifecycle_ends = harness.lifecycle_ends;
         row.checksum = harness.dispatches + harness.value_provider.checksum + harness.lifecycle_begins;
@@ -1924,6 +1964,54 @@ namespace
         }));
         if (g_cpp_coroutine_checksum < options.size || harness.backend->stats().heap_frame_allocations != 0U)
             throw std::runtime_error("C++ coroutine benchmark observation mismatch");
+    }
+
+    void runHookChannelMicro(const Options& options, std::vector<Row>& rows)
+    {
+        HookChannel<SimulationBroadcastRoute, std::uint32_t> channel;
+        const auto per_lane = options.size / 4U + (options.size % 4U != 0U ? 1U : 0U);
+        if (channel.prepare({4U, per_lane}) != EEndpointMutationError::NONE)
+            throw std::runtime_error("channel benchmark capacity failure");
+        std::uint64_t expected{};
+        for (std::size_t index{}; index < options.size; ++index)
+            expected += static_cast<std::uint32_t>((index ^ options.seed) & 0xffffU);
+        for (std::size_t sample{}; sample < options.warmups + options.frames; ++sample)
+        {
+            auto append = measureRow("channel-append", "typed-channel-primitive", options.size, sample, [&] {
+                for (std::size_t lane{}; lane < 4U; ++lane)
+                {
+                    auto writer = channel.begin(lane);
+                    for (std::size_t index = lane; index < options.size; index += 4U)
+                        if (!writer.record(static_cast<std::uint32_t>((index ^ options.seed) & 0xffffU)))
+                            throw std::runtime_error("channel append failed");
+                }
+                return Row{.events = options.size, .payload_bytes = options.size * sizeof(std::uint32_t)};
+            });
+            auto consume = measureRow("channel-seal-scan", "typed-channel-primitive", options.size, sample, [&] {
+                if (!channel.seal())
+                    throw std::runtime_error("channel seal failed");
+                std::uint64_t checksum{};
+                for (std::size_t lane{}; lane < channel.laneCount(); ++lane)
+                    for (const auto& occurrence : channel.lane(lane))
+                        checksum += static_cast<volatile const std::uint32_t&>(occurrence.payload);
+                if (checksum != expected)
+                    throw std::runtime_error("channel checksum mismatch");
+                return Row{.events = options.size, .checksum = checksum};
+            });
+            auto reset = measureRow("channel-reset", "typed-channel-primitive", options.size, sample, [&] {
+                channel.reset();
+                return Row{.checksum = channel.pendingOccurrenceCount()};
+            });
+            if (sample >= options.warmups)
+            {
+                append.sample -= options.warmups;
+                consume.sample -= options.warmups;
+                reset.sample -= options.warmups;
+                rows.push_back(std::move(append));
+                rows.push_back(std::move(consume));
+                rows.push_back(std::move(reset));
+            }
+        }
     }
 
     void runMicroSync(const Options& options, std::vector<Row>& rows)
@@ -2473,7 +2561,7 @@ namespace
             options.size,
             symbol,
             options.resume_budget,
-            options.lua_policy
+            options.lua_policy, options.vm_accounting
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2503,7 +2591,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy
+            options.lua_policy, options.vm_accounting
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2533,7 +2621,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy
+            options.lua_policy, options.vm_accounting
         };
         rows.push_back(measureRow("micro-lua-coroutine-start", "lua-coroutine", options.size, 0U, [&] {
             harness.dispatch();
@@ -2543,10 +2631,10 @@ namespace
         }));
         if (harness.system->activeContinuationCount() != options.size)
             throw std::runtime_error("Lua coroutine micro did not suspend every invocation");
-        harness.advance(SimulationDuration{1});
         std::size_t frame{};
         do
         {
+            harness.advance(SimulationDuration{1});
             rows.push_back(measureRow("micro-lua-coroutine-resume", "lua-coroutine", options.size, frame++, [&] {
                 harness.stablePoint();
                 Row row;
@@ -2563,7 +2651,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy
+            options.lua_policy, options.vm_accounting
         };
         harness.dispatch();
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -2588,13 +2676,13 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy
+            options.lua_policy, options.vm_accounting
         };
         harness.dispatch();
-        harness.advance(SimulationDuration{1});
         std::size_t frame{};
         do
         {
+            harness.advance(SimulationDuration{1});
             rows.push_back(measureRow("scene-lua-resume-storm", "lua-coroutine", options.size, frame++, [&] {
                 harness.stablePoint();
                 Row row;
@@ -2614,12 +2702,13 @@ namespace
             options.size,
             kLuaEventWait,
             options.size,
-            options.lua_policy
+            options.lua_policy, options.vm_accounting
         };
         const auto execute_cycle = [&](std::size_t frame, bool record) {
             const auto operation = [&] {
                 harness.dispatch();
                 harness.deliverEvent(31);
+                harness.advance(SimulationDuration{0});
                 harness.stablePoint();
                 Row row;
                 appendLuaStats(row, harness);
@@ -2658,7 +2747,7 @@ namespace
             options.size,
             kLuaPlain,
             options.resume_budget,
-            options.lua_policy
+            options.lua_policy, options.vm_accounting
         };
         const auto churn_count = (std::max)(std::size_t{1U}, (std::min)(std::size_t{100U}, options.size / 10U));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -2691,7 +2780,9 @@ int main(int argc, char** argv)
     try
     {
         std::vector<Row> rows;
-        if (options->group == "micro-sync")
+        if (options->group == "micro-hook-channel")
+            runHookChannelMicro(*options, rows);
+        else if (options->group == "micro-sync")
             runMicroSync(*options, rows);
         else if (options->group == "micro-async")
             runAsyncPhases(*options, rows);

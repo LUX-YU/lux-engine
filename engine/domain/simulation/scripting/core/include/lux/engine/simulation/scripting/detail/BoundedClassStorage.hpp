@@ -76,17 +76,17 @@ namespace lux::simulation::script::detail
             const bool is_invalid_input = plans.empty() || plans.size() > 64U || allocation_capacity == 0U ||
                 allocation_capacity >= Invalid || max_bytes == 0U;
             if (is_invalid_input)
-                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
             std::size_t max_alignment{alignof(std::max_align_t)};
             for (const auto& plan : plans)
             {
                 const bool is_invalid_layout = plan.size == 0U || !powerOfTwo(plan.alignment) ||
                     plan.size > (std::numeric_limits<std::size_t>::max)() - (plan.alignment - 1U);
                 if (is_invalid_layout)
-                    return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                    return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
                 const auto stride = alignUp(plan.size, plan.alignment);
                 if (plan.page_bytes < stride || plan.pages >= Invalid)
-                    return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                    return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
                 max_alignment = (std::max)(max_alignment, plan.alignment);
             }
             std::size_t arena_bytes{};
@@ -97,39 +97,39 @@ namespace lux::simulation::script::detail
                 const bool is_invalid_page = plan.page_bytes > (std::numeric_limits<std::size_t>::max)() -
                     (max_alignment - 1U);
                 if (is_invalid_page)
-                    return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                    return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
                 const auto page_stride = alignUp(plan.page_bytes, max_alignment);
                 const auto page_slots = plan.page_bytes / alignUp(plan.size, plan.alignment);
                 const bool exceeds_budget = plan.pages > (max_bytes - arena_bytes) / page_stride;
                 const bool exceeds_indices = plan.pages > Invalid - 1U - page_count ||
                     page_slots >= Invalid || plan.pages > (Invalid - 1U - slot_count) / page_slots;
                 if (exceeds_budget || exceeds_indices)
-                    return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                    return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
                 arena_bytes += page_stride * plan.pages;
                 page_count += plan.pages;
                 slot_count += page_slots * plan.pages;
             }
             if (arena_bytes == 0U || arena_bytes > static_cast<std::size_t>(
                     (std::numeric_limits<std::ptrdiff_t>::max)()))
-                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
             auto remaining = max_bytes - arena_bytes;
             if (remaining < sizeof(BoundedClassStorage))
-                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
             remaining -= sizeof(BoundedClassStorage);
             if (plans.size() > remaining / sizeof(Class))
-                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
             remaining -= plans.size() * sizeof(Class);
             if (page_count > remaining / sizeof(Page))
-                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
             remaining -= page_count * sizeof(Page);
             if (slot_count > remaining / sizeof(Slot))
-                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
 
             BoundedClassStorage result;
             result.arena_.alignment = max_alignment;
             result.arena_.data = ::operator new(arena_bytes, std::align_val_t{max_alignment}, std::nothrow);
             if (result.arena_.data == nullptr)
-                return lux::cxx::unexpected(EClassStorageError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::ALLOCATION_FAILURE);
             try
             {
                 result.classes_.resize(plans.size());
@@ -144,7 +144,7 @@ namespace lux::simulation::script::detail
                     result.classes_.capacity() * sizeof(Class) + result.pages_.capacity() * sizeof(Page) +
                     result.slots_.capacity() * sizeof(Slot);
                 if (result.stats_.metadata_bytes > max_bytes - arena_bytes)
-                    return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                    return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::INVALID_CONFIGURATION);
                 std::uint32_t next_page{};
                 std::uint32_t next_slot{};
                 std::size_t offset{};
@@ -173,7 +173,7 @@ namespace lux::simulation::script::detail
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(EClassStorageError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::ALLOCATION_FAILURE);
             }
         }
 
@@ -363,7 +363,7 @@ namespace lux::simulation::script::detail
         [[nodiscard]] lux::cxx::expected<Allocation, EClassStorageError> fail() noexcept
         {
             ++stats_.capacity_failures;
-            return lux::cxx::unexpected(EClassStorageError::CAPACITY_EXCEEDED);
+            return lux::cxx::unexpected<EClassStorageError>(EClassStorageError::CAPACITY_EXCEEDED);
         }
 
         Arena arena_;

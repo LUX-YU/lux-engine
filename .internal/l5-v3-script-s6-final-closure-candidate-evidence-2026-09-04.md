@@ -136,3 +136,13 @@ guarded.
 
 No new manager, scheduler, service locator, backend, runtime provider lookup or idle-population scan was introduced.
 The candidate is qualified and intentionally awaits independent review before any normative freeze declaration.
+
+## Subsequent review note — 2026-09-05
+
+The historical results above are preserved. They do not close the later Lua closure-provenance, external-result
+admission, TaskGraph caller-exclusion and HookChannel/commit findings. The joint closure has separate evidence and
+an independent-review gate; this file is superseded as authority for current Script qualification.
+
+The earlier attribution of Lua 5.4 tail growth to VM allocation/GC is a hypothesis, not an allocator/GC-proven causal
+result. This joint wave does not build, test or sample Lua 5.4 and makes no new attribution for it. Its diagnostic
+allocator pass concerns LuaJIT only and is kept separate from normal timing measurements.

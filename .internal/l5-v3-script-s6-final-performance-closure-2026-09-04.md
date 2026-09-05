@@ -119,3 +119,10 @@ The three largest remaining observed costs are Lua VM coroutine creation/GC, the
 generic ScriptSystem/Native prepared invocation around very small FlowForge work. These are measured debts, not
 complexity violations. This document records a performance baseline; it does not establish an absolute frame-time
 gate or declare the framework frozen.
+
+## Subsequent review qualification — 2026-09-05
+
+All recorded historical numbers remain unchanged. In particular, the Lua 5.4 allocation/GC explanation above was
+not established using allocator/GC data and must be treated as an unproven hypothesis. The later joint closure
+records independent LuaJIT allocation/free diagnostics, not a retrospective Lua 5.4 diagnosis. That wave excludes
+Lua 5.4, PLAYER and EDITOR qualification and does not re-declare the framework frozen.

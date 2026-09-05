@@ -6,6 +6,8 @@ find_package(lux-cmake-toolset CONFIG REQUIRED)
 find_package(lux-engine-function REQUIRED COMPONENTS script_core script_artifact)
 find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script_lua)
 find_package(lux-engine-toolchain REQUIRED COMPONENTS lua_script_packager)
+find_package(lux-engine-simulation-composition REQUIRED COMPONENTS simulation_composition)
+find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script simulation_scripting_core)
 
 include_component_cmake_scripts(lux::engine::function::script_core)
 include_component_cmake_scripts(lux::engine::toolchain::lua_script_packager)
@@ -25,6 +27,7 @@ target_compile_features(inventory_event_schema_writer PRIVATE cxx_std_20)
 target_link_libraries(
     inventory_event_schema_writer
     PRIVATE lux::engine::toolchain::lua_script_packager
+        lux::engine::simulation::simulation_scripting_core
 )
 set(event_schema ${CMAKE_CURRENT_BINARY_DIR}/inventory.events.schema.json)
 add_custom_command(
@@ -52,10 +55,17 @@ lux_package_lua_script(
 
 add_executable(lua_script_packager_consumer main.cpp)
 target_compile_features(lua_script_packager_consumer PRIVATE cxx_std_20)
+if(MSVC)
+    target_compile_options(lua_script_packager_consumer PRIVATE /UNDEBUG)
+else()
+    target_compile_options(lua_script_packager_consumer PRIVATE -UNDEBUG)
+endif()
 target_link_libraries(
     lua_script_packager_consumer
     PRIVATE
         inventory_ability_contract
+        lux::engine::simulation::composition
+        lux::engine::simulation::simulation_script
         lux::engine::function::script_artifact
         lux::engine::simulation::simulation_script_lua
 )

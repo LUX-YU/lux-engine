@@ -8,6 +8,7 @@ local InventoryBehavior = {}
 ---@return void
 function InventoryBehavior:initialize()
     self.count = 0
+    lux.Inventory.count(self.count)
 end
 
 ---@lux.method
@@ -16,6 +17,7 @@ end
 ---@return void
 function InventoryBehavior:retire(reason)
     self.reason = reason
+    lux.Inventory.count(-reason)
 end
 
 ---@lux.method
@@ -23,6 +25,7 @@ end
 ---@return void
 function InventoryBehavior:update()
     self.count = lux.Inventory.countLater(7)
+    self.count = lux.Inventory.count(self.count + lux.Event.Inventory.changed())
 end
 
 return InventoryBehavior

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(lux_flowforge_compiler_consumer LANGUAGES CXX)
 
 find_package(lux-engine-function REQUIRED COMPONENTS script_native)
+find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_scripting_core)
 
 find_package(
     lux-engine-flowforge-compiler
@@ -15,4 +16,5 @@ target_link_libraries(
     PRIVATE
         lux::engine::flowforge::flowforge_compiler
         lux::engine::function::script_native
+        lux::engine::simulation::simulation_scripting_core
 )

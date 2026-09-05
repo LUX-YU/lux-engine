@@ -3,8 +3,11 @@
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 
 #include <memory>
+#include <array>
 #include <cstdio>
 #include <span>
 #include <utility>
@@ -12,16 +15,31 @@
 int main()
 {
     lux::flowforge::FlowGraph graph;
-    const lux::script::ScriptEventSourceDescription event_source{
-        "Gameplay",
-        "damage",
-        41U,
-        42U,
-        lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
-        {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
-        lux::semantic::typeId("lux.i32"),
-        1U, 43U, 44U, 1U
-    };
+    using namespace lux::simulation;
+    constexpr lux::system::SystemInstanceId owner{41U};
+    constexpr EventPointId damage{42U};
+    constexpr HookPointId delivery{43U};
+    constexpr std::array hooks{makeHookPointSpec<void()>(delivery, "delivery", true, true)};
+    constexpr std::array events{makeEventPointSpec<std::int32_t>(damage, "damage", delivery,
+        EEventRoute::SIMULATION_BROADCAST, "lux.i32", 1U)};
+    const SimulationSystemDescription descriptor{
+        .type = {.canonical_name = "consumer.gameplay", .version = 1U}, .hooks = hooks, .events = events};
+    SimulationDescriptionBuilder builder;
+    const bool added_system = static_cast<bool>(builder.addSystem(owner, "Gameplay", descriptor));
+    const bool added_execution = added_system && static_cast<bool>(builder.addExecutionDependency(
+        SimulationExecutionPoint::task(owner), SimulationExecutionPoint::hook(owner, delivery)));
+    const bool added_producer = added_execution &&
+        static_cast<bool>(builder.addChannelProducer({owner, damage, owner, PrimarySimulationTask}));
+    if (!added_producer)
+        return 1;
+    auto description = std::move(builder).build();
+    if (!description)
+        return 1;
+    auto projected = lux::simulation::script::describeScriptEventSource<std::int32_t>(
+        description->findEvent(owner, damage));
+    if (!projected)
+        return 1;
+    const auto event_source = *projected;
     auto event = std::make_unique<lux::flowforge::OnEventNode>("tick");
     auto wait = std::make_unique<lux::flowforge::ScriptEventAwaitNode>(event_source);
     auto* event_pointer = event.get();

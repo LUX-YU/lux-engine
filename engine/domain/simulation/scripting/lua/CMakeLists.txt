@@ -79,6 +79,8 @@ endif()
 lux_classify_target(TARGET simulation_script_lua_closure_provenance_test
     LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
 add_test(NAME simulation_script_lua_closure_provenance_test COMMAND simulation_script_lua_closure_provenance_test)
+add_test(NAME simulation_script_lua_closure_interpreter_test
+    COMMAND simulation_script_lua_closure_provenance_test --interpreter-only)
 
 add_executable(
     simulation_script_lua_prepared_storage_test

@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -13,6 +14,7 @@
 namespace
 {
     using namespace lux::simulation::script;
+    lux::script::lua::ELuaExecutionPolicy policy{lux::script::lua::ELuaExecutionPolicy::DEFAULT};
 
     struct Dispatch final
     {
@@ -96,7 +98,8 @@ void testAbilityProvenance()
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 2U,
         .prepared_ability_capacity = 4U,
-        .abilities = contributions
+        .abilities = contributions,
+        .execution_policy = policy
     });
     assert(backend);
     const auto runtime = backend->descriptor();
@@ -174,6 +177,7 @@ void testEventProvenance()
         .continuation_capacity = 2U,
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 1U,
+        .execution_policy = policy,
         .event_catalog_capacity = 2U,
         .prepared_event_capacity = 2U,
         .events = sources
@@ -236,8 +240,133 @@ void testEventProvenance()
     assert(backend->stats().prepared_event_slots == 0U);
 }
 
-int main()
+void testNestedScopes()
 {
+    Ability alpha{"lux.test.nested.alpha", "Alpha", "lux.test.nested.alpha.call"};
+    Ability beta{"lux.test.nested.beta", "Beta", "lux.test.nested.beta.call"};
+    const std::array contributions{
+        lux::script::lua::ScriptAbilityLuaContribution{&alpha.description, alpha.projections},
+        lux::script::lua::ScriptAbilityLuaContribution{&beta.description, beta.projections}
+    };
+    const lux::script::ScriptEventSourceDescription event{"Source", "ready", 1U, 1U,
+        lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
+        {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U}, 1U, 1U, 1U, 1U, 1U};
+    auto backend = LuaScriptBackend::create({
+        .instance_capacity = 2U, .prepared_call_capacity = 4U, .continuation_capacity = 1U,
+        .execution_depth_capacity = 4U, .ability_catalog_method_capacity = 2U, .prepared_ability_capacity = 2U,
+        .abilities = contributions, .execution_policy = policy,
+        .event_catalog_capacity = 1U, .prepared_event_capacity = 1U, .events = {&event, 1U}
+    });
+    assert(backend);
+    auto outer = makeArtifact(alpha,
+        "return {save=function() end, foreign=function() end, own=function() lux.Alpha.call(); lux.Alpha.call() end}");
+    auto inner_base = makeArtifact(beta,
+        "return {own=function() lux.Beta.call() end, foreign=function() error('expected nested failure') end,"
+        "save=function() lux.Beta.call(); lux.Event.Source.ready(); lux.Beta.call() end}");
+    auto description = inner_base.description();
+    std::get<lux::rdesc::LuaSourceScript>(description.body).suspension_capable_exports = {1U};
+    description.event_requirements = {event};
+    auto inner = lux::script::ScriptArtifact::create(std::move(description),
+        std::vector<std::byte>{inner_base.payload().begin(), inner_base.payload().end()});
+    assert(inner);
+    struct Nested final
+    {
+        ScriptBackendPreparedMethod* method{};
+        int calls{};
+        int status{};
+        std::size_t waits{};
+        bool coroutine{};
+        ScriptStepResult result;
+        ScriptBackendContinuation continuation;
+        static ScriptStepContext context(Nested& self) noexcept
+        {
+            return {{2U, 1U}, &self, nullptr, nullptr,
+                [](void* opaque, ScriptInstanceId, ScriptEventWaitRequest) noexcept
+                    -> lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> {
+                    ++static_cast<Nested*>(opaque)->waits;
+                    return ScriptAwaitableId{1U, 1U};
+                }};
+        }
+    } nested;
+    int inner_calls{};
+    const Dispatch outer_dispatch{[](void* opaque) noexcept {
+        auto& self = *static_cast<Nested*>(opaque);
+        if (++self.calls != 1)
+            return;
+        lux_script_call_frame frame{};
+        if (self.coroutine)
+        {
+            auto step = Nested::context(self);
+            self.result = self.method->resumable.invoke(self.method->resumable.context, frame, step, self.continuation);
+        }
+        else
+        {
+            frame.user_context = self.method->synchronous.context;
+            self.status = self.method->synchronous.invoke(&frame);
+        }
+    }};
+    const Dispatch inner_dispatch{[](void* opaque) noexcept { ++*static_cast<int*>(opaque); }};
+    const PreparedScriptApiCapability outer_capability{
+        lux::script::ScriptApiContractId{alpha.description.id.name()}, alpha.description.schema_hash,
+        &nested, &outer_dispatch, 1U, alpha.bindings};
+    const PreparedScriptApiCapability inner_capability{
+        lux::script::ScriptApiContractId{beta.description.id.name()}, beta.description.schema_hash,
+        &inner_calls, &inner_dispatch, 1U, beta.bindings};
+    const auto runtime = backend->descriptor();
+    ScriptBackendInstance outer_instance, inner_instance;
+    assert(runtime.createInstance(runtime.context,
+        {assetId(11U), SimulationScriptScope{}, nullptr, {1U, 1U}, {&outer_capability, 1U}, {}},
+        outer, outer_instance) == EScriptBackendResult::SUCCESS);
+    assert(runtime.createInstance(runtime.context,
+        {assetId(12U), SimulationScriptScope{}, nullptr, {2U, 1U}, {&inner_capability, 1U}, {&event, 1U}},
+        *inner, inner_instance) == EScriptBackendResult::SUCCESS);
+    ScriptBackendPreparedMethod outer_method;
+    assert(runtime.prepareMethod(runtime.context, outer_instance, outer.description().exports[1], outer_method) ==
+        EScriptBackendResult::SUCCESS);
+    for (std::size_t mode{}; mode < 3U; ++mode)
+    {
+        ScriptBackendPreparedMethod inner_method;
+        const auto index = mode == 0U ? 1U : mode == 1U ? 2U : 0U;
+        assert(runtime.prepareMethod(runtime.context, inner_instance,
+            inner->description().exports[index], inner_method) ==
+            EScriptBackendResult::SUCCESS);
+        nested.method = &inner_method;
+        nested.calls = 0;
+        nested.coroutine = mode == 2U;
+        lux_script_call_frame frame{};
+        frame.user_context = outer_method.synchronous.context;
+        assert(outer_method.synchronous.invoke(&frame) == 0 && nested.calls == 2);
+        if (mode == 0U)
+            assert(nested.status == 0 && inner_calls == 1);
+        else if (mode == 1U)
+            assert(nested.status != 0 && inner_calls == 1);
+        else
+        {
+            assert(nested.result.state == EScriptStepState::SUSPENDED && nested.waits == 1U && inner_calls == 2);
+            ScriptOwnedResumeValue value;
+            value.type = makePreparedResumeType<std::int32_t>();
+            assert(value.bytes.resize(4U));
+            const std::int32_t payload{7};
+            std::memcpy(value.bytes.data(), &payload, sizeof(payload));
+            auto step = Nested::context(nested);
+            const auto result = nested.continuation.resume(nested.continuation.state, step,
+                {{1U, 1U}, EScriptAwaitableState::READY, &value, {}});
+            assert(result.state == EScriptStepState::COMPLETED && inner_calls == 3);
+            nested.continuation.destroy(nested.continuation.state);
+        }
+        runtime.releaseMethod(runtime.context, inner_instance, inner_method);
+    }
+    assert(backend->stats().execution_depth_high_water == 2U);
+    runtime.releaseMethod(runtime.context, outer_instance, outer_method);
+    runtime.destroyInstance(runtime.context, inner_instance);
+    runtime.destroyInstance(runtime.context, outer_instance);
+}
+
+int main(int argc, char** argv)
+{
+    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
+        policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     testAbilityProvenance();
     testEventProvenance();
+    testNestedScopes();
 }

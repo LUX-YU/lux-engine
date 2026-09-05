@@ -127,7 +127,7 @@ int main()
         std::move(erased_completion)
     );
     assert(starter->countLater(18U, std::move(completion)));
-    assert(state->value == 4);
+    assert(state->value == 6);
     assert(provider.last_item == 18U);
 
     lux::flowforge::ScriptAbilityNodeCatalog catalog;

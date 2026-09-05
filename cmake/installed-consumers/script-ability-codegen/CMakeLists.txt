@@ -21,6 +21,11 @@ target_include_directories(
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_features(lux_script_ability_codegen_consumer PRIVATE cxx_std_20)
+if(MSVC)
+    target_compile_options(lux_script_ability_codegen_consumer PRIVATE /UNDEBUG)
+else()
+    target_compile_options(lux_script_ability_codegen_consumer PRIVATE -UNDEBUG)
+endif()
 target_link_libraries(
     lux_script_ability_codegen_consumer
     PRIVATE

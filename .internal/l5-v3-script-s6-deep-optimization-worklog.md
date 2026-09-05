@@ -3,7 +3,8 @@
 - B0: `a577c49409e2519029693fbe780fe8ce3ab2dc1e`.
 - Implementation: `codex/s6-deep-optimization`, isolated worktree.
 - Main's four pre-existing edits are excluded and untouched.
-- Status: IN PROGRESS; no qualification or freeze claim.
+- Status: STOPPED AT USER REQUEST; partial/WIP snapshot for independent review, NOT QUALIFIED.
+- Do not resume implementation until the user authorizes continuation after review.
 - W0 precedes W1-W5. Bsafe is assigned only after W0 runtime regressions pass.
 - Scope: LuaJIT JIT-on/interpreter; no PLAYER, EDITOR, Lua54, Linux or Android qualification.
 - Final evidence must account for C01-C05, M01-M13, R01-R09 and X01-X02 separately.
@@ -63,3 +64,24 @@
   together with an owned const-reference argument. These are Windows/MSVC findings, not cross-compiler claims.
 - Remaining W1 qualification: broader backend layout/quota cases and clean installed/Toolchain closure. W2-W5,
   all R/X decisions and final performance/qualification are still outstanding at this checkpoint.
+
+## User-requested review stop
+
+The user requested stopping implementation and uploading the current code because of suspected engineering drift.
+No additional implementation, build or performance run is authorized by this upload checkpoint.
+
+- W2 C++ work is partial: typed synchronous export helpers, per-arity invocation scratch, removal of global-max
+  persistent argument vectors, and prepare-time reference ownership layouts. A successful all build followed by
+  four focused tests is recorded in `w2-cpp-shape-all.log`; 50k prepared methods retain 1,600,000 tracked bytes with
+  or without the 64-argument export, with zero erased-invoker sentinel calls. This is NOT full qualification.
+- An earlier typed-helper build failed and a subsequent intermediate test call ran an older binary; that run is
+  explicitly excluded from evidence. The later corrected build/focused run is the one described above.
+- `SuspensionFrameLiveness.hpp` is an UNINTEGRATED, UNCOMPILED analysis draft. AOT.cpp does not consume it;
+  M05 is not implemented or qualified. Its presence in this snapshot only preserves the work for review.
+- The new Toolchain root was configured successfully, but was not built or tested. No new Debug, Release,
+  installed-consumer, Physics-OFF/Lua-disabled, full stress, R/X experiment, or final before/after qualification
+  is claimed. PLAYER, EDITOR, Lua54, Linux and Android remain NOT RUN.
+- W3-W5 and the required remaining M/R/X closure are NOT DONE. No final performance gain or framework freeze
+  is asserted. The earlier checkpoints must not be represented as completion of the whole plan.
+- Main remains at a577c494. On stop, its five dirty files (including the newly present Script.hpp edit) were
+  untouched and excluded. Only codex/s6-deep-optimization is to be uploaded; no main merge or docs-branch update.

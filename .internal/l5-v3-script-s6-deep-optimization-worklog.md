@@ -3,8 +3,9 @@
 - B0: `a577c49409e2519029693fbe780fe8ce3ab2dc1e`.
 - Implementation: `codex/s6-deep-optimization`, isolated worktree.
 - Main's four pre-existing edits are excluded and untouched.
-- Status: STOPPED AT USER REQUEST; partial/WIP snapshot for independent review, NOT QUALIFIED.
-- Do not resume implementation until the user authorizes continuation after review.
+- Historical checkpoint status: STOPPED AT USER REQUEST; partial/WIP snapshot, NOT QUALIFIED.
+- Continuation authorized 2026-09-05 under the build-time codegen correction plan v2.
+- Current work is recorded in `l5-v3-script-s6-codegen-closure-worklog.md`; that plan supersedes W0-W5.
 - W0 precedes W1-W5. Bsafe is assigned only after W0 runtime regressions pass.
 - Scope: LuaJIT JIT-on/interpreter; no PLAYER, EDITOR, Lua54, Linux or Android qualification.
 - Final evidence must account for C01-C05, M01-M13, R01-R09 and X01-X02 separately.

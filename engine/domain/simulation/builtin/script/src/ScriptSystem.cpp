@@ -1,3 +1,4 @@
+#include <lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/script/ExternalCompletionRing.hpp>
 #include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
@@ -81,33 +82,6 @@ namespace lux::simulation::script
         [[nodiscard]] constexpr std::size_t backendIndex(lux::rdesc::Script::Kind kind) noexcept
         {
             return static_cast<std::size_t>(kind);
-        }
-
-        [[nodiscard]] bool sameType(const lux::rdesc::ScriptValueType& script_type,
-                                    const lux::semantic::Type& endpoint_type) noexcept
-        {
-            return script_type.type_id == endpoint_type.type_id &&
-                   script_type.canonical_name == endpoint_type.canonical_name && script_type.pass == endpoint_type.pass;
-        }
-
-        [[nodiscard]] bool sameHookSignature(const lux::rdesc::ScriptFunction& function,
-                                             lux::semantic::SignatureView signature) noexcept
-        {
-            if (!function.returns.empty() || function.args.size() != signature.parameters.size())
-                return false;
-
-            for (std::size_t index{}; index < function.args.size(); ++index)
-            {
-                if (!sameType(function.args[index], signature.parameters[index]))
-                    return false;
-            }
-            return true;
-        }
-
-        [[nodiscard]] bool sameEventSignature(const lux::rdesc::ScriptFunction& function,
-                                              const lux::semantic::Type& payload) noexcept
-        {
-            return function.returns.empty() && function.args.size() == 1U && sameType(function.args.front(), payload);
         }
 
         [[nodiscard]] EScriptSystemError backendError(EScriptBackendResult result) noexcept
@@ -2805,8 +2779,8 @@ namespace lux::simulation::script
                 const auto* function = mount.artifact.artifact->findExport(methods[binding.method_slot].symbol);
                 const bool is_hook = binding.kind == EBindingKind::HOOK;
                 const bool is_signature_valid =
-                    is_hook ? sameHookSignature(*function, hooks[binding.bucket_slot].endpoint->signature)
-                            : sameEventSignature(*function, events[binding.bucket_slot].endpoint->payload_type);
+                    is_hook ? sameScriptHookSignature(*function, hooks[binding.bucket_slot].endpoint->signature)
+                            : sameScriptEventSignature(*function, events[binding.bucket_slot].endpoint->payload_type);
                 if (!is_signature_valid)
                 {
                     releaseMount(mount_slot, EMountState::INACTIVE, false);

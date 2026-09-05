@@ -11,6 +11,7 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_script
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptSystemDescription.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptBindingAuthoring.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptSystemDescriptionCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptSystem.cpp
 )
@@ -355,3 +356,21 @@ lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppCoroutineBenchmar
     MODULE lux.benchmark.cpp-coroutine DESCRIPTOR cpp-coroutine-benchmark-v1
     OWNER lux::simulation::benchmark::CppCoroutineBenchmarkObject SCOPE ENTITY
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)
+
+add_executable(script_binding_authoring_test test/script_binding_authoring_test.cpp)
+target_link_libraries(script_binding_authoring_test PRIVATE simulation_script
+    lux::engine::simulation::simulation_script_cpp_static lux::engine::core::type_info)
+if(MSVC)
+    target_compile_options(script_binding_authoring_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(script_binding_authoring_test PRIVATE -UNDEBUG)
+endif()
+lux_cpp_static_scripts(TARGET script_binding_authoring_test NAME AuthoringBehavior
+    SOURCE ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/cpp-generated-script/Behavior.hpp LOGICAL_PATH Behavior.hpp
+    MODULE authoring DESCRIPTOR authoring OWNER installed_generated::Behavior SCOPE ENTITY
+    SYMBOL_LEDGER ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/cpp-generated-script/behavior.symbols.json
+    ABILITY_TYPES lux::simulation::script::DelayAbility
+    ABILITY_HEADERS lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp
+    DEPENDS simulation_script_script_abilities_generate)
+lux_classify_target(TARGET script_binding_authoring_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME script_binding_authoring_test COMMAND script_binding_authoring_test)

@@ -343,3 +343,15 @@ add_test(
         -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/benchmark/smoke
         -P ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/run_smoke.cmake
 )
+
+target_link_libraries(script_runtime_benchmark PRIVATE lux::engine::core::type_info)
+lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppLifecycle
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CppBenchmarkScripts.hpp LOGICAL_PATH CppBenchmarkScripts.hpp
+    MODULE lux.benchmark.cpp-lifecycle DESCRIPTOR cpp-lifecycle-v1
+    OWNER lux::simulation::benchmark::CppLifecycleObject SCOPE ENTITY
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)
+lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppCoroutineBenchmark
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CppBenchmarkScripts.hpp LOGICAL_PATH CppBenchmarkScripts.hpp
+    MODULE lux.benchmark.cpp-coroutine DESCRIPTOR cpp-coroutine-benchmark-v1
+    OWNER lux::simulation::benchmark::CppCoroutineBenchmarkObject SCOPE ENTITY
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)

@@ -1,0 +1,8 @@
+#pragma once
+// Generated from {{ logical_path }}; stable symbols are supplied by the Script ledger.
+#include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp>
+
+namespace lux::simulation::script::generated
+{
+    extern const CppStaticContract {{ script.name }};
+}

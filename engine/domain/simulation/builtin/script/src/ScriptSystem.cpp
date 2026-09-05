@@ -2786,6 +2786,15 @@ namespace lux::simulation::script
                     releaseMount(mount_slot, EMountState::INACTIVE, false);
                     return lux::cxx::unexpected(error);
                 }
+                const bool is_lifecycle = method_slot == mount.begin_play_method ||
+                    method_slot == mount.end_play_method;
+                const bool invalid_lifecycle_entry = is_lifecycle &&
+                    (!method.backend.synchronous || static_cast<bool>(method.backend.resumable));
+                if (invalid_lifecycle_entry)
+                {
+                    releaseMount(mount_slot, EMountState::INACTIVE, false);
+                    return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
+                }
             }
 
             const auto binding_end = mount.binding_first + mount.binding_count;

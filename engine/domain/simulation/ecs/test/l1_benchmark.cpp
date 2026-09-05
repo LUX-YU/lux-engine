@@ -1,3 +1,5 @@
+#include "CppSlabScript.hpp"
+#include "CppSlabScript.CppSlab.script.generated.hpp"
 #include "../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../system/test/HookChannelTestDriver.hpp"
@@ -751,62 +753,20 @@ namespace
         std::size_t asset_releases{};
     };
 
-    struct alignas(64) CppSlabObject final
-    {
-        std::uint64_t value{};
-        void update() noexcept { ++value; }
-    };
-
     struct CppSlabState final
     {
         static constexpr lux::script::ScriptSymbolId kSymbol{0x7201U};
 
         explicit CppSlabState(std::size_t count)
         {
-            reflected_class.name = "CppSlabObject";
-            reflected_class.full_name = "lux::benchmark::CppSlabObject";
-            reflected_class.type = lux::meta::ref_type_of_v<CppSlabObject>;
-            reflected_class.construct = [](void* memory)
-            {
-                std::construct_at(static_cast<CppSlabObject*>(memory));
-            };
-            reflected_class.destruct = [](void* object)
-            {
-                std::destroy_at(static_cast<CppSlabObject*>(object));
-            };
-
-            reflected_method.invokable.name = "update";
-            reflected_method.invokable.full_name = "lux::benchmark::CppSlabObject::update";
-            reflected_method.invokable.return_type = lux::meta::ref_type_of_v<void>;
-            reflected_method.invokable.invoker = [](void* object, void**, void*)
-            {
-                static_cast<CppSlabObject*>(object)->update();
-            };
-            reflected_method.owner_class = std::addressof(reflected_class);
-            reflected_method.is_noexcept = true;
-
-            const std::array methods{std::addressof(reflected_method)};
-            const std::array symbols{kSymbol};
-            const std::array typed_methods{
-                makeCppStaticMethodExport<&CppSlabObject::update>(reflected_method, kSymbol)
-            };
-            auto projected = projectCppStaticEntityScript(
-                "lux.benchmark.cpp-slab",
-                "cpp-slab-v1",
-                reflected_class,
-                methods,
-                symbols,
-                {}, nullptr, {}, {}, {}, {}, typed_methods
-            );
-            if (!projected)
-                throw std::runtime_error("cpp slab descriptor projection failed");
-            script_descriptor.emplace(std::move(*projected));
-            auto created_artifact = lux::script::ScriptArtifact::create(script_descriptor->description(), {});
+            auto description = materializeCppStaticScript(lux::simulation::script::generated::CppSlab);
+            if (!description) throw std::runtime_error("C++ generated contract invalid");
+            auto created_artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
             if (!created_artifact)
                 throw std::runtime_error("cpp slab artifact creation failed");
             artifact.emplace(std::move(*created_artifact));
             const std::array pools{CppStaticScriptPoolDescription{
-                std::addressof(*script_descriptor),
+                &lux::simulation::script::generated::CppSlab,
                 count,
                 0U,
                 0U,
@@ -821,9 +781,6 @@ namespace
             instances.resize(count);
         }
 
-        lux::meta::RefClass reflected_class;
-        lux::meta::RefMethod reflected_method;
-        std::optional<CppStaticScriptDescriptor> script_descriptor;
         std::optional<lux::script::ScriptArtifact> artifact;
         std::optional<CppStaticScriptBackend> backend;
         ScriptBackendDescriptor backend_descriptor;

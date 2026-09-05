@@ -214,7 +214,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return token != nullptr && static_cast<bool>(synchronous);
+            return token != nullptr && (static_cast<bool>(synchronous) || static_cast<bool>(resumable));
         }
     };
 

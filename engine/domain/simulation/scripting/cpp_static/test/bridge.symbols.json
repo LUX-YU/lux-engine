@@ -1,0 +1,15 @@
+{
+  "schema":"lux-script-symbol-ledger", "version":1, "next_symbol":302,
+  "entries":[
+    {"source_identity":"bridge.value", "symbol":101},
+    {"source_identity":"bridge.record", "symbol":102},
+    {"source_identity":"bridge.begin", "symbol":104},
+    {"source_identity":"bridge.end", "symbol":105},
+    {"source_identity":"bridge.task", "symbol":106},
+    {"source_identity":"bridge.event", "symbol":107},
+    {"source_identity":"bridge.next", "symbol":108},
+    {"source_identity":"bridge.twice", "symbol":109},
+    {"source_identity":"bridge.free", "symbol":201},
+    {"source_identity":"ability.execute", "symbol":301}
+  ]
+}

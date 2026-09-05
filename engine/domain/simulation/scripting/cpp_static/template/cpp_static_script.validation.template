@@ -1,0 +1,16 @@
+{% set methods = marked_function_decls %}
+{% if script.owner != "" %}{% set methods = [] %}{% for record_index in marked_record_decls %}{% set record = decl_from_index(record_index) %}{% if record.fq_name == script.owner %}{% set methods = record.method_decls %}{% endif %}{% endfor %}{% endif %}
+{"diagnostics":[
+{% set emitted = false %}{% set count = 0 %}{% set begins = 0 %}{% set ends = 0 %}
+{% for method_id in methods %}{% if script.owner == "" %}{% set method = decl_from_index(method_id) %}{% else %}{% set method = decl_from_id(method_id) %}{% endif %}
+{% set key = annotation_get_or(method, "script_export", "") %}{% if key != "" %}{% set count = count + 1 %}
+{% for other_id in methods %}{% if other_id != method_id %}{% if script.owner == "" %}{% set other = decl_from_index(other_id) %}{% else %}{% set other = decl_from_id(other_id) %}{% endif %}{% if annotation_get_or(other, "script_export", "") == key %}
+{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(method.fq_name) }},"message":"duplicate Script export source identity"}{% set emitted = true %}
+{% endif %}{% endif %}{% endfor %}
+{% set role = annotation_get_or(method, "script_lifecycle", "") %}{% set coroutine = annotation_get_or(method, "script_coroutine", false) %}
+{% if role == "begin_play" %}{% set begins = begins + 1 %}{% endif %}{% if role == "end_play" %}{% set ends = ends + 1 %}{% endif %}
+{% if not existsIn(script.symbols, key) or method.is_variadic or (script.owner != "" and method.visibility != 1) or (role != "" and role != "begin_play" and role != "end_play") or (role != "" and coroutine) %}
+{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(method.fq_name) }},"message":"Invalid Script export: missing stable symbol, non-public/variadic method or suspending lifecycle"}{% set emitted = true %}
+{% endif %}{% endif %}{% endfor %}
+{% if count == 0 or begins > 1 or ends > 1 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(script.owner) }},"message":"Script must select exports and at most one method per lifecycle role"}{% endif %}
+]}

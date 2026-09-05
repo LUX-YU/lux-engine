@@ -1,0 +1,1 @@
+{"schema":"lux-script-symbol-ledger","version":1,"next_symbol":5,"entries":[{"source_identity":"behavior.begin","symbol":1},{"source_identity":"behavior.update","symbol":2},{"source_identity":"behavior.task","symbol":3},{"source_identity":"behavior.end","symbol":4}]}

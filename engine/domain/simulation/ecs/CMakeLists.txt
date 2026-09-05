@@ -78,3 +78,10 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    FOUNDATION
 )
+
+target_link_libraries(ecs_l1_benchmark PRIVATE lux::engine::core::type_info)
+lux_cpp_static_scripts(TARGET ecs_l1_benchmark NAME CppSlab
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/test/CppSlabScript.hpp LOGICAL_PATH CppSlabScript.hpp
+    MODULE lux.benchmark.cpp-slab DESCRIPTOR cpp-slab-v1
+    OWNER lux::simulation::benchmark::CppSlabObject SCOPE ENTITY
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/test/cpp_slab.symbols.json)

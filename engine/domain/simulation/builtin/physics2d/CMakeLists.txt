@@ -225,3 +225,16 @@ if(BUILD_TESTING AND TARGET simulation_script_lua AND TARGET simulation_script_n
             --output ${CMAKE_CURRENT_BINARY_DIR}/physics2d-script-benchmark-smoke.csv
     )
 endif()
+
+if(TARGET physics2d_script_benchmark)
+    target_link_libraries(physics2d_script_benchmark PRIVATE lux::engine::core::type_info)
+    lux_cpp_static_scripts(TARGET physics2d_script_benchmark NAME PhysicsCpp
+        SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/PhysicsCppScript.hpp LOGICAL_PATH PhysicsCppScript.hpp
+        MODULE lux.physics2d.cpp-benchmark DESCRIPTOR physics2d-cpp-benchmark-v1
+        OWNER lux::physics2d::benchmark::CppObject SCOPE ENTITY
+        SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json
+        ABILITY_TYPES lux::physics2d::PhysicsQuery2D lux::simulation::script::DelayAbility
+        ABILITY_HEADERS PhysicsQuery2D.ability.generated.hpp
+            lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp
+        DEPENDS physics2d_simulation_script_abilities_generate simulation_script_script_abilities_generate)
+endif()

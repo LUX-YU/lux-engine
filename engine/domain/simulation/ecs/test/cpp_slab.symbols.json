@@ -1,0 +1,11 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 29186,
+  "entries": [
+    {
+      "source_identity": "slab.update",
+      "symbol": 29185
+    }
+  ]
+}

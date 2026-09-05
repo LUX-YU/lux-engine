@@ -1,3 +1,5 @@
+#include "PhysicsCppScript.hpp"
+#include "PhysicsCppScript.PhysicsCpp.script.generated.hpp"
 #include "PhysicsQuery2D.ability.generated.hpp"
 #include "PhysicsQuery2D.ability.lua.generated.hpp"
 #include "PhysicsQuery2D.ability.native.generated.hpp"
@@ -8,7 +10,6 @@
 
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
-#include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
@@ -58,7 +59,7 @@ namespace
     inline constexpr lux::script::ScriptSymbolId CppCoroutineTickSymbol{0x502D3002U};
     inline std::atomic_size_t g_allocations{};
     inline std::atomic_bool g_count_allocations{};
-    inline std::uint64_t g_cpp_checksum{};
+    using lux::physics2d::benchmark::cpp_checksum;
 
     struct Options final
     {
@@ -283,94 +284,13 @@ namespace
         return world::WorldObjectId{uuids::uuid{bytes}};
     }
 
-    struct CppObject final
-    {
-        std::uint64_t value{};
-        void tick() noexcept { ++value; g_cpp_checksum += value; }
-
-        ScriptCoroutine coroutineTick(ScriptCoroutineContext& context) noexcept
-        {
-            auto physics = context.ability<PhysicsQuery2D>();
-            if (!physics)
-                co_return;
-            const auto overlap = physics->overlapsBox(0.0, 0.0, 0.25, 0.25);
-            if (!overlap)
-                co_return;
-            value += static_cast<std::uint64_t>(*overlap);
-            co_await context.delay().nextStep();
-            ++value;
-            g_cpp_checksum += value;
-        }
-    };
-
     struct CppFixture final
     {
         CppFixture(std::size_t instance_capacity, std::size_t coroutine_capacity)
         {
-            reflected.name = "PhysicsMixedCppObject";
-            reflected.full_name = "lux.physics2d.benchmark.PhysicsMixedCppObject";
-            reflected.type = meta::ref_type_of_v<CppObject>;
-            reflected.construct = [](void* memory) { std::construct_at(static_cast<CppObject*>(memory)); };
-            reflected.destruct = [](void* object) { std::destroy_at(static_cast<CppObject*>(object)); };
-            tick.owner_class = std::addressof(reflected);
-            tick.invokable.name = "tick";
-            tick.invokable.full_name = "tick";
-            tick.invokable.return_type = meta::ref_type_of_v<void>;
-            tick.invokable.invoker = [](void* object, void**, void*) {
-                static_cast<CppObject*>(object)->tick();
-            };
-            tick.is_noexcept = true;
-            coroutine_tick.owner_class = std::addressof(reflected);
-            coroutine_tick.visibility = meta::EVisibility::Public;
-            coroutine_tick.is_noexcept = true;
-            coroutine_tick.invokable.name = "coroutineTick";
-            coroutine_tick.invokable.full_name = "lux.physics2d.benchmark.PhysicsMixedCppObject::coroutineTick";
-            coroutine_tick.invokable.return_type = meta::ref_type_of_v<ScriptCoroutine>;
-            coroutine_tick.invokable.parameters.push_back({
-                "context",
-                meta::ref_type_of_v<ScriptCoroutineContext&>,
-                "lux::simulation::script::ScriptCoroutineContext",
-                lux::cxx::type_hash<ScriptCoroutineContext>(),
-                false
-            });
-            const std::array methods{std::addressof(tick)};
-            const std::array symbols{CppTickSymbol};
-            const std::array typed_methods{makeCppStaticMethodExport<&CppObject::tick>(tick, CppTickSymbol)};
-            const auto coroutine = makeCppStaticCoroutineExport<&CppObject::coroutineTick>(
-                coroutine_tick,
-                CppCoroutineTickSymbol
-            );
-            const std::array coroutines{coroutine};
-            using PhysicsTraits = lux::script::ScriptAbilityTraits<PhysicsQuery2D>;
-            using DelayTraits = lux::script::ScriptAbilityTraits<DelayAbility>;
-            const std::array abilities{
-                lux::rdesc::ScriptApiRequirement{
-                    lux::script::ScriptApiContractId{PhysicsTraits::Description.id.name()},
-                    PhysicsTraits::Description.schema_hash
-                },
-                lux::rdesc::ScriptApiRequirement{
-                    lux::script::ScriptApiContractId{DelayTraits::Description.id.name()},
-                    DelayTraits::Description.schema_hash
-                }
-            };
-            auto projected = projectCppStaticEntityScript(
-                "lux.physics2d.cpp-benchmark",
-                "physics2d-cpp-benchmark-v1",
-                reflected,
-                methods,
-                symbols,
-                {},
-                nullptr,
-                {},
-                coroutines,
-                abilities,
-                {},
-                typed_methods
-            );
-            if (!projected)
-                throw std::runtime_error("cannot project Physics2D C++ benchmark script");
-            descriptor.emplace(std::move(*projected));
-            auto created_artifact = lux::script::ScriptArtifact::create(descriptor->description(), {});
+            auto description = materializeCppStaticScript(lux::simulation::script::generated::PhysicsCpp);
+            if (!description) throw std::runtime_error("C++ generated contract invalid");
+            auto created_artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
             if (!created_artifact)
                 throw std::runtime_error("cannot create Physics2D C++ benchmark artifact");
             artifact.emplace(std::move(*created_artifact));
@@ -381,7 +301,7 @@ namespace
                 )
             };
             const std::array pools{CppStaticScriptPoolDescription{
-                std::addressof(*descriptor),
+                &lux::simulation::script::generated::PhysicsCpp,
                 instance_capacity,
                 coroutine_capacity,
                 frame_bytes * 2U + 4096U,
@@ -395,10 +315,6 @@ namespace
             backend.emplace(std::move(*created_backend));
         }
 
-        meta::RefClass reflected;
-        meta::RefMethod tick;
-        meta::RefMethod coroutine_tick;
-        std::optional<CppStaticScriptDescriptor> descriptor;
         std::optional<lux::script::ScriptArtifact> artifact;
         std::optional<CppStaticScriptBackend> backend;
     };
@@ -826,7 +742,7 @@ namespace
         }
         const auto query_start = harness.physics->stats().overlap_queries;
         const auto runtime_start = harness.system->stats();
-        const auto cpp_start = g_cpp_checksum;
+        const auto cpp_start = cpp_checksum;
         for (std::size_t frame{}; frame < options.frames; ++frame)
         {
             rows.push_back(measure("scene-physics-mixed", "cpp-flowforge-lua", options.size, frame, [&] {
@@ -846,7 +762,7 @@ namespace
                     .next_step_waits = runtime.next_step_waits,
                     .queue_depth = runtime.resume_queue_depth,
                     .queue_high_water = runtime.resume_queue_high_water,
-                    .checksum = g_cpp_checksum - cpp_start,
+                    .checksum = cpp_checksum - cpp_start,
                     .resumes = runtime.backend_resume_calls - runtime_start.backend_resume_calls,
                     .suspensions = runtime.suspensions_admitted - runtime_start.suspensions_admitted,
                     .graph_compile_ns = harness.graph_compile_ns,

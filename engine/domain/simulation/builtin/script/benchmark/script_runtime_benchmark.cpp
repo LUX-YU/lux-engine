@@ -1,3 +1,6 @@
+#include "CppBenchmarkScripts.hpp"
+#include "CppBenchmarkScripts.CppLifecycle.script.generated.hpp"
+#include "CppBenchmarkScripts.CppCoroutineBenchmark.script.generated.hpp"
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
@@ -1481,79 +1484,18 @@ namespace
         }));
     }
 
-    struct CppLifecycleObject final
-    {
-        std::uint64_t value{};
-        void begin() noexcept { value = 10U; }
-        void tick() noexcept { ++value; }
-        void end(EScriptEndPlayReason reason) noexcept
-        {
-            if (reason != EScriptEndPlayReason::RUNTIME_STOPPED || value != 11U)
-                std::terminate();
-        }
-    };
-
     struct CppLifecycleFixture final
     {
         CppLifecycleFixture(std::size_t capacity)
         {
-            reflected_class.name = "CppLifecycleObject";
-            reflected_class.full_name = "lux.benchmark.CppLifecycleObject";
-            reflected_class.type = lux::meta::ref_type_of_v<CppLifecycleObject>;
-            reflected_class.construct = [](void* memory) {
-                std::construct_at(static_cast<CppLifecycleObject*>(memory));
-            };
-            reflected_class.destruct = [](void* object) { std::destroy_at(static_cast<CppLifecycleObject*>(object)); };
-
-            initializeMethod(begin, "admit", [](void* object, void**, void*) {
-                static_cast<CppLifecycleObject*>(object)->value = 10U;
-            });
-            initializeMethod(tick, "update", [](void* object, void**, void*) {
-                ++static_cast<CppLifecycleObject*>(object)->value;
-            });
-            initializeMethod(end, "retire", [](void* object, void** arguments, void*) {
-                const auto reason = *static_cast<const EScriptEndPlayReason*>(arguments[0]);
-                if (reason != EScriptEndPlayReason::RUNTIME_STOPPED ||
-                    static_cast<CppLifecycleObject*>(object)->value != 11U)
-                {
-                    std::terminate();
-                }
-            });
-            begin.owner_class = std::addressof(reflected_class);
-            tick.owner_class = std::addressof(reflected_class);
-            end.owner_class = std::addressof(reflected_class);
-            end.invokable.parameters.push_back({
-                "reason",
-                lux::meta::ref_type_of_v<EScriptEndPlayReason>,
-                lux::cxx::type_name<EScriptEndPlayReason>(),
-                lux::cxx::type_hash<EScriptEndPlayReason>()
-            });
-            const std::array methods{std::addressof(begin), std::addressof(tick), std::addressof(end)};
-            const std::array symbols{kBegin, kTick, kEnd};
-            const std::array typed_methods{
-                makeCppStaticMethodExport<&CppLifecycleObject::begin>(begin, kBegin),
-                makeCppStaticMethodExport<&CppLifecycleObject::tick>(tick, kTick),
-                makeCppStaticMethodExport<&CppLifecycleObject::end>(end, kEnd)
-            };
-            auto projected = projectCppStaticEntityScript(
-                "lux.benchmark.cpp-lifecycle",
-                "cpp-lifecycle-v1",
-                reflected_class,
-                methods,
-                symbols,
-                {nullptr, &resolveSemantic},
-                nullptr,
-                {kBegin, kEnd}, {}, {}, {}, typed_methods
-            );
-            if (!projected)
-                throw std::runtime_error("C++ lifecycle descriptor projection failed");
-            script.emplace(std::move(*projected));
-            auto created_artifact = lux::script::ScriptArtifact::create(script->description(), {});
+            auto description = materializeCppStaticScript(generated::CppLifecycle);
+            if (!description) throw std::runtime_error("C++ lifecycle generated contract invalid");
+            auto created_artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
             if (!created_artifact)
                 throw std::runtime_error("C++ lifecycle artifact creation failed");
             artifact.emplace(std::move(*created_artifact));
             const std::array pools{CppStaticScriptPoolDescription{
-                std::addressof(*script), capacity, 0U, 0U, alignof(std::max_align_t), capacity * 3U
+                &generated::CppLifecycle, capacity, 0U, 0U, alignof(std::max_align_t), capacity * 3U
             }};
             auto created_backend = CppStaticScriptBackend::create(pools);
             if (!created_backend)
@@ -1561,39 +1503,6 @@ namespace
             backend.emplace(std::move(*created_backend));
         }
 
-        static void initializeMethod(
-            lux::meta::RefMethod& method,
-            std::string_view name,
-            lux::meta::MethodInvoker invoker
-        )
-        {
-            method.invokable.name = name;
-            method.invokable.full_name = name;
-            method.invokable.return_type = lux::meta::ref_type_of_v<void>;
-            method.invokable.invoker = invoker;
-            method.is_noexcept = true;
-        }
-
-        static bool resolveSemantic(void*, const lux::meta::RefType& type, lux::semantic::Layout& output) noexcept
-        {
-            if (type.hash != lux::cxx::type_hash<EScriptEndPlayReason>())
-                return false;
-            using Traits = lux::semantic::TypeTraits<EScriptEndPlayReason>;
-            output = {
-                lux::semantic::typeId(Traits::CanonicalName),
-                Traits::CanonicalName,
-                Traits::AbiKind,
-                Traits::Size,
-                Traits::Alignment
-            };
-            return true;
-        }
-
-        lux::meta::RefClass reflected_class;
-        lux::meta::RefMethod begin;
-        lux::meta::RefMethod tick;
-        lux::meta::RefMethod end;
-        std::optional<CppStaticScriptDescriptor> script;
         std::optional<lux::script::ScriptArtifact> artifact;
         std::optional<CppStaticScriptBackend> backend;
     };
@@ -1808,75 +1717,15 @@ namespace
     }
 #endif
 
-    inline std::uint64_t g_cpp_coroutine_checksum{};
-
-    struct CppCoroutineBenchmarkObject final
-    {
-        ScriptCoroutine run(ScriptCoroutineContext& context) noexcept
-        {
-            co_await CppStaticCoroutineAccess::makeAwaiter<void>(
-                context,
-                [](ScriptCoroutineContext&, ScriptStepContext& step) noexcept
-                {
-                    const auto waiting = step.awaitables.create();
-                    return waiting
-                        ? ScriptStepResult::suspended(waiting->id)
-                        : ScriptStepResult::failed(-1);
-                }
-            );
-            ++g_cpp_coroutine_checksum;
-        }
-    };
+    using lux::simulation::benchmark::cpp_coroutine_checksum;
 
     struct CppCoroutineBenchmarkHarness final
     {
         explicit CppCoroutineBenchmarkHarness(std::size_t capacity)
         {
-            reflected.name = "CppCoroutineBenchmarkObject";
-            reflected.full_name = "lux.benchmark.CppCoroutineBenchmarkObject";
-            reflected.type = lux::meta::ref_type_of_v<CppCoroutineBenchmarkObject>;
-            reflected.construct = [](void* memory)
-            {
-                std::construct_at(static_cast<CppCoroutineBenchmarkObject*>(memory));
-            };
-            reflected.destruct = [](void* object)
-            {
-                std::destroy_at(static_cast<CppCoroutineBenchmarkObject*>(object));
-            };
-            method.owner_class = std::addressof(reflected);
-            method.visibility = lux::meta::EVisibility::Public;
-            method.is_noexcept = true;
-            method.invokable.name = "run";
-            method.invokable.full_name = "lux.benchmark.CppCoroutineBenchmarkObject::run";
-            method.invokable.return_type = lux::meta::ref_type_of_v<ScriptCoroutine>;
-            method.invokable.parameters.push_back({
-                "context",
-                lux::meta::ref_type_of_v<ScriptCoroutineContext&>,
-                "lux::simulation::script::ScriptCoroutineContext",
-                lux::cxx::type_hash<ScriptCoroutineContext>(),
-                false
-            });
-            const auto coroutine = makeCppStaticCoroutineExport<
-                &CppCoroutineBenchmarkObject::run
-            >(method, lux::script::ScriptSymbolId{0xC601U});
-            const std::array coroutines{coroutine};
-            const std::array<const lux::meta::RefMethod*, 0U> methods{};
-            const std::array<lux::script::ScriptSymbolId, 0U> symbols{};
-            auto projected = projectCppStaticEntityScript(
-                "lux.benchmark.cpp-coroutine",
-                "cpp-coroutine-benchmark-v1",
-                reflected,
-                methods,
-                symbols,
-                {},
-                nullptr,
-                {},
-                coroutines
-            );
-            if (!projected)
-                throw std::runtime_error("C++ coroutine benchmark projection failed");
-            descriptor.emplace(std::move(*projected));
-            auto created_artifact = lux::script::ScriptArtifact::create(descriptor->description(), {});
+            auto description = materializeCppStaticScript(generated::CppCoroutineBenchmark);
+            if (!description) throw std::runtime_error("C++ coroutine generated contract invalid");
+            auto created_artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
             if (!created_artifact)
                 throw std::runtime_error("C++ coroutine benchmark artifact failed");
             artifact.emplace(std::move(*created_artifact));
@@ -1888,7 +1737,7 @@ namespace
                 )
             };
             const std::array pools{CppStaticScriptPoolDescription{
-                std::addressof(*descriptor),
+                &generated::CppCoroutineBenchmark,
                 1U,
                 capacity,
                 storage_bytes * 2U + 4096U,
@@ -1939,9 +1788,6 @@ namespace
         {
         }
 
-        lux::meta::RefClass reflected;
-        lux::meta::RefMethod method;
-        std::optional<CppStaticScriptDescriptor> descriptor;
         std::optional<lux::script::ScriptArtifact> artifact;
         std::optional<CppStaticScriptBackend> backend;
         ScriptBackendDescriptor runtime;
@@ -1983,7 +1829,7 @@ namespace
                 .continuations = stats.active_frames,
                 .payload_bytes = stats.frame_storage_bytes,
                 .queue_high_water = stats.frame_high_water,
-                .checksum = g_cpp_coroutine_checksum
+                .checksum = cpp_coroutine_checksum
             };
         }));
         rows.push_back(measureRow("micro-cpp-coroutine-resume", "cpp-static", options.size, 0U, [&] {
@@ -2006,10 +1852,10 @@ namespace
                 .continuations = stats.active_frames,
                 .payload_bytes = stats.frame_storage_bytes,
                 .queue_high_water = stats.frame_high_water,
-                .checksum = g_cpp_coroutine_checksum
+                .checksum = cpp_coroutine_checksum
             };
         }));
-        if (g_cpp_coroutine_checksum < options.size || harness.backend->stats().heap_frame_allocations != 0U)
+        if (cpp_coroutine_checksum < options.size || harness.backend->stats().heap_frame_allocations != 0U)
             throw std::runtime_error("C++ coroutine benchmark observation mismatch");
     }
 

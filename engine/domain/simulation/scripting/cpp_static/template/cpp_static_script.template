@@ -1,0 +1,50 @@
+// Generated direct executable from {{ logical_path }}. No runtime reflection projection.
+#include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp>
+#include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+{% for header in script.ability_headers %}#include <{{ header }}>
+{% endfor %}
+namespace lux::simulation::script::generated
+{
+{% set methods = marked_function_decls %}
+{% if script.owner != "" %}{% set methods = [] %}{% for record_index in marked_record_decls %}{% set record = decl_from_index(record_index) %}{% if record.fq_name == script.owner %}{% set methods = record.method_decls %}{% endif %}{% endfor %}{% endif %}
+    namespace {{ script.name }}Operations
+    {
+{% set count = 0 %}{% set begin_symbol = 0 %}{% set end_symbol = 0 %}
+{% for method_id in methods %}{% if script.owner == "" %}{% set method = decl_from_index(method_id) %}{% else %}{% set method = decl_from_id(method_id) %}{% endif %}
+{% set key = annotation_get_or(method, "script_export", "") %}{% if key != "" %}
+{% set coroutine = annotation_get_or(method, "script_coroutine", false) %}{% set role = annotation_get_or(method, "script_lifecycle", "") %}
+        using Method{{ count }} = {{ method.result_type_id }} ({% if script.owner != "" %}::{{ script.owner }}::*{% else %}*{% endif %})({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{{ param.type_id }}{% if not loop.is_last %}, {% endif %}{% endfor %}){% if script.owner != "" and method.is_const %} const{% endif %} noexcept;
+        using Entry{{ count }} = detail::{% if coroutine %}CppStaticCoroutineEntry{% else %}CppStaticSyncEntry{% endif %}<static_cast<Method{{ count }}>(&::{% if script.owner != "" %}{{ script.owner }}::{{ method.spelling }}{% else %}{{ replace(method.fq_name, method.name, method.spelling) }}{% endif %})>;
+{% if role == "begin_play" %}{% set begin_symbol = at(script.symbols, key) %}
+        static_assert(Entry{{ count }}::Parameters.empty() && Entry{{ count }}::Results.empty(), "BeginPlay must be void()");
+{% else if role == "end_play" %}{% set end_symbol = at(script.symbols, key) %}
+        static_assert(Entry{{ count }}::Parameters.size() == 1 && Entry{{ count }}::Results.empty(), "EndPlay must be void(reason)");
+        static_assert(Entry{{ count }}::Parameters[0].layout.type_id == lux::semantic::makeType<EScriptEndPlayReason>().type_id &&
+            Entry{{ count }}::Parameters[0].pass == lux::semantic::EValuePass::VALUE, "EndPlay requires the semantic reason value");
+{% endif %}{% set count = count + 1 %}{% endif %}{% endfor %}
+        constexpr auto Exports = []() consteval {
+            std::array<CppStaticExportEntry, {{ count }}> result{
+{% set index = 0 %}{% for method_id in methods %}{% if script.owner == "" %}{% set method = decl_from_index(method_id) %}{% else %}{% set method = decl_from_id(method_id) %}{% endif %}{% set key = annotation_get_or(method, "script_export", "") %}{% if key != "" %}{% set coroutine = annotation_get_or(method, "script_coroutine", false) %}
+            CppStaticExportEntry{ {{ at(script.symbols, key) }}ULL, "{{ cxx_str(method.spelling) }}", Entry{{ index }}::Parameters,
+{% if coroutine %}                {}, nullptr, &Entry{{ index }}::start, Entry{{ index }}::Owned.bytes, Entry{{ index }}::Owned.alignment}{% else %}                Entry{{ index }}::Results, &Entry{{ index }}::invoke, nullptr, 0U, 1U}{% endif %}{% set index = index + 1 %}{% if index != count %},{% endif %}
+{% endif %}{% endfor %}            };
+            std::ranges::sort(result, {}, &CppStaticExportEntry::symbol);
+            return result;
+        }();
+        constexpr std::array<CppStaticApiRequirement, {{ length(script.ability_types) }}> Abilities{
+{% for type in script.ability_types %}            CppStaticApiRequirement{lux::script::ScriptAbilityTraits<{{ type }}>::Description.id,
+                lux::script::ScriptAbilityTraits<{{ type }}>::Description.schema_hash}{% if not loop.is_last %},{% endif %}
+{% endfor %}        };
+        constexpr std::array<lux::script::ScriptEventSourceView, {{ length(script.event_sources) }}> Events{
+{% for event in script.event_sources %}            {{ event }}{% if not loop.is_last %},{% endif %}
+{% endfor %}        };
+    }
+
+    extern constinit const CppStaticContract {{ script.name }}{
+        "{{ cxx_str(script.module) }}", "{{ cxx_str(script.descriptor) }}", {% if script.scope == "ENTITY" %}true{% else %}false{% endif %},
+{% if script.owner != "" %}        detail::cppStaticObject<::{{ script.owner }}>(),{% else %}        {},{% endif %}
+        {{ script.name }}Operations::Exports, { {{ begin_symbol }}ULL, {{ end_symbol }}ULL },
+        {{ script.name }}Operations::Abilities, {{ script.name }}Operations::Events
+    };
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 1345138691,
+  "entries": [
+    {
+      "source_identity": "physics.tick",
+      "symbol": 1345138689
+    },
+    {
+      "source_identity": "physics.coroutine",
+      "symbol": 1345138690
+    }
+  ]
+}

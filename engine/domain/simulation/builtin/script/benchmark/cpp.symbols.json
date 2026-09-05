@@ -1,0 +1,23 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 50690,
+  "entries": [
+    {
+      "source_identity": "lifecycle.begin",
+      "symbol": 45059
+    },
+    {
+      "source_identity": "lifecycle.tick",
+      "symbol": 45060
+    },
+    {
+      "source_identity": "lifecycle.end",
+      "symbol": 45061
+    },
+    {
+      "source_identity": "coroutine.run",
+      "symbol": 50689
+    }
+  ]
+}

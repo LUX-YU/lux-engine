@@ -40,3 +40,34 @@
 
 P1-P4, full profile/install/relocation, codegen target/incremental proof and final paired performance
 are NOT DONE. Historical checkpoints must not be represented as final qualification.
+
+## P1 development checkpoint
+
+- lux-cxx dependency implementation: `99a5d7e65b25aca1423a98f3d3c8552ca39f6724` (separate branch, not pushed).
+  All build and 52/52 dependency CTest; multiline JSON and validation-first rendering are covered.
+- Engine-authored `.template` files and `lux_cpp_static_scripts()` now generate constant contract/entry tables
+  from real headers plus the existing symbol ledger. One header/target/environment shares one parse job.
+- CppStatic no longer uses runtime Ref* projection, typed/reflected matching, reflection invoke or arity tables.
+  Native language layout and const-reference ownership are constant-evaluated; objects use typed construction.
+- Main C++ tests and benchmarks use generated entries. Generated tables carry no provider or endpoint address.
+- A real installed consumer produces a ScriptArtifact, uses the Simulation graph's caller Hook, resumes
+  an owned const-reference coroutine through NextStep, retires it and runs EndPlay. Exit 0; second build no-op.
+  SDK: `install/codegen-p1-developer`; dependency SDK: `install/script-codegen-cxx`.
+  Consumer source: `cmake/installed-consumers/cpp-generated-script`. No Engine source include directory supplied.
+- Developer all build + full 209/209 CTest before adding the 13 generation-negative cases.
+  The added 13/13 negative cases pass: nontrivial borrowed argument, pointer/mutable/rvalue references,
+  non-noexcept method, async lifecycle, missing/duplicate symbol, private method, reason identity,
+  borrowed return, missing coroutine context and variadic method.
+- Resumable-only prepared entries are valid; lifecycle admission explicitly requires sync-only entries.
+  This removes the old need for a dummy synchronous callable on a true coroutine export.
+- Isolated dependency includes exposed old-install masking: three codecs used retired ByteIO headers;
+  Native fixtures omitted the semantic target; UI test omitted generated headers. Separate commit d5038180
+  migrates to current codec error propagation and explicit dependencies. Metadata asset regression passes.
+- Installation must use a configured CMAKE_INSTALL_PREFIX: toolset component config destinations are absolute;
+  `cmake --install --prefix` alone did not relocate all generated package files. The successful SDK uses
+  the configured fresh prefix, not that mixed preliminary install.
+- Local logs are `p1-*` in `build/RelWithDebInfo/deep-developer` and `script-codegen-cxx`.
+  These are development gates, NOT final clean Bfinal qualification or a performance claim.
+- P2 still must migrate remaining installed consumers, close authoring/type-schema inputs and simplify quotas.
+  Full artifact/executable compatibility checks still run during instance creation; redundant cold checks and
+  fixed local import mapping remain in the P2 information-accounting work. P3/P4 are not implemented.

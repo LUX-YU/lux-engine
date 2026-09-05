@@ -54,7 +54,7 @@ namespace lux::simulation::script
         std::string_view event_name = {}
     ) noexcept
     {
-        if (!event)
+        if (!event || !event.dispatchHook().scriptCapable())
         {
             return lux::cxx::unexpected<EScriptEventSourceProjectionError>(
                 EScriptEventSourceProjectionError::INVALID_SOURCE

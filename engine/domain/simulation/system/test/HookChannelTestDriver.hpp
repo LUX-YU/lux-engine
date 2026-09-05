@@ -20,12 +20,13 @@ namespace lux::simulation::test
             void (*)(void*, const Payload&) noexcept,
             void (*)(void*, const ecs::Entity&, const Payload&) noexcept>;
 
-        EEndpointMutationError prepare(std::size_t producers, std::size_t records, std::size_t handlers) noexcept
+        EEndpointMutationError prepare(std::size_t producers, std::size_t records, std::size_t handlers,
+            typename HookChannel<Route, Payload>::OwnedCopy copy = nullptr) noexcept
         {
             const auto busy = channel_.mutationError();
             if (busy != EEndpointMutationError::NONE && busy != EEndpointMutationError::NOT_PREPARED)
                 return busy;
-            const auto prepared = channel_.prepare({producers, records});
+            const auto prepared = channel_.prepare({producers, records}, copy);
             if (prepared != EEndpointMutationError::NONE)
                 return prepared;
             const auto indexed = handlers_.prepare(handlers);

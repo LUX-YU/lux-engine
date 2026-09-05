@@ -1,3 +1,5 @@
+#include "../../../system/test/HookInvocationTestAccess.hpp"
+using lux::simulation::test::dispatchHookForTest;
 #include "../../core/test/ScriptEndpointTestAccess.hpp"
 using lux::simulation::script::test::deliverEndpoint;
 #include "LuaRuntimeTestAbility.hpp"
@@ -27,7 +29,7 @@ namespace
     };
     using namespace lux::simulation;
     using namespace lux::simulation::script;
-    using Ability = test::LuaRuntimeTestAbility;
+    using Ability = lux::simulation::script::test::LuaRuntimeTestAbility;
     using AbilityTraits = lux::script::ScriptAbilityTraits<Ability>;
 
     inline constexpr lux::system::SystemInstanceId kSystem{0x4C554101U};
@@ -549,11 +551,11 @@ int main(int argc, char** argv)
     auto system = std::move(*created);
     assert(system.prepare());
 
-    assert(harness.sync_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(harness.sync_hook) == 1U);
     assert(provider.reads == 1U && provider.writes == 1U && provider.value == 12);
     assert(system.activeContinuationCount() == 0U);
     assert(system.activeAwaitableCount() == 0U);
-    assert(harness.scalar_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(harness.scalar_hook) == 1U);
     assert(provider.bool_value);
     assert(provider.i32_value == (std::numeric_limits<std::int32_t>::max)());
     assert(provider.u32_value == (std::numeric_limits<std::uint32_t>::max)());
@@ -561,12 +563,12 @@ int main(int argc, char** argv)
     assert(provider.f64_value == 1234.125);
 
     provider.value = 7;
-    assert(harness.async_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(harness.async_hook) == 1U);
     assert(provider.pending.has_value());
     assert(provider.reads == 2U && provider.writes == 2U && provider.value == 12);
     assert(system.activeContinuationCount() == 1U);
     assert(system.activeAwaitableCount() == 1U);
-    assert(harness.async_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(harness.async_hook) == 1U);
     assert(provider.reads == 2U);
 
     provider.value = 100;
@@ -592,7 +594,7 @@ int main(int argc, char** argv)
     assert(eager_created);
     auto eager_system = std::move(*eager_created);
     assert(eager_system.prepare());
-    assert(eager.async_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(eager.async_hook) == 1U);
     assert(eager_provider.value == 12);
     assert(eager_provider.eager_result.has_value() && *eager_provider.eager_result);
     assert(eager_system.activeContinuationCount() == 1U);
@@ -635,7 +637,7 @@ int main(int argc, char** argv)
     assert(waiter_created);
     auto waiter_system = std::move(*waiter_created);
     assert(waiter_system.prepare());
-    assert(waiter.event_wait_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(waiter.event_wait_hook) == 1U);
     assert(waiter_system.activeContinuationCount() == 1U);
     assert(waiter_system.stats().active_event_waiters == 1U);
     std::int32_t payload{41};
@@ -661,7 +663,7 @@ int main(int argc, char** argv)
     assert(targeted_created);
     auto targeted_system = std::move(*targeted_created);
     assert(targeted_system.prepare());
-    assert(targeted.target_wait_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(targeted.target_wait_hook) == 1U);
     assert(targeted_system.stats().active_event_waiters == 1U);
     const auto other = targeted.registry.create();
     {
@@ -691,7 +693,7 @@ int main(int argc, char** argv)
     assert(event_retirement_created);
     auto event_retirement_system = std::move(*event_retirement_created);
     assert(event_retirement_system.prepare());
-    assert(event_retirement.event_wait_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(event_retirement.event_wait_hook) == 1U);
     assert(event_retirement_system.stats().active_event_waiters == 1U);
     event_retirement.registry.destroy(event_retirement.entity);
     const auto event_retired = event_retirement_system.executeStablePoint();
@@ -733,7 +735,7 @@ int main(int argc, char** argv)
     assert(retiring_created);
     auto retiring_system = std::move(*retiring_created);
     assert(retiring_system.prepare());
-    assert(retiring.async_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(retiring.async_hook) == 1U);
     assert(retiring_provider.pending.has_value());
     const auto late_completion = *retiring_provider.pending;
     retiring.registry.destroy(retiring.entity);
@@ -752,7 +754,7 @@ int main(int argc, char** argv)
     assert(failed_created);
     auto failed_system = std::move(*failed_created);
     assert(failed_system.prepare());
-    assert(failed.async_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(failed.async_hook) == 1U);
     assert(failed_provider.pending.has_value());
     assert(failed_provider.pending->fail({91}));
     const auto failed_stable = failed_system.executeStablePoint();
@@ -770,7 +772,7 @@ int main(int argc, char** argv)
     assert(rejected_created);
     auto rejected_system = std::move(*rejected_created);
     assert(rejected_system.prepare());
-    assert(rejected.async_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(rejected.async_hook) == 1U);
     assert(!rejected_system.failures().empty());
     assert(rejected_system.failures().back().status == 81);
     assert(rejected_system.activeContinuationCount() == 0U);
@@ -783,7 +785,7 @@ int main(int argc, char** argv)
     assert(raw_yield_created);
     auto raw_yield_system = std::move(*raw_yield_created);
     assert(raw_yield_system.prepare());
-    assert(raw_yield.async_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(raw_yield.async_hook) == 1U);
     assert(!raw_yield_system.failures().empty());
     assert(raw_yield_system.activeContinuationCount() == 0U);
     assert(raw_yield_system.activeAwaitableCount() == 0U);
@@ -794,7 +796,7 @@ int main(int argc, char** argv)
     assert(undeclared_created);
     auto undeclared_system = std::move(*undeclared_created);
     assert(undeclared_system.prepare());
-    assert(undeclared.sync_hook.dispatch() == 1U);
+    assert(dispatchHookForTest(undeclared.sync_hook) == 1U);
     assert(!undeclared_system.failures().empty());
     assert(undeclared_system.failures().front().error == EScriptSystemError::INVOCATION_FAILURE);
     assert(undeclared_system.shutdown());

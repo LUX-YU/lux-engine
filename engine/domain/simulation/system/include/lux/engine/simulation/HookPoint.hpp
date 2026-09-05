@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/container/SlotMap.hpp>
+#include <lux/engine/simulation/HookInvocation.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +11,7 @@
 
 namespace lux::simulation
 {
+    namespace script { template <class Signature> class ScriptHookEndpoint; }
     enum class EEndpointMutationError : std::uint8_t
     {
         NONE,
@@ -21,6 +23,7 @@ namespace lux::simulation
         INVALID_TOKEN,
         DISPATCH_ACTIVE,
         WRITER_ACTIVE,
+        PAYLOAD_NOT_OWNED,
     };
 
     struct EndpointConnectionToken final
@@ -111,8 +114,13 @@ namespace lux::simulation
             return EEndpointMutationError::NONE;
         }
 
-        [[nodiscard]] std::size_t dispatch(Parameters... parameters) noexcept
+        [[nodiscard]] std::size_t dispatch(const HookInvocation& invocation, Parameters... parameters) noexcept
         {
+            const bool wrong_owner = binding_owner_ != nullptr && invocation.owner_ != binding_owner_;
+            const bool wrong_endpoint = binding_system_.valid() &&
+                (invocation.system_ != binding_system_ || invocation.hook_ != binding_hook_);
+            if (wrong_owner || wrong_endpoint || (binding_system_.valid() && !invocation.scriptCapable()))
+                return 0U;
             if (!prepared_ || dispatch_active_)
                 return 0U;
 
@@ -158,6 +166,11 @@ namespace lux::simulation
         std::size_t handler_capacity_{};
         bool prepared_{};
         bool dispatch_active_{};
+        const void* binding_owner_{};
+        lux::system::SystemInstanceId binding_system_;
+        HookPointId binding_hook_;
+        friend struct detail::HookInvocationTestAccess;
+        template <class> friend class script::ScriptHookEndpoint;
     };
 
     template <class... Parameters>

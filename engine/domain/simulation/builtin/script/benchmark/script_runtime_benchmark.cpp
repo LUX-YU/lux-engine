@@ -1,3 +1,5 @@
+#include "../../../system/test/HookInvocationTestAccess.hpp"
+using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
 using lux::simulation::script::test::deliverEndpoint;
 #include "ScriptBenchmarkAbility.hpp"
@@ -1253,7 +1255,7 @@ namespace
 
         void dispatch()
         {
-            static_cast<void>(hook.dispatch());
+            static_cast<void>(dispatchHookForTest(hook));
             ++dispatches;
         }
 
@@ -2005,7 +2007,7 @@ namespace
             }));
             rows.push_back(measureRow("micro-sync", "hook-point", options.size, sample, [&] {
                 for (std::size_t index{}; index < options.size; ++index)
-                    static_cast<void>(hook.dispatch());
+                    static_cast<void>(dispatchHookForTest(hook));
                 return Row{.calls = options.size, .checksum = direct_checksum};
             }));
 #if LUX_BENCHMARK_HAS_LUA
@@ -2041,7 +2043,7 @@ namespace
         RuntimeHarness harness{options.size, mode, options.resume_budget};
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
-            static_cast<void>(harness.hook.dispatch());
+            static_cast<void>(dispatchHookForTest(harness.hook));
             if (mode == EScenarioMode::MIXED)
                 harness.completePending(harness.backend_state.completions.size());
             harness.advance(std::chrono::milliseconds{16});
@@ -2051,7 +2053,7 @@ namespace
         for (std::size_t frame{}; frame < options.frames; ++frame)
         {
             rows.push_back(measureRow(std::string{scenario}, "synthetic-object", options.size, frame, [&] {
-                static_cast<void>(harness.hook.dispatch());
+                static_cast<void>(dispatchHookForTest(harness.hook));
                 if (mode == EScenarioMode::MIXED)
                     harness.completePending(harness.backend_state.completions.size());
                 harness.advance(std::chrono::milliseconds{16});
@@ -2074,7 +2076,7 @@ namespace
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
         rows.push_back(measureRow("micro-async-suspend", "synthetic-continuation", options.size, 0U, [&] {
-            static_cast<void>(harness.hook.dispatch());
+            static_cast<void>(dispatchHookForTest(harness.hook));
             Row row;
             appendRuntimeStats(row, harness);
             return row;
@@ -2117,7 +2119,7 @@ namespace
 
         RuntimeHarness eager{options.size, EScenarioMode::EAGER_AWAIT, options.resume_budget};
         rows.push_back(measureRow("micro-async-eager-complete", "stable-point-tail-queue", options.size, 0U, [&] {
-            static_cast<void>(eager.hook.dispatch());
+            static_cast<void>(dispatchHookForTest(eager.hook));
             if (eager.backend_state.resumes != 0U)
                 throw std::runtime_error("eager benchmark completion resumed recursively");
             eager.stablePoint();
@@ -2186,7 +2188,7 @@ namespace
     void runSuspendedIdle(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
-        static_cast<void>(harness.hook.dispatch());
+        static_cast<void>(dispatchHookForTest(harness.hook));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             harness.stablePoint();
         for (std::size_t frame{}; frame < options.frames; ++frame)
@@ -2210,7 +2212,7 @@ namespace
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.size};
         rows.push_back(measureRow("micro-event-register", "script-event-waiter", options.size, 0U, [&] {
-            static_cast<void>(harness.hook.dispatch());
+            static_cast<void>(dispatchHookForTest(harness.hook));
             Row row;
             appendRuntimeStats(row, harness);
             return row;
@@ -2233,7 +2235,7 @@ namespace
             throw std::runtime_error("Event micro benchmark resume count mismatch");
 
         RuntimeHarness cancellation{options.size, EScenarioMode::EVENT_WAIT, options.size};
-        static_cast<void>(cancellation.hook.dispatch());
+        static_cast<void>(dispatchHookForTest(cancellation.hook));
         rows.push_back(measureRow("micro-event-cancel", "instance-retirement", options.size, 0U, [&] {
             if (!cancellation.system->shutdown())
                 throw std::runtime_error("Event cancellation benchmark shutdown failed");
@@ -2246,7 +2248,7 @@ namespace
     void runEventIdle(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
-        static_cast<void>(harness.hook.dispatch());
+        static_cast<void>(dispatchHookForTest(harness.hook));
         const auto before = harness.system->stats();
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             harness.stablePoint();
@@ -2271,7 +2273,7 @@ namespace
     void runEventFanout(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
-        static_cast<void>(harness.hook.dispatch());
+        static_cast<void>(dispatchHookForTest(harness.hook));
         rows.push_back(measureRow("scene-event-fanout-delivery", "script-event-waiter", options.size, 0U, [&] {
             harness.deliverEvent(23);
             Row row;
@@ -2299,7 +2301,7 @@ namespace
     void runEventSparse(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget, true};
-        static_cast<void>(harness.hook.dispatch());
+        static_cast<void>(dispatchHookForTest(harness.hook));
         rows.push_back(measureRow("scene-event-sparse-delivery", "targeted-event-waiter", options.size, 0U, [&] {
             harness.deliverTargetedBatch(options.ready_count, 29);
             Row row;
@@ -2321,7 +2323,7 @@ namespace
     void runResumeStorm(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
-        static_cast<void>(harness.hook.dispatch());
+        static_cast<void>(dispatchHookForTest(harness.hook));
         harness.completePending(options.ready_count);
         std::size_t frame{};
         while (harness.system->stats().resume_queue_depth != 0U ||
@@ -2378,7 +2380,7 @@ namespace
     {
         const bool next_step = mode == EScenarioMode::NEXT_STEP;
         RuntimeHarness harness{options.size, mode, options.resume_budget};
-        static_cast<void>(harness.hook.dispatch());
+        static_cast<void>(dispatchHookForTest(harness.hook));
         rows.push_back(measureRow(
             next_step ? "scheduler-next-step-idle" : "scheduler-simulation-delay-idle",
             "bounded-heap",
@@ -2419,7 +2421,7 @@ namespace
     {
         RuntimeHarness harness{options.size, EScenarioMode::REAL_DELAY, options.resume_budget};
         rows.push_back(measureRow("integration-real-delay-start", "fake-monotonic-provider", options.size, 0U, [&] {
-            static_cast<void>(harness.hook.dispatch());
+            static_cast<void>(dispatchHookForTest(harness.hook));
             if (harness.backend_state.real_delay_starts != options.size)
                 throw std::runtime_error("real-delay benchmark start count mismatch");
             Row row;

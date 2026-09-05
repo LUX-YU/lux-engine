@@ -31,7 +31,7 @@ namespace
     struct ProbeSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(TickHook, "tick")};
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(TickHook, "tick", true, true)};
         inline static constexpr std::array Events{makeEventPointSpec<std::int32_t>(
             PulseEvent,
             "pulse",
@@ -50,7 +50,7 @@ namespace
             : hook_endpoint(ProbeId, TickHook, hook), event_endpoint(ProbeId, PulseEvent, event)
         {
             ready = hook.prepare(1U) == EEndpointMutationError::NONE &&
-                event.prepare(1U, 4U, 1U) == EEndpointMutationError::NONE;
+                event.prepare({1U, 4U}) == EEndpointMutationError::NONE;
         }
 
         HookPoint<void()> hook;
@@ -58,6 +58,8 @@ namespace
         ScriptHookEndpoint<void()> hook_endpoint;
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> event_endpoint;
         bool ready{};
+        bool tick_enabled{true};
+        bool emit{};
     };
 
     ProbeSystem* ActiveProbe{};
@@ -81,7 +83,23 @@ namespace
         auto published = builder.publishScriptHook(description.instanceId(), (*created)->hook_endpoint.descriptor());
         if (!published)
             return published;
-        return builder.publishScriptEvent(description.instanceId(), (*created)->event_endpoint.descriptor());
+        published = builder.publishScriptEvent(description.instanceId(), (*created)->event_endpoint.descriptor());
+        if (!published)
+            return published;
+        published = builder.addSystemTask<ProbeSystem>(description.instanceId(), [](ProbeSystem& value) noexcept {
+            if (!value.emit)
+                return true;
+            value.emit = false;
+            auto writer = value.event.begin(0U);
+            return writer.record(7);
+        });
+        if (!published)
+            return published;
+        return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), TickHook,
+            [](ProbeSystem& value, const HookInvocation& invocation) noexcept {
+                if (value.tick_enabled)
+                    static_cast<void>(value.hook.dispatch(invocation));
+            });
     }
 
     SimulationSystemRegistration probeRegistration() noexcept
@@ -161,6 +179,12 @@ int main()
     {
         return 2;
     }
+    for (auto producer : {PhysicsId, ProbeId})
+    {
+        if (!description_builder.addExecutionDependency(SimulationExecutionPoint::task(producer),
+                SimulationExecutionPoint::hook(ProbeId, TickHook)))
+            return 2;
+    }
     auto description = std::move(description_builder).build();
     if (!description)
         return 3;
@@ -176,7 +200,7 @@ int main()
         std::make_shared<SimulationDescription>(std::move(*description)),
         registrations
     );
-    auto executor = task::TaskExecutor::create({0U, 1U});
+    auto executor = task::TaskExecutor::create({4U, 16U});
     if (!simulation || !executor || !simulation->execute(*executor, SimulationDuration{}))
         return 5;
     if (ActiveProbe == nullptr)
@@ -283,22 +307,46 @@ int main()
     );
     if (!system || !system->prepare())
         return 15;
-    if (ActiveProbe->hook.dispatch() != 1U || installed_consumer::observed != 1)
+    auto connection = simulation->bindHookCallbacks({&*system,
+        [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+            auto& runtime = *static_cast<ScriptSystem*>(context);
+            if (stable)
+                runtime.beginStableAdmission();
+            return static_cast<bool>(runtime.processLifecycle());
+        },
+        [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+            return !stable || static_cast<bool>(static_cast<ScriptSystem*>(context)->executeStablePoint());
+        },
+        [](void* context, const SimulationClockSnapshot&) noexcept {
+            return static_cast<bool>(static_cast<ScriptSystem*>(context)->processLifecycle());
+        }});
+    if (!connection || !simulation->execute(*executor, SimulationDuration{1}) || installed_consumer::observed != 1)
         return 16;
-    {
-        auto writer = ActiveProbe->event.begin(0U);
-        if (!writer.record(7))
-            return 17;
-    }
-    if (ActiveProbe->event.drain() != 1U || installed_consumer::observed != 1)
-        return 18;
-    if (!system->executeStablePoint() || installed_consumer::observed != 8)
+    ActiveProbe->emit = true;
+    if (!simulation->execute(*executor, SimulationDuration{1}) || installed_consumer::observed != 8)
         return 19;
-    if (!simulation->execute(*executor, SimulationDuration{1}) || !system->executeStablePoint() ||
-        installed_consumer::observed != 108)
+    if (!simulation->execute(*executor, SimulationDuration{1}) || installed_consumer::observed != 108)
     {
         return 20;
     }
+    // Retire while suspended, reuse the Entity slot, and materialize a fresh ScriptInstance generation.
+    if (!simulation->execute(*executor, SimulationDuration{1}) || system->stats().active_event_waiters != 1U)
+        return 22;
+    const auto old_entity = source.entity;
+    registry.destroy(old_entity);
+    source.entity = registry.create();
+    if (source.entity == old_entity || !system->processLifecycle())
+        return 23;
+    if (system->stats().active_event_waiters != 0U || backend->stats().active_frames != 0U)
+        return 24;
+    ActiveProbe->tick_enabled = false;
+    ActiveProbe->emit = true;
+    if (!simulation->execute(*executor, SimulationDuration{1}) || installed_consumer::observed != 1)
+        return 25;
+    ActiveProbe->tick_enabled = true;
+    if (!simulation->execute(*executor, SimulationDuration{1}) || system->stats().active_event_waiters != 1U)
+        return 26;
+    connection->reset();
     if (!system->shutdown() || backend->stats().active_frames != 0U)
         return 21;
     return 0;

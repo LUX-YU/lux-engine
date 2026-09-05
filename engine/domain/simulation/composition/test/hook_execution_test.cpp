@@ -111,8 +111,9 @@ namespace
         });
         if (!primary)
             return primary;
-        return builder.addSystemHookTask<Host>(view.instanceId(), Hook, [](Host& host) noexcept {
-            static_cast<void>(host.hook.dispatch());
+        return builder.addSystemHookTask<Host>(view.instanceId(), Hook,
+            [](Host& host, const HookInvocation& invocation) noexcept {
+            static_cast<void>(host.hook.dispatch(invocation));
         });
     }
 

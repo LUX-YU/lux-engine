@@ -3,6 +3,8 @@
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
@@ -31,7 +33,7 @@ namespace
 
     inline constexpr std::array Hooks{
         makeHookPointSpec<void(float)>(ValueHook, "value"),
-        makeHookPointSpec<void()>(EventHook, "after-event")};
+        makeHookPointSpec<void()>(EventHook, "after-event", true, true)};
     inline constexpr std::array Events{
         makeEventPointSpec<installed_consumer::CollisionEvent>(
             PulseEvent,
@@ -67,6 +69,53 @@ namespace
         lux::simulation::ecs::Entity entity{
             lux::simulation::ecs::NullEntity};
     };
+
+    struct Domain final
+    {
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr auto Description = System;
+        Fixture& fixture;
+        HookPoint<void(float)> value_hook;
+        HookChannel<EntityTargetedRoute<ecs::Entity>, installed_consumer::CollisionEvent> pulse;
+        ScriptHookEndpoint<void(float)> hook_bridge{SystemId, ValueHook, value_hook};
+        ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, installed_consumer::CollisionEvent>
+            event_bridge{SystemId, PulseEvent, pulse};
+        explicit Domain(Fixture& value) noexcept : fixture(value)
+        {
+            assert(value_hook.prepare(1U) == EEndpointMutationError::NONE);
+            assert(pulse.prepare({1U, 2U}, [](const installed_consumer::CollisionEvent& value) noexcept {
+                return installed_consumer::CollisionEvent{value.body, value.impulse};
+            }) == EEndpointMutationError::NONE);
+        }
+    };
+
+    auto install(SimulationBuilder& builder, SimulationSystemView view) noexcept
+        -> lux::cxx::expected<void, SimulationSystemBuildFailure>
+    {
+        auto domain = builder.emplaceSystem<Domain>(view.instanceId(), *builder.registry().ctx().get<Fixture*>());
+        if (!domain)
+            return lux::cxx::unexpected(domain.error());
+        auto result = builder.publishScriptHook(view.instanceId(), (*domain)->hook_bridge.descriptor());
+        if (!result)
+            return result;
+        result = builder.publishScriptEvent(view.instanceId(), (*domain)->event_bridge.descriptor());
+        if (!result)
+            return result;
+        result = builder.addSystemTask<Domain>(view.instanceId(), [](Domain& value) noexcept {
+            auto writer = value.pulse.begin(0U);
+            return writer.record(value.fixture.entity, installed_consumer::CollisionEvent{17, 4.5F});
+        });
+        if (!result)
+            return result;
+        result = builder.addSystemHookTask<Domain>(view.instanceId(), ValueHook,
+            [](Domain& value, const HookInvocation& invocation) noexcept {
+                static_cast<void>(value.value_hook.dispatch(invocation, 2.5F));
+            });
+        if (!result)
+            return result;
+        return builder.addSystemHookTask<Domain>(view.instanceId(), EventHook,
+            [](Domain&, const HookInvocation&) noexcept {});
+    }
 
     bool resolveAsset(
         void* context,
@@ -195,6 +244,10 @@ int main()
 
     SimulationDescriptionBuilder simulation_builder;
     assert(simulation_builder.addSystem(SystemId, "consumer", System));
+    assert(simulation_builder.addExecutionDependency(SimulationExecutionPoint::task(SystemId),
+        SimulationExecutionPoint::hook(SystemId, ValueHook)));
+    assert(simulation_builder.addExecutionDependency(SimulationExecutionPoint::hook(SystemId, ValueHook),
+        SimulationExecutionPoint::hook(SystemId, EventHook)));
     auto simulation = std::move(simulation_builder).build();
     assert(simulation);
     auto simulation_owner = std::make_shared<const SimulationDescription>(std::move(*simulation));
@@ -245,22 +298,12 @@ int main()
 
     ecs::Registry registry;
     fixture.entity = registry.create();
-    HookPoint<void(float)> value_hook;
-    HookChannel<
-        EntityTargetedRoute<ecs::Entity>,
-        installed_consumer::CollisionEvent> pulse;
-    assert(value_hook.prepare(1U) == EEndpointMutationError::NONE);
-    assert(pulse.prepare(1U, 2U, 1U) == EEndpointMutationError::NONE);
-    ScriptHookEndpoint<void(float)> hook_bridge{
-        SystemId,
-        ValueHook,
-        value_hook};
-    ScriptEventEndpoint<
-        EntityTargetedRoute<ecs::Entity>,
-        installed_consumer::CollisionEvent>
-        event_bridge{SystemId, PulseEvent, pulse};
-    const std::array hook_endpoints{hook_bridge.descriptor()};
-    const std::array event_endpoints{event_bridge.descriptor()};
+    registry.ctx().emplace<Fixture*>(&fixture);
+    SimulationSystemRegistry registrations;
+    assert(registrations.add({lux::system::systemTypeId(Domain::Description.type.canonical_name),
+        lux::cxx::typeToken<Domain>(), &Domain::Description, Domain::Access.spec(), {}, &install}));
+    auto composed = Simulation::create(registry, simulation_owner, registrations);
+    assert(composed);
 
     const std::array pools{CppStaticScriptPoolDescription{
         std::addressof(*projected), 1U, 0U, 0U, alignof(std::max_align_t), 3U
@@ -276,34 +319,26 @@ int main()
         nullptr,
         &ability_dispatch
     }};
-    SimulationClock clock;
     auto created = ScriptSystem::create(
         *simulation_owner,
         *decoded_script,
         registry,
-        clock,
+        composed->clock(),
         ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U, 2U},
         {&fixture, &resolveAsset},
         {&fixture, &resolveWorld},
         capabilities,
         backends,
-        hook_endpoints,
-        event_endpoints);
+        composed->scriptHookEndpoints(),
+        composed->scriptEventEndpoints());
     assert(created);
     auto script_system = std::move(*created);
     assert(script_system.prepare());
     assert(script_system.activeInstanceCount() == 1U);
 
-    assert(value_hook.dispatch(2.5F) == 1U);
+    auto executor = lux::task::TaskExecutor::create({4U, 8U});
+    assert(executor && composed->execute(*executor, SimulationDuration{1}));
     assert(installed_consumer::observed_value == 2.5F);
-    {
-        auto writer = pulse.begin(0U);
-        assert(writer.record(
-            fixture.entity,
-            installed_consumer::CollisionEvent{17, 4.5F}
-        ));
-    }
-    assert(pulse.drain() == 1U);
     assert(installed_consumer::observed_event.body == 17);
     assert(installed_consumer::observed_event.impulse == 4.5F);
     assert(script_system.shutdown());

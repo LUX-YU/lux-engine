@@ -1,3 +1,5 @@
+#include "../../../system/test/HookInvocationTestAccess.hpp"
+using lux::simulation::test::dispatchHookForTest;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
@@ -163,7 +165,7 @@ namespace
             state.end_reasons.push_back(reason);
             const auto calls_before = state.tick_calls;
             if (state.hook)
-                static_cast<void>(state.hook->dispatch());
+                static_cast<void>(dispatchHookForTest(*state.hook));
             state.end_normal_dispatches.push_back(state.tick_calls - calls_before);
             return state.fail_end ? 41 : 0;
         }
@@ -388,7 +390,7 @@ namespace
         assert(harness.backend_state.first_begin_create_count == 3U);
         assert(harness.backend_state.begins == 3U);
         assert(system.activeInstanceCount() == 3U);
-        assert(harness.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(harness.hook) == 1U);
         assert(system.shutdown());
         assert(harness.backend_state.ends == 3U);
         assert(harness.backend_state.destroys == 3U);
@@ -458,7 +460,7 @@ namespace
         assert(normal_created);
         auto normal_system = std::move(*normal_created);
         assert(normal_system.prepare());
-        assert(normal_failure.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(normal_failure.hook) == 1U);
         assert(normal_system.activeInstanceCount() == 0U);
         assert(normal_system.executeStablePoint());
         assert(normal_failure.backend_state.ends == 1U);
@@ -496,7 +498,7 @@ namespace
         assert(created);
         auto system = std::move(*created);
         assert(system.prepare());
-        assert(harness.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(harness.hook) == 1U);
         assert(system.activeContinuationCount() == 2U);
         const auto late_completion = harness.backend_state.completions.front();
 

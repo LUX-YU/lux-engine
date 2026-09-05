@@ -1,3 +1,5 @@
+#include "../../../system/test/HookInvocationTestAccess.hpp"
+using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
 using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -463,7 +465,9 @@ namespace
                 auto updated = lux::script::ScriptArtifact::create(std::move(source), {});
                 assert(updated);
                 artifact = std::move(*updated);
-                assert(large_event.prepare({1U, 2U}) == EEndpointMutationError::NONE);
+                assert(large_event.prepare({1U, 2U}, [](const LargePayload& value) noexcept {
+                    return LargePayload{value.bytes};
+                }) == EEndpointMutationError::NONE);
                 large_bridge = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, LargePayload>>(
                     kSystem, kLargeEvent, large_event,
                     [](const LargePayload& payload, std::span<std::byte> bytes) noexcept {
@@ -634,8 +638,8 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(available.hook.dispatch() == 1U);
-            assert(available.hook.dispatch() == 1U);
+            assert(dispatchHookForTest(available.hook) == 1U);
+            assert(dispatchHookForTest(available.hook) == 1U);
             assert(provider.calls == 2);
             assert(available.backend_state.capability_bind_scans == 1U);
             assert(system.shutdown());
@@ -691,7 +695,7 @@ namespace
         assert(sync_created);
         auto sync_system = std::move(*sync_created);
         assert(sync_system.prepare());
-        assert(synchronous.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(synchronous.hook) == 1U);
         assert(synchronous.backend_state.sync_calls == 1U);
         assert(sync_system.activeContinuationCount() == 0U);
         assert(sync_system.activeAwaitableCount() == 0U);
@@ -706,10 +710,10 @@ namespace
         assert(eager_created);
         auto eager_system = std::move(*eager_created);
         assert(eager_system.prepare());
-        assert(eager.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(eager.hook) == 1U);
         assert(eager.backend_state.resume_calls == 0U);
         assert(eager_system.activeContinuationCount() == 1U);
-        assert(eager.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(eager.hook) == 1U);
         assert(eager.backend_state.step_calls == 1U);
         assert(eager_system.executeStablePoint());
         assert(eager.backend_state.resume_calls == 1U);
@@ -731,7 +735,7 @@ namespace
         assert(budgeted_created);
         auto budgeted_system = std::move(*budgeted_created);
         assert(budgeted_system.prepare());
-        assert(budgeted.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(budgeted.hook) == 1U);
         assert(budgeted_system.executeStablePoint());
         assert(budgeted.backend_state.resume_calls == 1U);
         assert(budgeted_system.activeContinuationCount() == 1U);
@@ -749,7 +753,7 @@ namespace
         assert(typed_created);
         auto typed_system = std::move(*typed_created);
         assert(typed_system.prepare());
-        assert(typed.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(typed.hook) == 1U);
         ScriptOwnedResumeValue value;
         value.type = lux::rdesc::makeScriptValueType<std::int32_t>();
         assert(value.bytes.resize(sizeof(std::int32_t)));
@@ -764,7 +768,7 @@ namespace
         assert(failed_created);
         auto failed_system = std::move(*failed_created);
         assert(failed_system.prepare());
-        assert(failed.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(failed.hook) == 1U);
         assert(failed.backend_state.completions.front().fail({93}));
         assert(failed_system.executeStablePoint());
         assert(failed.backend_state.saw_failure);
@@ -787,7 +791,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(delayed.hook.dispatch() == 1U);
+            assert(dispatchHookForTest(delayed.hook) == 1U);
             assert(provider.pending.has_value());
             assert(system.activeAwaitableCount() == 1U);
             assert(system.activeContinuationCount() == 1U);
@@ -822,7 +826,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(eager.hook.dispatch() == 1U);
+            assert(dispatchHookForTest(eager.hook) == 1U);
             assert(provider.eager_completion.has_value() && *provider.eager_completion);
             assert(eager.backend_state.resume_calls == 0U);
             assert(system.executeStablePoint());
@@ -845,7 +849,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(failed.hook.dispatch() == 1U);
+            assert(dispatchHookForTest(failed.hook) == 1U);
             assert(provider.eager_completion.has_value() && *provider.eager_completion);
             assert(system.executeStablePoint());
             assert(failed.backend_state.saw_failure);
@@ -866,7 +870,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(rejected.hook.dispatch() == 1U);
+            assert(dispatchHookForTest(rejected.hook) == 1U);
             assert(system.activeAwaitableCount() == 0U);
             assert(system.activeContinuationCount() == 0U);
             assert(!system.failures().empty());
@@ -888,7 +892,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(late.hook.dispatch() == 1U);
+            assert(dispatchHookForTest(late.hook) == 1U);
             assert(provider.pending.has_value());
             const auto completion = *provider.pending;
             assert(system.shutdown());
@@ -904,8 +908,8 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(concurrent.hook.dispatch() == 1U);
-            assert(concurrent.hook_third.dispatch() == 1U);
+            assert(dispatchHookForTest(concurrent.hook) == 1U);
+            assert(dispatchHookForTest(concurrent.hook_third) == 1U);
             assert(concurrent.backend_state.completions.size() == 2U);
             std::array<std::optional<lux::cxx::expected<void, EScriptAwaitableCompletionError>>, 2U> results;
             std::array<std::thread, 2U> producers{
@@ -966,10 +970,10 @@ namespace
         assert(per_instance_created);
         auto per_instance_system = std::move(*per_instance_created);
         assert(per_instance_system.prepare());
-        assert(per_instance.hook.dispatch() == 1U);
-        assert(per_instance.hook_third.dispatch() == 1U);
+        assert(dispatchHookForTest(per_instance.hook) == 1U);
+        assert(dispatchHookForTest(per_instance.hook_third) == 1U);
         assert(per_instance_system.activeContinuationCount() == 2U);
-        assert(per_instance.hook_second.dispatch() == 1U);
+        assert(dispatchHookForTest(per_instance.hook_second) == 1U);
         assert(per_instance_system.activeContinuationCount() == 2U);
         assert(std::any_of(
             per_instance_system.failures().begin(),
@@ -992,11 +996,11 @@ namespace
         assert(quota_return_created);
         auto quota_return_system = std::move(*quota_return_created);
         assert(quota_return_system.prepare());
-        assert(quota_return.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(quota_return.hook) == 1U);
         assert(quota_return.backend_state.completions.front().ready());
         assert(quota_return_system.executeStablePoint());
         assert(quota_return_system.activeContinuationCount() == 0U);
-        assert(quota_return.hook_second.dispatch() == 1U);
+        assert(dispatchHookForTest(quota_return.hook_second) == 1U);
         assert(quota_return_system.activeContinuationCount() == 1U);
         assert(quota_return.backend_state.completions[1].ready());
         assert(quota_return_system.executeStablePoint());
@@ -1009,7 +1013,7 @@ namespace
         assert(limited_created);
         auto limited_system = std::move(*limited_created);
         assert(limited_system.prepare());
-        assert(limited.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(limited.hook) == 1U);
         assert(limited_system.activeContinuationCount() == 1U);
         assert(!limited_system.failures().empty());
         assert(limited_system.failures().front().error == EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED ||
@@ -1022,7 +1026,7 @@ namespace
         assert(awaitable_created);
         auto awaitable_system = std::move(*awaitable_created);
         assert(awaitable_system.prepare());
-        assert(awaitable_limited.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(awaitable_limited.hook) == 1U);
         assert(awaitable_system.activeAwaitableCount() == 1U);
         assert(!awaitable_system.failures().empty());
         assert(awaitable_system.shutdown());
@@ -1033,7 +1037,7 @@ namespace
         assert(queue_created);
         auto queue_system = std::move(*queue_created);
         assert(queue_system.prepare());
-        assert(queue_limited.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(queue_limited.hook) == 1U);
         assert(queue_limited.backend_state.completions.size() == 2U);
         assert(queue_limited.backend_state.completions[0].ready());
         const auto full = queue_limited.backend_state.completions[1].ready();
@@ -1050,7 +1054,7 @@ namespace
         assert(stale_created);
         auto stale_system = std::move(*stale_created);
         assert(stale_system.prepare());
-        assert(stale.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(stale.hook) == 1U);
         assert(stale.backend_state.completions.size() == 1U);
         const auto completion = stale.backend_state.completions.front();
         stale.registry.destroy(stale.entity);
@@ -1069,7 +1073,7 @@ namespace
             assert(race_created);
             auto race_system = std::move(*race_created);
             assert(race_system.prepare());
-            assert(race.hook.dispatch() == 1U);
+            assert(dispatchHookForTest(race.hook) == 1U);
             const auto race_completion = race.backend_state.completions.front();
             std::optional<lux::cxx::expected<void, EScriptAwaitableCompletionError>> completion_result;
             std::thread completing([&]() noexcept { completion_result = race_completion.ready(); });
@@ -1107,7 +1111,7 @@ void testExternalAdmission()
     assert(created);
     auto& system = *created;
     assert(system.prepare());
-    assert(harness.hook.dispatch() == 1U);
+    assert(dispatchHookForTest(harness.hook) == 1U);
     assert(harness.backend_state.provider_starts == (Supported ? 1U : 0U));
     assert(system.activeAwaitableCount() == (Supported ? 1U : 0U));
     assert(system.activeContinuationCount() == (Supported ? 1U : 0U));
@@ -1134,7 +1138,7 @@ int main()
             assert(active.harness->backend_state.continuation_destroys == 0U);
             assert(active.harness->backend_state.destroys == 0U);
         };
-        assert(harness.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(harness.hook) == 1U);
         assert(harness.backend_state.completions.front().ready());
         assert(created->executeStablePoint());
         assert(harness.backend_state.resume_calls == 1U);
@@ -1158,7 +1162,7 @@ int main()
         };
         auto created = harness.create(limits(), {});
         assert(created && created->prepare());
-        assert(harness.hook.dispatch() == 1U);
+        assert(dispatchHookForTest(harness.hook) == 1U);
         {
             auto writer = harness.large_event.begin(0U);
             assert(writer.record(LargePayload{}));

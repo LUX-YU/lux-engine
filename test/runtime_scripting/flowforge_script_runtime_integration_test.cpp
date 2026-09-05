@@ -1,5 +1,3 @@
-#include "../../engine/domain/simulation/scripting/core/test/ScriptEndpointTestAccess.hpp"
-using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
@@ -69,7 +67,7 @@ namespace
     struct ProbeSystem final
     {
         inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "tick")};
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kTickHook, "tick", true, true)};
         inline static constexpr std::array Events{
             makeEventPointSpec<std::int32_t>(
                 kPayloadEvent,
@@ -95,7 +93,12 @@ namespace
 
         void execute() noexcept
         {
-            static_cast<void>(hook.dispatch());
+            if (pending_payload)
+            {
+                auto writer = event.begin(0U);
+                assert(writer.record(*pending_payload));
+                pending_payload.reset();
+            }
         }
 
         HookPoint<void()> hook;
@@ -103,6 +106,8 @@ namespace
         HookChannel<SimulationBroadcastRoute, std::int32_t> event;
         ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> event_endpoint;
         bool ready{};
+        bool tick_enabled{true};
+        std::optional<std::int32_t> pending_payload;
     };
 
     ProbeSystem* g_probe{};
@@ -129,11 +134,49 @@ namespace
         published = builder.publishScriptEvent(description.instanceId(), (*probe)->event_endpoint.descriptor());
         if (!published)
             return published;
-        return builder.addSystemTask<ProbeSystem>(
+        auto task = builder.addSystemTask<ProbeSystem>(
             description.instanceId(),
             [](ProbeSystem& value) noexcept { value.execute(); }
         );
+        if (!task)
+            return task;
+        return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), kTickHook,
+            [](ProbeSystem& value, const HookInvocation& invocation) noexcept {
+                if (value.tick_enabled)
+                    static_cast<void>(value.hook.dispatch(invocation));
+            });
     }
+
+    [[nodiscard]] bool addProbeExecution(SimulationDescriptionBuilder& builder)
+    {
+        return static_cast<bool>(builder.addExecutionDependency(
+            SimulationExecutionPoint::task(kProbeSystem), SimulationExecutionPoint::hook(kProbeSystem, kTickHook)));
+    }
+
+    struct RuntimeBinding final
+    {
+        ScriptSystem* runtime{};
+        [[nodiscard]] auto bind(Simulation& simulation) noexcept
+        {
+            return simulation.bindHookCallbacks({this,
+                [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                    auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
+                    if (runtime == nullptr)
+                        return true;
+                    if (stable)
+                        runtime->beginStableAdmission();
+                    return static_cast<bool>(runtime->processLifecycle());
+                },
+                [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                    auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
+                    return runtime == nullptr || !stable || static_cast<bool>(runtime->executeStablePoint());
+                },
+                [](void* context, const SimulationClockSnapshot&) noexcept {
+                    auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
+                    return runtime == nullptr || static_cast<bool>(runtime->processLifecycle());
+                }});
+        }
+    };
 
     [[nodiscard]] SimulationSystemRegistration probeRegistration() noexcept
     {
@@ -471,6 +514,7 @@ namespace
     {
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem(kProbeSystem, "Probe", ProbeSystem::Description));
+        assert(addProbeExecution(builder));
         auto simulation = std::move(builder).build();
         assert(simulation);
         const auto hook = simulation->findHookPoint(kProbeSystem, kTickHook);
@@ -733,6 +777,8 @@ namespace
         SimulationDescriptionBuilder simulation_builder;
         if (!simulation_builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description))
             return 14;
+        if (!addProbeExecution(simulation_builder))
+            return 14;
         auto simulation_description = std::move(simulation_builder).build();
         if (!simulation_description)
             return 15;
@@ -828,40 +874,27 @@ namespace
         auto executor = task::TaskExecutor::create({0U, 1U});
         if (!executor)
             return 22;
+        RuntimeBinding runtime_binding{&*system};
+        auto hook_connection = runtime_binding.bind(*simulation);
+        if (!hook_connection)
+            return 22;
         const auto normal_frame = [&] {
-            if (!simulation->execute(*executor, SimulationDuration{1}))
-                return false;
             if (event_mode)
-            {
-                auto writer = g_probe->event.begin(0U);
-                if (!writer.record(31))
-                    return false;
-                writer = {};
-                if (deliverEndpoint(g_probe->event_endpoint) == 0U)
-                    return false;
-            }
-            return system->executeStablePoint().has_value();
+                g_probe->pending_payload = 31;
+            return simulation->execute(*executor, SimulationDuration{1}).has_value();
         };
         if (idle || storm || event_idle || event_storm)
         {
             if (!simulation->execute(*executor, SimulationDuration{1}))
                 return 23;
             if (event_storm)
-            {
-                auto writer = g_probe->event.begin(0U);
-                if (!writer.record(37))
-                    return 23;
-                writer = {};
-                if (deliverEndpoint(g_probe->event_endpoint) == 0U)
-                    return 23;
-            }
+                g_probe->pending_payload = 37;
+            g_probe->tick_enabled = false;
             while (!event_storm && system->stats().resume_queue_depth != 0U)
             {
-                if (!system->executeStablePoint())
+                if (!simulation->execute(*executor, SimulationDuration{1}))
                     return 23;
             }
-            if (storm && !simulation->execute(*executor, SimulationDuration{1}))
-                return 24;
         }
         else if (!suspend_only)
         {
@@ -908,7 +941,7 @@ namespace
             do
             {
                 const auto begin = Clock::now();
-                if (!system->executeStablePoint())
+                if (!simulation->execute(*executor, SimulationDuration{1}))
                     return 28;
                 record(frame++, std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count());
             } while (system->activeContinuationCount() != 0U && frame < options.frames);
@@ -921,7 +954,8 @@ namespace
             for (std::size_t frame{}; frame < options.frames; ++frame)
             {
                 const auto begin = Clock::now();
-                const bool success = idle || event_idle ? static_cast<bool>(system->executeStablePoint()) :
+                const bool success = idle || event_idle ?
+                    static_cast<bool>(simulation->execute(*executor, SimulationDuration{1})) :
                     normal_frame();
                 const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
                 if (!success)
@@ -975,6 +1009,7 @@ int main(int argc, char** argv)
 
     SimulationDescriptionBuilder simulation_builder;
     assert(simulation_builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
+    assert(addProbeExecution(simulation_builder));
     auto simulation_description = std::move(simulation_builder).build();
     assert(simulation_description);
     ecs::Registry registry;
@@ -1077,21 +1112,26 @@ int main(int argc, char** argv)
     assert(system);
     assert(system->prepare());
 
+    RuntimeBinding runtime_binding{&*system};
+    auto hook_connection = runtime_binding.bind(*simulation);
+    assert(hook_connection);
+
     auto executor = task::TaskExecutor::create({0U, 1U});
     assert(executor);
     assert(simulation->execute(*executor, SimulationDuration{1}));
     assert(system->activeContinuationCount() == 1U);
     assert(provider.eager_starts == 1U);
     assert(provider.calls == 0U);
-    assert(system->executeStablePoint());
     assert(system->activeContinuationCount() == 1U);
     assert(provider.calls == 0U);
     assert(simulation->execute(*executor, SimulationDuration{1}));
-    assert(system->executeStablePoint());
+    assert(system->activeContinuationCount() == 1U);
+    assert(simulation->execute(*executor, SimulationDuration{1}));
     assert(system->activeContinuationCount() == 0U);
     assert(system->activeAwaitableCount() == 0U);
     assert(provider.calls == 1U && provider.value == 111);
     assert(system->shutdown());
+    runtime_binding.runtime = nullptr;
 
     const auto event_source = eventSource();
     auto event_graph = makeEventWaitGraph(event_source);
@@ -1212,24 +1252,20 @@ int main(int argc, char** argv)
     );
     assert(event_wait_system);
     assert(event_wait_system->prepare());
+    runtime_binding.runtime = &*event_wait_system;
     assert(g_probe != nullptr);
-    assert(g_probe->hook.dispatch() == 1U);
+    assert(simulation->execute(*executor, SimulationDuration{1}));
     assert(event_wait_system->activeContinuationCount() == 1U);
     assert(event_wait_system->stats().active_event_waiters == 1U);
-    std::int32_t event_payload{73};
-    {
-        auto writer = g_probe->event.begin(0U);
-        assert(writer.record(event_payload));
-    }
-    event_payload = 99;
-    assert(deliverEndpoint(g_probe->event_endpoint) == 1U);
     assert(event_wait_provider.value == 0);
+    g_probe->pending_payload = 73;
+    assert(simulation->execute(*executor, SimulationDuration{1}));
     assert(event_wait_system->stats().active_event_waiters == 0U);
-    assert(event_wait_system->executeStablePoint());
     assert(event_wait_provider.value == 73);
     assert(event_wait_system->activeContinuationCount() == 0U);
     assert(event_wait_system->activeAwaitableCount() == 0U);
     assert(event_wait_system->shutdown());
+    runtime_binding.runtime = nullptr;
 
     auto retiring_event_wait = ScriptSystem::create(
         simulation->description(),
@@ -1246,15 +1282,14 @@ int main(int argc, char** argv)
     );
     assert(retiring_event_wait);
     assert(retiring_event_wait->prepare());
-    assert(g_probe->hook.dispatch() == 1U);
+    runtime_binding.runtime = &*retiring_event_wait;
+    assert(simulation->execute(*executor, SimulationDuration{1}));
     assert(retiring_event_wait->stats().active_event_waiters == 1U);
     const auto writes_before_event_retirement = event_wait_provider.calls;
     assert(retiring_event_wait->shutdown());
-    {
-        auto writer = g_probe->event.begin(0U);
-        assert(writer.record(101));
-    }
-    assert(deliverEndpoint(g_probe->event_endpoint) == 0U);
+    runtime_binding.runtime = nullptr;
+    g_probe->pending_payload = 101;
+    assert(simulation->execute(*executor, SimulationDuration{1}));
     assert(event_wait_provider.calls == writes_before_event_retirement);
 
     auto retiring = ScriptSystem::create(
@@ -1272,10 +1307,12 @@ int main(int argc, char** argv)
     );
     assert(retiring);
     assert(retiring->prepare());
+    runtime_binding.runtime = &*retiring;
     const auto calls_before_retirement = provider.calls;
     assert(simulation->execute(*executor, SimulationDuration{1}));
     assert(retiring->activeContinuationCount() == 1U);
     assert(retiring->shutdown());
+    runtime_binding.runtime = nullptr;
     assert(retiring->activeContinuationCount() == 0U);
     assert(retiring->activeAwaitableCount() == 0U);
     assert(simulation->execute(*executor, SimulationDuration{1}));

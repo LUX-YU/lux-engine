@@ -1,3 +1,5 @@
+#include "../../system/test/HookInvocationTestAccess.hpp"
+using lux::simulation::test::dispatchHookForTest;
 #include "../../system/test/HookChannelTestDriver.hpp"
 #include <lux/engine/simulation/HookChannel.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
@@ -1097,7 +1099,7 @@ int main(int argc, char** argv)
                         throw std::runtime_error("hook reconnect failed");
                     state.tokens[index] = connected.token;
                 }
-                const auto calls = state.hook.dispatch();
+                const auto calls = dispatchHookForTest(state.hook);
                 return Observation{
                     .updates = mutation_count * 2U,
                     .callbacks = calls,

@@ -34,6 +34,7 @@ namespace lux::simulation::script
         void *context{};
         EndpointConnectResult (*connect)(void *, void *, ScriptHookLane) noexcept {};
         EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
+        void (*bind_owner)(void*, const void*) noexcept{};
     };
 
     struct ScriptEventEndpointDescriptor final
@@ -128,6 +129,8 @@ namespace lux::simulation::script
             HookPoint<void(Parameters...)> &endpoint) noexcept
             : system_(system), id_(id), endpoint_(&endpoint)
         {
+            endpoint_->binding_system_ = system;
+            endpoint_->binding_hook_ = id;
         }
 
         ScriptHookEndpoint(const ScriptHookEndpoint &) = delete;
@@ -143,7 +146,10 @@ namespace lux::simulation::script
                 lux::simulation::detail::EndpointSignatureStorage<void(Parameters...)>::view(),
                 this,
                 &connect,
-                &disconnect
+                &disconnect,
+                [](void* context, const void* owner) noexcept {
+                    static_cast<ScriptHookEndpoint*>(context)->endpoint_->binding_owner_ = owner;
+                }
             };
         }
 

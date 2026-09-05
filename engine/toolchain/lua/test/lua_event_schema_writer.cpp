@@ -13,7 +13,9 @@ namespace
     {
         const lux::system::SystemInstanceId system_id{catalog == "gameplay" ? 0x4C554101U : 0xB001U};
         const lux::simulation::HookPointId hook_id{catalog == "gameplay" ? 0x4C554103U : 0xB002U};
-        const std::array hooks{lux::simulation::makeHookPointSpec<void()>(hook_id, "delivery")};
+        const std::array hooks{catalog == "gameplay"
+            ? lux::simulation::makeHookPointSpec<void()>({0x4C554103U}, "delivery")
+            : lux::simulation::makeHookPointSpec<void()>({0xB002U}, "delivery")};
         const lux::simulation::SimulationSystemDescription system{
             .type = {.canonical_name = "lux.test.event.schema", .version = 1U}, .hooks = hooks};
         lux::simulation::SimulationDescriptionBuilder builder;

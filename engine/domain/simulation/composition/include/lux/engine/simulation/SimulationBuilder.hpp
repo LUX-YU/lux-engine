@@ -185,18 +185,20 @@ namespace lux::simulation
         ) noexcept
         {
             using Function = std::decay_t<Callable>;
-            static_assert(std::is_nothrow_invocable_v<const Function&, Type&>);
+            static_assert(std::is_nothrow_invocable_v<const Function&, Type&, const HookInvocation&>);
             Type* object = findInstalledExact<Type>(instance);
             if (object == nullptr)
                 return lux::cxx::unexpected(SimulationSystemBuildFailure{
                     ESimulationSystemBuildError::INVALID_DESCRIPTION, instance});
             try
             {
+                auto* invocation = allocateHookInvocation();
                 return addExecutionTask(
                     SimulationExecutionPoint::hook(instance, hook), ecs::systemTaskResources<Type>(),
-                    task::TaskCallable([object, fn = Function(std::forward<Callable>(callable))]() noexcept {
-                        fn(*object);
-                    }), task::ETaskAffinity::CALLER_THREAD);
+                    task::TaskCallable([object, invocation,
+                        fn = Function(std::forward<Callable>(callable))]() noexcept {
+                        fn(*object, *invocation->current);
+                    }), task::ETaskAffinity::CALLER_THREAD, invocation);
             }
             catch (const std::bad_alloc&)
             {
@@ -250,6 +252,8 @@ namespace lux::simulation
                         }
                         else
                             function(*object, writer);
+                        if (!writer)
+                            binding.reporter.report(instance);
                     }
                 );
                 return addPrimaryTask(
@@ -332,8 +336,10 @@ namespace lux::simulation
             SimulationExecutionPoint point,
             task::TaskResources resources,
             task::TaskCallable callable,
-            task::ETaskAffinity affinity
+            task::ETaskAffinity affinity,
+            detail::PreparedHookInvocation* invocation = nullptr
         ) noexcept;
+        [[nodiscard]] detail::PreparedHookInvocation* allocateHookInvocation();
 
         friend class Simulation;
     };

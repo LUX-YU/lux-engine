@@ -81,6 +81,17 @@ lux_classify_target(TARGET simulation_hook_execution_test LAYER SIMULATION PRODU
 add_test(NAME simulation_hook_execution_test COMMAND simulation_hook_execution_test)
 set_tests_properties(simulation_hook_execution_test PROPERTIES TIMEOUT 30)
 
+add_executable(simulation_hook_regions_test test/hook_regions_test.cpp)
+target_link_libraries(simulation_hook_regions_test PRIVATE lux::engine::simulation::composition)
+if(MSVC)
+    target_compile_options(simulation_hook_regions_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_hook_regions_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_hook_regions_test LAYER SIMULATION PRODUCT TEST ROLE COMPOSITION)
+add_test(NAME simulation_hook_regions_test COMMAND simulation_hook_regions_test)
+set_tests_properties(simulation_hook_regions_test PROPERTIES TIMEOUT 30)
+
 include_component_cmake_scripts(script_core)
 add_executable(
     simulation_script_ability_codegen_test

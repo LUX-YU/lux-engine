@@ -1,3 +1,5 @@
+#include "../../../system/test/HookInvocationTestAccess.hpp"
+using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
 using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -431,8 +433,11 @@ int main()
     HookChannel<EntityTargetedRoute<ecs::Entity>, SimulationStepInfo> targeted;
     assert(hook.prepare(1U) == EEndpointMutationError::NONE);
     assert(secondary_hook.prepare(1U) == EEndpointMutationError::NONE);
-    assert(broadcast.prepare({1U, 4U}) == EEndpointMutationError::NONE);
-    assert(targeted.prepare({1U, 4U}) == EEndpointMutationError::NONE);
+    const auto copy_step = [](const SimulationStepInfo& step) noexcept {
+        return SimulationStepInfo{step.delta_seconds, step.step_index};
+    };
+    assert(broadcast.prepare({1U, 4U}, copy_step) == EEndpointMutationError::NONE);
+    assert(targeted.prepare({1U, 4U}, copy_step) == EEndpointMutationError::NONE);
 
     ScriptHookEndpoint<void(const SimulationStepInfo&)> hook_bridge{
         kSystem,
@@ -489,14 +494,14 @@ int main()
 
     const SimulationStepInfo step{1.0F / 60.0F, 12U};
 #if defined(LUX_SCRIPT_OWNER_AFFINITY_PROBE)
-    std::thread foreign_owner{[&]() noexcept { static_cast<void>(hook.dispatch(step)); }};
+    std::thread foreign_owner{[&]() noexcept { static_cast<void>(dispatchHookForTest(hook, step)); }};
     foreign_owner.join();
     assert(backend_state.hook_calls == 0U);
 #endif
-    assert(hook.dispatch(step) == 1U);
+    assert(dispatchHookForTest(hook, step) == 1U);
     assert(backend_state.hook_calls == 2U);
     assert(backend_state.entity_calls == 1U);
-    assert(secondary_hook.dispatch(step) == 1U);
+    assert(dispatchHookForTest(secondary_hook, step) == 1U);
     assert(backend_state.secondary_hook_calls == 1U);
 
     {
@@ -539,7 +544,7 @@ int main()
     const auto releases_before_fault = backend_state.releases;
     backend_state.fail_entity = true;
     backend_state.fail_symbol = kHookSymbol;
-    assert(hook.dispatch(step) == 1U);
+    assert(dispatchHookForTest(hook, step) == 1U);
     assert(system.activeInstanceCount() == 1U);
     assert(system.failures().size() == 1U);
     assert(system.failures().front().status == 9);
@@ -550,7 +555,7 @@ int main()
     assert(targeted.pendingOccurrenceCount() == 0U);
 
     backend_state.request_shutdown = true;
-    assert(hook.dispatch(step) == 1U);
+    assert(dispatchHookForTest(hook, step) == 1U);
     assert(backend_state.shutdown_error == EScriptSystemError::ENDPOINT_BUSY);
     assert(system.activeInstanceCount() == 1U);
     const auto stopping_stable_point = system.executeStablePoint();

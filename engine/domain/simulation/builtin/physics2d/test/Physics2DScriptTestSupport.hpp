@@ -131,9 +131,9 @@ namespace lux::physics2d::test
             return lux::cxx::unexpected(task.error());
         ActiveProbe = *system;
         return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), TickHook,
-            [](ProbeSystem& value) noexcept {
+            [](ProbeSystem& value, const lux::simulation::HookInvocation& invocation) noexcept {
                 ++value.hook_calls;
-                static_cast<void>(value.tick.dispatch());
+                static_cast<void>(value.tick.dispatch(invocation));
             });
     }
 

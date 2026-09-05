@@ -77,6 +77,7 @@ namespace lux::simulation
         bool sealed{};
         bool stopped{};
         bool executing{};
+        std::vector<std::unique_ptr<detail::PreparedHookInvocation>> hook_invocations;
     };
 
     struct SimulationBuilder::Impl final
@@ -87,6 +88,7 @@ namespace lux::simulation
             task::TaskResources resources;
             task::TaskCallable callable;
             task::ETaskAffinity affinity;
+            detail::PreparedHookInvocation* invocation{};
         };
         explicit Impl(Simulation::Impl& owner_value) noexcept : owner(&owner_value)
         {
@@ -297,7 +299,9 @@ namespace lux::simulation
         const auto described = impl_->owner->description->findHookPoint(provider, endpoint.hook);
         const bool is_current_provider = current && current.instanceId() == provider;
         const bool is_invalid_endpoint = endpoint.system != provider || endpoint.context == nullptr ||
-            endpoint.connect == nullptr || endpoint.disconnect == nullptr || !described ||
+            endpoint.connect == nullptr || endpoint.disconnect == nullptr ||
+            endpoint.bind_owner == nullptr || !described ||
+            !described.scriptCapable() ||
             described.parameterCount() != endpoint.signature.parameters.size() || !endpoint.signature.returns.empty();
         if (!is_current_provider || is_invalid_endpoint)
         {
@@ -329,6 +333,7 @@ namespace lux::simulation
         try
         {
             impl_->owner->script_hooks.push_back(endpoint);
+            endpoint.bind_owner(endpoint.context, impl_->owner);
             return {};
         }
         catch (const std::bad_alloc&)
@@ -352,6 +357,7 @@ namespace lux::simulation
         const bool is_current_provider = current && current.instanceId() == provider;
         const bool is_invalid_endpoint = endpoint.system != provider || endpoint.context == nullptr ||
             endpoint.connect == nullptr || endpoint.disconnect == nullptr || !described ||
+            !described.dispatchHook().scriptCapable() ||
             described.route() != endpoint.route || described.payloadType() != endpoint.payload_type.type_id ||
             described.payloadSchemaName() != endpoint.payload_type.canonical_name ||
             endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
@@ -538,7 +544,8 @@ namespace lux::simulation
         SimulationExecutionPoint point,
         task::TaskResources resources,
         task::TaskCallable callable,
-        task::ETaskAffinity affinity
+        task::ETaskAffinity affinity,
+        detail::PreparedHookInvocation* invocation
     ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
@@ -558,13 +565,23 @@ namespace lux::simulation
                 ESimulationSystemBuildError::INVALID_EXECUTION_POINT, point.system));
         try
         {
-            impl_->pending_execution.push_back({point, std::move(resources), std::move(callable), affinity});
+            impl_->pending_execution.push_back({
+                point, std::move(resources), std::move(callable), affinity, invocation
+            });
             return {};
         }
         catch (const std::bad_alloc&)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, point.system));
         }
+    }
+
+    detail::PreparedHookInvocation* SimulationBuilder::allocateHookInvocation()
+    {
+        auto cell = std::make_unique<detail::PreparedHookInvocation>();
+        auto* result = cell.get();
+        impl_->owner->hook_invocations.push_back(std::move(cell));
+        return result;
     }
 
     Simulation::Simulation(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
@@ -685,6 +702,19 @@ namespace lux::simulation
                 });
                 return static_cast<std::size_t>(found - pending.begin());
             };
+            for (const auto& endpoint : impl->script_hooks)
+            {
+                if (resolve(SimulationExecutionPoint::hook(endpoint.system, endpoint.hook)) == count)
+                    return lux::cxx::unexpected(buildFailure(
+                        ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, endpoint.system));
+            }
+            for (const auto& endpoint : impl->script_events)
+            {
+                const auto event = impl->description->findEvent(endpoint.system, endpoint.event);
+                if (resolve(SimulationExecutionPoint::hook(endpoint.system, event.dispatchHook().id())) == count)
+                    return lux::cxx::unexpected(buildFailure(
+                        ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, endpoint.system));
+            }
             const auto add_edge = [&](SimulationExecutionPoint from, SimulationExecutionPoint to) {
                 const auto a = resolve(from);
                 const auto b = resolve(to);
@@ -801,7 +831,8 @@ namespace lux::simulation
                 auto task = build.graph_builder.add(task::dependencies(dependencies), std::move(item.resources),
                     task::on(is_script_hook ? task::ETaskAffinity::CALLER_THREAD : task::ETaskAffinity::WORKER),
                     [owner = impl.get(), callable = std::move(item.callable), point = item.point,
-                        is_script_hook, is_stable, channels = std::move(channels)]() noexcept {
+                        is_script_hook, is_stable, invocation_cell = item.invocation,
+                        channels = std::move(channels)]() noexcept {
                         const auto failed = [&]() noexcept {
                             return owner->execution.system_failure.load(std::memory_order_acquire) != 0U;
                         };
@@ -815,6 +846,15 @@ namespace lux::simulation
                             return;
                         }
                         const auto step = owner->clock.snapshot();
+                        const HookInvocation invocation{owner, point.system, HookPointId{point.point},
+                            step, is_script_hook, is_stable};
+                        if (invocation_cell != nullptr)
+                            invocation_cell->current = &invocation;
+                        struct Exit final
+                        {
+                            detail::PreparedHookInvocation* cell;
+                            ~Exit() noexcept { if (cell != nullptr) cell->current = nullptr; }
+                        } exit{invocation_cell};
                         const auto& observer = owner->hook_callbacks;
                         if (is_script_hook && observer.before != nullptr &&
                             !observer.before(observer.context, step, is_stable))
@@ -1008,9 +1048,6 @@ namespace lux::simulation
         impl_->clock.advance(effective_delta);
         impl_->execution.system_failure.store(0U, std::memory_order_release);
         impl_->execution.command_failure.reset();
-        if (impl_->commands)
-            impl_->commands->reset();
-
         impl_->executing = true;
         auto executed = executor.execute(impl_->graph);
         impl_->executing = false;

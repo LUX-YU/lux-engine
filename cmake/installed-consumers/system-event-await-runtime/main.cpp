@@ -1,4 +1,6 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 
@@ -21,6 +23,56 @@ namespace
     inline constexpr EventPointId kStart{0x6502U};
     inline constexpr EventPointId kReady{0x6503U};
     inline constexpr lux::script::ScriptSymbolId kSymbol{0x6504U};
+
+    struct Producer final
+    {
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(kDispatch, "dispatch", true, true)};
+        inline static constexpr std::array Events{
+            makeEventPointSpec<std::int32_t>(kStart, "start", kDispatch,
+                EEventRoute::SIMULATION_BROADCAST, "lux.i32", 1U),
+            makeEventPointSpec<std::int32_t>(kReady, "ready", kDispatch,
+                EEventRoute::SIMULATION_BROADCAST, "lux.i32", 1U)
+        };
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "consumer.event-await", .version = 1U}, .hooks = Hooks, .events = Events};
+        HookChannel<SimulationBroadcastRoute, std::int32_t> start;
+        HookChannel<SimulationBroadcastRoute, std::int32_t> ready;
+        ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> start_bridge{kSystem, kStart, start};
+        ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> ready_bridge{kSystem, kReady, ready};
+        unsigned steps{};
+        Producer() noexcept
+        {
+            assert(start.prepare({1U, 1U}) == EEndpointMutationError::NONE);
+            assert(ready.prepare({1U, 1U}) == EEndpointMutationError::NONE);
+        }
+    };
+
+    auto install(SimulationBuilder& builder, SimulationSystemView view) noexcept
+        -> lux::cxx::expected<void, SimulationSystemBuildFailure>
+    {
+        auto value = builder.emplaceSystem<Producer>(view.instanceId());
+        if (!value)
+            return lux::cxx::unexpected(value.error());
+        auto result = builder.publishScriptEvent(view.instanceId(), (*value)->start_bridge.descriptor());
+        if (!result)
+            return result;
+        result = builder.publishScriptEvent(view.instanceId(), (*value)->ready_bridge.descriptor());
+        if (!result)
+            return result;
+        result = builder.addSystemTask<Producer>(view.instanceId(), [](Producer& producer) noexcept {
+            const auto step = ++producer.steps;
+            auto writer = step == 1U ? producer.start.begin(0U) : producer.ready.begin(0U);
+            std::int32_t payload = step == 1U ? 1 : 42;
+            const auto recorded = writer.record(payload);
+            payload = -1;
+            return recorded;
+        });
+        if (!result)
+            return result;
+        return builder.addSystemHookTask<Producer>(view.instanceId(), kDispatch,
+            [](Producer&, const HookInvocation&) noexcept {});
+    }
 
     struct BackendState final
     {
@@ -143,42 +195,20 @@ int main()
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    constexpr std::array hooks{makeHookPointSpec<void()>(kDispatch, "dispatch")};
-    constexpr std::array events{
-        makeEventPointSpec<std::int32_t>(
-            kStart,
-            "start",
-            kDispatch,
-            EEventRoute::SIMULATION_BROADCAST,
-            "lux.i32",
-            1U
-        ),
-        makeEventPointSpec<std::int32_t>(
-            kReady,
-            "ready",
-            kDispatch,
-            EEventRoute::SIMULATION_BROADCAST,
-            "lux.i32",
-            1U
-        )
-    };
-    const SimulationSystemDescription provider{
-        .type = {.canonical_name = "consumer.event-await", .version = 1U},
-        .hooks = hooks,
-        .events = events
-    };
     SimulationDescriptionBuilder simulation_builder;
-    assert(simulation_builder.addSystem(kSystem, "event-await", provider));
-    auto simulation = std::move(simulation_builder).build();
-    assert(simulation);
-
-    HookChannel<SimulationBroadcastRoute, std::int32_t> start;
-    HookChannel<SimulationBroadcastRoute, std::int32_t> ready;
-    assert(start.prepare(1U, 1U, 1U) == EEndpointMutationError::NONE);
-    assert(ready.prepare(1U, 1U, 1U) == EEndpointMutationError::NONE);
-    ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> start_bridge{kSystem, kStart, start};
-    ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t> ready_bridge{kSystem, kReady, ready};
-    const std::array endpoints{start_bridge.descriptor(), ready_bridge.descriptor()};
+    assert(simulation_builder.addSystem(kSystem, "event-await", Producer::Description));
+    assert(simulation_builder.addExecutionDependency(
+        SimulationExecutionPoint::task(kSystem), SimulationExecutionPoint::hook(kSystem, kDispatch)));
+    auto built = std::move(simulation_builder).build();
+    assert(built);
+    auto simulation = std::make_shared<SimulationDescription>(std::move(*built));
+    ecs::Registry registry;
+    SimulationSystemRegistry registrations;
+    assert(registrations.add({lux::system::systemTypeId(Producer::Description.type.canonical_name),
+        lux::cxx::typeToken<Producer>(), &Producer::Description, Producer::Access.spec(), {}, &install}));
+    auto composed = Simulation::create(registry, simulation, registrations);
+    assert(composed);
+    const auto endpoints = composed->scriptEventEndpoints();
     const auto projected_event = projectScriptEventSource(
         simulation->findEvent(kSystem, kReady),
         endpoints[1],
@@ -222,13 +252,11 @@ int main()
         &releaseMethod,
         &destroyInstance
     }};
-    ecs::Registry registry;
-    SimulationClock clock;
     auto created = ScriptSystem::create(
         *simulation,
         *scripts,
         registry,
-        clock,
+        composed->clock(),
         {8U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U, 2U},
         {std::addressof(source), &ArtifactSource::resolve},
         {},
@@ -241,19 +269,23 @@ int main()
     auto system = std::move(*created);
     assert(system.prepare());
 
-    {
-        auto writer = start.begin(0U);
-        assert(writer.record(1));
-    }
-    assert(start.drain() == 1U);
-    assert(system.stats().active_event_waiters == 1U);
-    {
-        auto writer = ready.begin(0U);
-        assert(writer.record(42));
-    }
-    assert(ready.drain() == 1U);
-    assert(backend_state.resumes == 0U);
-    assert(system.executeStablePoint());
+    struct Context { ScriptSystem& system; BackendState& backend; } context{system, backend_state};
+    auto connection = composed->bindHookCallbacks({&context,
+        [](void* opaque, const SimulationClockSnapshot&, bool) noexcept {
+            auto& context = *static_cast<Context*>(opaque);
+            context.system.beginStableAdmission();
+            return static_cast<bool>(context.system.processLifecycle());
+        },
+        [](void* opaque, const SimulationClockSnapshot&, bool) noexcept {
+            auto& context = *static_cast<Context*>(opaque);
+            assert(context.backend.resumes == 0U);
+            return static_cast<bool>(context.system.executeStablePoint());
+        }, nullptr});
+    assert(connection);
+    auto executor = lux::task::TaskExecutor::create({4U, 8U});
+    assert(executor && composed->execute(*executor, SimulationDuration{1}));
+    assert(system.stats().active_event_waiters == 1U && backend_state.resumes == 0U);
+    assert(composed->execute(*executor, SimulationDuration{1}));
     assert(backend_state.resumes == 1U && backend_state.resumed_value == 42);
     assert(system.shutdown());
     return 0;

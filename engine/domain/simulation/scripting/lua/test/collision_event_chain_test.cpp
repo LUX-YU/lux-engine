@@ -278,7 +278,9 @@ int main()
     ) == EScriptBackendResult::SUCCESS);
 
     lux::simulation::test::HookChannelTestDriver<EntityTargetedRoute<ecs::Entity>, CollisionEvent> endpoint;
-    assert(endpoint.prepare(1U, 2U, 2U) == EEndpointMutationError::NONE);
+    assert(endpoint.prepare(1U, 2U, 2U, [](const CollisionEvent& value) noexcept {
+        return CollisionEvent{value.body, value.impulse};
+    }) == EEndpointMutationError::NONE);
     const auto native_connection = endpoint.connect(
         entity,
         std::addressof(native_subscriber),

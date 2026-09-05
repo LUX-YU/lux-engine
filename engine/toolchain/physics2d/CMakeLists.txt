@@ -18,6 +18,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::physics2d::physics2d_simulation
         lux::engine::simulation::simulation_scripting_core
+        lux::engine::simulation::simulation_composition
         lux::engine::toolchain::lua_script_packager
 )
 lux_classify_target(
@@ -69,6 +70,7 @@ target_link_libraries(
         lux::engine::physics2d::physics2d_simulation
         lux::engine::flowforge::flowforge_compiler
         lux::engine::simulation::simulation_script
+        lux::engine::simulation::simulation_composition
 )
 lux_classify_target(
     TARGET  physics2d_flowforge_fixture_writer

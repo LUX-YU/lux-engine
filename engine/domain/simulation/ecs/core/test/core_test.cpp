@@ -127,6 +127,53 @@ namespace
         assert(!applied);
         assert(applied.error().code == EEcsCommandError::COMPONENT_CONSTRUCTION_FAILURE);
     }
+
+    void testCommitSnapshotAndDeferredGeneration()
+    {
+        using namespace lux::simulation::ecs;
+        Registry registry;
+        EcsCommandBuffer commands;
+        constexpr std::array capacities{EcsCommandProducerCapacity{8U, 256U}};
+        assert(commands.prepare(capacities));
+        const auto allocations = commands.allocationEvents();
+        struct Observer final
+        {
+            EcsCommandBuffer& commands;
+            DeferredEntity deferred;
+            unsigned calls{};
+            void constructed(Registry& registry, Entity) noexcept
+            {
+                ++calls;
+                auto writer = commands.begin(0U);
+                assert(writer);
+                deferred = writer->create();
+                assert(writer->emplace<Velocity>(deferred, Velocity{99}));
+                // Nested commit cannot mutate the snapshot currently on the native stack.
+                assert(!applyEcsCommands(registry, commands));
+            }
+        } observer{commands};
+        auto connection = registry.on_construct<Position>().connect<&Observer::constructed>(observer);
+        DeferredEntity first;
+        {
+            auto writer = commands.begin(0U);
+            assert(writer);
+            first = writer->create();
+            assert(writer->emplace<Position>(first, Position{1}));
+        }
+        assert(applyEcsCommands(registry, commands));
+        assert(observer.calls == 1U);
+        assert(commands.resolve(first));
+        assert(!commands.resolve(observer.deferred));
+        assert(registry.view<Velocity>().size() == 0U);
+        assert(first.generation != observer.deferred.generation);
+        assert(applyEcsCommands(registry, commands));
+        assert(!commands.resolve(first));
+        const auto next = commands.resolve(observer.deferred);
+        assert(next && registry.get<Velocity>(*next).value == 99);
+        assert(applyEcsCommands(registry, commands));
+        assert(commands.resolve(observer.deferred) == next);
+        assert(commands.allocationEvents() == allocations);
+    }
 }
 
 int
@@ -140,4 +187,5 @@ main()
     testRecordingFailureIsAtomic();
     testActiveWriterAndTokenLifetime();
     testApplyFailuresAreClassified();
+    testCommitSnapshotAndDeferredGeneration();
 }

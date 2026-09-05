@@ -4,6 +4,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 find_package(lux-engine-core REQUIRED COMPONENTS meta)
+find_package(lux-engine-simulation-composition REQUIRED COMPONENTS simulation_composition)
 find_package(lux-engine-function REQUIRED COMPONENTS script_artifact script_core)
 find_package(
     lux-engine-simulation
@@ -53,6 +54,7 @@ target_link_libraries(
         lux::engine::simulation::simulation_script
         lux::engine::simulation::simulation_script_cpp_static
         lux::engine::simulation::asset
+        lux::engine::simulation::composition
 )
 engine_target_add_type_runtime_info(
     TARGET lux_system_hook_script_consumer

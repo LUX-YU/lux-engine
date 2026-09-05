@@ -181,7 +181,9 @@ namespace
         if (!task)
             return task;
         return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), kTickHook,
-            [](ProbeSystem& value) noexcept { static_cast<void>(value.hook.dispatch()); });
+            [](ProbeSystem& value, const HookInvocation& invocation) noexcept {
+                static_cast<void>(value.hook.dispatch(invocation));
+            });
     }
 
     [[nodiscard]] SimulationSystemRegistration probeRegistration() noexcept

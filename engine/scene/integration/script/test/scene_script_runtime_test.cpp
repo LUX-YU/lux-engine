@@ -107,9 +107,9 @@ namespace
         if (!task)
             return task;
         return builder.addSystemHookTask<ProbeSystem>(description.instanceId(), kTickHook,
-            [](ProbeSystem& value) noexcept {
+            [](ProbeSystem& value, const HookInvocation& invocation) noexcept {
                 if (std::exchange(value.tick_requested, false))
-                    static_cast<void>(value.hook.dispatch());
+                    static_cast<void>(value.hook.dispatch(invocation));
             });
     }
 

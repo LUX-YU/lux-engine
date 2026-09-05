@@ -202,6 +202,7 @@ namespace lux::simulation::ecs
         ) noexcept;
         void fail(std::uint32_t producer, std::uint32_t generation, EEcsCommandError error) noexcept;
         void end(std::uint32_t producer, std::uint32_t generation) noexcept;
+        [[nodiscard]] bool writerValid(std::uint32_t producer, std::uint32_t generation) const noexcept;
 
         friend class EcsCommandWriter;
         friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<void, EcsCommandFailure>

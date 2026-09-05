@@ -1,3 +1,5 @@
+#include "HookInvocationTestAccess.hpp"
+using lux::simulation::test::dispatchHookForTest;
 #include "HookChannelTestDriver.hpp"
 #include <lux/engine/simulation/HookChannel.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
@@ -105,7 +107,7 @@ int main()
     const auto first = hook.connect(&hook_values, &appendInt);
     assert(first);
     assert(hook.handlerCount() == 1U);
-    assert(hook.dispatch(7) == 1U);
+    assert(dispatchHookForTest(hook, 7) == 1U);
     assert((hook_values == std::vector<std::int32_t>{7}));
     assert(hook.disconnect(first.token) == EEndpointMutationError::NONE);
     assert(hook.disconnect(first.token) == EEndpointMutationError::INVALID_TOKEN);
@@ -121,7 +123,7 @@ int main()
     const auto probe_connection = hook.connect(&hook_probe, &probeHookMutation);
     assert(probe_connection);
     hook_probe.token = probe_connection.token;
-    assert(hook.dispatch(8) == 1U);
+    assert(dispatchHookForTest(hook, 8) == 1U);
     assert(hook_probe.disconnect_error == EEndpointMutationError::DISPATCH_ACTIVE);
     assert(hook_probe.prepare_error == EEndpointMutationError::DISPATCH_ACTIVE);
     assert(hook.disconnect(probe_connection.token) == EEndpointMutationError::NONE);
@@ -258,5 +260,42 @@ int main()
     assert(concurrent.activate() == kConcurrentProducerCount * kConcurrentEpochCount);
     assert(concurrent_callbacks == kConcurrentProducerCount * kConcurrentEpochCount);
     assert(concurrent.disconnect(concurrent_connection.token) == EEndpointMutationError::NONE);
+    // No implicit raw object copy for records with potentially borrowed fields.
+    struct BorrowedRecord final { const int* value{}; };
+    HookChannel<SimulationBroadcastRoute, BorrowedRecord> borrowed;
+    assert(borrowed.prepare({1U, 2U}) == EEndpointMutationError::PAYLOAD_NOT_OWNED);
+
+    HookChannel<SimulationBroadcastRoute, int> generations;
+    assert(generations.prepare({2U, 2U, 2U, 128U}) == EEndpointMutationError::NONE);
+    {
+        auto second = generations.begin(1U);
+        auto first = generations.begin(0U);
+        assert(second.record(20) && first.record(10));
+    }
+    assert(generations.seal());
+    assert(generations.lane(0U).front().payload == 10);
+    assert(generations.lane(1U).front().payload == 20);
+    const auto first_view = generations.lane(0U);
+    {
+        auto forbidden = generations.begin(0U);
+        assert(!forbidden.record(99));
+        auto next = generations.beginOwner();
+        assert(next.record(30));
+    }
+    // Multiple native consumers see the same immutable storage until the explicit reset.
+    assert(first_view.front().payload == 10 && generations.lane(2U).empty());
+    generations.reset();
+    assert(generations.seal());
+    assert(generations.lane(0U).empty() && generations.lane(1U).empty());
+    assert(generations.lane(2U).front().payload == 30);
+    generations.reset();
+    {
+        auto writer = generations.begin(0U);
+        assert(writer.record(1) && writer.record(2));
+        assert(!writer.record(3));
+    }
+    assert(generations.failed() && !generations.seal());
+    generations.discard();
+    assert(!generations.failed() && generations.pendingOccurrenceCount() == 0U);
     return 0;
 }

@@ -44,6 +44,8 @@ namespace lux::simulation
         using Target = typename detail::HookChannelTarget<Route>::Type;
 
     public:
+        // Non-scalar owners must explicitly declare their field-wise ownership copy.
+        using OwnedCopy = Payload (*)(const Payload&) noexcept;
         struct Occurrence final
         {
             Target target;
@@ -58,7 +60,7 @@ namespace lux::simulation
             Writer& operator=(const Writer&) = delete;
             Writer(Writer&& other) noexcept
                 : records_(std::exchange(other.records_, nullptr)), active_(other.active_), failed_(other.failed_),
-                  capacity_(other.capacity_)
+                  capacity_(other.capacity_), copy_(other.copy_)
             {}
             Writer& operator=(Writer&& other) noexcept
             {
@@ -69,6 +71,7 @@ namespace lux::simulation
                     active_ = other.active_;
                     failed_ = other.failed_;
                     capacity_ = other.capacity_;
+                    copy_ = other.copy_;
                 }
                 return *this;
             }
@@ -82,7 +85,7 @@ namespace lux::simulation
                     *failed_ = true;
                     return false;
                 }
-                records_->push_back({std::move(target), std::move(payload)});
+                records_->push_back({std::move(target), copy_(payload)});
                 return true;
             }
             [[nodiscard]] bool record(Payload payload) noexcept
@@ -92,8 +95,9 @@ namespace lux::simulation
             }
 
         private:
-            Writer(std::vector<Occurrence>& records, bool& active, bool& failed, std::size_t capacity) noexcept
-                : records_(&records), active_(&active), failed_(&failed), capacity_(capacity)
+            Writer(std::vector<Occurrence>& records, bool& active, bool& failed,
+                std::size_t capacity, OwnedCopy copy) noexcept
+                : records_(&records), active_(&active), failed_(&failed), capacity_(capacity), copy_(copy)
             {
                 active = true;
             }
@@ -107,6 +111,7 @@ namespace lux::simulation
             bool* active_{};
             bool* failed_{};
             std::size_t capacity_{};
+            OwnedCopy copy_{};
             friend class HookChannel;
         };
 
@@ -116,12 +121,19 @@ namespace lux::simulation
         HookChannel(HookChannel&&) = delete;
         HookChannel& operator=(HookChannel&&) = delete;
 
-        [[nodiscard]] EEndpointMutationError prepare(HookChannelCapacity capacity) noexcept
+        [[nodiscard]] EEndpointMutationError prepare(HookChannelCapacity capacity, OwnedCopy copy = nullptr) noexcept
         {
             if (sealed_)
                 return EEndpointMutationError::DISPATCH_ACTIVE;
             if (writerActive())
                 return EEndpointMutationError::WRITER_ACTIVE;
+            if constexpr (std::is_arithmetic_v<Payload> || std::is_enum_v<Payload>)
+            {
+                if (copy == nullptr)
+                    copy = [](const Payload& value) noexcept { return value; };
+            }
+            if (copy == nullptr)
+                return EEndpointMutationError::PAYLOAD_NOT_OWNED;
             const auto max_records = capacity.max_bytes / sizeof(Occurrence);
             const bool is_invalid_capacity = capacity.producers == 0U || capacity.occurrences_per_producer == 0U ||
                 capacity.producers > max_records / capacity.occurrences_per_producer;
@@ -141,6 +153,7 @@ namespace lux::simulation
                 owner_.records.reserve(capacity.owner_occurrences);
                 deferred_.records.reserve(capacity.owner_occurrences);
                 capacity_ = capacity;
+                copy_ = copy;
                 prepared_ = true;
                 return EEndpointMutationError::NONE;
             }
@@ -156,7 +169,7 @@ namespace lux::simulation
             if (!prepared_ || sealed_ || producer >= lanes_.size() || lanes_[producer].active)
                 return {};
             auto& lane = lanes_[producer];
-            return Writer{lane.records, lane.active, lane.failed, capacity_.occurrences_per_producer};
+            return Writer{lane.records, lane.active, lane.failed, capacity_.occurrences_per_producer, copy_};
         }
 
         [[nodiscard]] Writer beginOwner() noexcept
@@ -166,7 +179,7 @@ namespace lux::simulation
             auto& lane = sealed_ ? deferred_ : owner_;
             if (lane.active)
                 return {};
-            return Writer{lane.records, lane.active, lane.failed, capacity_.owner_occurrences};
+            return Writer{lane.records, lane.active, lane.failed, capacity_.owner_occurrences, copy_};
         }
 
         [[nodiscard]] bool seal() noexcept
@@ -253,5 +266,6 @@ namespace lux::simulation
         HookChannelCapacity capacity_;
         bool prepared_{};
         bool sealed_{};
+        OwnedCopy copy_{};
     };
 }

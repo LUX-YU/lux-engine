@@ -42,6 +42,9 @@ namespace
         PAYLOAD_LAYOUT,
         SCHEMA_HASH,
         SCHEMA_VERSION,
+        DELIVERY_HOOK,
+        DELIVERY_HASH,
+        DELIVERY_VERSION,
     };
 
     [[nodiscard]] lux::asset::AssetId assetId()
@@ -160,6 +163,9 @@ namespace
         case ERequirementMutation::PAYLOAD_LAYOUT: requirement.payload.size *= 2U; break;
         case ERequirementMutation::SCHEMA_HASH: ++requirement.payload_schema_hash; break;
         case ERequirementMutation::SCHEMA_VERSION: ++requirement.payload_schema_version; break;
+        case ERequirementMutation::DELIVERY_HOOK: ++requirement.delivery_hook_id; break;
+        case ERequirementMutation::DELIVERY_HASH: ++requirement.delivery_schema_hash; break;
+        case ERequirementMutation::DELIVERY_VERSION: ++requirement.delivery_schema_version; break;
         case ERequirementMutation::NONE: break;
         }
         description.event_requirements.push_back(std::move(requirement));
@@ -967,7 +973,10 @@ namespace
             std::pair{ERequirementMutation::ROUTE, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
             std::pair{ERequirementMutation::PAYLOAD_LAYOUT, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
             std::pair{ERequirementMutation::SCHEMA_HASH, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
-            std::pair{ERequirementMutation::SCHEMA_VERSION, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH}
+            std::pair{ERequirementMutation::SCHEMA_VERSION, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
+            std::pair{ERequirementMutation::DELIVERY_HOOK, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
+            std::pair{ERequirementMutation::DELIVERY_HASH, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH},
+            std::pair{ERequirementMutation::DELIVERY_VERSION, EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH}
         };
         for (const auto& [mutation, expected] : cases)
         {

@@ -1,4 +1,6 @@
 #pragma once
+#include <lux/engine/serialization/SerializationError.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
 /**
  * @file SkeletonDescriptionCodec.hpp (private)
  * @brief Compact binary encoder/decoder for `lux::rdesc::Skeleton`.
@@ -53,7 +55,9 @@ namespace lux::asset::detail
     /// Marked LUX_ASSET_PUBLIC so the asset module's own test target can
     /// link against it through the pinclude path; pinclude headers are not
     /// installed, so external consumers still cannot see this declaration.
-    LUX_ASSET_PUBLIC std::vector<std::byte>
+    using SkeletonDescriptionEncodeResult =
+        lux::cxx::expected<std::vector<std::byte>, lux::serialization::SerializationFailure>;
+    LUX_ASSET_PUBLIC SkeletonDescriptionEncodeResult
     encodeSkeletonDescription(const lux::rdesc::Skeleton& skel);
 
     /// Decode a Skeleton. Returns false and (optionally) writes a

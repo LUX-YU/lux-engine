@@ -1,4 +1,6 @@
 #pragma once
+#include <lux/engine/serialization/SerializationError.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
 /**
  * @file MeshDescriptionCodec.hpp (private)
  * @brief Compact binary encoder/decoder for `lux::rdesc::Mesh`.
@@ -52,11 +54,12 @@ namespace lux::asset::detail
     inline constexpr std::uint32_t kMaxMeshIndexCount  = 1u << 24;
     inline constexpr std::uint32_t kMaxMeshLodCount    = 8u;          // defensive cap on LOD levels
 
-    /// Encode a Mesh into a compact binary blob. Never fails (other than
-    /// std::bad_alloc). Marked LUX_ASSET_PUBLIC so the asset module's own
+    /// Encode a Mesh into a compact binary blob. Reports allocation and layout-budget failure. Marked LUX_ASSET_PUBLIC so the asset module's own
     /// test target can link against it through the pinclude path; pinclude
     /// headers are not installed, so external consumers cannot see it.
-    LUX_ASSET_PUBLIC std::vector<std::byte>
+    using MeshDescriptionEncodeResult =
+        lux::cxx::expected<std::vector<std::byte>, lux::serialization::SerializationFailure>;
+    LUX_ASSET_PUBLIC MeshDescriptionEncodeResult
     encodeMeshDescription(const lux::rdesc::Mesh& mesh);
 
     /// Decode a Mesh. Returns false and (optionally) writes a human-readable

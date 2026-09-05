@@ -37,7 +37,7 @@ target_include_directories(
 )
 target_link_libraries(
     script_native_collision_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 lux_classify_target(
     TARGET  script_native_collision_fixture
@@ -55,7 +55,7 @@ target_include_directories(
 )
 target_link_libraries(
     script_native_second_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 lux_classify_target(
     TARGET  script_native_second_fixture
@@ -77,7 +77,7 @@ lux_classify_target(
 
 target_link_libraries(
     script_native_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 
 add_library(
@@ -104,7 +104,7 @@ lux_classify_target(
 
 target_link_libraries(
     script_native_bad_entry_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 
 add_library(
@@ -148,7 +148,7 @@ lux_classify_target(
 
 target_link_libraries(
     script_native_bind_failure_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 
 add_library(
@@ -175,7 +175,7 @@ lux_classify_target(
 
 target_link_libraries(
     script_native_bad_abi_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 
 add_library(
@@ -199,7 +199,7 @@ target_include_directories(
 )
 target_link_libraries(
     script_native_bad_event_import_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 lux_classify_target(
     TARGET  script_native_bad_event_import_fixture
@@ -219,7 +219,7 @@ target_include_directories(
 )
 target_link_libraries(
     script_native_bad_return_fixture
-    PRIVATE lux::cxx::compile_time
+    PRIVATE lux::cxx::compile_time lux::engine::core::semantic
 )
 lux_classify_target(
     TARGET  script_native_bad_return_fixture

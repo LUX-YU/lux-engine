@@ -1,14 +1,14 @@
 #include <lux/engine/resource/asset/animation/AnimationClipDescriptionCodec.hpp>
 
-#include <lux/engine/core/serialization/ByteIO.hpp>
+#include <lux/engine/serialization/CodecByteIO.hpp>
 
 #include <algorithm>
 #include <cmath>
 
 namespace lux::asset::detail
 {
-    using lux::core::serialization::ByteReader;
-    using lux::core::serialization::ByteWriter;
+    using lux::serialization::ByteReader;
+    using lux::serialization::ByteWriter;
     namespace
     {
         // -----------------------------------------------------------------
@@ -124,7 +124,7 @@ namespace lux::asset::detail
         }
     } // anonymous
 
-    std::vector<std::byte>
+    AnimationClipDescriptionEncodeResult
     encodeAnimationClipDescription(const lux::rdesc::AnimationClip& clip)
     {
         ByteWriter w;

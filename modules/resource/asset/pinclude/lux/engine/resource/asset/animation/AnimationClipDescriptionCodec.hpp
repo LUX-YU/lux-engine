@@ -1,4 +1,6 @@
 #pragma once
+#include <lux/engine/serialization/SerializationError.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
 /**
  * @file AnimationClipDescriptionCodec.hpp (private)
  * @brief Compact binary encoder/decoder for `lux::rdesc::AnimationClip`.
@@ -76,7 +78,9 @@ namespace lux::asset::detail
     /// (other than std::bad_alloc).
     /// LUX_ASSET_PUBLIC: see the matching rationale in
     /// SkeletonDescriptionCodec.hpp — pinclude not installed.
-    LUX_ASSET_PUBLIC std::vector<std::byte>
+    using AnimationClipDescriptionEncodeResult =
+        lux::cxx::expected<std::vector<std::byte>, lux::serialization::SerializationFailure>;
+    LUX_ASSET_PUBLIC AnimationClipDescriptionEncodeResult
     encodeAnimationClipDescription(const lux::rdesc::AnimationClip& clip);
 
     /// Decode an AnimationClip. Returns false and (optionally) writes a

@@ -279,14 +279,20 @@ namespace lux::asset
             try
             {
                 const auto information = encode(asset.data());
-                if (information.empty())
+                if (!information)
+                {
+                    const auto error = information.error().code == lux::serialization::ESerializationError::ALLOCATION_FAILURE
+                        ? EAssetEncodeError::ALLOCATION_FAILURE : EAssetEncodeError::LIMIT_EXCEEDED;
+                    return lux::cxx::unexpected(encodeFailure(error));
+                }
+                if (information->empty())
                     return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_PAYLOAD));
                 return detail::encodeCookedAssetImage(
                     detail::CookedAssetWriteRequest{
                         ConcreteAsset::primary_magic,
                         ConcreteAsset::legacy_type_tag,
                         asset.info(),
-                        information,
+                        *information,
                         {},
                         asset.auxiliaryPayloads()
                     },

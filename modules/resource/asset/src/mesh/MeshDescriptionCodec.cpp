@@ -1,11 +1,11 @@
 #include <lux/engine/resource/asset/mesh/MeshDescriptionCodec.hpp>
 
-#include <lux/engine/core/serialization/ByteIO.hpp>
+#include <lux/engine/serialization/CodecByteIO.hpp>
 
 namespace lux::asset::detail
 {
-    using lux::core::serialization::ByteReader;
-    using lux::core::serialization::ByteWriter;
+    using lux::serialization::ByteReader;
+    using lux::serialization::ByteWriter;
     // The codec bulk-copies the vertex/index arrays as raw bytes (meshes are
     // large — element-wise float writes would be needlessly slow). Vertex is a
     // flat aggregate of floats/ints (Eigen fixed-size vectors hold contiguous
@@ -17,7 +17,7 @@ namespace lux::asset::detail
     static_assert(sizeof(lux::rdesc::Vertex) == 88,
                   "Vertex layout changed — bump kMeshSchemaVersion and revisit the codec.");
 
-    std::vector<std::byte>
+    MeshDescriptionEncodeResult
     encodeMeshDescription(const lux::rdesc::Mesh& mesh)
     {
         const std::size_t vcount = mesh.vertices.size();

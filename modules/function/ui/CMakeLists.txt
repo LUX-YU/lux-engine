@@ -268,6 +268,7 @@ if(ENABLE_UI_TEST)
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+            ${LUX_GENERATE_HEADER_DIR}
     )
     target_compile_definitions(ui_drag_drop_scope_test PRIVATE LUX_FUNCTION_LIBRARY)
     target_link_libraries(

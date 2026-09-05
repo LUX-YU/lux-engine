@@ -1,11 +1,11 @@
 #include <lux/engine/resource/asset/animation/SkeletonDescriptionCodec.hpp>
 
-#include <lux/engine/core/serialization/ByteIO.hpp>
+#include <lux/engine/serialization/CodecByteIO.hpp>
 
 namespace lux::asset::detail
 {
-    using lux::core::serialization::ByteReader;
-    using lux::core::serialization::ByteWriter;
+    using lux::serialization::ByteReader;
+    using lux::serialization::ByteWriter;
     namespace
     {
         /// Affine3f -> 12 floats: columns 0..3, rows 0..2 (column-major per
@@ -40,7 +40,7 @@ namespace lux::asset::detail
         }
     } // anonymous
 
-    std::vector<std::byte>
+    SkeletonDescriptionEncodeResult
     encodeSkeletonDescription(const lux::rdesc::Skeleton& skel)
     {
         ByteWriter w;

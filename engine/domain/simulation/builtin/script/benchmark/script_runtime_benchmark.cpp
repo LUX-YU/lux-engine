@@ -319,7 +319,8 @@ namespace
                   "external_queue_depth,external_queue_high_water,external_queue_capacity_failures,"
                   "lifecycle_begins,lifecycle_ends,checksum,vm_accounting,vm_allocations,vm_reallocations,vm_frees,"
                   "vm_requested_bytes,vm_released_bytes,vm_coroutine_creations,"
-                  "vm_coroutine_resumes,vm_coroutine_releases,event_requirement_count,event_route,allocation_accounting\n";
+                  "vm_coroutine_resumes,vm_coroutine_releases,event_requirement_count,event_route,"
+                  "allocation_accounting\n";
         for (const auto& row : rows)
         {
             output << "6," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','

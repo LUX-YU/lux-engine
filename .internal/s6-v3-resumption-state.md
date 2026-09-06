@@ -45,6 +45,36 @@ Not complete, not a freeze declaration. Continue the approved implementation; no
   Old API adapts CppScriptEventSource::create(description), omits unavailable new Event stats.
   It still needs build/testing with new toolset/cxx. Do not claim measurements from this unbuilt driver.
 
+### Latest continuation (supersedes the in-flight details above)
+
+- Session76664 completed: d8d14c4a Developer237/237, Toolchain216/216, Physics OFF and Lua OFF passed;
+  Lua54 initially failed configure because its separate dependency prefix was not supplied.
+- Active session25832 now builds/tests Lua54 with explicit dependency
+  `E:/SyncForder/CodeRepos/build/deps/lua54-vcpkg/x64-windows`; do not overlap builds/tests with it.
+  Runner now accepts Lua54Prefix and preserves other profile records in qualification.json.
+- Engine HEAD13d9b417; source runtime+codegen fix d8d14c4a, later5661049d adds real population benchmark groups,
+  411a4ffb adds measurement cases. Population groups still need building/testing on final and baseline.
+- Bcompare driver now f53fd36b (runtime44b11a60). Ports include sequence, real generated C++ Event requirements,
+  population groups and the build-only absent Lua include install fix. No runtime .src or public API was patched.
+  The driver has not been built. Old new-Event counters are unavailable and deliberately omitted, not measured zero.
+- D:/LuxV3Consumers had 11/12 PASS with original prefixes physically renamed away and restored afterward.
+  Physics failed only because schema JSON was assumed next to the runtime prefix. Its source now uses normal
+  Ability codegen on the installed canonical declaration; fresh retry remains pending.
+- D:/LuxV3Incremental2 PASS: body/include/ledger/macro/target-option/template/validation/no-op. Published outputs
+  preserved on validation failure; body-only change does not touch generated files.
+- D:/LuxV3Rename failed the newly added Ability schema-version invalidation check and exposed the template bug.
+  d8d14c4a fixes both templates and adds VersionedTestAbility assertions; q2/d and /t rebuilt and installed PASS.
+  SDK fragments d/t refreshed by copying full installed prefixes to D:/LuxV3SDK; retry must use a fresh output root.
+- Tiny IPO consumer now supports --output for four measured nonempty paths (direct/dynamic/static/native entry).
+  Correctness consumer old version passed; new timing option not rebuilt/measured yet.
+- Script population groups create/invoke/retire two complete physical populations through real ScriptSystem/backends.
+  C++/Native reuse their backend owner; Lua factory also includes VM construction, explicitly documented in code.
+  These supplement the separate same-runtime Lua churn and one-time lifecycle/retirement probes.
+
+Next serial actions after session25832: finish/rebuild population tests at latest clean commit; run remaining
+relocated Physics and schema reimport; build Bcompare driver with new toolset/cxx; run formal paired measurements,
+stress, VTune/assembly and final evidence. Formal performance has not yet been run. No completion claim.
+
 ## Next work
 
 1. Finish/read q2 matrix; fix genuine failures and bind results to exact commits.

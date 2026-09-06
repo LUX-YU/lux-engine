@@ -51,11 +51,15 @@ bool validContract(const CppStaticContract &contract) noexcept
         return false;
     bool begin_found = contract.lifecycle.begin_play == lux::script::InvalidScriptSymbolId;
     bool end_found = contract.lifecycle.end_play == lux::script::InvalidScriptSymbolId;
+    if (!contract.abilities.empty() && contract.resolve_ability == nullptr) return false;
+    lux::script::ScriptSymbolId previous{};
     for (const auto &entry : contract.exports)
     {
         const bool missing_entry = (entry.invoke == nullptr) == (entry.start == nullptr);
         if (entry.symbol == lux::script::InvalidScriptSymbolId || entry.name.empty() || missing_entry)
             return false;
+        if (entry.symbol <= previous) return false;
+        previous = entry.symbol;
         if (entry.symbol == contract.lifecycle.begin_play)
         {
             if (entry.start != nullptr || !entry.parameters.empty() || !entry.results.empty())
@@ -215,7 +219,6 @@ struct CppStaticScriptBackend::State final
     struct DescriptorIndex final
     {
         const CppStaticContract *descriptor{};
-        std::unordered_map<lux::script::ScriptSymbolId, const CppStaticExportEntry *> callables;
         ObjectSlab objects;
         std::vector<std::size_t> free_objects;
         detail::BoundedClassStorage coroutine_frames;
@@ -230,6 +233,17 @@ struct CppStaticScriptBackend::State final
         std::size_t coroutine_high_water{};
     };
 
+    inline static constexpr std::size_t InvalidAssociation = (std::numeric_limits<std::size_t>::max)();
+    struct ArtifactAssociation final
+    {
+        lux::script::ScriptArtifactContentId identity;
+        DescriptorIndex* descriptor{};
+        std::vector<std::uint32_t> capability_slots;
+        std::size_t references{};
+        std::size_t previous{InvalidAssociation};
+        std::size_t next{InvalidAssociation};
+    };
+
     struct Instance final
     {
         State *owner{};
@@ -239,6 +253,7 @@ struct CppStaticScriptBackend::State final
         std::uint32_t slot{};
         std::span<const PreparedScriptApiCapability> capabilities;
         const lux::script::ScriptArtifact* artifact{};
+        ArtifactAssociation* association{};
         std::size_t active_coroutines{};
     };
 
@@ -406,15 +421,6 @@ struct CppStaticScriptBackend::State final
                 valid = false;
                 return;
             }
-            index.callables.reserve(index.descriptor->exports.size());
-            for (const auto &callable : index.descriptor->exports)
-            {
-                if (!index.callables.emplace(callable.symbol, std::addressof(callable)).second)
-                {
-                    valid = false;
-                    return;
-                }
-            }
             if (index.descriptor->object.size)
             {
                 const auto &type = index.descriptor->object;
@@ -457,6 +463,11 @@ struct CppStaticScriptBackend::State final
             coroutine_capacity += pool.coroutine_capacity;
         }
         instances.resize(instance_capacity);
+        artifact_associations.resize(instance_capacity);
+        artifact_index.reserve(instance_capacity);
+        free_associations.reserve(instance_capacity);
+        for (std::size_t index = instance_capacity; index > 0U; --index)
+            free_associations.push_back(index - 1U);
         free_instances.reserve(instance_capacity);
         for (std::size_t index = instance_capacity; index > 0U; --index)
             free_instances.push_back(index - 1U);
@@ -497,15 +508,8 @@ struct CppStaticScriptBackend::State final
         const auto &instance = self.instances[instance_slot];
         if (instance.descriptor == nullptr)
             return false;
-        for (std::size_t index{}; index < instance.capabilities.size(); ++index)
-        {
-            if (instance.capabilities[index].contract.hash() == contract_hash)
-            {
-                result = static_cast<std::uint32_t>(index);
-                return true;
-            }
-        }
-        return false;
+        const auto resolver = instance.descriptor->descriptor->resolve_ability;
+        return resolver != nullptr && resolver(contract_hash, result);
     }
 
     [[nodiscard]] static bool resolveAbility(void *opaque, std::uint32_t instance_slot, std::uint32_t ability_slot,
@@ -515,9 +519,12 @@ struct CppStaticScriptBackend::State final
         if (instance_slot >= self.instances.size())
             return false;
         const auto &instance = self.instances[instance_slot];
-        if (instance.descriptor == nullptr || ability_slot >= instance.capabilities.size())
+        if (instance.descriptor == nullptr || instance.association == nullptr ||
+            ability_slot >= instance.association->capability_slots.size())
             return false;
-        const auto &ability = instance.capabilities[ability_slot];
+        const auto actual_slot = instance.association->capability_slots[ability_slot];
+        if (actual_slot >= instance.capabilities.size()) return false;
+        const auto &ability = instance.capabilities[actual_slot];
         if (ability.context == nullptr || ability.dispatch == nullptr)
             return false;
         result = {ability.context, ability.dispatch};
@@ -605,6 +612,98 @@ struct CppStaticScriptBackend::State final
         return found == descriptor_by_key.end() ? nullptr : std::addressof(descriptor_indexes[found->second]);
     }
 
+    void unlinkInactiveAssociation(std::size_t slot) noexcept
+    {
+        auto& entry = artifact_associations[slot];
+        if (entry.previous != InvalidAssociation) artifact_associations[entry.previous].next = entry.next;
+        else inactive_first = entry.next;
+        if (entry.next != InvalidAssociation) artifact_associations[entry.next].previous = entry.previous;
+        else inactive_last = entry.previous;
+        entry.previous = entry.next = InvalidAssociation;
+    }
+
+    void releaseAssociation(ArtifactAssociation& entry) noexcept
+    {
+        if (--entry.references != 0U) return;
+        --active_associations;
+        const auto slot = static_cast<std::size_t>(&entry - artifact_associations.data());
+        entry.previous = inactive_last;
+        if (inactive_last != InvalidAssociation) artifact_associations[inactive_last].next = slot;
+        else inactive_first = slot;
+        inactive_last = slot;
+    }
+
+    [[nodiscard]] lux::cxx::expected<ArtifactAssociation*, EScriptBackendResult> acquireAssociation(
+        const lux::script::ScriptArtifact& artifact, DescriptorIndex& descriptor
+    ) noexcept
+    {
+        const auto identity = artifact.contentIdentity();
+        if (identity.isNull())
+            return lux::cxx::unexpected(EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
+        const auto cached = artifact_index.find(identity);
+        if (cached != artifact_index.end())
+        {
+            auto& entry = artifact_associations[cached->second];
+            if (entry.descriptor != &descriptor)
+                return lux::cxx::unexpected(EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
+            if (entry.references == 0U)
+            {
+                unlinkInactiveAssociation(cached->second);
+                ++active_associations;
+            }
+            ++entry.references;
+            ++contract_cache_hits;
+            return &entry;
+        }
+        ++contract_validations;
+        if (!executableContractMatches(artifact, *descriptor.descriptor))
+            return lux::cxx::unexpected(EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
+        std::size_t slot{InvalidAssociation};
+        try
+        {
+            std::vector<std::uint32_t> imports;
+            imports.reserve(descriptor.descriptor->abilities.size());
+            const auto& requirements = artifact.description().api_requirements;
+            for (const auto& expected : descriptor.descriptor->abilities)
+            {
+                const auto found = std::ranges::find_if(requirements, [&](const auto& requirement) noexcept {
+                    return requirement.contract.name() == expected.contract.name();
+                });
+                imports.push_back(static_cast<std::uint32_t>(found - requirements.begin()));
+            }
+            if (!free_associations.empty())
+            {
+                slot = free_associations.back();
+                free_associations.pop_back();
+            }
+            else
+            {
+                if (inactive_first == InvalidAssociation)
+                    return lux::cxx::unexpected(EScriptBackendResult::CAPACITY_EXCEEDED);
+                slot = inactive_first;
+                auto& previous = artifact_associations[slot];
+                unlinkInactiveAssociation(slot);
+                artifact_index.erase(previous.identity);
+                association_import_bytes -= previous.capability_slots.capacity() * sizeof(std::uint32_t);
+                previous = {};
+            }
+            artifact_index.emplace(identity, slot);
+            auto& entry = artifact_associations[slot];
+            entry.identity = identity;
+            entry.descriptor = &descriptor;
+            entry.capability_slots = std::move(imports);
+            entry.references = 1U;
+            association_import_bytes += entry.capability_slots.capacity() * sizeof(std::uint32_t);
+            ++active_associations;
+            return &entry;
+        }
+        catch (const std::bad_alloc&)
+        {
+            if (slot != InvalidAssociation) free_associations.push_back(slot);
+            return lux::cxx::unexpected(EScriptBackendResult::ALLOCATION_FAILURE);
+        }
+    }
+
     static EScriptBackendResult createInstance(void *opaque, const ScriptInstanceCreateContext &context,
                                                const lux::script::ScriptArtifact &artifact,
                                                ScriptBackendInstance &result) noexcept
@@ -614,17 +713,19 @@ struct CppStaticScriptBackend::State final
         if (!descriptor_index)
             return EScriptBackendResult::CONSTRUCTION_FAILURE;
         const auto &descriptor = *descriptor_index->descriptor;
-        if (!executableContractMatches(artifact, descriptor))
-        {
-            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-        }
         const bool entity_scope = std::holds_alternative<EntityScriptScope>(context.scope);
         if (descriptor.entity_scope != entity_scope)
             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-        if (self.free_instances.empty() || descriptor_index->active_instances >= descriptor_index->instance_capacity)
+        const auto association = self.acquireAssociation(artifact, *descriptor_index);
+        if (!association) return association.error();
+        const bool no_capacity = self.free_instances.empty() ||
+            descriptor_index->active_instances >= descriptor_index->instance_capacity ||
+            (descriptor.object.size != 0U && descriptor_index->free_objects.empty());
+        if (no_capacity)
+        {
+            self.releaseAssociation(**association);
             return EScriptBackendResult::CAPACITY_EXCEEDED;
-        if (descriptor.object.size != 0U && descriptor_index->free_objects.empty())
-            return EScriptBackendResult::CAPACITY_EXCEEDED;
+        }
         const auto instance_slot = self.free_instances.back();
         self.free_instances.pop_back();
         auto *instance = std::addressof(self.instances[instance_slot]);
@@ -634,6 +735,7 @@ struct CppStaticScriptBackend::State final
         instance->slot = static_cast<std::uint32_t>(instance_slot);
         instance->capabilities = context.capabilities;
         instance->artifact = &artifact;
+        instance->association = *association;
         if (descriptor.object.size != 0U)
         {
             instance->object_slot = descriptor_index->free_objects.back();
@@ -643,6 +745,7 @@ struct CppStaticScriptBackend::State final
             if (!descriptor.object.construct(instance->object))
             {
                 descriptor_index->free_objects.push_back(instance->object_slot);
+                self.releaseAssociation(*instance->association);
                 *instance = {};
                 self.free_instances.push_back(instance_slot);
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
@@ -658,12 +761,35 @@ struct CppStaticScriptBackend::State final
                 {
                     descriptor.object.destroy(instance->object);
                     descriptor_index->free_objects.push_back(instance->object_slot);
+                    self.releaseAssociation(*instance->association);
                     *instance = {};
                     self.free_instances.push_back(instance_slot);
                     return EScriptBackendResult::HOST_CONTEXT_MISMATCH;
                 }
                 descriptor.object.attach(instance->object, *context.behavior);
             }
+        }
+        bool invalid_capabilities = context.capabilities.size() != descriptor.abilities.size();
+        for (std::size_t local{}; !invalid_capabilities && local < descriptor.abilities.size(); ++local)
+        {
+            const auto actual = instance->association->capability_slots[local];
+            const auto& expected = descriptor.abilities[local];
+            const auto& prepared = context.capabilities[actual];
+            invalid_capabilities = prepared.contract.hash() != expected.contract.hash() ||
+                prepared.contract.name() != expected.contract.name() ||
+                prepared.schema_hash != expected.expected_schema_hash || prepared.dispatch == nullptr;
+        }
+        if (invalid_capabilities)
+        {
+            if (instance->object != nullptr)
+            {
+                descriptor.object.destroy(instance->object);
+                descriptor_index->free_objects.push_back(instance->object_slot);
+            }
+            self.releaseAssociation(*instance->association);
+            *instance = {};
+            self.free_instances.push_back(instance_slot);
+            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
         }
         ++descriptor_index->active_instances;
         ++self.active_instances;
@@ -679,14 +805,18 @@ struct CppStaticScriptBackend::State final
         auto *instance = static_cast<Instance *>(opaque_instance.value);
         if (!instance)
             return EScriptBackendResult::CONSTRUCTION_FAILURE;
-        const auto found = instance->descriptor->callables.find(function.symbol_id);
-        if (found == instance->descriptor->callables.end())
+        if (instance->association == nullptr ||
+            instance->artifact->contentIdentity() != instance->association->identity)
+            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+        const auto exports = instance->descriptor->descriptor->exports;
+        const auto found = std::ranges::lower_bound(exports, function.symbol_id, {}, &CppStaticExportEntry::symbol);
+        if (found == exports.end() || found->symbol != function.symbol_id)
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
         const auto* canonical = instance->artifact->findExport(function.symbol_id);
-        if (std::addressof(function) != canonical && !sameFunction(function, *found->second))
+        if (std::addressof(function) != canonical && !sameFunction(function, *found))
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
         const auto argument_class = instance->descriptor->argument_class;
-        if (found->second->owned_bytes != 0U && !argument_class)
+        if (found->owned_bytes != 0U && !argument_class)
             return EScriptBackendResult::CAPACITY_EXCEEDED;
         if (self.free_prepared_calls.empty())
             return EScriptBackendResult::CAPACITY_EXCEEDED;
@@ -694,7 +824,7 @@ struct CppStaticScriptBackend::State final
         self.free_prepared_calls.pop_back();
         auto &call = self.prepared_calls[call_slot];
         call.instance = instance;
-        call.callable = found->second;
+        call.callable = std::addressof(*found);
         call.active = true;
         call.argument_class = argument_class;
         result = {std::addressof(call),
@@ -733,6 +863,7 @@ struct CppStaticScriptBackend::State final
             instance->descriptor->free_objects.push_back(instance->object_slot);
         }
         --instance->descriptor->active_instances;
+        self.releaseAssociation(*instance->association);
         const auto index = static_cast<std::size_t>(instance - self.instances.data());
         *instance = {};
         self.free_instances.push_back(index);
@@ -743,6 +874,16 @@ struct CppStaticScriptBackend::State final
     std::unordered_map<std::string_view, std::size_t> descriptor_by_key;
     std::vector<Instance> instances;
     std::vector<std::size_t> free_instances;
+    std::vector<ArtifactAssociation> artifact_associations;
+    std::unordered_map<lux::script::ScriptArtifactContentId, std::size_t,
+        lux::script::ScriptArtifactContentId::Hash> artifact_index;
+    std::vector<std::size_t> free_associations;
+    std::size_t inactive_first{InvalidAssociation};
+    std::size_t inactive_last{InvalidAssociation};
+    std::size_t active_associations{};
+    std::size_t association_import_bytes{};
+    std::uint64_t contract_validations{};
+    std::uint64_t contract_cache_hits{};
     std::vector<PreparedCall> prepared_calls;
     std::vector<std::size_t> free_prepared_calls;
     std::vector<CoroutineContinuation> continuations;
@@ -790,6 +931,14 @@ CppStaticScriptBackendStats CppStaticScriptBackend::stats() const noexcept
     result.prepared_method_storage_bytes = state_->prepared_calls.capacity() * sizeof(State::PreparedCall) +
                                            state_->free_prepared_calls.capacity() * sizeof(std::size_t);
     result.active_prepared_methods = state_->prepared_calls.size() - state_->free_prepared_calls.size();
+    result.contract_validations = state_->contract_validations;
+    result.contract_cache_hits = state_->contract_cache_hits;
+    result.active_artifact_associations = state_->active_associations;
+    result.cached_artifacts = state_->artifact_index.size();
+    result.artifact_association_storage_bytes =
+        state_->artifact_associations.capacity() * sizeof(State::ArtifactAssociation) +
+        state_->free_associations.capacity() * sizeof(std::size_t) + state_->association_import_bytes;
+    result.artifact_index_bucket_count = state_->artifact_index.bucket_count();
     for (const auto &descriptor : state_->descriptor_indexes)
     {
         const auto stats = descriptor.coroutine_frames.stats();

@@ -61,6 +61,7 @@ struct CppStaticContract final
     lux::rdesc::ScriptLifecycleRoles lifecycle;
     std::span<const CppStaticApiRequirement> abilities;
     std::span<const lux::script::ScriptEventSourceView> events;
+    bool (*resolve_ability)(std::uint64_t contract_hash, std::uint32_t& local_slot) noexcept{};
 };
 
 namespace detail

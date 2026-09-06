@@ -22,15 +22,18 @@ target_compile_definitions(
     script_artifact
     PRIVATE LUX_SCRIPT_ARTIFACT_LIBRARY
 )
+find_package(lux-cxx REQUIRED COMPONENTS container)
 target_link_libraries(
     script_artifact
     PUBLIC
+        lux::cxx::container
         lux::engine::function::script_core
         lux::engine::resource::asset
         lux::engine::resource::description
 )
 component_add_transitive_commands(
     script_artifact
+    "find_package(lux-cxx REQUIRED COMPONENTS container)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )

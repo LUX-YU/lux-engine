@@ -385,7 +385,8 @@ int main()
     ScriptBackendInstance recycled_instance;
     assert(
         descriptor.createInstance(descriptor.context,
-                                  ScriptInstanceCreateContext{assetId(), EntityScriptScope{ecs::Entity{4U}}, &behavior},
+                                  ScriptInstanceCreateContext{assetId(), EntityScriptScope{ecs::Entity{4U}}, &behavior,
+                                      {1U, 2U}, capabilities, event_requirements},
                                   entity_asset, recycled_instance) == EScriptBackendResult::SUCCESS);
     assert(recycled_instance.value == instance.value);
     ScriptBackendPreparedMethod recycled_method;

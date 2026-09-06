@@ -52,6 +52,12 @@ struct CppStaticScriptBackendStats final
     std::size_t heap_frame_allocations{};
     std::size_t prepared_method_storage_bytes{};
     std::size_t active_prepared_methods{};
+    std::uint64_t contract_validations{};
+    std::uint64_t contract_cache_hits{};
+    std::size_t active_artifact_associations{};
+    std::size_t cached_artifacts{};
+    std::size_t artifact_association_storage_bytes{};
+    std::size_t artifact_index_bucket_count{};
 };
 
 class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC CppStaticScriptBackend final

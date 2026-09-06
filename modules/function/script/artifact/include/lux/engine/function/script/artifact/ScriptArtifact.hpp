@@ -6,6 +6,7 @@
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/container/ScopeId.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
 
 #include <cstddef>
@@ -22,6 +23,9 @@ namespace lux::script
     inline constexpr std::string_view ScriptArtifactCanonicalName{"lux.script.artifact"};
     inline constexpr std::uint32_t ScriptArtifactPrimaryMagic{0x4153584CU};
 
+    struct ScriptArtifactContentTag;
+    using ScriptArtifactContentId = lux::cxx::ScopeId<ScriptArtifactContentTag>;
+
     enum class EScriptArtifactError : std::uint8_t
     {
         INVALID_DESCRIPTION,
@@ -33,8 +37,25 @@ namespace lux::script
       public:
         ScriptArtifact(const ScriptArtifact&) = delete;
         ScriptArtifact& operator=(const ScriptArtifact&) = delete;
-        ScriptArtifact(ScriptArtifact&&) noexcept = default;
-        ScriptArtifact& operator=(ScriptArtifact&&) noexcept = default;
+        ScriptArtifact(ScriptArtifact&& other) noexcept
+            : description_(std::move(other.description_)), payload_(std::move(other.payload_)),
+              export_index_(std::move(other.export_index_)), content_id_(std::exchange(other.content_id_, {}))
+        {
+        }
+        ScriptArtifact& operator=(ScriptArtifact&& other) noexcept
+        {
+            if (this != &other)
+            {
+                description_ = std::move(other.description_);
+                payload_ = std::move(other.payload_);
+                export_index_ = std::move(other.export_index_);
+                content_id_ = std::exchange(other.content_id_, {});
+            }
+            return *this;
+        }
+
+        // Identity of this immutable loaded content, not an AssetId, semantic hash or wire field.
+        [[nodiscard]] ScriptArtifactContentId contentIdentity() const noexcept { return content_id_; }
 
         [[nodiscard]] static lux::cxx::expected<ScriptArtifact, EScriptArtifactError>
         create(lux::rdesc::Script description, std::vector<std::byte> payload) noexcept;
@@ -60,6 +81,7 @@ namespace lux::script
         lux::rdesc::Script description_;
         std::vector<std::byte> payload_;
         std::unordered_map<ScriptSymbolId, std::size_t> export_index_;
+        ScriptArtifactContentId content_id_;
     };
 
     class LUX_SCRIPT_ARTIFACT_PUBLIC ScriptArtifactAsset final

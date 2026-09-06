@@ -603,6 +603,8 @@ namespace lux::script
     lux::cxx::expected<ScriptArtifact, EScriptArtifactError>
     ScriptArtifact::create(lux::rdesc::Script description, std::vector<std::byte> payload) noexcept
     {
+        // One source in the owning compiled module, not one counter per consumer DLL.
+        static lux::cxx::ScopeIdSource<ScriptArtifactContentTag> content_id_source;
         if (!lux::rdesc::detail::validScriptBody(description))
             return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
 
@@ -648,6 +650,7 @@ namespace lux::script
                         return lux::cxx::unexpected(EScriptArtifactError::INVALID_DESCRIPTION);
                 }
             }
+            artifact.content_id_ = content_id_source.acquire();
             return artifact;
         }
         catch (const std::bad_alloc&)

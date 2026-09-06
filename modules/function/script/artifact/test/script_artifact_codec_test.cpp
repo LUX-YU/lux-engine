@@ -43,7 +43,18 @@ int main()
         {std::byte{1U}, std::byte{2U}, std::byte{3U}}
     );
     assert(source_result);
+    const auto source_identity = source_result->contentIdentity();
+    assert(source_identity.isValid());
     auto source = std::move(*source_result);
+    assert(source.contentIdentity() == source_identity && source_result->contentIdentity().isNull());
+    auto separately_loaded = script::ScriptArtifact::create(source.description(),
+        std::vector<std::byte>(source.payload().begin(), source.payload().end()));
+    assert(separately_loaded && separately_loaded->contentIdentity() != source_identity);
+    const auto replacement_identity = separately_loaded->contentIdentity();
+    auto replacement = script::ScriptArtifact::create(source.description(), {});
+    assert(replacement);
+    *replacement = std::move(*separately_loaded);
+    assert(replacement->contentIdentity() == replacement_identity && separately_loaded->contentIdentity().isNull());
     std::array<std::uint8_t, 16U> id_bytes{};
     id_bytes.back() = 1U;
     auto typed = script::ScriptArtifactAsset::create(

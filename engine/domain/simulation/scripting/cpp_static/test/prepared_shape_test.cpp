@@ -43,6 +43,8 @@ std::size_t run(std::size_t population, bool include_wide)
     }
     const auto stats = backend->stats();
     assert(stats.active_prepared_methods == population);
+    assert(stats.contract_validations == 1U && stats.contract_cache_hits == population - 1U);
+    assert(stats.cached_artifacts == 1U && stats.active_artifact_associations == 1U);
     if (include_wide)
     {
         runtime.releaseMethod(runtime.context, instances[0], methods[0]);
@@ -68,16 +70,62 @@ std::size_t run(std::size_t population, bool include_wide)
         runtime.destroyInstance(runtime.context, instances[index]);
     }
     assert(backend->stats().active_prepared_methods == 0U);
+    assert(backend->stats().active_artifact_associations == 0U);
     std::printf("prepared=%zu rare_arity=%u bytes=%zu generated_calls=%llu\n", population, include_wide ? 64U : 0U,
                 stats.prepared_method_storage_bytes,
                 static_cast<unsigned long long>(include_wide ? lux::simulation::test::wide_shape::calls
                                                              : lux::simulation::test::narrow_shape::calls));
     return stats.prepared_method_storage_bytes;
 }
+
+void validateAssociationLifetime()
+{
+    const auto& contract = generated::ShapeNarrow;
+    auto description = materializeCppStaticScript(contract);
+    assert(description);
+    auto original = lux::script::ScriptArtifact::create(*description, {});
+    assert(original);
+    const std::array pools{CppStaticScriptPoolDescription{&contract, 2U, 0U, 0U,
+        alignof(std::max_align_t), 2U}};
+    auto backend = CppStaticScriptBackend::create(pools);
+    assert(backend);
+    const auto api = backend->descriptor();
+    const ScriptInstanceCreateContext context{{}, SimulationScriptScope{}, nullptr, {1U, 1U}};
+    ScriptBackendInstance retained;
+    assert(api.createInstance(api.context, context, *original, retained) == EScriptBackendResult::SUCCESS);
+    ScriptBackendPreparedMethod prepared;
+    assert(api.prepareMethod(api.context, retained, original->description().exports[0], prepared) ==
+        EScriptBackendResult::SUCCESS);
+    for (std::size_t index{}; index < 12U; ++index)
+    {
+        auto reloaded = lux::script::ScriptArtifact::create(*description, {});
+        assert(reloaded && reloaded->contentIdentity() != original->contentIdentity());
+        ScriptBackendInstance transient;
+        assert(api.createInstance(api.context, context, *reloaded, transient) == EScriptBackendResult::SUCCESS);
+        api.destroyInstance(api.context, transient);
+        assert(backend->stats().cached_artifacts == 2U && backend->stats().active_artifact_associations == 1U);
+        auto mismatch_description = *description;
+        mismatch_description.module_name = "wrong-reloaded-content";
+        auto mismatch = lux::script::ScriptArtifact::create(std::move(mismatch_description), {});
+        assert(mismatch);
+        assert(api.createInstance(api.context, context, *mismatch, transient) ==
+            EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
+        lux_script_call_frame frame{};
+        frame.user_context = prepared.synchronous.context;
+        assert(prepared.synchronous.invoke(&frame) == 0);
+    }
+    assert(backend->stats().contract_validations == 25U);
+    api.releaseMethod(api.context, retained, prepared);
+    api.destroyInstance(api.context, retained);
+    assert(api.createInstance(api.context, context, *original, retained) == EScriptBackendResult::SUCCESS);
+    assert(backend->stats().contract_validations == 25U && backend->stats().contract_cache_hits == 1U);
+    api.destroyInstance(api.context, retained);
+}
 } // namespace
 
 int main(int argc, char **)
 {
+    validateAssociationLifetime();
     const auto population = argc > 1 ? 50000U : 10000U;
     const auto narrow = run(population, false);
     const auto wide = run(population, true);

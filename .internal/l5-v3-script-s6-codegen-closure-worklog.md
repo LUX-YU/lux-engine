@@ -168,3 +168,17 @@ No final production/qualification candidate, optimization speedup, framework fre
 - CSV schema 6 records Event requirement count/route and allocation-accounting policy. Performance mode
   disables allocation counting; diagnostic mode remains a separate counting pass. Baseline snapshots and
   eventual timing manifest must use the configured compiled SHA, not merely the newest worktree HEAD.
+- Bcompare runtime checkpoint is Engine `44b11a60f6bae71f83db257a5f4bb16d267a718c` with lux-cxx `bbe43fa`.
+  Developer rebuilt at that compiled SHA: 238/238 and second build no-op. Frozen source worktree:
+  `lux-engine-s6-v3-bcompare`; saved bin/hash/cache/log bundle: `build/RelWithDebInfo/s6-v3-evidence/Bcompare`.
+  The original deep-developer build is now reference-only (some fixture paths are embedded in executables).
+- Independent Bcompare Toolchain: long root `s6-v3-bcompare-toolchain` exceeded MSVC object-file path limits;
+  that failed build was not run. Short root `v3bt` rebuilt all and passed 214/214 (109.45 seconds).
+- I03 development: new `v3d` Developer all passes; 31/31 focused tests pass (43.16 seconds).
+  Artifact content identity is runtime-only, moves with content, and is absent from LXSA. CppStatic now uses
+  sorted generated exports, a bounded backend-local validation association with an O(1) inactive eviction list,
+  and a generated Ability ordinal resolver. Provider bindings remain instance-specific and are checked cold.
+  Tests prove one full validation for 10k instances, identity changes on reload, stable active associations under
+  eviction pressure, mismatch rejection and no changed wire bytes. No speedup is claimed before paired runs.
+- Artifact public header was synchronized and byte-checked in Debug/RWD/Android include prefixes only;
+  this did not configure/build Debug or Android. Container is an explicit public header dependency.

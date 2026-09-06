@@ -52,12 +52,22 @@ namespace lux::simulation::script::generated
 {% endif %}{% endfor %}{% endfor %}        };
         static_assert([]() consteval { for (const auto& event : Events) if (!event.valid()) return false; return true; }(),
             "Invalid canonical Script Event source");
+        bool resolveAbility(std::uint64_t hash, std::uint32_t& slot) noexcept
+        {
+            switch (hash)
+            {
+{% for type in script.ability_types %}            case lux::script::ScriptAbilityTraits<{{ type }}>::Description.id.hash():
+                slot = {{ loop.index }}U; return true;
+{% endfor %}            default: return false;
+            }
+        }
     }
 
     extern constinit const CppStaticContract {{ script.name }}{
         "{{ cxx_str(script.module) }}", "{{ cxx_str(script.descriptor) }}", {% if script.scope == "ENTITY" %}true{% else %}false{% endif %},
 {% if script.owner != "" %}        detail::cppStaticObject<::{{ script.owner }}{% if attach_name != "" %}, static_cast<void (::{{ script.owner }}::*)(ScriptBehavior&) noexcept>(&::{{ script.owner }}::{{ attach_name }}){% endif %}>(),{% else %}        {},{% endif %}
         {{ script.name }}Operations::Exports, { {{ begin_symbol }}ULL, {{ end_symbol }}ULL },
-        {{ script.name }}Operations::Abilities, {{ script.name }}Operations::Events
+        {{ script.name }}Operations::Abilities, {{ script.name }}Operations::Events,
+        &{{ script.name }}Operations::resolveAbility
     };
 }

@@ -153,6 +153,37 @@ def main() -> int:
             "---@lux.method\n---@param value " + wide + "\n---@return void\nfunction Enemy:update(value) end\n",
             {"Enemy:update": 1}), "unsupported")
 
+    hinted_source = """---@lux.method
+---@lux.suggest hook Gameplay.tick
+---@lux.suggest event Gameplay.damage
+---@return void
+function Enemy:update() end
+"""
+    hinted = parse(hinted_source, {"Enemy:update": 7})
+    assert hinted.exports[0].binding_hints == (("hook", "Gameplay.tick"), ("event", "Gameplay.damage"))
+    renamed = parse(hinted_source.replace("Enemy:update", "Enemy:renamed"), {"Enemy:renamed": 7})
+    assert renamed.exports[0].symbol == 7 and renamed.exports[0].name == "renamed"
+    assert renamed.exports[0].binding_hints == hinted.exports[0].binding_hints
+    authored_id = "00000000-0000-4000-8000-000000000032"
+    first_asset = package.wrap_typed_asset(b"first", "module", "source.lua", authored_id)
+    changed_asset = package.wrap_typed_asset(b"changed", "module", "source.lua", authored_id)
+    assert first_asset[40:56] == changed_asset[40:56] and first_asset != changed_asset
+    expect_failure(lambda: package.wrap_typed_asset(b"", "module", "source", "not-a-uuid"), "UUID")
+    expect_failure(lambda: package.wrap_typed_asset(b"", "module", "source", "00000000-0000-0000-0000-000000000000"),
+        "must not be nil")
+    expect_failure(lambda: parse(hinted_source.replace("hook Gameplay.tick", "hook malformed"),
+        {"Enemy:update": 7}), "invalid binding suggestion")
+    expect_failure(lambda: parse(hinted_source.replace("event Gameplay.damage", "hook Gameplay.tick"),
+        {"Enemy:update": 7}), "duplicate binding suggestion")
+    with tempfile.TemporaryDirectory() as directory:
+        target = pathlib.Path(directory) / "stable-output"
+        package.write_if_changed(target, b"same")
+        timestamp = target.stat().st_mtime_ns
+        package.write_if_changed(target, b"same")
+        assert target.stat().st_mtime_ns == timestamp
+        package.write_if_changed(target, b"changed")
+        assert target.read_bytes() == b"changed" and not target.with_name("stable-output.tmp").exists()
+
     expect_failure(
         lambda: parse(
             """---@lux.event Gameplay.missing

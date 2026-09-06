@@ -4,6 +4,7 @@
 #include <lux/engine/flowforge/script/ScriptAbilityCatalog.hpp>
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/function/script/ScriptEvent.hpp>
+#include <lux/engine/function/script/ScriptBindingHint.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -11,6 +12,7 @@
 #include <filesystem>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace lux::flowforge
 {
@@ -71,4 +73,8 @@ namespace lux::flowforge
         const FlowGraph& graph,
         FlowForgeCompileOptions options
     ) noexcept;
+
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC
+    FlowForgeResult<std::vector<lux::script::ScriptBindingHint>>
+    describeFlowForgeBindingHints(const FlowGraph& graph) noexcept;
 }

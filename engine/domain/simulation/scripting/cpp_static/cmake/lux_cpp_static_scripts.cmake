@@ -115,5 +115,9 @@ function(lux_cpp_static_scripts)
     lux_codegen_add_projection(JOB ${job} NAME ${ARGS_NAME}_executable TEMPLATE "${templates}/cpp_static_script.template"
         OUTPUT_ROOT "${output}" OUTPUT_SUFFIX .${ARGS_NAME}.script.generated.cpp JSON_FIELD "{\"script\":${config}}"
         ${schema_input} FLAT_OUTPUT)
+    lux_codegen_add_projection(JOB ${job} NAME ${ARGS_NAME}_authoring
+        TEMPLATE "${templates}/cpp_static_script_authoring.template"
+        OUTPUT_ROOT "${output}" OUTPUT_SUFFIX .${ARGS_NAME}.bindings.json
+        JSON_FIELD "{\"script\":${config}}" FLAT_OUTPUT)
     set_property(TARGET ${ARGS_TARGET} APPEND PROPERTY LUX_CPP_STATIC_SCRIPT_JOBS ${job})
 endfunction()

@@ -20,6 +20,23 @@
 
 namespace lux::flowforge
 {
+    FlowForgeResult<std::vector<lux::script::ScriptBindingHint>>
+    describeFlowForgeBindingHints(const FlowGraph& graph) noexcept
+    {
+        if (!validFlowForgeExports(graph))
+            return lux::cxx::unexpected(FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "Invalid Script exports"});
+        try
+        {
+            std::vector<lux::script::ScriptBindingHint> result;
+            for (const auto& exported : graph.exports())
+                for (const auto& target : exported.binding_hints) result.push_back({exported.symbol, target});
+            return result;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{EFlowForgeError::ALLOCATION_FAILURE, "Binding hints"});
+        }
+    }
     namespace
     {
         class TemporaryCompileDirectory final

@@ -37,7 +37,7 @@ namespace installed_generated
         }
         LUX_METHOD(script_export="behavior.begin", script_lifecycle=begin_play)
         void initialize() noexcept { checkHost(); value_ = 10; ++begins; ++observations[observation_].begins; }
-        LUX_METHOD(script_export="behavior.update")
+        LUX_METHOD(script_export="behavior.update", script_suggest_hook="host.tick")
         void update(const std::int32_t&) noexcept
         {
             checkHost();

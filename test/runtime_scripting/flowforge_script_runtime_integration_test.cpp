@@ -1,4 +1,6 @@
 #include <lux/engine/flowforge/Compiler.hpp>
+#include <lux/engine/simulation/ScriptBindingAuthoring.hpp>
+#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
@@ -471,7 +473,8 @@ namespace
         assert(graph.addExport({
             flowforge::FlowForgeExportNodeId{1U},
             graph.getNode(event_slot).node->id(),
-            kTickSymbol
+            kTickSymbol,
+            {{lux::script::EScriptBindingHintKind::HOOK, "probe.tick"}}
         }));
         return graph;
     }
@@ -515,7 +518,8 @@ namespace
         assert(graph.addExport({
             flowforge::FlowForgeExportNodeId{2U},
             graph.getNode(event_slot).node->id(),
-            kTickSymbol
+            kTickSymbol,
+            {{lux::script::EScriptBindingHintKind::HOOK, "Probe.tick"}}
         }));
         return graph;
     }
@@ -1040,15 +1044,35 @@ int main(int argc, char** argv)
     assert(simulation);
 
     ScriptSystemDescriptionBuilder script_builder;
+    const auto hints = flowforge::describeFlowForgeBindingHints(graph);
+    assert(hints && hints->size() == 1U);
+    const auto selected = selectScriptBindingFromHints(*artifact, kTickSymbol, simulation->description(),
+        false, nullptr, *hints);
+    assert(selected && selected->symbol == kTickSymbol);
     assert(script_builder.addMount({
         ScriptMountId{1U},
         assetId(),
         SimulationScriptMount{},
         true,
-        {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
+        {*selected}
     }));
     auto script_description = std::move(script_builder).build(simulation->description());
     assert(script_description);
+
+    const ScriptSystemCodecLimits binding_limits{65536U, 65536U, 65536U};
+    auto saved_bindings = encodeScriptSystemDescription(*script_description, binding_limits);
+    assert(saved_bindings);
+    const auto original_name = artifact->findExport(kTickSymbol)->name;
+    graph.findNodeById(graph.exports().front().entry_node_id)->setName("renamed_script_entry");
+    auto renamed_artifact = flowforge::compileFlowForgeScript(graph,
+        {.module_name = "lux.test.flowforge.runtime", .script_abilities = catalog.view()});
+    assert(renamed_artifact && renamed_artifact->findExport(kTickSymbol)->name != original_name);
+    auto renamed_module = lux::script::loadNativeModule(renamed_artifact->payload(), "lux.test.flowforge.runtime");
+    assert(renamed_module);
+    *artifact = std::move(*renamed_artifact);
+    *native_module = std::move(*renamed_module);
+    script_description = decodeScriptSystemDescription(*saved_bindings, simulation->description(), binding_limits);
+    assert(script_description && script_description->mounts().front().bindings.front().symbol == kTickSymbol);
 
     ArtifactSource source{std::addressof(*artifact), std::addressof(*native_module)};
     NativeScriptBackend backend{

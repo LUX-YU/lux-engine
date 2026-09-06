@@ -358,8 +358,11 @@ lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppCoroutineBenchmar
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)
 
 add_executable(script_binding_authoring_test test/script_binding_authoring_test.cpp)
+find_package(nlohmann_json CONFIG REQUIRED)
 target_link_libraries(script_binding_authoring_test PRIVATE simulation_script
-    lux::engine::simulation::simulation_script_cpp_static lux::engine::core::type_info)
+    lux::engine::simulation::simulation_script_cpp_static lux::engine::core::type_info nlohmann_json::nlohmann_json)
+set(authoring_hints "${CMAKE_CURRENT_BINARY_DIR}/generated/script_binding_authoring_test/cpp_scripts/AuthoringBehavior/Behavior.AuthoringBehavior.bindings.json")
+target_compile_definitions(script_binding_authoring_test PRIVATE LUX_AUTHORING_HINT_FILE="${authoring_hints}")
 if(MSVC)
     target_compile_options(script_binding_authoring_test PRIVATE /UNDEBUG)
 else()

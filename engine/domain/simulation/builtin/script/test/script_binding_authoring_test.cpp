@@ -6,6 +6,8 @@
 
 #include <array>
 #include <cassert>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 int main()
 {
@@ -13,7 +15,7 @@ int main()
     using namespace lux::simulation::script;
     using namespace lux::simulation::script;
     constexpr lux::system::SystemInstanceId owner{1U};
-    constexpr std::array hooks{makeHookPointSpec<void(const std::int32_t&)>(HookPointId{2U}, "first"),
+    constexpr std::array hooks{makeHookPointSpec<void(const std::int32_t&)>(HookPointId{2U}, "tick"),
                                makeHookPointSpec<void(const std::int32_t&)>(HookPointId{3U}, "second"),
                                makeHookPointSpec<void(float)>(HookPointId{4U}, "wrong"),
                                makeHookPointSpec<void(const std::int32_t&)>(HookPointId{5U}, "native", false)};
@@ -33,6 +35,32 @@ int main()
     assert(candidates && candidates->size() == 5U);
     const ScriptBindingTarget first = HookScriptTarget{owner, HookPointId{2U}};
     const ScriptBindingTarget second = HookScriptTarget{owner, HookPointId{3U}};
+    std::ifstream hint_file(LUX_AUTHORING_HINT_FILE);
+    assert(hint_file);
+    nlohmann::json document;
+    hint_file >> document;
+    assert(document.at("schema") == "lux-script-binding-suggestions" && document.at("version") == 1);
+    assert(document.at("module") == artifact->description().module_name);
+    std::vector<lux::script::ScriptBindingHint> hints;
+    for (const auto& item : document.at("suggestions"))
+    {
+        const auto kind = item.at("kind").get<std::string>();
+        assert(kind == "hook" || kind == "event");
+        hints.push_back({item.at("symbol").get<std::uint64_t>(), {
+            kind == "hook" ? lux::script::EScriptBindingHintKind::HOOK : lux::script::EScriptBindingHintKind::EVENT,
+            item.at("target").get<std::string>()}});
+    }
+    assert(hints.size() == 1U && hints[0].symbol == 2U);
+    auto suggested = selectScriptBindingFromHints(*artifact, 2U, *simulation, true, nullptr, hints);
+    assert(suggested && suggested->target == first);
+    hints.push_back({2U, {lux::script::EScriptBindingHintKind::HOOK, "host.second"}});
+    auto source_ambiguous = selectScriptBindingFromHints(*artifact, 2U, *simulation, true, nullptr, hints);
+    assert(!source_ambiguous && source_ambiguous.error() == EScriptBindingAuthoringError::AMBIGUOUS_DEFAULT);
+    hints[0].target.qualified_name = "missing.point";
+    assert(!selectScriptBindingFromHints(*artifact, 2U, *simulation, true, nullptr, hints));
+    auto retained = selectScriptBindingFromHints(*artifact, 2U, *simulation, true, &second, hints);
+    assert(retained && retained->target == second);
+    assert(selectScriptBindingFromHints(*artifact, 2U, *simulation, true, &second, {}));
     const std::array suggestions{first, second};
     const auto ambiguous = selectScriptBinding(2U, *candidates, nullptr, suggestions);
     assert(!ambiguous && ambiguous.error() == EScriptBindingAuthoringError::AMBIGUOUS_DEFAULT);

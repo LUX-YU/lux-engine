@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
+#include <lux/engine/function/script/ScriptBindingHint.hpp>
 #include <lux/engine/simulation/ScriptSystemDescription.hpp>
 #include <lux/engine/simulation/script_system/visibility.h>
 #include <vector>
@@ -42,4 +43,10 @@ namespace lux::simulation::script
     selectScriptBinding(lux::script::ScriptSymbolId symbol, std::span<const ScriptBindingCandidate> candidates,
                         const lux::simulation::script::ScriptBindingTarget* explicit_target,
                         std::span<const lux::simulation::script::ScriptBindingTarget> suggestions) noexcept;
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::expected<
+        ScriptBindingDescription, EScriptBindingAuthoringError>
+    selectScriptBindingFromHints(const lux::script::ScriptArtifact& artifact, lux::script::ScriptSymbolId symbol,
+        const SimulationDescription& simulation, bool entity_scope, const ScriptBindingTarget* explicit_target,
+        std::span<const lux::script::ScriptBindingHint> hints) noexcept;
 } // namespace lux::simulation::script

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package statically described Lua exports as canonical LXSA v8."""
+"""Package statically described Lua exports as canonical source ScriptArtifacts."""
 
 from __future__ import annotations
 
@@ -7,9 +7,11 @@ import argparse
 import hashlib
 import json
 import pathlib
+import os
 import re
 import struct
 import sys
+import uuid
 from dataclasses import dataclass
 
 
@@ -111,6 +113,7 @@ class Export:
     returns: list[Semantic]
     lifecycle: str | None
     coroutine: bool
+    binding_hints: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -315,6 +318,7 @@ def collect_exports(
     return_name: str | None = None
     lifecycle: str | None = None
     coroutine = False
+    binding_hints: list[tuple[str, str]] = []
     exports: list[Export] = []
     symbols: set[int] = set()
     requirement_names: list[str] = []
@@ -362,6 +366,16 @@ def collect_exports(
             return_name = None
             lifecycle = None
             coroutine = False
+            binding_hints = []
+            continue
+        if stripped.startswith("---@lux.suggest"):
+            suggestion = re.fullmatch(r"---@lux\.suggest\s+(hook|event)\s+([A-Za-z_]\w*\.[A-Za-z_]\w*)", stripped)
+            if not marked or suggestion is None:
+                raise ValueError(f"line {line_number}: invalid binding suggestion")
+            hint = (suggestion.group(1), suggestion.group(2))
+            if hint in binding_hints:
+                raise ValueError(f"line {line_number}: duplicate binding suggestion")
+            binding_hints.append(hint)
             continue
         if match := LIFECYCLE.match(line):
             if not marked or lifecycle is not None:
@@ -439,6 +453,7 @@ def collect_exports(
                 return_types,
                 lifecycle,
                 coroutine,
+                tuple(binding_hints),
             )
         )
         marked = False
@@ -594,10 +609,18 @@ def encode(
     return bytes(writer.data)
 
 
-def wrap_typed_asset(payload: bytes, module_name: str, source_id: str) -> bytes:
-    digest = bytearray(hashlib.sha256(payload).digest()[:16])
-    digest[6] = (digest[6] & 0x0F) | 0x40
-    digest[8] = (digest[8] & 0x3F) | 0x80
+def wrap_typed_asset(payload: bytes, module_name: str, source_id: str, asset_id: str | None = None) -> bytes:
+    if asset_id is not None:
+        identity = uuid.UUID(asset_id)
+        if identity.int == 0:
+            raise ValueError("asset identity must not be nil")
+        digest = identity.bytes
+    else:
+        # Content-addressed output remains useful for one-off cooked inputs. Editable projects pass
+        # their existing authored AssetId explicitly; this is not a Script residency/handle contract.
+        digest = bytearray(hashlib.sha256(payload).digest()[:16])
+        digest[6] = (digest[6] & 0x0F) | 0x40
+        digest[8] = (digest[8] & 0x3F) | 0x80
     display = module_name.encode("utf-8")[:63]
     source = source_id.encode("utf-8")[:255]
     header = bytearray(OUTER_HEADER_SIZE)
@@ -619,10 +642,24 @@ def wrap_typed_asset(payload: bytes, module_name: str, source_id: str) -> bytes:
     return bytes(header) + payload
 
 
+def write_if_changed(path: pathlib.Path, data: bytes) -> None:
+    if path.exists() and path.read_bytes() == data:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        temporary.write_bytes(data)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
+    parser.add_argument("--authoring-output", type=pathlib.Path)
+    parser.add_argument("--asset-id")
     parser.add_argument("--semantic-schema", action="append", required=True, type=pathlib.Path)
     parser.add_argument("--ability-schema", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--event-schema", action="append", default=[], type=pathlib.Path)
@@ -661,9 +698,20 @@ def main() -> int:
             inner,
             arguments.module,
             arguments.source.name,
+            arguments.asset_id,
         )
-        arguments.output.parent.mkdir(parents=True, exist_ok=True)
-        arguments.output.write_bytes(encoded)
+        authoring = {
+            "schema": "lux-script-binding-suggestions", "version": 1, "module": arguments.module,
+            "suggestions": [
+                {"symbol": export.symbol, "kind": kind, "target": target}
+                for export in sorted(package.exports, key=lambda item: item.symbol)
+                for kind, target in export.binding_hints
+            ],
+        }
+        if arguments.authoring_output:
+            write_if_changed(arguments.authoring_output,
+                (json.dumps(authoring, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+        write_if_changed(arguments.output, encoded)
         return 0
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
         print(f"lux-lua-import: {error}", file=sys.stderr)

@@ -182,3 +182,20 @@ No final production/qualification candidate, optimization speedup, framework fre
   eviction pressure, mismatch rejection and no changed wire bytes. No speedup is claimed before paired runs.
 - Artifact public header was synchronized and byte-checked in Debug/RWD/Android include prefixes only;
   this did not configure/build Debug or Android. Container is an explicit public header dependency.
+- I04 source suggestions are produced by the C++ template, Lua packager, and FlowForge export metadata.
+  Existing headless selection resolves them only against the supplied composition; explicit choices win.
+  No suggestion enters LXSA, no runtime rebind loop or new authoring root was added.
+- Current Developer all + 6 focused tests pass; Toolchain all + 7 FlowForge/packager/authoring tests pass.
+  FlowForge source entry rename is compiled/AOT-loaded and executes using the codec-reloaded old binding.
+- New installed-only `script-authoring` consumer creates three real assets (build-time FlowForge compiler,
+  Lua source packager, generated C++); the runtime executable does not link the FlowForge compiler.
+  Fresh copied consumer ran three processes: original, source-renamed, then defaults removed. Each observed
+  cpp=30, provider=60, calls=6. Incompatible C++ signature is rejected before user execution.
+  Saved bindings remain SHA256 `07769007b77559681fbdb96dffc4216b7878248cb953362383ec03522afef082`.
+  Consumer second build is no-op. Development closure logs: `build/RelWithDebInfo/cc`.
+- That test first exposed Lua packager's implicit content-derived AssetId changing on source edits.
+  Added explicit existing AssetId input (`ASSET_ID` / `--asset-id`) for authored reimport, without changing
+  asset wire or inventing a Script residency handle. Without this input, one-off content-addressed packaging
+  remains supported. Stable/non-nil UUID validation and retained identity across changed contents are tested.
+- Full isolated final install/relocation and paired performance remain pending. The development consumer
+  used current v3d + codegen-toolchain SDKs, not a final qualification prefix.

@@ -3,8 +3,10 @@
 #include <lux/engine/flowforge/visibility.h>
 #include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/function/script/ScriptSymbol.hpp>
+#include <lux/engine/function/script/ScriptBindingHint.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace lux::flowforge
 {
@@ -27,6 +29,7 @@ namespace lux::flowforge
         FlowForgeExportNodeId id;
         lux::graph::NodeId entry_node_id{};
         lux::script::ScriptSymbolId symbol{};
+        std::vector<lux::script::ScriptBindingHintTarget> binding_hints;
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC

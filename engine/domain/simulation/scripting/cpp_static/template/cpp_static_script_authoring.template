@@ -1,0 +1,12 @@
+{% set methods = marked_function_decls %}
+{% if script.owner != "" %}{% set methods = [] %}{% for record_index in marked_record_decls %}{% set record = decl_from_index(record_index) %}{% if record.fq_name == script.owner %}{% set methods = concat_arrays(record.method_decls, record.static_method_decls) %}{% endif %}{% endfor %}{% endif %}
+{"schema":"lux-script-binding-suggestions","version":1,"module":{{ json_str(script.module) }},"suggestions":[
+{% set emitted = false %}
+{% for method_id in methods %}{% if script.owner == "" %}{% set method = decl_from_index(method_id) %}{% else %}{% set method = decl_from_id(method_id) %}{% endif %}
+{% set key = annotation_get_or(method, "script_export", "") %}{% if key != "" %}
+{% set hook = annotation_get_or(method, "script_suggest_hook", "") %}
+{% set event = annotation_get_or(method, "script_suggest_event", "") %}
+{% if hook != "" %}{% if emitted %},{% endif %}{"symbol":{{ at(script.symbols, key) }},"kind":"hook","target":{{ json_str(hook) }}}{% set emitted = true %}{% endif %}
+{% if event != "" %}{% if emitted %},{% endif %}{"symbol":{{ at(script.symbols, key) }},"kind":"event","target":{{ json_str(event) }}}{% set emitted = true %}{% endif %}
+{% endif %}{% endfor %}
+]}

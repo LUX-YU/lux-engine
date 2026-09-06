@@ -8,7 +8,7 @@ function(lux_package_lua_script)
         get_filename_component(packager_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" DIRECTORY)
         set(packager "${packager_root}/package_lua_script.py")
     endif()
-    set(one_value_args NAME SOURCE OUTPUT MODULE ENTRY SCOPE SYMBOL_LEDGER OUT_VAR)
+    set(one_value_args NAME SOURCE OUTPUT MODULE ENTRY SCOPE SYMBOL_LEDGER OUT_VAR AUTHORING_OUTPUT ASSET_ID)
     set(multi_value_args
         ABILITY_TARGETS
         ABILITY_SCHEMAS
@@ -88,15 +88,25 @@ function(lux_package_lua_script)
     foreach(schema IN LISTS ARGS_SEMANTIC_SCHEMAS)
         list(APPEND command --semantic-schema ${schema})
     endforeach()
+    if(ARGS_ASSET_ID)
+        list(APPEND command --asset-id "${ARGS_ASSET_ID}")
+    endif()
+
+    if(ARGS_AUTHORING_OUTPUT)
+        get_filename_component(authoring_output "${ARGS_AUTHORING_OUTPUT}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+    else()
+        set(authoring_output "${output}.bindings.json")
+    endif()
+    list(APPEND command --authoring-output "${authoring_output}")
 
     add_custom_command(
-        OUTPUT ${output}
+        OUTPUT ${output} ${authoring_output}
         COMMAND ${command}
         DEPENDS ${packager} ${source} ${ledger} ${schema_files} ${event_schema_files}
             ${semantic_schema} ${ARGS_SEMANTIC_SCHEMAS}
         VERBATIM
     )
-    add_custom_target(${ARGS_NAME} DEPENDS ${output})
+    add_custom_target(${ARGS_NAME} DEPENDS ${output} ${authoring_output})
     add_dependencies(${ARGS_NAME} ${ARGS_NAME}_semantics)
     if(schema_targets)
         add_dependencies(${ARGS_NAME} ${schema_targets})
@@ -113,6 +123,7 @@ function(lux_package_lua_script)
         )
     endif()
     set_target_properties(${ARGS_NAME} PROPERTIES LUX_LUA_SCRIPT_ARTIFACT "${output}")
+    set_target_properties(${ARGS_NAME} PROPERTIES LUX_LUA_SCRIPT_BINDING_HINTS "${authoring_output}")
     if(ARGS_OUT_VAR)
         set(${ARGS_OUT_VAR} "${output}" PARENT_SCOPE)
     endif()

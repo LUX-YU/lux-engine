@@ -104,4 +104,60 @@ namespace lux::simulation::script
             return lux::cxx::unexpected(EScriptBindingAuthoringError::NO_SELECTION);
         return ScriptBindingDescription{symbol, *selected};
     }
+    lux::cxx::expected<ScriptBindingDescription, EScriptBindingAuthoringError> selectScriptBindingFromHints(
+        const lux::script::ScriptArtifact& artifact, lux::script::ScriptSymbolId symbol,
+        const SimulationDescription& simulation, bool entity_scope, const ScriptBindingTarget* explicit_target,
+        std::span<const lux::script::ScriptBindingHint> hints) noexcept
+    {
+        auto candidates = listScriptBindingCandidates(artifact, symbol, simulation, entity_scope);
+        if (!candidates) return lux::cxx::unexpected(candidates.error());
+        // A retained user choice does not become invalid because a source suggestion changed or disappeared.
+        if (explicit_target != nullptr) return selectScriptBinding(symbol, *candidates, explicit_target, {});
+        try
+        {
+            std::vector<ScriptBindingTarget> targets;
+            for (const auto& hint : hints)
+            {
+                if (hint.symbol != symbol) continue;
+                const std::string_view qualified = hint.target.qualified_name;
+                const auto separator = qualified.find('.');
+                const bool invalid_name = separator == std::string_view::npos || separator == 0U ||
+                    separator + 1U == qualified.size() || qualified.find('.', separator + 1U) != std::string_view::npos;
+                if (invalid_name) return lux::cxx::unexpected(EScriptBindingAuthoringError::TARGET_NOT_FOUND);
+                const auto system_name = qualified.substr(0U, separator);
+                const auto point_name = qualified.substr(separator + 1U);
+                const auto before = targets.size();
+                for (std::size_t index{}; index < simulation.systemCount(); ++index)
+                {
+                    const auto system = simulation.systemAt(index);
+                    if (system.instanceName() != system_name) continue;
+                    if (hint.target.kind == lux::script::EScriptBindingHintKind::HOOK)
+                    {
+                        for (std::size_t point{}; point < system.hookPointCount(); ++point)
+                        {
+                            const auto hook = system.hookPointAt(point);
+                            if (hook.name() == point_name)
+                                targets.emplace_back(HookScriptTarget{system.instanceId(), hook.id()});
+                        }
+                    }
+                    else if (hint.target.kind == lux::script::EScriptBindingHintKind::EVENT)
+                    {
+                        for (std::size_t point{}; point < system.eventCount(); ++point)
+                        {
+                            const auto event = system.eventAt(point);
+                            if (event.name() == point_name)
+                                targets.emplace_back(EventScriptTarget{system.instanceId(), event.id()});
+                        }
+                    }
+                }
+                if (targets.size() == before)
+                    return lux::cxx::unexpected(EScriptBindingAuthoringError::TARGET_NOT_FOUND);
+            }
+            return selectScriptBinding(symbol, *candidates, nullptr, targets);
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(EScriptBindingAuthoringError::ALLOCATION_FAILURE);
+        }
+    }
 } // namespace lux::simulation::script

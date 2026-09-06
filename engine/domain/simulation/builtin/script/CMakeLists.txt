@@ -367,6 +367,24 @@ lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppUpdate
     SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CppBenchmarkScripts.hpp LOGICAL_PATH CppBenchmarkScripts.hpp
     MODULE lux.benchmark.cpp-update DESCRIPTOR cpp-update-v1 OWNER lux::simulation::benchmark::CppUpdateObject SCOPE ENTITY
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)
+
+add_executable(script_sequence_schema_writer benchmark/SequenceEventSchemaWriter.cpp)
+target_link_libraries(script_sequence_schema_writer PRIVATE simulation_script)
+lux_classify_target(TARGET script_sequence_schema_writer LAYER SIMULATION PRODUCT BUILD_TOOL ROLE DOMAIN)
+set(sequence_schema "${CMAKE_CURRENT_BINARY_DIR}/benchmark/sequence.events.json")
+add_custom_command(OUTPUT "${sequence_schema}" COMMAND script_sequence_schema_writer "${sequence_schema}"
+    DEPENDS script_sequence_schema_writer VERBATIM)
+add_custom_target(script_sequence_schema DEPENDS "${sequence_schema}")
+lux_classify_target(TARGET script_sequence_schema LAYER SIMULATION PRODUCT BUILD_TOOL ROLE DOMAIN)
+lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppSequence
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CppSequenceScript.hpp LOGICAL_PATH CppSequenceScript.hpp
+    MODULE lux.benchmark.cpp-sequence DESCRIPTOR cpp-sequence-v1
+    OWNER lux::simulation::benchmark::CppSequenceScript SCOPE ENTITY
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json
+    ABILITY_TYPES lux::simulation::script::DelayAbility lux::simulation::script::benchmark::ValueAbility
+    ABILITY_HEADERS lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp
+        ScriptBenchmarkAbility.ability.generated.hpp
+    EVENT_SCHEMA "${sequence_schema}" EVENT_NAMES Benchmark.event DEPENDS script_sequence_schema)
 find_package(nlohmann_json CONFIG REQUIRED)
 target_link_libraries(script_binding_authoring_test PRIVATE simulation_script
     lux::engine::simulation::simulation_script_cpp_static lux::engine::core::type_info nlohmann_json::nlohmann_json)

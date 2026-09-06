@@ -19,6 +19,7 @@ foreach(group IN ITEMS
     scene-event-sparse
     scene-update-heavy
     scene-cpp-update-heavy
+    scene-cpp-sequence
     scene-region-numeric
     graph-build
     scene-gameplay-mixed

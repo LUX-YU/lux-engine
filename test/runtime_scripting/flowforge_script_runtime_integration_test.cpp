@@ -581,6 +581,66 @@ namespace
         return graph;
     }
 
+    [[nodiscard]] flowforge::FlowGraph makeSequenceGraph(
+        const lux::script::ScriptEventSourceDescription& source,
+        const flowforge::ScriptAbilityNodeDescription& next_step,
+        const flowforge::ScriptAbilityNodeDescription& simulation_delay
+    )
+    {
+        using namespace flowforge;
+        FlowGraph graph;
+        const auto* i32 = &meta::ref_type_of_v<std::int32_t>;
+        const auto counter = graph.addVariable("counter", i32, meta::RuntimeObject(std::int32_t{1}));
+        const DataPinInfo info{"counter", i32};
+        auto entry = std::make_unique<OnEventNode>("sequence");
+        auto get = std::make_unique<GetVariableNode>(counter, info);
+        auto increment = std::make_unique<BinaryOpNode>(ENodeOperation::ADD, i32);
+        auto set = std::make_unique<SetVariableNode>(counter, info);
+        auto next = std::make_unique<ScriptAbilityNode>(next_step);
+        auto wait = std::make_unique<ScriptEventAwaitNode>(source);
+        auto delay = std::make_unique<ScriptAbilityNode>(simulation_delay);
+        auto combine = std::make_unique<BinaryOpNode>(ENodeOperation::ADD, i32);
+        auto write = std::make_unique<ScriptAbilityNode>(kTestNodes.front());
+        assert(const_cast<DataInPin&>(increment->rhs()).setConstantData(meta::RuntimeObject(std::int32_t{1})));
+        assert(delay->parameterPins().front()->setConstantData(meta::RuntimeObject(0.001)));
+        auto* entry_ptr = entry.get();
+        auto* get_ptr = get.get();
+        auto* increment_ptr = increment.get();
+        auto* set_ptr = set.get();
+        auto* next_ptr = next.get();
+        auto* wait_ptr = wait.get();
+        auto* delay_ptr = delay.get();
+        auto* combine_ptr = combine.get();
+        auto* write_ptr = write.get();
+        const auto entry_slot = graph.addNodes(std::move(entry));
+        graph.addNodes(std::move(get));
+        graph.addNodes(std::move(increment));
+        graph.addNodes(std::move(set));
+        graph.addNodes(std::move(next));
+        graph.addNodes(std::move(wait));
+        graph.addNodes(std::move(delay));
+        graph.addNodes(std::move(combine));
+        graph.addNodes(std::move(write));
+        LastLink previous;
+        assert(entry_ptr->execOutPin().linkTo(&set_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(set_ptr->execOutPin().linkTo(&next_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(next_ptr->execOutPin().linkTo(&wait_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(wait_ptr->execOutPin().linkTo(&delay_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(delay_ptr->execOutPin().linkTo(&write_ptr->execInPin(), previous) == ELinkError::SUCCESS);
+        assert(const_cast<DataOutPin&>(get_ptr->valuePin()).linkTo(
+            const_cast<DataInPin*>(&increment_ptr->lhs()), previous) == ELinkError::SUCCESS);
+        assert(const_cast<DataOutPin&>(increment_ptr->result()).linkTo(
+            const_cast<DataInPin*>(&set_ptr->valueIn()), previous) == ELinkError::SUCCESS);
+        assert(const_cast<DataOutPin&>(set_ptr->valueOut()).linkTo(
+            const_cast<DataInPin*>(&combine_ptr->lhs()), previous) == ELinkError::SUCCESS);
+        assert(const_cast<DataOutPin&>(wait_ptr->payloadPin()).linkTo(
+            const_cast<DataInPin*>(&combine_ptr->rhs()), previous) == ELinkError::SUCCESS);
+        assert(const_cast<DataOutPin&>(combine_ptr->result()).linkTo(
+            write_ptr->parameterPins().front().get(), previous) == ELinkError::SUCCESS);
+        assert(graph.addExport({FlowForgeExportNodeId{5U}, graph.getNode(entry_slot).node->id(), kEventWaitSymbol}));
+        return graph;
+    }
+
     [[nodiscard]] flowforge::FlowGraph makeQueryGraph()
     {
         flowforge::FlowGraph graph;
@@ -717,7 +777,8 @@ namespace
             std::string_view{"micro-flowforge-event"},
             std::string_view{"scene-flowforge-event"},
             std::string_view{"scene-flowforge-event-idle"},
-            std::string_view{"scene-flowforge-event-storm"}
+            std::string_view{"scene-flowforge-event-storm"},
+            std::string_view{"scene-flowforge-sequence"}
         };
         return std::ranges::find(groups, result.group) == groups.end()
             ? std::nullopt
@@ -740,7 +801,8 @@ namespace
         const bool storm = options.group == "scene-flowforge-resume-storm" ||
             options.group == "micro-flowforge-resume";
         const bool suspend_only = options.group == "micro-flowforge-suspend";
-        const bool event_mode = options.group.find("flowforge-event") != std::string::npos;
+        const bool sequence = options.group == "scene-flowforge-sequence";
+        const bool event_mode = sequence || options.group.find("flowforge-event") != std::string::npos;
         const bool event_idle = options.group == "scene-flowforge-event-idle";
         const bool event_storm = options.group == "scene-flowforge-event-storm";
         g_hook_capacity = options.size;
@@ -757,8 +819,13 @@ namespace
         );
         if (next_step == nullptr)
             return 11;
+        const auto* simulation_delay = catalog.view().find(
+            lux::script::ScriptApiContractIdView{"lux.simulation.delay"},
+            lux::script::ScriptApiMethodIdView{"lux.simulation.delay.simulation_seconds"});
+        if (simulation_delay == nullptr) return 11;
         const auto event_source = eventSource();
-        auto graph = event_mode ? makeEventWaitGraph(event_source) :
+        auto graph = sequence ? makeSequenceGraph(event_source, *next_step, *simulation_delay) :
+            event_mode ? makeEventWaitGraph(event_source) :
             query_only ? makeQueryGraph() : sync ? makeSyncGraph() : makeGraph(*next_step);
         const auto module_name = event_mode ? "lux.benchmark.flowforge.event" :
             sync ? "lux.benchmark.flowforge.sync" : "lux.benchmark.flowforge.async";
@@ -899,10 +966,15 @@ namespace
         auto hook_connection = runtime_binding.bind(*simulation);
         if (!hook_connection)
             return 22;
+        std::uint64_t previous_resumes{};
         const auto normal_frame = [&] {
             if (event_mode)
                 g_probe->pending_payload = 31;
-            return simulation->execute(*executor, SimulationDuration{1}).has_value();
+            const auto executed = simulation->execute(*executor, SimulationDuration{sequence ? 16'666'667 : 1});
+            const auto resumes = system->stats().backend_resume_calls;
+            const bool budget_ok = resumes - previous_resumes <= options.resume_budget;
+            previous_resumes = resumes;
+            return executed.has_value() && budget_ok;
         };
         if (idle || storm || event_idle || event_storm)
         {
@@ -934,9 +1006,10 @@ namespace
             return 26;
         output << "git_commit,build_type,scenario,backend,size,seed,frame,nanoseconds,active_instances,calls,"
                   "continuations,awaitables,event_waiters,event_dispatch_visits,queue_depth,queue_high_water,"
-                  "continuation_frame_bytes,artifact_bytes,checksum\n";
+                  "continuation_frame_bytes,artifact_bytes,checksum,started,resumes,suspensions,completed,phase\n";
         const auto* exported = native_module->findFunction(event_mode ? kEventWaitSymbol : kTickSymbol);
         const auto frame_bytes = exported != nullptr && exported->step != nullptr ? exported->step->frame_size : 0U;
+        bool draining{};
         const auto record = [&](std::size_t frame, std::uint64_t nanoseconds) {
             const auto stats = system->stats();
             output << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group
@@ -946,7 +1019,9 @@ namespace
                    << stats.event_waiter_dispatch_visits << ',' << stats.resume_queue_depth << ','
                    << stats.resume_queue_high_water
                    << ',' << frame_bytes << ',' << artifact->payload().size() << ','
-                   << (provider.checksum ^ provider.calls) << '\n';
+                   << (provider.checksum ^ provider.calls) << ',' << stats.step_invocations << ','
+                   << stats.backend_resume_calls << ',' << stats.suspensions_admitted << ','
+                   << (sequence ? provider.calls : 0U) << ',' << (draining ? "drain" : "steady") << '\n';
         };
 
         if (suspend_only)
@@ -983,6 +1058,24 @@ namespace
                     return 29;
                 record(frame, elapsed);
             }
+        }
+        if (sequence)
+        {
+            draining = true;
+            g_probe->tick_enabled = false;
+            std::size_t drain{};
+            const auto max_drain = 3U * ((options.size + options.resume_budget - 1U) / options.resume_budget) + 64U;
+            while (system->activeContinuationCount() != 0U)
+            {
+                if (drain >= max_drain) return 32;
+                const auto begin = Clock::now();
+                if (!normal_frame()) return 33;
+                record(drain++, std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count());
+            }
+            const auto stats = system->stats();
+            if (stats.step_invocations == 0U || stats.step_invocations != provider.calls ||
+                stats.suspensions_admitted != 3U * provider.calls || stats.backend_resume_calls != 3U * provider.calls ||
+                stats.active_awaitables != 0U || stats.active_event_waiters != 0U) return 34;
         }
         return system->shutdown() ? 0 : 30;
     }

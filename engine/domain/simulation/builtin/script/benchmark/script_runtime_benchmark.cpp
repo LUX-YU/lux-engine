@@ -1,8 +1,11 @@
 #include "CppBenchmarkScripts.hpp"
+#include "ScriptBenchmarkDomain.hpp"
 #include "CppBenchmarkScripts.CppLifecycle.script.generated.hpp"
 #include "CppBenchmarkScripts.CppCoroutineBenchmark.script.generated.hpp"
 #include "CppBenchmarkScripts.RegionScript.script.generated.hpp"
 #include "CppBenchmarkScripts.CppUpdate.script.generated.hpp"
+#include "CppSequenceScript.hpp"
+#include "CppSequenceScript.CppSequence.script.generated.hpp"
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
@@ -266,7 +269,9 @@ namespace
             std::string_view{"scene-event-idle"},
             std::string_view{"scene-event-fanout"},
             std::string_view{"scene-event-sparse"},
-            std::string_view{"micro-cpp-coroutine"}
+            std::string_view{"micro-cpp-coroutine"},
+            std::string_view{"scene-cpp-sequence"},
+            std::string_view{"scene-lua-sequence"}
 #if LUX_BENCHMARK_HAS_LUA
             , std::string_view{"micro-lua-sync"}
             , std::string_view{"micro-lua-ability-query"}
@@ -424,52 +429,13 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kLuaPlain{0xB007U};
     inline constexpr lux::script::ScriptSymbolId kLuaQuery{0xB008U};
     inline constexpr lux::script::ScriptSymbolId kLuaEventWait{0xB009U};
+    inline constexpr lux::script::ScriptSymbolId kLuaSequence{0xB00AU};
     inline constexpr EventPointId kEvent{0xB009U};
     inline constexpr EventPointId kTargetEvent{0xB00AU};
 
     [[nodiscard]] SimulationDescription scriptDescription(std::size_t extra_events = 0U)
     {
-        constexpr std::array hooks{makeHookPointSpec<void()>(kHook, "benchmark-update")};
-        std::vector events{
-            makeEventPointSpec<std::int32_t>(
-                kEvent,
-                "benchmark-event",
-                kHook,
-                EEventRoute::SIMULATION_BROADCAST,
-                "lux.i32",
-                1U
-            ),
-            makeEventPointSpec<std::int32_t>(
-                kTargetEvent,
-                "benchmark-target-event",
-                kHook,
-                EEventRoute::ENTITY_TARGETED,
-                "lux.i32",
-                1U
-            )
-        };
-        std::vector<std::string> names;
-        names.reserve(extra_events);
-        for (std::size_t index{}; index < extra_events; ++index)
-        {
-            names.push_back("extra" + std::to_string(index));
-            auto extra = events.front();
-            extra.id = EventPointId{0xA000U + index};
-            extra.diagnostic_name = names.back();
-            events.push_back(extra);
-        }
-        const SimulationSystemDescription system{
-            .type = {.canonical_name = "lux.benchmark.ScriptRuntime", .version = 1U},
-            .hooks = hooks,
-            .events = events
-        };
-        SimulationDescriptionBuilder builder;
-        if (!builder.addSystem(kSystem, "script-runtime-benchmark", system))
-            throw std::runtime_error("benchmark simulation description rejected");
-        auto result = std::move(builder).build();
-        if (!result)
-            throw std::runtime_error("benchmark simulation description build failed");
-        return std::move(*result);
+        return lux::simulation::benchmark_domain::scriptDescription(extra_events);
     }
 
     [[nodiscard]] std::shared_ptr<const SimulationDescription> emptyDescription()
@@ -1976,6 +1942,84 @@ namespace
             throw std::runtime_error("C++ coroutine benchmark observation mismatch");
     }
 
+    template <class Harness>
+    void runSequenceFrames(const Options& options, std::vector<Row>& rows, Harness& harness, std::string name)
+    {
+        std::uint64_t previous_resumes{};
+        const auto step = [&](bool admit) {
+            harness.advance(SimulationDuration{16'666'667});
+            if (admit) static_cast<void>(dispatchHookForTest(harness.hook));
+            harness.deliverEvent(31);
+            harness.stablePoint();
+            const auto stats = harness.system->stats();
+            if (stats.backend_resume_calls - previous_resumes > options.resume_budget)
+                throw std::runtime_error("sequence bypassed the resume budget");
+            previous_resumes = stats.backend_resume_calls;
+            Row row;
+            row.active_instances = stats.active_instances;
+            row.calls = stats.step_invocations;
+            row.ability_calls = harness.value_provider.calls;
+            row.events = 1U;
+            row.suspensions = stats.suspensions_admitted;
+            row.resumes = stats.backend_resume_calls;
+            row.continuations = stats.active_continuations;
+            row.awaitables = stats.active_awaitables;
+            row.event_waiters = stats.active_event_waiters;
+            row.event_dispatch_visits = stats.event_waiter_dispatch_visits;
+            row.queue_depth = stats.resume_queue_depth;
+            row.queue_high_water = stats.resume_queue_high_water;
+            row.claim_lookups = stats.event_route_claim_lookups;
+            row.actual_copy_bytes = stats.event_payload_copy_bytes;
+            row.completion_capabilities = stats.completion_capability_constructions;
+            row.checksum = harness.value_provider.checksum;
+            return row;
+        };
+        for (std::size_t frame{}; frame < options.warmups; ++frame) static_cast<void>(step(true));
+        for (std::size_t frame{}; frame < options.frames; ++frame)
+            rows.push_back(measureRow(name, name, options.size, frame, [&] { return step(true); }));
+        const auto max_drain = 3U * ((options.size + options.resume_budget - 1U) / options.resume_budget) + 64U;
+        std::size_t drain{};
+        while (harness.system->activeContinuationCount() != 0U)
+        {
+            if (drain >= max_drain) throw std::runtime_error("sequence did not drain after admission closed");
+            rows.push_back(measureRow(name + "-drain", name, options.size, drain++, [&] { return step(false); }));
+        }
+        const auto stats = harness.system->stats();
+        const bool leaked = stats.active_awaitables != 0U || stats.active_event_waiters != 0U;
+        const bool missed_work = stats.step_invocations == 0U ||
+            stats.step_invocations != harness.value_provider.calls ||
+            stats.suspensions_admitted != 3U * stats.step_invocations ||
+            stats.backend_resume_calls != 3U * stats.step_invocations;
+        if (leaked || missed_work) throw std::runtime_error("sequence completion/copy/lifetime counts disagree");
+    }
+
+    void runCppSequence(const Options& options, std::vector<Row>& rows)
+    {
+        auto description = materializeCppStaticScript(generated::CppSequence);
+        if (!description) throw std::runtime_error("C++ sequence generated contract invalid");
+        auto artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
+        if (!artifact) throw std::runtime_error("C++ sequence artifact invalid");
+        auto event = CppScriptEventSource<std::int32_t>::create(
+            generated::CppSequence, artifact->description().event_requirements.front());
+        if (!event) throw std::runtime_error("C++ sequence event source invalid");
+        lux::simulation::benchmark::sequence_event = *event;
+        const std::array pools{CppStaticScriptPoolDescription{
+            &generated::CppSequence, options.size, options.size, options.size * 1024U + 65536U,
+            alignof(std::max_align_t), options.size, 512U
+        }};
+        auto backend = CppStaticScriptBackend::create(pools);
+        if (!backend) throw std::runtime_error("C++ sequence backend failed");
+        const auto descriptor = backend->descriptor();
+        {
+            RuntimeHarness harness{options.size, EScenarioMode::MIXED, options.resume_budget,
+                true, true, 1U, false, &descriptor, &*artifact};
+            runSequenceFrames(options, rows, harness, "scene-cpp-sequence");
+        }
+        if (backend->stats().active_frames != 0U || backend->stats().heap_frame_allocations != 0U)
+            throw std::runtime_error("C++ sequence frame lifetime/storage failure");
+        lux::simulation::benchmark::sequence_event.reset();
+    }
+
     void runHookChannelMicro(const Options& options, std::vector<Row>& rows)
     {
         HookChannel<SimulationBroadcastRoute, std::uint32_t> channel;
@@ -3233,6 +3277,8 @@ int main(int argc, char** argv)
             runEventSparse(*options, rows);
         else if (options->group == "micro-cpp-coroutine")
             runCppCoroutineMicro(*options, rows);
+        else if (options->group == "scene-cpp-sequence")
+            runCppSequence(*options, rows);
 #if LUX_BENCHMARK_HAS_LUA
         else if (options->group == "micro-lua-sync")
             runLuaSync(*options, rows, kLuaPlain, options->group);
@@ -3248,6 +3294,12 @@ int main(int argc, char** argv)
             runLuaSync(*options, rows, kTick, options->group);
         else if (options->group == "scene-lua-coroutine")
             runLuaCoroutineFrames(*options, rows);
+        else if (options->group == "scene-lua-sequence")
+        {
+            LuaRuntimeHarness harness{options->lua_artifact, options->size, kLuaSequence,
+                options->resume_budget, options->lua_policy, options->vm_accounting};
+            runSequenceFrames(*options, rows, harness, "scene-lua-sequence");
+        }
         else if (options->group == "scene-lua-event")
             runLuaEvent(*options, rows, false);
         else if (options->group == "scene-lua-suspended-idle")

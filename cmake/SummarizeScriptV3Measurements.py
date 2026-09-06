@@ -26,8 +26,8 @@ def main():
         groups = defaultdict(list)
         with pathlib.Path(run["output"]).open(encoding="utf-8-sig", newline="") as stream:
             for row in csv.DictReader(stream):
-                groups[(row["scenario"], row.get("backend", ""))].append(row)
-        for (scenario, backend), rows in groups.items():
+                groups[(row["scenario"], row.get("backend", ""), row.get("phase", ""))].append(row)
+        for (scenario, backend, phase), rows in groups.items():
             times = sorted(int(row["nanoseconds"]) for row in rows)
             # Compare the full observed business sequence, not just a final checksum.
             business_fields = ("size", "seed", "sample", "calls", "ability_calls", "script_calls",
@@ -36,7 +36,7 @@ def main():
             business = [[row.get(key, "") for key in business_fields] for row in rows]
             business_hash = hashlib.sha256(json.dumps(business, separators=(",", ":")).encode()).hexdigest()
             summary = dict(case=run["case"], pair=run["pair"], variant=run["variant"],
-                scenario=scenario, backend=backend, samples=len(times),
+                scenario=scenario, backend=backend, phase=phase, samples=len(times),
                 p50_ns=percentile(times, .5), p90_ns=percentile(times, .9), p95_ns=percentile(times, .95),
                 p99_ns=percentile(times, .99), max_ns=max(times), mean_ns=statistics.mean(times),
                 stddev_ns=statistics.pstdev(times), total_ns=sum(times),
@@ -48,7 +48,7 @@ def main():
                 business_sequence_sha256=business_hash,
                 binary_sha256=run["sha256"], percentile_policy="nearest-rank")
             summaries.append(summary)
-            paired[(run["case"], run["pair"], scenario, backend)][run["variant"]] = summary
+            paired[(run["case"], run["pair"], scenario, backend, phase)][run["variant"]] = summary
     if not summaries:
         raise RuntimeError("No valid samples")
     with (args.root / "summary.csv").open("w", newline="", encoding="utf-8") as stream:
@@ -56,11 +56,11 @@ def main():
         writer.writeheader()
         writer.writerows(summaries)
     deltas = []
-    for (case, pair, scenario, backend), values in paired.items():
+    for (case, pair, scenario, backend, phase), values in paired.items():
         if "baseline" not in values or "final" not in values:
             continue
         before, after = values["baseline"], values["final"]
-        result = dict(case=case, pair=pair, scenario=scenario, backend=backend,
+        result = dict(case=case, pair=pair, scenario=scenario, backend=backend, phase=phase,
             matching_checksum=before["last_checksum"] == after["last_checksum"],
             matching_samples=before["samples"] == after["samples"],
             matching_business=before["business_sequence_sha256"] == after["business_sequence_sha256"])

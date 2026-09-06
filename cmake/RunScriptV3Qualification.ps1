@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory=$true)][string]$CxxPrefix,
     [Parameter(Mandatory=$true)][string]$ToolsetPrefix,
     [Parameter(Mandatory=$true)][string]$FoundationPrefix,
+    [string]$Lua54Prefix = '',
     [string[]]$Profiles = @('developer', 'toolchain', 'physics-off', 'lua-off', 'lua54')
 )
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,12 @@ $ErrorActionPreference = 'Stop'
 $source_path = (Resolve-Path -LiteralPath $SourceDir).Path
 $sha = (& git -C $source_path rev-parse HEAD).Trim()
 $results = @()
+$manifest_path = Join-Path $BuildRoot 'qualification.json'
+if (Test-Path -LiteralPath $manifest_path) {
+    $results = @(Get-Content -LiteralPath $manifest_path -Raw | ConvertFrom-Json | Where-Object {
+        $_.source_sha -ne $sha -or $_.profile -notin $Profiles
+    })
+}
 foreach ($profile in $Profiles) {
     if ($profile -notin @('developer','toolchain','physics-off','lua-off','lua54')) { throw "Unsupported profile $profile" }
     $short = @{developer='d'; toolchain='t'; 'physics-off'='p'; 'lua-off'='n'; lua54='l'}[$profile]
@@ -33,6 +40,13 @@ foreach ($profile in $Profiles) {
             '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake',
             "-DCMAKE_PREFIX_PATH=$ToolsetPrefix;$CxxPrefix;$FoundationPrefix", "-DCMAKE_INSTALL_PREFIX=$prefix",
             '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF','-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF')
+        if ($profile -eq 'lua54') {
+            if (!$Lua54Prefix -or !(Test-Path -LiteralPath "$Lua54Prefix/include/lua.h") -or
+                !(Test-Path -LiteralPath "$Lua54Prefix/lib/lua.lib")) { throw 'Lua54Prefix must identify the installed Lua54 dependency' }
+            $arguments += @("-DLUA_INCLUDE_DIR=$Lua54Prefix/include", "-DLUA_LIBRARY=$Lua54Prefix/lib/lua.lib")
+            $env:PATH = "$Lua54Prefix/bin;$env:PATH"
+            $record.lua_dependency_prefix = $Lua54Prefix
+        }
         & cmake @arguments *> "$build/configure.log"
         if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
         & cmake --build $build --target all -j 4 -- -k 0 *> "$build/all.log"

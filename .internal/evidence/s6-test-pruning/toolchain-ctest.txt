@@ -1,0 +1,229 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/q2/t
+        Start   1: architecture_world_domain_positive
+  1/106 Test   #1: architecture_world_domain_positive .....................   Passed    0.15 sec
+        Start   2: architecture_simulation_domain_positive
+  2/106 Test   #2: architecture_simulation_domain_positive ................   Passed    0.16 sec
+        Start   3: architecture_simulation_world_negative
+  3/106 Test   #3: architecture_simulation_world_negative .................   Passed    0.05 sec
+        Start   4: architecture_domain_world_negative
+  4/106 Test   #4: architecture_domain_world_negative .....................   Passed    0.09 sec
+        Start   5: architecture_domain_simulation_negative
+  5/106 Test   #5: architecture_domain_simulation_negative ................   Passed    0.06 sec
+        Start   6: architecture_process_world_loading_positive
+  6/106 Test   #6: architecture_process_world_loading_positive ............   Passed    0.17 sec
+        Start   7: architecture_scene_process_positive
+  7/106 Test   #7: architecture_scene_process_positive ....................   Passed    0.12 sec
+        Start   8: architecture_process_scene_negative
+  8/106 Test   #8: architecture_process_scene_negative ....................   Passed    0.10 sec
+        Start   9: architecture_scene_editor_negative
+  9/106 Test   #9: architecture_scene_editor_negative .....................   Passed    0.05 sec
+        Start  10: architecture_toolchain_function_positive
+ 10/106 Test  #10: architecture_toolchain_function_positive ...............   Passed    0.16 sec
+        Start  11: architecture_toolchain_editor_negative
+ 11/106 Test  #11: architecture_toolchain_editor_negative .................   Passed    0.05 sec
+        Start  12: architecture_editor_toolchain_positive
+ 12/106 Test  #12: architecture_editor_toolchain_positive .................   Passed    0.16 sec
+        Start  13: architecture_function_toolchain_negative
+ 13/106 Test  #13: architecture_function_toolchain_negative ...............   Passed    0.06 sec
+        Start  14: script_core_contract_test
+ 14/106 Test  #14: script_core_contract_test ..............................   Passed    0.05 sec
+        Start  15: type_static_info_test
+ 15/106 Test  #15: type_static_info_test ..................................   Passed    0.01 sec
+        Start  16: task_graph_test
+ 16/106 Test  #16: task_graph_test ........................................   Passed    0.08 sec
+        Start  17: script_description_contract_test
+ 17/106 Test  #17: script_description_contract_test .......................   Passed    0.01 sec
+        Start  18: flowforge_dynamism
+ 18/106 Test  #18: flowforge_dynamism .....................................   Passed    0.05 sec
+        Start  19: flowforge_script_ability_node
+ 19/106 Test  #19: flowforge_script_ability_node ..........................   Passed    0.01 sec
+        Start  20: script_artifact_codec_test
+ 20/106 Test  #20: script_artifact_codec_test .............................   Passed    0.06 sec
+        Start  21: script_native_runtime_contract_test
+ 21/106 Test  #21: script_native_runtime_contract_test ....................   Passed    0.10 sec
+        Start  22: simulation_description_contract_test
+ 22/106 Test  #22: simulation_description_contract_test ...................   Passed    0.05 sec
+        Start  23: simulation_asset_codec_test
+ 23/106 Test  #23: simulation_asset_codec_test ............................   Passed    0.12 sec
+        Start  24: vnext_ecs_core
+ 24/106 Test  #24: vnext_ecs_core .........................................   Passed    0.05 sec
+        Start  25: vnext_ecs_system_registry
+ 25/106 Test  #25: vnext_ecs_system_registry ..............................   Passed    0.01 sec
+        Start  26: simulation_endpoint_point_test
+ 26/106 Test  #26: simulation_endpoint_point_test .........................   Passed    0.05 sec
+        Start  27: simulation_throwing_event_payload_rejected
+ 27/106 Test  #27: simulation_throwing_event_payload_rejected .............   Passed    0.94 sec
+        Start  28: simulation_unscoped_hook_rejected
+ 28/106 Test  #28: simulation_unscoped_hook_rejected ......................   Passed    0.78 sec
+        Start  29: simulation_object_boundary_test
+ 29/106 Test  #29: simulation_object_boundary_test ........................   Passed    0.02 sec
+        Start  30: simulation_script_coroutine_alignment_contract_test
+ 30/106 Test  #30: simulation_script_coroutine_alignment_contract_test ....   Passed    0.01 sec
+        Start  31: simulation_script_class_storage_test
+ 31/106 Test  #31: simulation_script_class_storage_test ...................   Passed    0.01 sec
+        Start  32: simulation_script_class_storage_move_test
+ 32/106 Test  #32: simulation_script_class_storage_move_test ..............   Passed    0.01 sec
+        Start  33: simulation_script_class_storage_failure_1_test
+ 33/106 Test  #33: simulation_script_class_storage_failure_1_test .........   Passed    0.01 sec
+        Start  34: simulation_script_class_storage_failure_2_test
+ 34/106 Test  #34: simulation_script_class_storage_failure_2_test .........   Passed    0.01 sec
+        Start  35: simulation_script_class_storage_failure_3_test
+ 35/106 Test  #35: simulation_script_class_storage_failure_3_test .........   Passed    0.01 sec
+        Start  36: simulation_script_class_storage_failure_4_test
+ 36/106 Test  #36: simulation_script_class_storage_failure_4_test .........   Passed    0.01 sec
+        Start  37: simulation_script_cpp_prepared_shape_test
+ 37/106 Test  #37: simulation_script_cpp_prepared_shape_test ..............   Passed    0.01 sec
+        Start  38: simulation_script_cpp_static_test
+ 38/106 Test  #38: simulation_script_cpp_static_test ......................   Passed    0.01 sec
+        Start  39: simulation_script_cpp_generated_integration_test
+ 39/106 Test  #39: simulation_script_cpp_generated_integration_test .......   Passed    0.02 sec
+        Start  40: simulation_script_cpp_generated_host-failure
+ 40/106 Test  #40: simulation_script_cpp_generated_host-failure ...........   Passed    0.01 sec
+        Start  41: simulation_script_cpp_generated_construct-failure
+ 41/106 Test  #41: simulation_script_cpp_generated_construct-failure ......   Passed    0.02 sec
+        Start  42: simulation_script_cpp_generated_prepare-failure
+ 42/106 Test  #42: simulation_script_cpp_generated_prepare-failure ........   Passed    0.02 sec
+        Start  43: simulation_script_cpp_codegen_negative_1
+ 43/106 Test  #43: simulation_script_cpp_codegen_negative_1 ...............   Passed    2.15 sec
+        Start  44: simulation_script_cpp_codegen_negative_2
+ 44/106 Test  #44: simulation_script_cpp_codegen_negative_2 ...............   Passed    2.13 sec
+        Start  45: simulation_script_cpp_codegen_negative_3
+ 45/106 Test  #45: simulation_script_cpp_codegen_negative_3 ...............   Passed    2.11 sec
+        Start  46: simulation_script_cpp_codegen_negative_4
+ 46/106 Test  #46: simulation_script_cpp_codegen_negative_4 ...............   Passed    2.12 sec
+        Start  47: simulation_script_cpp_codegen_negative_5
+ 47/106 Test  #47: simulation_script_cpp_codegen_negative_5 ...............   Passed    1.15 sec
+        Start  48: simulation_script_cpp_codegen_negative_6
+ 48/106 Test  #48: simulation_script_cpp_codegen_negative_6 ...............   Passed    1.18 sec
+        Start  49: simulation_script_cpp_codegen_negative_7
+ 49/106 Test  #49: simulation_script_cpp_codegen_negative_7 ...............   Passed    1.15 sec
+        Start  50: simulation_script_cpp_codegen_negative_8
+ 50/106 Test  #50: simulation_script_cpp_codegen_negative_8 ...............   Passed    2.12 sec
+        Start  51: simulation_script_cpp_codegen_negative_9
+ 51/106 Test  #51: simulation_script_cpp_codegen_negative_9 ...............   Passed    2.11 sec
+        Start  52: simulation_script_cpp_codegen_negative_10
+ 52/106 Test  #52: simulation_script_cpp_codegen_negative_10 ..............   Passed    2.17 sec
+        Start  53: simulation_script_cpp_codegen_negative_11
+ 53/106 Test  #53: simulation_script_cpp_codegen_negative_11 ..............   Passed    2.14 sec
+        Start  54: simulation_script_cpp_codegen_negative_12
+ 54/106 Test  #54: simulation_script_cpp_codegen_negative_12 ..............   Passed    1.28 sec
+        Start  55: simulation_script_cpp_codegen_negative_13
+ 55/106 Test  #55: simulation_script_cpp_codegen_negative_13 ..............   Passed    1.15 sec
+        Start  56: simulation_script_cpp_codegen_negative_14
+ 56/106 Test  #56: simulation_script_cpp_codegen_negative_14 ..............   Passed    1.18 sec
+        Start  57: simulation_script_cpp_codegen_negative_15
+ 57/106 Test  #57: simulation_script_cpp_codegen_negative_15 ..............   Passed    1.23 sec
+        Start  58: simulation_script_cpp_codegen_negative_16
+ 58/106 Test  #58: simulation_script_cpp_codegen_negative_16 ..............   Passed    1.16 sec
+        Start  59: simulation_script_cpp_codegen_negative_17
+ 59/106 Test  #59: simulation_script_cpp_codegen_negative_17 ..............   Passed    2.12 sec
+        Start  60: simulation_script_cpp_codegen_negative_18
+ 60/106 Test  #60: simulation_script_cpp_codegen_negative_18 ..............   Passed    2.14 sec
+        Start  61: simulation_script_cpp_codegen_negative_19
+ 61/106 Test  #61: simulation_script_cpp_codegen_negative_19 ..............   Passed    1.14 sec
+        Start  62: simulation_script_cpp_codegen_negative_20
+ 62/106 Test  #62: simulation_script_cpp_codegen_negative_20 ..............   Passed    1.14 sec
+        Start  63: simulation_script_cpp_codegen_negative_21
+ 63/106 Test  #63: simulation_script_cpp_codegen_negative_21 ..............   Passed    2.11 sec
+        Start  64: simulation_script_native_population_state
+ 64/106 Test  #64: simulation_script_native_population_state ..............   Passed    0.07 sec
+        Start  65: simulation_script_native_population_frames
+ 65/106 Test  #65: simulation_script_native_population_frames .............   Passed    0.01 sec
+        Start  66: simulation_script_native_population_sync
+ 66/106 Test  #66: simulation_script_native_population_sync ...............   Passed    0.01 sec
+        Start  67: simulation_script_native_population_shared
+ 67/106 Test  #67: simulation_script_native_population_shared .............   Passed    0.12 sec
+        Start  68: simulation_script_native_test
+ 68/106 Test  #68: simulation_script_native_test ..........................   Passed    0.03 sec
+        Start  69: simulation_script_ingress_frontier_test
+ 69/106 Test  #69: simulation_script_ingress_frontier_test ................   Passed    0.01 sec
+        Start  70: simulation_script_description_test
+ 70/106 Test  #70: simulation_script_description_test .....................   Passed    0.01 sec
+        Start  71: simulation_script_runtime_test
+ 71/106 Test  #71: simulation_script_runtime_test .........................   Passed    0.01 sec
+        Start  72: simulation_script_continuation_test
+ 72/106 Test  #72: simulation_script_continuation_test ....................   Passed    0.02 sec
+        Start  73: simulation_script_event_wait_test
+ 73/106 Test  #73: simulation_script_event_wait_test ......................   Passed    0.12 sec
+        Start  74: simulation_script_event_wait_race_test
+ 74/106 Test  #74: simulation_script_event_wait_race_test .................   Passed    0.02 sec
+        Start  75: simulation_script_lifecycle_test
+ 75/106 Test  #75: simulation_script_lifecycle_test .......................   Passed    0.01 sec
+        Start  76: script_runtime_benchmark_smoke
+ 76/106 Test  #76: script_runtime_benchmark_smoke .........................   Passed    1.02 sec
+        Start  77: script_binding_authoring_test
+ 77/106 Test  #77: script_binding_authoring_test ..........................   Passed    0.01 sec
+        Start  78: simulation_composition_test
+ 78/106 Test  #78: simulation_composition_test ............................   Passed    0.02 sec
+        Start  79: simulation_hook_execution_test
+ 79/106 Test  #79: simulation_hook_execution_test .........................   Passed    0.02 sec
+        Start  80: simulation_hook_regions_test
+ 80/106 Test  #80: simulation_hook_regions_test ...........................   Passed    0.01 sec
+        Start  81: simulation_hook_return_negative
+ 81/106 Test  #81: simulation_hook_return_negative ........................   Passed    1.30 sec
+        Start  82: simulation_script_ability_codegen_test
+ 82/106 Test  #82: simulation_script_ability_codegen_test .................   Passed    0.01 sec
+        Start  83: simulation_script_ability_borrowed_async_negative
+ 83/106 Test  #83: simulation_script_ability_borrowed_async_negative ......   Passed    0.27 sec
+        Start  84: simulation_script_ability_duplicate_method_negative
+ 84/106 Test  #84: simulation_script_ability_duplicate_method_negative ....   Passed    0.27 sec
+        Start  85: simulation_script_ability_mutable_parameter_negative
+ 85/106 Test  #85: simulation_script_ability_mutable_parameter_negative ...   Passed    0.27 sec
+        Start  86: simulation_script_ability_mutable_result_negative
+ 86/106 Test  #86: simulation_script_ability_mutable_result_negative ......   Passed    0.27 sec
+        Start  87: vnext_transform_decode
+ 87/106 Test  #87: vnext_transform_decode .................................   Passed    0.02 sec
+        Start  88: vnext_transform_system
+ 88/106 Test  #88: vnext_transform_system .................................   Passed    0.02 sec
+        Start  89: physics2d_simulation_test
+ 89/106 Test  #89: physics2d_simulation_test ..............................   Passed    0.12 sec
+        Start  90: process_timer_test
+ 90/106 Test  #90: process_timer_test .....................................   Passed    0.11 sec
+        Start  91: process_port_sender_test
+ 91/106 Test  #91: process_port_sender_test ...............................   Passed    0.01 sec
+        Start  92: process_execution_runtime_test
+ 92/106 Test  #92: process_execution_runtime_test .........................   Passed    0.01 sec
+        Start  93: process_task_scope_test
+ 93/106 Test  #93: process_task_scope_test ................................   Passed    0.12 sec
+        Start  94: task_scope_unconsumed_value_negative
+ 94/106 Test  #94: task_scope_unconsumed_value_negative ...................   Passed    1.00 sec
+        Start  95: task_scope_unconsumed_error_negative
+ 95/106 Test  #95: task_scope_unconsumed_error_negative ...................   Passed    0.97 sec
+        Start  96: scene_composition_test
+ 96/106 Test  #96: scene_composition_test .................................   Passed    0.03 sec
+        Start  97: scene_world_materialization_test
+ 97/106 Test  #97: scene_world_materialization_test .......................   Passed    0.04 sec
+        Start  98: scene_world_materialization_deferred_test
+ 98/106 Test  #98: scene_world_materialization_deferred_test ..............   Passed    0.04 sec
+        Start  99: scene_script_runtime_test
+ 99/106 Test  #99: scene_script_runtime_test ..............................   Passed    0.09 sec
+        Start 100: lua_script_packager_contract_test
+100/106 Test #100: lua_script_packager_contract_test ......................   Passed    0.02 sec
+        Start 101: lua_script_packager_negative_test
+101/106 Test #101: lua_script_packager_negative_test ......................   Passed    0.27 sec
+        Start 102: flowforge_script_artifact_test
+102/106 Test #102: flowforge_script_artifact_test .........................   Passed    0.88 sec
+        Start 103: physics2d_flowforge_integration_test
+103/106 Test #103: physics2d_flowforge_integration_test ...................   Passed    0.10 sec
+        Start 104: flowforge_script_runtime_integration_test
+104/106 Test #104: flowforge_script_runtime_integration_test ..............   Passed    0.22 sec
+        Start 105: flowforge_script_runtime_benchmark_smoke
+105/106 Test #105: flowforge_script_runtime_benchmark_smoke ...............   Passed    0.12 sec
+        Start 106: flowforge_script_sequence_benchmark_smoke
+106/106 Test #106: flowforge_script_sequence_benchmark_smoke ..............   Passed    0.21 sec
+
+100% tests passed, 0 tests failed out of 106
+
+Label Time Summary:
+architecture    =   1.40 sec*proc (13 tests)
+core            =   0.05 sec*proc (1 test)
+cpu             =   0.09 sec*proc (3 tests)
+exception       =   0.94 sec*proc (1 test)
+l1              =   2.43 sec*proc (17 tests)
+negative        =   0.94 sec*proc (1 test)
+schema          =   0.02 sec*proc (1 test)
+simulation      =   0.94 sec*proc (1 test)
+transform       =   0.04 sec*proc (2 tests)
+vnext           =   0.09 sec*proc (3 tests)
+
+Total Test time (real) =  47.56 sec

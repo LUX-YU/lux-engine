@@ -2,6 +2,23 @@
 
 Not complete, not a freeze declaration. Continue the approved implementation; no merge or push.
 
+## Current checkpoint: user-requested test pruning (2026-09-06)
+
+This checkpoint supersedes the historical in-flight instructions below.
+
+- Removal commit `9d40ec68489c17b8f4c91091974cb6b54263d0b1`: unrelated test sources/fixtures/consumers
+  actually deleted; retain only the current S6 closure and immediate safety dependencies.
+- Clean snapshot Developer: 118 registrations, 112 passed and 6 failed; Toolchain: 106/106.
+  Both all builds, second-build no-op, install and architecture checks passed.
+- The same six Scene Lua variants already failed at `5ba2dd6f`; assertion:
+  `scene_script_lua_runtime_test.cpp:487`, `activeContinuationCount() == 0U`.
+  Diagnose before claiming S6 qualification. These six tests were not removed or weakened.
+- No task-owned build/test process is running after this cleanup. Do not resume the old session IDs below.
+- Current scope/results: `.internal/s6-test-pruning-2026-09-06.md`.
+- Main's five edits are untouched. Measurement-driver changes and the untracked stress driver remain separate.
+- This task did not rerun performance, relocation, the optional profile matrix or 100x stress;
+  historical incomplete work remains incomplete. No merge/push/freeze.
+
 ## Completed this continuation
 
 - Verified/archived and deleted 167 obsolete Engine build roots. Deleted logical bytes: 145.2078 GiB;

@@ -1,8 +1,10 @@
 {
   "schema": "lux-script-symbol-ledger",
   "version": 1,
-  "next_symbol": 50690,
+  "next_symbol": 50692,
   "entries": [
+    {"source_identity":"region.first","symbol":50690},
+    {"source_identity":"region.second","symbol":50691},
     {
       "source_identity": "lifecycle.begin",
       "symbol": 45059

@@ -359,6 +359,14 @@ lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppCoroutineBenchmar
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)
 
 add_executable(script_binding_authoring_test test/script_binding_authoring_test.cpp)
+lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME RegionScript
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CppBenchmarkScripts.hpp LOGICAL_PATH CppBenchmarkScripts.hpp
+    MODULE lux.benchmark.regions DESCRIPTOR regions OWNER lux::simulation::benchmark::RegionScript SCOPE SIMULATION
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)
+lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppUpdate
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CppBenchmarkScripts.hpp LOGICAL_PATH CppBenchmarkScripts.hpp
+    MODULE lux.benchmark.cpp-update DESCRIPTOR cpp-update-v1 OWNER lux::simulation::benchmark::CppUpdateObject SCOPE ENTITY
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json)
 find_package(nlohmann_json CONFIG REQUIRED)
 target_link_libraries(script_binding_authoring_test PRIVATE simulation_script
     lux::engine::simulation::simulation_script_cpp_static lux::engine::core::type_info nlohmann_json::nlohmann_json)

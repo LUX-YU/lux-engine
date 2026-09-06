@@ -1,6 +1,8 @@
 #include "CppBenchmarkScripts.hpp"
 #include "CppBenchmarkScripts.CppLifecycle.script.generated.hpp"
 #include "CppBenchmarkScripts.CppCoroutineBenchmark.script.generated.hpp"
+#include "CppBenchmarkScripts.RegionScript.script.generated.hpp"
+#include "CppBenchmarkScripts.CppUpdate.script.generated.hpp"
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
@@ -12,6 +14,7 @@ using lux::simulation::script::test::deliverEndpoint;
 #endif
 
 #include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
@@ -105,6 +108,10 @@ namespace
         std::size_t ready_count{10000U};
         std::size_t event_requirements{1U};
         bool targeted_event{};
+        std::uint32_t workers{};
+        std::size_t hooks{2U};
+        bool dense_graph{};
+        bool trace{};
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"script_runtime_benchmark.csv"};
         std::filesystem::path lua_artifact;
@@ -186,6 +193,26 @@ namespace
                 if (!parseSize(value, result.event_requirements) || result.event_requirements > 64U)
                     return std::nullopt;
             }
+            else if (key == "--workers")
+            {
+                const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result.workers);
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || result.workers > 4U)
+                    return std::nullopt;
+            }
+            else if (key == "--hooks")
+            {
+                if (!parseSize(value, result.hooks) || result.hooks > 8U) return std::nullopt;
+            }
+            else if (key == "--density")
+            {
+                if (value != "sparse" && value != "dense") return std::nullopt;
+                result.dense_graph = value == "dense";
+            }
+            else if (key == "--trace")
+            {
+                if (value != "on" && value != "off") return std::nullopt;
+                result.trace = value == "on";
+            }
             else if (key == "--event-route")
             {
                 if (value != "broadcast" && value != "targeted") return std::nullopt;
@@ -225,10 +252,13 @@ namespace
             std::string_view{"micro-async"},
             std::string_view{"micro-lifecycle"},
             std::string_view{"scene-update-heavy"},
+            std::string_view{"scene-cpp-update-heavy"},
             std::string_view{"scene-gameplay-mixed"},
             std::string_view{"scene-suspended-idle"},
             std::string_view{"scene-resume-storm"},
             std::string_view{"scene-object-churn"},
+            std::string_view{"scene-region-numeric"},
+            std::string_view{"graph-build"},
             std::string_view{"scheduler-next-step"},
             std::string_view{"scheduler-simulation-delay"},
             std::string_view{"integration-real-delay"},
@@ -291,6 +321,15 @@ namespace
         std::uint64_t vm_allocations{};
         std::uint64_t vm_reallocations{};
         std::uint64_t vm_frees{};
+        std::uint64_t claim_lookups{};
+        std::uint64_t actual_copy_bytes{};
+        std::uint64_t completion_capabilities{};
+        std::size_t graph_tasks{};
+        std::size_t graph_edges{};
+        std::uint64_t graph_walks{};
+        std::uint64_t graph_edge_visits{};
+        std::uint64_t producer_overlap_ns{};
+        bool distinct_producer_threads{};
         std::uint64_t vm_requested_bytes{};
         std::uint64_t vm_released_bytes{};
         std::uint64_t vm_coroutine_creations{};
@@ -320,10 +359,12 @@ namespace
                   "lifecycle_begins,lifecycle_ends,checksum,vm_accounting,vm_allocations,vm_reallocations,vm_frees,"
                   "vm_requested_bytes,vm_released_bytes,vm_coroutine_creations,"
                   "vm_coroutine_resumes,vm_coroutine_releases,event_requirement_count,event_route,"
-                  "allocation_accounting\n";
+                  "allocation_accounting,workers,claim_lookups,actual_copy_bytes,completion_capabilities,"
+                  "graph_tasks,graph_edges,graph_walks,graph_edge_visits,trace,producer_overlap_ns,"
+                  "distinct_producer_threads\n";
         for (const auto& row : rows)
         {
-            output << "6," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
+            output << "7," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
                    << LUX_BENCHMARK_COMPILER << ",windows," << std::thread::hardware_concurrency() << ','
 #if LUX_BENCHMARK_HAS_LUA
                    << g_lua_runtime_info.vm << ',' << g_lua_runtime_info.version << ','
@@ -346,7 +387,11 @@ namespace
                    << row.vm_frees << ',' << row.vm_requested_bytes << ',' << row.vm_released_bytes << ','
                    << row.vm_coroutine_creations << ',' << row.vm_coroutine_resumes << ','
                    << row.vm_coroutine_releases << ',' << options.event_requirements << ','
-                   << (options.targeted_event ? "targeted" : "broadcast") << ',' << g_allocation_accounting << '\n';
+                   << (options.targeted_event ? "targeted" : "broadcast") << ',' << g_allocation_accounting << ','
+                   << options.workers << ',' << row.claim_lookups << ',' << row.actual_copy_bytes << ','
+                   << row.completion_capabilities << ',' << row.graph_tasks << ',' << row.graph_edges << ','
+                   << row.graph_walks << ',' << row.graph_edge_visits << ',' << options.trace << ','
+                   << row.producer_overlap_ns << ',' << row.distinct_producer_threads << '\n';
         }
         output.close();
         std::error_code error;
@@ -795,11 +840,13 @@ namespace
             bool entity_scope = false,
             bool prepare_now = true,
             std::size_t event_requirements = 1U,
-            bool shared_target = false
+            bool shared_target = false,
+            const ScriptBackendDescriptor* supplied_backend = nullptr,
+            const lux::script::ScriptArtifact* supplied_artifact = nullptr
         )
             : simulation_description(scriptDescription(event_requirements - 1U)),
               backend_state{.mode = mode}, entity_scope(entity_scope), multi_flight_target(shared_target),
-              waiter_count(count)
+              waiter_count(count), external_artifact(supplied_artifact)
         {
             auto clock_simulation = Simulation::create(registry, emptyDescription(), empty_system_types);
             if (!clock_simulation)
@@ -932,6 +979,7 @@ namespace
                 &releaseMethod,
                 &destroyInstance
             };
+            if (supplied_backend != nullptr) backend = *supplied_backend;
 
             std::array<ScriptApiCapabilityPublication, 1U> publications{};
             std::span<const ScriptApiCapabilityPublication> capability_span;
@@ -1002,7 +1050,8 @@ namespace
             auto& self = *static_cast<RuntimeHarness*>(opaque);
             if (requested != assetId())
                 return false;
-            output.artifact = std::addressof(*self.artifact);
+            output.artifact = self.external_artifact != nullptr
+                ? self.external_artifact : std::addressof(*self.artifact);
             return true;
         }
 
@@ -1145,6 +1194,7 @@ namespace
         std::vector<std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>> extra_endpoints;
         bool multi_flight_target{};
         std::size_t waiter_count{};
+        const lux::script::ScriptArtifact* external_artifact{};
         BackendState backend_state;
         ScriptBackendDescriptor backend;
         ValueProvider value_provider;
@@ -1734,6 +1784,9 @@ namespace
     void appendRuntimeStats(Row& row, RuntimeHarness& harness)
     {
         const auto stats = harness.system->stats();
+        row.claim_lookups = stats.event_route_claim_lookups;
+        row.actual_copy_bytes = stats.event_payload_copy_bytes;
+        row.completion_capabilities = stats.completion_capability_constructions;
         row.active_instances = stats.active_instances;
         row.continuations = stats.active_continuations;
         row.awaitables = stats.active_awaitables;
@@ -2739,6 +2792,396 @@ namespace
             throw std::runtime_error("Lua churn benchmark observation mismatch");
     }
 #endif
+    void runCppObjectFrames(const Options& options, std::vector<Row>& rows)
+    {
+        auto description = materializeCppStaticScript(generated::CppUpdate);
+        if (!description) throw std::runtime_error("C++ update contract");
+        auto artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
+        const std::array pools{CppStaticScriptPoolDescription{&generated::CppUpdate, options.size, 0U, 0U,
+            alignof(std::max_align_t), options.size * 3U}};
+        auto backend = CppStaticScriptBackend::create(pools);
+        if (!backend || !artifact) throw std::runtime_error("C++ update backend");
+        const auto descriptor = backend->descriptor();
+        lux::simulation::benchmark::cpp_update_checksum = 0U;
+        RuntimeHarness harness{options.size, EScenarioMode::SYNC, options.resume_budget, true, true, 1U, false,
+            &descriptor, &*artifact};
+        for (std::size_t frame{}; frame < options.warmups + options.frames; ++frame)
+        {
+            auto row = measureRow("scene-cpp-update-heavy", "cpp-static", options.size, frame, [&] {
+                static_cast<void>(dispatchHookForTest(harness.hook));
+                harness.advance(std::chrono::milliseconds{16});
+                harness.stablePoint();
+                Row result;
+                result.active_instances = harness.system->activeInstanceCount();
+                result.calls = options.size;
+                return result;
+            });
+            if (frame >= options.warmups)
+            {
+                row.sample = frame - options.warmups;
+                rows.push_back(std::move(row));
+            }
+        }
+        if (!harness.system->shutdown() || lux::simulation::benchmark::cpp_update_checksum !=
+            options.size * (options.warmups + options.frames)) throw std::runtime_error("C++ update observation");
+        if (!rows.empty()) rows.back().checksum = lux::simulation::benchmark::cpp_update_checksum;
+    }
+
+    struct RegionControl final { std::uint32_t value{}; };
+    struct RegionWork final
+    {
+        RegionWork(std::size_t count, std::uint64_t seed) : first(count), second(count)
+        {
+            for (std::size_t i{}; i < count; ++i)
+            {
+                first[i] = seed + i;
+                second[i] = (seed ^ 0x9E3779B9U) + i;
+            }
+        }
+        static std::uint64_t integrate(std::vector<std::uint64_t>& values) noexcept
+        {
+            std::uint64_t sum{};
+            for (auto& value : values)
+            {
+                for (unsigned iteration{}; iteration < 8U; ++iteration)
+                {
+                    value ^= value >> 12U;
+                    value ^= value << 25U;
+                    value ^= value >> 27U;
+                    value *= 2685821657736338717ULL;
+                }
+                sum += value;
+            }
+            return sum;
+        }
+        std::vector<std::uint64_t> first, second;
+        std::uint64_t first_sum{}, second_sum{}, combined{}, published{};
+        bool trace{};
+        Clock::time_point first_begin, first_end, second_begin, second_end;
+        std::thread::id first_thread, second_thread;
+        ecs::Entity control{ecs::NullEntity};
+    };
+
+    struct RegionHost final
+    {
+        inline static constexpr lux::system::SystemInstanceId Id{0xB801U};
+        inline static constexpr HookPointId First{0xB802U}, Stable{0xB803U};
+        inline static constexpr SimulationTaskId Parallel{0xB804U}, Middle{0xB805U}, Final{0xB806U};
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr std::array Tasks{
+            SimulationTaskSpec{PrimarySimulationTask, "integrate-a"}, SimulationTaskSpec{Parallel, "integrate-b"},
+            SimulationTaskSpec{Middle, "apply-gameplay"}, SimulationTaskSpec{Final, "publish"}
+        };
+        inline static constexpr std::array Hooks{
+            makeHookPointSpec<void(std::uint32_t)>(First, "react", true, false),
+            makeHookPointSpec<void(std::uint32_t)>(Stable, "finish", true, true)
+        };
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.benchmark.NumericRegions", .version = 1U}, .hooks = Hooks, .tasks = Tasks
+        };
+        explicit RegionHost(RegionWork& source) noexcept
+            : work(source), first_endpoint(Id, First, first), stable_endpoint(Id, Stable, stable) {}
+        RegionWork& work;
+        HookPoint<void(std::uint32_t)> first, stable;
+        ScriptHookEndpoint<void(std::uint32_t)> first_endpoint, stable_endpoint;
+        SimulationCommandProducer first_commands, stable_commands;
+    };
+
+    lux::cxx::expected<void, SimulationSystemBuildFailure> installRegionHost(
+        SimulationBuilder& builder, SimulationSystemView view) noexcept
+    {
+        auto host = builder.emplaceSystem<RegionHost>(view.instanceId(), builder.registry().ctx().get<RegionWork>());
+        if (!host) return lux::cxx::unexpected(host.error());
+        if ((*host)->first.prepare(1U) != EEndpointMutationError::NONE ||
+            (*host)->stable.prepare(1U) != EEndpointMutationError::NONE)
+            return lux::cxx::unexpected(SimulationSystemBuildFailure{
+                ESimulationSystemBuildError::CONSTRUCTION_FAILURE, view.instanceId()});
+        auto first = builder.prepareCommandProducer(
+            SimulationExecutionPoint::hook(view.instanceId(), RegionHost::First), {2U, 64U}
+        );
+        auto stable = builder.prepareCommandProducer(
+            SimulationExecutionPoint::hook(view.instanceId(), RegionHost::Stable), {2U, 64U}
+        );
+        if (!first || !stable) return lux::cxx::unexpected(!first ? first.error() : stable.error());
+        (*host)->first_commands = *first;
+        (*host)->stable_commands = *stable;
+        auto result = builder.publishScriptHook(view.instanceId(), (*host)->first_endpoint.descriptor());
+        if (!result) return result;
+        result = builder.publishScriptHook(view.instanceId(), (*host)->stable_endpoint.descriptor());
+        if (!result) return result;
+        result = builder.addSystemTask<RegionHost>(view.instanceId(), [](RegionHost& host) noexcept {
+            if (host.work.trace)
+            {
+                host.work.first_thread = std::this_thread::get_id();
+                host.work.first_begin = Clock::now();
+            }
+            host.work.first_sum = RegionWork::integrate(host.work.first);
+            if (host.work.trace) host.work.first_end = Clock::now();
+        });
+        if (!result) return result;
+        result = builder.addSystemTask<RegionHost>(view.instanceId(), [](RegionHost& host) noexcept {
+            if (host.work.trace)
+            {
+                host.work.second_thread = std::this_thread::get_id();
+                host.work.second_begin = Clock::now();
+            }
+            host.work.second_sum = RegionWork::integrate(host.work.second);
+            if (host.work.trace) host.work.second_end = Clock::now();
+        }, RegionHost::Parallel);
+        if (!result) return result;
+        auto* registry = &builder.registry();
+        result = builder.addSystemTask<RegionHost>(view.instanceId(), [registry](RegionHost& host) noexcept {
+            const auto control = registry->get<RegionControl>(host.work.control).value;
+            std::uint64_t total{};
+            for (std::size_t i{}; i < host.work.first.size(); ++i)
+                total += (host.work.first[i] ^ host.work.second[i]) * (control | 1U);
+            host.work.combined = total;
+        }, RegionHost::Middle);
+        if (!result) return result;
+        result = builder.addSystemTask<RegionHost>(view.instanceId(), [registry](RegionHost& host) noexcept {
+            host.work.published = host.work.combined ^ registry->get<RegionControl>(host.work.control).value;
+        }, RegionHost::Final);
+        if (!result) return result;
+        result = builder.addSystemHookTask<RegionHost>(view.instanceId(), RegionHost::First,
+            [](RegionHost& host, const HookInvocation& invocation) noexcept {
+                static_cast<void>(host.first.dispatch(invocation,
+                    static_cast<std::uint32_t>(host.work.first_sum ^ host.work.second_sum)));
+                auto writer = host.first_commands.begin();
+                return writer && writer->remove<RegionControl>(host.work.control) &&
+                    writer->emplace<RegionControl>(host.work.control,
+                        RegionControl{lux::simulation::benchmark::region_reaction});
+            });
+        if (!result) return result;
+        return builder.addSystemHookTask<RegionHost>(view.instanceId(), RegionHost::Stable,
+            [](RegionHost& host, const HookInvocation& invocation) noexcept {
+                static_cast<void>(host.stable.dispatch(invocation, static_cast<std::uint32_t>(host.work.combined)));
+                auto writer = host.stable_commands.begin();
+                return writer && writer->remove<RegionControl>(host.work.control) &&
+                    writer->emplace<RegionControl>(host.work.control,
+                        RegionControl{lux::simulation::benchmark::region_reaction});
+            });
+    }
+
+    void runNumericRegions(const Options& options, std::vector<Row>& rows)
+    {
+        ecs::Registry registry;
+        auto& work = registry.ctx().emplace<RegionWork>(options.size, options.seed);
+        work.trace = options.trace;
+        work.control = registry.create();
+        registry.emplace<RegionControl>(work.control);
+        SimulationDescriptionBuilder description;
+        if (!description.addSystem(RegionHost::Id, "regions", RegionHost::Description))
+            throw std::runtime_error("region description");
+        const auto task = [](SimulationTaskId id) { return SimulationExecutionPoint::task(RegionHost::Id, id); };
+        const auto hook = [](HookPointId id) { return SimulationExecutionPoint::hook(RegionHost::Id, id); };
+        for (const auto& edge : std::array{
+                std::pair{task(PrimarySimulationTask), hook(RegionHost::First)},
+                std::pair{task(RegionHost::Parallel), hook(RegionHost::First)},
+                std::pair{hook(RegionHost::First), task(RegionHost::Middle)},
+                std::pair{task(RegionHost::Middle), hook(RegionHost::Stable)},
+                std::pair{hook(RegionHost::Stable), task(RegionHost::Final)}})
+            if (!description.addExecutionDependency(edge.first, edge.second))
+                throw std::runtime_error("region order");
+        auto built = std::move(description).build();
+        SimulationSystemRegistry types;
+        if (!built || !types.add({.type = lux::system::systemTypeId(RegionHost::Description.type.canonical_name),
+            .cpp_type = lux::cxx::typeToken<RegionHost>(), .description = &RegionHost::Description,
+            .access = RegionHost::Access.spec(), .configuration = {}, .install = &installRegionHost}))
+            throw std::runtime_error("region registration");
+        const auto setup_begin = Clock::now();
+        auto simulation = Simulation::create(
+            registry, std::make_shared<SimulationDescription>(std::move(*built)), types
+        );
+        const auto setup_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - setup_begin).count();
+        auto executor = lux::task::TaskExecutor::create({options.workers, 32U});
+        auto projected = materializeCppStaticScript(generated::RegionScript);
+        if (!simulation || !executor || !projected) throw std::runtime_error("region preparation");
+        auto artifact = lux::script::ScriptArtifact::create(std::move(*projected), {});
+        const std::array pools{CppStaticScriptPoolDescription{&generated::RegionScript, 1U, 0U, 0U,
+            alignof(std::max_align_t), 2U}};
+        auto backend = CppStaticScriptBackend::create(pools);
+        ScriptSystemDescriptionBuilder mounts;
+        if (!artifact || !backend || !mounts.addMount({ScriptMountId{1U}, assetId(), SimulationScriptMount{}, true,
+            {{50690U, HookScriptTarget{RegionHost::Id, RegionHost::First}},
+             {50691U, HookScriptTarget{RegionHost::Id, RegionHost::Stable}}}}))
+            throw std::runtime_error("region Script mount");
+        auto mount_description = std::move(mounts).build(simulation->description());
+        const auto descriptor = backend->descriptor();
+        auto runtime = ScriptSystem::create(
+            simulation->description(), *mount_description, registry, simulation->clock(),
+            {8U, 1U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U},
+            {&*artifact, [](void* value, const lux::asset::AssetId&, ResolvedScriptArtifact& result) noexcept {
+                result = {static_cast<const lux::script::ScriptArtifact*>(value), nullptr, nullptr}; return true;
+            }}, {}, simulation->scriptApiCapabilities(), {&descriptor, 1U},
+            simulation->scriptHookEndpoints(), simulation->scriptEventEndpoints());
+        if (!runtime || !runtime->prepare()) throw std::runtime_error("region Script preparation");
+        auto connection = simulation->bindHookCallbacks({&*runtime,
+            [](void* value, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& script = *static_cast<ScriptSystem*>(value);
+                if (stable) script.beginStableAdmission();
+                return static_cast<bool>(script.processLifecycle());
+            },
+            [](void* value, const SimulationClockSnapshot&, bool stable) noexcept {
+                return !stable || static_cast<bool>(static_cast<ScriptSystem*>(value)->executeStablePoint());
+            },
+            [](void* value, const SimulationClockSnapshot&) noexcept {
+                return static_cast<bool>(static_cast<ScriptSystem*>(value)->processLifecycle());
+            }});
+        if (!connection) throw std::runtime_error("region bind");
+        Row setup;
+        setup.scenario = "region-graph-prepare"; setup.backend = "simulation"; setup.size = options.size;
+        setup.nanoseconds = static_cast<std::uint64_t>(setup_ns);
+        setup.graph_tasks = simulation->taskCount(); setup.graph_edges = simulation->dependencyCount();
+        setup.graph_walks = simulation->graphPreparationStats().reachability_walks;
+        setup.graph_edge_visits = simulation->graphPreparationStats().reachability_edge_visits;
+        rows.push_back(setup);
+        for (std::size_t step{}; step < options.warmups + options.frames; ++step)
+        {
+            auto row = measureRow("scene-region-numeric", "cpp-static-graph", options.size, step, [&] {
+                if (!simulation->execute(*executor, SimulationDuration{1}))
+                    throw std::runtime_error("region execution");
+                Row value;
+                value.calls = 2U; value.active_instances = 1U; value.checksum = work.published;
+                if (options.trace)
+                {
+                    const auto overlap = (std::min)(work.first_end, work.second_end) -
+                        (std::max)(work.first_begin, work.second_begin);
+                    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(overlap).count();
+                    value.producer_overlap_ns = static_cast<std::uint64_t>((std::max)(std::int64_t{0}, ns));
+                    value.distinct_producer_threads = work.first_thread != work.second_thread;
+                }
+                return value;
+            });
+            if (step >= options.warmups)
+            {
+                row.sample = step - options.warmups;
+                rows.push_back(std::move(row));
+            }
+        }
+        if (runtime->stats().sync_invocations != 2U * (options.warmups + options.frames))
+            throw std::runtime_error("region Script count");
+        connection->reset();
+        if (!runtime->shutdown()) throw std::runtime_error("region teardown");
+    }
+    struct GraphBuildTask final
+    {
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = "lux.benchmark.GraphTask", .version = 1U}
+        };
+    };
+    template <bool Stable>
+    struct GraphBuildHook final
+    {
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr std::array Hooks{makeHookPointSpec<void()>(HookPointId{1U}, "hook", true, Stable)};
+        inline static constexpr SimulationSystemDescription Description{
+            .type = {.canonical_name = Stable ? "lux.benchmark.GraphStable" : "lux.benchmark.GraphHook", .version = 1U},
+            .hooks = Hooks
+        };
+        explicit GraphBuildHook(lux::system::SystemInstanceId system) noexcept
+            : endpoint(system, HookPointId{1U}, point)
+        { valid = point.prepare(1U) == EEndpointMutationError::NONE; }
+        HookPoint<void()> point;
+        ScriptHookEndpoint<void()> endpoint;
+        bool valid{};
+    };
+    auto installGraphBuildTask(SimulationBuilder& builder, SimulationSystemView view) noexcept
+        -> lux::cxx::expected<void, SimulationSystemBuildFailure>
+    {
+        auto object = builder.emplaceSystem<GraphBuildTask>(view.instanceId());
+        if (!object) return lux::cxx::unexpected(object.error());
+        return builder.addSystemTask<GraphBuildTask>(view.instanceId(), [](GraphBuildTask&) noexcept {});
+    }
+    template <bool Stable>
+    auto installGraphBuildHook(SimulationBuilder& builder, SimulationSystemView view) noexcept
+        -> lux::cxx::expected<void, SimulationSystemBuildFailure>
+    {
+        using Host = GraphBuildHook<Stable>;
+        auto object = builder.emplaceSystem<Host>(view.instanceId(), view.instanceId());
+        if (!object) return lux::cxx::unexpected(object.error());
+        if (!(*object)->valid) return lux::cxx::unexpected(SimulationSystemBuildFailure{
+            ESimulationSystemBuildError::CONSTRUCTION_FAILURE, view.instanceId()});
+        auto result = builder.addSystemTask<Host>(view.instanceId(), [](Host&) noexcept {});
+        if (!result) return result;
+        result = builder.publishScriptHook(view.instanceId(), (*object)->endpoint.descriptor());
+        if (!result) return result;
+        return builder.addSystemHookTask<Host>(view.instanceId(), HookPointId{1U},
+            [](Host&, const HookInvocation&) noexcept {});
+    }
+
+    void runGraphBuild(const Options& options, std::vector<Row>& rows)
+    {
+        if (options.size <= options.hooks * 2U || options.size > 1024U)
+            throw std::runtime_error("graph size/hook count");
+        const auto task_count = options.size - options.hooks * 2U;
+        const auto task_id = [](std::size_t i) { return lux::system::SystemInstanceId{i + 100U}; };
+        const auto hook_id = [](std::size_t i) { return lux::system::SystemInstanceId{i + 2000U}; };
+        const auto hook = [&](std::size_t i) { return SimulationExecutionPoint::hook(hook_id(i), HookPointId{1U}); };
+        SimulationSystemRegistry types;
+        const auto add_type = [&]<class Type>(auto install) {
+            return types.add({.type = lux::system::systemTypeId(Type::Description.type.canonical_name),
+                .cpp_type = lux::cxx::typeToken<Type>(), .description = &Type::Description,
+                .access = Type::Access.spec(), .configuration = {}, .install = install});
+        };
+        if (!add_type.operator()<GraphBuildTask>(&installGraphBuildTask) ||
+            !add_type.operator()<GraphBuildHook<false>>(&installGraphBuildHook<false>) ||
+            !add_type.operator()<GraphBuildHook<true>>(&installGraphBuildHook<true>))
+            throw std::runtime_error("graph types");
+        for (std::size_t sample{}; sample < options.warmups + options.frames; ++sample)
+        {
+            ecs::Registry registry;
+            SimulationDescriptionBuilder builder;
+            for (std::size_t i{}; i < task_count; ++i)
+                if (!builder.addSystem(task_id(i), "task" + std::to_string(i), GraphBuildTask::Description))
+                    throw std::runtime_error("graph task description");
+            for (std::size_t i{}; i < options.hooks; ++i)
+            {
+                const auto& description = i + 1U == options.hooks
+                    ? GraphBuildHook<true>::Description : GraphBuildHook<false>::Description;
+                if (!builder.addSystem(hook_id(i), "hook" + std::to_string(i), description))
+                    throw std::runtime_error("graph Hook description");
+                const auto primary = SimulationExecutionPoint::task(hook_id(i));
+                if (!builder.addExecutionDependency(primary, hook(i)) ||
+                    (i != 0U && !builder.addExecutionDependency(hook(i - 1U), primary)))
+                    throw std::runtime_error("graph Hook order");
+            }
+            const auto region = [&](std::size_t task) { return task * (options.hooks + 1U) / task_count; };
+            for (std::size_t index{}; index < task_count; ++index)
+            {
+                const auto current = SimulationExecutionPoint::task(task_id(index));
+                const auto group = region(index);
+                if ((group != 0U && !builder.addExecutionDependency(hook(group - 1U), current)) ||
+                    (group < options.hooks && !builder.addExecutionDependency(current, hook(group))))
+                    throw std::runtime_error("graph region order");
+                if (options.dense_graph)
+                    for (std::size_t previous{}; previous < index; ++previous)
+                        if (region(previous) == group && !builder.addExecutionDependency(
+                            SimulationExecutionPoint::task(task_id(previous)), current))
+                            throw std::runtime_error("dense edge");
+            }
+            auto built = std::move(builder).build();
+            if (!built) throw std::runtime_error("graph description");
+            auto shared = std::make_shared<SimulationDescription>(std::move(*built));
+            auto row = measureRow(options.dense_graph ? "graph-build-dense" : "graph-build-sparse",
+                "simulation", options.size, sample, [&] {
+                    auto simulation = Simulation::create(registry, shared, types);
+                    if (!simulation) throw std::runtime_error("graph compilation");
+                    const auto stats = simulation->graphPreparationStats();
+                    Row row;
+                    row.graph_tasks = simulation->taskCount(); row.graph_edges = simulation->dependencyCount();
+                    row.graph_walks = stats.reachability_walks; row.graph_edge_visits = stats.reachability_edge_visits;
+                    row.checksum = row.graph_tasks + row.graph_edges;
+                    if (row.graph_walks != 2U * options.hooks) throw std::runtime_error("Hook reachability repeated");
+                    return row;
+                });
+            if (sample >= options.warmups)
+            {
+                row.sample = sample - options.warmups;
+                rows.push_back(std::move(row));
+            }
+        }
+    }
 } // namespace
 
 int main(int argc, char** argv)
@@ -2750,7 +3193,11 @@ int main(int argc, char** argv)
     try
     {
         std::vector<Row> rows;
-        if (options->group == "micro-hook-channel")
+        if (options->group == "graph-build")
+            runGraphBuild(*options, rows);
+        else if (options->group == "scene-region-numeric")
+            runNumericRegions(*options, rows);
+        else if (options->group == "micro-hook-channel")
             runHookChannelMicro(*options, rows);
         else if (options->group == "micro-sync")
             runMicroSync(*options, rows);
@@ -2758,6 +3205,8 @@ int main(int argc, char** argv)
             runAsyncPhases(*options, rows);
         else if (options->group == "micro-lifecycle")
             runLifecycle(*options, rows);
+        else if (options->group == "scene-cpp-update-heavy")
+            runCppObjectFrames(*options, rows);
         else if (options->group == "scene-update-heavy")
             runObjectFrames(*options, rows, EScenarioMode::SYNC, options->group);
         else if (options->group == "scene-gameplay-mixed")

@@ -18,6 +18,9 @@ foreach(group IN ITEMS
     scene-event-fanout
     scene-event-sparse
     scene-update-heavy
+    scene-cpp-update-heavy
+    scene-region-numeric
+    graph-build
     scene-gameplay-mixed
     scene-suspended-idle
     scene-resume-storm

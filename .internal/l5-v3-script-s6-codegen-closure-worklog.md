@@ -229,3 +229,12 @@ No final production/qualification candidate, optimization speedup, framework fre
   Removed retired reflection-era CppStatic runtime error values.
 - I06 Developer all + 21/21 focused Hook/Lua/Event/Scene tests pass (`v3d/i06-tests.log`, 2.75 seconds).
   No final correctness/performance qualification or freeze claim is made yet.
+- Added benchmark-only representative groups: real generated CppStatic long-lived Update, numeric multi-Region
+  Simulation (two independent integration tasks, two actual C++ Script reactions, two command commits and propagation),
+  and sparse/dense cold graph creation at bounded node/Hook counts. No sleep or empty task is used as the B09 compute work.
+- Smoke checks pass. 0/4-worker numeric checksums agree; diagnostic 20k runs show different producer threads and
+  overlapping execution intervals. A 1024-node/8-Hook dense graph records exactly 16 reachability walks.
+  These are structural/smoke observations, NOT the required five-pair timing result.
+- CSV schema 7 records workers, Event operation counts, graph counts and explicit trace flags. New source-composed
+  C++/graph benchmark groups require separately identified benchmark-driver comparison; they were absent in the
+  frozen Bcompare executable. Existing groups retain their comparable workload semantics.

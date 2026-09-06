@@ -51,6 +51,15 @@ foreach(group IN ITEMS
 endforeach()
 
 foreach(requirements IN ITEMS 1 4 16 64)
+    foreach(route IN ITEMS broadcast targeted)
+        execute_process(COMMAND "${EXECUTABLE}" --group micro-cpp-event-wait --mode diagnostic
+            --size 32 --frames 2 --warmups 1 --resume-budget 8 --event-route ${route}
+            --event-requirements ${requirements} --output "${OUTPUT_DIR}/cpp-event-${route}-${requirements}.csv"
+            RESULT_VARIABLE cpp_result OUTPUT_VARIABLE cpp_output ERROR_VARIABLE cpp_error TIMEOUT 60)
+        if(NOT cpp_result EQUAL 0)
+            message(FATAL_ERROR "C++ ${route}/${requirements} Event benchmark failed: ${cpp_output} ${cpp_error}")
+        endif()
+    endforeach()
     execute_process(COMMAND "${EXECUTABLE}" --group micro-event-wait --mode diagnostic
         --size 64 --frames 2 --warmups 1 --event-route targeted --event-requirements ${requirements}
         --output "${OUTPUT_DIR}/targeted-${requirements}.csv"

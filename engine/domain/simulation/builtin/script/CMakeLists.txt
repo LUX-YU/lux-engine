@@ -385,6 +385,28 @@ lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppSequence
     ABILITY_HEADERS lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp
         ScriptBenchmarkAbility.ability.generated.hpp
     EVENT_SCHEMA "${sequence_schema}" EVENT_NAMES Benchmark.event DEPENDS script_sequence_schema)
+foreach(count IN ITEMS 1 4 16 64)
+    set(event_names)
+    if(count GREATER 1)
+        math(EXPR last "${count} - 2")
+        foreach(index RANGE 0 ${last})
+            list(APPEND event_names "Benchmark.extra${index}")
+        endforeach()
+    endif()
+    foreach(route IN ITEMS Broadcast Targeted)
+        if(route STREQUAL "Broadcast")
+            set(final_event Benchmark.event)
+        else()
+            set(final_event Benchmark.target_event)
+        endif()
+        lux_cpp_static_scripts(TARGET script_runtime_benchmark NAME CppEvent${route}${count}
+            SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/CppSequenceScript.hpp LOGICAL_PATH CppSequenceScript.hpp
+            MODULE lux.benchmark.cpp-event-${route}-${count} DESCRIPTOR cpp-event-${route}-${count}
+            OWNER lux::simulation::benchmark::CppEventWaitScript SCOPE ENTITY
+            SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/cpp.symbols.json
+            EVENT_SCHEMA "${sequence_schema}" EVENT_NAMES ${event_names} ${final_event} DEPENDS script_sequence_schema)
+    endforeach()
+endforeach()
 find_package(nlohmann_json CONFIG REQUIRED)
 target_link_libraries(script_binding_authoring_test PRIVATE simulation_script
     lux::engine::simulation::simulation_script_cpp_static lux::engine::core::type_info nlohmann_json::nlohmann_json)

@@ -6,6 +6,14 @@
 #include "CppBenchmarkScripts.CppUpdate.script.generated.hpp"
 #include "CppSequenceScript.hpp"
 #include "CppSequenceScript.CppSequence.script.generated.hpp"
+#include "CppSequenceScript.CppEventBroadcast1.script.generated.hpp"
+#include "CppSequenceScript.CppEventBroadcast4.script.generated.hpp"
+#include "CppSequenceScript.CppEventBroadcast16.script.generated.hpp"
+#include "CppSequenceScript.CppEventBroadcast64.script.generated.hpp"
+#include "CppSequenceScript.CppEventTargeted1.script.generated.hpp"
+#include "CppSequenceScript.CppEventTargeted4.script.generated.hpp"
+#include "CppSequenceScript.CppEventTargeted16.script.generated.hpp"
+#include "CppSequenceScript.CppEventTargeted64.script.generated.hpp"
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
@@ -271,7 +279,8 @@ namespace
             std::string_view{"scene-event-sparse"},
             std::string_view{"micro-cpp-coroutine"},
             std::string_view{"scene-cpp-sequence"},
-            std::string_view{"scene-lua-sequence"}
+            std::string_view{"scene-lua-sequence"},
+            std::string_view{"micro-cpp-event-wait"}
 #if LUX_BENCHMARK_HAS_LUA
             , std::string_view{"micro-lua-sync"}
             , std::string_view{"micro-lua-ability-query"}
@@ -808,7 +817,8 @@ namespace
             std::size_t event_requirements = 1U,
             bool shared_target = false,
             const ScriptBackendDescriptor* supplied_backend = nullptr,
-            const lux::script::ScriptArtifact* supplied_artifact = nullptr
+            const lux::script::ScriptArtifact* supplied_artifact = nullptr,
+            lux::script::ScriptSymbolId supplied_symbol = kTick
         )
             : simulation_description(scriptDescription(event_requirements - 1U)),
               backend_state{.mode = mode}, entity_scope(entity_scope), multi_flight_target(shared_target),
@@ -843,7 +853,7 @@ namespace
                         assetId(),
                         scope,
                         true,
-                        {{kTick, shared_target ? ScriptBindingTarget{EventScriptTarget{kSystem, kEvent}}
+                        {{supplied_symbol, shared_target ? ScriptBindingTarget{EventScriptTarget{kSystem, kEvent}}
                                               : ScriptBindingTarget{HookScriptTarget{kSystem, kHook}}}}
                     }))
                 {
@@ -2015,9 +2025,102 @@ namespace
                 true, true, 1U, false, &descriptor, &*artifact};
             runSequenceFrames(options, rows, harness, "scene-cpp-sequence");
         }
-        if (backend->stats().active_frames != 0U || backend->stats().heap_frame_allocations != 0U)
+        const auto storage = backend->stats();
+        const bool invalid_storage = storage.active_frames != 0U || storage.heap_frame_allocations != 0U;
+        if (invalid_storage)
             throw std::runtime_error("C++ sequence frame lifetime/storage failure");
         lux::simulation::benchmark::sequence_event.reset();
+    }
+
+    void runCppEventWait(const Options& options, std::vector<Row>& rows)
+    {
+        const std::array broadcast{&generated::CppEventBroadcast1, &generated::CppEventBroadcast4,
+            &generated::CppEventBroadcast16, &generated::CppEventBroadcast64};
+        const std::array targeted{&generated::CppEventTargeted1, &generated::CppEventTargeted4,
+            &generated::CppEventTargeted16, &generated::CppEventTargeted64};
+        constexpr std::array counts{1U, 4U, 16U, 64U};
+        const auto found = std::ranges::find(counts, options.event_requirements);
+        if (found == counts.end()) throw std::runtime_error("C++ Event benchmark requires a generated layout");
+        const auto index = static_cast<std::size_t>(found - counts.begin());
+        const auto& contract = *(options.targeted_event ? targeted[index] : broadcast[index]);
+        auto description = materializeCppStaticScript(contract);
+        if (!description) throw std::runtime_error("C++ Event generated contract invalid");
+        auto artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
+        if (!artifact) throw std::runtime_error("C++ Event artifact invalid");
+        auto event = CppScriptEventSource<std::int32_t>::create(contract,
+            artifact->description().event_requirements.back());
+        if (!event) throw std::runtime_error("C++ Event source invalid");
+        lux::simulation::benchmark::event_only_source = *event;
+        for (std::size_t iteration{}; iteration < options.warmups + options.frames; ++iteration)
+        {
+            const auto instances = options.targeted_event ? 1U : options.size;
+            const std::array pools{CppStaticScriptPoolDescription{
+                &contract, instances, options.size, options.size * 2048U + 65536U,
+                alignof(std::max_align_t), instances, 512U
+            }};
+            auto backend = CppStaticScriptBackend::create(pools);
+            if (!backend) throw std::runtime_error("C++ Event backend failed");
+            const auto descriptor = backend->descriptor();
+            RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget,
+                true, true, options.event_requirements, options.targeted_event, &descriptor, &*artifact,
+                options.targeted_event ? lux::script::ScriptSymbolId{50693U} : kTick};
+            lux::simulation::benchmark::event_only_checksum = 0U;
+            const auto first = rows.size();
+            const auto snapshot = [&] {
+                const auto stats = harness.system->stats();
+                Row row;
+                row.active_instances = stats.active_instances;
+                row.calls = stats.step_invocations;
+                row.resumes = stats.backend_resume_calls;
+                row.suspensions = stats.suspensions_admitted;
+                row.continuations = stats.active_continuations;
+                row.awaitables = stats.active_awaitables;
+                row.event_waiters = stats.active_event_waiters;
+                row.queue_depth = stats.resume_queue_depth;
+                row.queue_high_water = stats.resume_queue_high_water;
+                row.event_dispatch_visits = stats.event_waiter_dispatch_visits;
+                row.claim_lookups = stats.event_route_claim_lookups;
+                row.actual_copy_bytes = stats.event_payload_copy_bytes;
+                row.completion_capabilities = stats.completion_capability_constructions;
+                row.checksum = lux::simulation::benchmark::event_only_checksum;
+                return row;
+            };
+            rows.push_back(measureRow("cpp-event-register", "cpp-static-event", options.size, iteration, [&] {
+                harness.registerEventWaiters();
+                return snapshot();
+            }));
+            if (harness.system->stats().active_event_waiters != options.size)
+                throw std::runtime_error("C++ Event registration lost a flight");
+            rows.push_back(measureRow("cpp-event-deliver", "cpp-static-event", options.size, iteration, [&] {
+                harness.deliverEvent(31, options.targeted_event ? std::optional<std::size_t>{0U} : std::nullopt);
+                return snapshot();
+            }));
+            if (lux::simulation::benchmark::event_only_checksum != 0U)
+                throw std::runtime_error("C++ Event dispatch resumed user code");
+            std::size_t drains{};
+            while (harness.system->activeContinuationCount() != 0U)
+            {
+                const auto before = harness.system->stats().backend_resume_calls;
+                rows.push_back(measureRow("cpp-event-resume", "cpp-static-event", options.size, iteration, [&] {
+                    harness.advance(SimulationDuration{1});
+                    harness.stablePoint();
+                    return snapshot();
+                }));
+                ++drains;
+                const bool invalid_resume_count =
+                    harness.system->stats().backend_resume_calls - before > options.resume_budget;
+                const auto expected_drains = (options.size + options.resume_budget - 1U) / options.resume_budget;
+                const bool invalid_drain_count = drains > expected_drains;
+                if (invalid_resume_count || invalid_drain_count)
+                    throw std::runtime_error("C++ Event resume budget/drain mismatch");
+            }
+            const bool invalid_completion = harness.system->stats().active_awaitables != 0U ||
+                lux::simulation::benchmark::event_only_checksum != 31U * options.size;
+            if (invalid_completion)
+                throw std::runtime_error("C++ Event payload/lifetime mismatch");
+            if (iteration < options.warmups) rows.resize(first);
+        }
+        lux::simulation::benchmark::event_only_source.reset();
     }
 
     void runHookChannelMicro(const Options& options, std::vector<Row>& rows)
@@ -3279,6 +3382,8 @@ int main(int argc, char** argv)
             runCppCoroutineMicro(*options, rows);
         else if (options->group == "scene-cpp-sequence")
             runCppSequence(*options, rows);
+        else if (options->group == "micro-cpp-event-wait")
+            runCppEventWait(*options, rows);
 #if LUX_BENCHMARK_HAS_LUA
         else if (options->group == "micro-lua-sync")
             runLuaSync(*options, rows, kLuaPlain, options->group);

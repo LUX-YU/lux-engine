@@ -1,0 +1,32 @@
+[
+  {
+    "source_sha": "ab0eb127493799ab914f3976ad3273dfe9246660",
+    "profile": "developer",
+    "build_type": "RelWithDebInfo",
+    "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\q\\d",
+    "prefix": "E:\\SyncForder\\CodeRepos\\install\\q\\d",
+    "ctest_exit": 0,
+    "second_build_noop": true,
+    "install_exit": 0,
+    "status": "PASS",
+    "ctest_summary": [
+      "100% tests passed, 0 tests failed out of 237",
+      "Total Test time (real) =  98.59 sec"
+    ]
+  },
+  {
+    "source_sha": "ab0eb127493799ab914f3976ad3273dfe9246660",
+    "profile": "toolchain",
+    "build_type": "RelWithDebInfo",
+    "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\q\\t",
+    "prefix": "E:\\SyncForder\\CodeRepos\\install\\q\\t",
+    "ctest_exit": 0,
+    "second_build_noop": true,
+    "install_exit": 1,
+    "status": "FAILED",
+    "ctest_summary": [
+      "100% tests passed, 0 tests failed out of 215",
+      "Total Test time (real) =  98.37 sec"
+    ]
+  }
+]

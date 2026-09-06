@@ -1,0 +1,2 @@
+# Preserve exact evidence bytes so the recorded SHA256 values survive checkout.
+* -text

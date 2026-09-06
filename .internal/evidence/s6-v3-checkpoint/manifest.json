@@ -1,0 +1,146 @@
+{
+  "status": "BLOCKED",
+  "date": "2026-09-06",
+  "engine_production_sha": "babbd2d220aba2d957c5628781db6157258d5f8e",
+  "engine_driver_sha": "d1337df715402a502d2ba195d196e5b2a9e45f29",
+  "lux_cxx_sha": "af25d29dbd54b6e140ca24814508bbde91fac13a",
+  "toolset_read_only_sha": "961c63eda82448b8108219461ba624ff016b2297",
+  "build_type": "RelWithDebInfo",
+  "compiler": "MSVC-19.44.35228.0",
+  "matrix": [
+    {
+      "source": "ab0eb127493799ab914f3976ad3273dfe9246660",
+      "configuration": "DEVELOPER-LuaJIT-Physics-ON",
+      "all": 0,
+      "ctest": {
+        "passed": 237,
+        "total": 237,
+        "seconds": 98.59
+      },
+      "noop": true,
+      "install": 0
+    },
+    {
+      "source": "ab0eb127493799ab914f3976ad3273dfe9246660",
+      "configuration": "TOOLCHAIN",
+      "all": 0,
+      "ctest": {
+        "passed": 215,
+        "total": 215,
+        "seconds": 98.37
+      },
+      "noop": true,
+      "install": 1
+    },
+    {
+      "source": "babbd2d220aba2d957c5628781db6157258d5f8e",
+      "configuration": "TOOLCHAIN-install-fix",
+      "all": 0,
+      "ctest": {
+        "passed": 215,
+        "total": 215,
+        "seconds": 72.24
+      },
+      "noop": true,
+      "install": 0
+    },
+    {
+      "source": "af25d29dbd54b6e140ca24814508bbde91fac13a",
+      "configuration": "lux-cxx-first-clean",
+      "all": 0,
+      "ctest": {
+        "passed": 50,
+        "total": 50,
+        "seconds": 14.01
+      },
+      "install": 0,
+      "notes": "Two generator tests require reconfigure after generator executable exists; not yet done."
+    }
+  ],
+  "interrupted": [
+    "DEVELOPER-Physics-OFF build"
+  ],
+  "not_run": [
+    "Lua-disabled",
+    "Lua54",
+    "final-selected-stress-100x",
+    "formal-five-pair-performance",
+    "full-relocated-consumers"
+  ],
+  "not_requested": [
+    "Debug",
+    "Release",
+    "PLAYER",
+    "EDITOR",
+    "Android",
+    "Linux"
+  ],
+  "relocation": {
+    "status": "FAILED",
+    "configure_exit": 1,
+    "expected_prefix": "D:/LuxV3RelocationProbe/c",
+    "actual_include": "E:/SyncForder/CodeRepos/install/q/c/include",
+    "cause": "lux-cmake-toolset emits absolute install/import destinations",
+    "installed_files_modified": false
+  },
+  "validators": {
+    "tracked": 0,
+    "source_architecture": 0,
+    "source_style": 0,
+    "installed_developer": 0,
+    "installed_toolchain": 0,
+    "notes": "These validators do not establish relocation."
+  },
+  "evidence": [
+    {
+      "file": "developer-ctest.log",
+      "sha256": "6C13C213646A46D844ACA042E9BA13234ECA0C5E72CA82CEDDE55E76BCF21483",
+      "bytes": 39107
+    },
+    {
+      "file": "developer-noop.log",
+      "sha256": "7716162F3CD3B99CF3B8A8DD6DECF324E08C7E941AAE7E730BABA5E4FC8C075B",
+      "bytes": 65
+    },
+    {
+      "file": "toolchain-original-ctest.log",
+      "sha256": "D329D6F58B34328C99906689521B640F3B8E945B85C0BC1DFFD32D42DC5F1238",
+      "bytes": 33726
+    },
+    {
+      "file": "toolchain-original-install-failure.log",
+      "sha256": "BC604241ACBF4D6D8EF7FA0780D61895970CE3D5CDC0BE9B7111B97C0BD98BA4",
+      "bytes": 896139
+    },
+    {
+      "file": "toolchain-fixed-ctest.log",
+      "sha256": "E21400AB7984683A544A16BAB1906568F9E05D8864CAAFC5B7E21BB30ED0106F",
+      "bytes": 33726
+    },
+    {
+      "file": "toolchain-fixed-noop.log",
+      "sha256": "7716162F3CD3B99CF3B8A8DD6DECF324E08C7E941AAE7E730BABA5E4FC8C075B",
+      "bytes": 65
+    },
+    {
+      "file": "cxx-first-clean-ctest.log",
+      "sha256": "922B7F1DFDBC94F534FA2E2C09739566DAD2C13ACAB9B7DA5C44D9A80D03DCCF",
+      "bytes": 5501
+    },
+    {
+      "file": "relocation-failure.log",
+      "sha256": "3160CEE77920BBF595A8CD2BAD3183DA45B30B6A1059168E8F59043C292B6F8E",
+      "bytes": 264
+    },
+    {
+      "file": "relocation-paths.txt",
+      "sha256": "11CAA141FCCBCAD00AB7A1B2D5A2CB55A63F490F0AD0042634C22199E144B325",
+      "bytes": 164
+    },
+    {
+      "file": "initial-matrix.json",
+      "sha256": "EC82E9628A8F62B7FB36EC4756AAA5D94C274500AB38AA69815E61D554493E31",
+      "bytes": 1013
+    }
+  ]
+}

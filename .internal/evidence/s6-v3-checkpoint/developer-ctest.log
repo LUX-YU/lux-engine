@@ -1,0 +1,502 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/q/d
+        Start   1: architecture_world_domain_positive
+  1/237 Test   #1: architecture_world_domain_positive .............................   Passed    3.93 sec
+        Start   2: architecture_simulation_domain_positive
+  2/237 Test   #2: architecture_simulation_domain_positive ........................   Passed    1.64 sec
+        Start   3: architecture_simulation_world_negative
+  3/237 Test   #3: architecture_simulation_world_negative .........................   Passed    1.59 sec
+        Start   4: architecture_domain_world_negative
+  4/237 Test   #4: architecture_domain_world_negative .............................   Passed    1.64 sec
+        Start   5: architecture_domain_simulation_negative
+  5/237 Test   #5: architecture_domain_simulation_negative ........................   Passed    1.63 sec
+        Start   6: architecture_process_world_loading_positive
+  6/237 Test   #6: architecture_process_world_loading_positive ....................   Passed    1.63 sec
+        Start   7: architecture_scene_process_positive
+  7/237 Test   #7: architecture_scene_process_positive ............................   Passed    1.68 sec
+        Start   8: architecture_process_scene_negative
+  8/237 Test   #8: architecture_process_scene_negative ............................   Passed    1.61 sec
+        Start   9: architecture_scene_editor_negative
+  9/237 Test   #9: architecture_scene_editor_negative .............................   Passed    1.67 sec
+        Start  10: architecture_toolchain_function_positive
+ 10/237 Test  #10: architecture_toolchain_function_positive .......................   Passed    1.69 sec
+        Start  11: architecture_toolchain_editor_negative
+ 11/237 Test  #11: architecture_toolchain_editor_negative .........................   Passed    1.62 sec
+        Start  12: architecture_editor_toolchain_positive
+ 12/237 Test  #12: architecture_editor_toolchain_positive .........................   Passed    1.66 sec
+        Start  13: architecture_function_toolchain_negative
+ 13/237 Test  #13: architecture_function_toolchain_negative .......................   Passed    1.66 sec
+        Start  14: script_core_contract_test
+ 14/237 Test  #14: script_core_contract_test ......................................   Passed    0.03 sec
+        Start  15: async_port_contract_test
+ 15/237 Test  #15: async_port_contract_test .......................................   Passed    0.02 sec
+        Start  16: runtime_object_test
+ 16/237 Test  #16: runtime_object_test ............................................   Passed    0.03 sec
+        Start  17: type_static_info_test
+ 17/237 Test  #17: type_static_info_test ..........................................   Passed    0.03 sec
+        Start  18: object_signal_test
+ 18/237 Test  #18: object_signal_test .............................................   Passed    0.03 sec
+        Start  19: object_dispatcher_test
+ 19/237 Test  #19: object_dispatcher_test .........................................   Passed    0.03 sec
+        Start  20: object_lifetime_test
+ 20/237 Test  #20: object_lifetime_test ...........................................   Passed    0.03 sec
+        Start  21: object_throwing_event_override_probe
+ 21/237 Test  #21: object_throwing_event_override_probe ...........................   Passed    0.58 sec
+        Start  22: object_manual_signal_index_probe
+ 22/237 Test  #22: object_manual_signal_index_probe ...............................   Passed    0.49 sec
+        Start  23: object_throwing_callback_probe
+ 23/237 Test  #23: object_throwing_callback_probe .................................   Passed    0.58 sec
+        Start  24: object_missing_codegen_probe
+ 24/237 Test  #24: object_missing_codegen_probe ...................................   Passed    0.73 sec
+        Start  25: object_public_affinity_probe
+ 25/237 Test  #25: object_public_affinity_probe ...................................   Passed    0.61 sec
+        Start  26: object_retired_fwd_header_probe
+ 26/237 Test  #26: object_retired_fwd_header_probe ................................   Passed    0.30 sec
+        Start  27: object_scoped_connection_getter_probe
+ 27/237 Test  #27: object_scoped_connection_getter_probe ..........................   Passed    0.47 sec
+        Start  28: object_sender_self_destroy_probe
+ 28/237 Test  #28: object_sender_self_destroy_probe ...............................   Passed    0.12 sec
+        Start  29: object_foreign_disconnect_without_dispatcher_probe
+ 29/237 Test  #29: object_foreign_disconnect_without_dispatcher_probe .............   Passed    0.10 sec
+        Start  30: object_foreign_disconnect_closed_dispatcher_probe
+ 30/237 Test  #30: object_foreign_disconnect_closed_dispatcher_probe ..............   Passed    0.10 sec
+        Start  31: object_release_benchmark
+ 31/237 Test  #31: object_release_benchmark .......................................   Passed    0.82 sec
+        Start  32: object_reflection_test
+ 32/237 Test  #32: object_reflection_test .........................................   Passed    0.04 sec
+        Start  33: object_cross_dll_test
+ 33/237 Test  #33: object_cross_dll_test ..........................................   Passed    0.03 sec
+        Start  34: binary_serialization_test
+ 34/237 Test  #34: binary_serialization_test ......................................   Passed    0.04 sec
+        Start  35: portable_value_codec_test
+ 35/237 Test  #35: portable_value_codec_test ......................................   Passed    0.03 sec
+        Start  36: serialization_missing_budget_negative
+ 36/237 Test  #36: serialization_missing_budget_negative ..........................   Passed    0.60 sec
+        Start  37: task_graph_test
+ 37/237 Test  #37: task_graph_test ................................................   Passed    0.08 sec
+        Start  38: resource_identity_contract_test
+ 38/237 Test  #38: resource_identity_contract_test ................................   Passed    0.03 sec
+        Start  39: script_description_contract_test
+ 39/237 Test  #39: script_description_contract_test ...............................   Passed    0.04 sec
+        Start  40: visual_description_contract_test
+ 40/237 Test  #40: visual_description_contract_test ...............................   Passed    0.03 sec
+        Start  41: cooked_asset_image_test
+ 41/237 Test  #41: cooked_asset_image_test ........................................   Passed    0.05 sec
+        Start  42: typed_asset_test
+ 42/237 Test  #42: typed_asset_test ...............................................   Passed    0.04 sec
+        Start  43: typed_material_asset_test
+ 43/237 Test  #43: typed_material_asset_test ......................................   Passed    0.03 sec
+        Start  44: typed_metadata_asset_test
+ 44/237 Test  #44: typed_metadata_asset_test ......................................   Passed    0.04 sec
+        Start  45: typed_model_2d_asset_test
+ 45/237 Test  #45: typed_model_2d_asset_test ......................................   Passed    0.03 sec
+        Start  46: typed_shader_asset_test
+ 46/237 Test  #46: typed_shader_asset_test ........................................   Passed    0.02 sec
+        Start  47: typed_texture_asset_test
+ 47/237 Test  #47: typed_texture_asset_test .......................................   Passed    0.03 sec
+        Start  48: pak_archive_public_test
+ 48/237 Test  #48: pak_archive_public_test ........................................   Passed    0.08 sec
+        Start  49: asset_storage_contract_test
+ 49/237 Test  #49: asset_storage_contract_test ....................................   Passed    0.03 sec
+        Start  50: asset_vfs_view_test
+ 50/237 Test  #50: asset_vfs_view_test ............................................   Passed    0.03 sec
+        Start  51: graph_source_test
+ 51/237 Test  #51: graph_source_test ..............................................   Passed    0.03 sec
+        Start  52: flowforge_dynamism
+ 52/237 Test  #52: flowforge_dynamism .............................................   Passed    0.04 sec
+        Start  53: flowforge_script_ability_node
+ 53/237 Test  #53: flowforge_script_ability_node ..................................   Passed    0.03 sec
+        Start  54: render_program_test
+ 54/237 Test  #54: render_program_test ............................................   Passed    0.03 sec
+        Start  55: render_feature_registration_test
+ 55/237 Test  #55: render_feature_registration_test ...............................   Passed    0.03 sec
+        Start  56: render_program_server_semantics_test
+ 56/237 Test  #56: render_program_server_semantics_test ...........................   Passed    0.03 sec
+        Start  57: render_entity_identity_test
+ 57/237 Test  #57: render_entity_identity_test ....................................   Passed    0.03 sec
+        Start  58: render_builtin_content_seam_test
+ 58/237 Test  #58: render_builtin_content_seam_test ...............................   Passed    0.02 sec
+        Start  59: script_artifact_codec_test
+ 59/237 Test  #59: script_artifact_codec_test .....................................   Passed    0.03 sec
+        Start  60: script_native_runtime_contract_test
+ 60/237 Test  #60: script_native_runtime_contract_test ............................   Passed    0.05 sec
+        Start  61: ui_test
+ 61/237 Test  #61: ui_test ........................................................   Passed    0.04 sec
+        Start  62: ui_reentrancy_test
+ 62/237 Test  #62: ui_reentrancy_test .............................................   Passed    0.04 sec
+        Start  63: ui_demo
+ 63/237 Test  #63: ui_demo ........................................................   Passed    0.03 sec
+        Start  64: ui_throwing_command_probe
+ 64/237 Test  #64: ui_throwing_command_probe ......................................   Passed    0.71 sec
+        Start  65: ui_public_route_mutation_probe
+ 65/237 Test  #65: ui_public_route_mutation_probe .................................   Passed    0.70 sec
+        Start  66: ui_public_command_pointer_probe
+ 66/237 Test  #66: ui_public_command_pointer_probe ................................   Passed    0.71 sec
+        Start  67: ui_retired_menu_model_probe
+ 67/237 Test  #67: ui_retired_menu_model_probe ....................................   Passed    0.75 sec
+        Start  68: ui_retired_toolbar_model_probe
+ 68/237 Test  #68: ui_retired_toolbar_model_probe .................................   Passed    0.71 sec
+        Start  69: ui_menu_aggregate_probe
+ 69/237 Test  #69: ui_menu_aggregate_probe ........................................   Passed    0.71 sec
+        Start  70: ui_toolbar_aggregate_probe
+ 70/237 Test  #70: ui_toolbar_aggregate_probe .....................................   Passed    0.70 sec
+        Start  71: ui_layout_default_probe
+ 71/237 Test  #71: ui_layout_default_probe ........................................   Passed    0.71 sec
+        Start  72: ui_release_benchmark
+ 72/237 Test  #72: ui_release_benchmark ...........................................   Passed    0.14 sec
+        Start  73: ui_drawdata_test
+ 73/237 Test  #73: ui_drawdata_test ...............................................   Passed    0.03 sec
+        Start  74: ui_drag_drop_scope_test
+ 74/237 Test  #74: ui_drag_drop_scope_test ........................................   Passed    0.03 sec
+        Start  75: ui_public_frame_test
+ 75/237 Test  #75: ui_public_frame_test ...........................................   Passed    0.03 sec
+        Start  76: ui_backend_string_view_test
+ 76/237 Test  #76: ui_backend_string_view_test ....................................   Passed    0.03 sec
+        Start  77: ui_backend_string_boundary_guard
+ 77/237 Test  #77: ui_backend_string_boundary_guard ...............................   Passed    0.02 sec
+        Start  78: ui_wrong_thread_pane_registration_probe
+ 78/237 Test  #78: ui_wrong_thread_pane_registration_probe ........................   Passed    0.11 sec
+        Start  79: ui_wrong_thread_command_registration_probe
+ 79/237 Test  #79: ui_wrong_thread_command_registration_probe .....................   Passed    0.10 sec
+        Start  80: ui_invalid_frame_sequence_probe
+ 80/237 Test  #80: ui_invalid_frame_sequence_probe ................................   Passed    0.10 sec
+        Start  81: partition_identity_test
+ 81/237 Test  #81: partition_identity_test ........................................   Passed    0.03 sec
+        Start  82: spatial3d_index_test
+ 82/237 Test  #82: spatial3d_index_test ...........................................   Passed    0.07 sec
+        Start  83: spatial2d_index_test
+ 83/237 Test  #83: spatial2d_index_test ...........................................   Passed    0.03 sec
+        Start  84: world_identity_test
+ 84/237 Test  #84: world_identity_test ............................................   Passed    0.02 sec
+        Start  85: world_partition_test
+ 85/237 Test  #85: world_partition_test ...........................................   Passed    0.02 sec
+        Start  86: world_description_test
+ 86/237 Test  #86: world_description_test .........................................   Passed    0.03 sec
+        Start  87: world_storage_test
+ 87/237 Test  #87: world_storage_test .............................................   Passed    0.03 sec
+        Start  88: world_asset_codec_test
+ 88/237 Test  #88: world_asset_codec_test .........................................   Passed    0.03 sec
+        Start  89: domain_system_description_test
+ 89/237 Test  #89: domain_system_description_test .................................   Passed    0.03 sec
+        Start  90: simulation_description_contract_test
+ 90/237 Test  #90: simulation_description_contract_test ...........................   Passed    0.02 sec
+        Start  91: simulation_asset_codec_test
+ 91/237 Test  #91: simulation_asset_codec_test ....................................   Passed    0.03 sec
+        Start  92: vnext_ecs_core
+ 92/237 Test  #92: vnext_ecs_core .................................................   Passed    0.03 sec
+        Start  93: vnext_ecs_reactive_storage_probe
+ 93/237 Test  #93: vnext_ecs_reactive_storage_probe ...............................   Passed    0.03 sec
+        Start  94: vnext_ecs_extraction_change_set_test
+ 94/237 Test  #94: vnext_ecs_extraction_change_set_test ...........................   Passed    0.03 sec
+        Start  95: vnext_ecs_retired_ecs_state_header_negative
+ 95/237 Test  #95: vnext_ecs_retired_ecs_state_header_negative ....................   Passed    0.30 sec
+        Start  96: vnext_ecs_retired_ecs_commands_header_negative
+ 96/237 Test  #96: vnext_ecs_retired_ecs_commands_header_negative .................   Passed    0.29 sec
+        Start  97: vnext_ecs_retired_ecs_query_header_negative
+ 97/237 Test  #97: vnext_ecs_retired_ecs_query_header_negative ....................   Passed    0.29 sec
+        Start  98: vnext_ecs_retired_ecs_change_journal_header_negative
+ 98/237 Test  #98: vnext_ecs_retired_ecs_change_journal_header_negative ...........   Passed    0.30 sec
+        Start  99: vnext_ecs_retired_scene_services_negative
+ 99/237 Test  #99: vnext_ecs_retired_scene_services_negative ......................   Passed    0.31 sec
+        Start 100: vnext_ecs_retired_world_edit_header_negative
+100/237 Test #100: vnext_ecs_retired_world_edit_header_negative ...................   Passed    0.29 sec
+        Start 101: vnext_ecs_retired_world_edit_type_negative
+101/237 Test #101: vnext_ecs_retired_world_edit_type_negative .....................   Passed    0.34 sec
+        Start 102: vnext_ecs_retired_world_edit_method_negative
+102/237 Test #102: vnext_ecs_retired_world_edit_method_negative ...................   Passed    0.30 sec
+        Start 103: vnext_ecs_retired_change_journal_negative
+103/237 Test #103: vnext_ecs_retired_change_journal_negative ......................   Passed    0.29 sec
+        Start 104: vnext_ecs_retired_ecs_world_header_negative
+104/237 Test #104: vnext_ecs_retired_ecs_world_header_negative ....................   Passed    0.29 sec
+        Start 105: vnext_ecs_retired_ecs_world_type_negative
+105/237 Test #105: vnext_ecs_retired_ecs_world_type_negative ......................   Passed    0.29 sec
+        Start 106: vnext_ecs_retired_world_change_type_negative
+106/237 Test #106: vnext_ecs_retired_world_change_type_negative ...................   Passed    0.30 sec
+        Start 107: vnext_ecs_retired_world_command_type_negative
+107/237 Test #107: vnext_ecs_retired_world_command_type_negative ..................   Passed    0.30 sec
+        Start 108: vnext_ecs_retired_world_snapshot_header_negative
+108/237 Test #108: vnext_ecs_retired_world_snapshot_header_negative ...............   Passed    0.30 sec
+        Start 109: vnext_ecs_retired_world_section_header_negative
+109/237 Test #109: vnext_ecs_retired_world_section_header_negative ................   Passed    0.33 sec
+        Start 110: vnext_ecs_retired_persistent_entity_header_negative
+110/237 Test #110: vnext_ecs_retired_persistent_entity_header_negative ............   Passed    0.30 sec
+        Start 111: vnext_ecs_retired_top_level_ecs_header_negative
+111/237 Test #111: vnext_ecs_retired_top_level_ecs_header_negative ................   Passed    0.30 sec
+        Start 112: vnext_ecs_retired_top_level_ecs_namespace_negative
+112/237 Test #112: vnext_ecs_retired_top_level_ecs_namespace_negative .............   Passed    0.32 sec
+        Start 113: vnext_ecs_schema
+113/237 Test #113: vnext_ecs_schema ...............................................   Passed    0.03 sec
+        Start 114: vnext_ecs_missing_component_policy_rejected
+114/237 Test #114: vnext_ecs_missing_component_policy_rejected ....................   Passed    0.33 sec
+        Start 115: vnext_ecs_duplicate_component_policy_rejected
+115/237 Test #115: vnext_ecs_duplicate_component_policy_rejected ..................   Passed    0.33 sec
+        Start 116: vnext_ecs_invalid_component_policy_rejected
+116/237 Test #116: vnext_ecs_invalid_component_policy_rejected ....................   Passed    0.32 sec
+        Start 117: vnext_ecs_component_operations_mutable_get_negative
+117/237 Test #117: vnext_ecs_component_operations_mutable_get_negative ............   Passed    0.64 sec
+        Start 118: vnext_ecs_component_operations_storage_key_negative
+118/237 Test #118: vnext_ecs_component_operations_storage_key_negative ............   Passed    0.67 sec
+        Start 119: vnext_ecs_component_operations_clone_negative
+119/237 Test #119: vnext_ecs_component_operations_clone_negative ..................   Passed    0.62 sec
+        Start 120: vnext_ecs_snapshot
+120/237 Test #120: vnext_ecs_snapshot .............................................   Passed    0.04 sec
+        Start 121: vnext_ecs_system_registry
+121/237 Test #121: vnext_ecs_system_registry ......................................   Passed    0.03 sec
+        Start 122: simulation_endpoint_point_test
+122/237 Test #122: simulation_endpoint_point_test .................................   Passed    0.04 sec
+        Start 123: simulation_throwing_event_payload_rejected
+123/237 Test #123: simulation_throwing_event_payload_rejected .....................   Passed    0.94 sec
+        Start 124: simulation_unscoped_hook_rejected
+124/237 Test #124: simulation_unscoped_hook_rejected ..............................   Passed    0.81 sec
+        Start 125: simulation_object_boundary_test
+125/237 Test #125: simulation_object_boundary_test ................................   Passed    0.03 sec
+        Start 126: simulation_script_coroutine_alignment_contract_test
+126/237 Test #126: simulation_script_coroutine_alignment_contract_test ............   Passed    0.02 sec
+        Start 127: simulation_script_class_storage_test
+127/237 Test #127: simulation_script_class_storage_test ...........................   Passed    0.03 sec
+        Start 128: simulation_script_class_storage_move_test
+128/237 Test #128: simulation_script_class_storage_move_test ......................   Passed    0.03 sec
+        Start 129: simulation_script_class_storage_failure_1_test
+129/237 Test #129: simulation_script_class_storage_failure_1_test .................   Passed    0.01 sec
+        Start 130: simulation_script_class_storage_failure_2_test
+130/237 Test #130: simulation_script_class_storage_failure_2_test .................   Passed    0.01 sec
+        Start 131: simulation_script_class_storage_failure_3_test
+131/237 Test #131: simulation_script_class_storage_failure_3_test .................   Passed    0.01 sec
+        Start 132: simulation_script_class_storage_failure_4_test
+132/237 Test #132: simulation_script_class_storage_failure_4_test .................   Passed    0.01 sec
+        Start 133: simulation_script_cpp_prepared_shape_test
+133/237 Test #133: simulation_script_cpp_prepared_shape_test ......................   Passed    0.08 sec
+        Start 134: simulation_script_cpp_static_test
+134/237 Test #134: simulation_script_cpp_static_test ..............................   Passed    0.03 sec
+        Start 135: simulation_script_cpp_generated_integration_test
+135/237 Test #135: simulation_script_cpp_generated_integration_test ...............   Passed    0.03 sec
+        Start 136: simulation_script_cpp_generated_host-failure
+136/237 Test #136: simulation_script_cpp_generated_host-failure ...................   Passed    0.02 sec
+        Start 137: simulation_script_cpp_generated_construct-failure
+137/237 Test #137: simulation_script_cpp_generated_construct-failure ..............   Passed    0.06 sec
+        Start 138: simulation_script_cpp_generated_prepare-failure
+138/237 Test #138: simulation_script_cpp_generated_prepare-failure ................   Passed    0.02 sec
+        Start 139: simulation_script_cpp_codegen_negative_1
+139/237 Test #139: simulation_script_cpp_codegen_negative_1 .......................   Passed    2.45 sec
+        Start 140: simulation_script_cpp_codegen_negative_2
+140/237 Test #140: simulation_script_cpp_codegen_negative_2 .......................   Passed    2.46 sec
+        Start 141: simulation_script_cpp_codegen_negative_3
+141/237 Test #141: simulation_script_cpp_codegen_negative_3 .......................   Passed    2.41 sec
+        Start 142: simulation_script_cpp_codegen_negative_4
+142/237 Test #142: simulation_script_cpp_codegen_negative_4 .......................   Passed    2.46 sec
+        Start 143: simulation_script_cpp_codegen_negative_5
+143/237 Test #143: simulation_script_cpp_codegen_negative_5 .......................   Passed    1.24 sec
+        Start 144: simulation_script_cpp_codegen_negative_6
+144/237 Test #144: simulation_script_cpp_codegen_negative_6 .......................   Passed    1.19 sec
+        Start 145: simulation_script_cpp_codegen_negative_7
+145/237 Test #145: simulation_script_cpp_codegen_negative_7 .......................   Passed    1.20 sec
+        Start 146: simulation_script_cpp_codegen_negative_8
+146/237 Test #146: simulation_script_cpp_codegen_negative_8 .......................   Passed    2.46 sec
+        Start 147: simulation_script_cpp_codegen_negative_9
+147/237 Test #147: simulation_script_cpp_codegen_negative_9 .......................   Passed    2.46 sec
+        Start 148: simulation_script_cpp_codegen_negative_10
+148/237 Test #148: simulation_script_cpp_codegen_negative_10 ......................   Passed    2.46 sec
+        Start 149: simulation_script_cpp_codegen_negative_11
+149/237 Test #149: simulation_script_cpp_codegen_negative_11 ......................   Passed    2.50 sec
+        Start 150: simulation_script_cpp_codegen_negative_12
+150/237 Test #150: simulation_script_cpp_codegen_negative_12 ......................   Passed    1.21 sec
+        Start 151: simulation_script_cpp_codegen_negative_13
+151/237 Test #151: simulation_script_cpp_codegen_negative_13 ......................   Passed    1.20 sec
+        Start 152: simulation_script_cpp_codegen_negative_14
+152/237 Test #152: simulation_script_cpp_codegen_negative_14 ......................   Passed    1.19 sec
+        Start 153: simulation_script_cpp_codegen_negative_15
+153/237 Test #153: simulation_script_cpp_codegen_negative_15 ......................   Passed    1.21 sec
+        Start 154: simulation_script_cpp_codegen_negative_16
+154/237 Test #154: simulation_script_cpp_codegen_negative_16 ......................   Passed    1.22 sec
+        Start 155: simulation_script_cpp_codegen_negative_17
+155/237 Test #155: simulation_script_cpp_codegen_negative_17 ......................   Passed    2.44 sec
+        Start 156: simulation_script_cpp_codegen_negative_18
+156/237 Test #156: simulation_script_cpp_codegen_negative_18 ......................   Passed    2.43 sec
+        Start 157: simulation_script_cpp_codegen_negative_19
+157/237 Test #157: simulation_script_cpp_codegen_negative_19 ......................   Passed    1.18 sec
+        Start 158: simulation_script_cpp_codegen_negative_20
+158/237 Test #158: simulation_script_cpp_codegen_negative_20 ......................   Passed    1.18 sec
+        Start 159: simulation_script_cpp_codegen_negative_21
+159/237 Test #159: simulation_script_cpp_codegen_negative_21 ......................   Passed    2.47 sec
+        Start 160: simulation_script_native_population_state
+160/237 Test #160: simulation_script_native_population_state ......................   Passed    0.03 sec
+        Start 161: simulation_script_native_population_frames
+161/237 Test #161: simulation_script_native_population_frames .....................   Passed    0.02 sec
+        Start 162: simulation_script_native_population_sync
+162/237 Test #162: simulation_script_native_population_sync .......................   Passed    0.01 sec
+        Start 163: simulation_script_native_population_shared
+163/237 Test #163: simulation_script_native_population_shared .....................   Passed    0.01 sec
+        Start 164: simulation_script_native_test
+164/237 Test #164: simulation_script_native_test ..................................   Passed    0.03 sec
+        Start 165: simulation_script_lua_test
+165/237 Test #165: simulation_script_lua_test .....................................   Passed    0.04 sec
+        Start 166: simulation_script_lua_closure_provenance_test
+166/237 Test #166: simulation_script_lua_closure_provenance_test ..................   Passed    0.04 sec
+        Start 167: simulation_script_lua_closure_interpreter_test
+167/237 Test #167: simulation_script_lua_closure_interpreter_test .................   Passed    0.02 sec
+        Start 168: simulation_script_lua_prepared_storage_test
+168/237 Test #168: simulation_script_lua_prepared_storage_test ....................   Passed    0.10 sec
+        Start 169: simulation_script_lua_vm_coroutine_contract_test
+169/237 Test #169: simulation_script_lua_vm_coroutine_contract_test ...............   Passed    0.03 sec
+        Start 170: simulation_script_lua_vm_interpreter_contract_test
+170/237 Test #170: simulation_script_lua_vm_interpreter_contract_test .............   Passed    0.01 sec
+        Start 171: simulation_script_lua_coroutine_integration_test
+171/237 Test #171: simulation_script_lua_coroutine_integration_test ...............   Passed    0.03 sec
+        Start 172: simulation_script_lua_coroutine_interpreter_integration_test
+172/237 Test #172: simulation_script_lua_coroutine_interpreter_integration_test ...   Passed    0.02 sec
+        Start 173: simulation_script_collision_event_test
+173/237 Test #173: simulation_script_collision_event_test .........................   Passed    0.03 sec
+        Start 174: simulation_script_ingress_frontier_test
+174/237 Test #174: simulation_script_ingress_frontier_test ........................   Passed    0.03 sec
+        Start 175: simulation_script_description_test
+175/237 Test #175: simulation_script_description_test .............................   Passed    0.03 sec
+        Start 176: simulation_script_runtime_test
+176/237 Test #176: simulation_script_runtime_test .................................   Passed    0.03 sec
+        Start 177: simulation_script_continuation_test
+177/237 Test #177: simulation_script_continuation_test ............................   Passed    0.04 sec
+        Start 178: simulation_script_event_wait_test
+178/237 Test #178: simulation_script_event_wait_test ..............................   Passed    0.15 sec
+        Start 179: simulation_script_event_wait_race_test
+179/237 Test #179: simulation_script_event_wait_race_test .........................   Passed    0.02 sec
+        Start 180: simulation_script_lifecycle_test
+180/237 Test #180: simulation_script_lifecycle_test ...............................   Passed    0.04 sec
+        Start 181: script_runtime_benchmark_smoke
+181/237 Test #181: script_runtime_benchmark_smoke .................................   Passed    0.57 sec
+        Start 182: script_binding_authoring_test
+182/237 Test #182: script_binding_authoring_test ..................................   Passed    0.04 sec
+        Start 183: simulation_composition_test
+183/237 Test #183: simulation_composition_test ....................................   Passed    0.03 sec
+        Start 184: simulation_hook_execution_test
+184/237 Test #184: simulation_hook_execution_test .................................   Passed    0.04 sec
+        Start 185: simulation_hook_regions_test
+185/237 Test #185: simulation_hook_regions_test ...................................   Passed    0.04 sec
+        Start 186: simulation_hook_return_negative
+186/237 Test #186: simulation_hook_return_negative ................................   Passed    1.28 sec
+        Start 187: simulation_script_ability_codegen_test
+187/237 Test #187: simulation_script_ability_codegen_test .........................   Passed    0.04 sec
+        Start 188: simulation_script_ability_borrowed_async_negative
+188/237 Test #188: simulation_script_ability_borrowed_async_negative ..............   Passed    0.33 sec
+        Start 189: simulation_script_ability_duplicate_method_negative
+189/237 Test #189: simulation_script_ability_duplicate_method_negative ............   Passed    0.42 sec
+        Start 190: simulation_script_ability_mutable_parameter_negative
+190/237 Test #190: simulation_script_ability_mutable_parameter_negative ...........   Passed    0.32 sec
+        Start 191: simulation_script_ability_mutable_result_negative
+191/237 Test #191: simulation_script_ability_mutable_result_negative ..............   Passed    0.37 sec
+        Start 192: simulation_script_ability_projection_test
+192/237 Test #192: simulation_script_ability_projection_test ......................   Passed    0.02 sec
+        Start 193: simulation_script_ability_codegen_deterministic
+193/237 Test #193: simulation_script_ability_codegen_deterministic ................   Passed    0.02 sec
+        Start 194: vnext_ecs_hierarchy
+194/237 Test #194: vnext_ecs_hierarchy ............................................   Passed    0.03 sec
+        Start 195: vnext_ecs_retired_hierarchy_rebuild_negative
+195/237 Test #195: vnext_ecs_retired_hierarchy_rebuild_negative ...................   Passed    0.64 sec
+        Start 196: vnext_ecs_retired_hierarchy_subtree_negative
+196/237 Test #196: vnext_ecs_retired_hierarchy_subtree_negative ...................   Passed    0.64 sec
+        Start 197: vnext_ecs_retired_set_parent_negative
+197/237 Test #197: vnext_ecs_retired_set_parent_negative ..........................   Passed    0.64 sec
+        Start 198: vnext_transform_decode
+198/237 Test #198: vnext_transform_decode .........................................   Passed    0.04 sec
+        Start 199: visual_component_test
+199/237 Test #199: visual_component_test ..........................................   Passed    0.02 sec
+        Start 200: vnext_transform_system
+200/237 Test #200: vnext_transform_system .........................................   Passed    0.03 sec
+        Start 201: physics2d_simulation_test
+201/237 Test #201: physics2d_simulation_test ......................................   Passed    0.04 sec
+        Start 202: process_timer_test
+202/237 Test #202: process_timer_test .............................................   Passed    0.12 sec
+        Start 203: process_port_sender_test
+203/237 Test #203: process_port_sender_test .......................................   Passed    0.02 sec
+        Start 204: process_execution_runtime_test
+204/237 Test #204: process_execution_runtime_test .................................   Passed    0.03 sec
+        Start 205: process_task_scope_test
+205/237 Test #205: process_task_scope_test ........................................   Passed    0.09 sec
+        Start 206: task_scope_unconsumed_value_negative
+206/237 Test #206: task_scope_unconsumed_value_negative ...........................   Passed    1.01 sec
+        Start 207: task_scope_unconsumed_error_negative
+207/237 Test #207: task_scope_unconsumed_error_negative ...........................   Passed    1.04 sec
+        Start 208: process_world_loading_test
+208/237 Test #208: process_world_loading_test .....................................   Passed    0.04 sec
+        Start 209: process_asset_loading_test
+209/237 Test #209: process_asset_loading_test .....................................   Passed    0.03 sec
+        Start 210: process_vfs_asset_read_endpoint_test
+210/237 Test #210: process_vfs_asset_read_endpoint_test ...........................   Passed    0.03 sec
+        Start 211: scene_description_test
+211/237 Test #211: scene_description_test .........................................   Passed    0.03 sec
+        Start 212: scene_system_contract_test
+212/237 Test #212: scene_system_contract_test .....................................   Passed    0.03 sec
+        Start 213: scene_meta_test
+213/237 Test #213: scene_meta_test ................................................   Passed    0.04 sec
+        Start 214: scene_composition_test
+214/237 Test #214: scene_composition_test .........................................   Passed    0.04 sec
+        Start 215: scene_asset_test
+215/237 Test #215: scene_asset_test ...............................................   Passed    0.03 sec
+        Start 216: latest_spsc_exchange_test
+216/237 Test #216: latest_spsc_exchange_test ......................................   Passed    0.22 sec
+        Start 217: scene_world_materialization_test
+217/237 Test #217: scene_world_materialization_test ...............................   Passed    0.04 sec
+        Start 218: scene_world_materialization_deferred_test
+218/237 Test #218: scene_world_materialization_deferred_test ......................   Passed    0.05 sec
+        Start 219: scene_script_runtime_test
+219/237 Test #219: scene_script_runtime_test ......................................   Passed    0.10 sec
+        Start 220: scene_script_lua_runtime_test
+220/237 Test #220: scene_script_lua_runtime_test ..................................   Passed    0.05 sec
+        Start 221: scene_script_lua_runtime_workers_0
+221/237 Test #221: scene_script_lua_runtime_workers_0 .............................   Passed    0.02 sec
+        Start 222: scene_script_lua_runtime_workers_2
+222/237 Test #222: scene_script_lua_runtime_workers_2 .............................   Passed    0.02 sec
+        Start 223: scene_script_lua_runtime_workers_4
+223/237 Test #223: scene_script_lua_runtime_workers_4 .............................   Passed    0.02 sec
+        Start 224: scene_script_lua_runtime_interpreter_test
+224/237 Test #224: scene_script_lua_runtime_interpreter_test ......................   Passed    0.02 sec
+        Start 225: scene_script_lua_runtime_interpreter_workers_4
+225/237 Test #225: scene_script_lua_runtime_interpreter_workers_4 .................   Passed    0.02 sec
+        Start 226: render_sync_pipeline_test
+226/237 Test #226: render_sync_pipeline_test ......................................   Passed    0.04 sec
+        Start 227: render_sync_stage_test
+227/237 Test #227: render_sync_stage_test .........................................   Passed    0.04 sec
+        Start 228: render_sync_stage_lifecycle_test
+228/237 Test #228: render_sync_stage_lifecycle_test ...............................   Passed    0.05 sec
+        Start 229: render_sync_pipeline_transaction_test
+229/237 Test #229: render_sync_pipeline_transaction_test ..........................   Passed    0.04 sec
+        Start 230: render_runtime_test
+230/237 Test #230: render_runtime_test ............................................   Passed    0.04 sec
+        Start 231: render_scene_system_test
+231/237 Test #231: render_scene_system_test .......................................   Passed    0.05 sec
+        Start 232: architecture_probe_spatial3d
+232/237 Test #232: architecture_probe_spatial3d ...................................   Passed    0.03 sec
+        Start 233: architecture_probe_spatial2d
+233/237 Test #233: architecture_probe_spatial2d ...................................   Passed    0.07 sec
+        Start 234: architecture_probe_pixel
+234/237 Test #234: architecture_probe_pixel .......................................   Passed    0.03 sec
+        Start 235: architecture_probe_robot
+235/237 Test #235: architecture_probe_robot .......................................   Passed    0.10 sec
+        Start 236: architecture_probe_jolt_l1
+236/237 Test #236: architecture_probe_jolt_l1 .....................................   Passed    0.04 sec
+        Start 237: architecture_probe_render_lanes
+237/237 Test #237: architecture_probe_render_lanes ................................   Passed    1.23 sec
+
+100% tests passed, 0 tests failed out of 237
+
+Label Time Summary:
+architecture    =  25.16 sec*proc (19 tests)
+codegen         =   0.98 sec*proc (3 tests)
+composition     =   1.50 sec*proc (6 tests)
+core            =   6.12 sec*proc (22 tests)
+cpu             =   0.18 sec*proc (6 tests)
+exception       =   0.94 sec*proc (1 test)
+gpu             =   1.23 sec*proc (1 test)
+hierarchy       =   1.95 sec*proc (4 tests)
+jolt            =   0.04 sec*proc (1 test)
+l1              =  35.11 sec*proc (49 tests)
+negative        =  11.81 sec*proc (29 tests)
+physics3d       =   0.04 sec*proc (1 test)
+presentation    =   1.23 sec*proc (1 test)
+probe           =   1.50 sec*proc (6 tests)
+reactive        =   0.06 sec*proc (2 tests)
+render          =   1.23 sec*proc (1 test)
+schema          =   2.98 sec*proc (8 tests)
+simulation      =   0.94 sec*proc (1 test)
+snapshot        =   0.04 sec*proc (1 test)
+transform       =   0.07 sec*proc (2 tests)
+vnext           =  10.51 sec*proc (35 tests)
+
+Total Test time (real) =  98.59 sec

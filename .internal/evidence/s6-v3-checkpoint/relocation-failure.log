@@ -1,0 +1,8 @@
+---- Importing lux-cxx-container
+CMake Error at CMakeLists.txt:16 (message):
+  Relocated SDK still references another prefix:
+  E:/SyncForder/CodeRepos/install/q/c/include; expected
+  D:/LuxV3RelocationProbe/c
+
+
+-- Configuring incomplete, errors occurred!

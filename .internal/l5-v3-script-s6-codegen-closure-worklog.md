@@ -238,3 +238,15 @@ No final production/qualification candidate, optimization speedup, framework fre
 - CSV schema 7 records workers, Event operation counts, graph counts and explicit trace flags. New source-composed
   C++/graph benchmark groups require separately identified benchmark-driver comparison; they were absent in the
   frozen Bcompare executable. Existing groups retain their comparable workload semantics.
+- Clean ab0eb127 Developer passed 237/237, install and no-op. Clean Toolchain passed 215/215 and no-op,
+  but install failed on a nonexistent Lua packager include directory (local empty directory was never tracked).
+  babbd2d2 removes that unused installation declaration; follow-up Toolchain all + 215/215 + install + no-op pass.
+- Fresh lux-cxx af25d29 passed 50/50. Two existing generator tests are gated on an executable existing at configure
+  time, so the old development 52/52 count is not substituted for the first clean build.
+- Relocation is BLOCKED: copied fresh lux-cxx container imports still resolve headers/assets to the original
+  absolute q/c prefix. The minimal no-compiler probe exits 1. The same toolset template emits absolute Engine
+  imports. No installed files were rewritten; lux-cmake-toolset was inspected but not modified.
+- Stopped the pending Physics OFF build and remaining automatic profiles after the scope blocker. No partial
+  binary was executed. Formal paired timing, final stress, Lua54 and full installed consumers remain unrun.
+- Current static tracked/source/style and Developer/Toolchain installed architecture validators pass; they do
+  not test relocation. Checkpoint report and raw failure/success logs explicitly record BLOCKED, not candidate PASS.

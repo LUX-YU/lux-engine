@@ -1,0 +1,32 @@
+[
+  {
+    "file": "toolchain-fixed-install.log",
+    "sha256": "47600D1D2AD95614339C08FC79B5B92371B348B6519D65CD2E1FEC1D9CD7DF29",
+    "bytes": 910274
+  },
+  {
+    "file": "tracked.log",
+    "sha256": "226465CDCDD895D48061BE5D14BFC108117ED892B059E1ECDF2FD13A7FA9CF5C",
+    "bytes": 153
+  },
+  {
+    "file": "source-architecture.log",
+    "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "bytes": 0
+  },
+  {
+    "file": "source-style.log",
+    "sha256": "8557BF6AFD012CDC0BA4C27CA1C9F726505F490D3360EEA21B2B06392FA48F99",
+    "bytes": 81
+  },
+  {
+    "file": "installed-developer.log",
+    "sha256": "E2A33B914288993458A50CA43D94A411A62E7FA99895A5F816988A83384036C8",
+    "bytes": 81
+  },
+  {
+    "file": "installed-toolchain.log",
+    "sha256": "79C874F5085FCEAA31CDCB252159B31F0284F1CD82BFE3055FE9932106392118",
+    "bytes": 81
+  }
+]

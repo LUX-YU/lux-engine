@@ -1,0 +1,3 @@
+expected_prefix=D:/LuxV3RelocationProbe/c
+include=E:/SyncForder/CodeRepos/install/q/c/include
+assets=E:/SyncForder/CodeRepos/install/q/c/share/lux-cxx/container

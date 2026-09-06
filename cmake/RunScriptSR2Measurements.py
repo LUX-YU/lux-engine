@@ -38,7 +38,8 @@ def main():
     business = ("scenario", "backend", "size", "seed", "sample", "phase", "active_instances", "calls",
                 "ability_calls", "events", "suspensions", "resumes", "continuations", "awaitables",
                 "event_waiters", "queue_depth", "external_queue_depth", "external_queue_capacity_failures",
-                "lifecycle_begins", "lifecycle_ends", "checksum", "workers", "errors", "failures")
+                "lifecycle_begins", "lifecycle_ends", "checksum", "workers", "errors", "failures",
+                "frame", "started", "completed")
     for name, group, tool, lua in cases:
         for mode, pairs, warmups, frames in (("performance", 5, 60, 300), ("diagnostic", 1, 1, 3)):
             for pair in range(pairs):
@@ -57,7 +58,7 @@ def main():
                     fixture = prefix / "t/share/lux-engine/lua/lua_runtime_benchmark_fixture.lxsa"
                     if lua:
                         # Qualification stores generated fixtures beside each profile's build, not in the SDK.
-                        fixture = Path(str(prefix).replace("/install/", "/build/RelWithDebInfo/")) / (
+                        fixture = prefix.parent.parent / "build/RelWithDebInfo" / prefix.name / (
                             "t/engine/toolchain/lua/lua_runtime_benchmark_fixture.lxsa")
                         command += ["--lua-artifact", str(fixture)]
                         if mode == "diagnostic":
@@ -71,7 +72,7 @@ def main():
                     with (root / (label + ".log")).open("w") as log:
                         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=env)
                     rows = list(csv.DictReader(output.open(newline=""))) if output.exists() else []
-                    valid = result.returncode == 0 and bool(rows)
+                    valid = result.returncode == 0 and len(rows) >= frames
                     record = dict(case=name, mode=mode, pair=pair, variant=variant, command=command,
                                   executable_sha256=digest(exe), start_epoch=started,
                                   process_seconds=time.time() - started, exit_code=result.returncode,
@@ -80,7 +81,7 @@ def main():
                         record["fixture_sha256"] = digest(fixture)
                     if valid:
                         record["median_ns"] = statistics.median(float(r["nanoseconds"]) for r in rows)
-                        record["allocation_totals"] = {key: sum(int(r.get(key, 0)) for r in rows)
+                        record["allocation_totals"] = {key: sum(int(r[key]) for r in rows) if key in rows[0] else None
                                                        for key in ("allocations", "vm_allocations", "vm_reallocations")}
                         observations[variant] = [{k: r[k] for k in business if k in r} for r in rows]
                     records.append(record)

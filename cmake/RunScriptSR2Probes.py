@@ -23,7 +23,34 @@ def run(command, log, env=None):
 def instrument(source, candidate):
     source = source.replace('"../../../system/test/HookInvocationTestAccess.hpp"',
                             '"HookInvocationTestAccess.hpp"')
-    source = '#include <cstdio>\n#include <chrono>\n#include <string_view>\n' + source
+    source = '''#include <cstdio>
+#include <chrono>
+#include <string_view>
+#include <cstdlib>
+#include <new>
+#include <malloc.h>
+bool allocation_accounting{};
+std::size_t allocation_count{};
+void* operator new(std::size_t size)
+{
+    if (allocation_accounting) ++allocation_count;
+    if (auto* value = std::malloc(size ? size : 1U)) return value;
+    throw std::bad_alloc{};
+}
+void operator delete(void* value) noexcept { std::free(value); }
+void operator delete(void* value, std::size_t) noexcept { std::free(value); }
+void* operator new[](std::size_t size) { return ::operator new(size); }
+void operator delete[](void* value) noexcept { std::free(value); }
+void operator delete[](void* value, std::size_t) noexcept { std::free(value); }
+void* operator new(std::size_t size, std::align_val_t alignment)
+{
+    if (allocation_accounting) ++allocation_count;
+    if (auto* value = _aligned_malloc(size ? size : 1U, static_cast<std::size_t>(alignment))) return value;
+    throw std::bad_alloc{};
+}
+void operator delete(void* value, std::align_val_t) noexcept { _aligned_free(value); }
+void operator delete(void* value, std::size_t, std::align_val_t) noexcept { _aligned_free(value); }
+''' + source
     source = source.replace("namespace\n{", """namespace
 {
     bool trace_enabled{};
@@ -110,21 +137,28 @@ int main(int argc, char** argv)
         harness.registry.destroy(harness.entities[index]);
         harness.entities[index] = NullEntity;
     }
+    allocation_accounting = std::string_view{argv[1]} == "--allocations";
+    allocation_count = 0U;
     const auto start = Clock::now();
     auto created = harness.create(INITIAL_COUNT);
     assert(created && created->prepare());
     auto& system = *created;
     const auto prepared = Clock::now();
+    const auto prepare_allocations = allocation_count;
     for (std::size_t index{1U}; index < 8U; ++index)
         harness.entities[index] = harness.registry.create();
+    allocation_count = 0U;
     const auto late_start = Clock::now();
     SUBMIT_LATE
     assert(system.processLifecycle());
     const auto late_end = Clock::now();
+    const auto late_allocations = allocation_count;
     assert(system.activeInstanceCount() == 8U);
     std::int64_t remount_ns{};
+    std::size_t remount_allocations{};
     for (std::size_t iteration{}; iteration < 144U; ++iteration)
     {
+        allocation_count = 0U;
         const auto before = Clock::now();
         harness.registry.destroy(harness.entities[0]);
         harness.entities[0] = harness.registry.create();
@@ -132,7 +166,10 @@ int main(int argc, char** argv)
         assert(system.processLifecycle());
         const auto after = Clock::now();
         if (iteration >= 16U)
+        {
             remount_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count();
+            remount_allocations += allocation_count;
+        }
     }
     assert(system.shutdown());
     assert(harness.backend_state.creates == 152U);
@@ -143,6 +180,8 @@ int main(int argc, char** argv)
         static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(late_end - late_start).count()),
         static_cast<long long>(remount_ns), harness.backend_state.creates, harness.backend_state.destroys,
         harness.backend_state.prepares, harness.backend_state.releases);
+    std::printf("allocation_accounting,prepare_allocations,late_allocations,remount_128_allocations\\n%d,%zu,%zu,%zu\\n",
+        allocation_accounting, prepare_allocations, late_allocations, remount_allocations);
     return 0;
 }
 """
@@ -235,6 +274,8 @@ target_link_libraries(sr2_probe PRIVATE lux::engine::simulation::simulation_scri
         for variant in (("baseline", "candidate") if pair % 2 == 0 else ("candidate", "baseline")):
             exe, env = variants[variant]
             run([str(exe), "--measure"], root / f"{variant}-{pair}.csv.log", env)
+    for variant, (exe, env) in variants.items():
+        run([str(exe), "--allocations"], root / f"{variant}-allocations.csv.log", env)
     traces = [(root / variant / "trace.log").read_text().splitlines()[1:] for variant in variants]
     identical = traces[0] == traces[1]
     wire_equal = (root / "baseline/v1.bin").read_bytes() == (root / "candidate/v1.bin").read_bytes()

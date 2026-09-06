@@ -1,2 +1,3 @@
 # Preserve exact evidence bytes so the recorded SHA256 values survive checkout.
-* -text
+# Raw process output includes CRLF and blank lines; do not lint or normalize it as source.
+* -text -whitespace

@@ -1,0 +1,1448 @@
+{
+  "build_root": "E:/SyncForder/CodeRepos/build",
+  "retained_names": [
+    "lux-engine",
+    "q",
+    "v3d",
+    "v3bt",
+    "deep-developer",
+    "s6-v3-evidence",
+    "script-codegen-cxx",
+    "hook-closure-user-backup"
+  ],
+  "entries": [
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\Debug\\hook-q-developer",
+      "bytes": 2845394049,
+      "files": 3400,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-hook-qualified"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\Debug\\s6-final-owner-probe",
+      "bytes": 184779003,
+      "files": 836,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\Release\\hook-q-consumers-final",
+      "bytes": 54582669,
+      "files": 199,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/Release/hook-q-consumers-final/cpp-coroutine-script/source",
+        "E:/SyncForder/CodeRepos/build/Release/hook-q-consumers-final/lua-script-packager/source",
+        "E:/SyncForder/CodeRepos/build/Release/hook-q-consumers-final/script-ability-ipo/build/CMakeFiles/_CMakeLTOTest-CXX/src",
+        "E:/SyncForder/CodeRepos/build/Release/hook-q-consumers-final/script-ability-ipo/source",
+        "E:/SyncForder/CodeRepos/build/Release/hook-q-consumers-final/system-event-await-runtime/source",
+        "E:/SyncForder/CodeRepos/build/Release/hook-q-consumers-final/system-hook-script-binding/source"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ca",
+      "bytes": 101925462,
+      "files": 91,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ca/source"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\cb",
+      "bytes": 108621681,
+      "files": 99,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/cb/source"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\cc",
+      "bytes": 113296576,
+      "files": 108,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/cc/source"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p1-consumer",
+      "bytes": 16369988,
+      "files": 35,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-deep-optimization/cmake/installed-consumers/cpp-generated-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p2-cpp-coroutine-script",
+      "bytes": 33340272,
+      "files": 45,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-deep-optimization/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p2-lua-script-packager",
+      "bytes": 69215502,
+      "files": 71,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-deep-optimization/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p2-system-hook-script-binding",
+      "bytes": 19121970,
+      "files": 41,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-deep-optimization/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\deep-bsafe",
+      "bytes": 1381731292,
+      "files": 675,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-deep-optimization"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\deep-toolchain",
+      "bytes": 3845206472,
+      "files": 4189,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-deep-optimization",
+        "E:/SyncForder/CodeRepos/lux-engine-deep-optimization/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-b1",
+      "bytes": 2401479123,
+      "files": 3345,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-hook-b1"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-developer",
+      "bytes": 2987054526,
+      "files": 3848,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-hook-closure",
+        "E:/SyncForder/CodeRepos/lux-engine-hook-closure/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-sdk-preflight-v1",
+      "bytes": 216820130,
+      "files": 337,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/cpp-coroutine-script/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/flowforge-compiler/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/lua-script-packager/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/physics2d-script/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/scene-script-runtime/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/script-ability-codegen/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/system-event-await-runtime/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v1/system-hook-script-binding/source"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-sdk-preflight-v2",
+      "bytes": 22494615,
+      "files": 140,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v2/script-ability-codegen/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v2/script-ability-ipo/build/CMakeFiles/_CMakeLTOTest-CXX/src",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v2/script-ability-ipo/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-closure-sdk-preflight-v2/script-static-ability-specialization/source"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-toolchain",
+      "bytes": 3547477237,
+      "files": 3210,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-hook-closure"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-consumers-final",
+      "bytes": 227111016,
+      "files": 436,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/cpp-coroutine-script/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/flowforge-compiler/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/lua-script-packager/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/physics2d-script/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/scene-script-runtime/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/script-ability-codegen/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/script-ability-ipo/build/CMakeFiles/_CMakeLTOTest-CXX/src",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/script-ability-ipo/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/script-static-ability-specialization/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/system-event-await-runtime/source",
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/hook-q-consumers-final/system-hook-script-binding/source"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-developer",
+      "bytes": 2611047546,
+      "files": 3852,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-hook-qualified",
+        "E:/SyncForder/CodeRepos/lux-engine-hook-qualified/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-physics-off",
+      "bytes": 2404408235,
+      "files": 3778,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-hook-qualified",
+        "E:/SyncForder/CodeRepos/lux-engine-hook-qualified/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-toolchain",
+      "bytes": 3649727177,
+      "files": 3696,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-hook-qualified",
+        "E:/SyncForder/CodeRepos/lux-engine-hook-qualified/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-ability",
+      "bytes": 3141095,
+      "files": 32,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-hook",
+      "bytes": 19616837,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-scene",
+      "bytes": 7735599,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-simulation",
+      "bytes": 8217848,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/simulation-composition"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-ability",
+      "bytes": 3141095,
+      "files": 32,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-hook",
+      "bytes": 19616777,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-scene-script",
+      "bytes": 7739181,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-simulation",
+      "bytes": 8217848,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/installed-consumers/simulation-composition"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-developer",
+      "bytes": 2231210574,
+      "files": 3725,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-editor",
+      "bytes": 2453176725,
+      "files": 3978,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-player",
+      "bytes": 2218992296,
+      "files": 3588,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-toolchain",
+      "bytes": 3236644644,
+      "files": 3550,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s25-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-ability",
+      "bytes": 12676231,
+      "files": 32,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-flow-compiler-vcpkg",
+      "bytes": 12464967,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3-qualification/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-flow-model",
+      "bytes": 471145,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3-qualification/cmake/installed-consumers/flowforge-model"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-flow-model-vcpkg",
+      "bytes": 10932204,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3-qualification/cmake/installed-consumers/flowforge-model"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-scene-script-vcpkg",
+      "bytes": 8981102,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3-qualification/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-q",
+      "bytes": 4132960127,
+      "files": 4402,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s3-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-toolchain",
+      "bytes": 3585136939,
+      "files": 3492,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-flowforge-compiler",
+      "bytes": 12461143,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-flowforge-model",
+      "bytes": 10928274,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/installed-consumers/flowforge-model"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-scene-script-runtime",
+      "bytes": 8978189,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-script-ability-codegen",
+      "bytes": 11851014,
+      "files": 32,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-developer",
+      "bytes": 2208017145,
+      "files": 3757,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-editor",
+      "bytes": 2439322066,
+      "files": 4010,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-player",
+      "bytes": 2205007569,
+      "files": 3621,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-toolchain",
+      "bytes": 3283313315,
+      "files": 3609,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s3h-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-consumer-ability",
+      "bytes": 11843191,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-consumer-lua",
+      "bytes": 41953876,
+      "files": 47,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-consumer-scene-script",
+      "bytes": 9016940,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-editor",
+      "bytes": 2476695363,
+      "files": 4195,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-player",
+      "bytes": 2249445028,
+      "files": 3931,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-toolchain",
+      "bytes": 3305958575,
+      "files": 3775,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-lua54-dev",
+      "bytes": 587498552,
+      "files": 1345,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-lua54-developer",
+      "bytes": 2264752487,
+      "files": 3684,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-lua54-editor",
+      "bytes": 2492564749,
+      "files": 3923,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-lua54-player",
+      "bytes": 2262593842,
+      "files": 3681,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-luajit-developer",
+      "bytes": 2265762268,
+      "files": 3685,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-luajit-editor",
+      "bytes": 2494997905,
+      "files": 3923,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-luajit-player",
+      "bytes": 2469209212,
+      "files": 3682,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-toolchain",
+      "bytes": 3320919594,
+      "files": 3792,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-toolchain",
+      "bytes": 192871803,
+      "files": 891,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-consumer-ability",
+      "bytes": 11856532,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-consumer-lua",
+      "bytes": 41909497,
+      "files": 47,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-consumer-scene-script",
+      "bytes": 9029045,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-developer",
+      "bytes": 2260700054,
+      "files": 3657,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-editor",
+      "bytes": 2493799510,
+      "files": 4048,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-player",
+      "bytes": 2260489910,
+      "files": 3794,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-toolchain",
+      "bytes": 3316253111,
+      "files": 3640,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s4-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-lua54",
+      "bytes": 17614073,
+      "files": 48,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/flowforge-compiler",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-lua54-2",
+      "bytes": 115822994,
+      "files": 201,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/flowforge-compiler",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/lua-script-packager",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/scene-script-runtime",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/script-ability-codegen",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/system-event-await-runtime",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit",
+      "bytes": 1530671,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit-2",
+      "bytes": 17534428,
+      "files": 48,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/flowforge-compiler",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit-3",
+      "bytes": 29179971,
+      "files": 71,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/flowforge-compiler",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/lua-script-packager",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit-4",
+      "bytes": 112880585,
+      "files": 201,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/flowforge-compiler",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/lua-script-packager",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/scene-script-runtime",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/script-ability-codegen",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/system-event-await-runtime",
+        "E:/SyncForder/CodeRepos/lux-engine/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-dev-toolchain",
+      "bytes": 1454895680,
+      "files": 1034,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-developer",
+      "bytes": 2315109559,
+      "files": 3695,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-editor",
+      "bytes": 2522660187,
+      "files": 3934,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-final-developer-dev",
+      "bytes": 771634789,
+      "files": 1436,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-final-toolchain-dev",
+      "bytes": 1530557486,
+      "files": 1164,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-lua54-developer",
+      "bytes": 2313562702,
+      "files": 3694,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-lua54-editor",
+      "bytes": 2514783955,
+      "files": 3933,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-lua54-player",
+      "bytes": 2280619660,
+      "files": 3692,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-player",
+      "bytes": 2288549220,
+      "files": 3693,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-toolchain",
+      "bytes": 3366302303,
+      "files": 3677,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s4p-consumers-lua54",
+      "bytes": 65550051,
+      "files": 109,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/installed-consumers/lua-script-packager",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/installed-consumers/scene-script-runtime",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s4p-consumers-luajit",
+      "bytes": 63132586,
+      "files": 109,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/installed-consumers/lua-script-packager",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/installed-consumers/scene-script-runtime",
+        "E:/SyncForder/CodeRepos/lux-engine-s4p-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-flowforge-compiler",
+      "bytes": 13093222,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-lua-script-packager",
+      "bytes": 50418834,
+      "files": 57,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-physics2d",
+      "bytes": 57413179,
+      "files": 30,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-scene-script-runtime",
+      "bytes": 9254617,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-script-ability-codegen",
+      "bytes": 12006861,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-system-event-await-runtime",
+      "bytes": 14848346,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-system-hook-script-binding",
+      "bytes": 21777583,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-flowforge-compiler",
+      "bytes": 13057422,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-lua-script-packager",
+      "bytes": 47710143,
+      "files": 57,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-physics2d",
+      "bytes": 59289602,
+      "files": 30,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-scene-script-runtime",
+      "bytes": 9208677,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-script-ability-codegen",
+      "bytes": 11958868,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-system-event-await-runtime",
+      "bytes": 17997571,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-system-hook-script-binding",
+      "bytes": 21723150,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-developer",
+      "bytes": 2424365585,
+      "files": 3759,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-editor",
+      "bytes": 2633554978,
+      "files": 3998,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-lua54-developer",
+      "bytes": 2399025313,
+      "files": 3759,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-lua54-editor",
+      "bytes": 2633457978,
+      "files": 3997,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-lua54-player",
+      "bytes": 2399102059,
+      "files": 3756,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-player",
+      "bytes": 2398934733,
+      "files": 3757,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-toolchain",
+      "bytes": 3483574196,
+      "files": 3779,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification",
+        "E:/SyncForder/CodeRepos/lux-engine-s5-qualification/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-cpp-coroutine-script",
+      "bytes": 11851692,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-flowforge-compiler",
+      "bytes": 13080301,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-lua-script-packager",
+      "bytes": 47261836,
+      "files": 57,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-physics2d-script",
+      "bytes": 54701296,
+      "files": 30,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-scene-script-runtime",
+      "bytes": 9228302,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-script-ability-codegen",
+      "bytes": 11949619,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-script-static-ability-specialization",
+      "bytes": 4383315,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-static-ability-specialization"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-system-event-await-runtime",
+      "bytes": 14859190,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-system-hook-script-binding",
+      "bytes": 21982843,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit-physics2d-script",
+      "bytes": 461175,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit2-physics2d-script",
+      "bytes": 1669018,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit3-physics2d-script",
+      "bytes": 54688514,
+      "files": 30,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-flowforge-compiler",
+      "bytes": 13080770,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-lua-script-packager",
+      "bytes": 47612126,
+      "files": 57,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-physics2d-script",
+      "bytes": 54722216,
+      "files": 30,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-scene-script-runtime",
+      "bytes": 9237701,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-script-ability-codegen",
+      "bytes": 11941979,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-system-event-await-runtime",
+      "bytes": 14859897,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-system-hook-script-binding",
+      "bytes": 22023382,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit5-cpp-coroutine-script",
+      "bytes": 13023929,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit5-script-static-ability-specialization",
+      "bytes": 4383707,
+      "files": 33,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-static-ability-specialization"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit5-system-hook-script-binding",
+      "bytes": 21983973,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-editor-luajit",
+      "bytes": 2759693950,
+      "files": 4038,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-consumer-cpp-coroutine",
+      "bytes": 453705,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-consumer-cpp-coroutine-v2",
+      "bytes": 27145405,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-consumer-ipo",
+      "bytes": 4629780,
+      "files": 47,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/s6-final-consumer-ipo/CMakeFiles/_CMakeLTOTest-CXX/src",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-ability-ipo"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-lua54-developer",
+      "bytes": 2482918132,
+      "files": 3778,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-luajit-player",
+      "bytes": 2351722491,
+      "files": 3777,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-extra-script-static-ability-specialization",
+      "bytes": 4488137,
+      "files": 35,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-static-ability-specialization"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-extra-system-hook-script-binding",
+      "bytes": 22111432,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-cpp-coroutine-script",
+      "bytes": 27222306,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-flowforge-compiler",
+      "bytes": 13084470,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-lua-script-packager",
+      "bytes": 1940875,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-script-ability-codegen",
+      "bytes": 11965145,
+      "files": 35,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-script-ability-ipo",
+      "bytes": 4721160,
+      "files": 47,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/s6-final-q-lua54-v1-script-ability-ipo/CMakeFiles/_CMakeLTOTest-CXX/src",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-ability-ipo"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-system-event-await-runtime",
+      "bytes": 14862327,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v2-lua-script-packager",
+      "bytes": 51061590,
+      "files": 59,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v2-physics2d-script",
+      "bytes": 57447917,
+      "files": 30,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v2-scene-script-runtime",
+      "bytes": 9294743,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-cpp-coroutine-script",
+      "bytes": 460666,
+      "files": 5,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-extra-script-static-ability-specialization",
+      "bytes": 4406060,
+      "files": 35,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-static-ability-specialization"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-extra-system-hook-script-binding",
+      "bytes": 22027525,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-hook-script-binding"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v2-cpp-coroutine-script",
+      "bytes": 412229,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v3-cpp-coroutine-script",
+      "bytes": 465353,
+      "files": 13,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v4-cpp-coroutine-script",
+      "bytes": 27205085,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-cpp-coroutine-script",
+      "bytes": 27223607,
+      "files": 34,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/cpp-coroutine-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-flowforge-compiler",
+      "bytes": 13085167,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/flowforge-compiler"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-lua-script-packager",
+      "bytes": 48351100,
+      "files": 59,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/lua-script-packager"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-physics2d-script",
+      "bytes": 54849022,
+      "files": 30,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/physics2d-script"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-scene-script-runtime",
+      "bytes": 9245250,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/scene-script-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-script-ability-codegen",
+      "bytes": 11965895,
+      "files": 35,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-ability-codegen"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-script-ability-ipo",
+      "bytes": 4722218,
+      "files": 47,
+      "homes": [
+        "E:/SyncForder/CodeRepos/build/RelWithDebInfo/s6-final-q-luajit-v5-script-ability-ipo/CMakeFiles/_CMakeLTOTest-CXX/src",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/script-ability-ipo"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-system-event-await-runtime",
+      "bytes": 14863170,
+      "files": 29,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/installed-consumers/system-event-await-runtime"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-migration-base-off",
+      "bytes": 2387608389,
+      "files": 3734,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-migration-developer",
+      "bytes": 2929851537,
+      "files": 4219,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-migration-toolchain",
+      "bytes": 3745506075,
+      "files": 4210,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-player-luajit",
+      "bytes": 2503464753,
+      "files": 3797,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6",
+        "E:/SyncForder/CodeRepos/lux-engine-s6/cmake/tests/architecture-layer-probe"
+      ]
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-v3-bcompare-toolchain",
+      "bytes": 3450239952,
+      "files": 3449,
+      "homes": [
+        "E:/SyncForder/CodeRepos/lux-engine-s6-v3-bcompare"
+      ]
+    }
+  ],
+  "policy": "Archive non-rebuildable files with verified content hashes before deleting explicitly enumerated historical Engine build roots. Do not touch source, install, junctions, active roots or other projects."
+}

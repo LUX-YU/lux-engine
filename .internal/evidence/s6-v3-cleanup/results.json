@@ -1,0 +1,1346 @@
+{
+  "deleted_roots": 167,
+  "deleted_bytes": 155915674750,
+  "archive_bytes": 347478868,
+  "free_bytes": 251611086848,
+  "results_sha256": "1E1CAC39F77CF111D3ED25DE9B0F602919856807DE35499A38327A7C91444D4F",
+  "errors": [],
+  "archives": [
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\Debug\\hook-q-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\Debug__hook-q-developer.zip",
+      "archive_sha256": "AE119DA29508938FE0B05D92AA7AEDDEEAF7E83E5DEA3D0963E00068BF7D3ABE",
+      "archive_bytes": 2394621,
+      "archived_files": 1838,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\Debug\\s6-final-owner-probe",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\Debug__s6-final-owner-probe.zip",
+      "archive_sha256": "E21EF78918B853E8D75C6C18AD43D5EC5F9E09BCC26C406DDAA053BE37E77C81",
+      "archive_bytes": 1177669,
+      "archived_files": 728,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\Release\\hook-q-consumers-final",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\Release__hook-q-consumers-final.zip",
+      "archive_sha256": "F4D576FB1063D555B95C9D74714942EAE5499DA1E7F1A532B50BBAC73D927FAE",
+      "archive_bytes": 1577565,
+      "archived_files": 159,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ca",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__ca.zip",
+      "archive_sha256": "433984F7EEF22CF58D4AE8EA22A1F03AAAF97F558B2598C7DF5461E0B734841A",
+      "archive_bytes": 1070076,
+      "archived_files": 64,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\cb",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__cb.zip",
+      "archive_sha256": "884ADE2FB941952BDE72C302157DC24DD0C0B795A913BD8B7AB3D6DA93BCF66D",
+      "archive_bytes": 1072035,
+      "archived_files": 72,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\cc",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__cc.zip",
+      "archive_sha256": "9494B620F026A3BB82B278B396C90142AAC663B114B6233E583CF99C90CA1F6B",
+      "archive_bytes": 1074121,
+      "archived_files": 81,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p1-consumer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__codegen-p1-consumer.zip",
+      "archive_sha256": "DF95C870949686D3D656313DC8FBC9497145DCD2210469619A6735A4026AF34E",
+      "archive_bytes": 141784,
+      "archived_files": 26,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p2-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__codegen-p2-cpp-coroutine-script.zip",
+      "archive_sha256": "5F3E7EC752009BD140BA3C2E0722E89EA77AA2B72D0B26A58FFA468B5AEBB280",
+      "archive_bytes": 153525,
+      "archived_files": 31,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p2-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__codegen-p2-lua-script-packager.zip",
+      "archive_sha256": "E0D15F33CC8C0171AED8A2B9894431262D00CBF7BB763AB30F82D97F644852D1",
+      "archive_bytes": 984818,
+      "archived_files": 45,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\codegen-p2-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__codegen-p2-system-hook-script-binding.zip",
+      "archive_sha256": "F36D9C77FF231EA5C27589F7133F2B38E678600E5AF35AC3CFEDA4A510A71375",
+      "archive_bytes": 154110,
+      "archived_files": 32,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\deep-bsafe",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__deep-bsafe.zip",
+      "archive_sha256": "C341CFCBEDE5757FE187261839FDEDE390D4845022E49744C91BAEE4B8F2BDFD",
+      "archive_bytes": 46886,
+      "archived_files": 3,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\deep-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__deep-toolchain.zip",
+      "archive_sha256": "F58C14A8671375235475479F32FF38FACA058C5C4077F6BB8ADADBEBAD65C0BB",
+      "archive_bytes": 11955897,
+      "archived_files": 2621,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-b1",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-closure-b1.zip",
+      "archive_sha256": "95E9FE830D0CA06C1CEF0DB99482C1F1179195E44156BF73D5DD28823D90131A",
+      "archive_bytes": 2051544,
+      "archived_files": 1809,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-closure-developer.zip",
+      "archive_sha256": "186838F18EB3FB71614C8D3C13D40D218C53A2AF3DCB0D2F9F221583177E17C1",
+      "archive_bytes": 4033528,
+      "archived_files": 2225,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-sdk-preflight-v1",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-closure-sdk-preflight-v1.zip",
+      "archive_sha256": "56AF70C0D17C057DDA00C3B11BCF8522191730594D9E9AC43DB017942EFECCA3",
+      "archive_bytes": 2717173,
+      "archived_files": 258,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-sdk-preflight-v2",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-closure-sdk-preflight-v2.zip",
+      "archive_sha256": "56166C91EBFD26C4AA7BBFA1ED4C40397A72F85BB24C71B6B8F00B64BEE4814C",
+      "archive_bytes": 470751,
+      "archived_files": 110,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-closure-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-closure-toolchain.zip",
+      "archive_sha256": "98BB8D365CCA93D3E82BA2A95469BD8277AD22576DA26A62B02CC88703EE6C3F",
+      "archive_bytes": 3316568,
+      "archived_files": 1803,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-consumers-final",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-q-consumers-final.zip",
+      "archive_sha256": "885B2373F0B1AB2C9234A754A05C16BB18B6DADA5F46F9C36A5BE107A6F14E3C",
+      "archive_bytes": 3030888,
+      "archived_files": 335,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-q-developer.zip",
+      "archive_sha256": "88A83E9AC17ED681897A8CEA8474F7B58712C9858E783C40CCFF4D1886D42CDD",
+      "archive_bytes": 3089842,
+      "archived_files": 2229,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-physics-off",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-q-physics-off.zip",
+      "archive_sha256": "CDA3CEAC9F622C58465E783D4DDB983AD3F89B4249887915DD481A27A0DF6D1E",
+      "archive_bytes": 2894947,
+      "archived_files": 2180,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\hook-q-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__hook-q-toolchain.zip",
+      "archive_sha256": "FF6AA027FF3398AD510847853FC1F7EABBD2028ED1C3647B9A6CC3D4AFFACA2E",
+      "archive_bytes": 11037610,
+      "archived_files": 2219,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-ability",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-pb0-consumer-ability.zip",
+      "archive_sha256": "D707F087C6185D3B0FF3A061EE5E73F8A97C8FC69F87BD263FA8FE9F7860F86F",
+      "archive_bytes": 60702,
+      "archived_files": 24,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-hook",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-pb0-consumer-hook.zip",
+      "archive_sha256": "7B03E05D03E2D42AC706F0A2DAC1613E5041D179587A67701B30DF7FB179181C",
+      "archive_bytes": 70955,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-scene",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-pb0-consumer-scene.zip",
+      "archive_sha256": "79A036A970B4F02667647BBE152C1F31B3518D9A275C12DBD64F41F7CAF50795",
+      "archive_bytes": 62784,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-pb0-consumer-simulation",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-pb0-consumer-simulation.zip",
+      "archive_sha256": "4E1FDE8D01B7A4A2CC854C4F42215A4E6CEBAB74EC70D3DC14E90643473BA311",
+      "archive_bytes": 52465,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-ability",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-consumer-ability.zip",
+      "archive_sha256": "62380ED408301F03B3FDE90138214B886A093D34EC88D70B1FB8FEA84737454F",
+      "archive_bytes": 60676,
+      "archived_files": 24,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-hook",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-consumer-hook.zip",
+      "archive_sha256": "2D1E710AE79181BDAA4253FBB659DA5EDDBE108E440E9A2585A4F4D6DB7814CB",
+      "archive_bytes": 70923,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-scene-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-consumer-scene-script.zip",
+      "archive_sha256": "80CC148DF94572F742EC0F7B4DCC04CE650D26E889E75DD151FED5B5D15584BA",
+      "archive_bytes": 61701,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-consumer-simulation",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-consumer-simulation.zip",
+      "archive_sha256": "0BA126F7AD20753A8F7D6331D121741D8DF5BF693212B58389086389BE9BE064",
+      "archive_bytes": 52447,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-developer.zip",
+      "archive_sha256": "437411E9B7FFCB28931ECEC26682274F5675C39C3D007AAFF3191BC01D53819E",
+      "archive_bytes": 3074188,
+      "archived_files": 2214,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-editor.zip",
+      "archive_sha256": "23F85F3DE72D40C605E0B81B57E2DFF8E047D3D4921D6A96FC1A31252C7AC2AF",
+      "archive_bytes": 3156680,
+      "archived_files": 2358,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-player.zip",
+      "archive_sha256": "D75291DC02ADE1D22C17B1443FA387E1FE88E8D6F91222A2190E6CF411430A39",
+      "archive_bytes": 2689393,
+      "archived_files": 2077,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s25-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s25-toolchain.zip",
+      "archive_sha256": "B40D82968AFB02E037130319069ED5F1A8EA66B951E1688A64C1FDF1789DB515",
+      "archive_bytes": 10922488,
+      "archived_files": 2196,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-ability",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3-consumer-ability.zip",
+      "archive_sha256": "8DBEB9ADF302BF42F32749A900C6C488085D848F1F581E5AFD1468E583F5F4A4",
+      "archive_bytes": 139946,
+      "archived_files": 24,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-flow-compiler-vcpkg",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3-consumer-flow-compiler-vcpkg.zip",
+      "archive_sha256": "BE3968EB4496471EE67A977FF12F8D029DD366ABA42CEC6786F55E322C7E142C",
+      "archive_bytes": 114007,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-flow-model",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3-consumer-flow-model.zip",
+      "archive_sha256": "3F1AA22A3B6B25502B3468466C0BB6775C1A1C4F02DD5235EB73BC1C255AC0D9",
+      "archive_bytes": 40305,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-flow-model-vcpkg",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3-consumer-flow-model-vcpkg.zip",
+      "archive_sha256": "4B784D24251779D8E67DE4A046C49155E6397F5E3FCCFA3A5F146EC1E2BC958B",
+      "archive_bytes": 112404,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-consumer-scene-script-vcpkg",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3-consumer-scene-script-vcpkg.zip",
+      "archive_sha256": "25C659A72C4B23B59A75988A91511A2A465D1429CE06EF78084F7DEA0D4278E9",
+      "archive_bytes": 128435,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-q",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3-q.zip",
+      "archive_sha256": "D1FBF7EA8E0B1DCCBC1EE00B7049C5616707F83CA11F5CE696CCE02C33F33E3C",
+      "archive_bytes": 16208245,
+      "archived_files": 2637,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3-toolchain.zip",
+      "archive_sha256": "9932D42EDC15AA68841DA79ADC7FDC95BD7C80B787CDA1AF7E4AA668BE39804C",
+      "archive_bytes": 11204181,
+      "archived_files": 2101,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-flowforge-compiler",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-consumer-flowforge-compiler.zip",
+      "archive_sha256": "AD2A4A61EF891B29CEF3B03C825680BF805D49E13CE6B5D75B6A330D9CAAEB24",
+      "archive_bytes": 113518,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-flowforge-model",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-consumer-flowforge-model.zip",
+      "archive_sha256": "7F5080FE1C569814A9034DE169A80CE2694A13EC0C5E858C2F70AEBEF19DC1BF",
+      "archive_bytes": 112004,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-scene-script-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-consumer-scene-script-runtime.zip",
+      "archive_sha256": "1503DB258DD693625BCA42066EACFD638DFFF4CED720ABAE45C023B06B6F3AEE",
+      "archive_bytes": 128869,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-consumer-script-ability-codegen",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-consumer-script-ability-codegen.zip",
+      "archive_sha256": "98C2A2A63AAB4A722C7EF0A3A16E5CC02A237F2DA9A56983BE7249A569ACA8D4",
+      "archive_bytes": 139997,
+      "archived_files": 24,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-developer.zip",
+      "archive_sha256": "8E8605B0E40898BC38F254B0BD50399452576CFD482F0ADF21D3FD0B2E928170",
+      "archive_bytes": 2860036,
+      "archived_files": 2225,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-editor.zip",
+      "archive_sha256": "45033D27F620ED0EC7ABAC6C469BCF25F0F04BA5A760F56CB5799C84ED398FAF",
+      "archive_bytes": 3028133,
+      "archived_files": 2369,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-player.zip",
+      "archive_sha256": "7EBFB9D8A204AAD2FE47CFA8E2BA83067A30D3256BF5A947CFF3919054342C26",
+      "archive_bytes": 2557699,
+      "archived_files": 2089,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s3h-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s3h-toolchain.zip",
+      "archive_sha256": "7FE367E33488EA80D19A4CEBF455B61839063866FDFAD5D2B593BA70359D59C6",
+      "archive_bytes": 10823914,
+      "archived_files": 2223,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-consumer-ability",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4-consumer-ability.zip",
+      "archive_sha256": "A78AFF55482A1907D37ED28F0ED8163E21FAC83A5195CA404386BBD7EACCD302",
+      "archive_bytes": 140866,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-consumer-lua",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4-consumer-lua.zip",
+      "archive_sha256": "BED533FCF5D81C5B6F90C020F14156E24E38CA5722DFA8B74BF1392C5133F29D",
+      "archive_bytes": 924955,
+      "archived_files": 31,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-consumer-scene-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4-consumer-scene-script.zip",
+      "archive_sha256": "D70BEA48DF4BAD1D2292D2ED8F0378F5B06F26D70F525186CF609FCB03D87411",
+      "archive_bytes": 127636,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4-editor.zip",
+      "archive_sha256": "1957BCE313D87F4D0CE62083336C3C67AC2A12FE07C0F8835B110D2F435C1E9E",
+      "archive_bytes": 3525517,
+      "archived_files": 2536,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4-player.zip",
+      "archive_sha256": "8AA55E8B850A1A18F18B108E9F1A2F9D1C45783044AFBEA8C4B58877CA08A95C",
+      "archive_bytes": 3294258,
+      "archived_files": 2381,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4-toolchain.zip",
+      "archive_sha256": "81747F21DC193CBDC8F55A31A3F6EAA3A43F90FC0DBF099D0656612EAE1E3338",
+      "archive_bytes": 11546338,
+      "archived_files": 2376,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-lua54-dev",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-lua54-dev.zip",
+      "archive_sha256": "6D466BA1BEC4CD1202DE33102F0A5E005875450A622A09B8B2141AF836FE4FBD",
+      "archive_bytes": 1705061,
+      "archived_files": 981,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-lua54-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-q-lua54-developer.zip",
+      "archive_sha256": "6E9FA68662F210939E03175CAA5516ECFAEB4E7845288CAC54DF21D3DA61E7B6",
+      "archive_bytes": 2657216,
+      "archived_files": 2126,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-lua54-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-q-lua54-editor.zip",
+      "archive_sha256": "2608F85F1942B7CC8A6B849AC869354127E68E545C66B12562214F73C57ED5B5",
+      "archive_bytes": 2733031,
+      "archived_files": 2256,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-lua54-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-q-lua54-player.zip",
+      "archive_sha256": "80EC0A7B0D2E5C7F7412DC0D14FDEE9835AE92D029F9F9F8BFD17C83071FF5F6",
+      "archive_bytes": 2600539,
+      "archived_files": 2123,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-luajit-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-q-luajit-developer.zip",
+      "archive_sha256": "28649FEAEAFDAA9FBD01DDC67B7D719BF9F048CDF62E916B3E698D9D8A26C0C2",
+      "archive_bytes": 2676148,
+      "archived_files": 2126,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-luajit-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-q-luajit-editor.zip",
+      "archive_sha256": "23213C3009E18D5644B88C76866D4ABEA2432329B82E6320A68B436ADF9258AF",
+      "archive_bytes": 2754412,
+      "archived_files": 2255,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-luajit-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-q-luajit-player.zip",
+      "archive_sha256": "D1001D6D648D6EA8810D4CC4E614AC7D2ECF47C3958D7AF9E270DEF858DEF895",
+      "archive_bytes": 2630307,
+      "archived_files": 2123,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-q-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-q-toolchain.zip",
+      "archive_sha256": "6F74190A00E71CEE1091D6801A69977588987DFEF555A80043A32671AFEFA982",
+      "archive_bytes": 11355721,
+      "archived_files": 2385,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4p-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4p-toolchain.zip",
+      "archive_sha256": "C3C995432619416895C303A7940D29C4CBF5244731FA78BA0EDE232D3F2F1299",
+      "archive_bytes": 2129356,
+      "archived_files": 762,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-consumer-ability",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4q-consumer-ability.zip",
+      "archive_sha256": "A8FD9FC90D3D1E99361FFFA684ED0B547B557DE1576263A3CE2084CC1595278F",
+      "archive_bytes": 140995,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-consumer-lua",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4q-consumer-lua.zip",
+      "archive_sha256": "DF4F0042FF1519618A377EAF91517BA51CAF7885851C19E71EF58D347A115114",
+      "archive_bytes": 921413,
+      "archived_files": 31,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-consumer-scene-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4q-consumer-scene-script.zip",
+      "archive_sha256": "B24730D01194C9DA409FA9835B321D9C197C4169BC5D5A9E3D582BAD1D66A4C6",
+      "archive_bytes": 127459,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4q-developer.zip",
+      "archive_sha256": "B5F5D7CB5E3770CC24A8E97565947164D1C3BD2B409CF9D97F86F6C023C433C1",
+      "archive_bytes": 2734243,
+      "archived_files": 2107,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4q-editor.zip",
+      "archive_sha256": "7FE15B5B40DB17F8E2D59DEE19351179224BACBE0FFA508D60A8ACFD390EA4F5",
+      "archive_bytes": 3217737,
+      "archived_files": 2389,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4q-player.zip",
+      "archive_sha256": "9437A99EC6A36393F8215869D3EA9BCDF5F5E9C68E975467FACFC6C079DD8295",
+      "archive_bytes": 2967861,
+      "archived_files": 2244,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s4q-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s4q-toolchain.zip",
+      "archive_sha256": "CE18351FE27E0F3C707338C0C8F6BAFA1715FAA6786D0556A78CDF2B6F92E9F9",
+      "archive_bytes": 11055232,
+      "archived_files": 2241,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-lua54",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-consumers-c9-lua54.zip",
+      "archive_sha256": "2C064BD3218CD2D208E04E31C13AB50E3AF703722FE2D9F3732EDCC663EC6D72",
+      "archive_bytes": 235505,
+      "archived_files": 36,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-lua54-2",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-consumers-c9-lua54-2.zip",
+      "archive_sha256": "0F8F5F3171E50D243890DC3DDC0793D17EB0A779FFA9F4D37078CA03CB36103C",
+      "archive_bytes": 1666135,
+      "archived_files": 144,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-consumers-c9-luajit.zip",
+      "archive_sha256": "A1AD37810EC6D4DF22658513E360FD3ABC55AD14E6881D8C9637DDFB65D1D0AD",
+      "archive_bytes": 96087,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit-2",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-consumers-c9-luajit-2.zip",
+      "archive_sha256": "13347DEFF3C06C2A366A97B756A8A61B1545C4E95433E748BEB2393BAAA58B97",
+      "archive_bytes": 232752,
+      "archived_files": 36,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit-3",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-consumers-c9-luajit-3.zip",
+      "archive_sha256": "6BE51E7A5D8F9C2ED78FAB22CDD028169C1FE9A9A273B0B01C47DCD96A1D6D49",
+      "archive_bytes": 333811,
+      "archived_files": 52,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-consumers-c9-luajit-4",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-consumers-c9-luajit-4.zip",
+      "archive_sha256": "1B893EC0CCE8D81F41B20E4D11C7F25254AB04D504ED9FCB166535219147B5FF",
+      "archive_bytes": 1601835,
+      "archived_files": 144,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-dev-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-dev-toolchain.zip",
+      "archive_sha256": "B2B47E9F1777C9BC831D0B14E50E190E6CEC90793B3FA81DF34300365D23CC6D",
+      "archive_bytes": 2013279,
+      "archived_files": 812,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-developer.zip",
+      "archive_sha256": "541FF994B503B1E22A845AC0AAD6CE442A562481C14B979BC09E0A3C91EA5713",
+      "archive_bytes": 2834951,
+      "archived_files": 2128,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-editor.zip",
+      "archive_sha256": "31645DDF30A20938A992502AA7C407CA350B9E9C75B1B09579DCEB90B6568E50",
+      "archive_bytes": 2753252,
+      "archived_files": 2258,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-final-developer-dev",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-final-developer-dev.zip",
+      "archive_sha256": "485EC2D50A213971F065391CA74D3539A106A0FB1CCD6C56D52ED28B00156BFE",
+      "archive_bytes": 2245676,
+      "archived_files": 1036,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-final-toolchain-dev",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-final-toolchain-dev.zip",
+      "archive_sha256": "60F72BCB9F9E1F943589FBBAC415EF44C4B2FA272ECA92ADC51FDC924378E2F8",
+      "archive_bytes": 2464871,
+      "archived_files": 881,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-lua54-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-lua54-developer.zip",
+      "archive_sha256": "62EAB03C7F038CCF53EE6BC8FFAAA1E91D37A496EC59B8C1442E0589CF77999A",
+      "archive_bytes": 2846889,
+      "archived_files": 2128,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-lua54-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-lua54-editor.zip",
+      "archive_sha256": "18EA149025D34D8F6DE32E30A8B0EA6CA1EBE77AEDD20E0A18173CFE27529640",
+      "archive_bytes": 2768770,
+      "archived_files": 2258,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-lua54-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-lua54-player.zip",
+      "archive_sha256": "440F5599BB187EFE83B8649DDBCF84C06B19F1A27C06C0AC669E2A95F80F1A2D",
+      "archive_bytes": 2630070,
+      "archived_files": 2126,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-player.zip",
+      "archive_sha256": "83EF5679AA7E1B7D7010E8222AA80C6E8CEEDF829E660AB80AE6329A7CDE4C97",
+      "archive_bytes": 2615067,
+      "archived_files": 2126,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-s5-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__lux-engine-s5-toolchain.zip",
+      "archive_sha256": "941B97D8DF99143B581CEFE76945EE8F7F58FA38A551AC1C82AE4C4CDE9F0B76",
+      "archive_bytes": 11065527,
+      "archived_files": 2257,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s4p-consumers-lua54",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s4p-consumers-lua54.zip",
+      "archive_sha256": "879F6B1A8264ED2C538F07B78D6A23BC7691552A9D73B7BD01D306C33D338D51",
+      "archive_bytes": 1244814,
+      "archived_files": 77,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s4p-consumers-luajit",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s4p-consumers-luajit.zip",
+      "archive_sha256": "C5EFEC295331B9765CA5C947D663877CD3EC2A6590589BE7851D8D854A20FE3F",
+      "archive_bytes": 1202752,
+      "archived_files": 77,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-flowforge-compiler",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-lua54-flowforge-compiler.zip",
+      "archive_sha256": "CB44CC537359253612E8E15741EC4C8A7B5AEE36B34E147AF559C7686A1B8CC5",
+      "archive_bytes": 117232,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-lua54-lua-script-packager.zip",
+      "archive_sha256": "4C2F28660BED392BC93841F5A48DBF82C1156473A0BB3B1C39602DB13B894C08",
+      "archive_bytes": 981306,
+      "archived_files": 36,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-physics2d",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-lua54-physics2d.zip",
+      "archive_sha256": "BD13464F77358EB61BC360518F9F12CB79056F491FAF79BE76F46EE396ABB1D7",
+      "archive_bytes": 935982,
+      "archived_files": 22,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-scene-script-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-lua54-scene-script-runtime.zip",
+      "archive_sha256": "ED98714FEACB2271A0791C74F32A2FBD530B1DCB58CD24E2EA29EF210D938650",
+      "archive_bytes": 132608,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-script-ability-codegen",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-lua54-script-ability-codegen.zip",
+      "archive_sha256": "9F1F7111B60D437888C1EB6191CF7AC6E359B41CC3BF68BAE8730BDECD94A2C3",
+      "archive_bytes": 146620,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-system-event-await-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-lua54-system-event-await-runtime.zip",
+      "archive_sha256": "4B5B5DB4E3F466EFF0A992501B3EAC5A526BF2F2919C95F9CAC3285CA57141CF",
+      "archive_bytes": 120522,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-lua54-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-lua54-system-hook-script-binding.zip",
+      "archive_sha256": "17844DAF841CAEDA3D81AF18409104CB54AE93F967A6036A3B78234D9677AD27",
+      "archive_bytes": 161333,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-flowforge-compiler",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-luajit-flowforge-compiler.zip",
+      "archive_sha256": "E9F98622106A228CACEFAF5B0C11C331C62047C7BD4F1DAA3BA138C2AF4BA1EF",
+      "archive_bytes": 115156,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-luajit-lua-script-packager.zip",
+      "archive_sha256": "8E786B06AEFC4D90B68E4985296091B5F0147A3DAE3D3ECFC59F03B3A966EC17",
+      "archive_bytes": 927658,
+      "archived_files": 36,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-physics2d",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-luajit-physics2d.zip",
+      "archive_sha256": "D4EEBEC6F2CC74BEF111B8C0831E822C0EF0EEA0DD5C702B4E312763C6D386F7",
+      "archive_bytes": 880231,
+      "archived_files": 22,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-scene-script-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-luajit-scene-script-runtime.zip",
+      "archive_sha256": "BFC01CD620CA03C0806828702F2B21AF203E220B9A48FC6FB7733F96B1541904",
+      "archive_bytes": 130198,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-script-ability-codegen",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-luajit-script-ability-codegen.zip",
+      "archive_sha256": "26CEF7641C5D382F5D990F5B4884A319F448E739D50FF12C68CCC3E8DFFC70FF",
+      "archive_bytes": 144229,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-system-event-await-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-luajit-system-event-await-runtime.zip",
+      "archive_sha256": "E9ACF828BD70FFEB3B9BCEF713A83496ABF77B0BA06B804D824AD5304E26BB7B",
+      "archive_bytes": 118305,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-consumers-luajit-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-consumers-luajit-system-hook-script-binding.zip",
+      "archive_sha256": "B980F60E3013179A1BAA60D73FCB0CA2E1AA48C788350B8B4FF6FEE2A85C00E6",
+      "archive_bytes": 158319,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-developer.zip",
+      "archive_sha256": "CC00A8A6290481FFCB22D33C8D0AEA59D0B492BE224D5CD6F10220522C94AAA5",
+      "archive_bytes": 2895011,
+      "archived_files": 2167,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-editor.zip",
+      "archive_sha256": "D55108BBE5D65CE9C65CB6BE17B170AF779A107A12D8CB843C12B89113751324",
+      "archive_bytes": 2927646,
+      "archived_files": 2297,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-lua54-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-lua54-developer.zip",
+      "archive_sha256": "57C0588883C39477D037279FDA5DEE91B4780A3DDEEAAB25A0E5C0A2CD10F346",
+      "archive_bytes": 2787833,
+      "archived_files": 2168,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-lua54-editor",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-lua54-editor.zip",
+      "archive_sha256": "925A1F255FE07E3EF6B7DC068F6E56E3A3887C6EE8FCD2A5D4F29CE9ACE17004",
+      "archive_bytes": 2942449,
+      "archived_files": 2297,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-lua54-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-lua54-player.zip",
+      "archive_sha256": "9F1F9F49A3CB776A1812DBE0C76783BAD7445204A62B70537DF5FB29E78952D3",
+      "archive_bytes": 2787028,
+      "archived_files": 2165,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-player.zip",
+      "archive_sha256": "C75F385C1BF2B018A9CBCB3F784A2625F6E3865E7ACABE5CAAF6602A72747DF2",
+      "archive_bytes": 2772883,
+      "archived_files": 2165,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s5f-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s5f-toolchain.zip",
+      "archive_sha256": "057C420605BB1E038E332AC7B7DD9CD64CEE748A29E2C707F681F7A8584BD44F",
+      "archive_bytes": 11031058,
+      "archived_files": 2318,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-cpp-coroutine-script.zip",
+      "archive_sha256": "C7308BDD35DBAC75DA833881714641C3E3BC4E41623E81B3F5F05F2D710092B9",
+      "archive_bytes": 158108,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-flowforge-compiler",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-flowforge-compiler.zip",
+      "archive_sha256": "B20CCF7A271D6BA8AE1A360BB73AD59A849C23772E8DED211AA36006C2B09383",
+      "archive_bytes": 116849,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-lua-script-packager.zip",
+      "archive_sha256": "35C2FC02D055689567C43A4EF0BC30C154C47310A81A3D5C68FEF1CB64164E71",
+      "archive_bytes": 911331,
+      "archived_files": 36,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-physics2d-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-physics2d-script.zip",
+      "archive_sha256": "0F5EEC42C00603B251496B1FF57D3F8324B91FC20C977A6279C893162CABDF78",
+      "archive_bytes": 879818,
+      "archived_files": 22,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-scene-script-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-scene-script-runtime.zip",
+      "archive_sha256": "60EAB69A0E6A3277818D5CFE28F7F0075EB6B183E555F18AA3B152DF3A41C657",
+      "archive_bytes": 131905,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-script-ability-codegen",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-script-ability-codegen.zip",
+      "archive_sha256": "D681FBDB5D9F63E9E4DD568A9DA28FEBF6162F3EBC141ED963A66E68A5D2C039",
+      "archive_bytes": 146067,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-script-static-ability-specialization",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-script-static-ability-specialization.zip",
+      "archive_sha256": "460297C1E1473C2951EB78C5E1958EBD1C73119A04464A9E5D56AD8FB6B4F74F",
+      "archive_bytes": 143547,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-system-event-await-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-system-event-await-runtime.zip",
+      "archive_sha256": "E6E58B28FF68B6BD9F2694F7F31344B54B974945EA9591CBC54A1B36723AA770",
+      "archive_bytes": 120781,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-lua54-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-lua54-system-hook-script-binding.zip",
+      "archive_sha256": "8BFA1540B63180578B0A85359CFB415352A014C147AD6AF5DCB15D5B8DADF025",
+      "archive_bytes": 160231,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit-physics2d-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit-physics2d-script.zip",
+      "archive_sha256": "4502690AA8FB4300F4C2CA59611CC42A5469F0C5DD0E9F619DB3D293F48AE826",
+      "archive_bytes": 39698,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit2-physics2d-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit2-physics2d-script.zip",
+      "archive_sha256": "0F187A65E782F505E35166C9286F08B592BFCA935550CD488622A58E475ECF19",
+      "archive_bytes": 99795,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit3-physics2d-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit3-physics2d-script.zip",
+      "archive_sha256": "13061AB96F2BD87B577CE0607B1E8C0684DD579D8234202C2A31311CB7F01485",
+      "archive_bytes": 879126,
+      "archived_files": 22,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-flowforge-compiler",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit4-flowforge-compiler.zip",
+      "archive_sha256": "4298DCB5976B1C67FDC79EA11D91C4B76051AE83D545CE0CD27B5BD247202EAA",
+      "archive_bytes": 117161,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit4-lua-script-packager.zip",
+      "archive_sha256": "596ED4DDF0FA568829187469B1427049EE1912D7F51831555E8F0F02C5F63F10",
+      "archive_bytes": 931520,
+      "archived_files": 36,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-physics2d-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit4-physics2d-script.zip",
+      "archive_sha256": "5A3CC4EB4A00F1544F4DD04E83D0E7FC31247FE146007F143E08B2AF10616A9C",
+      "archive_bytes": 880541,
+      "archived_files": 22,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-scene-script-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit4-scene-script-runtime.zip",
+      "archive_sha256": "E8C413B0785854D1DE248C6589988C3CBB3C0CE92AB5A70F09A1D90A863E8E4A",
+      "archive_bytes": 132276,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-script-ability-codegen",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit4-script-ability-codegen.zip",
+      "archive_sha256": "E2E91FF667EC52041F7F05352D3C104B7CBFA274B3EC546D453445F596DCE12B",
+      "archive_bytes": 146171,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-system-event-await-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit4-system-event-await-runtime.zip",
+      "archive_sha256": "874BE8A83123623A3315D3015236A29B9337C1F128AE36501F56B78BD0A467D4",
+      "archive_bytes": 120180,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit4-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit4-system-hook-script-binding.zip",
+      "archive_sha256": "A5826C29176A0F190079E3D16A8B7516407D28A11303ABE8B501DFD73F39DCDC",
+      "archive_bytes": 159602,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit5-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit5-cpp-coroutine-script.zip",
+      "archive_sha256": "3744F7777C04D7683E9450B9B7C2DC1D6DC8EAF2326F3A8D0ABC5115691FBCA4",
+      "archive_bytes": 157267,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit5-script-static-ability-specialization",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit5-script-static-ability-specialization.zip",
+      "archive_sha256": "CAA9933DE4A5E51F3758070BE66EA678FB47F418BA07F57BAE55B931B05BDA8E",
+      "archive_bytes": 143427,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-consumer-luajit5-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-consumer-luajit5-system-hook-script-binding.zip",
+      "archive_sha256": "D9E16A9906BEF6F497969CFA4DC46F35EE36E2F2652ADD384A9124638F47D881",
+      "archive_bytes": 159596,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-editor-luajit",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-editor-luajit.zip",
+      "archive_sha256": "FF810EB0F572A44232ED8A03CF92BF21B1D54E76BB10D7BA595C96B5784AC29F",
+      "archive_bytes": 3200177,
+      "archived_files": 2326,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-consumer-cpp-coroutine",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-consumer-cpp-coroutine.zip",
+      "archive_sha256": "E7ECE298A8830391816ED7CE374931049E6C460D7CF0DFD8F14DB08698DEB6C7",
+      "archive_bytes": 39626,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-consumer-cpp-coroutine-v2",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-consumer-cpp-coroutine-v2.zip",
+      "archive_sha256": "1BA0D8F2CF295DDABBA093812827181BFC9706DA296139FC08CB2C06F2AB7B36",
+      "archive_bytes": 160873,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-consumer-ipo",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-consumer-ipo.zip",
+      "archive_sha256": "1B668CD98F3D5B235053BBC5BB41411E79A2CC96F7517C8BB268A75C0E1A7E03",
+      "archive_bytes": 158876,
+      "archived_files": 35,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-lua54-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-lua54-developer.zip",
+      "archive_sha256": "9B9287D2ADB49578E2C4F51CE66BC6AC70B14A6286306FA8A08FAE1D6208BC9E",
+      "archive_bytes": 3045639,
+      "archived_files": 2186,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-luajit-player",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-luajit-player.zip",
+      "archive_sha256": "7D8EFBF06D44210B7E2E8ADBB624A8D68205B183EEF7289E18BD88D97B631D02",
+      "archive_bytes": 2717040,
+      "archived_files": 2185,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-extra-script-static-ability-specialization",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-extra-script-static-ability-specialization.zip",
+      "archive_sha256": "78CAFB91BE36467BE9284C93BFABDA315FF09DD21613774D17681AE0604F5B8E",
+      "archive_bytes": 149816,
+      "archived_files": 27,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-extra-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-extra-system-hook-script-binding.zip",
+      "archive_sha256": "A92CA8F8B3E8314E303CC96430034026D7156F1382967622ED883B188F9F0FBA",
+      "archive_bytes": 165033,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v1-cpp-coroutine-script.zip",
+      "archive_sha256": "8AD9931D8693BD8DF6722BD88C38B0C9EE027FDB510851620712C0345D6B2C19",
+      "archive_bytes": 162770,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-flowforge-compiler",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v1-flowforge-compiler.zip",
+      "archive_sha256": "6746F373DD01C2154B5CBB0B9B10299B2BC52E90B760D9F299DC2B623B075F5E",
+      "archive_bytes": 117528,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v1-lua-script-packager.zip",
+      "archive_sha256": "3462A90F2B5F06655A93FC9294232B058F23596E64221980B76E82505DD36A86",
+      "archive_bytes": 113134,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-script-ability-codegen",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v1-script-ability-codegen.zip",
+      "archive_sha256": "95269685637F4D74AB9A13FE55689D861455B3CA3099C5BE010CEDBED0AB243F",
+      "archive_bytes": 148607,
+      "archived_files": 27,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-script-ability-ipo",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v1-script-ability-ipo.zip",
+      "archive_sha256": "1AC71B249EF3B13711C3CE8B37BE55AF5B300B4C42DABA56E00F358C65594CC8",
+      "archive_bytes": 160800,
+      "archived_files": 35,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v1-system-event-await-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v1-system-event-await-runtime.zip",
+      "archive_sha256": "DC76F8628E5F52600EEBDF34689C6529084A28665616BE6DA89E8938DB2286EB",
+      "archive_bytes": 120892,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v2-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v2-lua-script-packager.zip",
+      "archive_sha256": "073EA64C8594503CD547347A03438C434E4316D55739AD3C69FA2F853A5F6138",
+      "archive_bytes": 986689,
+      "archived_files": 38,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v2-physics2d-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v2-physics2d-script.zip",
+      "archive_sha256": "6E0C05A84C3F9F20D8131DC93A08F46E451494960CE5D4557C8E593BB8F7A3AB",
+      "archive_bytes": 941458,
+      "archived_files": 22,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-lua54-v2-scene-script-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-lua54-v2-scene-script-runtime.zip",
+      "archive_sha256": "58E83079681CD737634BE33CBA54763467D3D3D8634E92ADC3091E387BBF1E5F",
+      "archive_bytes": 134809,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-cpp-coroutine-script.zip",
+      "archive_sha256": "00419514CCDFFE5A11A56032A4C85EC8DCAE7264C59DC25234C3F99CA9FFD650",
+      "archive_bytes": 31757,
+      "archived_files": 5,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-extra-script-static-ability-specialization",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-extra-script-static-ability-specialization.zip",
+      "archive_sha256": "A3615E9CB4F4E1D74177816ECD34A1321416DA2D19ED8F2107A2EDDE787AB4E5",
+      "archive_bytes": 146033,
+      "archived_files": 27,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-extra-system-hook-script-binding",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-extra-system-hook-script-binding.zip",
+      "archive_sha256": "0BC1967E9E53A3E356E6E0B2A16C2A7491CA9C5347BB0EB9731950EA86ED1F3E",
+      "archive_bytes": 161011,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v2-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v2-cpp-coroutine-script.zip",
+      "archive_sha256": "E3743482604AA1AA2A6E8895369678C090BDAAF813F19B24DC2634E08D1C9070",
+      "archive_bytes": 38106,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v3-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v3-cpp-coroutine-script.zip",
+      "archive_sha256": "79B41894AA7CF3E77FF0D76639D2A038B72B30B1C3B1FBDAA563EB51BBE4EC8E",
+      "archive_bytes": 40224,
+      "archived_files": 10,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v4-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v4-cpp-coroutine-script.zip",
+      "archive_sha256": "F87E8B728664950B85482A2ABCB4A13E9602F0E7FAA6B68CCBDBE3EAA81F54AE",
+      "archive_bytes": 162752,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-cpp-coroutine-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-cpp-coroutine-script.zip",
+      "archive_sha256": "E567E304C46A749EF48E658E1C6473E3F72C0A0E12C17AD53AC36273AA6D7DB6",
+      "archive_bytes": 163781,
+      "archived_files": 25,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-flowforge-compiler",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-flowforge-compiler.zip",
+      "archive_sha256": "BDACC0508C7E0698A67EA4BE86DB49BD55CCD98B2EAB1BE46497452F954237C1",
+      "archive_bytes": 117411,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-lua-script-packager",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-lua-script-packager.zip",
+      "archive_sha256": "B9EBE97F07182F9AC116A621C6D082022B81D2787684A07371C99A52B99B5312",
+      "archive_bytes": 934829,
+      "archived_files": 38,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-physics2d-script",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-physics2d-script.zip",
+      "archive_sha256": "6B4C5B660534DAC4A08537796416D17471D44E3AE0D28F289C32B2919D45B7DA",
+      "archive_bytes": 881997,
+      "archived_files": 22,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-scene-script-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-scene-script-runtime.zip",
+      "archive_sha256": "1B7B40AECC36E752FE7E82E3AE1BDBD3474728A3D7DACD9E6E4105B68DF4FE89",
+      "archive_bytes": 132658,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-script-ability-codegen",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-script-ability-codegen.zip",
+      "archive_sha256": "69F86DEC7B66E85BAB0E86C69457B72A8E879759D6DC85F7B8CEE4F537428003",
+      "archive_bytes": 148437,
+      "archived_files": 27,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-script-ability-ipo",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-script-ability-ipo.zip",
+      "archive_sha256": "CD221BE8063EFD34899F7D1D7345F46C2E96E1CD9F1FD5D37428BB28D960718D",
+      "archive_bytes": 160140,
+      "archived_files": 35,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-final-q-luajit-v5-system-event-await-runtime",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-final-q-luajit-v5-system-event-await-runtime.zip",
+      "archive_sha256": "448B4D9A10A72763AEBCEA453FBB369C703F13B966C9E3AA84B9ACFD6067C09E",
+      "archive_bytes": 120715,
+      "archived_files": 21,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-migration-base-off",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-migration-base-off.zip",
+      "archive_sha256": "58F008F62FE50882B27B8C4E66A576E786873D72FFD551976F6B706A16977C86",
+      "archive_bytes": 2859113,
+      "archived_files": 2157,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-migration-developer",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-migration-developer.zip",
+      "archive_sha256": "5AB4A8127ABF3CDF93315D17984C6DBD4F1B9F1DFF01608F1936A7BB1C8D3C04",
+      "archive_bytes": 6614383,
+      "archived_files": 2614,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-migration-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-migration-toolchain.zip",
+      "archive_sha256": "898EB9B1DF2E398C09680A95FB84E137AF29E9E74F6EC50DB9C81B65CB5C7119",
+      "archive_bytes": 12558893,
+      "archived_files": 2744,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-player-luajit",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-player-luajit.zip",
+      "archive_sha256": "80C2E3191A665ADF3CA243433A0B174C720F91E720633FD663DEB608383C3395",
+      "archive_bytes": 3019779,
+      "archived_files": 2194,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\s6-v3-bcompare-toolchain",
+      "archive": "E:\\SyncForder\\CodeRepos\\build-archives\\lux-engine\\s6-v3-cleanup\\RelWithDebInfo__s6-v3-bcompare-toolchain.zip",
+      "archive_sha256": "D20232FCB121AF6E277D0FBEBBA953B8D47B5A11FD46BA1A7F15F223AD1FEAAF",
+      "archive_bytes": 3096295,
+      "archived_files": 1984,
+      "status": "DELETED_AFTER_VERIFIED_ARCHIVE"
+    }
+  ]
+}

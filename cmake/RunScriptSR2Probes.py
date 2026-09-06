@@ -197,6 +197,41 @@ int main(int argc, char** argv)
     return source
 
 
+def instrument_events(source):
+    source = source.replace('"../../../scripting/core/test/ScriptEndpointTestAccess.hpp"',
+                            '"ScriptEndpointTestAccess.hpp"')
+    replacements = {
+        "        ++continuation->owner->continuation_destroys;":
+            '        std::puts("continuation-destroy");\n        ++continuation->owner->continuation_destroys;',
+        "        state.resume_values.push_back(value);":
+            '        std::printf("resume,%d\\n", value);\n        state.resume_values.push_back(value);',
+        "        ++state.step_calls;":
+            '        std::printf("step,%llu,%u\\n", static_cast<unsigned long long>(call.symbol),\n'
+            '            static_cast<std::uint32_t>(call.instance->self));\n        ++state.step_calls;',
+        "        output.value = instance;":
+            '        std::printf("create,%u\\n", static_cast<std::uint32_t>(instance->self));\n'
+            '        output.value = instance;',
+        "        delete static_cast<PreparedCall*>(method.token);":
+            '        std::printf("release,%llu\\n", static_cast<unsigned long long>(\n'
+            '            static_cast<PreparedCall*>(method.token)->symbol));\n'
+            '        delete static_cast<PreparedCall*>(method.token);',
+        "        delete static_cast<BackendInstance*>(instance.value);":
+            '        std::printf("destroy,%u\\n", static_cast<std::uint32_t>(\n'
+            '            static_cast<BackendInstance*>(instance.value)->self));\n'
+            '        delete static_cast<BackendInstance*>(instance.value);',
+    }
+    for old, new in replacements.items():
+        if old not in source:
+            raise RuntimeError("Event trace instrumentation no longer matches fixture: " + old)
+        source = source.replace(old, new)
+    source = source[:source.index("int main(")]
+    source += "int main()\n{\n"
+    for test in ("TargetedAndRetirement", "RegistrationCutoff", "NestedDispatch", "PreparedAdmissionProvenance",
+                 "CopyRetirementPin", "CopyOtherRecordRemoval", "CopyShutdownAndFailure", "CopyNestedAdmission"):
+        source += f'    std::puts("CASE {test}"); test{test}();\n'
+    return source + "    return 0;\n}\n"
+
+
 def main():
     parser = argparse.ArgumentParser()
     for name in ("baseline-source", "candidate-source", "baseline-prefix", "candidate-prefix",
@@ -217,6 +252,10 @@ def main():
         (directory / "probe.cpp").write_text(probe, encoding="utf-8")
         helper = source_root / "engine/domain/simulation/system/test/HookInvocationTestAccess.hpp"
         (directory / helper.name).write_bytes(helper.read_bytes())
+        event_test = original.with_name("script_system_event_wait_test.cpp")
+        (directory / "events.cpp").write_text(instrument_events(event_test.read_text(encoding="utf-8-sig")))
+        event_helper = source_root / "engine/domain/simulation/scripting/core/test/ScriptEndpointTestAccess.hpp"
+        (directory / event_helper.name).write_bytes(event_helper.read_bytes())
         wire_path = source_root / ("engine/scene/integration/script_description/test/script_system_description_test.cpp"
                                    if variant == "candidate" else
                                    "engine/domain/simulation/builtin/script/test/script_system_description_test.cpp")
@@ -227,9 +266,9 @@ def main():
         wire = wire.replace('int main()', 'int main(int argc, char** argv)')
         wire = wire.replace('    assert(encoded);', '    assert(encoded);\n'
                             '    assert(argc == 2);\n'
-                            '    std::ofstream golden(argv[1], std::ios::binary);\n'
-                            '    golden.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());\n'
-                            '    assert(golden.good());\n')
+                            '    std::ofstream wire_output(argv[1], std::ios::binary);\n'
+                            '    wire_output.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());\n'
+                            '    assert(wire_output.good());\n')
         (directory / "wire.cpp").write_text(wire, encoding="utf-8")
         (directory / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.22)
 project(sr2_probe LANGUAGES CXX)
@@ -239,6 +278,10 @@ add_executable(sr2_probe probe.cpp)
 target_compile_features(sr2_probe PRIVATE cxx_std_20)
 target_compile_options(sr2_probe PRIVATE /UNDEBUG)
 target_link_libraries(sr2_probe PRIVATE lux::engine::simulation::simulation_script)
+add_executable(sr2_events events.cpp)
+target_compile_features(sr2_events PRIVATE cxx_std_20)
+target_compile_options(sr2_events PRIVATE /UNDEBUG)
+target_link_libraries(sr2_events PRIVATE lux::engine::simulation::simulation_script)
 ''', encoding="utf-8")
         with (directory / "CMakeLists.txt").open("a", encoding="utf-8") as cmake:
             cmake.write("\nadd_executable(sr2_wire wire.cpp)\n"
@@ -262,6 +305,7 @@ target_link_libraries(sr2_probe PRIVATE lux::engine::simulation::simulation_scri
         env["PATH"] = ";".join([str(Path(prefix) / "bin"), "D:/Development/vcpkg/installed/x64-windows/bin"] +
                                [str(Path(p) / "bin") for p in args.dependencies.split(";")] + clean_path)
         run([str(exe)], directory / "trace.log", env)
+        run([str(directory / "build/sr2_events.exe")], directory / "event-trace.log", env)
         run([str(directory / "build/sr2_wire.exe"), str(directory / "v1.bin")], directory / "wire.log", env)
         run(["cmake", "--build", str(directory / "build"), "--target", "all", "-j", "4", "--", "-k", "0"],
             directory / "second-build.log")
@@ -278,14 +322,21 @@ target_link_libraries(sr2_probe PRIVATE lux::engine::simulation::simulation_scri
         run([str(exe), "--allocations"], root / f"{variant}-allocations.csv.log", env)
     traces = [(root / variant / "trace.log").read_text().splitlines()[1:] for variant in variants]
     identical = traces[0] == traces[1]
+    event_traces = [(root / variant / "event-trace.log").read_text().splitlines()[1:] for variant in variants]
+    event_equal = event_traces[0] == event_traces[1]
     wire_equal = (root / "baseline/v1.bin").read_bytes() == (root / "candidate/v1.bin").read_bytes()
     if not wire_equal:
         raise RuntimeError("Persistent v1 wire bytes changed")
-    (root / "manifest.json").write_text(json.dumps({"variants": manifest, "trace_equal": identical, "wire_equal": wire_equal}, indent=2))
+    (root / "manifest.json").write_text(json.dumps({"variants": manifest, "trace_equal": identical,
+                                                  "event_trace_equal": event_equal, "wire_equal": wire_equal}, indent=2))
     if not identical:
         import difflib
         (root / "trace.diff").write_text("\n".join(difflib.unified_diff(*traces)))
         raise RuntimeError("Baseline/candidate observable lifecycle traces differ")
+    if not event_equal:
+        import difflib
+        (root / "event-trace.diff").write_text("\n".join(difflib.unified_diff(*event_traces)))
+        raise RuntimeError("Baseline/candidate observable event traces differ")
 
 
 if __name__ == "__main__":

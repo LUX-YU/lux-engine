@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import statistics
+import shutil
 import subprocess
 import time
 
@@ -47,7 +48,17 @@ def main():
                 for variant in (("baseline", "candidate") if pair % 2 == 0 else ("candidate", "baseline")):
                     prefix = Path(getattr(args, variant))
                     binary = prefix / ("t/bin" if tool else "d/bin")
-                    exe = binary / ("flowforge_script_runtime_benchmark.exe" if tool else "script_runtime_benchmark.exe")
+                    build = prefix.parent.parent / "build/RelWithDebInfo" / prefix.name
+                    executable_name = "flowforge_script_runtime_benchmark.exe" if tool else "script_runtime_benchmark.exe"
+                    original_exe = build / ("t/bin" if tool else "d/bin") / executable_name
+                    # Benchmark targets are not installed. Keep only their qualified EXE in a fresh directory,
+                    # so Windows resolves engine DLLs from this variant's installed SDK through PATH.
+                    exe = root / (variant + "-bin") / executable_name
+                    exe.parent.mkdir(exist_ok=True)
+                    if not exe.exists():
+                        shutil.copy2(original_exe, exe)
+                    if digest(exe) != digest(original_exe):
+                        raise RuntimeError("Benchmark executable identity changed during measurement")
                     label = f"{name}-{mode}-{pair}-{variant}"
                     output = root / (label + ".csv")
                     command = [str(exe), "--group", group, "--mode", mode, "--size", "10000",
@@ -72,17 +83,25 @@ def main():
                     with (root / (label + ".log")).open("w") as log:
                         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=env)
                     rows = list(csv.DictReader(output.open(newline=""))) if output.exists() else []
-                    valid = result.returncode == 0 and len(rows) >= frames
+                    expected_rows = 6 if name == "event-fanout" else frames
+                    valid = result.returncode == 0 and len(rows) == expected_rows
                     record = dict(case=name, mode=mode, pair=pair, variant=variant, command=command,
-                                  executable_sha256=digest(exe), start_epoch=started,
+                                  executable_sha256=digest(exe), qualified_executable=str(original_exe), start_epoch=started,
                                   process_seconds=time.time() - started, exit_code=result.returncode,
                                   rows=len(rows), valid=valid)
+                    record["effective_resume_budget"] = 10000 if name == "lua-event" else 2000
+                    record["workload"] = "one occurrence plus five drains" if name == "event-fanout" else (
+                        f"{warmups} warmup frames then {frames} measured frames")
                     if lua:
                         record["fixture_sha256"] = digest(fixture)
                     if valid:
                         record["median_ns"] = statistics.median(float(r["nanoseconds"]) for r in rows)
-                        record["allocation_totals"] = {key: sum(int(r[key]) for r in rows) if key in rows[0] else None
-                                                       for key in ("allocations", "vm_allocations", "vm_reallocations")}
+                        record["total_ns"] = sum(float(r["nanoseconds"]) for r in rows)
+                        record["allocation_accounting"] = rows[0].get("allocation_accounting")
+                        record["measured_executable_allocations"] = (
+                            sum(int(r["allocations"]) for r in rows) if "allocations" in rows[0] else None)
+                        record["vm_final_cumulative"] = {key: int(rows[-1][key]) if key in rows[0] else None
+                                                         for key in ("vm_allocations", "vm_reallocations", "vm_frees")}
                         observations[variant] = [{k: r[k] for k in business if k in r} for r in rows]
                     records.append(record)
                     (root / "runs.json").write_text(json.dumps(records, indent=2))

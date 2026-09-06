@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory=$true)][string]$BuildRoot,
     [Parameter(Mandatory=$true)][string]$InstallRoot,
     [Parameter(Mandatory=$true)][string]$CxxPrefix,
+    [Parameter(Mandatory=$true)][string]$ToolsetPrefix,
     [Parameter(Mandatory=$true)][string]$FoundationPrefix,
     [string[]]$Profiles = @('developer', 'toolchain', 'physics-off', 'lua-off', 'lua54')
 )
@@ -30,7 +31,8 @@ foreach ($profile in $Profiles) {
             "-DLUX_BUILD_PROFILE=$engine_profile", "-DLUX_LUA_VM=$vm", "-DLUX_BUILD_PHYSICS2D=$physics",
             "-DLUX_SCRIPT_HAS_LUA=$lua", '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
             '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake',
-            "-DCMAKE_PREFIX_PATH=$CxxPrefix;$FoundationPrefix", "-DCMAKE_INSTALL_PREFIX=$prefix")
+            "-DCMAKE_PREFIX_PATH=$ToolsetPrefix;$CxxPrefix;$FoundationPrefix", "-DCMAKE_INSTALL_PREFIX=$prefix",
+            '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF','-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF')
         & cmake @arguments *> "$build/configure.log"
         if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
         & cmake --build $build --target all -j 4 -- -k 0 *> "$build/all.log"

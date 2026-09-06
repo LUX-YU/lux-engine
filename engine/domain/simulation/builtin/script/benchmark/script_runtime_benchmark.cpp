@@ -280,7 +280,10 @@ namespace
             std::string_view{"micro-cpp-coroutine"},
             std::string_view{"scene-cpp-sequence"},
             std::string_view{"scene-lua-sequence"},
-            std::string_view{"micro-cpp-event-wait"}
+            std::string_view{"micro-cpp-event-wait"},
+            std::string_view{"scene-cpp-population"},
+            std::string_view{"scene-native-population"},
+            std::string_view{"scene-lua-population"}
 #if LUX_BENCHMARK_HAS_LUA
             , std::string_view{"micro-lua-sync"}
             , std::string_view{"micro-lua-ability-query"}
@@ -1697,14 +1700,13 @@ namespace
                     .module_capacity = 1U,
                     .instance_capacity = capacity,
                     .prepared_call_capacity = capacity * 5U,
-                    .continuation_capacity = capacity,
+                    .continuation_capacity = 0U,
                     .max_ability_imports_per_module = 8U,
                     .max_continuation_frame_bytes = 4096U,
-                    .continuation_frame_storage_bytes =
-                        2U * ((std::max)(std::size_t{4096U}, capacity * 256U)) + 4096U,
+                    .continuation_frame_storage_bytes = 0U,
                     .storage_populations = std::array{
                         lux::simulation::script::NativeScriptStoragePopulation{
-                            std::addressof(*module), capacity, capacity
+                            std::addressof(*module), capacity, 0U
                         }
                     },
                     .state_storage_bytes = 64U * 1024U * 1024U
@@ -2974,6 +2976,68 @@ namespace
         if (!rows.empty()) rows.back().checksum = lux::simulation::benchmark::cpp_update_checksum;
     }
 
+    template <class Factory>
+    void runPopulationCycles(const Options& options, std::vector<Row>& rows, std::string name, Factory&& create)
+    {
+        // Repeat complete instance populations; the Lua factory also measures creation of its VM owner.
+        for (std::size_t cycle{}; cycle < 2U; ++cycle)
+        {
+            decltype(create()) harness;
+            rows.push_back(measureRow(name + "-create", name, options.size, cycle, [&] {
+                harness = create();
+                if (harness->system->activeInstanceCount() != options.size)
+                    throw std::runtime_error("population admission count mismatch");
+                return Row{.active_instances = options.size, .lifecycle_begins = options.size};
+            }));
+            rows.push_back(measureRow(name + "-invoke", name, options.size, cycle, [&] {
+                static_cast<void>(dispatchHookForTest(harness->hook));
+                harness->advance(SimulationDuration{1});
+                harness->stablePoint();
+                return Row{.active_instances = options.size, .calls = options.size};
+            }));
+            rows.push_back(measureRow(name + "-retire", name, options.size, cycle, [&] {
+                const auto retired = harness->system->shutdown();
+                const auto stats = harness->system->stats();
+                const bool leaked = stats.active_instances != 0U || stats.active_continuations != 0U ||
+                    stats.active_awaitables != 0U || stats.active_event_waiters != 0U;
+                if (!retired || leaked) throw std::runtime_error("population retirement did not close ownership");
+                return Row{.lifecycle_ends = options.size, .checksum = options.size};
+            }));
+        }
+    }
+
+    void runCppPopulation(const Options& options, std::vector<Row>& rows)
+    {
+        auto description = materializeCppStaticScript(generated::CppUpdate);
+        if (!description) throw std::runtime_error("population C++ contract failed");
+        auto artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
+        if (!artifact) throw std::runtime_error("population C++ artifact failed");
+        const std::array pools{CppStaticScriptPoolDescription{&generated::CppUpdate, options.size, 0U, 0U,
+            alignof(std::max_align_t), options.size * 3U}};
+        auto backend = CppStaticScriptBackend::create(pools);
+        if (!backend) throw std::runtime_error("population C++ backend failed");
+        const auto descriptor = backend->descriptor();
+        lux::simulation::benchmark::cpp_update_checksum = 0U;
+        runPopulationCycles(options, rows, "cpp-population", [&] {
+            return std::make_unique<RuntimeHarness>(options.size, EScenarioMode::SYNC, options.resume_budget,
+                true, true, 1U, false, &descriptor, &*artifact);
+        });
+        if (lux::simulation::benchmark::cpp_update_checksum != 2U * options.size)
+            throw std::runtime_error("population C++ state was not independent across incarnations");
+    }
+
+#if LUX_BENCHMARK_HAS_NATIVE
+    void runNativePopulation(const Options& options, std::vector<Row>& rows)
+    {
+        NativeLifecycleFixture fixture{options.size};
+        const auto descriptor = fixture.backend->descriptor();
+        runPopulationCycles(options, rows, "native-population", [&] {
+            return std::make_unique<RuntimeHarness>(options.size, EScenarioMode::SYNC, options.resume_budget,
+                true, true, 1U, false, &descriptor, &*fixture.artifact, lux::script::ScriptSymbolId{1U});
+        });
+    }
+#endif
+
     struct RegionControl final { std::uint32_t value{}; };
     struct RegionWork final
     {
@@ -3384,6 +3448,12 @@ int main(int argc, char** argv)
             runCppSequence(*options, rows);
         else if (options->group == "micro-cpp-event-wait")
             runCppEventWait(*options, rows);
+        else if (options->group == "scene-cpp-population")
+            runCppPopulation(*options, rows);
+#if LUX_BENCHMARK_HAS_NATIVE
+        else if (options->group == "scene-native-population")
+            runNativePopulation(*options, rows);
+#endif
 #if LUX_BENCHMARK_HAS_LUA
         else if (options->group == "micro-lua-sync")
             runLuaSync(*options, rows, kLuaPlain, options->group);
@@ -3404,6 +3474,13 @@ int main(int argc, char** argv)
             LuaRuntimeHarness harness{options->lua_artifact, options->size, kLuaSequence,
                 options->resume_budget, options->lua_policy, options->vm_accounting};
             runSequenceFrames(*options, rows, harness, "scene-lua-sequence");
+        }
+        else if (options->group == "scene-lua-population")
+        {
+            runPopulationCycles(*options, rows, "lua-population", [&] {
+                return std::make_unique<LuaRuntimeHarness>(options->lua_artifact, options->size, kLuaPlain,
+                    options->resume_budget, options->lua_policy, options->vm_accounting);
+            });
         }
         else if (options->group == "scene-lua-event")
             runLuaEvent(*options, rows, false);

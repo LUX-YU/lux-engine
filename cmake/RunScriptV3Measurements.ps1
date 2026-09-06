@@ -51,6 +51,12 @@ foreach ($count in @(1,64,1000,10000)) {
             group='micro-cpp-event-wait';size=$count;micro=$true;targeted=($route -eq 'targeted')}
     }
 }
+foreach ($size in @(10000,50000,100000)) {
+    foreach ($backend in @('cpp','native','lua')) {
+        $cases += @{name="$backend-population-$size";exe='script_runtime_benchmark.exe';
+            group="scene-$backend-population";size=$size;micro=$true;pairs=3;lua=($backend -eq 'lua')}
+    }
+}
 $manifest = @()
 $manifest_path = Join-Path $OutputRoot 'runs.json'
 if (Test-Path -LiteralPath $manifest_path) { $manifest = @(Get-Content -Raw $manifest_path | ConvertFrom-Json) }

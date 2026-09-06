@@ -86,6 +86,8 @@ namespace lux::simulation::script
     class ScriptBehavior final
     {
       public:
+        [[nodiscard]] bool isAttached() const noexcept { return api_ != nullptr; }
+
         [[nodiscard]] bool hasSelf() const noexcept
         {
             return std::holds_alternative<EntityScriptScope>(scope_);
@@ -178,6 +180,7 @@ namespace lux::simulation::script
         CONSTRUCTION_FAILURE,
         EXECUTABLE_CONTRACT_MISMATCH,
         HOST_COMPONENT_CONTRACT_MISMATCH,
+        HOST_CONTEXT_MISMATCH,
     };
 
     struct ScriptInstanceCreateContext final

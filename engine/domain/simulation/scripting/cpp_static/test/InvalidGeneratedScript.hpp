@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/meta/MetaAnnotations.hpp>
+#include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp>
 
 namespace invalid_generated
@@ -70,6 +71,37 @@ namespace invalid_generated
         void run() noexcept;
         LUX_METHOD(script_export="negative.entry")
         void again() noexcept;
+#else
+        LUX_METHOD(script_export="negative.entry")
+        void run() noexcept {}
+#if CPP_INVALID_CASE == 14
+        LUX_METHOD(script_attach=true)
+        void attach(lux::simulation::script::ScriptBehavior&) noexcept;
+        LUX_METHOD(script_attach=true)
+        void again(lux::simulation::script::ScriptBehavior&) noexcept;
+#elif CPP_INVALID_CASE == 15
+        LUX_METHOD(script_attach=true)
+        static void attach(lux::simulation::script::ScriptBehavior&) noexcept;
+#elif CPP_INVALID_CASE == 16
+        LUX_METHOD(script_attach=true)
+        void attach(lux::simulation::script::ScriptBehavior&) const noexcept;
+#elif CPP_INVALID_CASE == 17
+        LUX_METHOD(script_attach=true)
+        void attach(std::int32_t&) noexcept;
+#elif CPP_INVALID_CASE == 18
+        LUX_METHOD(script_attach=true)
+        void attach(lux::simulation::script::ScriptBehavior&);
+#elif CPP_INVALID_CASE == 19
+        LUX_METHOD(script_attach=true, script_export="negative.extra")
+        void attach(lux::simulation::script::ScriptBehavior&) noexcept;
+#elif CPP_INVALID_CASE == 20
+    private:
+        LUX_METHOD(script_attach=true)
+        void attach(lux::simulation::script::ScriptBehavior&) noexcept;
+#elif CPP_INVALID_CASE == 21
+        LUX_METHOD(script_attach=true)
+        bool attach(lux::simulation::script::ScriptBehavior&) noexcept;
+#endif
 #endif
     };
 }

@@ -45,7 +45,9 @@ bool validContract(const CppStaticContract &contract) noexcept
     const bool invalid_object =
         object.size != 0U && (object.alignment == 0U || (object.alignment & (object.alignment - 1U)) != 0U ||
                               object.construct == nullptr || object.destroy == nullptr);
-    if (contract.key.empty() || contract.module.empty() || contract.exports.empty() || invalid_object)
+    const bool invalid_host = object.requires_host != (object.attach != nullptr) ||
+        (object.requires_host && object.size == 0U);
+    if (contract.key.empty() || contract.module.empty() || contract.exports.empty() || invalid_object || invalid_host)
         return false;
     bool begin_found = contract.lifecycle.begin_play == lux::script::InvalidScriptSymbolId;
     bool end_found = contract.lifecycle.end_play == lux::script::InvalidScriptSymbolId;
@@ -645,8 +647,23 @@ struct CppStaticScriptBackend::State final
                 self.free_instances.push_back(instance_slot);
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
             }
-            if (descriptor.object.attach && context.behavior)
+            if (descriptor.object.requires_host)
+            {
+                const bool invalid_host = context.behavior == nullptr || !context.behavior->isAttached() ||
+                    !context.instance.valid() || context.behavior->hasSelf() != entity_scope;
+                const bool wrong_self = !invalid_host && entity_scope &&
+                    (context.behavior->self() == ecs::NullEntity ||
+                        context.behavior->self() != std::get<EntityScriptScope>(context.scope).self);
+                if (invalid_host || wrong_self)
+                {
+                    descriptor.object.destroy(instance->object);
+                    descriptor_index->free_objects.push_back(instance->object_slot);
+                    *instance = {};
+                    self.free_instances.push_back(instance_slot);
+                    return EScriptBackendResult::HOST_CONTEXT_MISMATCH;
+                }
                 descriptor.object.attach(instance->object, *context.behavior);
+            }
         }
         ++descriptor_index->active_instances;
         ++self.active_instances;

@@ -7,14 +7,15 @@
 namespace lux::simulation::script::generated
 {
 {% set methods = marked_function_decls %}
-{% if script.owner != "" %}{% set methods = [] %}{% for record_index in marked_record_decls %}{% set record = decl_from_index(record_index) %}{% if record.fq_name == script.owner %}{% set methods = record.method_decls %}{% endif %}{% endfor %}{% endif %}
+{% if script.owner != "" %}{% set methods = [] %}{% for record_index in marked_record_decls %}{% set record = decl_from_index(record_index) %}{% if record.fq_name == script.owner %}{% set methods = concat_arrays(record.method_decls, record.static_method_decls) %}{% endif %}{% endfor %}{% endif %}
     namespace {{ script.name }}Operations
     {
-{% set count = 0 %}{% set begin_symbol = 0 %}{% set end_symbol = 0 %}
+{% set count = 0 %}{% set begin_symbol = 0 %}{% set end_symbol = 0 %}{% set attach_name = "" %}
 {% for method_id in methods %}{% if script.owner == "" %}{% set method = decl_from_index(method_id) %}{% else %}{% set method = decl_from_id(method_id) %}{% endif %}
+{% if annotation_get_or(method, "script_attach", false) %}{% set attach_name = method.spelling %}{% endif %}
 {% set key = annotation_get_or(method, "script_export", "") %}{% if key != "" %}
 {% set coroutine = annotation_get_or(method, "script_coroutine", false) %}{% set role = annotation_get_or(method, "script_lifecycle", "") %}
-        using Method{{ count }} = {{ method.result_type_id }} ({% if script.owner != "" %}::{{ script.owner }}::*{% else %}*{% endif %})({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{{ param.type_id }}{% if not loop.is_last %}, {% endif %}{% endfor %}){% if script.owner != "" and method.is_const %} const{% endif %} noexcept;
+        using Method{{ count }} = {{ method.result_type_id }} ({% if script.owner != "" and not method.is_static %}::{{ script.owner }}::*{% else %}*{% endif %})({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{{ param.type_id }}{% if not loop.is_last %}, {% endif %}{% endfor %}){% if script.owner != "" and method.is_const %} const{% endif %} noexcept;
         using Entry{{ count }} = detail::{% if coroutine %}CppStaticCoroutineEntry{% else %}CppStaticSyncEntry{% endif %}<static_cast<Method{{ count }}>(&::{% if script.owner != "" %}{{ script.owner }}::{{ method.spelling }}{% else %}{{ replace(method.fq_name, method.name, method.spelling) }}{% endif %})>;
 {% if role == "begin_play" %}{% set begin_symbol = at(script.symbols, key) %}
         static_assert(Entry{{ count }}::Parameters.empty() && Entry{{ count }}::Results.empty(), "BeginPlay must be void()");
@@ -55,7 +56,7 @@ namespace lux::simulation::script::generated
 
     extern constinit const CppStaticContract {{ script.name }}{
         "{{ cxx_str(script.module) }}", "{{ cxx_str(script.descriptor) }}", {% if script.scope == "ENTITY" %}true{% else %}false{% endif %},
-{% if script.owner != "" %}        detail::cppStaticObject<::{{ script.owner }}>(),{% else %}        {},{% endif %}
+{% if script.owner != "" %}        detail::cppStaticObject<::{{ script.owner }}{% if attach_name != "" %}, static_cast<void (::{{ script.owner }}::*)(ScriptBehavior&) noexcept>(&::{{ script.owner }}::{{ attach_name }}){% endif %}>(),{% else %}        {},{% endif %}
         {{ script.name }}Operations::Exports, { {{ begin_symbol }}ULL, {{ end_symbol }}ULL },
         {{ script.name }}Operations::Abilities, {{ script.name }}Operations::Events
     };

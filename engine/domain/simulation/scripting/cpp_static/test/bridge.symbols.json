@@ -9,6 +9,10 @@
     {"source_identity":"bridge.event", "symbol":107},
     {"source_identity":"bridge.next", "symbol":108},
     {"source_identity":"bridge.twice", "symbol":109},
+    {"source_identity":"bridge.const", "symbol":110},
+    {"source_identity":"bridge.static", "symbol":111},
+    {"source_identity":"bridge.overload.i32", "symbol":112},
+    {"source_identity":"bridge.overload.f32", "symbol":113},
     {"source_identity":"bridge.free", "symbol":201},
     {"source_identity":"ability.execute", "symbol":301}
   ]

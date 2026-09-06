@@ -155,7 +155,7 @@ int main()
     const std::array event_requirements{event_source};
     auto projected = materializeCppStaticScript(Bridge);
     assert(projected);
-    assert(projected->exports.size() == 8U);
+    assert(projected->exports.size() == 12U);
     assert(projected->lifecycle.begin_play == symbols[2]);
     assert(projected->lifecycle.end_play == symbols[3]);
     assert(projected->exports[0].args[0].canonical_name == "lux.f32");
@@ -206,6 +206,27 @@ int main()
     lux_script_call_frame frame{&argument, 1U, 0U, nullptr, 0U, 0U, nullptr, call.context};
     assert(call.invoke(&frame) == 0);
     assert(test::observed_value == value);
+
+    const std::array expected_shapes{13, 6, 103, 202};
+    for (std::uint64_t symbol{110U}; symbol <= 113U; ++symbol)
+    {
+        const auto* exported = entity_asset.findExport(symbol);
+        assert(exported != nullptr);
+        ScriptBackendPreparedMethod shaped;
+        assert(descriptor.prepareMethod(descriptor.context, instance, *exported, shaped) ==
+            EScriptBackendResult::SUCCESS);
+        std::int32_t input{3}, output{};
+        float floating{2.5F};
+        const auto& parameter = exported->args[0];
+        lux_script_value_slot input_slot{parameter.abi_kind, {}, parameter.size, parameter.type_id,
+            symbol == 113U ? static_cast<void*>(&floating) : static_cast<void*>(&input)};
+        lux_script_value_slot output_slot{LUX_SCRIPT_VK_INT32, {}, sizeof(output),
+            lux::semantic::typeId("lux.i32"), &output};
+        lux_script_call_frame shaped_frame{&input_slot, 1U, 0U, &output_slot, 1U, 0U, nullptr,
+            shaped.synchronous.context};
+        assert(shaped.synchronous.invoke(&shaped_frame) == 0 && output == expected_shapes[symbol - 110U]);
+        descriptor.releaseMethod(descriptor.context, instance, shaped);
+    }
 
     ScriptBackendPreparedMethod begin_method_prepared;
     ScriptBackendPreparedMethod end_method_prepared;

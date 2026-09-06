@@ -1,8 +1,14 @@
 {% set methods = marked_function_decls %}
-{% if script.owner != "" %}{% set methods = [] %}{% for record_index in marked_record_decls %}{% set record = decl_from_index(record_index) %}{% if record.fq_name == script.owner %}{% set methods = record.method_decls %}{% endif %}{% endfor %}{% endif %}
+{% if script.owner != "" %}{% set methods = [] %}{% for record_index in marked_record_decls %}{% set record = decl_from_index(record_index) %}{% if record.fq_name == script.owner %}{% set methods = concat_arrays(record.method_decls, record.static_method_decls) %}{% endif %}{% endfor %}{% endif %}
 {"diagnostics":[
-{% set emitted = false %}{% set count = 0 %}{% set begins = 0 %}{% set ends = 0 %}
+{% set emitted = false %}{% set count = 0 %}{% set begins = 0 %}{% set ends = 0 %}{% set attaches = 0 %}
 {% for method_id in methods %}{% if script.owner == "" %}{% set method = decl_from_index(method_id) %}{% else %}{% set method = decl_from_id(method_id) %}{% endif %}
+{% if annotation_get_or(method, "script_attach", false) %}{% set attaches = attaches + 1 %}
+{% set invalid_attach = script.owner == "" %}
+{% if script.owner != "" %}{% set invalid_attach = method.is_static or method.is_const or method.visibility != 1 %}{% endif %}
+{% if invalid_attach or annotation_get_or(method, "script_export", "") != "" or annotation_get_or(method, "script_lifecycle", "") != "" or annotation_get_or(method, "script_coroutine", false) %}
+{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(method.fq_name) }},"message":"Invalid Script attach: requires one public non-static mutable member, separate from exports/lifecycle/coroutine"}{% set emitted = true %}
+{% endif %}{% endif %}
 {% set key = annotation_get_or(method, "script_export", "") %}{% if key != "" %}{% set count = count + 1 %}
 {% for other_id in methods %}{% if other_id != method_id %}{% if script.owner == "" %}{% set other = decl_from_index(other_id) %}{% else %}{% set other = decl_from_id(other_id) %}{% endif %}{% if annotation_get_or(other, "script_export", "") == key %}
 {% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(method.fq_name) }},"message":"duplicate Script export source identity"}{% set emitted = true %}
@@ -13,6 +19,7 @@
 {% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(method.fq_name) }},"message":"Invalid Script export: missing stable symbol, non-public/variadic method or suspending lifecycle"}{% set emitted = true %}
 {% endif %}{% endif %}{% endfor %}
 {% if count == 0 or begins > 1 or ends > 1 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(script.owner) }},"message":"Script must select exports and at most one method per lifecycle role"}{% set emitted = true %}{% endif %}
+{% if attaches > 1 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(script.owner) }},"message":"Invalid Script attach: duplicate host attachment declarations"}{% set emitted = true %}{% endif %}
 {% for name in script.event_names %}{% set matches = 0 %}{% if event_schema.schema == "lux-script-event" and event_schema.version == 2 %}{% for event in event_schema.events %}{% if event.system_name == name.system_name and event.event_name == name.event_name %}{% if event.route == "simulation_broadcast" or event.route == "entity_targeted" %}{% set matches = matches + 1 %}{% endif %}{% endif %}{% endfor %}{% endif %}
 {% if matches != 1 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(name.event_name) }},"message":"required Event must resolve exactly once in the canonical Event schema"}{% set emitted = true %}{% endif %}
 {% endfor %}

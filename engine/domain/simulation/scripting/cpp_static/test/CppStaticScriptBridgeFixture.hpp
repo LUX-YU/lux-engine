@@ -125,6 +125,18 @@ class LUX_TYPE_INFO(compile_time) BridgeBehavior final
 
     void unmarkedHelper() noexcept {}
 
+    LUX_METHOD(script_export = "bridge.const")
+    std::int32_t inspect(std::int32_t input) const noexcept { return input + 10; }
+
+    LUX_METHOD(script_export = "bridge.static")
+    static std::int32_t scale(std::int32_t input) noexcept { return input * 2; }
+
+    LUX_METHOD(script_export = "bridge.overload.i32")
+    std::int32_t overload(std::int32_t input) noexcept { return input + 100; }
+
+    LUX_METHOD(script_export = "bridge.overload.f32")
+    std::int32_t overload(float input) noexcept { return static_cast<std::int32_t>(input) + 200; }
+
   private:
     std::int32_t lifecycle_value_{};
 };

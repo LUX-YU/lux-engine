@@ -146,3 +146,14 @@ No final production/qualification candidate, optimization speedup, framework fre
   Added telemetry includes reserved slots, live/requested versus occupied frame bytes and complete layout metadata.
 - Completed I01 development gate: all + 12/12 focused tests pass, including reversed recipes, shared exact
   layouts, unknown layouts/envelopes, real exhaustion/recycling and observable generated frame destruction.
+- I02 uses only `LUX_METHOD(script_attach=true)` for a public mutable non-static
+  `void(ScriptBehavior&) noexcept` member. Generated object operations now distinguish host-required objects;
+  missing/unattached context fails after construction and is destroyed once, before any lifecycle call.
+- The generated installed consumer now covers two independent Entity objects, pending coroutine retirement,
+  rematerialization with a new Entity generation, attach/BeginPlay/EndPlay/destructor counts, constructor failure
+  and preparation rollback. Static, const and overloaded source methods are generated and invoked as well.
+- Eight attach generation negatives supplement the existing 13 negatives. First negative runs lacked an
+  explicit ScriptBackend include under parser mode; those results are not semantic proof. Corrected all +
+  33/33 focused tests passed (`i02-checked-tests.log`). Final expanded checks still precede Bcompare capture.
+- lux-cxx `bbe43fa` adds generic `concat_arrays` to compose existing static/non-static declaration lists;
+  its full all + 52/52 tests and install pass. No Script semantic was added to lux-cxx.

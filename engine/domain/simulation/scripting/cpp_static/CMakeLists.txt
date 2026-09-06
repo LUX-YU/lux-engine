@@ -135,6 +135,10 @@ lux_cpp_static_scripts(TARGET simulation_script_cpp_generated_integration_test N
     DEPENDS simulation_script_script_abilities_generate)
 lux_classify_target(TARGET simulation_script_cpp_generated_integration_test LAYER SIMULATION PRODUCT TEST ROLE INTEGRATION)
 add_test(NAME simulation_script_cpp_generated_integration_test COMMAND simulation_script_cpp_generated_integration_test)
+foreach(scenario IN ITEMS host-failure construct-failure prepare-failure)
+    add_test(NAME simulation_script_cpp_generated_${scenario}
+        COMMAND simulation_script_cpp_generated_integration_test ${scenario})
+endforeach()
 
 set(cpp_negative_patterns
     "const-reference must be trivial"
@@ -149,8 +153,10 @@ set(cpp_negative_patterns
     "CppStaticCoroutineEntry"
     "Unsupported CppStatic"
     "Invalid Script export"
-    "duplicate Script export source identity")
-foreach(case RANGE 1 13)
+    "duplicate Script export source identity"
+    "Invalid Script attach" "Invalid Script attach" "Invalid Script attach"
+    "static_cast" "static_cast" "Invalid Script attach" "Invalid Script attach" "static_cast")
+foreach(case RANGE 1 21)
     set(target simulation_script_cpp_codegen_negative_${case})
     set(driver "${CMAKE_CURRENT_BINARY_DIR}/negative-${case}.cpp")
     file(GENERATE OUTPUT "${driver}" CONTENT "#include \"InvalidGeneratedScript.hpp\"\nint main() { return 0; }\n")

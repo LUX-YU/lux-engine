@@ -42,6 +42,7 @@ struct CppStaticObjectOperations final
     bool (*construct)(void *) noexcept {};
     void (*destroy)(void *) noexcept {};
     void (*attach)(void *, ScriptBehavior &) noexcept {};
+    bool requires_host{};
 };
 
 struct CppStaticApiRequirement final
@@ -287,10 +288,11 @@ struct CppStaticCoroutineEntry<Function> : CppStaticOwnedArguments<Args...>
     }
 };
 
-template <class Owner> [[nodiscard]] consteval CppStaticObjectOperations cppStaticObject() noexcept
+template <class Owner, auto Attach = nullptr>
+[[nodiscard]] consteval CppStaticObjectOperations cppStaticObject() noexcept
 {
     static_assert(std::is_nothrow_destructible_v<Owner>);
-    return {sizeof(Owner), alignof(Owner),
+    CppStaticObjectOperations result{sizeof(Owner), alignof(Owner),
             [](void *storage) noexcept {
                 try
                 {
@@ -303,6 +305,16 @@ template <class Owner> [[nodiscard]] consteval CppStaticObjectOperations cppStat
                 }
             },
             [](void *object) noexcept { std::destroy_at(static_cast<Owner *>(object)); }, nullptr};
+    if constexpr (!std::is_same_v<decltype(Attach), std::nullptr_t>)
+    {
+        static_assert(std::is_same_v<decltype(Attach), void (Owner::*)(ScriptBehavior&) noexcept>,
+            "Script attach must be void(ScriptBehavior&) noexcept on a mutable object");
+        result.requires_host = true;
+        result.attach = [](void* object, ScriptBehavior& behavior) noexcept {
+            std::invoke(Attach, *static_cast<Owner*>(object), behavior);
+        };
+    }
+    return result;
 }
 } // namespace detail
 } // namespace lux::simulation::script

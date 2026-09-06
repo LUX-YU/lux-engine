@@ -56,4 +56,15 @@ function BenchmarkBehavior:wait_event()
     self.value = self.value + payload
 end
 
+---@lux.method
+---@lux.coroutine
+---@return void
+function BenchmarkBehavior:sequence()
+    self.value = self.value + 1
+    lux.Delay.nextStep()
+    local payload = lux.Event.Benchmark.event()
+    lux.Delay.simulationSeconds(0.001)
+    lux.BenchmarkValue.write(self.value + payload)
+end
+
 return BenchmarkBehavior

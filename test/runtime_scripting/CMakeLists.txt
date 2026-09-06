@@ -85,3 +85,8 @@ set_tests_properties(
     flowforge_script_runtime_benchmark_smoke
     PROPERTIES ENVIRONMENT "LUX_FLOWFORGE_LINKER=${CMAKE_LINKER}"
 )
+add_test(NAME flowforge_script_sequence_benchmark_smoke COMMAND flowforge_script_runtime_benchmark
+    --group scene-flowforge-sequence --size 32 --frames 12 --warmups 2 --resume-budget 8
+    --output ${CMAKE_CURRENT_BINARY_DIR}/flowforge-sequence-smoke.csv)
+set_tests_properties(flowforge_script_sequence_benchmark_smoke PROPERTIES
+    ENVIRONMENT "LUX_FLOWFORGE_LINKER=${CMAKE_LINKER}")

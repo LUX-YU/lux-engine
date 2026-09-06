@@ -1,5 +1,7 @@
 #include "TestAbility.hpp"
 #include "TestAbility.ability.generated.hpp"
+#include "VersionedTestAbility.hpp"
+#include "VersionedTestAbility.ability.generated.hpp"
 
 #include <lux/engine/function/script/ScriptAbility.hpp>
 #include <lux/engine/description/Script.hpp>
@@ -16,6 +18,12 @@
 
 namespace
 {
+    using Versioned = lux::script::ScriptAbilityTraits<versioned_test::Ability>;
+    static_assert(Versioned::Description.schema_version == 2U);
+    static_assert(Versioned::Description.schema_hash == lux::script::scriptAbilitySchemaHash(
+        Versioned::Contract, Versioned::Receiver, Versioned::Methods, 2U));
+    static_assert(Versioned::Description.schema_hash != lux::script::scriptAbilitySchemaHash(
+        Versioned::Contract, Versioned::Receiver, Versioned::Methods, 1U));
     template <class Api>
     concept HasImmediateBeginOperation = requires(Api api)
     {

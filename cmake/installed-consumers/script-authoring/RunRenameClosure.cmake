@@ -14,9 +14,14 @@ foreach(name CMakeLists.txt CounterAbility.hpp CounterAbility.cpp Behavior.hpp b
 endforeach()
 set(source "${OUTPUT_ROOT}/source")
 set(build "${OUTPUT_ROOT}/build")
+set(dependency_options)
+if(DEFINED DEPENDENCY_ROOT)
+    list(APPEND dependency_options "-DVCPKG_INSTALLED_DIR=${DEPENDENCY_ROOT}")
+endif()
 execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${build}" -G Ninja
     -DCMAKE_BUILD_TYPE=RelWithDebInfo "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE}"
-    "-DCMAKE_PREFIX_PATH=${PREFIX_PATH}" RESULT_VARIABLE status
+    "-DCMAKE_PREFIX_PATH=${PREFIX_PATH}" ${dependency_options}
+    -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF RESULT_VARIABLE status
     OUTPUT_FILE "${OUTPUT_ROOT}/configure.log" ERROR_FILE "${OUTPUT_ROOT}/configure-error.log")
 if(NOT status EQUAL 0)
     message(FATAL_ERROR "Consumer configure failed (${status})")

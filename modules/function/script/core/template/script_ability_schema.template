@@ -126,7 +126,8 @@ namespace
             lux::script::scriptAbilitySchemaHash(
                 lux::script::ScriptApiContractIdView{"{{ cxx_str(annotation_get(rec, "id")) }}"},
                 lux::script::EScriptAbilityReceiverKind::{% if receiver == "provider_instance" %}PROVIDER_INSTANCE{% else %}NONE{% endif %},
-                Methods
+                Methods,
+                {{ annotation_get_for_or(rec, "luxability::contract", "version", 1) }}U
             ),
             lux::script::EScriptAbilityReceiverKind::{% if receiver == "provider_instance" %}PROVIDER_INSTANCE{% else %}NONE{% endif %},
             Methods

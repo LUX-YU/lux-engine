@@ -120,7 +120,8 @@ target_link_libraries(
 lux_script_abilities(
     TARGET simulation_script_ability_codegen_test
     SOURCES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/scripting/core/test/TestAbility.hpp
-    LOGICAL_PATHS TestAbility.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/VersionedTestAbility.hpp
+    LOGICAL_PATHS TestAbility.hpp VersionedTestAbility.hpp
 )
 if(MSVC)
     target_compile_options(simulation_script_ability_codegen_test PRIVATE /UNDEBUG)

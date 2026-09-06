@@ -54,7 +54,8 @@ namespace lux::script
             "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "name", rec.name)) }}",
             "{{ cxx_str(annotation_get_for_or(rec, "luxability::contract", "display", rec.name)) }}",
             {{ annotation_get_for_or(rec, "luxability::contract", "version", 1) }}U,
-            scriptAbilitySchemaHash(Contract, Receiver, Methods),
+            scriptAbilitySchemaHash(Contract, Receiver, Methods,
+                {{ annotation_get_for_or(rec, "luxability::contract", "version", 1) }}U),
             Receiver,
             Methods
         };

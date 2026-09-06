@@ -20,6 +20,7 @@ foreach(group IN ITEMS
     scene-update-heavy
     scene-cpp-update-heavy
     scene-cpp-sequence
+    scene-cpp-population
     scene-gameplay-mixed
     scene-suspended-idle
     scene-resume-storm

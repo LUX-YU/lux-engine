@@ -120,3 +120,29 @@ The block here is missing implementation/evidence, not a claimed new architectur
 5. Bsafe/Bwork/Bfinal paired performance, actual assembly/LTO proof, memory ledger and final docs-branch update.
 
 No final production/qualification candidate, optimization speedup, framework freeze, main merge or push is claimed.
+
+## V3 continuation (2026-09-06)
+
+- Authorized scope is I01-I08, continuing Engine `27e9a9f943118c772e0c9b5503f4459ab75d4fff`
+  with lux-cxx `e2355ca4ce4e862f4e108f74422a30fce8afb736`.
+- The previous unfinished Debug/Release matrix is superseded for this wave: both are
+  `NOT_REQUESTED_THIS_ROUND`. All required builds use RelWithDebInfo, including affected Lua54 coverage.
+- Main remains at a577c494 with its five user changes; neither main nor those changes are implementation inputs.
+- Bentry: clean tracked check succeeded, Developer all-j4-k0 succeeded, full CTest 223/223 succeeded
+  (58.53 seconds). This rerun includes the last checkpoint's header correction.
+- The exact bin directory (executables/DLLs/PDBs), CMakeCache, compile_commands, build/test logs and SHA256
+  manifest are preserved at `build/RelWithDebInfo/s6-v3-evidence/Bentry`. This is a baseline artifact,
+  not final clean-clone qualification. Public review evidence will include the manifest and raw measurements.
+- I01 begins with real native DLL population regressions for same-stride alignment, a mixed-method frame
+  envelope and synchronous-only zero coroutine resources. Bcompare is not fixed yet.
+- No I03-I06 optimization or P3 interface migration is admitted until I01/I02 pass and Bcompare is saved.
+- I01 real-DLL before tests: state failed at B instance 2, frame failed at A invocation 2, zero-resource sync
+  backend was rejected. First frame-fixture run lacked its explicit 16-byte alignment; that run is excluded
+  from defect evidence. Corrected before run is `i01-before-corrected-tests.log` (all three expected failures).
+- I01 fix preserves exact state layouts and each executable's prepared frame envelope. It removes both
+  runtime smallest-fit selections; populations with equal full layouts share slots. Sync-only zero coroutine
+  resources are accepted. Allocation-failure catching now remains outside the recipe append lambda.
+- Initial after gate: Developer all + 11/11 focused tests pass, including failure injection and benchmark smoke.
+  Added telemetry includes reserved slots, live/requested versus occupied frame bytes and complete layout metadata.
+- Completed I01 development gate: all + 12/12 focused tests pass, including reversed recipes, shared exact
+  layouts, unknown layouts/envelopes, real exhaustion/recycling and observable generated frame destruction.

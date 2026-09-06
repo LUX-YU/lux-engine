@@ -17,6 +17,13 @@ namespace lux::simulation::script
 {
     struct NativeScriptBackend::State final
     {
+        struct StorageLayout final
+        {
+            std::size_t size{};
+            std::size_t alignment{};
+            detail::BoundedClassStorage::ClassHandle storage_class;
+        };
+
         struct ModuleEntry final
         {
             lux::asset::AssetId asset;
@@ -24,6 +31,7 @@ namespace lux::simulation::script
             void* lease{};
             void (*release)(void*) noexcept{};
             detail::BoundedClassStorage::ClassHandle state_class;
+            detail::BoundedClassStorage::ClassHandle frame_class;
         };
 
         struct Instance final
@@ -72,7 +80,9 @@ namespace lux::simulation::script
             NativeModuleResolver source_resolver,
             NativeScriptBackendConfig source_config,
             detail::BoundedClassStorage source_frame_storage,
-            detail::BoundedClassStorage source_state_storage
+            detail::BoundedClassStorage source_state_storage,
+            std::span<const detail::StorageClassPlan> frame_plans,
+            std::span<const detail::StorageClassPlan> state_plans
         )
             : resolver(source_resolver),
               config(source_config),
@@ -83,6 +93,13 @@ namespace lux::simulation::script
               frame_storage(std::move(source_frame_storage)), state_storage(std::move(source_state_storage))
         {
             config.storage_populations = {};
+            const auto remember = [](auto& layouts, auto plans) {
+                layouts.reserve(plans.size());
+                for (std::uint32_t index{}; index < plans.size(); ++index)
+                    layouts.push_back(StorageLayout{plans[index].size, plans[index].alignment, {index}});
+            };
+            remember(state_layouts, state_plans);
+            remember(frame_layouts, frame_plans);
             modules.reserve(module_capacity);
             module_index.reserve(module_capacity);
             instances.resize(instance_capacity);
@@ -113,14 +130,36 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] bool prepareStateClass(
+        [[nodiscard]] static detail::BoundedClassStorage::ClassHandle findStorageClass(
+            std::span<const StorageLayout> layouts, std::size_t size, std::size_t alignment
+        ) noexcept
+        {
+            const auto found = std::ranges::find_if(layouts, [=](const auto& layout) noexcept {
+                return layout.size == size && layout.alignment == alignment;
+            });
+            return found == layouts.end() ? detail::BoundedClassStorage::ClassHandle{} : found->storage_class;
+        }
+
+        [[nodiscard]] bool prepareStorageClasses(
             ModuleEntry& entry, const lux::rdesc::NativeModuleScript& body
         ) noexcept
         {
-            if (body.state_size == 0U)
-                return true;
-            entry.state_class = state_storage.select(body.state_size, body.state_align);
-            return static_cast<bool>(entry.state_class);
+            if (body.state_size != 0U)
+            {
+                entry.state_class = findStorageClass(state_layouts, body.state_size, body.state_align);
+                if (!entry.state_class) return false;
+            }
+            std::size_t frame_size{};
+            std::size_t frame_alignment{1U};
+            for (const auto& function : entry.module->functions())
+            {
+                if (function.step == nullptr) continue;
+                frame_size = (std::max)(frame_size, static_cast<std::size_t>(function.step->frame_size));
+                frame_alignment = (std::max)(frame_alignment, static_cast<std::size_t>(function.step->frame_align));
+            }
+            if (frame_size == 0U) return true;
+            entry.frame_class = findStorageClass(frame_layouts, frame_size, frame_alignment);
+            return static_cast<bool>(entry.frame_class);
         }
 
         [[nodiscard]] bool expectedLayout(
@@ -649,12 +688,12 @@ namespace lux::simulation::script
                 const auto& body = std::get<lux::rdesc::NativeModuleScript>(
                     artifact.description().body
                 );
-                if (!prepareStateClass(entry, body))
+                if (!prepareStorageClasses(entry, body))
                 {
                     modules.pop_back();
                     if (resolved.release)
                         resolved.release(resolved.lease);
-                    return EScriptBackendResult::ALLOCATION_FAILURE;
+                    return EScriptBackendResult::CAPACITY_EXCEEDED;
                 }
                 const auto module_slot = modules.size() - 1U;
                 if (!module_index.emplace(asset_id, module_slot).second)
@@ -799,7 +838,9 @@ namespace lux::simulation::script
                 if (step.frame_size > self.config.max_continuation_frame_bytes ||
                     step.frame_align > self.config.continuation_frame_storage_alignment)
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
-                frame_class = self.frame_storage.select(step.frame_size, step.frame_align);
+                // The executable's envelope owns the prepared population. A small method must not
+                // steal a different population's small-frame capacity.
+                frame_class = instance->module->frame_class;
                 if (!frame_class)
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
             }
@@ -874,6 +915,8 @@ namespace lux::simulation::script
         NativeScriptRecordLayoutResolver record_layouts;
         std::vector<lux::script::native::ScriptAbilityNativeContribution> ability_contributions;
         std::vector<ModuleEntry> modules;
+        std::vector<StorageLayout> state_layouts;
+        std::vector<StorageLayout> frame_layouts;
         std::unordered_map<lux::asset::AssetId, std::size_t> module_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
@@ -907,11 +950,12 @@ namespace lux::simulation::script
         NativeScriptBackendConfig config
     ) noexcept
     {
+        const bool is_invalid_frame_budget = config.continuation_capacity != 0U &&
+            (config.max_continuation_frame_bytes == 0U ||
+                config.continuation_frame_storage_bytes < config.max_continuation_frame_bytes);
         const bool is_invalid_config = config.module_capacity == 0U || config.instance_capacity == 0U ||
-            config.prepared_call_capacity == 0U || config.continuation_capacity == 0U ||
-            config.max_ability_imports_per_module == 0U || config.max_continuation_frame_bytes == 0U ||
-            config.continuation_frame_storage_bytes < config.max_continuation_frame_bytes ||
-            config.continuation_frame_storage_alignment < alignof(std::max_align_t) ||
+            config.prepared_call_capacity == 0U || config.max_ability_imports_per_module == 0U ||
+            is_invalid_frame_budget || config.continuation_frame_storage_alignment < alignof(std::max_align_t) ||
             (config.continuation_frame_storage_alignment & (config.continuation_frame_storage_alignment - 1U)) !=
                 0U ||
             config.max_event_wait_imports_per_module == 0U;
@@ -936,7 +980,7 @@ namespace lux::simulation::script
             std::vector<detail::StorageClassPlan> frame_plans;
             std::size_t planned_instances{};
             std::size_t planned_continuations{};
-            const auto append = [](auto& plans, std::size_t size, std::size_t alignment, std::size_t count) noexcept {
+            const auto append = [](auto& plans, std::size_t size, std::size_t alignment, std::size_t count) {
                 if (size == 0U || count == 0U) return true;
                 if (alignment == 0U || (alignment & (alignment - 1U)) != 0U ||
                     size > (std::numeric_limits<std::size_t>::max)() - alignment + 1U) return false;
@@ -973,7 +1017,9 @@ namespace lux::simulation::script
                 for (const auto& function : executable.functions())
                 {
                     if (function.step == nullptr) continue;
-                    if (function.step->frame_size > config.max_continuation_frame_bytes) return;
+                    const bool invalid_frame = function.step->frame_size > config.max_continuation_frame_bytes ||
+                        function.step->frame_align > config.continuation_frame_storage_alignment;
+                    if (invalid_frame) return;
                     frame_size = (std::max)(frame_size, static_cast<std::size_t>(function.step->frame_size));
                     frame_alignment = (std::max)(frame_alignment, static_cast<std::size_t>(function.step->frame_align));
                 }
@@ -1000,7 +1046,9 @@ namespace lux::simulation::script
                 resolver,
                 config,
                 std::move(frame_storage),
-                std::move(state_storage)
+                std::move(state_storage),
+                frame_plans,
+                state_plans
             );
         }
         catch (const std::bad_alloc&)
@@ -1034,14 +1082,20 @@ namespace lux::simulation::script
             stats.capacity_failures,
             0U,
             states.arena_bytes,
-            states.metadata_bytes,
+            states.metadata_bytes + state_->state_layouts.capacity() * sizeof(State::StorageLayout),
             states.active_allocations,
             states.allocation_high_water,
             states.acquire_steps,
             states.release_steps,
-            stats.metadata_bytes,
+            stats.metadata_bytes + state_->frame_layouts.capacity() * sizeof(State::StorageLayout),
             stats.acquire_steps,
-            stats.release_steps
+            stats.release_steps,
+            states.reserved_slots,
+            stats.reserved_slots,
+            states.live_bytes,
+            stats.live_bytes,
+            stats.occupied_bytes,
+            states.capacity_failures
         };
     }
 

@@ -47,6 +47,8 @@ namespace lux::simulation::script
 
     struct NativeScriptStoragePopulation final
     {
+        // Preparation recipe, not a module-exclusive quota. Equal complete layouts share capacity.
+        // The executable is borrowed only during backend construction; loaded modules retain their own lease.
         const lux::script::NativeModule* executable{};
         std::size_t instances{};
         std::size_t continuations{};
@@ -85,6 +87,12 @@ namespace lux::simulation::script
         std::size_t frame_metadata_bytes{};
         std::uint64_t frame_acquire_steps{};
         std::uint64_t frame_release_steps{};
+        std::size_t state_reserved_slots{};
+        std::size_t frame_reserved_slots{};
+        std::size_t state_live_bytes{};
+        std::size_t frame_live_bytes{};
+        std::size_t frame_occupied_bytes{};
+        std::size_t state_capacity_failures{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_PUBLIC NativeScriptBackend final

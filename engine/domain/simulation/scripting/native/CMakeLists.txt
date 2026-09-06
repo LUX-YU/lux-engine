@@ -40,6 +40,38 @@ lux_classify_target(
 )
 
 if(TARGET script_native_fixture)
+    foreach(variant IN ITEMS aligned compact wide narrow)
+        add_library(native_population_${variant} SHARED test/population_fixture.cpp)
+        target_link_libraries(native_population_${variant} PRIVATE lux::engine::function::script_core)
+        set(alignment 16)
+        set(frame_bytes 0)
+        if(variant STREQUAL "compact")
+            set(alignment 8)
+        elseif(variant STREQUAL "wide")
+            set(frame_bytes 1024)
+        elseif(variant STREQUAL "narrow")
+            set(frame_bytes 128)
+        endif()
+        target_compile_definitions(native_population_${variant} PRIVATE
+            LUX_POPULATION_ALIGN=${alignment} LUX_POPULATION_FRAME=${frame_bytes})
+        lux_classify_target(TARGET native_population_${variant} LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+    endforeach()
+    add_executable(simulation_script_native_population_test test/native_population_test.cpp)
+    target_link_libraries(simulation_script_native_population_test PRIVATE simulation_script_native)
+    add_dependencies(simulation_script_native_population_test native_population_aligned native_population_compact
+        native_population_wide native_population_narrow)
+    lux_classify_target(TARGET simulation_script_native_population_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+    if(MSVC)
+        target_compile_options(simulation_script_native_population_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(simulation_script_native_population_test PRIVATE -UNDEBUG)
+    endif()
+    foreach(scenario IN ITEMS state frames sync shared)
+        add_test(NAME simulation_script_native_population_${scenario}
+            COMMAND simulation_script_native_population_test ${scenario}
+                $<TARGET_FILE:native_population_aligned> $<TARGET_FILE:native_population_compact>
+                $<TARGET_FILE:native_population_wide> $<TARGET_FILE:native_population_narrow>)
+    endforeach()
     add_executable(
         simulation_script_native_test
         test/native_backend_test.cpp

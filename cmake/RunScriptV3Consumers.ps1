@@ -24,7 +24,9 @@ $target_names = @{
     'cpp-coroutine-script'='lux_cpp_coroutine_script_consumer';
     'script-static-ability-specialization'='lux_script_static_ability_consumer';
     'script-ability-ipo'='lux_script_ability_ipo_consumer';
-    'script-authoring'='lux_script_authoring_consumer'
+    'script-authoring'='lux_script_authoring_consumer';
+    'script-runtime-input'='lux_script_runtime_input_consumer';
+    'script-description'='lux_script_description_consumer'
 }
 $bins = @($PrefixPath.Split(';') | ForEach-Object { Join-Path $_ 'bin' })
 $clean_path = @($env:PATH.Split(';') | Where-Object {

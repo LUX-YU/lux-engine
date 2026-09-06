@@ -1,3 +1,4 @@
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
 
 #include <lux/engine/scene/SceneBuilder.hpp>
@@ -138,18 +139,18 @@ namespace lux::scene
             }
 
             const auto data = builder.simulation().description().findData(
-                simulation::script::scriptSystemDataSchemaId()
+                scene::script::scriptSystemDataSchemaId()
             );
             if (!data)
             {
                 return lux::cxx::unexpected(failure(
                     ESceneSystemBuildError::INVALID_DESCRIPTION,
                     description.instanceId(),
-                    simulation::script::scriptSystemDataSchemaId().hash
+                    scene::script::scriptSystemDataSchemaId().hash
                 ));
             }
 
-            auto decoded = simulation::script::decodeScriptSystemDescription(
+            auto decoded = scene::script::decodeScriptSystemDescription(
                 data.payload(),
                 builder.simulation().description(),
                 host->codec_limits
@@ -174,17 +175,22 @@ namespace lux::scene
                         static_cast<std::uint64_t>(real_delay.error())
                     ));
                 }
-                auto owned_description = std::make_unique<simulation::script::ScriptSystemDescription>(
+                auto owned_description = std::make_unique<scene::script::ScriptSystemDescription>(
                     std::move(*decoded)
                 );
+                auto capacity = script::planScriptRuntimeCapacity(*owned_description);
+                auto resolved = script::resolveScriptRuntimeMounts(*owned_description, host->world, builder.registry());
+                if (!capacity || !resolved)
+                    return lux::cxx::unexpected(failure(ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                        description.instanceId()));
                 auto created = simulation::script::ScriptSystem::create(
                     builder.simulation().description(),
-                    *owned_description,
+                    *capacity,
+                    *resolved,
                     builder.registry(),
                     builder.simulation().clock(),
                     host->limits,
                     host->artifacts,
-                    host->world,
                     builder.simulation().scriptApiCapabilities(),
                     host->backends,
                     builder.simulation().scriptHookEndpoints(),
@@ -214,7 +220,7 @@ namespace lux::scene
                     description.instanceId(),
                     std::move(*real_delay),
                     std::move(owned_description),
-                    std::move(*created)
+                    std::move(*created), host->world, builder.registry()
                 );
                 if (!installed)
                     return lux::cxx::unexpected(installed.error());
@@ -441,12 +447,140 @@ namespace lux::scene
         return {};
     }
 
+    struct ScriptRuntimeSystem::Loader final
+    {
+        std::vector<simulation::script::ScriptRuntimeMount> inputs;
+        std::vector<std::uint32_t> pending;
+        std::vector<std::uint8_t> present;
+        std::vector<std::uint32_t> processing;
+        std::vector<simulation::script::ScriptRuntimeMount> batch;
+        std::vector<std::uint32_t> batch_slots;
+        std::vector<simulation::script::ScriptMountStatus> changes;
+        std::vector<std::pair<std::uint64_t, std::uint32_t>> index;
+
+        void enqueue(std::uint32_t slot) noexcept
+        {
+            if (present[slot] == 0U)
+            {
+                present[slot] = 1U;
+                pending.push_back(slot);
+            }
+        }
+    };
+
+    bool ScriptRuntimeSystem::prepareLoader() noexcept
+    {
+        try
+        {
+            auto loader = std::make_unique<Loader>();
+            const auto mounts = description_->mounts();
+            loader->inputs.resize(mounts.size());
+            loader->present.resize(mounts.size());
+            loader->pending.reserve(mounts.size());
+            loader->processing.reserve(mounts.size());
+            loader->batch.reserve(mounts.size());
+            loader->batch_slots.reserve(mounts.size());
+            loader->changes.resize(mounts.size());
+            loader->index.reserve(mounts.size());
+            for (std::size_t slot{}; slot < mounts.size(); ++slot)
+            {
+                const auto& mount = mounts[slot];
+                if (!mount.enabled)
+                    continue;
+                loader->inputs[slot] = {mount.id, mount.asset, simulation::script::SimulationScriptScope{},
+                    mount.bindings, static_cast<std::uint32_t>(slot)};
+                loader->index.push_back({mount.id.value, static_cast<std::uint32_t>(slot)});
+                const auto status = system_.queryMountStatus(mount.id);
+                if (!status)
+                    return false;
+                if (!*status)
+                    loader->enqueue(static_cast<std::uint32_t>(slot));
+            }
+            std::sort(loader->index.begin(), loader->index.end());
+            loader_ = std::move(loader);
+            return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return false;
+        }
+    }
+
+    bool ScriptRuntimeSystem::submitResolved() noexcept
+    {
+        using namespace simulation::script;
+        auto& loader = *loader_;
+        const auto collected = system_.collectMountStatusChanges(loader.changes);
+        if (!collected)
+            return false;
+        for (std::size_t index{}; index < collected->written; ++index)
+        {
+            const auto& status = loader.changes[index];
+            const auto entry = std::lower_bound(loader.index.begin(), loader.index.end(), status.id.value,
+                [](const auto& item, std::uint64_t id) noexcept { return item.first < id; });
+            if (entry == loader.index.end() || entry->first != status.id.value)
+                return false;
+            const bool awaiting_resolution = status.state == EScriptMountState::RETIRING ||
+                status.state == EScriptMountState::INACTIVE;
+            if (awaiting_resolution && status.submission_state != EScriptMountSubmissionState::ACCEPTED)
+                loader.enqueue(entry->second);
+        }
+        loader.processing.clear();
+        loader.processing.swap(loader.pending);
+        loader.batch.clear();
+        loader.batch_slots.clear();
+        for (const auto slot : loader.processing)
+        {
+            loader.present[slot] = 0U;
+            const auto& authored = description_->mounts()[slot];
+            const auto status = system_.queryMountStatus(authored.id);
+            if (!status)
+                return false;
+            if (*status)
+            {
+                const auto& current = **status;
+                if (current.state == EScriptMountState::FAULTED || current.state == EScriptMountState::ACTIVE ||
+                    current.submission_state == EScriptMountSubmissionState::ACCEPTED)
+                    continue;
+            }
+            if (const auto* object = std::get_if<script::EntityScriptMount>(&authored.scope))
+            {
+                simulation::ecs::Entity entity{simulation::ecs::NullEntity};
+                const bool resolved = world_.resolve != nullptr && world_.resolve(world_.context, object->object,
+                    entity);
+                if (!resolved || entity == simulation::ecs::NullEntity || !registry_->valid(entity))
+                {
+                    loader.enqueue(slot);
+                    continue;
+                }
+                loader.inputs[slot].scope = EntityScriptScope{entity};
+            }
+            else if (*status)
+                continue;
+            loader.batch_slots.push_back(slot);
+            loader.batch.push_back(std::move(loader.inputs[slot]));
+        }
+        const auto accepted = system_.mountResolvedBatch(loader.batch);
+        for (std::size_t index{}; index < loader.batch.size(); ++index)
+        {
+            const auto slot = loader.batch_slots[index];
+            loader.inputs[slot] = std::move(loader.batch[index]);
+            if (!accepted)
+                loader.enqueue(slot);
+        }
+        loader.batch.clear();
+        return static_cast<bool>(accepted);
+    }
+
     ScriptRuntimeSystem::ScriptRuntimeSystem(
         std::unique_ptr<ScriptRealDelayProvider> real_delay,
-        std::unique_ptr<simulation::script::ScriptSystemDescription> description,
-        simulation::script::ScriptSystem system
+        std::unique_ptr<scene::script::ScriptSystemDescription> description,
+        simulation::script::ScriptSystem system,
+        script::WorldObjectResolver world,
+        simulation::ecs::Registry& registry
     ) noexcept
-        : real_delay_(std::move(real_delay)), description_(std::move(description)), system_(std::move(system))
+        : world_(world), registry_(&registry), real_delay_(std::move(real_delay)),
+          description_(std::move(description)), system_(std::move(system))
     {
     }
 
@@ -462,6 +596,8 @@ namespace lux::scene
 
     bool ScriptRuntimeSystem::bindSimulation(simulation::Simulation& simulation) noexcept
     {
+        if (!prepareLoader())
+            return false;
         auto connection = simulation.bindHookCallbacks({this,
             [](void* context, const simulation::SimulationClockSnapshot&, bool stable) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
@@ -472,6 +608,8 @@ namespace lux::scene
                         return false;
                     system.beginStableAdmission();
                 }
+                if (!runtime.submitResolved())
+                    return false;
                 const auto result = system.processLifecycle();
                 return static_cast<bool>(result);
             },
@@ -483,6 +621,8 @@ namespace lux::scene
             },
             [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                if (!runtime.submitResolved())
+                    return false;
                 const auto result = runtime.system_.processLifecycle();
                 runtime.stats_exchange_.write() = runtime.system_.stats();
                 runtime.stats_exchange_.publish();

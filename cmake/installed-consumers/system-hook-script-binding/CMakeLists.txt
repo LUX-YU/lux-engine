@@ -52,3 +52,6 @@ lux_cpp_static_scripts(TARGET lux_system_hook_script_consumer NAME HookBehavior
     SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/behavior.symbols.json
     ABILITY_TYPES installed_consumer::InventoryAbility ABILITY_HEADERS InventoryAbility.ability.generated.hpp
     DEPENDS lux_system_hook_script_consumer_script_abilities_generate)
+
+find_package(lux-engine-scene-script-description REQUIRED COMPONENTS scene_script_description)
+target_link_libraries(lux_system_hook_script_consumer PRIVATE lux::engine::scene::scene_script_description)

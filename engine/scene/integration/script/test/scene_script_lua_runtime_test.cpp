@@ -1,3 +1,4 @@
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include "LuaRuntimeTestAbility.hpp"
 #include "LuaRuntimeTestAbility.ability.generated.hpp"
 #include "LuaRuntimeTestAbility.ability.lua.generated.hpp"
@@ -10,7 +11,7 @@
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
 #include "DelayAbility.ability.lua.generated.hpp"
@@ -42,6 +43,7 @@ namespace
     using namespace lux::scene;
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     inline constexpr system::SystemInstanceId kProbeSystem{0x4C5301U};
     inline constexpr system::SystemInstanceId kScriptRuntime{0x4C5302U};

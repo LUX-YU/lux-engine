@@ -1,3 +1,5 @@
+#include <lux/engine/simulation/ScriptRuntimeInput.hpp>
+#include <optional>
 #include "Behavior.hpp"
 #include "Behavior.InstalledBehavior.script.generated.hpp"
 #include <lux/engine/simulation/Simulation.hpp>
@@ -55,7 +57,7 @@ namespace
     {
         const lux::script::ScriptArtifact* artifact{};
         lux::asset::AssetId asset;
-        std::array<lux::world::WorldObjectId, 2U> objects;
+
         std::array<ecs::Entity, 2U> entities{ecs::NullEntity, ecs::NullEntity};
         static bool resolveArtifact(void* opaque, const lux::asset::AssetId& asset, ResolvedScriptArtifact& result) noexcept
         {
@@ -64,17 +66,7 @@ namespace
             result.artifact = self.artifact;
             return true;
         }
-        static bool resolveObject(void* opaque, const lux::world::WorldObjectId& object, ecs::Entity& result) noexcept
-        {
-            const auto& self = *static_cast<Source*>(opaque);
-            for (std::size_t index{}; index < self.objects.size(); ++index)
-            {
-                if (object != self.objects[index] || self.entities[index] == ecs::NullEntity) continue;
-                result = self.entities[index];
-                return true;
-            }
-            return false;
-        }
+
     };
 }
 
@@ -116,17 +108,16 @@ int main(int argc, char** argv)
     Source source;
     source.artifact = &*artifact;
     source.asset = lux::asset::AssetId{bytes};
-    for (std::size_t index{}; index < source.objects.size(); ++index)
+    for (std::size_t index{}; index < source.entities.size(); ++index)
     {
         bytes[1] = static_cast<std::uint8_t>(index + 1U);
-        source.objects[index] = lux::world::WorldObjectId{uuids::uuid{bytes}};
         source.entities[index] = registry.create();
     }
-    ScriptSystemDescriptionBuilder mounts;
-    for (std::size_t index{}; index < source.objects.size(); ++index)
-        if (!mounts.addMount({ScriptMountId{index + 1U}, source.asset, EntityScriptMount{source.objects[index]}, true,
-                {{2U, HookScriptTarget{System, Tick}}, {3U, HookScriptTarget{System, Tick}}}})) return 8;
-    auto mount_description = std::move(mounts).build(simulation->description());
+    std::vector<ScriptRuntimeMount> mounts;
+    for (std::size_t index{}; index < source.entities.size(); ++index)
+        mounts.push_back({ScriptMountId{index + 1U}, source.asset, EntityScriptScope{source.entities[index]},
+                {{2U, HookScriptTarget{System, Tick}}, {3U, HookScriptTarget{System, Tick}}}});
+    auto mount_description = std::optional{std::move(mounts)};
     if (!mount_description) return 9;
     auto backend_description = backend->descriptor();
     if (scenario == "host-failure")
@@ -145,10 +136,19 @@ int main(int argc, char** argv)
         return 0;
     }
     installed_generated::fail_construction = scenario == "construct-failure";
-    auto system = ScriptSystem::create(simulation->description(), *mount_description, registry, simulation->clock(),
+    auto system = ScriptSystem::create(
+        simulation->description(),
+        *planScriptRuntimeCapacity(*mount_description),
+        *mount_description,
+        registry,
+        simulation->clock(),
         {8U, 2U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U},
-        {&source, &Source::resolveArtifact}, {&source, &Source::resolveObject}, simulation->scriptApiCapabilities(),
-        std::span{&backend_description, 1U}, simulation->scriptHookEndpoints(), simulation->scriptEventEndpoints());
+        {&source, &Source::resolveArtifact},
+        simulation->scriptApiCapabilities(),
+        std::span{&backend_description, 1U},
+        simulation->scriptHookEndpoints(),
+        simulation->scriptEventEndpoints()
+    );
     if (!system) return 10;
     const auto prepared = system->prepare();
     if (scenario == "prepare-failure" || scenario == "construct-failure")
@@ -185,6 +185,10 @@ int main(int argc, char** argv)
     if (installed_generated::ends != 1U || installed_generated::destroys != 1U ||
         backend->stats().active_frames != 0U || system->stats().active_continuations != 0U) return 16;
     source.entities[0] = registry.create();
+    std::array<ScriptMountStatus, 2U> changes;
+    if (!system->collectMountStatusChanges(changes)) return 31;
+    (*mount_description)[0].scope = EntityScriptScope{source.entities[0]};
+    if (!system->mountResolvedBatch(std::span{&(*mount_description)[0], 1U})) return 32;
     if (entt::to_entity(source.entities[0]) != entt::to_entity(old_entity)) return 30;
     if (source.entities[0] == old_entity || !simulation->execute(*executor, SimulationDuration{1})) return 25;
     if (installed_generated::begins != 3U || installed_generated::observations[0].self != old_entity ||

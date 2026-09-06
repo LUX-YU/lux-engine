@@ -38,12 +38,7 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::world::WorldObjectId objectId(std::uint8_t seed)
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes[0] = seed;
-        return lux::world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 
     [[nodiscard]] SimulationDescription makeSimulation()
     {
@@ -227,7 +222,6 @@ namespace
     struct Fixture final
     {
         lux::asset::AssetId asset_id{assetId(9U)};
-        lux::world::WorldObjectId object{objectId(8U)};
         lux::script::ScriptArtifact artifact{makeArtifact()};
         ecs::Entity entity{ecs::NullEntity};
         std::size_t leases{};
@@ -254,18 +248,7 @@ namespace
         return true;
     }
 
-    bool resolveWorld(
-        void* context,
-        const lux::world::WorldObjectId& object,
-        ecs::Entity& output
-    ) noexcept
-    {
-        auto& fixture = *static_cast<Fixture*>(context);
-        if (object != fixture.object)
-            return false;
-        output = fixture.entity;
-        return true;
-    }
+
 
     struct ControlledHookEndpoint final
     {
@@ -328,18 +311,12 @@ namespace
         Fixture fixture;
         ecs::Registry registry;
 
-        ScriptSystemDescriptionBuilder authored;
-        assert(authored.addMount({
-            ScriptMountId{7U},
-            fixture.asset_id,
-            SimulationScriptMount{},
-            true,
-            {
+        std::vector<ScriptRuntimeMount> authored;
+        authored.push_back({ScriptMountId{7U}, fixture.asset_id, SimulationScriptScope{}, {
                 {kHookSymbol, HookScriptTarget{kSystem, kHook}},
                 {kSecondaryHookSymbol, HookScriptTarget{kSystem, kSecondaryHook}}
-            }
-        }));
-        auto description = std::move(authored).build(simulation);
+            }});
+        auto description = std::optional{std::move(authored)};
         assert(description);
 
         BackendState backend_state;
@@ -357,12 +334,12 @@ namespace
         SimulationClock clock;
         auto created = ScriptSystem::create(
             simulation,
+            *planScriptRuntimeCapacity(*description),
             *description,
             registry,
             clock,
             ScriptRuntimeLimits{2U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U, 4U, 4U},
             {&fixture, &resolveAsset},
-            {},
             {},
             backends,
             endpoints,
@@ -406,25 +383,17 @@ int main()
     ecs::Registry registry;
     fixture.entity = registry.create();
 
-    ScriptSystemDescriptionBuilder authored;
-    assert(authored.addMount({
-        ScriptMountId{1U},
-        fixture.asset_id,
-        SimulationScriptMount{},
-        true,
-        {{kHookSymbol, HookScriptTarget{kSystem, kHook}},
-         {kBroadcastSymbol, EventScriptTarget{kSystem, kBroadcast}}}}));
-    assert(authored.addMount({
-        ScriptMountId{2U},
-        fixture.asset_id,
-        EntityScriptMount{fixture.object},
-        true,
-        {{kHookSymbol, HookScriptTarget{kSystem, kHook}},
+    std::vector<ScriptRuntimeMount> authored;
+    authored.push_back({ScriptMountId{1U}, fixture.asset_id, SimulationScriptScope{}, {{kHookSymbol,
+        HookScriptTarget{kSystem, kHook}},
+         {kBroadcastSymbol, EventScriptTarget{kSystem, kBroadcast}}}});
+    authored.push_back({ScriptMountId{2U}, fixture.asset_id, EntityScriptScope{fixture.entity}, {{kHookSymbol,
+        HookScriptTarget{kSystem, kHook}},
          {kBroadcastSymbol, EventScriptTarget{kSystem, kBroadcast}},
          {kTargetedSymbol, EventScriptTarget{kSystem, kTargeted}},
          {kSecondaryHookSymbol,
-          HookScriptTarget{kSystem, kSecondaryHook}}}}));
-    auto description = std::move(authored).build(simulation);
+          HookScriptTarget{kSystem, kSecondaryHook}}}});
+    auto description = std::optional{std::move(authored)};
     assert(description);
 
     HookPoint<void(const SimulationStepInfo&)> hook;
@@ -470,12 +439,12 @@ int main()
     SimulationClock clock;
     auto created = ScriptSystem::create(
         simulation,
+        *planScriptRuntimeCapacity(*description),
         *description,
         registry,
         clock,
         ScriptRuntimeLimits{8U, 2U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U},
         {&fixture, &resolveAsset},
-        {&fixture, &resolveWorld},
         {},
         backends,
         hook_endpoints,
@@ -527,6 +496,10 @@ int main()
     assert(system.activeInstanceCount() == 1U);
 
     fixture.entity = registry.create();
+    std::array<ScriptMountStatus, 2U> mount_changes;
+    assert(system.collectMountStatusChanges(mount_changes));
+    (*description)[1].scope = EntityScriptScope{fixture.entity};
+    assert(system.mountResolvedBatch(std::span{&(*description)[1], 1U}));
     assert(system.executeStablePoint());
     assert(system.activeInstanceCount() == 2U);
     assert(backend_state.creates == 3U);

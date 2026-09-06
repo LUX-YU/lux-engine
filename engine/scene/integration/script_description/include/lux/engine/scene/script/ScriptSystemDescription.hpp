@@ -1,10 +1,10 @@
 #pragma once
 
 #include <lux/engine/world/WorldObjectId.hpp>
-#include <lux/engine/function/script/ScriptSymbol.hpp>
+#include <lux/engine/simulation/ScriptBinding.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
-#include <lux/engine/simulation/script_system/visibility.h>
+#include <lux/engine/scene/script_description/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -16,19 +16,14 @@
 #include <variant>
 #include <vector>
 
-namespace lux::simulation::script
+namespace lux::scene::script
 {
-    struct ScriptMountId final
-    {
-        std::uint64_t value{};
-
-        [[nodiscard]] constexpr bool valid() const noexcept
-        {
-            return value != 0U;
-        }
-
-        friend constexpr auto operator<=>(ScriptMountId, ScriptMountId) noexcept = default;
-    };
+    using lux::simulation::SimulationDescription;
+    using lux::simulation::script::ScriptMountId;
+    using lux::simulation::script::HookScriptTarget;
+    using lux::simulation::script::EventScriptTarget;
+    using lux::simulation::script::ScriptBindingTarget;
+    using lux::simulation::script::ScriptBindingDescription;
 
     struct SimulationScriptMount final
     {
@@ -47,35 +42,6 @@ namespace lux::simulation::script
         EntityScriptMount
     >;
 
-    struct HookScriptTarget final
-    {
-        lux::system::SystemInstanceId system;
-        HookPointId      hook;
-
-        friend constexpr bool operator==(HookScriptTarget, HookScriptTarget) noexcept = default;
-    };
-
-    struct EventScriptTarget final
-    {
-        lux::system::SystemInstanceId system;
-        EventPointId     event;
-
-        friend constexpr bool operator==(EventScriptTarget, EventScriptTarget) noexcept = default;
-    };
-
-    using ScriptBindingTarget = std::variant<
-        HookScriptTarget,
-        EventScriptTarget
-    >;
-
-    struct ScriptBindingDescription final
-    {
-        lux::script::ScriptSymbolId symbol{lux::script::InvalidScriptSymbolId};
-        ScriptBindingTarget         target;
-
-        friend bool operator==(const ScriptBindingDescription&, const ScriptBindingDescription&) noexcept = default;
-    };
-
     struct ScriptMountDescription final
     {
         ScriptMountId               id;
@@ -87,7 +53,7 @@ namespace lux::simulation::script
         friend bool operator==(const ScriptMountDescription&, const ScriptMountDescription&) noexcept = default;
     };
 
-    class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemDescription final
+    class LUX_ENGINE_SCENE_SCRIPT_DESCRIPTION_PUBLIC ScriptSystemDescription final
     {
     public:
         static constexpr std::uint32_t kSchemaVersion{1U};
@@ -117,7 +83,7 @@ namespace lux::simulation::script
         ALLOCATION_FAILURE,
     };
 
-    class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystemDescriptionBuilder final
+    class LUX_ENGINE_SCENE_SCRIPT_DESCRIPTION_PUBLIC ScriptSystemDescriptionBuilder final
     {
     public:
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemDescriptionError>

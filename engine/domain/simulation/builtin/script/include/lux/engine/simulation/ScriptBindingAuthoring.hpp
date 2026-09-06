@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/function/script/ScriptBindingHint.hpp>
-#include <lux/engine/simulation/ScriptSystemDescription.hpp>
+#include <lux/engine/simulation/ScriptBinding.hpp>
 #include <lux/engine/simulation/script_system/visibility.h>
 #include <vector>
 

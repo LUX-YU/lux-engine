@@ -54,12 +54,7 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::world::WorldObjectId objectId()
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes[0] = 0x56U;
-        return lux::world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 
     [[nodiscard]] SimulationDescription makeSimulation()
     {
@@ -482,21 +477,15 @@ namespace
         explicit Harness(HarnessOptions options)
             : simulation(makeSimulation()),
               artifact(makeArtifact(options.wait_route, options.requirement_mutation)),
-              asset(assetId()),
-              object(objectId())
+              asset(assetId())
         {
             if (options.entity_scope)
                 entity = registry.create();
 
-            ScriptSystemDescriptionBuilder description_builder;
-            ScriptMountDescription mount{
-                ScriptMountId{1U},
-                asset,
-                options.entity_scope ? ScriptMountScope{EntityScriptMount{object}}
-                                     : ScriptMountScope{SimulationScriptMount{}},
-                true,
-                {}
-            };
+            std::vector<ScriptRuntimeMount> description_builder;
+            ScriptRuntimeMount mount{ScriptMountId{1U}, asset,
+                options.entity_scope ? ScriptInstanceScope{EntityScriptScope{entity}}
+                                     : ScriptInstanceScope{SimulationScriptScope{}}, {}};
             if (options.bind_start)
             {
                 const auto event = options.entity_scope ? kTargetedStart : kBroadcastStart;
@@ -509,22 +498,16 @@ namespace
                     : kBroadcastWait;
                 mount.bindings.push_back({kCallbackSymbol, EventScriptTarget{kSystem, event}});
             }
-            assert(description_builder.addMount(std::move(mount)));
+            description_builder.push_back(std::move(mount));
             if (options.ownership_pair)
             {
                 assert(!options.entity_scope);
-                assert(description_builder.addMount({
-                    ScriptMountId{2U},
-                    asset,
-                    SimulationScriptMount{},
-                    true,
-                    {
+                description_builder.push_back({ScriptMountId{2U}, asset, SimulationScriptScope{}, {
                         {kStartSymbol, EventScriptTarget{kSystem, kBroadcastStartSecond}},
                         {kCallbackSymbol, EventScriptTarget{kSystem, kBroadcastFaultSecond}}
-                    }
-                }));
+                    }});
             }
-            auto built = std::move(description_builder).build(simulation);
+            auto built = std::optional{std::move(description_builder)};
             assert(built);
             description = std::move(*built);
 
@@ -594,12 +577,12 @@ namespace
 
             auto created = ScriptSystem::create(
                 simulation,
+                *planScriptRuntimeCapacity(description),
                 description,
                 registry,
                 clock,
                 options.limits,
                 {this, &resolveArtifact},
-                options.entity_scope ? WorldObjectResolver{this, &resolveWorld} : WorldObjectResolver{},
                 {},
                 std::span{std::addressof(backend), 1U},
                 {},
@@ -664,18 +647,7 @@ namespace
             return true;
         }
 
-        static bool resolveWorld(
-            void* context,
-            const lux::world::WorldObjectId& requested,
-            ecs::Entity& output
-        ) noexcept
-        {
-            auto& self = *static_cast<Harness*>(context);
-            if (requested != self.object || self.entity == ecs::NullEntity)
-                return false;
-            output = self.entity;
-            return true;
-        }
+
 
         void recordBroadcastStart(std::int32_t payload)
         {
@@ -726,11 +698,10 @@ namespace
         SimulationDescription simulation;
         lux::script::ScriptArtifact artifact;
         lux::asset::AssetId asset;
-        lux::world::WorldObjectId object;
         ecs::Registry registry;
         ecs::Entity entity{ecs::NullEntity};
         SimulationClock clock;
-        ScriptSystemDescription description;
+        std::vector<ScriptRuntimeMount> description;
         BroadcastPoint broadcast_start;
         BroadcastPoint broadcast_wait;
         TargetedPoint targeted_start;
@@ -855,6 +826,10 @@ namespace
         assert(harness.backend_state.resumes == 1U);
 
         harness.entity = harness.registry.create();
+        std::array<ScriptMountStatus, 2U> changes;
+        assert(harness.system->collectMountStatusChanges(changes));
+        harness.description[0].scope = EntityScriptScope{harness.entity};
+        assert(harness.system->mountResolvedBatch(std::span{&harness.description[0], 1U}));
         assert(harness.system->executeStablePoint());
         harness.backend_state.callback_action = ECallbackAction::NONE;
         harness.recordTargetedStart(harness.entity, 7);
@@ -1128,6 +1103,10 @@ namespace
         reincarnation.entity = ecs::NullEntity;
         assert(reincarnation.system->processLifecycle());
         reincarnation.entity = reincarnation.registry.create();
+        std::array<ScriptMountStatus, 1U> feedback;
+        assert(reincarnation.system->collectMountStatusChanges(feedback));
+        reincarnation.description[0].scope = EntityScriptScope{reincarnation.entity};
+        assert(reincarnation.system->mountResolvedBatch(reincarnation.description));
         assert(reincarnation.system->processLifecycle());
         reincarnation.backend_state.override_source = true;
         reincarnation.backend_state.override_admission = old;

@@ -1,3 +1,5 @@
+#include <lux/engine/simulation/ScriptRuntimeInput.hpp>
+#include <optional>
 #include "ConsumerBehavior.hpp"
 #include "ConsumerDomain.hpp"
 #include "ConsumerBehavior.CoroutineBehavior.script.generated.hpp"
@@ -112,7 +114,7 @@ namespace
     {
         const lux::script::ScriptArtifact* artifact{};
         lux::asset::AssetId asset;
-        lux::world::WorldObjectId object;
+
         ecs::Entity entity{ecs::NullEntity};
 
         static bool resolveArtifact(
@@ -128,14 +130,7 @@ namespace
             return true;
         }
 
-        static bool resolveWorld(void* context, const lux::world::WorldObjectId& object, ecs::Entity& output) noexcept
-        {
-            const auto& self = *static_cast<Source*>(context);
-            if (object != self.object)
-                return false;
-            output = self.entity;
-            return true;
-        }
+
     };
 
     lux::asset::AssetId assetId() noexcept
@@ -145,12 +140,7 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    lux::world::WorldObjectId objectId() noexcept
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes.front() = 0xC7U;
-        return lux::world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 }
 
 int main()
@@ -214,30 +204,26 @@ int main()
     if (!backend)
         return 12;
 
-    Source source{std::addressof(*artifact), assetId(), objectId(), registry.create()};
-    ScriptSystemDescriptionBuilder script_builder;
-    if (!script_builder.addMount({
+    Source source{std::addressof(*artifact), assetId(), registry.create()};
+    std::vector<ScriptRuntimeMount> script_builder;
+    script_builder.push_back({
             ScriptMountId{1U},
             source.asset,
-            EntityScriptMount{source.object},
-            true,
+            EntityScriptScope{source.entity},
             {{RunSymbol, HookScriptTarget{ProbeId, TickHook}}}
-        }))
-    {
-        return 13;
-    }
-    auto script_description = std::move(script_builder).build(simulation->description());
+        });
+    auto script_description = std::optional{std::move(script_builder)};
     if (!script_description)
         return 14;
     auto backend_descriptor = backend->descriptor();
     auto system = ScriptSystem::create(
         simulation->description(),
+        *planScriptRuntimeCapacity(*script_description),
         *script_description,
         registry,
         simulation->clock(),
         {8U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U, 2U},
         {std::addressof(source), &Source::resolveArtifact},
-        {std::addressof(source), &Source::resolveWorld},
         simulation->scriptApiCapabilities(),
         std::span{std::addressof(backend_descriptor), 1U},
         simulation->scriptHookEndpoints(),
@@ -273,6 +259,10 @@ int main()
     const auto old_entity = source.entity;
     registry.destroy(old_entity);
     source.entity = registry.create();
+    std::array<ScriptMountStatus, 1U> changes;
+    if (!system->collectMountStatusChanges(changes)) return 31;
+    (*script_description)[0].scope = EntityScriptScope{source.entity};
+    if (!system->mountResolvedBatch(*script_description)) return 32;
     ActiveProbe->tick_enabled = false;
     if (source.entity == old_entity || !simulation->execute(*executor, SimulationDuration{1}))
         return 23;

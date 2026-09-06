@@ -423,14 +423,7 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::world::WorldObjectId objectId(std::size_t index) noexcept
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes.front() = 0xB1U;
-        for (std::size_t byte{}; byte < sizeof(std::uint64_t); ++byte)
-            bytes[8U + byte] = static_cast<std::uint8_t>((index >> (byte * 8U)) & 0xFFU);
-        return lux::world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 
     inline constexpr lux::system::SystemInstanceId kSystem{0xB001U};
     inline constexpr HookPointId kHook{0xB002U};
@@ -836,34 +829,27 @@ namespace
                 throw std::runtime_error("clock executor create failed");
             executor.emplace(std::move(*created_executor));
 
-            objects.reserve(count);
             entities.reserve(count);
-            ScriptSystemDescriptionBuilder description_builder;
+            mount_changes.resize(count);
+            std::vector<ScriptRuntimeMount> description_builder;
             const auto mount_count = shared_target ? 1U : count;
             for (std::size_t index{}; index < mount_count; ++index)
             {
-                ScriptMountScope scope{SimulationScriptMount{}};
+                ScriptInstanceScope scope{SimulationScriptScope{}};
                 if (entity_scope)
                 {
-                    const auto object = objectId(index);
                     const auto entity = registry.create();
-                    objects.push_back(object);
                     entities.push_back(entity);
-                    scope = EntityScriptMount{object};
+                    scope = EntityScriptScope{entity};
                 }
-                if (!description_builder.addMount({
-                        ScriptMountId{index + 1U},
-                        assetId(),
-                        scope,
-                        true,
-                        {{supplied_symbol, shared_target ? ScriptBindingTarget{EventScriptTarget{kSystem, kEvent}}
-                                              : ScriptBindingTarget{HookScriptTarget{kSystem, kHook}}}}
-                    }))
+                if (!(description_builder.push_back({ScriptMountId{index + 1U}, assetId(), scope,
+                    {{supplied_symbol, shared_target ? ScriptBindingTarget{EventScriptTarget{kSystem, kEvent}}
+                                              : ScriptBindingTarget{HookScriptTarget{kSystem, kHook}}}}}), true))
                 {
                     throw std::runtime_error("benchmark mount rejected");
                 }
             }
-            auto built = std::move(description_builder).build(simulation_description);
+            auto built = std::optional{std::move(description_builder)};
             if (!built)
                 throw std::runtime_error("benchmark ScriptSystem description rejected");
             system_description.emplace(std::move(*built));
@@ -971,33 +957,33 @@ namespace
             const std::size_t bounded_count = (std::max)(count, std::size_t{1U});
             auto created = ScriptSystem::create(
                 simulation_description,
+                *planScriptRuntimeCapacity(*system_description),
                 *system_description,
                 registry,
                 clock_owner->clock(),
                 ScriptRuntimeLimits{
-                    bounded_count,
-                    bounded_count,
-                    bounded_count,
-                    shared_target ? bounded_count : 1U,
-                    bounded_count,
-                    bounded_count,
-                    64U,
-                    (std::max)(resume_budget, std::size_t{1U}),
-                    bounded_count,
-                    bounded_count,
-                    bounded_count,
-                    bounded_count
+                bounded_count,
+                bounded_count,
+                bounded_count,
+                shared_target ? bounded_count : 1U,
+                bounded_count,
+                bounded_count,
+                64U,
+                (std::max)(resume_budget, std::size_t{1U}),
+                bounded_count,
+                bounded_count,
+                bounded_count,
+                bounded_count
                 },
                 {this, &resolveArtifact},
-                entity_scope ? WorldObjectResolver{this, &resolveWorld} : WorldObjectResolver{},
                 capability_span,
                 std::span{&backend, 1U},
                 std::span{&hook_descriptor, 1U},
                 event_descriptors,
                 {},
                 mode == EScenarioMode::REAL_DELAY
-                    ? ScriptRealDelayEndpoint{&backend_state, &startFakeRealDelay}
-                    : ScriptRealDelayEndpoint{}
+                ? ScriptRealDelayEndpoint{&backend_state, &startFakeRealDelay}
+                : ScriptRealDelayEndpoint{}
             );
             if (!created)
                 throw std::runtime_error("benchmark ScriptSystem create failed");
@@ -1034,30 +1020,7 @@ namespace
             return true;
         }
 
-        static bool resolveWorld(
-            void* opaque,
-            const lux::world::WorldObjectId& object,
-            ecs::Entity& output
-        ) noexcept
-        {
-            auto& self = *static_cast<RuntimeHarness*>(opaque);
-            const auto bytes = object.value.as_bytes();
-            if (std::to_integer<std::uint8_t>(bytes.front()) != 0xB1U)
-                return false;
-            std::uint64_t encoded_index{};
-            for (std::size_t byte{}; byte < sizeof(std::uint64_t); ++byte)
-            {
-                encoded_index |= static_cast<std::uint64_t>(std::to_integer<std::uint8_t>(bytes[8U + byte])) <<
-                    (byte * 8U);
-            }
-            if (encoded_index > (std::numeric_limits<std::size_t>::max)())
-                return false;
-            const auto index = static_cast<std::size_t>(encoded_index);
-            if (index >= self.entities.size())
-                return false;
-            output = self.entities[index];
-            return self.registry.valid(output);
-        }
+
 
         void advance(SimulationDuration delta)
         {
@@ -1143,6 +1106,8 @@ namespace
 
         void rematerialize(std::size_t first, std::size_t count)
         {
+            if (!system->collectMountStatusChanges(mount_changes))
+                throw std::runtime_error("benchmark mount feedback failed");
             if (!entity_scope || entities.empty())
                 throw std::runtime_error("benchmark churn requires entity scope");
             for (std::size_t offset{}; offset < count; ++offset)
@@ -1150,6 +1115,9 @@ namespace
                 const auto index = (first + offset) % entities.size();
                 registry.destroy(entities[index]);
                 entities[index] = registry.create();
+                (*system_description)[index].scope = EntityScriptScope{entities[index]};
+                if (!system->mountResolvedBatch(std::span{&(*system_description)[index], 1U}))
+                    throw std::runtime_error("benchmark resolved input rejected");
             }
         }
 
@@ -1158,7 +1126,7 @@ namespace
         SimulationSystemRegistry empty_system_types;
         std::optional<Simulation> clock_owner;
         std::optional<lux::task::TaskExecutor> executor;
-        std::optional<ScriptSystemDescription> system_description;
+        std::optional<std::vector<ScriptRuntimeMount>> system_description;
         std::optional<lux::script::ScriptArtifact> artifact;
         HookPoint<void()> hook;
         HookChannel<SimulationBroadcastRoute, std::int32_t> event;
@@ -1179,8 +1147,8 @@ namespace
         ValueProvider value_provider;
         lux::script::ScriptAbilityBinding value_binding;
         std::optional<ScriptSystem> system;
-        std::vector<lux::world::WorldObjectId> objects;
         std::vector<ecs::Entity> entities;
+        std::vector<ScriptMountStatus> mount_changes;
         bool entity_scope{};
     };
 
@@ -1235,27 +1203,20 @@ namespace
                 throw std::runtime_error("Lua benchmark clock executor create failed");
             executor.emplace(std::move(*created_executor));
 
-            objects.reserve(count);
             entities.reserve(count);
-            ScriptSystemDescriptionBuilder description_builder;
+            mount_changes.resize(count);
+            std::vector<ScriptRuntimeMount> description_builder;
             for (std::size_t index{}; index < count; ++index)
             {
-                const auto object = objectId(index);
                 const auto entity = registry.create();
-                objects.push_back(object);
                 entities.push_back(entity);
-                if (!description_builder.addMount({
-                        ScriptMountId{index + 1U},
-                        artifact_asset->id(),
-                        EntityScriptMount{object},
-                        true,
-                        {{symbol, HookScriptTarget{kSystem, kHook}}}
-                    }))
+                if (!(description_builder.push_back({ScriptMountId{index + 1U}, artifact_asset->id(),
+                    EntityScriptScope{entity}, {{symbol, HookScriptTarget{kSystem, kHook}}}}), true))
                 {
                     throw std::runtime_error("Lua benchmark mount rejected");
                 }
             }
-            auto built = std::move(description_builder).build(simulation_description);
+            auto built = std::optional{std::move(description_builder)};
             if (!built)
                 throw std::runtime_error("Lua benchmark ScriptSystem description rejected");
             system_description.emplace(std::move(*built));
@@ -1332,25 +1293,25 @@ namespace
             const std::array publications{publishScriptAbility(value_binding)};
             auto created = ScriptSystem::create(
                 simulation_description,
+                *planScriptRuntimeCapacity(*system_description),
                 *system_description,
                 registry,
                 clock_owner->clock(),
                 {
-                    bounded_count,
-                    bounded_count,
-                    bounded_count,
-                    1U,
-                    bounded_count,
-                    bounded_count,
-                    64U,
-                    (std::max)(resume_budget, std::size_t{1U}),
-                    bounded_count,
-                    bounded_count,
-                    bounded_count,
-                    bounded_count
+                bounded_count,
+                bounded_count,
+                bounded_count,
+                1U,
+                bounded_count,
+                bounded_count,
+                64U,
+                (std::max)(resume_budget, std::size_t{1U}),
+                bounded_count,
+                bounded_count,
+                bounded_count,
+                bounded_count
                 },
                 {this, &resolveArtifact},
-                {this, &resolveWorld},
                 publications,
                 std::span{&backend_descriptor, 1U},
                 std::span{&hook_descriptor, 1U},
@@ -1383,28 +1344,7 @@ namespace
             return true;
         }
 
-        static bool resolveWorld(
-            void* opaque,
-            const lux::world::WorldObjectId& object,
-            ecs::Entity& output
-        ) noexcept
-        {
-            auto& self = *static_cast<LuaRuntimeHarness*>(opaque);
-            const auto bytes = object.value.as_bytes();
-            if (std::to_integer<std::uint8_t>(bytes.front()) != 0xB1U)
-                return false;
-            std::uint64_t encoded_index{};
-            for (std::size_t byte{}; byte < sizeof(std::uint64_t); ++byte)
-            {
-                encoded_index |= static_cast<std::uint64_t>(std::to_integer<std::uint8_t>(bytes[8U + byte])) <<
-                    (byte * 8U);
-            }
-            if (encoded_index >= self.entities.size())
-                return false;
-            const auto index = static_cast<std::size_t>(encoded_index);
-            output = self.entities[index];
-            return self.registry.valid(output);
-        }
+
 
         void dispatch()
         {
@@ -1437,11 +1377,16 @@ namespace
 
         void rematerialize(std::size_t first, std::size_t count)
         {
+            if (!system->collectMountStatusChanges(mount_changes))
+                throw std::runtime_error("benchmark mount feedback failed");
             for (std::size_t offset{}; offset < count; ++offset)
             {
                 const auto index = (first + offset) % entities.size();
                 registry.destroy(entities[index]);
                 entities[index] = registry.create();
+                (*system_description)[index].scope = EntityScriptScope{entities[index]};
+                if (!system->mountResolvedBatch(std::span{&(*system_description)[index], 1U}))
+                    throw std::runtime_error("benchmark resolved input rejected");
             }
             lifecycle_begins += count;
             lifecycle_ends += count;
@@ -1453,7 +1398,7 @@ namespace
         SimulationSystemRegistry empty_system_types;
         std::optional<Simulation> clock_owner;
         std::optional<lux::task::TaskExecutor> executor;
-        std::optional<ScriptSystemDescription> system_description;
+        std::optional<std::vector<ScriptRuntimeMount>> system_description;
         HookPoint<void()> hook;
         HookChannel<SimulationBroadcastRoute, std::int32_t> event;
         std::unique_ptr<ScriptHookEndpoint<void()>> hook_bridge;
@@ -1467,8 +1412,8 @@ namespace
         ValueProvider value_provider;
         lux::script::ScriptAbilityBinding value_binding;
         std::optional<ScriptSystem> system;
-        std::vector<lux::world::WorldObjectId> objects;
         std::vector<ecs::Entity> entities;
+        std::vector<ScriptMountStatus> mount_changes;
         std::size_t dispatches{};
         std::size_t lifecycle_begins{};
         std::size_t lifecycle_ends{};
@@ -3225,20 +3170,28 @@ namespace
         const std::array pools{CppStaticScriptPoolDescription{&generated::RegionScript, 1U, 0U, 0U,
             alignof(std::max_align_t), 2U}};
         auto backend = CppStaticScriptBackend::create(pools);
-        ScriptSystemDescriptionBuilder mounts;
-        if (!artifact || !backend || !mounts.addMount({ScriptMountId{1U}, assetId(), SimulationScriptMount{}, true,
+        std::vector<ScriptRuntimeMount> mounts;
+        if (!artifact || !backend || !(mounts.push_back({ScriptMountId{1U}, assetId(), SimulationScriptScope{},
             {{50690U, HookScriptTarget{RegionHost::Id, RegionHost::First}},
-             {50691U, HookScriptTarget{RegionHost::Id, RegionHost::Stable}}}}))
+             {50691U, HookScriptTarget{RegionHost::Id, RegionHost::Stable}}}}), true))
             throw std::runtime_error("region Script mount");
-        auto mount_description = std::move(mounts).build(simulation->description());
+        auto mount_description = std::optional{std::move(mounts)};
         const auto descriptor = backend->descriptor();
         auto runtime = ScriptSystem::create(
-            simulation->description(), *mount_description, registry, simulation->clock(),
+            simulation->description(),
+            *planScriptRuntimeCapacity(*mount_description),
+            *mount_description,
+            registry,
+            simulation->clock(),
             {8U, 1U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U},
             {&*artifact, [](void* value, const lux::asset::AssetId&, ResolvedScriptArtifact& result) noexcept {
-                result = {static_cast<const lux::script::ScriptArtifact*>(value), nullptr, nullptr}; return true;
-            }}, {}, simulation->scriptApiCapabilities(), {&descriptor, 1U},
-            simulation->scriptHookEndpoints(), simulation->scriptEventEndpoints());
+            result = {static_cast<const lux::script::ScriptArtifact*>(value), nullptr, nullptr}; return true;
+            }},
+            simulation->scriptApiCapabilities(),
+            {&descriptor, 1U},
+            simulation->scriptHookEndpoints(),
+            simulation->scriptEventEndpoints()
+        );
         if (!runtime || !runtime->prepare()) throw std::runtime_error("region Script preparation");
         auto connection = simulation->bindHookCallbacks({&*runtime,
             [](void* value, const SimulationClockSnapshot&, bool stable) noexcept {

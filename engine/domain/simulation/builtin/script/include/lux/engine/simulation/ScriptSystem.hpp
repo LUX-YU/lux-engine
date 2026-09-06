@@ -8,7 +8,7 @@
 #include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
 #include <lux/engine/simulation/scripting/ScriptEndpointBridge.hpp>
 #include <lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp>
-#include <lux/engine/simulation/ScriptSystemDescription.hpp>
+#include <lux/engine/simulation/ScriptRuntimeInput.hpp>
 #include <lux/engine/simulation/script_system/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace lux::simulation::script
@@ -32,12 +33,6 @@ namespace lux::simulation::script
     {
         void* context{};
         bool (*resolve)(void*, const lux::asset::AssetId&, ResolvedScriptArtifact&) noexcept{};
-    };
-
-    struct WorldObjectResolver final
-    {
-        void* context{};
-        bool (*resolve)(void*, const lux::world::WorldObjectId&, ecs::Entity&) noexcept{};
     };
 
     struct ScriptRuntimeLimits final
@@ -58,6 +53,12 @@ namespace lux::simulation::script
 
     struct ScriptRuntimeStats final
     {
+        std::size_t configured_mounts{};
+        std::size_t pending_mounts{};
+        std::size_t mount_backing_bytes{};
+        std::size_t method_backing_bytes{};
+        std::size_t binding_backing_bytes{};
+        std::size_t mount_feedback_backing_bytes{};
         std::size_t active_instances{};
         std::size_t active_continuations{};
         std::size_t active_awaitables{};
@@ -119,7 +120,6 @@ namespace lux::simulation::script
         SCOPE_MISMATCH,
         BACKEND_NOT_AVAILABLE,
         BACKEND_FAILURE,
-        WORLD_OBJECT_NOT_RESOLVED,
         ENDPOINT_CONNECTION_FAILURE,
         INVOCATION_FAILURE,
         ALLOCATION_FAILURE,
@@ -141,6 +141,42 @@ namespace lux::simulation::script
 
     enum class EScriptLifecycleAdmission : std::uint8_t { ALLOW, RETIRE_ONLY };
 
+    enum class EScriptMountState : std::uint8_t
+    {
+        INACTIVE, CONSTRUCTING, INITIALIZED, ACTIVE, RETIRING, FAULTED,
+    };
+
+    enum class EScriptMountSubmissionState : std::uint8_t
+    {
+        NONE, ACCEPTED, ACTIVATED, REJECTED, CANCELLED,
+    };
+
+    struct ScriptMountStatus final
+    {
+        ScriptMountId id;
+        std::uint64_t revision{};
+        EScriptMountState state{EScriptMountState::INACTIVE};
+        ScriptInstanceId instance;
+        ScriptInstanceScope scope;
+        bool reclaimed{true};
+        ScriptInstanceId retired_instance;
+        std::uint64_t submission{};
+        EScriptMountSubmissionState submission_state{EScriptMountSubmissionState::NONE};
+        ScriptInstanceScope submitted_scope;
+        EScriptSystemError submission_error{EScriptSystemError::INVALID_INPUT};
+    };
+
+    struct ScriptMountStatusCollection final
+    {
+        std::size_t written{};
+        std::size_t remaining{};
+    };
+
+    // Cold composition helper. The loader includes unresolved configurations when computing its plan.
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
+    lux::cxx::expected<ScriptRuntimeCapacityPlan, EScriptSystemError>
+    planScriptRuntimeCapacity(std::span<const ScriptRuntimeMount> mounts) noexcept;
+
     class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystem final
     {
     public:
@@ -159,12 +195,12 @@ namespace lux::simulation::script
         [[nodiscard]] static lux::cxx::expected<ScriptSystem, EScriptSystemError>
         create(
             const SimulationDescription &simulation,
-            const ScriptSystemDescription &description,
+            const ScriptRuntimeCapacityPlan &capacity,
+            std::span<const ScriptRuntimeMount> mounts,
             ecs::Registry &registry,
             const SimulationClock &clock,
             ScriptRuntimeLimits limits,
             ScriptArtifactResolver artifacts,
-            WorldObjectResolver world,
             std::span<const ScriptApiCapabilityPublication> capabilities,
             std::span<const ScriptBackendDescriptor> backends,
             std::span<const ScriptHookEndpointDescriptor> hooks,
@@ -190,6 +226,17 @@ namespace lux::simulation::script
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         processLifecycle(EScriptLifecycleAdmission admission = EScriptLifecycleAdmission::ALLOW) noexcept;
         void beginStableAdmission() noexcept;
+
+        // Owner-only assembly. Success accepts the whole batch; lifecycle executes at existing boundaries.
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
+        mountResolvedBatch(std::span<const ScriptRuntimeMount> mounts) noexcept;
+        // Value snapshots; query does not acknowledge changes. Empty means the configuration is unknown.
+        [[nodiscard]] lux::cxx::expected<std::optional<ScriptMountStatus>, EScriptSystemError>
+        queryMountStatus(ScriptMountId id) const noexcept;
+        // Only copied entries are acknowledged. Uncopied entries remain queued, including at shutdown.
+        [[nodiscard]] lux::cxx::expected<ScriptMountStatusCollection, EScriptSystemError>
+        collectMountStatusChanges(std::span<ScriptMountStatus> output) noexcept;
+
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         shutdown() noexcept;

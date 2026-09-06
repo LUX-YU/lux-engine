@@ -1,5 +1,7 @@
+#include "ScriptSystemV1Golden.hpp"
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/simulation/SimulationStepInfo.hpp>
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 
 #include <algorithm>
 #include <array>
@@ -13,6 +15,7 @@ namespace
 {
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     inline constexpr lux::system::SystemInstanceId kSystem{81U};
     inline constexpr HookPointId kHook{82U};
@@ -72,6 +75,7 @@ namespace
 int main()
 {
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
     const auto simulation = makeSimulation();
 
     ScriptSystemDescriptionBuilder builder;
@@ -99,6 +103,10 @@ int main()
         std::numeric_limits<std::size_t>::max()};
     auto encoded = encodeScriptSystemDescription(*description, generous);
     assert(encoded);
+    const auto golden = std::as_bytes(std::span{ScriptSystemV1Golden});
+    assert(encoded->size() == golden.size() && std::equal(encoded->begin(), encoded->end(), golden.begin()));
+    const auto legacy = decodeScriptSystemDescription(golden, simulation, generous);
+    assert(legacy && legacy->mounts().size() == description->mounts().size());
     assert((*encoded)[4] == std::byte{1U});
     auto decoded = decodeScriptSystemDescription(
         *encoded,

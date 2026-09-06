@@ -1,3 +1,4 @@
+#include <optional>
 #include "PhysicsQuery2D.ability.generated.hpp"
 #include "PhysicsQuery2D.ability.lua.generated.hpp"
 #include "Physics2DScriptTestSupport.hpp"
@@ -125,26 +126,25 @@ int main()
     });
     assert(backend);
     const auto descriptor = backend->descriptor();
-    ScriptSystemDescriptionBuilder description_builder;
-    assert(description_builder.addMount({ScriptMountId{1U},
-                                         artifact->id(),
-                                         SimulationScriptMount{},
-                                         true,
-                                         {{TickSymbol, HookScriptTarget{ProbeSystemId, TickHook}}}}));
-    auto script_description = std::move(description_builder).build(simulation->description());
+    std::vector<ScriptRuntimeMount> description_builder;
+    description_builder.push_back({ScriptMountId{1U}, artifact->id(), SimulationScriptScope{}, {{TickSymbol,
+        HookScriptTarget{ProbeSystemId, TickHook}}}});
+    auto script_description = std::optional{std::move(description_builder)};
     assert(script_description);
     Source source{std::move(artifact)};
-    auto system = ScriptSystem::create(simulation->description(),
-                                       *script_description,
-                                       registry,
-                                       simulation->clock(),
-                                       {8U, 1U, 1U, 1U, 1U, 1U, 64U, 1U, 1U, 1U, 1U, 1U},
-                                       {std::addressof(source), &Source::resolve},
-                                       {},
-                                       simulation->scriptApiCapabilities(),
-                                       std::span{&descriptor, 1U},
-                                       simulation->scriptHookEndpoints(),
-                                       simulation->scriptEventEndpoints());
+    auto system = ScriptSystem::create(
+        simulation->description(),
+        *planScriptRuntimeCapacity(*script_description),
+        *script_description,
+        registry,
+        simulation->clock(),
+        {8U, 1U, 1U, 1U, 1U, 1U, 64U, 1U, 1U, 1U, 1U, 1U},
+        {std::addressof(source), &Source::resolve},
+        simulation->scriptApiCapabilities(),
+        std::span{&descriptor, 1U},
+        simulation->scriptHookEndpoints(),
+        simulation->scriptEventEndpoints()
+    );
     assert(system && system->prepare());
     auto connection = bindScriptRuntime(*simulation, *system);
     assert(connection);

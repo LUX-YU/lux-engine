@@ -1,3 +1,5 @@
+#include <lux/engine/simulation/ScriptRuntimeInput.hpp>
+#include <optional>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
@@ -245,15 +247,14 @@ int main()
     assert(artifact);
     ArtifactSource source{assetId(), std::move(*artifact)};
 
-    ScriptSystemDescriptionBuilder script_builder;
-    assert(script_builder.addMount({
+    std::vector<ScriptRuntimeMount> script_builder;
+    script_builder.push_back({
         ScriptMountId{1U},
         source.id,
-        SimulationScriptMount{},
-        true,
+        SimulationScriptScope{},
         {{kSymbol, EventScriptTarget{kSystem, kStart}}}
-    }));
-    auto scripts = std::move(script_builder).build(*simulation);
+    });
+    auto scripts = std::optional{std::move(script_builder)};
     assert(scripts);
 
     BackendState backend_state;
@@ -267,12 +268,12 @@ int main()
     }};
     auto created = ScriptSystem::create(
         *simulation,
+        *planScriptRuntimeCapacity(*scripts),
         *scripts,
         registry,
         composed->clock(),
         {8U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U, 2U},
         {std::addressof(source), &ArtifactSource::resolve},
-        {},
         {},
         backends,
         {},

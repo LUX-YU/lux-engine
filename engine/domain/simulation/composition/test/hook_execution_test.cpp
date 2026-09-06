@@ -1,3 +1,4 @@
+#include <optional>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -215,19 +216,29 @@ namespace
         assert(artifact);
         Backend backend{&probe, std::move(*artifact)};
         const auto descriptor = backend.descriptor();
-        ScriptSystemDescriptionBuilder scripts;
+        std::vector<ScriptRuntimeMount> scripts;
         std::array<std::uint8_t, 16U> asset_bytes{};
         asset_bytes.front() = 1U;
-        assert(scripts.addMount({ScriptMountId{1U}, lux::asset::AssetId{asset_bytes}, SimulationScriptMount{}, true,
-            {{1U, HookScriptTarget{D, Hook}}}}));
-        auto mounted = std::move(scripts).build(*description);
+        scripts.push_back({ScriptMountId{1U}, lux::asset::AssetId{asset_bytes}, SimulationScriptScope{}, {{1U,
+            HookScriptTarget{D, Hook}}}});
+        auto mounted = std::optional{std::move(scripts)};
         assert(mounted);
-        auto runtime = ScriptSystem::create(*description, *mounted, registry, simulation->clock(),
+        auto runtime = ScriptSystem::create(
+            *description,
+            *planScriptRuntimeCapacity(*mounted),
+            *mounted,
+            registry,
+            simulation->clock(),
             {4U, 1U, 1U, 1U, 1U, 1U, 32U, 1U, 1U, 1U, 1U, 1U},
             {&backend, [](void* context, const lux::asset::AssetId&, ResolvedScriptArtifact& result) noexcept {
-                result.artifact = &static_cast<Backend*>(context)->artifact;
-                return true;
-            }}, {}, {}, {&descriptor, 1U}, simulation->scriptHookEndpoints(), {});
+            result.artifact = &static_cast<Backend*>(context)->artifact;
+            return true;
+            }},
+            {},
+            {&descriptor, 1U},
+            simulation->scriptHookEndpoints(),
+            {}
+        );
         assert(runtime && runtime->prepare());
         auto executor = lux::task::TaskExecutor::create({workers, 16U});
         assert(executor && !simulation->execute(*executor, SimulationDuration{1}));

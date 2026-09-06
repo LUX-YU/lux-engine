@@ -1,6 +1,7 @@
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/simulation/ScriptBindingAuthoring.hpp>
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
@@ -12,7 +13,7 @@
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
-#include <lux/engine/simulation/ScriptSystemDescription.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescription.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
 #include "DelayAbility.ability.native.generated.hpp"
@@ -46,6 +47,7 @@ namespace
     using namespace lux;
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     inline constexpr system::SystemInstanceId kProbeSystem{0x8301U};
     inline constexpr HookPointId kTickHook{0x8302U};
@@ -794,6 +796,7 @@ namespace
         using namespace lux;
         using namespace lux::simulation;
         using namespace lux::simulation::script;
+    using namespace lux::scene::script;
         const bool query_only = options.group == "micro-flowforge-ability-query";
         const bool sync = options.group == "micro-flowforge-sync" || query_only ||
             options.group == "scene-flowforge-update-heavy";
@@ -927,25 +930,25 @@ namespace
         const auto backend_descriptor = backend.descriptor();
         auto system = ScriptSystem::create(
             simulation->description(),
-            *script_description,
+            *planScriptRuntimeCapacity(*script_description),
+            *resolveScriptRuntimeMounts(*script_description, {}, registry),
             registry,
             simulation->clock(),
             ScriptRuntimeLimits{
-                16U,
-                options.size,
-                options.size,
-                1U,
-                options.size,
-                options.size,
-                64U,
-                (std::min)(options.resume_budget, options.size),
-                options.size,
-                options.size,
-                options.size,
-                options.size
+            16U,
+            options.size,
+            options.size,
+            1U,
+            options.size,
+            options.size,
+            64U,
+            (std::min)(options.resume_budget, options.size),
+            options.size,
+            options.size,
+            options.size,
+            options.size
             },
             {std::addressof(source), &ArtifactSource::resolveArtifact},
-            {},
             capabilities,
             std::span{&backend_descriptor, 1U},
             simulation->scriptHookEndpoints(),
@@ -1091,6 +1094,7 @@ int main(int argc, char** argv)
     using namespace lux;
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     flowforge::ScriptAbilityNodeCatalog catalog;
     assert(catalog.add(flowforge::makeScriptAbilityCatalogContribution<DelayAbility>()));
@@ -1200,12 +1204,12 @@ int main(int argc, char** argv)
     const auto backend_descriptor = backend.descriptor();
     auto missing = ScriptSystem::create(
         simulation->description(),
-        *script_description,
+        *planScriptRuntimeCapacity(*script_description),
+        *resolveScriptRuntimeMounts(*script_description, {}, registry),
         registry,
         simulation->clock(),
         ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
-        {},
         {},
         std::span{&backend_descriptor, 1U},
         simulation->scriptHookEndpoints(),
@@ -1221,12 +1225,12 @@ int main(int argc, char** argv)
     const std::array mismatch_capabilities{mismatch_capability};
     auto mismatch = ScriptSystem::create(
         simulation->description(),
-        *script_description,
+        *planScriptRuntimeCapacity(*script_description),
+        *resolveScriptRuntimeMounts(*script_description, {}, registry),
         registry,
         simulation->clock(),
         ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
-        {},
         mismatch_capabilities,
         std::span{&backend_descriptor, 1U},
         simulation->scriptHookEndpoints(),
@@ -1239,12 +1243,12 @@ int main(int argc, char** argv)
 
     auto system = ScriptSystem::create(
         simulation->description(),
-        *script_description,
+        *planScriptRuntimeCapacity(*script_description),
+        *resolveScriptRuntimeMounts(*script_description, {}, registry),
         registry,
         simulation->clock(),
         ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
-        {},
         capabilities,
         std::span{&backend_descriptor, 1U},
         simulation->scriptHookEndpoints(),
@@ -1395,12 +1399,12 @@ int main(int argc, char** argv)
     const auto event_backend_descriptor = event_backend.descriptor();
     auto event_wait_system = ScriptSystem::create(
         simulation->description(),
-        *event_script_description,
+        *planScriptRuntimeCapacity(*event_script_description),
+        *resolveScriptRuntimeMounts(*event_script_description, {}, registry),
         registry,
         simulation->clock(),
         ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(event_artifact_source), &ArtifactSource::resolveArtifact},
-        {},
         event_wait_capabilities,
         std::span{&event_backend_descriptor, 1U},
         simulation->scriptHookEndpoints(),
@@ -1425,12 +1429,12 @@ int main(int argc, char** argv)
 
     auto retiring_event_wait = ScriptSystem::create(
         simulation->description(),
-        *event_script_description,
+        *planScriptRuntimeCapacity(*event_script_description),
+        *resolveScriptRuntimeMounts(*event_script_description, {}, registry),
         registry,
         simulation->clock(),
         ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(event_artifact_source), &ArtifactSource::resolveArtifact},
-        {},
         event_wait_capabilities,
         std::span{&event_backend_descriptor, 1U},
         simulation->scriptHookEndpoints(),
@@ -1450,12 +1454,12 @@ int main(int argc, char** argv)
 
     auto retiring = ScriptSystem::create(
         simulation->description(),
-        *script_description,
+        *planScriptRuntimeCapacity(*script_description),
+        *resolveScriptRuntimeMounts(*script_description, {}, registry),
         registry,
         simulation->clock(),
         ScriptRuntimeLimits{8U, 1U, 4U, 4U, 4U, 4U, 64U, 1U, 4U, 4U, 4U, 4U},
         {std::addressof(source), &ArtifactSource::resolveArtifact},
-        {},
         capabilities,
         std::span{&backend_descriptor, 1U},
         simulation->scriptHookEndpoints(),

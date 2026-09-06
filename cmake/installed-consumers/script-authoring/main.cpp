@@ -1,3 +1,4 @@
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include "Behavior.hpp"
 #include "Behavior.CommonBehavior.script.generated.hpp"
 #include "CounterAbility.ability.generated.hpp"
@@ -8,7 +9,7 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/ScriptBindingAuthoring.hpp>
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/native/NativeScriptBackend.hpp>
@@ -26,6 +27,7 @@ namespace
 {
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
     using Ability = authoring_consumer::CounterAbility;
     constexpr lux::system::SystemInstanceId HostId{11U};
     constexpr HookPointId First{12U}, Selected{13U};
@@ -252,10 +254,18 @@ int main(int argc, char** argv)
         need(cpp_backend && lua_backend && native_backend, "backend preparation");
         const std::array backends{cpp_backend->descriptor(), lua_backend->descriptor(), native_backend.descriptor()};
         auto runtime = ScriptSystem::create(
-            simulation->description(), *mount_description, registry, simulation->clock(),
-            {16U, 3U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U}, {&sources, &Sources::artifact},
-            {&sources, &Sources::world}, simulation->scriptApiCapabilities(), backends,
-            simulation->scriptHookEndpoints(), simulation->scriptEventEndpoints());
+            simulation->description(),
+            *planScriptRuntimeCapacity(*mount_description),
+            *resolveScriptRuntimeMounts(*mount_description, {&sources, &Sources::world}, registry),
+            registry,
+            simulation->clock(),
+            {16U, 3U, 8U, 8U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U},
+            {&sources, &Sources::artifact},
+            simulation->scriptApiCapabilities(),
+            backends,
+            simulation->scriptHookEndpoints(),
+            simulation->scriptEventEndpoints()
+        );
         need(static_cast<bool>(runtime), "runtime");
         const auto prepared = runtime->prepare();
         if (mode == "reject")

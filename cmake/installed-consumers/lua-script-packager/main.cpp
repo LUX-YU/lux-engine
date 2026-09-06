@@ -1,3 +1,5 @@
+#include <lux/engine/simulation/ScriptRuntimeInput.hpp>
+#include <optional>
 #include "InventoryAbility.hpp"
 #include "InventoryAbility.ability.generated.hpp"
 #include "InventoryAbility.ability.lua.generated.hpp"
@@ -93,7 +95,7 @@ namespace
     {
         const lux::script::ScriptArtifact* artifact{};
         lux::asset::AssetId asset;
-        lux::world::WorldObjectId object;
+
         ecs::Entity entity;
         static bool resolve(void* context, const lux::asset::AssetId& asset, ResolvedScriptArtifact& output) noexcept
         {
@@ -103,12 +105,7 @@ namespace
             output.artifact = source.artifact;
             return true;
         }
-        static bool world(void* context, const lux::world::WorldObjectId& object, ecs::Entity& output) noexcept
-        {
-            auto& source = *static_cast<Source*>(context);
-            output = source.entity;
-            return object == source.object;
-        }
+
     };
 }
 
@@ -193,17 +190,26 @@ int main()
     });
     assert(backend);
     Source source{&(*decoded)->data(), (*decoded)->id(),
-        lux::world::WorldObjectId{uuids::uuid{id_bytes}}, registry.create()};
-    ScriptSystemDescriptionBuilder mounts;
-    assert(mounts.addMount({ScriptMountId{1U}, source.asset, EntityScriptMount{source.object}, true,
-        {{3U, HookScriptTarget{InventorySystemId, TickHook}}}}));
-    auto scripts = std::move(mounts).build(simulation->description());
+        registry.create()};
+    std::vector<ScriptRuntimeMount> mounts;
+    mounts.push_back({ScriptMountId{1U}, source.asset, EntityScriptScope{source.entity},
+        {{3U, HookScriptTarget{InventorySystemId, TickHook}}}});
+    auto scripts = std::optional{std::move(mounts)};
     assert(scripts);
     const auto backend_descriptor = backend->descriptor();
-    auto runtime = ScriptSystem::create(simulation->description(), *scripts, registry, simulation->clock(),
+    auto runtime = ScriptSystem::create(
+        simulation->description(),
+        *planScriptRuntimeCapacity(*scripts),
+        *scripts,
+        registry,
+        simulation->clock(),
         {8U, 1U, 2U, 2U, 2U, 2U, 32U, 2U, 2U, 2U, 2U, 2U},
-        {&source, &Source::resolve}, {&source, &Source::world}, simulation->scriptApiCapabilities(),
-        {&backend_descriptor, 1U}, simulation->scriptHookEndpoints(), simulation->scriptEventEndpoints());
+        {&source, &Source::resolve},
+        simulation->scriptApiCapabilities(),
+        {&backend_descriptor, 1U},
+        simulation->scriptHookEndpoints(),
+        simulation->scriptEventEndpoints()
+    );
     assert(runtime && runtime->prepare());
     assert(provider->reads == 1U && provider->last == 0);
     auto connection = simulation->bindHookCallbacks({&*runtime,

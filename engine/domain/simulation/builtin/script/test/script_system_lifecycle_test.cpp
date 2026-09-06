@@ -34,13 +34,7 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::world::WorldObjectId objectId(std::uint8_t value) noexcept
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes[0] = 0x76U;
-        bytes[15] = value;
-        return lux::world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 
     [[nodiscard]] SimulationDescription makeSimulation()
     {
@@ -130,6 +124,7 @@ namespace
         std::vector<EScriptEndPlayReason> end_reasons;
         std::vector<std::size_t> end_normal_dispatches;
         std::vector<ScriptAwaitableCompletion> completions;
+        std::vector<ScriptBehavior*> hosts;
     };
 
     int invokePrepared(lux_script_call_frame* frame) noexcept
@@ -174,7 +169,7 @@ namespace
 
     EScriptBackendResult createInstance(
         void* context,
-        const ScriptInstanceCreateContext&,
+        const ScriptInstanceCreateContext& create_context,
         const lux::script::ScriptArtifact&,
         ScriptBackendInstance& output
     ) noexcept
@@ -184,6 +179,7 @@ namespace
         if (instance == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         ++state.creates;
+        state.hosts.push_back(create_context.behavior);
         output.value = instance;
         return EScriptBackendResult::SUCCESS;
     }
@@ -283,26 +279,23 @@ namespace
             : simulation(makeSimulation()), artifact(makeArtifact(begin, end, invalid_begin, invalid_end)),
               entity_scope(entity_scope)
         {
-            ScriptSystemDescriptionBuilder builder;
+            std::vector<ScriptRuntimeMount> builder;
             for (std::size_t index{}; index < mount_count; ++index)
             {
                 if (entity_scope)
                 {
-                    objects.push_back(objectId(static_cast<std::uint8_t>(index + 1U)));
                     entities.push_back(registry.create());
                 }
-                assert(builder.addMount({
-                    ScriptMountId{index + 1U},
-                    assetId(),
-                    entity_scope ? ScriptMountScope{EntityScriptMount{objects.back()}}
-                                 : ScriptMountScope{SimulationScriptMount{}},
-                    true,
-                    {{kTick, HookScriptTarget{kSystem, kHook}}}
-                }));
+                builder.push_back({ScriptMountId{index + 1U}, assetId(),
+                    entity_scope ? ScriptInstanceScope{EntityScriptScope{entities.back()}}
+                                 : ScriptInstanceScope{SimulationScriptScope{}}, {{kTick, HookScriptTarget{kSystem,
+                                     kHook}}}});
             }
-            auto built = std::move(builder).build(simulation);
+            auto built = std::optional{std::move(builder)};
             assert(built);
             description = std::move(*built);
+            for (std::size_t index{}; index < description.size(); ++index)
+                description[index].configuration_index = static_cast<std::uint32_t>(index);
             assert(hook.prepare(1U) == EEndpointMutationError::NONE);
             bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             endpoint = bridge->descriptor();
@@ -317,21 +310,30 @@ namespace
             };
         }
 
-        [[nodiscard]] lux::cxx::expected<ScriptSystem, EScriptSystemError> create() noexcept
+        [[nodiscard]] lux::cxx::expected<ScriptSystem,
+            EScriptSystemError> create(std::size_t initial_count = 16U) noexcept
         {
             return ScriptSystem::create(
                 simulation,
-                description,
+                *planScriptRuntimeCapacity(description),
+                std::span{description}.first((std::min)(initial_count, description.size())),
                 registry,
                 clock,
                 ScriptRuntimeLimits{32U, 16U, 16U, 8U, 16U, 16U, 64U, 16U, 16U, 16U, 16U, 16U},
                 {this, &resolveArtifact},
-                entity_scope ? WorldObjectResolver{this, &resolveWorld} : WorldObjectResolver{},
                 {},
                 std::span{&backend, 1U},
                 std::span{&endpoint, 1U},
                 {}
             );
+        }
+
+        void submitEntity(ScriptSystem& system, std::size_t index)
+        {
+            std::array<ScriptMountStatus, 16U> changes;
+            assert(system.collectMountStatusChanges(changes));
+            description[index].scope = EntityScriptScope{entities[index]};
+            assert(system.mountResolvedBatch(std::span{&description[index], 1U}));
         }
 
         static bool resolveArtifact(
@@ -347,26 +349,11 @@ namespace
             return true;
         }
 
-        static bool resolveWorld(
-            void* context,
-            const lux::world::WorldObjectId& object,
-            Entity& output
-        ) noexcept
-        {
-            auto& self = *static_cast<Harness*>(context);
-            const auto found = std::find(self.objects.begin(), self.objects.end(), object);
-            if (found == self.objects.end())
-                return false;
-            const auto index = static_cast<std::size_t>(found - self.objects.begin());
-            if (index >= self.entities.size() || !self.registry.valid(self.entities[index]))
-                return false;
-            output = self.entities[index];
-            return true;
-        }
+
 
         SimulationDescription simulation;
         lux::script::ScriptArtifact artifact;
-        ScriptSystemDescription description;
+        std::vector<ScriptRuntimeMount> description;
         SimulationClock clock;
         Registry registry;
         HookPoint<void()> hook;
@@ -374,7 +361,6 @@ namespace
         ScriptHookEndpointDescriptor endpoint;
         BackendState backend_state;
         ScriptBackendDescriptor backend;
-        std::vector<lux::world::WorldObjectId> objects;
         std::vector<Entity> entities;
         bool entity_scope{};
     };
@@ -396,6 +382,7 @@ namespace
             assert(harness.backend_state.begins == 3U);
         }
         harness.entities[0] = harness.registry.create();
+        harness.submitEntity(system, 0U);
         assert(system.executeStablePoint());
         assert(harness.backend_state.begins == 4U);
         assert(system.activeInstanceCount() == 3U);
@@ -405,12 +392,150 @@ namespace
         harness.entities[0] = NullEntity;
         harness.registry.destroy(harness.entities[1]);
         harness.entities[1] = harness.registry.create();
+        harness.submitEntity(system, 1U);
         harness.backend_state.fail_begin_serial = harness.backend_state.creates + 1U;
         const auto result = system.executeStablePoint();
         assert(!result && result.error() == EScriptSystemError::INVOCATION_FAILURE);
         assert(system.activeInstanceCount() == 1U);
         assert(system.shutdown());
         assert(harness.backend_state.destroys == harness.backend_state.creates);
+    }
+
+    void testOwnedRuntimeInput()
+    {
+        Harness harness{1U, false, true, true};
+        auto created = harness.create();
+        assert(created);
+        harness.description.clear();
+        harness.description.shrink_to_fit();
+        assert(created->prepare());
+        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(harness.backend_state.begins == 1U && harness.backend_state.tick_calls == 1U);
+        assert(created->shutdown());
+        assert(harness.backend_state.ends == 1U && harness.backend_state.destroys == 1U);
+    }
+
+    void testResolvedBatchProtocol()
+    {
+        Harness harness{3U, true, true, true};
+        auto created = harness.create(1U);
+        assert(created && created->prepare());
+        auto& system = *created;
+        assert(harness.backend_state.begins == 1U);
+        auto* first_host = harness.backend_state.hosts.front();
+        const auto initial = system.queryMountStatus({1U});
+        assert(initial && *initial && (**initial).state == EScriptMountState::ACTIVE);
+        const auto repeated = system.queryMountStatus({1U});
+        assert(repeated && (**repeated).revision == (**initial).revision);
+        const auto untouched = system.collectMountStatusChanges({});
+        assert(untouched && untouched->written == 0U && untouched->remaining == 1U);
+
+        auto invalid_batch = harness.description;
+        invalid_batch.erase(invalid_batch.begin());
+        invalid_batch.back().bindings.front().symbol = lux::script::InvalidScriptSymbolId;
+        const auto rejected = system.mountResolvedBatch(invalid_batch);
+        assert(!rejected && rejected.error() == EScriptSystemError::INVALID_INPUT);
+        const auto unknown = system.queryMountStatus({2U});
+        assert(unknown && !*unknown);
+        assert(harness.backend_state.creates == 1U);
+        assert(system.collectMountStatusChanges({})->remaining == 1U);
+        invalid_batch = harness.description;
+        invalid_batch.erase(invalid_batch.begin());
+        invalid_batch.back().bindings.push_back({kBegin, HookScriptTarget{kSystem, kHook}});
+        const auto capacity_error = system.mountResolvedBatch(invalid_batch);
+        assert(!capacity_error && capacity_error.error() == EScriptSystemError::CAPACITY_EXCEEDED);
+        assert(!*system.queryMountStatus({2U}));
+        assert(system.collectMountStatusChanges({})->remaining == 1U);
+
+
+        assert(system.mountResolvedBatch(std::span{harness.description}.subspan(1U)));
+        const auto accepted = system.queryMountStatus({2U});
+        assert(accepted && *accepted && (**accepted).state == EScriptMountState::INACTIVE);
+        assert((**accepted).submission_state == EScriptMountSubmissionState::ACCEPTED);
+        assert(harness.backend_state.creates == 1U);
+        std::array<ScriptMountStatus, 1U> one;
+        auto first = system.collectMountStatusChanges(one);
+        assert(first && first->written == 1U && first->remaining == 2U && one[0].id.value == 1U);
+        assert(system.processLifecycle());
+        assert(harness.backend_state.creates == 3U && harness.backend_state.begins == 3U);
+        assert(first_host == harness.backend_state.hosts.front());
+        assert(first_host->self() == harness.entities.front());
+        assert(dispatchHookForTest(harness.hook) == 1U && harness.backend_state.tick_calls == 3U);
+
+        harness.registry.destroy(harness.entities[1]);
+        harness.entities[1] = harness.registry.create();
+        harness.description[1].scope = EntityScriptScope{harness.entities[1]};
+        const auto busy = system.mountResolvedBatch(std::span{&harness.description[1], 1U});
+        assert(!busy && busy.error() == EScriptSystemError::ENDPOINT_BUSY);
+        std::array<ScriptMountStatus, 3U> changes;
+        assert(system.collectMountStatusChanges(changes));
+        assert(system.mountResolvedBatch(std::span{&harness.description[1], 1U}));
+        const auto replacing = system.queryMountStatus({2U});
+        assert(replacing && *replacing && (**replacing).state == EScriptMountState::RETIRING);
+        assert(!(**replacing).reclaimed);
+        assert((**replacing).submission_state == EScriptMountSubmissionState::ACCEPTED);
+        assert(std::get<EntityScriptScope>((**replacing).submitted_scope).self == harness.entities[1]);
+        assert(harness.backend_state.destroys == 0U);
+        assert(system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
+        assert(harness.backend_state.destroys == 1U && harness.backend_state.creates == 3U);
+        assert(system.processLifecycle());
+        assert(harness.backend_state.creates == 4U && system.activeInstanceCount() == 3U);
+        assert(system.shutdown());
+        assert(harness.backend_state.destroys == harness.backend_state.creates);
+        assert(system.collectMountStatusChanges(changes));
+        assert(system.queryMountStatus({2U}));
+        const auto closed = system.mountResolvedBatch({});
+        assert(!closed && closed.error() == EScriptSystemError::SHUT_DOWN);
+    }
+
+    void testResolvedInputExpiryAndReuse()
+    {
+        Harness harness{2U, true, true, true};
+        auto created = harness.create(0U);
+        assert(created && created->prepare());
+        auto& system = *created;
+        assert(system.mountResolvedBatch(std::span{harness.description}.first(1U)));
+        harness.registry.destroy(harness.entities[0]);
+        assert(system.processLifecycle());
+        assert(harness.backend_state.creates == 0U);
+        auto expired = system.queryMountStatus({1U});
+        assert(expired && *expired && (**expired).submission_state == EScriptMountSubmissionState::REJECTED);
+        assert((**expired).submission_error == EScriptSystemError::INVALID_INPUT && (**expired).reclaimed);
+        std::array<ScriptMountStatus, 2U> changes;
+        assert(system.collectMountStatusChanges(changes));
+        const auto backing = system.stats();
+        for (std::size_t iteration{}; iteration < 64U; ++iteration)
+        {
+            harness.entities[0] = harness.registry.create();
+            harness.description[0].scope = EntityScriptScope{harness.entities[0]};
+            assert(system.mountResolvedBatch(std::span{harness.description}.first(1U)));
+            assert(system.processLifecycle());
+            assert(system.activeInstanceCount() == 1U);
+            const auto current = system.stats();
+            assert(current.configured_mounts == 1U && current.pending_mounts == 0U);
+            assert(current.mount_backing_bytes == backing.mount_backing_bytes);
+            assert(current.method_backing_bytes == backing.method_backing_bytes);
+            assert(current.binding_backing_bytes == backing.binding_backing_bytes);
+            assert(current.mount_feedback_backing_bytes == backing.mount_feedback_backing_bytes);
+            assert(system.collectMountStatusChanges(changes));
+            harness.registry.destroy(harness.entities[0]);
+            assert(system.processLifecycle());
+            assert(system.activeInstanceCount() == 0U);
+            assert(harness.backend_state.creates == iteration + 1U);
+            assert(harness.backend_state.destroys == iteration + 1U);
+            assert(harness.backend_state.releases == harness.backend_state.prepares);
+            assert(system.collectMountStatusChanges(changes));
+        }
+        harness.description[0].scope = EntityScriptScope{harness.registry.create()};
+        auto changed = harness.description[0];
+        changed.bindings.clear();
+        const auto shape_error = system.mountResolvedBatch(std::span{&changed, 1U});
+        assert(!shape_error && shape_error.error() == EScriptSystemError::INVALID_INPUT);
+        assert(system.mountResolvedBatch(std::span{&harness.description[1], 1U}));
+        assert(system.processLifecycle());
+        assert(system.activeInstanceCount() == 1U);
+        assert(system.shutdown());
+        assert(harness.backend_state.creates == 65U && harness.backend_state.destroys == 65U);
     }
 
     void testInitialLifecycle()
@@ -540,6 +665,8 @@ namespace
             harness.registry.destroy(entity);
         for (auto& entity : harness.entities)
             entity = harness.registry.create();
+        for (std::size_t index{}; index < harness.entities.size(); ++index)
+            harness.submitEntity(system, index);
         assert(system.executeStablePoint());
         assert(harness.backend_state.ends == 2U);
         assert(harness.backend_state.destroys == 2U);
@@ -566,6 +693,9 @@ namespace
 
 int main()
 {
+    testOwnedRuntimeInput();
+    testResolvedBatchProtocol();
+    testResolvedInputExpiryAndReuse();
     testInitialLifecycle();
     testOptionalAndFailureLifecycle();
     testSignatureValidation();

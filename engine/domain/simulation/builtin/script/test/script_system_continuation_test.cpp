@@ -145,12 +145,7 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::world::WorldObjectId objectId()
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes[0] = 0x52U;
-        return lux::world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 
     [[nodiscard]] SimulationDescription makeSimulation()
     {
@@ -450,7 +445,7 @@ namespace
             bool owner_large_result = false
         )
             : simulation(makeSimulation()), artifact(makeArtifact(require_capability)), asset(assetId()),
-              object(objectId()), uses_entity_scope(entity_scope)
+                uses_entity_scope(entity_scope)
         {
             if (owner_large_result)
             {
@@ -482,41 +477,28 @@ namespace
             }
             if (uses_entity_scope)
                 entity = registry.create();
-            ScriptSystemDescriptionBuilder builder;
+            std::vector<ScriptRuntimeMount> builder;
             if (quota_layout)
             {
                 assert(mount_count == 2U && !uses_entity_scope);
-                assert(builder.addMount({
-                    ScriptMountId{1U},
-                    asset,
-                    SimulationScriptMount{},
-                    true,
-                    {
+                builder.push_back({ScriptMountId{1U}, asset, SimulationScriptScope{}, {
                         {kSymbol, HookScriptTarget{kSystem, kHook}},
                         {kSymbolSecond, HookScriptTarget{kSystem, kHookSecond}}
-                    }
-                }));
-                assert(builder.addMount({
-                    ScriptMountId{2U},
-                    asset,
-                    SimulationScriptMount{},
-                    true,
-                    {{kSymbolThird, HookScriptTarget{kSystem, kHookThird}}}
-                }));
+                    }});
+                builder.push_back({ScriptMountId{2U}, asset, SimulationScriptScope{}, {{kSymbolThird,
+                    HookScriptTarget{kSystem, kHookThird}}}});
             }
             else
             {
                 for (std::size_t index{}; index < mount_count; ++index)
                 {
-                    assert(builder.addMount({ScriptMountId{index + 1U},
-                                             asset,
-                                             uses_entity_scope ? ScriptMountScope{EntityScriptMount{object}}
-                                                               : ScriptMountScope{SimulationScriptMount{}},
-                                             true,
-                                             {{kSymbol, HookScriptTarget{kSystem, kHook}}}}));
+                    builder.push_back({ScriptMountId{index + 1U}, asset,
+                        uses_entity_scope ? ScriptInstanceScope{EntityScriptScope{entity}}
+                                                               : ScriptInstanceScope{SimulationScriptScope{}},
+                                                                   {{kSymbol, HookScriptTarget{kSystem, kHook}}}});
                 }
             }
-            auto built = std::move(builder).build(simulation);
+            auto built = std::optional{std::move(builder)};
             assert(built);
             description = std::move(*built);
             assert(hook.prepare(1U) == EEndpointMutationError::NONE);
@@ -542,17 +524,18 @@ namespace
         {
             return ScriptSystem::create(
                 simulation,
+                *planScriptRuntimeCapacity(description),
                 description,
                 registry,
                 clock,
                 limits,
                 {this, &resolveArtifact},
-                uses_entity_scope ? WorldObjectResolver{this, &resolveWorld} : WorldObjectResolver{},
                 capabilities,
                 std::span{&backend, 1U},
                 include_endpoint ? std::span<const ScriptHookEndpointDescriptor>{endpoints}
-                                 : std::span<const ScriptHookEndpointDescriptor>{},
-                large_bridge ? std::span{&large_endpoint, 1U} : std::span<const ScriptEventEndpointDescriptor>{});
+                : std::span<const ScriptHookEndpointDescriptor>{},
+                large_bridge ? std::span{&large_endpoint, 1U} : std::span<const ScriptEventEndpointDescriptor>{}
+            );
         }
 
         static bool resolveArtifact(void* context,
@@ -566,23 +549,13 @@ namespace
             return true;
         }
 
-        static bool resolveWorld(void* context,
-                                 const lux::world::WorldObjectId& requested,
-                                 ecs::Entity& output) noexcept
-        {
-            auto& self = *static_cast<Harness*>(context);
-            if (requested != self.object)
-                return false;
-            output = self.entity;
-            return true;
-        }
+
 
         SimulationDescription simulation;
         SimulationClock clock;
-        ScriptSystemDescription description;
+        std::vector<ScriptRuntimeMount> description;
         lux::script::ScriptArtifact artifact;
         lux::asset::AssetId asset;
-        lux::world::WorldObjectId object;
         ecs::Registry registry;
         ecs::Entity entity{ecs::NullEntity};
         bool uses_entity_scope{};
@@ -682,12 +655,8 @@ namespace
 
         Harness endpoint_missing{false};
         auto endpoint_created = endpoint_missing.create(limits(), {}, false);
-        assert(endpoint_created);
-        auto endpoint_system = std::move(*endpoint_created);
-        const auto endpoint_prepared = endpoint_system.prepare();
-        assert(!endpoint_prepared && endpoint_prepared.error() == EScriptSystemError::SCRIPT_ENDPOINT_NOT_FOUND);
+        assert(!endpoint_created && endpoint_created.error() == EScriptSystemError::SCRIPT_ENDPOINT_NOT_FOUND);
         assert(endpoint_missing.backend_state.creates == 0U);
-        assert(endpoint_system.shutdown());
     }
 
     void testSyncAndContinuation()

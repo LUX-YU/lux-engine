@@ -562,6 +562,18 @@ foreach(source IN LISTS script_backend_runtime_sources)
     endif()
 endforeach()
 
+# SR-2: persistence and World resolution belong to the loading leaf, including the installable runtime surface.
+file(GLOB_RECURSE script_runtime_boundary_sources LIST_DIRECTORIES false
+    "${source_root}/engine/domain/simulation/builtin/script/include/*.hpp"
+    "${source_root}/engine/domain/simulation/builtin/script/src/*.cpp"
+)
+foreach(source IN LISTS script_runtime_boundary_sources)
+    file(READ "${source}" runtime_content)
+    if(runtime_content MATCHES "ScriptSystemDescription|WorldObjectResolver|WorldObjectId|lux/engine/world/")
+        message(FATAL_ERROR "Architecture: Script runtime '${source}' depends on persistent loading input.")
+    endif()
+endforeach()
+
 # The replacement roots are held to the final contract while the old roots are
 # still being removed in staged commits. This prevents new code from rebuilding
 # the retired session/name-routing model under a different target name.
@@ -573,6 +585,16 @@ file(GLOB_RECURSE script_system_sources LIST_DIRECTORIES false
 )
 foreach(source IN LISTS script_system_sources)
     file(READ "${source}" content)
+    if(source STREQUAL "${source_root}/engine/domain/simulation/builtin/script/src/ScriptSystem.cpp")
+        string(FIND "${content}" "findMount(ScriptMountId" assembly_begin)
+        string(FIND "${content}" "void recordFailure(" assembly_end)
+        if(assembly_begin GREATER_EQUAL 0 AND assembly_end GREATER assembly_begin)
+            math(EXPR assembly_length "${assembly_end} - ${assembly_begin}")
+            string(SUBSTRING "${content}" ${assembly_begin} ${assembly_length} assembly)
+            string(REPLACE "std::lower_bound" "SR2_COLD_CONFIGURATION_LOOKUP" checked_assembly "${assembly}")
+            string(REPLACE "${assembly}" "${checked_assembly}" content "${content}")
+        endif()
+    endif()
     if(content MATCHES
        "ScriptBindingSession|ScriptComponent|EntityBehavior|EScriptModel|PythonSourceScript|dispatchHook[ \t\r\n]*\\([^(),]*,[^(),]*,[^()]*|AssetManager|AssetClient|AssetLease|Process|Scene|EEndpointMutationError[ \t\r\n]*\\([*]flush\\)|endpoint[^;\r\n]*->[ \t]*flush|ScriptSystemCapacities|EBehaviorStopReason|startInstance|stopInstance|full_resync|sortHandlers|removeHandlers|allocateInstance|findBackend|findHookBucket|findEventBucket|findMethod|std::lower_bound|std::remove_if|ScriptApiManager|CoroutineManager|AsyncManager|EventAwaitManager|EventManager|ScriptEventManager|AwaitableManager|ScriptServices|ServiceRegistry")
         message(FATAL_ERROR

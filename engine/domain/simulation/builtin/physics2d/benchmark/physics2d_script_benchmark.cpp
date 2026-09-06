@@ -275,14 +275,7 @@ namespace
         return asset::AssetId{bytes};
     }
 
-    [[nodiscard]] world::WorldObjectId objectId(std::size_t index)
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes.front() = 0x2DU;
-        for (std::size_t byte{}; byte < sizeof(index); ++byte)
-            bytes[8U + byte] = static_cast<std::uint8_t>((index >> (byte * 8U)) & 0xFFU);
-        return world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 
     struct CppFixture final
     {
@@ -322,7 +315,6 @@ namespace
         const lux::script::NativeModule* flow_module{};
         asset::AssetId flow_id;
         asset::AssetId lua_id;
-        std::unordered_map<world::WorldObjectId, ecs::Entity, world::WorldObjectIdHash> objects;
 
         static bool resolveArtifact(void* context,
                                     const asset::AssetId& requested,
@@ -350,15 +342,7 @@ namespace
             return output.module != nullptr;
         }
 
-        static bool resolveWorld(void* context, const world::WorldObjectId& requested, ecs::Entity& output) noexcept
-        {
-            const auto& self = *static_cast<Sources*>(context);
-            const auto found = self.objects.find(requested);
-            if (found == self.objects.end())
-                return false;
-            output = found->second;
-            return true;
-        }
+
     };
 
     struct MixedHarness final
@@ -395,35 +379,30 @@ namespace
             sources.flow_module = std::addressof(*flow_module);
             sources.flow_id = flow_asset->id();
             sources.lua_id = lua_asset->id();
-            sources.objects.reserve(options.size / 3U);
 
             const std::size_t cpp_sync_count = options.size / 4U;
             const std::size_t cpp_coroutine_count = options.size / 4U;
             const std::size_t cpp_count = cpp_sync_count + cpp_coroutine_count;
             const std::size_t flow_count = options.size / 4U;
-            ScriptSystemDescriptionBuilder builder;
+            std::vector<ScriptRuntimeMount> builder;
             for (std::size_t index{}; index < options.size; ++index)
             {
                 asset::AssetId asset_id;
                 lux::script::ScriptSymbolId symbol{};
-                ScriptMountScope scope{SimulationScriptMount{}};
+                ScriptInstanceScope scope{SimulationScriptScope{}};
                 if (index < cpp_sync_count)
                 {
                     asset_id = cppAssetId();
                     symbol = CppTickSymbol;
-                    const auto object = objectId(index);
                     const auto entity = registry.create();
-                    sources.objects.emplace(object, entity);
-                    scope = EntityScriptMount{object};
+                    scope = EntityScriptScope{entity};
                 }
                 else if (index < cpp_count)
                 {
                     asset_id = cppAssetId();
                     symbol = CppCoroutineTickSymbol;
-                    const auto object = objectId(index);
                     const auto entity = registry.create();
-                    sources.objects.emplace(object, entity);
-                    scope = EntityScriptMount{object};
+                    scope = EntityScriptScope{entity};
                 }
                 else if (index < cpp_count + flow_count)
                 {
@@ -435,16 +414,13 @@ namespace
                     asset_id = sources.lua_id;
                     symbol = TickSymbol;
                 }
-                if (!builder.addMount({ScriptMountId{index + 1U},
-                                       asset_id,
-                                       scope,
-                                       true,
-                                       {{symbol, HookScriptTarget{ProbeSystemId, TickHook}}}}))
+                if (!(builder.push_back({ScriptMountId{index + 1U}, asset_id, scope, {{symbol,
+                    HookScriptTarget{ProbeSystemId, TickHook}}}}), true))
                 {
                     throw std::runtime_error("Physics2D benchmark mount rejected");
                 }
             }
-            description.emplace(*std::move(builder).build(simulation->description()));
+            description.emplace(*std::optional{std::move(builder)});
 
             const std::array native_contributions{
                 lux::script::native::makeScriptAbilityNativeContribution<PhysicsQuery2D>(),
@@ -514,16 +490,17 @@ namespace
             const auto bounded = (std::max)(options.size, std::size_t{1U});
             auto created = ScriptSystem::create(
                 simulation->description(),
+                *planScriptRuntimeCapacity(*description),
                 *description,
                 registry,
                 simulation->clock(),
                 {32U, bounded, bounded, bounded, bounded, bounded, 64U, bounded, bounded, bounded, bounded, bounded},
                 {std::addressof(sources), &Sources::resolveArtifact},
-                {std::addressof(sources), &Sources::resolveWorld},
                 simulation->scriptApiCapabilities(),
                 backends,
                 simulation->scriptHookEndpoints(),
-                simulation->scriptEventEndpoints());
+                simulation->scriptEventEndpoints()
+            );
             if (!created)
                 throw std::runtime_error("Physics2D benchmark ScriptSystem creation failed");
             system.emplace(std::move(*created));
@@ -631,7 +608,7 @@ namespace
         Physics2DSystem* physics{};
         std::optional<lux::script::NativeModule> flow_module;
         Sources sources;
-        std::optional<ScriptSystemDescription> description;
+        std::optional<std::vector<ScriptRuntimeMount>> description;
         std::optional<NativeScriptBackend> native;
         std::optional<LuaScriptBackend> lua;
         std::array<ScriptBackendDescriptor, 3U> backends;

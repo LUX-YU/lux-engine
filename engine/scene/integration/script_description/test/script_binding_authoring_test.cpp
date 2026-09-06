@@ -1,8 +1,9 @@
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include "Behavior.AuthoringBehavior.script.generated.hpp"
 #include <lux/engine/simulation/ScriptBindingAuthoring.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 
 #include <array>
 #include <cassert>
@@ -13,7 +14,9 @@ int main()
 {
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
     constexpr lux::system::SystemInstanceId owner{1U};
     constexpr std::array hooks{makeHookPointSpec<void(const std::int32_t&)>(HookPointId{2U}, "tick"),
                                makeHookPointSpec<void(const std::int32_t&)>(HookPointId{3U}, "second"),

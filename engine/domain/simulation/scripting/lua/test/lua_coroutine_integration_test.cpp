@@ -160,12 +160,7 @@ namespace
         return lux::asset::AssetId{bytes};
     }
 
-    [[nodiscard]] lux::world::WorldObjectId objectId()
-    {
-        std::array<std::uint8_t, 16U> bytes{};
-        bytes[15] = 0x41U;
-        return lux::world::WorldObjectId{uuids::uuid{bytes}};
-    }
+
 
     [[nodiscard]] SimulationDescription makeSimulation()
     {
@@ -377,26 +372,19 @@ namespace
         )
             : simulation(makeSimulation()),
               artifact(makeArtifact(require_ability, declare_event)),
-              asset(assetId()),
-              object(objectId())
+              asset(assetId())
         {
             entity = registry.create();
-            ScriptSystemDescriptionBuilder builder;
-            assert(builder.addMount({
-                ScriptMountId{1U},
-                asset,
-                EntityScriptMount{object},
-                true,
-                {
+            std::vector<ScriptRuntimeMount> builder;
+            builder.push_back({ScriptMountId{1U}, asset, EntityScriptScope{entity}, {
                     {kSyncSymbol, HookScriptTarget{kSystem, kSyncHook}},
                     {kAsyncSymbol, HookScriptTarget{kSystem, kAsyncHook}},
                     {kScalarSymbol, HookScriptTarget{kSystem, kScalarHook}},
                     {kEventWaitSymbol, HookScriptTarget{kSystem, kEventWaitHook}},
                     {kTargetWaitSymbol, HookScriptTarget{kSystem, kTargetWaitHook}},
                     {kEventSymbol, EventScriptTarget{kSystem, kAsyncEvent}}
-                }
-            }));
-            auto built = std::move(builder).build(simulation);
+                }});
+            auto built = std::optional{std::move(builder)};
             assert(built);
             description = std::move(*built);
             assert(sync_hook.prepare(1U) == EEndpointMutationError::NONE);
@@ -483,12 +471,12 @@ namespace
         {
             return ScriptSystem::create(
                 simulation,
+                *planScriptRuntimeCapacity(description),
                 description,
                 registry,
                 clock,
                 {16U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U, 4U, 4U},
                 {this, &resolveArtifact},
-                {this, &resolveWorld},
                 capabilities,
                 std::span{&descriptor, 1U},
                 endpoints,
@@ -509,27 +497,15 @@ namespace
             return true;
         }
 
-        static bool resolveWorld(
-            void* context,
-            const lux::world::WorldObjectId& requested,
-            ecs::Entity& result
-        ) noexcept
-        {
-            auto& self = *static_cast<Harness*>(context);
-            if (requested != self.object)
-                return false;
-            result = self.entity;
-            return true;
-        }
+
 
         SimulationDescription simulation;
         lux::script::ScriptArtifact artifact;
         lux::asset::AssetId asset;
-        lux::world::WorldObjectId object;
         ecs::Registry registry;
         ecs::Entity entity{ecs::NullEntity};
         SimulationClock clock;
-        ScriptSystemDescription description;
+        std::vector<ScriptRuntimeMount> description;
         HookPoint<void()> sync_hook;
         HookPoint<void()> async_hook;
         HookPoint<void()> scalar_hook;

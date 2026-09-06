@@ -1,3 +1,4 @@
+#include <optional>
 #include "Physics2DFlowForgeTestAbility.hpp"
 #include "Physics2DFlowForgeTestAbility.ability.generated.hpp"
 #include "Physics2DFlowForgeTestAbility.ability.native.generated.hpp"
@@ -153,13 +154,10 @@ int main()
                                                              simulation->scriptApiCapabilities().end());
     capabilities.push_back(publishScriptAbility(capture_binding));
 
-    ScriptSystemDescriptionBuilder description_builder;
-    assert(description_builder.addMount({ScriptMountId{1U},
-                                         assetId(),
-                                         SimulationScriptMount{},
-                                         true,
-                                         {{TickSymbol, HookScriptTarget{ProbeSystemId, TickHook}}}}));
-    auto script_description = std::move(description_builder).build(simulation->description());
+    std::vector<ScriptRuntimeMount> description_builder;
+    description_builder.push_back({ScriptMountId{1U}, assetId(), SimulationScriptScope{}, {{TickSymbol,
+        HookScriptTarget{ProbeSystemId, TickHook}}}});
+    auto script_description = std::optional{std::move(description_builder)};
     assert(script_description);
     Source source{std::addressof(*artifact), std::addressof(*module)};
     const std::array native_contributions{
@@ -185,17 +183,19 @@ int main()
                                  .state_storage_bytes = 64U * 1024U * 1024U}};
     assert(backend);
     const auto descriptor = backend.descriptor();
-    auto system = ScriptSystem::create(simulation->description(),
-                                       *script_description,
-                                       registry,
-                                       simulation->clock(),
-                                       {8U, 1U, 1U, 1U, 1U, 1U, 64U, 1U, 1U, 1U, 1U, 1U},
-                                       {std::addressof(source), &Source::resolveArtifact},
-                                       {},
-                                       capabilities,
-                                       std::span{&descriptor, 1U},
-                                       simulation->scriptHookEndpoints(),
-                                       simulation->scriptEventEndpoints());
+    auto system = ScriptSystem::create(
+        simulation->description(),
+        *planScriptRuntimeCapacity(*script_description),
+        *script_description,
+        registry,
+        simulation->clock(),
+        {8U, 1U, 1U, 1U, 1U, 1U, 64U, 1U, 1U, 1U, 1U, 1U},
+        {std::addressof(source), &Source::resolveArtifact},
+        capabilities,
+        std::span{&descriptor, 1U},
+        simulation->scriptHookEndpoints(),
+        simulation->scriptEventEndpoints()
+    );
     assert(system && system->prepare());
     auto connection = bindScriptRuntime(*simulation, *system);
     assert(connection && simulation->execute(*executor, SimulationDuration{}));

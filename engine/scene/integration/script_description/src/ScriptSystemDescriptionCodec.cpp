@@ -1,12 +1,19 @@
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 
 #include <array>
 #include <limits>
 #include <new>
 #include <type_traits>
 
-namespace lux::simulation::script
+namespace lux::scene::script
 {
+    using namespace lux::simulation;
+    using lux::simulation::script::ScriptMountId;
+    using lux::simulation::script::HookScriptTarget;
+    using lux::simulation::script::EventScriptTarget;
+    using lux::simulation::script::ScriptBindingTarget;
+    using lux::simulation::script::ScriptBindingDescription;
+
     namespace
     {
         constexpr std::uint32_t kWireVersion{1U};

@@ -1,3 +1,4 @@
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/scene/SceneBuilder.hpp>
@@ -6,7 +7,7 @@
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
@@ -31,6 +32,7 @@ namespace
     using namespace lux::scene;
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     inline constexpr system::SystemInstanceId kProbeSystem{0x7201U};
     inline constexpr system::SystemInstanceId kScriptRuntime{0x7202U};
@@ -452,6 +454,18 @@ namespace
             return true;
         }
 
+        static bool resolveWorld(void* context, const world::WorldObjectId& object, ecs::Entity& entity) noexcept
+        {
+            auto& self = *static_cast<Fixture*>(context);
+            ++self.resolve_calls;
+            if (object != worldId<world::WorldObjectId>(0xf1U) || self.resolved_entity == ecs::NullEntity)
+                return false;
+            entity = self.resolved_entity;
+            return true;
+        }
+
+        ecs::Entity resolved_entity{ecs::NullEntity};
+        std::size_t resolve_calls{};
         BackendState backend_state;
         lux::script::ScriptArtifact artifact;
         ScriptBackendDescriptor backend;
@@ -478,6 +492,7 @@ int main()
     using namespace lux::scene;
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     const ScriptSystemCodecLimits codec_limits{4096U, 4096U, 4096U};
     auto script_description = makeScriptDescription();
@@ -530,7 +545,7 @@ int main()
         codec_limits,
         4U,
         {&fixture, &Fixture::resolveArtifact},
-        {},
+        {&fixture, &Fixture::resolveWorld},
         backends,
         {}
     };
@@ -655,6 +670,28 @@ int main()
     active_probe->tick_requested = true;
     assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
     assert(fixture.backend_state.step_calls == 12U);
+
+    // The original unresolved description is loader-owned. Resolve it at an existing before boundary.
+    assert(runtime->scriptSystem().activeInstanceCount() == 2U);
+    fixture.resolved_entity = (*scene)->registry().create();
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert(runtime->scriptSystem().activeInstanceCount() == 3U);
+    auto mounted = runtime->scriptSystem().queryMountStatus({3U});
+    assert(mounted && *mounted && (**mounted).state == EScriptMountState::ACTIVE);
+    const auto old_instance = (**mounted).instance;
+    const auto resolved_calls = fixture.resolve_calls;
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    assert(fixture.resolve_calls == resolved_calls); // No scan/re-resolution of ACTIVE configurations.
+    const auto old_entity = fixture.resolved_entity;
+    (*scene)->registry().destroy(old_entity);
+    fixture.resolved_entity = (*scene)->registry().create();
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{}));
+    mounted = runtime->scriptSystem().queryMountStatus({3U});
+    assert(mounted && *mounted && (**mounted).state == EScriptMountState::ACTIVE);
+    assert((**mounted).instance != old_instance);
+    assert(std::get<EntityScriptScope>((**mounted).scope).self == fixture.resolved_entity);
+    assert(runtime->scriptSystem().activeInstanceCount() == 3U);
+    assert(fixture.backend_state.step_calls == 12U && fixture.backend_state.resume_calls == 10U);
 
     scene->reset();
     assert(fixture.backend_state.resume_calls == 10U);

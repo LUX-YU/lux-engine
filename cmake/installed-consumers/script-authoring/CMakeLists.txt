@@ -54,3 +54,6 @@ target_compile_definitions(lux_script_authoring_consumer PRIVATE
     CPP_HINTS="${CMAKE_CURRENT_BINARY_DIR}/cpp/Behavior.CommonBehavior.bindings.json"
     LUA_HINTS="${lua_artifact}.bindings.json" FLOW_HINTS="${flow_hints}")
 add_dependencies(lux_script_authoring_consumer authoring_lua_artifact authoring_flow_artifact)
+
+find_package(lux-engine-scene-script-description REQUIRED COMPONENTS scene_script_description)
+target_link_libraries(lux_script_authoring_consumer PRIVATE lux::engine::scene::scene_script_description)

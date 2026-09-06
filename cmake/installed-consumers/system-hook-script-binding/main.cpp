@@ -1,3 +1,4 @@
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include "ConsumerBehavior.hpp"
 #include "ConsumerBehavior.HookBehavior.script.generated.hpp"
 #include "InventoryAbility.ability.generated.hpp"
@@ -9,7 +10,7 @@
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
-#include <lux/engine/simulation/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 
 #include <array>
 #include <cassert>
@@ -23,6 +24,7 @@ namespace
 {
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     inline constexpr lux::system::SystemInstanceId SystemId{101U};
     inline constexpr HookPointId ValueHook{102U};
@@ -162,6 +164,7 @@ int main()
 {
     using namespace lux::simulation;
     using namespace lux::simulation::script;
+    using namespace lux::scene::script;
 
     const auto& contract = generated::HookBehavior;
     Fixture fixture;
@@ -271,16 +274,17 @@ int main()
     const std::array backends{backend.descriptor()};
     auto created = ScriptSystem::create(
         *simulation_owner,
-        *decoded_script,
+        *planScriptRuntimeCapacity(*decoded_script),
+        *resolveScriptRuntimeMounts(*decoded_script, {&fixture, &resolveWorld}, registry),
         registry,
         composed->clock(),
         ScriptRuntimeLimits{2U, 1U, 2U, 2U, 2U, 2U, 64U, 2U, 2U, 2U, 2U, 2U},
         {&fixture, &resolveAsset},
-        {&fixture, &resolveWorld},
         composed->scriptApiCapabilities(),
         backends,
         composed->scriptHookEndpoints(),
-        composed->scriptEventEndpoints());
+        composed->scriptEventEndpoints()
+    );
     assert(created);
     auto script_system = std::move(*created);
     assert(script_system.prepare());

@@ -22,14 +22,14 @@ target_link_libraries(
     PUBLIC
         lux::engine::scene::scene_composition
         lux::engine::scene::scene_presentation
-        lux::engine::simulation::simulation_script
+        lux::engine::scene::scene_script_description
         lux::engine::process::process_execution
 )
 component_add_transitive_commands(
     scene_script_runtime
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-presentation REQUIRED COMPONENTS scene_presentation)"
-    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script)"
+    "find_package(lux-engine-scene-script-description REQUIRED COMPONENTS scene_script_description)"
     "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
 )
 lux_classify_target(

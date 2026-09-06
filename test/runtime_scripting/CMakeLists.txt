@@ -90,3 +90,6 @@ add_test(NAME flowforge_script_sequence_benchmark_smoke COMMAND flowforge_script
     --output ${CMAKE_CURRENT_BINARY_DIR}/flowforge-sequence-smoke.csv)
 set_tests_properties(flowforge_script_sequence_benchmark_smoke PROPERTIES
     ENVIRONMENT "LUX_FLOWFORGE_LINKER=${CMAKE_LINKER}")
+
+target_link_libraries(flowforge_script_runtime_integration_test PRIVATE lux::engine::scene::scene_script_description)
+target_link_libraries(flowforge_script_runtime_benchmark PRIVATE lux::engine::scene::scene_script_description)

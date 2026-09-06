@@ -5,11 +5,6 @@ add_interface_component(
     COMPONENT_NAME lua_script_packager
     NAMESPACE      lux::engine::toolchain
 )
-component_include_directories(
-    lua_script_packager
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
-    INSTALL_TIME include
-)
 target_link_libraries(
     lua_script_packager
     INTERFACE lux::engine::function::script_core

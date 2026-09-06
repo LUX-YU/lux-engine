@@ -80,6 +80,7 @@ namespace
 
     std::atomic_size_t g_allocation_count{};
     std::atomic_bool g_count_allocations{};
+    bool g_allocation_accounting{true};
 
     enum class EScenarioMode : std::uint8_t
     {
@@ -102,6 +103,8 @@ namespace
         std::size_t warmups{5U};
         std::size_t resume_budget{2000U};
         std::size_t ready_count{10000U};
+        std::size_t event_requirements{1U};
+        bool targeted_event{};
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"script_runtime_benchmark.csv"};
         std::filesystem::path lua_artifact;
@@ -177,6 +180,16 @@ namespace
             {
                 if (!parseSize(value, result.ready_count))
                     return std::nullopt;
+            }
+            else if (key == "--event-requirements")
+            {
+                if (!parseSize(value, result.event_requirements) || result.event_requirements > 64U)
+                    return std::nullopt;
+            }
+            else if (key == "--event-route")
+            {
+                if (value != "broadcast" && value != "targeted") return std::nullopt;
+                result.targeted_event = value == "targeted";
             }
             else if (key == "--output")
                 result.output = value;
@@ -306,10 +319,10 @@ namespace
                   "external_queue_depth,external_queue_high_water,external_queue_capacity_failures,"
                   "lifecycle_begins,lifecycle_ends,checksum,vm_accounting,vm_allocations,vm_reallocations,vm_frees,"
                   "vm_requested_bytes,vm_released_bytes,vm_coroutine_creations,"
-                  "vm_coroutine_resumes,vm_coroutine_releases\n";
+                  "vm_coroutine_resumes,vm_coroutine_releases,event_requirement_count,event_route,allocation_accounting\n";
         for (const auto& row : rows)
         {
-            output << "5," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
+            output << "6," << LUX_BENCHMARK_GIT_COMMIT << ',' << LUX_BENCHMARK_BUILD_TYPE << ','
                    << LUX_BENCHMARK_COMPILER << ",windows," << std::thread::hardware_concurrency() << ','
 #if LUX_BENCHMARK_HAS_LUA
                    << g_lua_runtime_info.vm << ',' << g_lua_runtime_info.version << ','
@@ -331,7 +344,8 @@ namespace
                    << options.vm_accounting << ',' << row.vm_allocations << ',' << row.vm_reallocations << ','
                    << row.vm_frees << ',' << row.vm_requested_bytes << ',' << row.vm_released_bytes << ','
                    << row.vm_coroutine_creations << ',' << row.vm_coroutine_resumes << ','
-                   << row.vm_coroutine_releases << '\n';
+                   << row.vm_coroutine_releases << ',' << options.event_requirements << ','
+                   << (options.targeted_event ? "targeted" : "broadcast") << ',' << g_allocation_accounting << '\n';
         }
         output.close();
         std::error_code error;
@@ -367,10 +381,10 @@ namespace
     inline constexpr EventPointId kEvent{0xB009U};
     inline constexpr EventPointId kTargetEvent{0xB00AU};
 
-    [[nodiscard]] SimulationDescription scriptDescription()
+    [[nodiscard]] SimulationDescription scriptDescription(std::size_t extra_events = 0U)
     {
         constexpr std::array hooks{makeHookPointSpec<void()>(kHook, "benchmark-update")};
-        constexpr std::array events{
+        std::vector events{
             makeEventPointSpec<std::int32_t>(
                 kEvent,
                 "benchmark-event",
@@ -388,6 +402,16 @@ namespace
                 1U
             )
         };
+        std::vector<std::string> names;
+        names.reserve(extra_events);
+        for (std::size_t index{}; index < extra_events; ++index)
+        {
+            names.push_back("extra" + std::to_string(index));
+            auto extra = events.front();
+            extra.id = EventPointId{0xA000U + index};
+            extra.diagnostic_name = names.back();
+            events.push_back(extra);
+        }
         const SimulationSystemDescription system{
             .type = {.canonical_name = "lux.benchmark.ScriptRuntime", .version = 1U},
             .hooks = hooks,
@@ -771,9 +795,13 @@ namespace
             EScenarioMode mode,
             std::size_t resume_budget,
             bool entity_scope = false,
-            bool prepare_now = true
+            bool prepare_now = true,
+            std::size_t event_requirements = 1U,
+            bool shared_target = false
         )
-            : simulation_description(scriptDescription()), backend_state{.mode = mode}, entity_scope(entity_scope)
+            : simulation_description(scriptDescription(event_requirements - 1U)),
+              backend_state{.mode = mode}, entity_scope(entity_scope), multi_flight_target(shared_target),
+              waiter_count(count)
         {
             auto clock_simulation = Simulation::create(registry, emptyDescription(), empty_system_types);
             if (!clock_simulation)
@@ -787,7 +815,8 @@ namespace
             objects.reserve(count);
             entities.reserve(count);
             ScriptSystemDescriptionBuilder description_builder;
-            for (std::size_t index{}; index < count; ++index)
+            const auto mount_count = shared_target ? 1U : count;
+            for (std::size_t index{}; index < mount_count; ++index)
             {
                 ScriptMountScope scope{SimulationScriptMount{}};
                 if (entity_scope)
@@ -803,7 +832,8 @@ namespace
                         assetId(),
                         scope,
                         true,
-                        {{kTick, HookScriptTarget{kSystem, kHook}}}
+                        {{kTick, shared_target ? ScriptBindingTarget{EventScriptTarget{kSystem, kEvent}}
+                                              : ScriptBindingTarget{HookScriptTarget{kSystem, kHook}}}}
                     }))
                 {
                     throw std::runtime_error("benchmark mount rejected");
@@ -822,6 +852,9 @@ namespace
                 {"retire", kEnd, {lux::rdesc::makeScriptValueType<EScriptEndPlayReason>()}, {}}
             };
             description.lifecycle = {kBegin, kEnd};
+            if (shared_target)
+                description.exports[1].args.push_back(
+                    lux::rdesc::makeScriptValueType<std::int32_t>(lux::semantic::EValuePass::CONST_REF));
             if (mode == EScenarioMode::NEXT_STEP || mode == EScenarioMode::SIMULATION_DELAY ||
                 mode == EScenarioMode::REAL_DELAY ||
                 mode == EScenarioMode::MIXED)
@@ -838,17 +871,20 @@ namespace
             }
             if (mode == EScenarioMode::EVENT_WAIT)
             {
-                description.event_requirements.push_back({
-                    "Benchmark",
-                    entity_scope ? "target_event" : "event",
-                    kSystem.value,
-                    entity_scope ? kTargetEvent.value : kEvent.value,
-                    entity_scope ? lux::script::EScriptEventRoute::ENTITY_TARGETED
-                                 : lux::script::EScriptEventRoute::SIMULATION_BROADCAST,
-                    {"lux.i32", lux::semantic::typeId("lux.i32"), LUX_SCRIPT_VK_INT32, 4U, 4U},
-                    lux::semantic::typeId("lux.i32"),
-                    1U, kHook.value, simulation_description.findHookPoint(kSystem, kHook).contractHash(), 1U
-                });
+                for (std::size_t index{}; index + 1U < event_requirements; ++index)
+                {
+                    auto source = describeScriptEventSource<std::int32_t>(
+                        simulation_description.findEvent(kSystem, EventPointId{0xA000U + index}),
+                        "Benchmark", "extra" + std::to_string(index));
+                    if (!source) throw std::runtime_error("extra Event source projection failed");
+                    description.event_requirements.push_back(std::move(*source));
+                }
+                // Deliberately last: Bcompare measures the full old per-wait requirement scan.
+                auto source = describeScriptEventSource<std::int32_t>(
+                    simulation_description.findEvent(kSystem, entity_scope ? kTargetEvent : kEvent),
+                    "Benchmark", entity_scope ? "target_event" : "event");
+                if (!source) throw std::runtime_error("Event source projection failed");
+                description.event_requirements.push_back(std::move(*source));
             }
             description.body = lux::rdesc::CppStaticScript{"benchmark-synthetic"};
             auto created_artifact = lux::script::ScriptArtifact::create(std::move(description), {});
@@ -877,6 +913,17 @@ namespace
                     target_event
                 );
             event_descriptors = {event_descriptor, target_event_bridge->descriptor()};
+            for (std::size_t index{}; index + 1U < event_requirements; ++index)
+            {
+                auto channel = std::make_unique<HookChannel<SimulationBroadcastRoute, std::int32_t>>();
+                if (channel->prepare({1U, 1U}) != EEndpointMutationError::NONE)
+                    throw std::runtime_error("extra Event channel preparation failed");
+                auto endpoint = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>(
+                    kSystem, EventPointId{0xA000U + index}, *channel);
+                event_descriptors.push_back(endpoint->descriptor());
+                extra_channels.push_back(std::move(channel));
+                extra_endpoints.push_back(std::move(endpoint));
+            }
             backend_state.completions.reserve(count);
             backend_state.real_delay_completions.reserve(count);
             backend = {
@@ -906,7 +953,7 @@ namespace
                     bounded_count,
                     bounded_count,
                     bounded_count,
-                    1U,
+                    shared_target ? bounded_count : 1U,
                     bounded_count,
                     bounded_count,
                     64U,
@@ -930,8 +977,13 @@ namespace
             if (!created)
                 throw std::runtime_error("benchmark ScriptSystem create failed");
             system.emplace(std::move(*created));
-            if (prepare_now && !system->prepare())
-                throw std::runtime_error("benchmark ScriptSystem prepare failed");
+            if (prepare_now)
+            {
+                const auto prepared = system->prepare();
+                if (!prepared)
+                    throw std::runtime_error("benchmark ScriptSystem prepare failed: " +
+                        std::to_string(static_cast<unsigned>(prepared.error())));
+            }
         }
 
         ~RuntimeHarness()
@@ -1031,6 +1083,23 @@ namespace
                 throw std::runtime_error("benchmark targeted Event delivery failed");
         }
 
+        void registerEventWaiters()
+        {
+            if (!multi_flight_target)
+            {
+                static_cast<void>(dispatchHookForTest(hook));
+                return;
+            }
+            // One entity/mount, K independent Event callback invocations. No invented multi-mount ownership.
+            {
+                auto writer = event.begin(0U);
+                for (std::size_t index{}; index < waiter_count; ++index)
+                    if (!writer.record(0)) throw std::runtime_error("Event callback admission record failed");
+            }
+            if (deliverEndpoint(event_bridge) != waiter_count)
+                throw std::runtime_error("Event callback admission count mismatch");
+        }
+
         void deliverTargetedBatch(std::size_t count, std::int32_t payload)
         {
             if (count > entities.size())
@@ -1073,7 +1142,11 @@ namespace
         std::unique_ptr<ScriptEventEndpoint<EntityTargetedRoute<ecs::Entity>, std::int32_t>> target_event_bridge;
         ScriptHookEndpointDescriptor hook_descriptor;
         ScriptEventEndpointDescriptor event_descriptor;
-        std::array<ScriptEventEndpointDescriptor, 2U> event_descriptors;
+        std::vector<ScriptEventEndpointDescriptor> event_descriptors;
+        std::vector<std::unique_ptr<HookChannel<SimulationBroadcastRoute, std::int32_t>>> extra_channels;
+        std::vector<std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>> extra_endpoints;
+        bool multi_flight_target{};
+        std::size_t waiter_count{};
         BackendState backend_state;
         ScriptBackendDescriptor backend;
         ValueProvider value_provider;
@@ -1645,7 +1718,7 @@ namespace
     )
     {
         g_allocation_count.store(0U, std::memory_order_relaxed);
-        g_count_allocations.store(true, std::memory_order_release);
+        g_count_allocations.store(g_allocation_accounting, std::memory_order_release);
         const auto begin = Clock::now();
         Row result = operation();
         const auto end = Clock::now();
@@ -2184,39 +2257,51 @@ namespace
 
     void runEventMicro(const Options& options, std::vector<Row>& rows)
     {
-        RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.size};
-        rows.push_back(measureRow("micro-event-register", "script-event-waiter", options.size, 0U, [&] {
-            static_cast<void>(dispatchHookForTest(harness.hook));
-            Row row;
-            appendRuntimeStats(row, harness);
-            return row;
-        }));
-        rows.push_back(measureRow("micro-event-deliver-copy", "script-event-waiter", options.size, 0U, [&] {
-            harness.deliverEvent(17);
-            Row row;
-            appendRuntimeStats(row, harness);
-            row.events = 1U;
-            row.payload_bytes = options.size * sizeof(std::int32_t);
-            return row;
-        }));
-        rows.push_back(measureRow("micro-event-resume", "stable-point", options.size, 0U, [&] {
-            harness.stablePoint();
-            Row row;
-            appendRuntimeStats(row, harness);
-            return row;
-        }));
-        if (harness.backend_state.resumes != options.size)
-            throw std::runtime_error("Event micro benchmark resume count mismatch");
+        for (std::size_t iteration{}; iteration < options.warmups + options.frames; ++iteration)
+        {
+            const auto first_row = rows.size();
+            RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.size,
+                options.targeted_event, true, options.event_requirements, options.targeted_event};
+            rows.push_back(measureRow("micro-event-register", "script-event-waiter", options.size, 0U, [&] {
+                harness.registerEventWaiters();
+                Row row;
+                appendRuntimeStats(row, harness);
+                row.events = options.targeted_event ? options.size : 0U;
+                return row;
+            }));
+            rows.push_back(measureRow("micro-event-deliver-copy", "script-event-waiter", options.size, 0U, [&] {
+                harness.deliverEvent(17, options.targeted_event ? std::optional<std::size_t>{0U} : std::nullopt);
+                Row row;
+                appendRuntimeStats(row, harness);
+                row.events = 1U;
+                row.payload_bytes = options.size * sizeof(std::int32_t);
+                return row;
+            }));
+            rows.push_back(measureRow("micro-event-resume", "stable-point", options.size, 0U, [&] {
+                harness.stablePoint();
+                Row row;
+                appendRuntimeStats(row, harness);
+                return row;
+            }));
+            if (harness.backend_state.resumes != options.size)
+                throw std::runtime_error("Event micro benchmark resume count mismatch");
 
-        RuntimeHarness cancellation{options.size, EScenarioMode::EVENT_WAIT, options.size};
-        static_cast<void>(dispatchHookForTest(cancellation.hook));
-        rows.push_back(measureRow("micro-event-cancel", "instance-retirement", options.size, 0U, [&] {
-            if (!cancellation.system->shutdown())
-                throw std::runtime_error("Event cancellation benchmark shutdown failed");
-            Row row;
-            appendRuntimeStats(row, cancellation);
-            return row;
-        }));
+            RuntimeHarness cancellation{options.size, EScenarioMode::EVENT_WAIT, options.size,
+                options.targeted_event, true, options.event_requirements, options.targeted_event};
+            cancellation.registerEventWaiters();
+            rows.push_back(measureRow("micro-event-cancel", "instance-retirement", options.size, 0U, [&] {
+                if (!cancellation.system->shutdown())
+                    throw std::runtime_error("Event cancellation benchmark shutdown failed");
+                Row row;
+                appendRuntimeStats(row, cancellation);
+                return row;
+            }));
+            if (iteration < options.warmups)
+                rows.resize(first_row);
+            else
+                for (std::size_t index = first_row; index < rows.size(); ++index)
+                    rows[index].sample = iteration - options.warmups;
+        }
     }
 
     void runEventIdle(const Options& options, std::vector<Row>& rows)
@@ -2663,6 +2748,7 @@ int main(int argc, char** argv)
     const auto options = parseOptions(argc, argv);
     if (!options)
         return 2;
+    g_allocation_accounting = options->mode != "performance";
     try
     {
         std::vector<Row> rows;

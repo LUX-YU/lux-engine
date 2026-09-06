@@ -157,3 +157,14 @@ No final production/qualification candidate, optimization speedup, framework fre
   33/33 focused tests passed (`i02-checked-tests.log`). Final expanded checks still precede Bcompare capture.
 - lux-cxx `bbe43fa` adds generic `concat_arrays` to compose existing static/non-static declaration lists;
   its full all + 52/52 tests and install pass. No Script semantic was added to lux-cxx.
+- Bcompare harness preparation adds actual 1/4/16/64 declared Event requirements and repeated measured
+  registration/delivery/resume/cancellation samples. Requirements are projected from canonical Simulation
+  metadata instead of handwritten payload hashes. The awaited source sorts last in the old scan.
+- Targeted fan-out uses one Entity/mount and K normal Event callback invocations, then one targeted
+  occurrence completes K waits. The first attempted fixture used multiple mounts on one Entity and was
+  correctly rejected with SCOPE_MISMATCH; production ownership was not changed to accommodate the benchmark.
+- Event smoke coverage now includes idle/fan-out/sparse groups and all four targeted requirement counts.
+  Checked 64 targeted waiters: dispatch resumes=0, subsequent stable point resumes=64, repeat checksum=37568.
+- CSV schema 6 records Event requirement count/route and allocation-accounting policy. Performance mode
+  disables allocation counting; diagnostic mode remains a separate counting pass. Baseline snapshots and
+  eventual timing manifest must use the configured compiled SHA, not merely the newest worktree HEAD.

@@ -27,22 +27,37 @@ $cases = @(
     @{name='flow-ability-10k'; exe='flowforge_script_runtime_benchmark.exe'; group='micro-flowforge-ability-query'; size=10000; tool=$true; micro=$true},
     @{name='flow-coroutine-10k'; exe='flowforge_script_runtime_benchmark.exe'; group='scene-flowforge-gameplay-mixed'; size=10000; tool=$true},
     @{name='flow-event-10k'; exe='flowforge_script_runtime_benchmark.exe'; group='scene-flowforge-event'; size=10000; tool=$true},
+    @{name='cpp-sequence-10k'; exe='script_runtime_benchmark.exe'; group='scene-cpp-sequence'; size=10000},
+    @{name='lua-sequence-10k'; exe='script_runtime_benchmark.exe'; group='scene-lua-sequence'; size=10000; lua=$true},
+    @{name='lua-sequence-interpreter-10k'; exe='script_runtime_benchmark.exe'; group='scene-lua-sequence'; size=10000; lua=$true; interpreter=$true},
+    @{name='flow-sequence-10k'; exe='flowforge_script_runtime_benchmark.exe'; group='scene-flowforge-sequence'; size=10000; tool=$true},
     @{name='event-register-1'; exe='script_runtime_benchmark.exe'; group='micro-event-wait'; size=10000; micro=$true; requirements=1},
     @{name='event-register-4'; exe='script_runtime_benchmark.exe'; group='micro-event-wait'; size=10000; micro=$true; requirements=4},
     @{name='event-register-16'; exe='script_runtime_benchmark.exe'; group='micro-event-wait'; size=10000; micro=$true; requirements=16},
     @{name='event-register-64'; exe='script_runtime_benchmark.exe'; group='micro-event-wait'; size=10000; micro=$true; requirements=64},
     @{name='event-targeted-10k'; exe='script_runtime_benchmark.exe'; group='micro-event-wait'; size=10000; micro=$true; targeted=$true},
     @{name='event-fanout-10k'; exe='script_runtime_benchmark.exe'; group='scene-event-fanout'; size=10000},
-    @{name='cpp-coroutine-100k'; exe='script_runtime_benchmark.exe'; group='micro-cpp-coroutine'; size=100000; micro=$true},
+    @{name='cpp-coroutine-100k'; exe='script_runtime_benchmark.exe'; group='micro-cpp-coroutine'; size=100000; micro=$true; pairs=3},
     @{name='physics-mixed-10k'; exe='physics2d_script_benchmark.exe'; group='scene-physics-mixed'; size=10000; physics=$true},
     @{name='physics-mixed-20k'; exe='physics2d_script_benchmark.exe'; group='scene-physics-mixed'; size=20000; physics=$true}
 )
+foreach ($count in @(1,4,16,64)) {
+    $cases += @{name="cpp-event-requirements-$count";exe='script_runtime_benchmark.exe';
+        group='micro-cpp-event-wait';size=10000;micro=$true;requirements=$count}
+}
+foreach ($count in @(1,64,1000,10000)) {
+    foreach ($route in @('broadcast','targeted')) {
+        $cases += @{name="cpp-event-$route-$count";exe='script_runtime_benchmark.exe';
+            group='micro-cpp-event-wait';size=$count;micro=$true;targeted=($route -eq 'targeted')}
+    }
+}
 $manifest = @()
 $manifest_path = Join-Path $OutputRoot 'runs.json'
 if (Test-Path -LiteralPath $manifest_path) { $manifest = @(Get-Content -Raw $manifest_path | ConvertFrom-Json) }
 foreach ($case in $cases) {
     if ($Only.Count -ne 0 -and $case.name -notin $Only) { continue }
-    for ($pair=0; $pair -lt $Pairs; ++$pair) {
+    $pair_count = if ($case.pairs) { [Math]::Min($Pairs,$case.pairs) } else { $Pairs }
+    for ($pair=0; $pair -lt $pair_count; ++$pair) {
         $order = if ($pair % 2 -eq 0) { @('baseline','final') } else { @('final','baseline') }
         foreach ($variant in $order) {
             $bin = if ($variant -eq 'baseline') { $BaselineBin } else { $FinalBin }
